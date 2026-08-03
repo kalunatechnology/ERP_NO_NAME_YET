@@ -3376,62 +3376,61 @@ erDiagram
     IMPLEMENTATION_WORKFLOW_STAGE ||--o{ IMPLEMENTATION_WORK_ITEM : workflow_stage
 ```
 
-
 ## Matriks kesesuaian terhadap Information Architecture PNG
 
-| Area/fungsi pada PNG | Struktur database yang mendukung |
-|---|---|
-| Executive memiliki akses penuh | `IAM_ROLE_HIERARCHY`, `IAM_ROLE_PERMISSION`, `IAM_ROLE_DATA_SCOPE` |
-| Informasi terbatas PM–Finance–CRM–Technical | `IAM_INFORMATION_SHARE_RULE`, `IAM_FIELD_PERMISSION`, `IAM_USER_PROJECT_ACCESS` |
-| Dashboard utama Finance | `ANALYTICS_DASHBOARD`, `ANALYTICS_WIDGET`, `VIEW_FINANCE_MAIN_DASHBOARD` |
-| Laba rugi dan cashflow real-time | `FIN_FINANCIAL_SNAPSHOT`, `FIN_JOURNAL_ENTRY`, `FIN_JOURNAL_LINE` |
-| Unit-unit HPP | `FIN_UNIT_COST_SNAPSHOT`, `MFG_COST_LEDGER_ENTRY` |
-| Peringatan dan KPI periodik | `ANALYTICS_ALERT_RULE`, `ANALYTICS_ALERT_EVENT`, `ANALYTICS_KPI_*` |
-| CoA, jurnal, pajak, tutup buku | `FIN_ACCOUNT`, `FIN_JOURNAL_*`, `FIN_TAX_TRANSACTION`, `FIN_PERIOD_CLOSING` |
-| Vendor invoice dan three-way matching | `FIN_BILLING_DOCUMENT`, `PROC_THREE_WAY_MATCH` |
-| Batch payment | `FIN_PAYMENT`, `FIN_PAYMENT_ALLOCATION` |
-| Recurring payment | `FIN_RECURRING_PAYMENT_RULE`, `FIN_RECURRING_PAYMENT_RUN` |
-| Limit kredit | `FIN_CREDIT_FACILITY`, `MASTER_CUSTOMER_PROFILE`, `CRM_CREDIT_STATUS_SNAPSHOT` |
-| Work in progress | `FIN_PROJECT_WIP_SNAPSHOT` |
-| Permodalan/pembiayaan proyek | `FIN_PROJECT_FUNDING`, `FIN_PROJECT_FUNDING_TRANSACTION` |
-| Selisih biaya ideal dan riil | `FIN_COST_BASELINE*`, `FIN_COST_VARIANCE` |
-| Biaya overhead | `FIN_OVERHEAD_RULE`, `FIN_OVERHEAD_ALLOCATION` |
-| Invoice/document builder | `CORE_DOCUMENT_TEMPLATE*`, `CORE_GENERATED_DOCUMENT`, `CORE_DOCUMENT_SIGNATURE` |
-| Nilai, depresiasi, maintenance aset | `ASSET_ASSET`, `ASSET_BOOK`, `ASSET_DEPRECIATION_LINE`, `ASSET_MAINTENANCE` |
-| Dashboard Project dan KPI | `VIEW_PROJECT_DASHBOARD`, `ANALYTICS_KPI_*` |
-| Gantt dan summary task | `PROJECT_TASK`, `PROJECT_TASK_DEPENDENCY` |
-| Notification dan quick actions | `CORE_NOTIFICATION*`, `CORE_QUICK_ACTION` |
-| Project health status | `PROJECT_HEALTH_RULE`, `PROJECT_HEALTH_SNAPSHOT`, `PROJECT_RISK`, `PROJECT_ISSUE` |
-| Timeline dan Kanban | `PROJECT_BOARD*`, `PROJECT_TASK_BOARD_POSITION` |
-| Milestones/KPI | `PROJECT_MILESTONE`, `ANALYTICS_KPI_*` |
-| Linked sales orders | `PROJECT_PROJECT.sales_order_id`, `SALES_DEMAND_SUPPLY_LINK` |
-| Spesifikasi teknis/brief | `PROJECT_TECHNICAL_BRIEF*`, `PROJECT_REQUIREMENT`, `PROJECT_ACCEPTANCE_CRITERIA` |
-| Change of order/update | `SALES_ORDER_CHANGE_REQUEST`, `PROJECT_CHANGE_REQUEST` |
-| Alokasi material dan permintaan resource | `PROJECT_RESOURCE_REQUEST*`, `PROJECT_RESOURCE_ALLOCATION`, `INV_STOCK_RESERVATION` |
-| Work order progress dan QA | `PROJECT_PROGRESS_SNAPSHOT`, `MFG_WORK_ORDER`, `QA_INSPECTION*` |
-| Jam kerja alat dan pekerja | `PROJECT_TIMESHEET`, `PROJECT_EQUIPMENT_USAGE`, `MFG_LABOR_LOG`, `MFG_MACHINE_LOG` |
-| Modal dan pengeluaran proyek | `FIN_PROJECT_COST_SNAPSHOT`, `FIN_PROJECT_FUNDING*` |
-| Dashboard Sales dan indikator bobot proyek | `VIEW_CRM_SALES_DASHBOARD`, `PROJECT_WEIGHT_INDICATOR*` |
-| Prospect–pitch–closing dan win rate | `CRM_PIPELINE*`, `CRM_OPPORTUNITY_STAGE_HISTORY`, `CRM_OPPORTUNITY` |
-| Keuntungan offering | `CRM_OPPORTUNITY.expected_margin`, `SALES_QUOTATION.estimated_margin` |
-| Profil dan kontak customer | `MASTER_PARTY`, `MASTER_CONTACT`, `MASTER_CUSTOMER_PROFILE` |
-| Executive approval | `CRM_EXECUTIVE_APPROVAL`, `CORE_WORKFLOW_APPROVAL`, `IAM_APPROVAL_LIMIT` |
-| Credit status | `CRM_CREDIT_STATUS_SNAPSHOT` |
-| Estimating dan quotation | `SALES_QUOTATION*`, `SALES_QUOTATION_COST` |
-| Kontrak umum dan berkala | `SALES_CONTRACT`, `SALES_CONTRACT_LINE` |
-| Otomasi repeat order | `SALES_RECURRING_ORDER_RULE`, `SALES_RECURRING_ORDER_RUN` |
-| Omnichannel dashboard | `CRM_CHANNEL_ACCOUNT`, `CRM_CONVERSATION*`, `CRM_MESSAGE*` |
-| Delivery tracking | `LOGISTICS_SHIPMENT*`, `LOGISTICS_TRACKING_EVENT`, `LOGISTICS_PROOF_OF_DELIVERY` |
-| Feedback center | `CRM_FEEDBACK`, `CRM_SURVEY*` |
-| Suggested Phase 1–4 | `IMPLEMENTATION_RELEASE`, `IMPLEMENTATION_PHASE`, `IMPLEMENTATION_PHASE_ITEM` |
-| Suggested Workflow dan testing/GTM/launch | `IMPLEMENTATION_WORKFLOW*`, `IMPLEMENTATION_WORK_ITEM`, `IMPLEMENTATION_TEST_CYCLE`, `IMPLEMENTATION_GTM_MILESTONE` |
+| Area/fungsi pada PNG                        | Struktur database yang mendukung                                                                                    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Executive memiliki akses penuh              | `IAM_ROLE_HIERARCHY`, `IAM_ROLE_PERMISSION`, `IAM_ROLE_DATA_SCOPE`                                                  |
+| Informasi terbatas PM–Finance–CRM–Technical | `IAM_INFORMATION_SHARE_RULE`, `IAM_FIELD_PERMISSION`, `IAM_USER_PROJECT_ACCESS`                                     |
+| Dashboard utama Finance                     | `ANALYTICS_DASHBOARD`, `ANALYTICS_WIDGET`, `VIEW_FINANCE_MAIN_DASHBOARD`                                            |
+| Laba rugi dan cashflow real-time            | `FIN_FINANCIAL_SNAPSHOT`, `FIN_JOURNAL_ENTRY`, `FIN_JOURNAL_LINE`                                                   |
+| Unit-unit HPP                               | `FIN_UNIT_COST_SNAPSHOT`, `MFG_COST_LEDGER_ENTRY`                                                                   |
+| Peringatan dan KPI periodik                 | `ANALYTICS_ALERT_RULE`, `ANALYTICS_ALERT_EVENT`, `ANALYTICS_KPI_*`                                                  |
+| CoA, jurnal, pajak, tutup buku              | `FIN_ACCOUNT`, `FIN_JOURNAL_*`, `FIN_TAX_TRANSACTION`, `FIN_PERIOD_CLOSING`                                         |
+| Vendor invoice dan three-way matching       | `FIN_BILLING_DOCUMENT`, `PROC_THREE_WAY_MATCH`                                                                      |
+| Batch payment                               | `FIN_PAYMENT`, `FIN_PAYMENT_ALLOCATION`                                                                             |
+| Recurring payment                           | `FIN_RECURRING_PAYMENT_RULE`, `FIN_RECURRING_PAYMENT_RUN`                                                           |
+| Limit kredit                                | `FIN_CREDIT_FACILITY`, `MASTER_CUSTOMER_PROFILE`, `CRM_CREDIT_STATUS_SNAPSHOT`                                      |
+| Work in progress                            | `FIN_PROJECT_WIP_SNAPSHOT`                                                                                          |
+| Permodalan/pembiayaan proyek                | `FIN_PROJECT_FUNDING`, `FIN_PROJECT_FUNDING_TRANSACTION`                                                            |
+| Selisih biaya ideal dan riil                | `FIN_COST_BASELINE*`, `FIN_COST_VARIANCE`                                                                           |
+| Biaya overhead                              | `FIN_OVERHEAD_RULE`, `FIN_OVERHEAD_ALLOCATION`                                                                      |
+| Invoice/document builder                    | `CORE_DOCUMENT_TEMPLATE*`, `CORE_GENERATED_DOCUMENT`, `CORE_DOCUMENT_SIGNATURE`                                     |
+| Nilai, depresiasi, maintenance aset         | `ASSET_ASSET`, `ASSET_BOOK`, `ASSET_DEPRECIATION_LINE`, `ASSET_MAINTENANCE`                                         |
+| Dashboard Project dan KPI                   | `VIEW_PROJECT_DASHBOARD`, `ANALYTICS_KPI_*`                                                                         |
+| Gantt dan summary task                      | `PROJECT_TASK`, `PROJECT_TASK_DEPENDENCY`                                                                           |
+| Notification dan quick actions              | `CORE_NOTIFICATION*`, `CORE_QUICK_ACTION`                                                                           |
+| Project health status                       | `PROJECT_HEALTH_RULE`, `PROJECT_HEALTH_SNAPSHOT`, `PROJECT_RISK`, `PROJECT_ISSUE`                                   |
+| Timeline dan Kanban                         | `PROJECT_BOARD*`, `PROJECT_TASK_BOARD_POSITION`                                                                     |
+| Milestones/KPI                              | `PROJECT_MILESTONE`, `ANALYTICS_KPI_*`                                                                              |
+| Linked sales orders                         | `PROJECT_PROJECT.sales_order_id`, `SALES_DEMAND_SUPPLY_LINK`                                                        |
+| Spesifikasi teknis/brief                    | `PROJECT_TECHNICAL_BRIEF*`, `PROJECT_REQUIREMENT`, `PROJECT_ACCEPTANCE_CRITERIA`                                    |
+| Change of order/update                      | `SALES_ORDER_CHANGE_REQUEST`, `PROJECT_CHANGE_REQUEST`                                                              |
+| Alokasi material dan permintaan resource    | `PROJECT_RESOURCE_REQUEST*`, `PROJECT_RESOURCE_ALLOCATION`, `INV_STOCK_RESERVATION`                                 |
+| Work order progress dan QA                  | `PROJECT_PROGRESS_SNAPSHOT`, `MFG_WORK_ORDER`, `QA_INSPECTION*`                                                     |
+| Jam kerja alat dan pekerja                  | `PROJECT_TIMESHEET`, `PROJECT_EQUIPMENT_USAGE`, `MFG_LABOR_LOG`, `MFG_MACHINE_LOG`                                  |
+| Modal dan pengeluaran proyek                | `FIN_PROJECT_COST_SNAPSHOT`, `FIN_PROJECT_FUNDING*`                                                                 |
+| Dashboard Sales dan indikator bobot proyek  | `VIEW_CRM_SALES_DASHBOARD`, `PROJECT_WEIGHT_INDICATOR*`                                                             |
+| Prospect–pitch–closing dan win rate         | `CRM_PIPELINE*`, `CRM_OPPORTUNITY_STAGE_HISTORY`, `CRM_OPPORTUNITY`                                                 |
+| Keuntungan offering                         | `CRM_OPPORTUNITY.expected_margin`, `SALES_QUOTATION.estimated_margin`                                               |
+| Profil dan kontak customer                  | `MASTER_PARTY`, `MASTER_CONTACT`, `MASTER_CUSTOMER_PROFILE`                                                         |
+| Executive approval                          | `CRM_EXECUTIVE_APPROVAL`, `CORE_WORKFLOW_APPROVAL`, `IAM_APPROVAL_LIMIT`                                            |
+| Credit status                               | `CRM_CREDIT_STATUS_SNAPSHOT`                                                                                        |
+| Estimating dan quotation                    | `SALES_QUOTATION*`, `SALES_QUOTATION_COST`                                                                          |
+| Kontrak umum dan berkala                    | `SALES_CONTRACT`, `SALES_CONTRACT_LINE`                                                                             |
+| Otomasi repeat order                        | `SALES_RECURRING_ORDER_RULE`, `SALES_RECURRING_ORDER_RUN`                                                           |
+| Omnichannel dashboard                       | `CRM_CHANNEL_ACCOUNT`, `CRM_CONVERSATION*`, `CRM_MESSAGE*`                                                          |
+| Delivery tracking                           | `LOGISTICS_SHIPMENT*`, `LOGISTICS_TRACKING_EVENT`, `LOGISTICS_PROOF_OF_DELIVERY`                                    |
+| Feedback center                             | `CRM_FEEDBACK`, `CRM_SURVEY*`                                                                                       |
+| Suggested Phase 1–4                         | `IMPLEMENTATION_RELEASE`, `IMPLEMENTATION_PHASE`, `IMPLEMENTATION_PHASE_ITEM`                                       |
+| Suggested Workflow dan testing/GTM/launch   | `IMPLEMENTATION_WORKFLOW*`, `IMPLEMENTATION_WORK_ITEM`, `IMPLEMENTATION_TEST_CYCLE`, `IMPLEMENTATION_GTM_MILESTONE` |
 
 ## Seed role yang harus dibuat
 
-- `EXECUTIVE`: akses penuh seluruh modul dan seluruh data.
-- `PROJECT_MANAGEMENT`: akses penuh Project Management dan akses terbatas ke data Finance/CRM sesuai share rule.
-- `ACCOUNTING_FINANCE`: akses penuh Finance dan akses terbatas ke data Project/CRM.
-- `CRM`: akses penuh CRM/Sales dan akses terbatas ke status, nilai, serta approval terkait proyek.
-- `PROJECT_MANAGEMENT_TECHNICAL`: akses teknis untuk brief, resource, work order, progress, dan QA.
+* `EXECUTIVE`: akses penuh seluruh modul dan seluruh data.
+* `PROJECT_MANAGEMENT`: akses penuh Project Management dan akses terbatas ke data Finance/CRM sesuai share rule.
+* `ACCOUNTING_FINANCE`: akses penuh Finance dan akses terbatas ke data Project/CRM.
+* `CRM`: akses penuh CRM/Sales dan akses terbatas ke status, nilai, serta approval terkait proyek.
+* `PROJECT_MANAGEMENT_TECHNICAL`: akses teknis untuk brief, resource, work order, progress, dan QA.
 
 Kesesuaian 100% di sini berarti setiap node fitur pada PNG sudah memiliki representasi berupa tabel transaksi, tabel konfigurasi, tabel snapshot, atau database view. Rumus KPI, aturan approval, serta batas informasi yang dibagikan tetap dikonfigurasi melalui data dan application service, bukan di-hardcode pada tabel.
