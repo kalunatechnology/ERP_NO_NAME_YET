@@ -79,7 +79,10 @@ class BaseERPModelViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         before = snapshot(serializer.instance)
-        instance = serializer.save()
+        model = serializer.Meta.model
+        field_names = {field.name for field in model._meta.concrete_fields}
+        kwargs = {"updated_by": self.request.user} if "updated_by" in field_names else {}
+        instance = serializer.save(**kwargs)
         create_audit_event(
             request=self.request,
             instance=instance,

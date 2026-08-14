@@ -10,16 +10,128 @@ from django.db.models import Avg, Count, F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import permissions, status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    inline_serializer,
+)
+from rest_framework import permissions, serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
-from rest_framework.views import APIView
+from rest_framework.generics import GenericAPIView
 
 from apps.api_common.audit import create_audit_event, snapshot
 from apps.api_common.scoping import get_scope_value
 
 
 ZERO = Decimal("0")
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI / Swagger schema helpers
+# ---------------------------------------------------------------------------
+
+
+class ERPEmptyCommandSerializer(serializers.Serializer):
+    """Fallback serializer for commands without a request body."""
+
+    pass
+
+
+class ERPCommandResponseSerializer(serializers.Serializer):
+    """Standard success envelope returned by ERP command endpoints."""
+
+    success = serializers.BooleanField()
+    message = serializers.CharField()
+    data = serializers.JSONField(required=False, allow_null=True)
+
+
+class ERPCommandErrorSerializer(serializers.Serializer):
+    """Generic DRF validation/error response used by command endpoints."""
+
+    detail = serializers.JSONField(required=False)
+    errors = serializers.JSONField(required=False)
+
+
+COMPANY_SCOPE_PARAMETERS = [
+    OpenApiParameter(
+        name="X-Company-ID",
+        type=OpenApiTypes.UUID,
+        location=OpenApiParameter.HEADER,
+        required=False,
+        description="UUID company aktif. Dapat menggantikan query parameter company_id.",
+    ),
+    OpenApiParameter(
+        name="company_id",
+        type=OpenApiTypes.UUID,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="UUID company aktif jika header X-Company-ID tidak digunakan.",
+    ),
+]
+
+
+def command_schema(
+    *,
+    tag: str,
+    summary: str,
+    request_serializer=None,
+    success_status: int = status.HTTP_200_OK,
+    description: str | None = None,
+    parameters=None,
+):
+    """
+    Apply a consistent OpenAPI contract to an ERP command endpoint.
+
+    The serializer is used only for schema generation. Runtime validation
+    remains inside each command method, preserving the existing business logic.
+    """
+
+    return extend_schema(
+        tags=[tag],
+        summary=summary,
+        description=description or f"Menjalankan command ERP: {summary}.",
+        request=request_serializer,
+        parameters=parameters or [],
+        responses={
+            success_status: ERPCommandResponseSerializer,
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(
+                response=ERPCommandErrorSerializer,
+                description="Payload atau status transaksi tidak valid.",
+            ),
+            status.HTTP_401_UNAUTHORIZED: OpenApiResponse(
+                response=ERPCommandErrorSerializer,
+                description="Token autentikasi tidak tersedia atau tidak valid.",
+            ),
+            status.HTTP_403_FORBIDDEN: OpenApiResponse(
+                response=ERPCommandErrorSerializer,
+                description="Pengguna tidak memiliki izin untuk menjalankan command.",
+            ),
+            status.HTTP_404_NOT_FOUND: OpenApiResponse(
+                response=ERPCommandErrorSerializer,
+                description="Resource yang diminta tidak ditemukan.",
+            ),
+        },
+    )
+
+
+def optional_decimal_field(*, required: bool = False):
+    return serializers.DecimalField(
+        max_digits=24,
+        decimal_places=6,
+        required=required,
+        allow_null=not required,
+    )
+
+
+def optional_uuid_field(*, required: bool = False):
+    return serializers.UUIDField(
+        required=required,
+        allow_null=not required,
+    )
+
 
 
 def dec(value, default=ZERO) -> Decimal:
@@ -70,8 +182,9 @@ def update_document(document, *, status_value: str, user=None, posting=False):
     document.save(update_fields=fields)
 
 
-class ERPCommandView(APIView):
+class ERPCommandView(GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ERPEmptyCommandSerializer
 
     def ok(self, data=None, message="Operasi berhasil.", http_status=status.HTTP_200_OK):
         return Response({"success": True, "message": message, "data": data}, status=http_status)
@@ -83,6 +196,13 @@ class ERPCommandView(APIView):
 
 
 class DocumentSubmitView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Core",
+        summary="Submit business document",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.core.models import BusinessDocument, WorkflowInstance
@@ -112,6 +232,19 @@ class DocumentSubmitView(ERPCommandView):
 
 
 class DocumentApproveView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Core",
+        summary="Approve business document",
+        request_serializer=inline_serializer(
+            name="DocumentApproveCommandRequest",
+            fields={
+                "approval_level": serializers.CharField(required=False, default="FINAL"),
+                "remarks": serializers.CharField(required=False, allow_blank=True)
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.core.models import BusinessDocument, WorkflowApproval, WorkflowInstance
@@ -144,6 +277,19 @@ class DocumentApproveView(ERPCommandView):
 
 
 class DocumentRejectView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Core",
+        summary="Reject business document",
+        request_serializer=inline_serializer(
+            name="DocumentRejectCommandRequest",
+            fields={
+                "approval_level": serializers.CharField(required=False, default="CURRENT"),
+                "remarks": serializers.CharField(required=False, allow_blank=True)
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.core.models import BusinessDocument, WorkflowApproval, WorkflowInstance
@@ -175,6 +321,13 @@ class DocumentRejectView(ERPCommandView):
 
 
 class DocumentPostView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Core",
+        summary="Post business document",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.core.models import BusinessDocument
@@ -189,6 +342,13 @@ class DocumentPostView(ERPCommandView):
 
 
 class DocumentCancelView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Core",
+        summary="Cancel business document",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.core.models import BusinessDocument
@@ -204,6 +364,13 @@ class DocumentCancelView(ERPCommandView):
 
 
 class DocumentReverseView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Core",
+        summary="Create document reversal",
+        request_serializer=None,
+        success_status=status.HTTP_201_CREATED,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.core.models import BusinessDocument, DocumentLink
@@ -233,6 +400,13 @@ class DocumentReverseView(ERPCommandView):
 
 
 class DocumentHistoryView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Core",
+        summary="Get document lifecycle history",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     def get(self, request, id):
         from apps.core.models import AuditEvent, BusinessDocument, WorkflowApproval
 
@@ -254,6 +428,19 @@ class DocumentHistoryView(ERPCommandView):
 
 
 class QuotationConvertToOrderView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Sales",
+        summary="Convert quotation to sales order",
+        request_serializer=inline_serializer(
+            name="QuotationConvertToOrderCommandRequest",
+            fields={
+                "requested_delivery_date": serializers.DateField(required=False, allow_null=True),
+                "fulfillment_method": serializers.CharField(required=False, default="PROJECT")
+            },
+        ),
+        success_status=status.HTTP_201_CREATED,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.sales.models import Order, OrderLine, Quotation, QuotationLine
@@ -297,6 +484,13 @@ class QuotationConvertToOrderView(ERPCommandView):
 
 
 class SalesOrderConfirmView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Sales",
+        summary="Confirm sales order",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.sales.models import Order
@@ -311,6 +505,18 @@ class SalesOrderConfirmView(ERPCommandView):
 
 
 class SalesOrderAllocateView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Sales",
+        summary="Allocate sales order demand",
+        request_serializer=inline_serializer(
+            name="SalesOrderAllocateCommandRequest",
+            fields={
+                "allocations": serializers.JSONField(required=False, help_text="Daftar alokasi per sales_order_line_id.")
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.sales.models import DemandSupplyLink, Order, OrderLine
@@ -339,7 +545,151 @@ class SalesOrderAllocateView(ERPCommandView):
         return self.ok(created, "Demand-supply allocation berhasil dibuat.")
 
 
+class SalesOrderConvertToProjectView(ERPCommandView):
+    @command_schema(
+        tag="Commands â€” Projects",
+        summary="Convert sales order to project",
+        request_serializer=inline_serializer(
+            name="SalesOrderConvertToProjectCommandRequest",
+            fields={
+                "project_code": serializers.CharField(required=False, allow_blank=True),
+                "project_name": serializers.CharField(required=False, allow_blank=True),
+                "warehouse_id": optional_uuid_field(),
+                "budget_amount": optional_decimal_field(),
+                "planned_start_date": serializers.DateField(required=False, allow_null=True),
+                "planned_end_date": serializers.DateField(required=False, allow_null=True),
+            },
+        ),
+        success_status=status.HTTP_201_CREATED,
+        parameters=None,
+    )
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.core.models import DocumentLink
+        from apps.master_data.models import Warehouse
+        from apps.projects.models import MaterialRequirement, Member, Project, Requirement, TechnicalBrief
+        from apps.sales.models import DemandSupplyLink, Order, OrderLine
+
+        order = get_object_or_404(Order.objects.select_for_update(), pk=id)
+        existing = Project.objects.filter(sales_order=order).first()
+        if existing:
+            update_fields = []
+            if existing.project_manager_id is None:
+                existing.project_manager = request.user
+                update_fields.append("project_manager")
+            if update_fields:
+                existing.save(update_fields=update_fields)
+            from apps.projects.models import Member
+            Member.objects.get_or_create(
+                project=existing,
+                user=request.user,
+                defaults={"project_role": "PROJECT_MANAGER", "status": "ACTIVE", "assigned_at": timezone.now()},
+            )
+            return self.ok(project_flow_data(existing), "Sales order sudah terhubung ke project.")
+        if order.status not in {"CONFIRMED", "ALLOCATED"}:
+            raise ValidationError({"status": "Sales order harus CONFIRMED atau ALLOCATED sebelum menjadi project."})
+
+        company_id = get_scope_value(order, "company") or request.headers.get("X-Company-ID")
+        tenant_id = get_scope_value(order, "tenant") or getattr(request.user, "tenant_id", None)
+        warehouse = None
+        if request.data.get("warehouse_id"):
+            warehouse = get_object_or_404(Warehouse, pk=request.data["warehouse_id"], company_id=company_id)
+        elif company_id:
+            warehouse = Warehouse.objects.filter(company_id=company_id, status__in=["ACTIVE", "OPEN", ""]).first()
+
+        document = create_business_document(source=order, document_type="PROJECT", prefix="PRJ", user=request.user)
+        project = Project.objects.create(
+            document=document,
+            tenant_id=tenant_id,
+            company_id=company_id,
+            customer_party=order.customer_party,
+            sales_order=order,
+            project_manager=request.user,
+            project_code=str(request.data.get("project_code") or document.document_number),
+            project_name=str(request.data.get("project_name") or f"Project {order.document.document_number if order.document else order.id}"),
+            planned_start_date=request.data.get("planned_start_date"),
+            planned_end_date=request.data.get("planned_end_date"),
+            budget_amount=dec(request.data.get("budget_amount")),
+            progress_percent=ZERO,
+            status="DRAFT",
+            lifecycle_status="DRAFT",
+            source_type="SALES_ORDER",
+        )
+        Member.objects.get_or_create(
+            project=project,
+            user=request.user,
+            defaults={
+                "project_role": "PROJECT_MANAGER",
+                "status": "ACTIVE",
+                "assigned_at": timezone.now(),
+            },
+        )
+        if order.document:
+            DocumentLink.objects.get_or_create(
+                source_document=order.document,
+                target_document=document,
+                link_type="ORDER_TO_PROJECT",
+                defaults={"created_at": timezone.now()},
+            )
+        brief = TechnicalBrief.objects.create(
+            document=create_business_document(source=project, document_type="TECHNICAL_BRIEF", prefix="BRF", user=request.user),
+            project=project,
+            sales_order=order,
+            brief_number=f"BRF-{project.project_code}",
+            brief_title=project.project_name,
+            objective=f"Pemenuhan sales order {order.document.document_number if order.document else order.id}",
+            scope_summary="Scope awal dibentuk otomatis dari line sales order.",
+            owner_user=request.user,
+            approval_status="PENDING",
+            status="DRAFT",
+        )
+        for index, line in enumerate(OrderLine.objects.filter(sales_order=order).select_related("product"), start=1):
+            Requirement.objects.create(
+                technical_brief=brief,
+                requirement_code=f"REQ-{index:03d}",
+                requirement_type="PRODUCT",
+                requirement_text=f"{line.product or 'Produk'} sejumlah {line.ordered_quantity or ZERO}",
+                priority="HIGH",
+                verification_method="DELIVERY_AND_QA",
+                status="DRAFT",
+            )
+            MaterialRequirement.objects.create(
+                project=project,
+                product=line.product,
+                warehouse=warehouse,
+                required_quantity=line.ordered_quantity or ZERO,
+                reserved_quantity=ZERO,
+                issued_quantity=ZERO,
+                required_date=order.requested_delivery_date,
+                status="PLANNED",
+            )
+            line.project = project
+            line.fulfillment_method = "PROJECT"
+            line.save(update_fields=["project", "fulfillment_method"])
+            DemandSupplyLink.objects.update_or_create(
+                sales_order_line=line,
+                defaults={
+                    "project": project,
+                    "demand_quantity": line.ordered_quantity or ZERO,
+                    "allocated_quantity": ZERO,
+                    "fulfilled_quantity": ZERO,
+                    "status": "PROJECT_CREATED",
+                },
+            )
+        order.status = "PROJECT_CREATED"
+        order.save(update_fields=["status"])
+        create_audit_event(request=request, instance=project, event_type="CREATE_FROM_ORDER", after=snapshot(project))
+        return self.ok(project_flow_data(project), "Project dan data awal berhasil dibuat dari sales order.", status.HTTP_201_CREATED)
+
+
 class SalesDeliveryDispatchView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Sales",
+        summary="Dispatch sales delivery",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.sales.models import Delivery, DeliveryLine
@@ -362,38 +712,366 @@ class SalesDeliveryDispatchView(ERPCommandView):
 
 def project_cost_data(project):
     from apps.manufacturing.models import ProductionMaterial
-    from apps.projects.models import BudgetLine, EquipmentUsage, Timesheet
+    from apps.projects.models import BudgetLine, EquipmentUsage, ProjectExpense, Timesheet
 
     budget = BudgetLine.objects.filter(project=project).aggregate(v=Coalesce(Sum("budget_amount"), ZERO))["v"]
     labor = Timesheet.objects.filter(project=project, approval_status="APPROVED").aggregate(v=Coalesce(Sum("amount"), ZERO))["v"]
     equipment = EquipmentUsage.objects.filter(project=project).aggregate(v=Coalesce(Sum("total_cost"), ZERO))["v"]
     material = ProductionMaterial.objects.filter(production_order__project=project).aggregate(v=Coalesce(Sum("actual_cost"), ZERO))["v"]
-    actual = labor + equipment + material
+    registered_expense = ProjectExpense.objects.filter(project=project).aggregate(v=Coalesce(Sum("amount"), ZERO))["v"]
+    operational_cost = labor + equipment + material
+    actual = registered_expense if registered_expense > ZERO else operational_cost
     return {
         "budget_amount": budget or project.budget_amount or ZERO,
         "labor_cost": labor,
         "equipment_cost": equipment,
         "material_cost": material,
+        "registered_expense": registered_expense,
+        "operational_cost": operational_cost,
         "actual_cost": actual,
         "remaining_budget": (budget or project.budget_amount or ZERO) - actual,
     }
 
 
-class ProjectStartView(ERPCommandView):
+def project_flow_data(project):
+    """Return the authoritative backend gate status for the incoming-order flow."""
+    from apps.inventory.models import StockBalance, StockReservation
+    from apps.projects.models import BudgetLine, MaterialRequirement, Requirement, TechnicalBrief
+
+    briefs = TechnicalBrief.objects.filter(project=project)
+    requirements = Requirement.objects.filter(technical_brief__project=project)
+    materials = MaterialRequirement.objects.filter(project=project).select_related("product", "warehouse")
+    budget_total = BudgetLine.objects.filter(project=project).aggregate(v=Coalesce(Sum("budget_amount"), ZERO))["v"] or project.budget_amount or ZERO
+    shortages = []
+    material_rows = []
+    for item in materials:
+        required = item.required_quantity or ZERO
+        reserved = item.reserved_quantity or ZERO
+        available = ZERO
+        if item.product_id and item.warehouse_id:
+            available = StockBalance.objects.filter(
+                company=project.company,
+                product=item.product,
+                warehouse_location__warehouse=item.warehouse,
+                warehouse_location__active=True,
+                warehouse_location__quality_hold=False,
+            ).aggregate(v=Coalesce(Sum("available_quantity"), ZERO))["v"]
+        shortage = max(ZERO, required - reserved - available)
+        row = {
+            "material_requirement_id": str(item.id),
+            "product_id": str(item.product_id) if item.product_id else None,
+            "warehouse_id": str(item.warehouse_id) if item.warehouse_id else None,
+            "required_quantity": str(required),
+            "reserved_quantity": str(reserved),
+            "available_quantity": str(available),
+            "shortage_quantity": str(shortage),
+        }
+        material_rows.append(row)
+        if not item.product_id or not item.warehouse_id or shortage > ZERO:
+            shortages.append(row)
+    funding_project = project.source_type == "FUNDING_REQUEST"
+    has_order = bool(project.sales_order_id) or funding_project
+    scope_ready = (briefs.exists() and requirements.exists()) or (funding_project and bool(project.description.strip()))
+    material_defined = materials.exists() or funding_project
+    budget_ready = budget_total > ZERO
+    stock_ready = material_defined and not shortages
+    lifecycle = project.lifecycle_status or project.status or "DRAFT"
+    verified = lifecycle in {"VERIFIED", "RESOURCE_RESERVED", "IN_PROGRESS", "QA_REVIEW", "COMPLETED", "CLOSED"}
+    reservation_ready = funding_project and not materials.exists()
+    if materials.exists():
+        reservation_ready = all(
+            (item.reserved_quantity or ZERO) >= (item.required_quantity or ZERO) for item in materials
+        ) and StockReservation.objects.filter(project=project, status="ACTIVE").exists()
+    started = lifecycle in {"IN_PROGRESS", "QA_REVIEW", "COMPLETED", "CLOSED"}
+    checks = {
+        "incoming_order": has_order,
+        "technical_scope": scope_ready,
+        "material_requirements": material_defined,
+        "budget": budget_ready,
+        "stock_availability": stock_ready,
+        "verified": verified,
+        "material_reserved": reservation_ready,
+        "project_started": started,
+    }
+    missing = [key for key in ["incoming_order", "technical_scope", "material_requirements", "budget", "stock_availability"] if not checks[key]]
+    from apps.projects.models import ProjectReadinessCheck
+    messages = {"incoming_order": "Sales order atau project charter wajib tersedia.", "technical_scope": "Technical brief dan requirement wajib tersedia.", "material_requirements": "Material/resource requirement belum didefinisikan.", "budget": "Baseline budget wajib lebih besar dari nol.", "stock_availability": "Stok tidak cukup; buat resource/procurement request."}
+    now = timezone.now()
+    for key in ["incoming_order", "technical_scope", "material_requirements", "budget", "stock_availability"]:
+        ProjectReadinessCheck.objects.update_or_create(project=project, check_type=key, defaults={"status": "PASSED" if checks[key] else "FAILED", "message": "Siap." if checks[key] else messages[key], "blocking": not checks[key], "checked_at": now, "details_json": {"shortages": shortages} if key == "stock_availability" else {}})
+    return {
+        "project": model_payload(project),
+        "flow_status": lifecycle,
+        "checks": checks,
+        "can_verify": not missing,
+        "can_reserve": verified and stock_ready,
+        "can_start": verified and reservation_ready,
+        "missing_prerequisites": missing,
+        "budget_amount": str(budget_total),
+        "materials": material_rows,
+        "shortages": shortages,
+    }
+
+
+def transition_project(project, to_status, action, user, payload=None, note=""):
+    from apps.projects.models import ProjectLifecycleEvent
+    before = project.lifecycle_status or "DRAFT"
+    project.lifecycle_status = to_status
+    project.save(update_fields=["lifecycle_status"])
+    ProjectLifecycleEvent.objects.create(project=project, from_status=before, to_status=to_status, action=action, actor=user, note=note, payload_json=payload or {})
+
+
+class ProjectFlowStatusView(ERPCommandView):
+    @command_schema(tag="Commands â€” Projects", summary="Get project flow status", request_serializer=None)
+    def get(self, request, id):
+        from apps.projects.models import Project, ProjectDispatch
+
+        return self.ok(project_flow_data(get_object_or_404(Project, pk=id)))
+
+
+class ProjectVerifyView(ERPCommandView):
+    @command_schema(tag="Commands â€” Projects", summary="Verify project prerequisites", request_serializer=None)
     @transaction.atomic
     def post(self, request, id):
-        from apps.projects.models import Project
+        from apps.projects.models import Project, Requirement, ResourceRequest, ResourceRequestLine, TechnicalBrief
 
-        project = get_object_or_404(Project, pk=id)
+        project = get_object_or_404(Project.objects.select_for_update(), pk=id)
+        result = project_flow_data(project)
+        if not result["can_verify"]:
+            project.status = "VERIFICATION_FAILED"
+            project.save(update_fields=["status"])
+            if result["shortages"]:
+                from apps.projects.workflow_services import ensure_shortage_procurement
+                resource_request = ResourceRequest.objects.filter(project=project, status="PENDING_STOCK").first()
+                if resource_request is None:
+                    resource_request = ResourceRequest.objects.create(
+                        document=create_business_document(source=project, document_type="RESOURCE_REQUEST", prefix="RR", user=request.user),
+                        project=project,
+                        requested_by=request.user,
+                        request_date=timezone.localdate(),
+                        required_date=project.planned_start_date,
+                        request_type="MATERIAL",
+                        priority="HIGH",
+                        approval_status="PENDING",
+                        status="PENDING_STOCK",
+                    )
+                for shortage in result["shortages"]:
+                    if shortage["product_id"]:
+                        ResourceRequestLine.objects.update_or_create(
+                            resource_request=resource_request,
+                            product_id=shortage["product_id"],
+                            defaults={"resource_type": "MATERIAL", "requested_quantity": dec(shortage["shortage_quantity"])},
+                        )
+                ensure_shortage_procurement(project, result["shortages"], request.user)
+            result = project_flow_data(project)
+            return Response(
+                {"success": False, "errors": {"code": "PROJECT_PREREQUISITES_MISSING", "message": "Project belum dapat diverifikasi.", **result}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        TechnicalBrief.objects.filter(project=project).update(approval_status="APPROVED", status="APPROVED")
+        Requirement.objects.filter(technical_brief__project=project).update(status="APPROVED")
+        project.status = "VERIFIED"
+        project.verified_at = timezone.now()
+        project.verified_by = request.user
+        project.save(update_fields=["status", "verified_at", "verified_by"])
+        transition_project(project, "VERIFIED", "VERIFY", request.user)
+        update_document(project.document, status_value="APPROVED", user=request.user)
+        create_audit_event(request=request, instance=project, event_type="VERIFY", after=snapshot(project))
+        return self.ok(project_flow_data(project), "Project berhasil diverifikasi.")
+
+
+class ProjectReserveMaterialsView(ERPCommandView):
+    @command_schema(tag="Commands â€” Projects", summary="Reserve project materials", request_serializer=None)
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.inventory.models import StockBalance, StockReservation
+        from apps.projects.models import MaterialRequirement, Project
+        from apps.sales.models import DemandSupplyLink, OrderLine
+
+        project = get_object_or_404(Project.objects.select_for_update(), pk=id)
+        if project.status not in {"VERIFIED", "MATERIAL_RESERVED"}:
+            raise ValidationError({"status": "Project harus VERIFIED sebelum material di-reserve."})
+        # Lock only material requirement rows. PostgreSQL rejects FOR UPDATE
+        # when select_related adds an outer join for nullable product/warehouse.
+        materials = list(MaterialRequirement.objects.select_for_update().filter(project=project))
+        if not materials and project.source_type != "FUNDING_REQUEST":
+            raise ValidationError({"materials": "Material requirement belum tersedia."})
+        if project_flow_data(project)["shortages"]:
+            raise ValidationError({"code": "PROJECT_STOCK_INSUFFICIENT", "materials": project_flow_data(project)["shortages"]})
+        created = []
+        for item in materials:
+            remaining = max(ZERO, (item.required_quantity or ZERO) - (item.reserved_quantity or ZERO))
+            if remaining <= ZERO:
+                continue
+            balances = StockBalance.objects.select_for_update().filter(
+                company=project.company,
+                product=item.product,
+                warehouse_location__warehouse=item.warehouse,
+                warehouse_location__active=True,
+                warehouse_location__quality_hold=False,
+                available_quantity__gt=ZERO,
+            ).order_by("warehouse_location_id")
+            order_line = OrderLine.objects.filter(sales_order=project.sales_order, project=project, product=item.product).first()
+            for balance in balances:
+                quantity = min(remaining, balance.available_quantity or ZERO)
+                if quantity <= ZERO:
+                    continue
+                reservation = StockReservation.objects.create(
+                    product=item.product,
+                    warehouse_location=balance.warehouse_location,
+                    project=project,
+                    sales_order_line=order_line,
+                    reserved_quantity=quantity,
+                    required_date=item.required_date,
+                    status="ACTIVE",
+                )
+                balance.reserved_quantity = (balance.reserved_quantity or ZERO) + quantity
+                balance.available_quantity = (balance.on_hand_quantity or ZERO) - balance.reserved_quantity
+                balance.save(update_fields=["reserved_quantity", "available_quantity"])
+                if order_line:
+                    DemandSupplyLink.objects.filter(sales_order_line=order_line, project=project).update(
+                        stock_reservation=reservation,
+                        allocated_quantity=Coalesce(F("allocated_quantity"), ZERO) + quantity,
+                        status="RESERVED",
+                    )
+                item.reserved_quantity = (item.reserved_quantity or ZERO) + quantity
+                remaining -= quantity
+                created.append(model_payload(reservation))
+                if remaining <= ZERO:
+                    break
+            item.status = "RESERVED" if remaining <= ZERO else "PARTIALLY_RESERVED"
+            item.save(update_fields=["reserved_quantity", "status"])
+            if remaining > ZERO:
+                raise ValidationError({"code": "PROJECT_STOCK_CHANGED", "material_requirement_id": str(item.id), "remaining_quantity": str(remaining)})
+        project.status = "MATERIAL_RESERVED"
+        project.save(update_fields=["status"])
+        transition_project(project, "RESOURCE_RESERVED", "RESERVE_MATERIALS", request.user, {"reservation_count": len(created)})
+        create_audit_event(request=request, instance=project, event_type="RESERVE_MATERIALS", after={"reservation_count": len(created), **snapshot(project)})
+        return self.ok({**project_flow_data(project), "reservations": created}, "Material project berhasil di-reserve.")
+
+
+class ProjectStartView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Start project",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.projects.models import Project, ProjectDispatch
+
+        from apps.core.models import Notification
+
+        project = get_object_or_404(Project.objects.select_for_update(), pk=id)
+        flow = project_flow_data(project)
+        if project.lifecycle_status == "IN_PROGRESS" or project.status == "IN_PROGRESS":
+            return self.ok(flow, "Project sudah berjalan.")
+        if not flow["can_start"] or project.status != "MATERIAL_RESERVED":
+            raise ValidationError({
+                "code": "PROJECT_START_PREREQUISITES_MISSING",
+                "message": "Project harus VERIFIED dan seluruh material harus di-reserve sebelum dimulai.",
+                "flow": flow,
+            })
         project.status = "IN_PROGRESS"
+        project.started_at = timezone.now()
         if not project.actual_start_date:
             project.actual_start_date = timezone.localdate()
-        project.save(update_fields=["status", "actual_start_date"])
+        project.save(update_fields=["status", "actual_start_date", "started_at"])
+        transition_project(project, "IN_PROGRESS", "START", request.user)
+        from apps.projects.workflow_services import ensure_project_start_handoffs
+        production_orders = ensure_project_start_handoffs(project, request.user)
         update_document(project.document, status_value="APPROVED", user=request.user)
-        return self.ok(model_payload(project), "Project berhasil dimulai.")
+        dispatches = []
+        for target, title, action_url in [
+            ("FINANCE", "Project dimulai: siapkan kontrol biaya", "/api/v1/projects/budget-lines/"),
+            ("WAREHOUSE", "Project dimulai: siapkan material reserved", "/api/v1/inventory/stock-reservations/"),
+            ("PRODUCTION", "Project dimulai: siapkan work order", "/api/v1/manufacturing/work-orders/"),
+        ]:
+            notification, _ = Notification.objects.get_or_create(
+                source_document=project.document,
+                notification_type=f"PROJECT_START_{target}",
+                defaults={
+                    "tenant": project.tenant,
+                    "company": project.company,
+                    "title": title,
+                    "message": f"{project.project_code} - {project.project_name}",
+                    "action_url": action_url,
+                    "priority": "HIGH",
+                    "created_at": timezone.now(),
+                },
+            )
+            ProjectDispatch.objects.update_or_create(
+                project=project,
+                target_department=target,
+                dispatch_type="PROJECT_START_REPORT" if target == "FINANCE" else "PROJECT_START_INSTRUCTION",
+                defaults={
+                    "subject": title,
+                    "payload_json": {
+                        "project_code": project.project_code,
+                        "project_name": project.project_name,
+                        "material_requirements": [
+                            {
+                                "id": str(row.id),
+                                "product_id": str(row.product_id) if row.product_id else None,
+                                "required_quantity": str(row.required_quantity or 0),
+                                "reserved_quantity": str(row.reserved_quantity or 0),
+                                "status": row.status,
+                            }
+                            for row in project.projects_materialrequirement_project_set.all()
+                        ],
+                        "budget_amount": str(project.budget_amount or 0),
+                    },
+                    "status": "SENT",
+                    "sent_by": request.user,
+                },
+            )
+            dispatches.append(model_payload(notification))
+        create_audit_event(request=request, instance=project, event_type="START", after=snapshot(project))
+        return self.ok({**project_flow_data(project), "dispatches": dispatches, "production_order_ids": [str(item.id) for item in production_orders]}, "Project berhasil dimulai dan instruksi dikirim.")
+
+
+class ProjectCloseView(ERPCommandView):
+    @command_schema(tag="Commands â€” Projects", summary="Close completed project", request_serializer=None)
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.projects.models import AcceptanceCriteria, Issue, Project, ProjectLifecycleEvent
+        project = get_object_or_404(Project.objects.select_for_update(), pk=id)
+        blockers = []
+        if dec(project.progress_percent) < Decimal("100"):
+            blockers.append("progress_not_100")
+        if Issue.objects.filter(project=project).exclude(status__in=["CLOSED", "RESOLVED"]).exists():
+            blockers.append("open_issues")
+        criteria = AcceptanceCriteria.objects.filter(requirement__technical_brief__project=project)
+        if criteria.exists() and criteria.filter(passed=False).exists():
+            blockers.append("acceptance_criteria_failed")
+        if blockers:
+            raise ValidationError({"code": "PROJECT_CLOSE_PREREQUISITES_MISSING", "blockers": blockers})
+        project.status = "CLOSED"
+        project.lifecycle_status = "CLOSED"
+        project.health_status = "HEALTHY"
+        project.actual_end_date = timezone.localdate()
+        project.closed_at = timezone.now()
+        project.closed_by = request.user
+        project.save(update_fields=["status", "lifecycle_status", "health_status", "actual_end_date", "closed_at", "closed_by"])
+        ProjectLifecycleEvent.objects.create(project=project, from_status="COMPLETED", to_status="CLOSED", action="CLOSE", actor=request.user)
+        from apps.finance.workflow_services import collect_project_operational_costs, ensure_completion_billing_proposal
+        costs = collect_project_operational_costs(project, request.user)
+        proposal, proposal_created = ensure_completion_billing_proposal(project, request.user)
+        payload = model_payload(project)
+        payload.update({"captured_cost_count": len(costs), "billing_proposal_id": str(proposal.id), "billing_proposal_created": proposal_created})
+        return self.ok(payload, "Project ditutup; biaya dikumpulkan dan final billing dikirim ke Finance.")
 
 
 class ProjectHealthView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Calculate project health",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def get(self, request, id):
         from apps.projects.models import HealthSnapshot, Issue, Project, Risk, Task
@@ -430,6 +1108,13 @@ class ProjectHealthView(ERPCommandView):
 
 
 class ProjectCostsView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Get project cost summary",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     def get(self, request, id):
         from apps.projects.models import Project
 
@@ -438,6 +1123,24 @@ class ProjectCostsView(ERPCommandView):
 
 
 class ProjectProgressView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Record project progress",
+        request_serializer=inline_serializer(
+            name="ProjectProgressCommandRequest",
+            fields={
+                "work_order_id": optional_uuid_field(),
+                "planned_progress_percent": optional_decimal_field(),
+                "actual_progress_percent": optional_decimal_field(),
+                "earned_value": optional_decimal_field(),
+                "planned_value": optional_decimal_field(),
+                "actual_cost": optional_decimal_field(),
+                "progress_status": serializers.CharField(required=False, allow_blank=True)
+            },
+        ),
+        success_status=status.HTTP_201_CREATED,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.projects.models import ProgressSnapshot, Project
@@ -461,7 +1164,46 @@ class ProjectProgressView(ERPCommandView):
         return self.ok(model_payload(result), "Progress snapshot berhasil dicatat.", status.HTTP_201_CREATED)
 
 
+class ProjectRecalculateProgressView(ERPCommandView):
+    @command_schema(tag="Commands â€” Projects", summary="Recalculate weighted project progress", request_serializer=None)
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.projects.models import Project, ProjectLifecycleEvent, Task
+        project = get_object_or_404(Project.objects.select_for_update(), pk=id)
+        tasks = list(Task.objects.filter(project=project))
+        if not tasks:
+            raise ValidationError({"tasks": "Minimal satu task diperlukan untuk menghitung progress."})
+        explicit = sum((dec(task.weight_percent) for task in tasks), ZERO)
+        if explicit > Decimal("100.0001"):
+            raise ValidationError({"weight_percent": "Total bobot task tidak boleh melebihi 100%."})
+        fallback = Decimal("100") / Decimal(len(tasks)) if explicit <= ZERO else ZERO
+        weighted = sum(((dec(task.weight_percent) if explicit > ZERO else fallback) * dec(task.progress_percent) / Decimal("100") for task in tasks), ZERO)
+        denominator = explicit if explicit > ZERO else Decimal("100")
+        progress = min(Decimal("100"), weighted * Decimal("100") / denominator)
+        before = project.progress_percent or ZERO
+        project.progress_percent = progress
+        if progress >= Decimal("100") and project.lifecycle_status == "IN_PROGRESS":
+            project.lifecycle_status = "COMPLETED"
+            project.status = "COMPLETED"
+        project.save(update_fields=["progress_percent", "lifecycle_status", "status"])
+        ProjectLifecycleEvent.objects.create(project=project, from_status=project.lifecycle_status, to_status=project.lifecycle_status, action="RECALCULATE_PROGRESS", actor=request.user, payload_json={"before": str(before), "after": str(progress), "task_count": len(tasks)})
+        return self.ok({"project": model_payload(project), "task_count": len(tasks), "weight_total": str(explicit or Decimal("100")), "progress_percent": str(progress)}, "Progress project dihitung ulang dari task.")
+
+
 class ProjectTaskMoveView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Move task between board columns",
+        request_serializer=inline_serializer(
+            name="ProjectTaskMoveCommandRequest",
+            fields={
+                "board_column_id": optional_uuid_field(required=True),
+                "position_order": optional_decimal_field()
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.projects.models import BoardColumn, Task, TaskBoardPosition
@@ -484,6 +1226,13 @@ class ProjectTaskMoveView(ERPCommandView):
 
 
 class TimesheetApproveView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Approve timesheet",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.projects.models import Timesheet
@@ -502,6 +1251,18 @@ class TimesheetApproveView(ERPCommandView):
 
 
 class PurchaseRequisitionConvertToRFQView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Procurement",
+        summary="Convert purchase requisition to RFQ",
+        request_serializer=inline_serializer(
+            name="PurchaseRequisitionConvertToRFQCommandRequest",
+            fields={
+                "closing_date": serializers.DateField(required=False, allow_null=True)
+            },
+        ),
+        success_status=status.HTTP_201_CREATED,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.procurement.models import PurchaseRequisition, RFQ
@@ -524,6 +1285,13 @@ class PurchaseRequisitionConvertToRFQView(ERPCommandView):
 
 
 class SupplierQuotationSelectView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Procurement",
+        summary="Select supplier quotation",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.procurement.models import SupplierQuotation
@@ -536,6 +1304,13 @@ class SupplierQuotationSelectView(ERPCommandView):
 
 
 class PurchaseOrderSendView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Procurement",
+        summary="Issue purchase order",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.procurement.models import PurchaseOrder
@@ -548,6 +1323,13 @@ class PurchaseOrderSendView(ERPCommandView):
 
 
 class GoodsReceiptInspectView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Procurement",
+        summary="Start goods receipt inspection",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.procurement.models import GoodsReceipt, GoodsReceiptLine
@@ -580,25 +1362,64 @@ class GoodsReceiptInspectView(ERPCommandView):
 
 
 class PurchaseOrderThreeWayMatchView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Procurement",
+        summary="Run purchase order three-way match",
+        request_serializer=inline_serializer(
+            name="PurchaseOrderThreeWayMatchRequest",
+            fields={"supplier_invoice_id": serializers.UUIDField(required=False)},
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
-        from apps.finance.models import BillingDocument
+        from apps.finance.models import BillingDocument, BillingDocumentLine
         from apps.procurement.models import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine, ThreeWayMatch
 
-        purchase_order = get_object_or_404(PurchaseOrder, pk=id)
-        receipt = GoodsReceipt.objects.filter(purchase_order=purchase_order).order_by("-receipt_date").first()
-        invoice = BillingDocument.objects.filter(purchase_order=purchase_order).order_by("-invoice_date").first()
-        if receipt is None or invoice is None:
-            raise ValidationError({"match": "Goods receipt dan supplier invoice wajib tersedia."})
+        purchase_order = get_object_or_404(PurchaseOrder.objects.select_for_update(), pk=id)
+        receipts = GoodsReceipt.objects.filter(purchase_order=purchase_order).order_by("-receipt_date", "-id")
+        invoice_id = request.data.get("supplier_invoice_id")
+        invoices = BillingDocument.objects.filter(
+            purchase_order=purchase_order,
+            billing_type__in={"SUPPLIER_BILL", "VENDOR_INVOICE"},
+        )
+        invoice = (
+            invoices.filter(pk=invoice_id).first()
+            if invoice_id
+            else invoices.order_by("-invoice_date", "-id").first()
+        )
+        missing_documents = []
+        if not receipts.exists():
+            missing_documents.append("goods_receipt")
+        if invoice is None:
+            missing_documents.append("supplier_invoice")
+        if missing_documents:
+            raise ValidationError({
+                "code": "THREE_WAY_MATCH_PREREQUISITES_MISSING",
+                "match": "Three-way match belum dapat dijalankan.",
+                "missing_documents": missing_documents,
+                "purchase_order_id": str(purchase_order.id),
+            })
+        if invoice.party_id and purchase_order.supplier_party_id and invoice.party_id != purchase_order.supplier_party_id:
+            raise ValidationError({"supplier_invoice": "Supplier invoice harus berasal dari supplier pada purchase order yang sama."})
+        if invoice.currency_id and purchase_order.currency_id and invoice.currency_id != purchase_order.currency_id:
+            raise ValidationError({"supplier_invoice": "Mata uang supplier invoice harus sama dengan purchase order."})
+
         ordered = PurchaseOrderLine.objects.filter(purchase_order=purchase_order).aggregate(v=Coalesce(Sum("ordered_quantity"), ZERO))["v"]
-        received = GoodsReceiptLine.objects.filter(goods_receipt=receipt).aggregate(v=Coalesce(Sum("received_quantity"), ZERO))["v"]
+        received = GoodsReceiptLine.objects.filter(goods_receipt__in=receipts).aggregate(
+            v=Coalesce(Sum(Coalesce("accepted_quantity", "received_quantity", ZERO)), ZERO)
+        )["v"]
+        invoice_subtotal = BillingDocumentLine.objects.filter(billing_document=invoice).aggregate(
+            v=Coalesce(Sum("line_total"), ZERO)
+        )["v"]
         quantity_variance = received - ordered
-        price_variance = (invoice.subtotal or ZERO) - (purchase_order.subtotal or ZERO)
+        price_variance = invoice_subtotal - (purchase_order.subtotal or ZERO)
         tax_variance = (invoice.tax_amount or ZERO) - (purchase_order.tax_amount or ZERO)
         match_status = "MATCHED" if quantity_variance == 0 and price_variance == 0 and tax_variance == 0 else "VARIANCE"
         match, _ = ThreeWayMatch.objects.update_or_create(
             purchase_order=purchase_order,
-            goods_receipt=receipt,
+            goods_receipt=receipts.first(),
             supplier_invoice=invoice,
             defaults={
                 "quantity_variance": quantity_variance,
@@ -609,6 +1430,15 @@ class PurchaseOrderThreeWayMatchView(ERPCommandView):
                 "reviewed_at": timezone.now(),
             },
         )
+        from apps.finance.models import InvoiceVarianceCase
+        if match_status == "VARIANCE":
+            kinds = [name for name, value in (("QUANTITY", quantity_variance), ("PRICE", price_variance), ("TAX", tax_variance)) if value != 0]
+            InvoiceVarianceCase.objects.update_or_create(
+                three_way_match=match,
+                defaults={"company": invoice.company, "billing_document": invoice, "variance_type": kinds[0] if len(kinds) == 1 else "MIXED", "total_variance": abs(quantity_variance) + abs(price_variance) + abs(tax_variance), "status": "OPEN"},
+            )
+        else:
+            InvoiceVarianceCase.objects.filter(three_way_match=match, status="OPEN").update(status="AUTO_RESOLVED", resolution="Three-way match is now balanced", resolved_by=request.user, resolved_at=timezone.now())
         return self.ok(model_payload(match), "Three-way match selesai.")
 
 
@@ -660,6 +1490,13 @@ def apply_stock_delta(*, company, product, location, lot=None, serial_number=Non
 
 
 class StockMoveCompleteView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Inventory",
+        summary="Complete stock movement",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.inventory.models import StockMove, StockMoveLine
@@ -715,6 +1552,13 @@ class StockMoveCompleteView(ERPCommandView):
 
 
 class StockReservationReleaseView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Inventory",
+        summary="Release stock reservation",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.inventory.models import StockBalance, StockReservation
@@ -736,6 +1580,13 @@ class StockReservationReleaseView(ERPCommandView):
 
 
 class StockCountPostAdjustmentView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Inventory",
+        summary="Post stock-count adjustment",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.inventory.models import StockCount, StockCountLine
@@ -774,6 +1625,13 @@ class StockCountPostAdjustmentView(ERPCommandView):
 
 
 class ProductionOrderReleaseView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Manufacturing",
+        summary="Release production order",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.manufacturing.models import ProductionMaterial, ProductionOrder
@@ -788,6 +1646,19 @@ class ProductionOrderReleaseView(ERPCommandView):
 
 
 class ProductionOrderIssueMaterialsView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Manufacturing",
+        summary="Issue production materials",
+        request_serializer=inline_serializer(
+            name="ProductionOrderIssueMaterialsCommandRequest",
+            fields={
+                "source_locations": serializers.JSONField(required=False, help_text="Mapping material/product UUID ke warehouse location UUID."),
+                "quantities": serializers.JSONField(required=False, help_text="Mapping production material UUID ke quantity issue.")
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.inventory.models import StockBalance
@@ -831,6 +1702,13 @@ class ProductionOrderIssueMaterialsView(ERPCommandView):
 
 
 class WorkOrderStartView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Manufacturing",
+        summary="Start work order",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.manufacturing.models import WorkOrder
@@ -843,6 +1721,19 @@ class WorkOrderStartView(ERPCommandView):
 
 
 class WorkOrderCompleteView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Manufacturing",
+        summary="Complete work order",
+        request_serializer=inline_serializer(
+            name="WorkOrderCompleteCommandRequest",
+            fields={
+                "completed_quantity": optional_decimal_field(),
+                "rejected_quantity": optional_decimal_field()
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.manufacturing.models import WorkOrder
@@ -858,6 +1749,22 @@ class WorkOrderCompleteView(ERPCommandView):
 
 
 class ProductionOrderReceiveOutputView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Manufacturing",
+        summary="Receive production output",
+        request_serializer=inline_serializer(
+            name="ProductionOrderReceiveOutputCommandRequest",
+            fields={
+                "destination_location_id": optional_uuid_field(required=True),
+                "lot_id": optional_uuid_field(),
+                "output_quantity": optional_decimal_field(required=True),
+                "unit_cost": optional_decimal_field(),
+                "total_cost": optional_decimal_field()
+            },
+        ),
+        success_status=status.HTTP_201_CREATED,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.manufacturing.models import ProductionOrder, ProductionOutput
@@ -906,6 +1813,21 @@ class ProductionOrderReceiveOutputView(ERPCommandView):
 
 
 class InspectionCompleteView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Quality",
+        summary="Complete quality inspection",
+        request_serializer=inline_serializer(
+            name="InspectionCompleteCommandRequest",
+            fields={
+                "quantity_accepted": optional_decimal_field(),
+                "quantity_rejected": optional_decimal_field(),
+                "quantity_inspected": optional_decimal_field(),
+                "result": serializers.CharField(required=False, allow_blank=True)
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.quality.models import Inspection
@@ -923,6 +1845,19 @@ class InspectionCompleteView(ERPCommandView):
 
 
 class NonconformanceDispositionView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Quality",
+        summary="Set nonconformance disposition",
+        request_serializer=inline_serializer(
+            name="NonconformanceDispositionCommandRequest",
+            fields={
+                "disposition": serializers.CharField(required=False, default="REWORK"),
+                "status": serializers.CharField(required=False, default="DISPOSITIONED")
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.quality.models import Nonconformance
@@ -935,6 +1870,20 @@ class NonconformanceDispositionView(ERPCommandView):
 
 
 class CorrectiveActionVerifyView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Quality",
+        summary="Verify corrective action",
+        request_serializer=inline_serializer(
+            name="CorrectiveActionVerifyCommandRequest",
+            fields={
+                "verification_result": serializers.CharField(required=False, default="VERIFIED"),
+                "completed_date": serializers.DateField(required=False, allow_null=True),
+                "status": serializers.CharField(required=False, default="CLOSED")
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.quality.models import CorrectiveAction
@@ -953,6 +1902,13 @@ class CorrectiveActionVerifyView(ERPCommandView):
 
 
 class JournalEntryPostView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance",
+        summary="Post journal entry",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.finance.models import JournalEntry, JournalLine
@@ -974,12 +1930,162 @@ class JournalEntryPostView(ERPCommandView):
         return self.ok({"journal_entry": model_payload(entry), "debit": str(totals["debit"]), "credit": str(totals["credit"])}, "Journal entry berhasil diposting.")
 
 
-class BillingDocumentPostView(ERPCommandView):
+def validate_supplier_billing_for_payment(billing, *, payment=None):
+    if billing.billing_type not in {"SUPPLIER_BILL", "VENDOR_INVOICE"}:
+        raise ValidationError({"billing_document_id": f"{billing.invoice_number} bukan tagihan supplier."})
+    if billing.status != "POSTED":
+        raise ValidationError({"billing_document_id": f"Tagihan {billing.invoice_number} belum POSTED."})
+    if (billing.outstanding_amount or ZERO) <= ZERO:
+        raise ValidationError({"billing_document_id": f"Tagihan {billing.invoice_number} tidak memiliki saldo terutang."})
+    if payment is not None:
+        mismatches = []
+        if payment.company_id != billing.company_id:
+            mismatches.append("company")
+        if payment.party_id != billing.party_id:
+            mismatches.append("party/vendor")
+        if payment.currency_id != billing.currency_id:
+            mismatches.append("currency")
+        if mismatches:
+            raise ValidationError({"billing_document_id": f"Tagihan tidak cocok dengan payment: {', '.join(mismatches)}."})
+
+
+def apply_payment_allocations(payment, allocations):
+    from apps.finance.models import ARAPSchedule, BillingDocument, PaymentAllocation
+
+    already_allocated = PaymentAllocation.objects.filter(payment=payment).aggregate(
+        total=Coalesce(Sum("allocated_amount"), ZERO)
+    )["total"]
+    requested_total = sum((dec(item.get("allocated_amount")) for item in allocations), ZERO)
+    if already_allocated + requested_total > (payment.amount or ZERO):
+        raise ValidationError({"allocations": "Total alokasi kumulatif melebihi nilai payment."})
+
+    results = []
+    for item in allocations:
+        billing = get_object_or_404(BillingDocument.objects.select_for_update(), pk=item.get("billing_document_id"))
+        validate_supplier_billing_for_payment(billing, payment=payment)
+        schedule = None
+        if item.get("schedule_id"):
+            schedule = get_object_or_404(ARAPSchedule.objects.select_for_update(), pk=item["schedule_id"], billing_document=billing)
+        else:
+            schedule = ARAPSchedule.objects.select_for_update().filter(
+                billing_document=billing, status__in=["OPEN", "PARTIAL"]
+            ).order_by("installment_number").first()
+        amount = dec(item.get("allocated_amount"))
+        discount = dec(item.get("discount_amount"))
+        write_off = dec(item.get("write_off_amount"))
+        exchange = dec(item.get("exchange_difference"))
+        if amount <= ZERO or min(discount, write_off) < ZERO:
+            raise ValidationError({"allocated_amount": "Alokasi harus positif dan potongan/write-off tidak boleh negatif."})
+        applied = amount + discount + write_off
+        if applied > (billing.outstanding_amount or ZERO):
+            raise ValidationError({"allocated_amount": f"Alokasi melebihi saldo tagihan {billing.invoice_number}."})
+        allocation = PaymentAllocation.objects.create(
+            payment=payment, billing_document=billing, schedule=schedule,
+            allocated_amount=amount, discount_amount=discount,
+            write_off_amount=write_off, exchange_difference=exchange,
+        )
+        billing.paid_amount = (billing.paid_amount or ZERO) + amount
+        billing.outstanding_amount = (billing.outstanding_amount or ZERO) - applied
+        billing.payment_status = "PAID" if billing.outstanding_amount == ZERO else "PARTIAL"
+        billing.save(update_fields=["paid_amount", "outstanding_amount", "payment_status"])
+        if schedule:
+            if applied > (schedule.outstanding_amount or ZERO):
+                raise ValidationError({"schedule_id": "Alokasi melebihi saldo jadwal hutang."})
+            schedule.paid_amount = (schedule.paid_amount or ZERO) + amount
+            schedule.outstanding_amount = (schedule.outstanding_amount or ZERO) - applied
+            schedule.status = "PAID" if schedule.outstanding_amount == ZERO else "PARTIAL"
+            schedule.save(update_fields=["paid_amount", "outstanding_amount", "status"])
+        results.append(model_payload(allocation))
+    total = already_allocated + requested_total
+    payment.status = "ALLOCATED" if total == (payment.amount or ZERO) else "PARTIALLY_ALLOCATED"
+    payment.save(update_fields=["status"])
+    return results, total
+
+
+class BillingDocumentVerifyView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Verify supplier billing", request_serializer=None)
     @transaction.atomic
     def post(self, request, id):
-        from apps.finance.models import ARAPSchedule, BillingDocument, BillingDocumentLine
+        from apps.finance.models import BillingDocument, BillingDocumentLine
+        from apps.procurement.models import ThreeWayMatch
 
         billing = get_object_or_404(BillingDocument.objects.select_for_update(), pk=id)
+        if billing.status not in {"", "DRAFT", "REJECTED"}:
+            raise ValidationError({"status": f"Billing berstatus {billing.status} tidak dapat diverifikasi."})
+        if not BillingDocumentLine.objects.filter(billing_document=billing).exists():
+            raise ValidationError({"lines": "Billing wajib memiliki minimal satu baris."})
+        if billing.billing_type in {"SUPPLIER_BILL", "VENDOR_INVOICE"} and billing.purchase_order_id:
+            match = ThreeWayMatch.objects.filter(
+                purchase_order=billing.purchase_order,
+                supplier_invoice=billing,
+            ).order_by("-reviewed_at").first()
+            if match is None or match.match_status not in {"MATCHED", "MATCHED_WITH_OVERRIDE"}:
+                raise ValidationError({"three_way_match": "Tagihan PO harus MATCHED atau variance-nya telah diselesaikan."})
+        billing.status = "VERIFIED"
+        billing.verified_by = request.user
+        billing.verified_at = timezone.now()
+        billing.rejection_reason = ""
+        billing.save(update_fields=["status", "verified_by", "verified_at", "rejection_reason"])
+        update_document(billing.document, status_value="VERIFIED", user=request.user)
+        return self.ok(model_payload(billing), "Billing berhasil diverifikasi.")
+
+
+class BillingDocumentApproveView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Approve verified billing", request_serializer=None)
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import BillingDocument
+
+        billing = get_object_or_404(BillingDocument.objects.select_for_update(), pk=id)
+        if billing.status != "VERIFIED":
+            raise ValidationError({"status": "Hanya billing VERIFIED yang dapat disetujui."})
+        if billing.verified_by_id == request.user.id:
+            raise ValidationError({"approval": "Verifier dan approver harus pengguna yang berbeda."})
+        billing.status = "APPROVED"
+        billing.approved_by = request.user
+        billing.approved_at = timezone.now()
+        billing.save(update_fields=["status", "approved_by", "approved_at"])
+        update_document(billing.document, status_value="APPROVED", user=request.user)
+        return self.ok(model_payload(billing), "Billing berhasil disetujui.")
+
+
+class BillingDocumentRejectView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance", summary="Reject billing",
+        request_serializer=inline_serializer(name="BillingRejectRequest", fields={"reason": serializers.CharField()}),
+    )
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import BillingDocument
+
+        billing = get_object_or_404(BillingDocument.objects.select_for_update(), pk=id)
+        if billing.status not in {"VERIFIED", "APPROVED"}:
+            raise ValidationError({"status": "Hanya billing VERIFIED/APPROVED yang dapat ditolak."})
+        reason = str(request.data.get("reason", "")).strip()
+        if not reason:
+            raise ValidationError({"reason": "Alasan penolakan wajib diisi."})
+        billing.status = "REJECTED"
+        billing.rejection_reason = reason
+        billing.save(update_fields=["status", "rejection_reason"])
+        update_document(billing.document, status_value="REJECTED", user=request.user)
+        return self.ok(model_payload(billing), "Billing ditolak.")
+
+
+class BillingDocumentPostView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance",
+        summary="Post billing document",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import ARAPSchedule, BillingDocument, BillingDocumentLine, TaxTransaction
+
+        billing = get_object_or_404(BillingDocument.objects.select_for_update(), pk=id)
+        if billing.status != "APPROVED":
+            raise ValidationError({"status": "Hanya billing APPROVED yang dapat diposting."})
         lines = BillingDocumentLine.objects.filter(billing_document=billing)
         subtotal = sum((line.line_total if line.line_total is not None else (line.quantity or ZERO) * (line.unit_price or ZERO) - (line.discount_amount or ZERO)) for line in lines)
         billing.subtotal = dec(subtotal)
@@ -1000,61 +2106,190 @@ class BillingDocumentPostView(ERPCommandView):
                 outstanding_amount=billing.total_amount,
                 status="OPEN",
             )
+        if (billing.tax_amount or ZERO) > 0:
+            TaxTransaction.objects.get_or_create(
+                billing_document=billing,
+                billing_document_line=None,
+                defaults={
+                    "company": billing.company,
+                    "taxable_amount": billing.subtotal,
+                    "tax_amount": billing.tax_amount,
+                    "tax_direction": "INPUT" if billing.billing_type in {"SUPPLIER_BILL", "VENDOR_INVOICE"} else "OUTPUT",
+                    "tax_date": billing.posting_date,
+                    "status": "DRAFT",
+                },
+            )
         update_document(billing.document, status_value="POSTED", user=request.user, posting=True)
         return self.ok(model_payload(billing), "Billing document berhasil diposting.")
 
 
-class PaymentAllocateView(ERPCommandView):
+class PaymentBatchCreateView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance", summary="Create outgoing payment from supplier bills",
+        request_serializer=inline_serializer(
+            name="PaymentBatchCreateRequest",
+            fields={
+                "bank_account_id": serializers.UUIDField(),
+                "payment_date": serializers.DateField(),
+                "payment_method": serializers.CharField(),
+                "allocations": serializers.ListField(child=serializers.DictField()),
+            },
+        ), success_status=status.HTTP_201_CREATED,
+    )
+    @transaction.atomic
+    def post(self, request):
+        from apps.finance.models import BankAccount, BillingDocument, Payment
+
+        allocations = request.data.get("allocations") or []
+        if not allocations:
+            raise ValidationError({"allocations": "Pilih minimal satu tagihan."})
+        first = get_object_or_404(BillingDocument.objects.select_for_update(), pk=allocations[0].get("billing_document_id"))
+        validate_supplier_billing_for_payment(first)
+        bank = get_object_or_404(BankAccount, pk=request.data.get("bank_account_id"), company=first.company)
+        normalized, total = [], ZERO
+        seen = set()
+        for item in allocations:
+            billing = get_object_or_404(BillingDocument.objects.select_for_update(), pk=item.get("billing_document_id"))
+            validate_supplier_billing_for_payment(billing)
+            if billing.id in seen:
+                raise ValidationError({"allocations": "Tagihan yang sama tidak boleh dipilih dua kali."})
+            seen.add(billing.id)
+            if (billing.company_id, billing.party_id, billing.currency_id) != (first.company_id, first.party_id, first.currency_id):
+                raise ValidationError({"allocations": "Satu payment hanya boleh berisi company, vendor, dan currency yang sama."})
+            amount = dec(item.get("allocated_amount"), billing.outstanding_amount or ZERO)
+            if amount <= ZERO or amount > (billing.outstanding_amount or ZERO):
+                raise ValidationError({"allocated_amount": f"Nilai tagihan {billing.invoice_number} tidak valid."})
+            normalized.append({
+                "billing_document_id": str(billing.id), "schedule_id": item.get("schedule_id"),
+                "allocated_amount": str(amount), "discount_amount": str(dec(item.get("discount_amount"))),
+                "write_off_amount": str(dec(item.get("write_off_amount"))), "exchange_difference": str(dec(item.get("exchange_difference"))),
+            })
+            total += amount
+        document = create_business_document(source=first, document_type="OUTGOING_PAYMENT", prefix="PAY", user=request.user)
+        payment = Payment.objects.create(
+            document=document, company=first.company, party=first.party, currency=first.currency,
+            bank_account=bank, payment_type="OUTGOING", payment_date=request.data.get("payment_date") or timezone.localdate(),
+            amount=total, payment_method=request.data.get("payment_method", "BANK_TRANSFER"),
+            reference_number=document.document_number, allocation_plan=normalized, status="DRAFT",
+        )
+        return self.ok(model_payload(payment), "Draft payment berhasil dibuat.", status.HTTP_201_CREATED)
+
+
+class PaymentSubmitView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Submit payment for approval", request_serializer=None)
     @transaction.atomic
     def post(self, request, id):
-        from apps.finance.models import ARAPSchedule, BillingDocument, Payment, PaymentAllocation
+        from apps.finance.models import Payment
+        payment = get_object_or_404(Payment.objects.select_for_update(), pk=id)
+        if payment.status != "DRAFT" or not payment.allocation_plan:
+            raise ValidationError({"status": "Hanya draft payment dengan rencana alokasi yang dapat diajukan."})
+        payment.status, payment.submitted_by, payment.submitted_at = "SUBMITTED", request.user, timezone.now()
+        payment.save(update_fields=["status", "submitted_by", "submitted_at"])
+        update_document(payment.document, status_value="SUBMITTED", user=request.user)
+        return self.ok(model_payload(payment), "Payment diajukan untuk persetujuan.")
+
+
+class PaymentApproveView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Approve submitted payment", request_serializer=None)
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import Payment
+        payment = get_object_or_404(Payment.objects.select_for_update(), pk=id)
+        if payment.status != "SUBMITTED":
+            raise ValidationError({"status": "Hanya payment SUBMITTED yang dapat disetujui."})
+        if payment.submitted_by_id == request.user.id:
+            raise ValidationError({"approval": "Pembuat/pengaju dan approver harus pengguna yang berbeda."})
+        payment.status, payment.approved_by, payment.approved_at = "APPROVED", request.user, timezone.now()
+        payment.save(update_fields=["status", "approved_by", "approved_at"])
+        update_document(payment.document, status_value="APPROVED", user=request.user)
+        return self.ok(model_payload(payment), "Payment disetujui.")
+
+
+class PaymentExecuteView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance", summary="Record outgoing payment execution and post journal",
+        request_serializer=inline_serializer(name="PaymentExecuteRequest", fields={"execution_reference": serializers.CharField(), "note": serializers.CharField(required=False, allow_blank=True)}),
+    )
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import Journal, JournalEntry, JournalLine, Payment
+        from apps.master_data.models import SupplierProfile
 
         payment = get_object_or_404(Payment.objects.select_for_update(), pk=id)
+        if payment.status != "APPROVED":
+            raise ValidationError({"status": "Hanya payment APPROVED yang dapat dieksekusi."})
+        execution_reference = str(request.data.get("execution_reference", "")).strip()
+        if not execution_reference:
+            raise ValidationError({"execution_reference": "Referensi bank/kas wajib diisi."})
+        if Payment.objects.exclude(pk=payment.pk).filter(execution_reference=execution_reference).exists():
+            raise ValidationError({"execution_reference": "Referensi eksekusi sudah pernah digunakan."})
+        if not payment.bank_account_id or not payment.bank_account.ledger_account_id:
+            raise ValidationError({"bank_account": "Rekening bank wajib memiliki ledger account."})
+        supplier = SupplierProfile.objects.filter(party=payment.party).first()
+        if supplier is None or not supplier.payable_account_id:
+            raise ValidationError({"party": "Supplier wajib memiliki payable account."})
+        journal = Journal.objects.filter(company=payment.company, journal_type__in=["BANK", "CASH", "PAYMENT"], status__in=["ACTIVE", "OPEN"]).first()
+        if journal is None:
+            raise ValidationError({"journal": "Journal BANK/CASH/PAYMENT aktif belum dikonfigurasi."})
+        entry = JournalEntry.objects.create(
+            document=payment.document, source_document=payment.document, journal=journal,
+            currency=payment.currency, entry_number=document_number("JE-PAY"), posting_date=payment.payment_date or timezone.localdate(),
+            exchange_rate=Decimal("1"), description=f"Outgoing payment {payment.reference_number}", status="POSTED",
+        )
+        JournalLine.objects.create(journal_entry=entry, account=supplier.payable_account, party=payment.party, debit_base=payment.amount, credit_base=ZERO, transaction_currency=payment.currency, transaction_amount=payment.amount)
+        JournalLine.objects.create(journal_entry=entry, account=payment.bank_account.ledger_account, party=payment.party, debit_base=ZERO, credit_base=payment.amount, transaction_currency=payment.currency, transaction_amount=payment.amount)
+        payment.journal_entry = entry
+        payment.executed_by = request.user
+        payment.executed_at = timezone.now()
+        payment.execution_reference = execution_reference
+        payment.execution_note = str(request.data.get("note", ""))
+        payment.status = "EXECUTED"
+        payment.save(update_fields=["journal_entry", "executed_by", "executed_at", "execution_reference", "execution_note", "status"])
+        allocations, total = apply_payment_allocations(payment, payment.allocation_plan)
+        update_document(payment.document, status_value="POSTED", user=request.user, posting=True)
+        return self.ok({"payment": model_payload(payment), "journal_entry": model_payload(entry), "allocations": allocations, "total_allocated": str(total)}, "Pengeluaran berhasil dicatat, dijurnal, dan dialokasikan.")
+
+
+class PaymentAllocateView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance",
+        summary="Allocate payment",
+        request_serializer=inline_serializer(
+            name="PaymentAllocateCommandRequest",
+            fields={
+                "allocations": serializers.JSONField(required=True, help_text="Daftar alokasi payment ke billing document/schedule.")
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import Payment
+
+        payment = get_object_or_404(Payment.objects.select_for_update(), pk=id)
+        if payment.status not in {"EXECUTED", "PARTIALLY_ALLOCATED"}:
+            raise ValidationError({"status": "Payment harus EXECUTED sebelum dialokasikan."})
         allocations = request.data.get("allocations", [])
         if not allocations:
             raise ValidationError({"allocations": "Daftar alokasi wajib diisi."})
-        total_allocated = ZERO
-        results = []
-        for item in allocations:
-            billing = get_object_or_404(BillingDocument.objects.select_for_update(), pk=item.get("billing_document_id"))
-            schedule = None
-            if item.get("schedule_id"):
-                schedule = get_object_or_404(ARAPSchedule.objects.select_for_update(), pk=item.get("schedule_id"), billing_document=billing)
-            amount = dec(item.get("allocated_amount"))
-            discount = dec(item.get("discount_amount"))
-            write_off = dec(item.get("write_off_amount"))
-            exchange = dec(item.get("exchange_difference"))
-            if amount <= 0:
-                raise ValidationError({"allocated_amount": "Nilai alokasi harus lebih besar dari nol."})
-            allocation = PaymentAllocation.objects.create(
-                payment=payment,
-                billing_document=billing,
-                schedule=schedule,
-                allocated_amount=amount,
-                discount_amount=discount,
-                write_off_amount=write_off,
-                exchange_difference=exchange,
-            )
-            applied = amount + discount + write_off
-            billing.paid_amount = (billing.paid_amount or ZERO) + amount
-            billing.outstanding_amount = max(ZERO, (billing.total_amount or ZERO) - billing.paid_amount - discount - write_off)
-            billing.payment_status = "PAID" if billing.outstanding_amount == 0 else "PARTIAL"
-            billing.save(update_fields=["paid_amount", "outstanding_amount", "payment_status"])
-            if schedule:
-                schedule.paid_amount = (schedule.paid_amount or ZERO) + amount
-                schedule.outstanding_amount = max(ZERO, (schedule.original_amount or ZERO) - schedule.paid_amount - discount - write_off)
-                schedule.status = "PAID" if schedule.outstanding_amount == 0 else "PARTIAL"
-                schedule.save(update_fields=["paid_amount", "outstanding_amount", "status"])
-            total_allocated += amount
-            results.append(model_payload(allocation))
-        if total_allocated > (payment.amount or ZERO):
-            raise ValidationError({"allocations": "Total alokasi melebihi nilai payment."})
-        payment.status = "ALLOCATED" if total_allocated == (payment.amount or ZERO) else "PARTIALLY_ALLOCATED"
-        payment.save(update_fields=["status"])
+        results, total_allocated = apply_payment_allocations(payment, allocations)
         return self.ok({"payment": model_payload(payment), "allocations": results, "total_allocated": str(total_allocated)}, "Payment berhasil dialokasikan.")
 
 
 class BankStatementReconcileView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance",
+        summary="Reconcile bank statement",
+        request_serializer=inline_serializer(
+            name="BankStatementReconcileCommandRequest",
+            fields={
+                "matches": serializers.JSONField(required=False, help_text="Daftar pencocokan manual. Kosongkan untuk auto-match.")
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.finance.models import BankReconciliation, BankStatement, BankStatementLine, Payment
@@ -1098,6 +2333,19 @@ class BankStatementReconcileView(ERPCommandView):
 
 
 class FiscalPeriodCloseView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance",
+        summary="Close fiscal period",
+        request_serializer=inline_serializer(
+            name="FiscalPeriodCloseCommandRequest",
+            fields={
+                "force": serializers.BooleanField(required=False, default=False),
+                "closing_type": serializers.CharField(required=False, default="MONTHLY")
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.finance.models import FiscalPeriod, JournalEntry, PeriodClosing
@@ -1120,6 +2368,18 @@ class FiscalPeriodCloseView(ERPCommandView):
 
 
 class FiscalPeriodReopenView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance",
+        summary="Reopen fiscal period",
+        request_serializer=inline_serializer(
+            name="FiscalPeriodReopenCommandRequest",
+            fields={
+                "reason": serializers.CharField(required=True)
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.finance.models import FiscalPeriod
@@ -1134,6 +2394,23 @@ class FiscalPeriodReopenView(ERPCommandView):
 
 
 class BudgetCheckView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Finance",
+        summary="Check budget availability",
+        request_serializer=inline_serializer(
+            name="BudgetCheckCommandRequest",
+            fields={
+                "account_id": optional_uuid_field(),
+                "project_id": optional_uuid_field(),
+                "cost_center_id": optional_uuid_field(),
+                "department_id": optional_uuid_field(),
+                "period_number": serializers.IntegerField(required=False, allow_null=True),
+                "requested_amount": optional_decimal_field()
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     def post(self, request, id):
         from apps.finance.models import Budget, BudgetLine, JournalLine
 
@@ -1168,7 +2445,278 @@ class BudgetCheckView(ERPCommandView):
 # ---------------------------------------------------------------------------
 
 
+class FinanceFlowStatusView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Get finance capability flow status", request_serializer=None, parameters=COMPANY_SCOPE_PARAMETERS)
+    def get(self, request):
+        from apps.assets.models import Asset, Maintenance
+        from apps.finance.models import (Account, BillingDocument, CreditFacility, FinancialSnapshot, FiscalPeriod,
+                                         JournalEntry, OverheadRule, Payment, ProjectFunding, RecurringPaymentRule)
+
+        company_id = request.headers.get("X-Company-ID") or request.query_params.get("company_id")
+        if not company_id:
+            raise ValidationError({"company_id": "X-Company-ID atau company_id wajib diisi."})
+        counts = {
+            "accounts": Account.objects.filter(company_id=company_id).count(),
+            "draft_journals": JournalEntry.objects.filter(journal__company_id=company_id, status="DRAFT").count(),
+            "open_periods": FiscalPeriod.objects.filter(fiscal_year__company_id=company_id, status="OPEN").count(),
+            "billing_attention": BillingDocument.objects.filter(company_id=company_id, status__in=["DRAFT", "VERIFIED", "APPROVED"]).count(),
+            "payment_attention": Payment.objects.filter(company_id=company_id, status__in=["DRAFT", "SUBMITTED", "APPROVED"]).count(),
+            "active_recurring_rules": RecurringPaymentRule.objects.filter(company_id=company_id, status="ACTIVE").count(),
+            "active_credit_facilities": CreditFacility.objects.filter(company_id=company_id, status="ACTIVE").count(),
+            "active_fundings": ProjectFunding.objects.filter(project__company_id=company_id, status="ACTIVE").count(),
+            "active_overhead_rules": OverheadRule.objects.filter(company_id=company_id, status="ACTIVE").count(),
+            "assets": Asset.objects.filter(company_id=company_id).count(),
+            "maintenance_due": Maintenance.objects.filter(asset__company_id=company_id, status__in=["PLANNED", "SCHEDULED", "IN_PROGRESS"]).count(),
+            "financial_snapshots": FinancialSnapshot.objects.filter(company_id=company_id).count(),
+        }
+        readiness = {
+            "dashboard": counts["financial_snapshots"] > 0,
+            "general_ledger": counts["accounts"] > 0 and counts["open_periods"] > 0,
+            "accounts_payable": counts["accounts"] > 0,
+            "debt": counts["active_credit_facilities"] > 0 or counts["active_recurring_rules"] > 0,
+            "project_finance": counts["active_fundings"] > 0 or counts["active_overhead_rules"] > 0,
+            "assets": counts["assets"] > 0,
+        }
+        return self.ok({"company_id": str(company_id), "readiness": readiness, "counts": counts, "safe_to_operate": readiness["general_ledger"]})
+
+
+class FinancialSnapshotCalculateView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Calculate financial dashboard snapshot")
+    @transaction.atomic
+    def post(self, request):
+        from apps.finance.models import FinancialSnapshot, FiscalPeriod, JournalLine, Payment
+
+        company_id = request.headers.get("X-Company-ID") or request.data.get("company_id")
+        period = get_object_or_404(FiscalPeriod, pk=request.data.get("fiscal_period_id"), fiscal_year__company_id=company_id)
+        lines = JournalLine.objects.filter(journal_entry__journal__company_id=company_id, journal_entry__status="POSTED", journal_entry__posting_date__range=(period.start_date, period.end_date)).select_related("account")
+        revenue = sum((dec(x.credit_base) - dec(x.debit_base) for x in lines if x.account and str(x.account.account_type).upper() in {"REVENUE", "INCOME"}), ZERO)
+        expense = sum((dec(x.debit_base) - dec(x.credit_base) for x in lines if x.account and str(x.account.account_type).upper() in {"EXPENSE", "COST"}), ZERO)
+        payments = Payment.objects.filter(company_id=company_id, status__in=["ALLOCATED", "PARTIALLY_ALLOCATED", "EXECUTED"], payment_date__range=(period.start_date, period.end_date))
+        cashflow = sum((dec(x.amount) if str(x.payment_type).upper() in {"INCOMING", "RECEIPT"} else -dec(x.amount) for x in payments), ZERO)
+        row = FinancialSnapshot.objects.filter(company_id=company_id, fiscal_period=period).order_by("-snapshot_at", "-id").first()
+        values = {"snapshot_at": timezone.now(), "revenue_amount": revenue, "expense_amount": expense, "profit_loss_amount": revenue - expense,
+                  "operating_cashflow": cashflow, "investing_cashflow": ZERO, "financing_cashflow": ZERO, "cash_balance": cashflow, "snapshot_status": "CALCULATED"}
+        if row:
+            for field, value in values.items(): setattr(row, field, value)
+            row.save(update_fields=list(values))
+        else:
+            row = FinancialSnapshot.objects.create(company_id=company_id, fiscal_period=period, **values)
+        return self.ok(model_payload(row), "Financial snapshot berhasil dihitung.")
+
+
+class UnitCostCalculateView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Calculate production unit cost")
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import OverheadAllocation, UnitCostSnapshot
+        from apps.manufacturing.models import LaborLog, MachineLog, ProductionMaterial, ProductionOrder, ProductionOutput
+
+        production = get_object_or_404(ProductionOrder, pk=id)
+        material = ProductionMaterial.objects.filter(production_order=production).aggregate(v=Coalesce(Sum("actual_cost"), ZERO))["v"]
+        labor = LaborLog.objects.filter(work_order__production_order=production).aggregate(v=Coalesce(Sum("labor_cost"), ZERO))["v"]
+        machine = MachineLog.objects.filter(work_order__production_order=production).aggregate(v=Coalesce(Sum("machine_cost"), ZERO))["v"]
+        overhead = OverheadAllocation.objects.filter(production_order=production, status__in=["CALCULATED", "POSTED"]).aggregate(v=Coalesce(Sum("allocated_amount"), ZERO))["v"]
+        output = ProductionOutput.objects.filter(production_order=production).aggregate(v=Coalesce(Sum("output_quantity"), ZERO))["v"] or dec(production.completed_quantity)
+        if output <= ZERO:
+            raise ValidationError({"output_quantity": "Output quantity harus positif untuk menghitung unit cost."})
+        total = material + labor + machine + overhead
+        row = UnitCostSnapshot.objects.create(company=production.company, project=production.project, production_order=production, product=production.product,
+                                               cost_unit_code=f"PO-{production.id}", snapshot_at=timezone.now(), material_cost=material, labor_cost=labor,
+                                               machine_cost=machine, overhead_cost=overhead, total_cost=total, output_quantity=output, unit_cost=total/output)
+        return self.ok(model_payload(row), "Unit cost/HPP berhasil dihitung.", status.HTTP_201_CREATED)
+
+
+class CostVarianceCalculateView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Calculate project cost variance")
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import CostBaseline, CostBaselineLine, CostVariance, FiscalPeriod
+        from apps.projects.models import Project
+
+        project = get_object_or_404(Project, pk=id)
+        period = get_object_or_404(FiscalPeriod, pk=request.data.get("fiscal_period_id"), fiscal_year__company=project.company)
+        baseline = CostBaseline.objects.filter(project=project, status="APPROVED").order_by("-baseline_version", "-effective_date").first()
+        if not baseline:
+            raise ValidationError({"baseline": "Cost baseline APPROVED belum tersedia."})
+        lines = list(CostBaselineLine.objects.filter(cost_baseline=baseline))
+        ideal_total = sum((dec(x.ideal_amount) for x in lines), ZERO)
+        if not lines or ideal_total <= ZERO:
+            raise ValidationError({"baseline": "Baseline line dengan ideal amount positif wajib tersedia."})
+        actual_total = project_cost_data(project)["actual_cost"]
+        results = []
+        for line in lines:
+            ideal = dec(line.ideal_amount)
+            actual = actual_total * ideal / ideal_total
+            variance = actual - ideal
+            row = CostVariance.objects.filter(project=project, cost_baseline_line=line, fiscal_period=period).first()
+            values = {"actual_amount": actual, "ideal_amount": ideal, "variance_amount": variance, "variance_percent": variance*Decimal("100")/ideal if ideal else ZERO, "calculated_at": timezone.now()}
+            if row:
+                for field, value in values.items(): setattr(row, field, value)
+                row.save(update_fields=list(values))
+            else:
+                row = CostVariance.objects.create(project=project, cost_baseline_line=line, fiscal_period=period, **values)
+            results.append(model_payload(row))
+        return self.ok({"baseline_id": str(baseline.id), "actual_total": str(actual_total), "ideal_total": str(ideal_total), "variances": results}, "Cost variance berhasil dihitung.")
+
+
+class RecurringPaymentRunView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Generate recurring payment run")
+    @transaction.atomic
+    def post(self, request, id):
+        from datetime import timedelta
+        from apps.finance.models import Payment, RecurringPaymentRule, RecurringPaymentRun
+
+        rule = get_object_or_404(RecurringPaymentRule.objects.select_for_update(), pk=id)
+        try:
+            run_date = date.fromisoformat(str(request.data.get("scheduled_date") or rule.next_run_date or timezone.localdate()))
+        except ValueError as exc:
+            raise ValidationError({"scheduled_date": "Format tanggal harus YYYY-MM-DD."}) from exc
+        if str(rule.status).upper() != "ACTIVE":
+            raise ValidationError({"status": "Recurring payment rule harus ACTIVE."})
+        if rule.end_date and run_date > rule.end_date:
+            raise ValidationError({"scheduled_date": "Tanggal run melewati end date rule."})
+        if dec(rule.amount) <= ZERO or not all((rule.company_id, rule.party_id, rule.currency_id, rule.bank_account_id)):
+            raise ValidationError({"rule": "Company, party, currency, bank account, dan amount positif wajib tersedia."})
+        if RecurringPaymentRun.objects.filter(recurring_rule=rule, scheduled_date=run_date).exists():
+            raise ValidationError({"scheduled_date": "Recurring payment untuk tanggal ini sudah dibuat."})
+        payment = Payment.objects.create(
+            company=rule.company, party=rule.party, bank_account=rule.bank_account, currency=rule.currency,
+            payment_type="OUTGOING", payment_date=run_date, amount=rule.amount,
+            payment_method="BANK_TRANSFER", reference_number=document_number("RECUR"), status="DRAFT",
+        )
+        run = RecurringPaymentRun.objects.create(
+            recurring_rule=rule, payment=payment, scheduled_date=run_date, executed_at=timezone.now(), run_status="GENERATED",
+        )
+        recurrence = str(rule.recurrence_rule).upper()
+        rule.next_run_date = run_date + (timedelta(days=7) if "WEEK" in recurrence else timedelta(days=365) if "YEAR" in recurrence else timedelta(days=30))
+        rule.save(update_fields=["next_run_date"])
+        create_audit_event(request=request, instance=run, event_type="GENERATE_RECURRING_PAYMENT", after=snapshot(run))
+        return self.ok({"run": model_payload(run), "payment": model_payload(payment)}, "Draft recurring payment berhasil dibuat.", status.HTTP_201_CREATED)
+
+
+class CreditFacilityCheckView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Check credit facility availability")
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import CreditFacility
+
+        facility = get_object_or_404(CreditFacility.objects.select_for_update(), pk=id)
+        requested = dec(request.data.get("requested_amount"))
+        today = timezone.localdate()
+        active = str(facility.status).upper() == "ACTIVE" and (not facility.effective_from or facility.effective_from <= today) and (not facility.effective_to or today <= facility.effective_to)
+        available = max(ZERO, dec(facility.credit_limit) - dec(facility.utilized_amount))
+        facility.available_amount = available
+        facility.save(update_fields=["available_amount"])
+        return self.ok({"facility_id": str(facility.id), "requested_amount": str(requested), "available_amount": str(available), "approved": active and requested > ZERO and requested <= available, "active": active})
+
+
+class ProjectWIPCalculateView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Calculate project WIP snapshot")
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import BillingDocument, FiscalPeriod, ProjectWIPSnapshot
+        from apps.projects.models import Project
+
+        project = get_object_or_404(Project, pk=id)
+        period = get_object_or_404(FiscalPeriod, pk=request.data.get("fiscal_period_id"))
+        if period.fiscal_year_id and period.fiscal_year.company_id and project.company_id != period.fiscal_year.company_id:
+            raise ValidationError({"fiscal_period_id": "Fiscal period berasal dari company yang berbeda."})
+        completion = min(Decimal("100"), max(ZERO, dec(project.progress_percent)))
+        contract_value = dec(request.data.get("contract_value", project.budget_amount))
+        if contract_value < ZERO:
+            raise ValidationError({"contract_value": "Contract value tidak boleh negatif."})
+        recognized_revenue = contract_value * completion / Decimal("100")
+        recognized_cost = project_cost_data(project)["actual_cost"]
+        billed = BillingDocument.objects.filter(project=project, status="POSTED").aggregate(v=Coalesce(Sum("total_amount"), ZERO))["v"]
+        values = {"snapshot_date": timezone.localdate(), "completion_percent": completion, "recognized_revenue": recognized_revenue,
+                  "recognized_cost": recognized_cost, "wip_asset_amount": max(ZERO, recognized_cost - billed),
+                  "accrued_billing_amount": billed, "unbilled_amount": max(ZERO, recognized_revenue - billed), "status": "CALCULATED"}
+        snapshot_row = ProjectWIPSnapshot.objects.filter(project=project, fiscal_period=period).order_by("-snapshot_date", "-id").first()
+        if snapshot_row:
+            for field, value in values.items():
+                setattr(snapshot_row, field, value)
+            snapshot_row.save(update_fields=list(values))
+        else:
+            snapshot_row = ProjectWIPSnapshot.objects.create(project=project, fiscal_period=period, **values)
+        return self.ok(model_payload(snapshot_row), "WIP project berhasil dihitung.")
+
+
+class ProjectFundingDrawView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Record project funding draw")
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import ProjectFunding, ProjectFundingTransaction
+
+        funding = get_object_or_404(ProjectFunding.objects.select_for_update(), pk=id)
+        amount = dec(request.data.get("amount"))
+        if str(funding.status).upper() != "ACTIVE" or amount <= ZERO:
+            raise ValidationError({"funding": "Funding harus ACTIVE dan amount harus positif."})
+        utilized = ProjectFundingTransaction.objects.filter(project_funding=funding, transaction_type="DRAW").aggregate(v=Coalesce(Sum("amount"), ZERO))["v"]
+        if utilized + amount > dec(funding.approved_limit):
+            raise ValidationError({"amount": "Penarikan melebihi approved funding limit."})
+        row = ProjectFundingTransaction.objects.create(project_funding=funding, transaction_type="DRAW", transaction_date=request.data.get("transaction_date") or timezone.localdate(), amount=amount, outstanding_balance=utilized + amount)
+        create_audit_event(request=request, instance=row, event_type="PROJECT_FUNDING_DRAW", after=snapshot(row))
+        return self.ok(model_payload(row), "Penarikan funding berhasil dicatat.", status.HTTP_201_CREATED)
+
+
+class OverheadAllocateView(ERPCommandView):
+    @command_schema(tag="Commands — Finance", summary="Calculate project overhead allocation")
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.finance.models import FiscalPeriod, OverheadAllocation, OverheadRule
+        from apps.projects.models import Project
+
+        rule = get_object_or_404(OverheadRule, pk=id)
+        project = get_object_or_404(Project, pk=request.data.get("project_id"))
+        period = get_object_or_404(FiscalPeriod, pk=request.data.get("fiscal_period_id"))
+        basis = dec(request.data.get("basis_quantity"))
+        today = timezone.localdate()
+        if rule.company_id != project.company_id or (period.fiscal_year_id and period.fiscal_year.company_id != project.company_id):
+            raise ValidationError({"company": "Rule, project, dan fiscal period harus berasal dari company yang sama."})
+        if str(rule.status).upper() != "ACTIVE" or basis < ZERO or (rule.effective_from and today < rule.effective_from) or (rule.effective_to and today > rule.effective_to):
+            raise ValidationError({"rule": "Overhead rule tidak aktif/efektif atau basis tidak valid."})
+        row, created = OverheadAllocation.objects.get_or_create(
+            overhead_rule=rule, project=project, fiscal_period=period,
+            defaults={"basis_quantity": basis, "allocated_amount": basis * dec(rule.rate_percent) / Decimal("100"), "status": "CALCULATED"},
+        )
+        if not created:
+            raise ValidationError({"allocation": "Overhead project untuk rule dan period ini sudah dihitung."})
+        return self.ok(model_payload(row), "Overhead berhasil dihitung.", status.HTTP_201_CREATED)
+
+
+class MaintenanceCompleteView(ERPCommandView):
+    @command_schema(tag="Commands — Assets", summary="Complete asset maintenance")
+    @transaction.atomic
+    def post(self, request, id):
+        from apps.assets.models import Maintenance
+
+        maintenance = get_object_or_404(Maintenance.objects.select_for_update(), pk=id)
+        if str(maintenance.status).upper() in {"COMPLETED", "CANCELLED"}:
+            raise ValidationError({"status": "Maintenance sudah completed/cancelled."})
+        maintenance.completed_date = request.data.get("completed_date") or timezone.localdate()
+        maintenance.maintenance_cost = dec(request.data.get("maintenance_cost", maintenance.maintenance_cost))
+        if maintenance.maintenance_cost < ZERO:
+            raise ValidationError({"maintenance_cost": "Biaya maintenance tidak boleh negatif."})
+        maintenance.status = "COMPLETED"
+        maintenance.save(update_fields=["completed_date", "maintenance_cost", "status"])
+        create_audit_event(request=request, instance=maintenance, event_type="COMPLETE_MAINTENANCE", after=snapshot(maintenance))
+        return self.ok(model_payload(maintenance), "Maintenance berhasil diselesaikan.")
+
+
 class AssetRunDepreciationView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Assets",
+        summary="Run asset depreciation",
+        request_serializer=inline_serializer(
+            name="AssetRunDepreciationCommandRequest",
+            fields={
+                "fiscal_period_id": optional_uuid_field(required=True),
+                "depreciation_date": serializers.DateField(required=False, allow_null=True)
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.assets.models import Asset, Book, DepreciationLine
@@ -1202,6 +2750,20 @@ class AssetRunDepreciationView(ERPCommandView):
 
 
 class AssetDisposeView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Assets",
+        summary="Dispose asset",
+        request_serializer=inline_serializer(
+            name="AssetDisposeCommandRequest",
+            fields={
+                "disposal_date": serializers.DateField(required=False, allow_null=True),
+                "disposal_proceeds": optional_decimal_field(),
+                "journal_entry_id": optional_uuid_field()
+            },
+        ),
+        success_status=status.HTTP_201_CREATED,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.assets.models import Asset, Book, Disposal
@@ -1231,6 +2793,21 @@ class AssetDisposeView(ERPCommandView):
 
 
 class ServiceCaseResolveView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Service",
+        summary="Resolve service case",
+        request_serializer=inline_serializer(
+            name="ServiceCaseResolveCommandRequest",
+            fields={
+                "resolution_type": serializers.CharField(required=False, default="RESOLVED"),
+                "resolution_notes": serializers.CharField(required=False, allow_blank=True),
+                "credit_note_id": optional_uuid_field(),
+                "replacement_delivery_id": optional_uuid_field()
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.service.models import Case, Resolution
@@ -1253,6 +2830,13 @@ class ServiceCaseResolveView(ERPCommandView):
 
 
 class ShipmentEventsView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Logistics",
+        summary="List shipment tracking events",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     def get(self, request, id):
         from apps.logistics.models import Shipment, TrackingEvent
 
@@ -1260,6 +2844,25 @@ class ShipmentEventsView(ERPCommandView):
         events = TrackingEvent.objects.filter(shipment=shipment).order_by("event_at")
         return self.ok([model_payload(item) for item in events])
 
+    @command_schema(
+        tag="Commands — Logistics",
+        summary="Create shipment tracking event",
+        request_serializer=inline_serializer(
+            name="ShipmentTrackingEventCommandRequest",
+            fields={
+                "event_code": serializers.CharField(required=False, default="UPDATE"),
+                "event_description": serializers.CharField(required=False, allow_blank=True),
+                "location_text": serializers.CharField(required=False, allow_blank=True),
+                "latitude": optional_decimal_field(),
+                "longitude": optional_decimal_field(),
+                "event_at": serializers.DateTimeField(required=False, allow_null=True),
+                "source_system": serializers.CharField(required=False, default="ERP"),
+                "shipment_status": serializers.CharField(required=False, allow_blank=True)
+            },
+        ),
+        success_status=status.HTTP_201_CREATED,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.logistics.models import Shipment, TrackingEvent
@@ -1282,6 +2885,24 @@ class ShipmentEventsView(ERPCommandView):
 
 
 class ShipmentProofOfDeliveryView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Logistics",
+        summary="Record proof of delivery",
+        request_serializer=inline_serializer(
+            name="ShipmentProofOfDeliveryCommandRequest",
+            fields={
+                "received_by_party_id": optional_uuid_field(),
+                "signature_file_id": optional_uuid_field(),
+                "photo_file_id": optional_uuid_field(),
+                "receiver_name": serializers.CharField(required=False, allow_blank=True),
+                "received_at": serializers.DateTimeField(required=False, allow_null=True),
+                "remarks": serializers.CharField(required=False, allow_blank=True),
+                "verification_status": serializers.CharField(required=False, default="VERIFIED")
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request, id):
         from apps.logistics.models import ProofOfDelivery, Shipment
@@ -1326,6 +2947,26 @@ def resolve_kpi_queryset(definition, request):
 
 
 class KPIRecalculateView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Analytics",
+        summary="Recalculate KPI",
+        request_serializer=inline_serializer(
+            name="KPIRecalculateCommandRequest",
+            fields={
+                "kpi_definition_id": optional_uuid_field(),
+                "company_id": optional_uuid_field(),
+                "organization_id": optional_uuid_field(),
+                "project_id": optional_uuid_field(),
+                "owner_user_id": optional_uuid_field(),
+                "actual_value": optional_decimal_field(),
+                "target_value": optional_decimal_field(),
+                "filters": serializers.JSONField(required=False),
+                "dimension_json": serializers.JSONField(required=False)
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request):
         from apps.analytics.models import KPIDefinition, KPIResult, KPITarget
@@ -1386,6 +3027,18 @@ OPERATORS = {
 
 
 class AlertEvaluateView(ERPCommandView):
+    @command_schema(
+        tag="Commands — Analytics",
+        summary="Evaluate alert rules",
+        request_serializer=inline_serializer(
+            name="AlertEvaluateCommandRequest",
+            fields={
+                "alert_rule_id": optional_uuid_field()
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     @transaction.atomic
     def post(self, request):
         from apps.analytics.models import AlertEvent, AlertRule, KPIResult
@@ -1417,6 +3070,13 @@ class AlertEvaluateView(ERPCommandView):
 
 
 class FinanceMainDashboardView(ERPCommandView):
+    @command_schema(
+        tag="Dashboards",
+        summary="Get finance main dashboard",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=COMPANY_SCOPE_PARAMETERS,
+    )
     def get(self, request):
         from apps.analytics.models import AlertEvent, KPIResult
         from apps.finance.models import FinancialSnapshot, UnitCostSnapshot
@@ -1439,6 +3099,13 @@ class FinanceMainDashboardView(ERPCommandView):
 
 
 class ProjectDashboardView(ERPCommandView):
+    @command_schema(
+        tag="Dashboards",
+        summary="Get project dashboard",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=None,
+    )
     def get(self, request, project_id):
         from apps.analytics.models import KPIResult
         from apps.core.models import NotificationRecipient
@@ -1466,20 +3133,28 @@ class ProjectDashboardView(ERPCommandView):
 
 
 class CRMSalesDashboardView(ERPCommandView):
+    @command_schema(
+        tag="Dashboards",
+        summary="Get CRM and sales dashboard",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+        parameters=COMPANY_SCOPE_PARAMETERS,
+    )
     def get(self, request):
-        from apps.crm.models import Opportunity
-        from apps.projects.models import WeightIndicator
-        from apps.sales.models import Quotation
+        from apps.crm.models import CustomerInquiry, Opportunity
+        from apps.sales.models import Contract, Quotation
 
         company_id = request.headers.get("X-Company-ID") or request.query_params.get("company_id")
         opportunities = Opportunity.objects.all()
         if company_id:
-            opportunities = opportunities.filter(document__company_id=company_id)
+            opportunities = opportunities.filter(company_id=company_id)
         total_closed = opportunities.filter(status__in=["WON", "LOST", "CLOSED_WON", "CLOSED_LOST"]).count()
         won = opportunities.filter(status__in=["WON", "CLOSED_WON"]).count()
         win_rate = ZERO if total_closed == 0 else Decimal(won * 100) / Decimal(total_closed)
-        weighted = WeightIndicator.objects.filter(sales_order__document__company_id=company_id).aggregate(v=Coalesce(Sum("weighted_project_value"), ZERO))["v"] if company_id else ZERO
+        weighted = sum(((item.expected_amount or ZERO) * (item.probability_percent or ZERO) / Decimal("100")) for item in opportunities)
         margin = Quotation.objects.filter(document__company_id=company_id).aggregate(v=Coalesce(Avg("estimated_margin"), ZERO))["v"] if company_id else ZERO
+        closed_with_dates = list(opportunities.filter(opened_at__isnull=False, closed_at__isnull=False))
+        average_cycle_days = ZERO if not closed_with_dates else sum(Decimal(str((item.closed_at - item.opened_at).total_seconds() / 86400)) for item in closed_with_dates) / len(closed_with_dates)
         return self.ok(
             {
                 "company_id": company_id,
@@ -1490,5 +3165,9 @@ class CRMSalesDashboardView(ERPCommandView):
                 "pitch_count": opportunities.filter(pipeline_stage__icontains="PITCH").count(),
                 "closing_count": won,
                 "offering_margin_percent": str(margin),
+                "average_sales_cycle_days": str(average_cycle_days),
+                "open_inquiry_count": CustomerInquiry.objects.filter(company_id=company_id).exclude(status__in=["CLOSED_LOST", "WON"]).count() if company_id else 0,
+                "quotation_pending_approval_count": Quotation.objects.filter(document__company_id=company_id, status="PENDING_APPROVAL").count() if company_id else 0,
+                "active_contract_count": Contract.objects.filter(document__company_id=company_id, status="ACTIVE").count() if company_id else 0,
             }
         )

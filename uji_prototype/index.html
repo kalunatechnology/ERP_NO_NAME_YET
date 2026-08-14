@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Prototype frontend ERP berbasis OpenAPI, HTML, CSS, dan JavaScript murni.">
+  <title>ERP Prototype Console</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <section id="loginView" class="login-view">
+    <div class="login-card">
+      <div class="brand"><span>ERP</span><div><strong>ERP Prototype</strong><small>Operational API Console</small></div></div>
+      <div class="login-copy">
+        <span class="eyebrow">Schema-driven frontend</span>
+        <h1>Uji auth, input data, dan baca seluruh API ERP.</h1>
+        <p>Frontend ini membaca OpenAPI schema untuk membuat menu, tabel, form, dan API console secara otomatis.</p>
+      </div>
+      <form id="loginForm" class="stack">
+        <label><span>API Base URL</span><input id="apiBaseLogin" type="url" value="http://127.0.0.1:8000" required></label>
+        <label><span>Email</span><input id="emailLogin" type="email" placeholder="admin@example.com" required></label>
+        <label><span>Password</span><input id="passwordLogin" type="password" placeholder="Password" required></label>
+        <div id="loginError" class="alert error" hidden></div>
+        <button id="loginButton" class="button primary" type="submit">Masuk</button>
+        <button id="offlineButton" class="button secondary" type="button">Buka schema tanpa login</button>
+      </form>
+      <p class="note">Backend default: <code>http://127.0.0.1:8000</code></p>
+    </div>
+  </section>
+
+  <div id="appView" class="app" hidden>
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-head">
+        <div class="brand"><span>ERP</span><div><strong>ERP Prototype</strong><small id="schemaLabel">OpenAPI</small></div></div>
+        <button id="closeSidebar" class="icon-button mobile-only" type="button">×</button>
+      </div>
+      <nav id="mainNav" class="main-nav">
+        <button class="nav-button active" data-view="dashboard">Dashboard</button>
+        <div class="nav-group" data-nav-group="finance">
+          <button class="nav-button nav-parent" data-view="finance-flow" data-finance-tab="overview">Accounting / Finance <span>⌄</span></button>
+          <div class="nav-submenu">
+            <button data-view="finance-flow" data-finance-tab="overview">Overview</button>
+            <button data-view="finance-flow" data-finance-tab="billing">Billing & Invoice</button>
+            <button data-view="finance-flow" data-finance-tab="approval">Approval Queue</button>
+            <button data-view="finance-flow" data-finance-tab="payments">Payments</button>
+            <button data-view="finance-flow" data-finance-tab="reconcile">Bank Reconciliation</button>
+            <button data-view="finance-flow" data-finance-tab="accounting">General Accounting</button>
+          </div>
+        </div>
+        <button class="nav-button" data-view="crm-flow">CRM & Sales</button>
+        <button class="nav-button" data-view="project-flow">Project Management</button>
+        <button class="nav-button" data-view="resources">Data Explorer</button>
+        <button class="nav-button" data-view="console">API Console</button>
+        <button class="nav-button" data-view="auth">Auth Tester</button>
+        <button class="nav-button" data-view="logs">Request Log</button>
+        <button class="nav-button" data-view="settings">Settings</button>
+      </nav>
+      <div class="module-area">
+        <div class="module-title"><span>Modul API</span><b id="moduleCount">0</b></div>
+        <input id="moduleSearch" class="sidebar-search" type="search" placeholder="Cari modul/resource">
+        <div id="moduleList" class="module-list"></div>
+      </div>
+      <div class="connection-box">
+        <span id="connectionDot" class="dot offline"></span>
+        <div><strong id="connectionText">Schema offline</strong><small id="connectionDetail">Belum terhubung</small></div>
+        <button id="reloadSchemaSidebar" type="button">Reload</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="openSidebar" class="icon-button mobile-only" type="button">☰</button>
+          <div><span id="pageEyebrow" class="eyebrow">Overview</span><h1 id="pageTitle">Dashboard</h1></div>
+        </div>
+        <div class="topbar-right">
+          <label class="company-box"><span>Company</span><input id="companyInput" type="text" placeholder="X-Company-ID"></label>
+          <button id="userButton" class="user-button" type="button"><span id="avatar">U</span><div><strong id="userName">Offline User</strong><small id="userRole">Schema mode</small></div></button>
+          <div id="userMenu" class="user-menu" hidden>
+            <button data-user-action="me" type="button">Refresh profile</button>
+            <button data-user-action="auth" type="button">Auth tester</button>
+            <button data-user-action="logout" class="danger" type="button">Logout</button>
+          </div>
+        </div>
+      </header>
+      <section id="workspace" class="workspace"></section>
+    </main>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop" hidden>
+    <section class="modal">
+      <header><div><span id="modalEyebrow" class="eyebrow">Form</span><h2 id="modalTitle">Input data</h2></div><button id="modalClose" class="icon-button" type="button">×</button></header>
+      <div id="modalBody" class="modal-body"></div>
+      <footer id="modalFooter"></footer>
+    </section>
+  </div>
+
+  <div id="toasts" class="toasts"></div>
+  <style>.funding-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 24px;border:1px solid #cbdcf7;border-radius:18px;background:linear-gradient(135deg,#f8fbff,#eef4ff)}.funding-hero h2{font-size:25px;margin:5px 0}.funding-hero p{max-width:850px;color:var(--muted);margin:0}.funding-table td{vertical-align:middle}.funding-table td>small{display:block;color:var(--muted);margin-top:5px}.funding-decision-summary{display:flex;align-items:center;justify-content:space-between;margin-bottom:15px;padding:15px;border-radius:12px;background:var(--primary-soft);color:var(--primary)}.funding-decision-summary strong{font-size:20px}.funding-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}@media(max-width:900px){.funding-hero{align-items:stretch;flex-direction:column}.funding-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>
+  <style>.pm-funding-workspace{margin:16px 0;padding:20px;border:1px solid #cbdcf7;border-radius:18px;background:linear-gradient(135deg,#fff,#f3f7ff)}.pm-funding-workspace>header{display:flex;justify-content:space-between;align-items:center;gap:16px}.pm-funding-workspace h2{margin:5px 0}.pm-funding-workspace p{margin:0;color:var(--muted)}.pm-funding-workspace td>small{display:block;color:var(--muted);margin-top:4px}.pm-funding-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:15px 0}@media(max-width:900px){.pm-funding-workspace>header{align-items:stretch;flex-direction:column}.pm-funding-summary{grid-template-columns:1fr}}</style>
+  <style>
+    .pm-accounting-workspace{margin:16px 0;padding:20px;border:1px solid #b9d8c3;border-radius:18px;background:linear-gradient(145deg,#fff,#f4fbf6)}.pm-accounting-workspace>header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:16px}.pm-accounting-workspace h2{margin:5px 0}.pm-accounting-workspace p{margin:0;color:var(--muted)}.pm-accounting-columns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.pm-accounting-columns>article{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden}.pm-accounting-columns>article>header{display:flex;align-items:center;justify-content:space-between;padding:13px;border-bottom:1px solid var(--line)}.pm-accounting-columns h3{margin:0;font-size:13px}.pm-accounting-columns>article>header span{color:var(--muted);font-size:10px}.pm-accounting-columns>article>div{display:grid;gap:7px;padding:9px}.pm-accounting-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--soft)}.pm-accounting-row>span{display:grid;gap:4px}.pm-accounting-row>span:last-child{justify-items:end}.pm-accounting-row small{color:var(--muted)}
+    .erp-accounting-diagram{position:relative;margin:15px 0;padding:24px 16px 16px;border:1px solid #cfd8e6;border-radius:16px;background:#fff;overflow:auto}.erp-accounting-diagram.cost{border-color:#b9d8c3;background:linear-gradient(135deg,#fff,#f6fcf8)}.erp-accounting-diagram.billing{border-color:#cbd7f3;background:linear-gradient(135deg,#fff,#f5f8ff)}.diagram-label{position:absolute;top:0;left:0;padding:5px 12px;border-radius:15px 0 10px 0;background:#e8edf4;color:#34435b;font-size:10px;font-weight:900}.erp-accounting-diagram.cost .diagram-label{background:#dff4e5;color:#257743}.erp-accounting-diagram.billing .diagram-label{background:#e6edff;color:#3158c7}.diagram-track{display:flex;align-items:center;justify-content:center;min-width:900px;padding-top:8px}.diagram-track article{display:grid;grid-template-columns:27px minmax(0,1fr);gap:3px 8px;width:160px;min-height:95px;padding:12px;border:2px solid #aab5c5;border-radius:12px;background:#fff}.diagram-track article:first-child{border-radius:55px}.diagram-track article:nth-last-of-type(1){border-color:#4a72df}.diagram-track i{grid-row:1/3;width:25px;height:25px;display:grid;place-items:center;border-radius:50%;background:#edf1f6;color:#536176;font-style:normal;font-weight:900}.diagram-track strong{font-size:10px}.diagram-track small{color:var(--muted);font-size:8px;line-height:1.4}.diagram-track article>span{grid-column:1/-1;justify-self:start;margin-top:6px;padding:3px 7px;border-radius:10px;background:#eef2f7;color:#59677d;font-size:8px;font-weight:900}.diagram-track>b{padding:0 9px;color:#758297;font-size:24px}.flow-callout{display:flex;align-items:center;gap:12px;margin:12px 0;padding:12px 14px;border-left:4px solid var(--warning);border-radius:9px;background:#fff8e8}.flow-callout strong{white-space:nowrap}.flow-callout span{color:#765f29;font-size:10px}.inline-actions{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}@media(max-width:900px){.pm-accounting-workspace>header{align-items:stretch;flex-direction:column}.pm-accounting-columns{grid-template-columns:1fr}.flow-callout{align-items:flex-start;flex-direction:column}}
+  </style>
+  <style>
+    .pm-operational-workspace{margin:16px 0;padding:20px;border:1px solid #b9c9ee;border-radius:18px;background:linear-gradient(145deg,#fff,#f4f7ff)}.pm-operational-workspace>header{display:flex;align-items:center;justify-content:space-between;gap:18px}.pm-operational-workspace h2{margin:5px 0}.pm-operational-workspace p{margin:0;color:var(--muted)}.pm-operation-tabs{display:flex;gap:6px;margin:16px 0;padding:5px;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:auto}.pm-operation-tabs button{padding:9px 13px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-weight:800;white-space:nowrap}.pm-operation-tabs button.active{background:var(--primary);color:#fff}.pm-live-flow{display:flex;align-items:center;min-width:850px;padding:13px;overflow:auto;border:1px solid var(--line);border-radius:13px;background:#fff}.pm-live-flow article{display:grid;grid-template-columns:26px 1fr;width:150px;min-height:70px;padding:10px;border:2px solid #acb8ca;border-radius:11px}.pm-live-flow article:first-child{border-radius:45px}.pm-live-flow i{grid-row:1/3;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:#edf1f7;font-style:normal;font-weight:900}.pm-live-flow strong{font-size:10px}.pm-live-flow small{color:var(--muted);font-size:8px}.pm-live-flow>b{padding:0 8px;color:#72809a;font-size:22px}.cross-module-status{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 13px}.cross-module-status span{padding:8px 11px;border:1px solid #cbd8f3;border-radius:9px;background:#fff;color:#52627c;font-size:10px}.cross-module-status b{color:#3158c7;font-size:13px}.pm-operation-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:13px}.pm-operation-grid>article{padding:13px;border:1px solid var(--line);border-radius:13px;background:#fff}.pm-operation-grid>article>header,.operation-row,.operation-toolbar,.workflow-list article{display:flex;align-items:center;justify-content:space-between;gap:12px}.pm-operation-grid h3{margin:0}.operation-row,.workflow-list article{margin-top:8px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}.operation-row>span,.workflow-list article>span{display:grid;gap:4px}.operation-row small,.workflow-list small{color:var(--muted)}.operation-toolbar{margin:13px 0}.workflow-list{display:grid;gap:8px}.dispatch-strip{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;padding:10px;border-radius:9px;background:#eef4ff;color:#3a537f}.dispatch-strip span{display:grid;padding:6px 9px;border-radius:8px;background:#fff}.role-matrix{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.role-matrix article{display:grid;gap:5px;padding:13px;border:1px solid var(--line);border-radius:11px;background:#fff}.role-matrix span,.permission-note{color:var(--muted);font-size:10px;line-height:1.5}@media(max-width:900px){.pm-operational-workspace>header{align-items:stretch;flex-direction:column}.pm-operation-grid,.role-matrix{grid-template-columns:1fr}.workflow-list article{align-items:flex-start;flex-direction:column}}
+  </style>
+  <style>
+    .crm-hero{display:flex;justify-content:space-between;gap:18px;padding:22px;border:1px solid #d8c9ff;border-radius:18px;background:linear-gradient(135deg,#fbf9ff,#f1ebff)}.crm-hero h2{margin:5px 0;font-size:26px}.crm-hero p{margin:0;color:var(--muted)}.crm-tabs{display:flex;gap:7px;margin:14px 0;padding:6px;border:1px solid var(--line);border-radius:13px;background:#fff;overflow:auto}.crm-tabs button{border:0;border-radius:9px;padding:10px 14px;background:transparent;color:var(--muted);font-weight:800;white-space:nowrap}.crm-tabs button.active{background:#7746e8;color:#fff}.crm-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.crm-kpis article,.crm-panel{padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff}.crm-kpis small{display:block;color:var(--muted)}.crm-kpis strong{display:block;margin-top:9px;font-size:22px}.crm-flow-track{display:flex;align-items:center;min-width:900px;padding:18px;overflow:auto;border:1px solid #d8c9ff;border-radius:14px;background:#fff}.crm-flow-track article{width:150px;min-height:82px;padding:12px;border:2px solid #b8a7e8;border-radius:12px}.crm-flow-track article:first-child{border-radius:50px}.crm-flow-track b{padding:0 9px;color:#7a6b9b;font-size:22px}.crm-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-top:12px}.crm-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}.crm-row span{display:grid;gap:4px}.crm-row small{color:var(--muted)}@media(max-width:900px){.crm-hero{flex-direction:column}.crm-kpis,.crm-grid{grid-template-columns:1fr}}
+  </style>
+  <script src="./app.js?v=20260814-wip-final-v18"></script>
+</body>
+</html>

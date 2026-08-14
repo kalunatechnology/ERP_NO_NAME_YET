@@ -26,6 +26,11 @@ ROLE_SEEDS = [
         "Project Management Technical",
         "Akses technical brief, resource, work order, progress, dan QA.",
     ),
+    (
+        "PROJECT_ASSIGNEE",
+        "Project Assignee",
+        "Akses terbatas pada project membership dan task yang ditugaskan.",
+    ),
 ]
 
 

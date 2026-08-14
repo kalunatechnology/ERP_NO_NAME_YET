@@ -3434,3 +3434,16 @@ erDiagram
 * `PROJECT_MANAGEMENT_TECHNICAL`: akses teknis untuk brief, resource, work order, progress, dan QA.
 
 Kesesuaian 100% di sini berarti setiap node fitur pada PNG sudah memiliki representasi berupa tabel transaksi, tabel konfigurasi, tabel snapshot, atau database view. Rumus KPI, aturan approval, serta batas informasi yang dibagikan tetap dikonfigurasi melalui data dan application service, bukan di-hardcode pada tabel.
+
+daftara akses user dummy :
+| Role | Email | Password |
+
+|---|---|---|
+
+| Executive | `executive.demo@erp.local` | `DemoERP2026!` |
+
+| Project Management | `project.manager.demo@erp.local` | `DemoERP2026!` |
+
+| Finance | `finance.demo@erp.local` | `DemoERP2026!` |
+
+| Project Assignee | `assignee.demo@erp.local` | `DemoERP2026!` |

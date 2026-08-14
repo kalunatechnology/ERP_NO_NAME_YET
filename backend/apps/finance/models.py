@@ -156,6 +156,11 @@ class BillingDocument(models.Model):
     outstanding_amount = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
     payment_status = models.CharField(max_length=255, blank=True, default="")
     status = models.CharField(max_length=255, blank=True, default="")
+    verified_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, db_column="verified_by_id", related_name="verified_billing_documents", null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, db_column="approved_by_id", related_name="approved_billing_documents", null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "fin_billing_document"
@@ -222,6 +227,16 @@ class Payment(models.Model):
     reference_number = models.CharField(max_length=255, blank=True, default="")
     journal_entry = models.ForeignKey("finance.JournalEntry", on_delete=models.PROTECT, db_column="journal_entry_id", related_name="finance_payment_journal_entry_set", null=True, blank=True)
     status = models.CharField(max_length=255, blank=True, default="")
+    allocation_plan = models.JSONField(default=list, blank=True)
+    submitted_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, db_column="submitted_by_id", related_name="submitted_payments", null=True, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, db_column="approved_by_id", related_name="approved_payments", null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    executed_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, db_column="executed_by_id", related_name="executed_payments", null=True, blank=True)
+    executed_at = models.DateTimeField(null=True, blank=True)
+    execution_reference = models.CharField(max_length=255, blank=True, default="")
+    execution_note = models.TextField(blank=True, default="")
+    failure_reason = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "fin_payment"
@@ -327,6 +342,7 @@ class TaxTransaction(models.Model):
     """ERD entity: FIN_TAX_TRANSACTION."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="tax_transactions", null=True, blank=True)
     billing_document = models.ForeignKey("finance.BillingDocument", on_delete=models.PROTECT, db_column="billing_document_id", related_name="finance_taxtransaction_billing_document_set", null=True, blank=True)
     billing_document_line = models.ForeignKey("finance.BillingDocumentLine", on_delete=models.PROTECT, db_column="billing_document_line_id", related_name="finance_taxtransaction_billing_document_line_set", null=True, blank=True)
     tax_code = models.ForeignKey("master_data.TaxCode", on_delete=models.PROTECT, db_column="tax_code_id", related_name="finance_taxtransaction_tax_code_set", null=True, blank=True)
@@ -335,6 +351,15 @@ class TaxTransaction(models.Model):
     tax_amount = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
     tax_direction = models.CharField(max_length=255, blank=True, default="")
     tax_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=32, blank=True, default="DRAFT")
+    validation_note = models.TextField(blank=True, default="")
+    validated_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="validated_tax_transactions", null=True, blank=True)
+    validated_at = models.DateTimeField(null=True, blank=True)
+    billing_code = models.CharField(max_length=128, blank=True, default="")
+    payment_reference = models.CharField(max_length=128, blank=True, default="")
+    paid_at = models.DateTimeField(null=True, blank=True)
+    ntpn = models.CharField(max_length=128, blank=True, default="")
+    reported_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "fin_tax_transaction"
@@ -537,19 +562,33 @@ class ProjectFunding(models.Model):
     """ERD entity: FIN_PROJECT_FUNDING."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey("core.Tenant", on_delete=models.PROTECT, related_name="project_fundings", null=True, blank=True)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="project_fundings", null=True, blank=True)
     document = models.ForeignKey("core.BusinessDocument", on_delete=models.PROTECT, db_column="document_id", related_name="finance_projectfunding_document_set", null=True, blank=True)
     project = models.ForeignKey("projects.Project", on_delete=models.PROTECT, db_column="project_id", related_name="finance_projectfunding_project_set", null=True, blank=True)
     funding_source_party = models.ForeignKey("master_data.Party", on_delete=models.PROTECT, db_column="funding_source_party_id", related_name="finance_projectfunding_funding_source_party_set", null=True, blank=True)
     currency = models.ForeignKey("master_data.Currency", on_delete=models.PROTECT, db_column="currency_id", related_name="finance_projectfunding_currency_set", null=True, blank=True)
     funding_type = models.CharField(max_length=255, blank=True, default="")
+    purpose = models.TextField(blank=True, default="")
+    requested_amount = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
     approved_limit = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
     interest_rate = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
     start_date = models.DateField(null=True, blank=True)
     maturity_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=255, blank=True, default="")
+    requested_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="requested_project_fundings", null=True, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="verified_project_fundings", null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="approved_project_fundings", null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejected_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="rejected_project_fundings", null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "fin_project_funding"
+        indexes = [models.Index(fields=["status", "project"], name="fin_funding_workflow")]
 
     def __str__(self):
         return str(self.status)
@@ -694,3 +733,88 @@ class ProjectCostSnapshot(models.Model):
 
     def __str__(self):
         return str(self.id)
+
+
+class ProjectCostEntry(models.Model):
+    """Validated cost inbox between operational sources and accounting WIP."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey("core.Tenant", on_delete=models.PROTECT, related_name="project_cost_entries", null=True, blank=True)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="project_cost_entries", null=True, blank=True)
+    project = models.ForeignKey("projects.Project", on_delete=models.PROTECT, related_name="cost_entries")
+    source_type = models.CharField(max_length=32, blank=True, default="MANUAL")
+    source_reference = models.CharField(max_length=255, blank=True, default="")
+    description = models.CharField(max_length=255)
+    cost_element = models.CharField(max_length=32, blank=True, default="OTHER")
+    transaction_date = models.DateField()
+    quantity = models.DecimalField(max_digits=24, decimal_places=6, default=1)
+    unit_cost = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    total_cost = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    status = models.CharField(max_length=32, blank=True, default="CAPTURED")
+    validation_note = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="created_project_cost_entries", null=True, blank=True)
+    validated_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="validated_project_cost_entries", null=True, blank=True)
+    validated_at = models.DateTimeField(null=True, blank=True)
+    posted_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="posted_project_cost_entries", null=True, blank=True)
+    posted_at = models.DateTimeField(null=True, blank=True)
+    journal_entry = models.ForeignKey("finance.JournalEntry", on_delete=models.PROTECT, related_name="project_cost_entries", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "fin_project_cost_entry"
+        ordering = ["-transaction_date", "-created_at"]
+        indexes = [models.Index(fields=["company", "project", "status"], name="fin_cost_inbox_lookup")]
+
+
+class BillingProposal(models.Model):
+    """Approval boundary between a project milestone/completion and an invoice."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey("core.Tenant", on_delete=models.PROTECT, related_name="billing_proposals", null=True, blank=True)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="billing_proposals", null=True, blank=True)
+    project = models.ForeignKey("projects.Project", on_delete=models.PROTECT, related_name="billing_proposals")
+    customer = models.ForeignKey("master_data.Party", on_delete=models.PROTECT, related_name="project_billing_proposals", null=True, blank=True)
+    trigger_type = models.CharField(max_length=32, blank=True, default="PROJECT_COMPLETED")
+    description = models.CharField(max_length=255)
+    subtotal = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    tax_rate = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    tax_amount = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    total_amount = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    status = models.CharField(max_length=32, blank=True, default="DRAFT")
+    requested_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="requested_billing_proposals", null=True, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="approved_billing_proposals", null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, default="")
+    billing_document = models.OneToOneField("finance.BillingDocument", on_delete=models.PROTECT, related_name="billing_proposal", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "fin_billing_proposal"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["company", "status"], name="fin_billing_queue")]
+
+
+class InvoiceVarianceCase(models.Model):
+    """Resolution queue produced when three-way matching finds a variance."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="invoice_variance_cases", null=True, blank=True)
+    billing_document = models.ForeignKey("finance.BillingDocument", on_delete=models.PROTECT, related_name="variance_cases")
+    three_way_match = models.OneToOneField("procurement.ThreeWayMatch", on_delete=models.PROTECT, related_name="variance_case")
+    variance_type = models.CharField(max_length=32, blank=True, default="MIXED")
+    total_variance = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    status = models.CharField(max_length=32, blank=True, default="OPEN")
+    resolution = models.TextField(blank=True, default="")
+    assigned_to = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="assigned_invoice_variances", null=True, blank=True)
+    resolved_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="resolved_invoice_variances", null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "fin_invoice_variance_case"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["company", "status"], name="fin_invoice_variance_queue")]

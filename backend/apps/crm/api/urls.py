@@ -1,5 +1,5 @@
 from rest_framework.routers import DefaultRouter
-from .viewsets import LeadViewSet, OpportunityViewSet, OpportunityProductViewSet, ActivityViewSet, PipelineViewSet, PipelineStageViewSet, OpportunityStageHistoryViewSet, ExecutiveApprovalViewSet, CreditStatusSnapshotViewSet, ChannelAccountViewSet, ConversationViewSet, ConversationParticipantViewSet, MessageViewSet, MessageAttachmentViewSet, MessageDeliveryStatusViewSet, FeedbackViewSet, SurveyViewSet, SurveyQuestionViewSet, SurveyResponseViewSet, SurveyAnswerViewSet
+from .viewsets import LeadViewSet, OpportunityViewSet, OpportunityProductViewSet, ActivityViewSet, PipelineViewSet, PipelineStageViewSet, OpportunityStageHistoryViewSet, ExecutiveApprovalViewSet, CreditStatusSnapshotViewSet, ChannelAccountViewSet, ConversationViewSet, ConversationParticipantViewSet, MessageViewSet, MessageAttachmentViewSet, MessageDeliveryStatusViewSet, FeedbackViewSet, SurveyViewSet, SurveyQuestionViewSet, SurveyResponseViewSet, SurveyAnswerViewSet, CustomerInquiryViewSet, InquiryRequirementViewSet, CostEstimateViewSet, CostEstimateLineViewSet, QuotationVersionViewSet, QuotationDeliveryViewSet, CRMWorkflowEventViewSet
 
 app_name = "crm"
 router = DefaultRouter()
@@ -23,5 +23,12 @@ router.register(r"surveys", SurveyViewSet, basename="survey")
 router.register(r"survey-questions", SurveyQuestionViewSet, basename="survey-question")
 router.register(r"survey-responses", SurveyResponseViewSet, basename="survey-response")
 router.register(r"survey-answers", SurveyAnswerViewSet, basename="survey-answer")
+router.register(r"customer-inquiries", CustomerInquiryViewSet, basename="customer-inquiry")
+router.register(r"inquiry-requirements", InquiryRequirementViewSet, basename="inquiry-requirement")
+router.register(r"cost-estimates", CostEstimateViewSet, basename="cost-estimate")
+router.register(r"cost-estimate-lines", CostEstimateLineViewSet, basename="cost-estimate-line")
+router.register(r"quotation-versions", QuotationVersionViewSet, basename="quotation-version")
+router.register(r"quotation-deliveries", QuotationDeliveryViewSet, basename="quotation-delivery")
+router.register(r"workflow-events", CRMWorkflowEventViewSet, basename="crm-workflow-event")
 
 urlpatterns = router.urls

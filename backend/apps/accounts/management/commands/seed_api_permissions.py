@@ -13,6 +13,7 @@ ROLE_MODULES = {
     "ACCOUNTING_FINANCE": {"core", "master_data", "finance", "projects", "procurement", "inventory", "analytics", "reporting"},
     "CRM": {"core", "master_data", "crm", "sales", "projects", "analytics", "reporting"},
     "PROJECT_MANAGEMENT_TECHNICAL": {"core", "master_data", "projects", "inventory", "manufacturing", "quality", "assets", "analytics", "reporting"},
+    "PROJECT_ASSIGNEE": {"core", "projects", "reporting"},
 }
 LOCAL_APPS = {
     "core", "accounts", "master_data", "crm", "sales", "projects", "procurement", "inventory",

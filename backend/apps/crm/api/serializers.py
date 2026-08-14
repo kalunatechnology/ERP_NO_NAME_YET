@@ -1,6 +1,8 @@
 from rest_framework import serializers
+from rest_framework import serializers
+
 from apps.api_common.serializers import ERPModelSerializer
-from apps.crm.models import Lead, Opportunity, OpportunityProduct, Activity, Pipeline, PipelineStage, OpportunityStageHistory, ExecutiveApproval, CreditStatusSnapshot, ChannelAccount, Conversation, ConversationParticipant, Message, MessageAttachment, MessageDeliveryStatus, Feedback, Survey, SurveyQuestion, SurveyResponse, SurveyAnswer
+from apps.crm.models import Lead, Opportunity, OpportunityProduct, Activity, Pipeline, PipelineStage, OpportunityStageHistory, ExecutiveApproval, CreditStatusSnapshot, ChannelAccount, Conversation, ConversationParticipant, Message, MessageAttachment, MessageDeliveryStatus, Feedback, Survey, SurveyQuestion, SurveyResponse, SurveyAnswer, CustomerInquiry, InquiryRequirement, CostEstimate, CostEstimateLine, QuotationVersion, QuotationDelivery, CRMWorkflowEvent
 
 class LeadSerializer(ERPModelSerializer):
     class Meta:
@@ -122,3 +124,59 @@ class SurveyAnswerSerializer(ERPModelSerializer):
         fields = "__all__"
 
 
+class CustomerInquirySerializer(ERPModelSerializer):
+    customer_display = serializers.SerializerMethodField()
+
+    def get_customer_display(self, obj):
+        return obj.customer_party.display_name or obj.customer_party.legal_name if obj.customer_party else obj.customer_name
+
+    class Meta:
+        model = CustomerInquiry
+        fields = "__all__"
+        read_only_fields = ("inquiry_number", "status", "opportunity", "qualified_at", "quoted_at", "closed_at")
+
+
+class InquiryRequirementSerializer(ERPModelSerializer):
+    class Meta:
+        model = InquiryRequirement
+        fields = "__all__"
+
+
+class CostEstimateSerializer(ERPModelSerializer):
+    class Meta:
+        model = CostEstimate
+        fields = "__all__"
+        read_only_fields = ("estimate_number", "direct_cost", "overhead_cost", "total_cost", "offered_amount", "margin_amount", "margin_percent", "status", "calculated_at", "calculated_by")
+
+
+class CostEstimateLineSerializer(ERPModelSerializer):
+    class Meta:
+        model = CostEstimateLine
+        fields = "__all__"
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        quantity = attrs.get("quantity", 1)
+        unit_cost = attrs.get("unit_cost", 0)
+        if quantity <= 0 or unit_cost < 0:
+            raise serializers.ValidationError("Quantity harus positif dan unit cost tidak boleh negatif.")
+        attrs["amount"] = quantity * unit_cost
+        return attrs
+
+
+class QuotationVersionSerializer(ERPModelSerializer):
+    class Meta:
+        model = QuotationVersion
+        fields = "__all__"
+
+
+class QuotationDeliverySerializer(ERPModelSerializer):
+    class Meta:
+        model = QuotationDelivery
+        fields = "__all__"
+
+
+class CRMWorkflowEventSerializer(ERPModelSerializer):
+    class Meta:
+        model = CRMWorkflowEvent
+        fields = "__all__"

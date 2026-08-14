@@ -32,6 +32,21 @@ def find_scope_path(model: type[models.Model], target: str, max_depth: int = 4) 
             else:
                 others.append(item)
 
+        # Prefer stable ownership paths. Transactional records often have an
+        # optional document FK, so document__tenant must not win over the
+        # record's company__tenant path merely because it appears first in
+        # model field order.
+        priority = {
+            "tenant": 0,
+            "company": 1,
+            "organization": 2,
+            "project": 3,
+            "warehouse": 4,
+            "budget": 5,
+            "document": 10,
+        }
+        preferred.sort(key=lambda item: priority.get(item[0], 6))
+
         for name, related_model in preferred + others:
             result = walk(related_model, f"{prefix}{name}__", depth + 1, visited)
             if result:

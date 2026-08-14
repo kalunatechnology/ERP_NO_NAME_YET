@@ -1,0 +1,928 @@
+{
+  "meta": {
+    "base_url": "http://127.0.0.1:8000",
+    "created_at": "2026-08-06T12:33:22.042976",
+    "updated_at": "2026-08-06T12:57:31.383274"
+  },
+  "created_records": {
+    "DUMMY-HOLDING": "3139f028-bdfc-40fa-8157-eefe539b39de",
+    "DUMMY-MANUFACTURING": "2f21872e-576c-4d39-a0d2-d3c2b42b5e2f",
+    "DUMMY-SERVICE": "ca728277-5be7-4a17-8c4d-e7f5e3c228c8",
+    "DUMMY-INACTIVE": "75a4c4ff-9d7a-49b0-843a-c1fc38d9491e",
+    "DUMMY-DELETE": "7e7839e7-641d-405c-8dcf-dfdd32a67a04"
+  },
+  "reports": {
+    "stage_1.tenants": {
+      "endpoint": "/api/v1/core/tenants/",
+      "records": {
+        "DUMMY-HOLDING": "3139f028-bdfc-40fa-8157-eefe539b39de",
+        "DUMMY-MANUFACTURING": "2f21872e-576c-4d39-a0d2-d3c2b42b5e2f",
+        "DUMMY-SERVICE": "ca728277-5be7-4a17-8c4d-e7f5e3c228c8",
+        "DUMMY-INACTIVE": "75a4c4ff-9d7a-49b0-843a-c1fc38d9491e",
+        "DUMMY-DELETE": "7e7839e7-641d-405c-8dcf-dfdd32a67a04"
+      },
+      "actions": {
+        "DUMMY-HOLDING": "UPDATED",
+        "DUMMY-MANUFACTURING": "UPDATED",
+        "DUMMY-SERVICE": "UPDATED",
+        "DUMMY-INACTIVE": "UPDATED",
+        "DUMMY-DELETE": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true,
+      "negative_tests": {
+        "invalid_max_length": "PASS",
+        "not_found": "PASS",
+        "without_token": "PASS",
+        "invalid_token": "PASS"
+      }
+    },
+    "stage_2.companies": {
+      "endpoint": "/api/v1/core/companies/",
+      "records": {
+        "COMP-HOLDING": "aa1d8ce0-7117-4e7d-8733-6a325f962e0b",
+        "COMP-MFG": "fd88f8b9-65b3-4f39-ae58-d9905e7e260d",
+        "COMP-SVC": "90140e2b-9ce4-429c-b135-bfdcf7ab018f",
+        "COMP-INACTIVE": "f654a1bd-88ef-46c9-b8bf-c1cc955ffbe9",
+        "COMP-DELETE": "4039aa3a-ec1b-4d3f-b942-daef2c6ece33"
+      },
+      "actions": {
+        "COMP-HOLDING": "UPDATED",
+        "COMP-MFG": "UPDATED",
+        "COMP-SVC": "UPDATED",
+        "COMP-INACTIVE": "UPDATED",
+        "COMP-DELETE": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_2.organizations": {
+      "endpoint": "/api/v1/core/organizations/",
+      "records": {
+        "ORG-HQ": "455bcacb-e0ba-4b35-9b46-fe0e61d7d2e3",
+        "ORG-FINANCE": "6c77cc8e-7c09-442a-a561-f91321652842",
+        "ORG-OPERATIONAL": "3de758a7-0ef3-4869-8df1-ae810d38cd93",
+        "ORG-INACTIVE": "f7635d4b-6f3a-4faa-9fee-e9beec24af35",
+        "ORG-DELETE": "d14dd493-e5f8-4921-b518-f57eeee41efb"
+      },
+      "actions": {
+        "ORG-HQ": "UPDATED",
+        "ORG-FINANCE": "UPDATED",
+        "ORG-OPERATIONAL": "UPDATED",
+        "ORG-INACTIVE": "UPDATED",
+        "ORG-DELETE": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_2.roles": {
+      "endpoint": "/api/v1/accounts/roles/",
+      "records": {
+        "ROLE-ADMIN": "0ced48ad-d9ef-44f5-a87b-b2eacf56a2c0",
+        "ROLE-MANAGER": "a5c69b75-1cc2-4984-a318-b1e9836044ce",
+        "ROLE-STAFF": "ad3771dc-74fc-481b-b7db-de42f42138b9",
+        "ROLE-INACTIVE": "95aed084-2215-4a12-bd8f-029c3868df56",
+        "ROLE-DELETE": "ab8566a5-f533-4460-a9c1-c731c5511bb9"
+      },
+      "actions": {
+        "ROLE-ADMIN": "UPDATED",
+        "ROLE-MANAGER": "UPDATED",
+        "ROLE-STAFF": "UPDATED",
+        "ROLE-INACTIVE": "UPDATED",
+        "ROLE-DELETE": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_2.users": {
+      "endpoint": "/api/v1/accounts/users/",
+      "records": {
+        "dummy.admin@example.com": "848f7ce4-88ac-4c39-9a99-8e929c810b19",
+        "dummy.manager@example.com": "e1cce3fb-0e4f-4887-95ee-6e479ba77ad6",
+        "dummy.staff@example.com": "e2ca8e22-15b0-4893-b8d7-0fa7247dff05",
+        "dummy.inactive@example.com": "b9754ef5-4f04-4fa4-8f4f-401be09c4281",
+        "dummy.delete@example.com": "ba17090b-4143-4322-975e-50dfa1aba9b3"
+      },
+      "actions": {
+        "dummy.admin@example.com": "CREATED",
+        "dummy.manager@example.com": "CREATED",
+        "dummy.staff@example.com": "CREATED",
+        "dummy.inactive@example.com": "CREATED",
+        "dummy.delete@example.com": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_2.user_roles": {
+      "endpoint": "/api/v1/accounts/user-roles/",
+      "records": {
+        "UR-ADMIN": "07aa87a3-2b00-4763-99fc-02b0ba6e72d7",
+        "UR-MANAGER": "3bb0f1b1-7cb6-43c7-9ccf-20da5a7080d2",
+        "UR-STAFF": "3ecafae5-81c0-400a-98f2-67e600acc569",
+        "UR-DELETE": "755edbc0-60bf-43ec-a82d-c7069ea726a2"
+      },
+      "actions": {
+        "UR-ADMIN": "CREATED",
+        "UR-MANAGER": "CREATED",
+        "UR-STAFF": "CREATED",
+        "UR-DELETE": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_2.login_checks": {
+      "active_user_login": "PASS",
+      "inactive_user_login": "PASS",
+      "success": true
+    },
+    "stage_3.currencies": {
+      "endpoint": "/api/v1/master-data/currencies/",
+      "records": {
+        "IDR": "d28f831a-6b66-4cd8-b6a6-3d538d25e296",
+        "USD": "d47414de-f95f-413f-8f21-499942c9a0bc",
+        "EUR": "97c79df7-ee77-4009-9a2b-4ce42d00268a",
+        "SGD": "c4f95a6b-7c10-4c10-9818-0cd8b2b362bd",
+        "DEL": "b8eb431d-75fb-4c00-94ca-529c59583b11"
+      },
+      "actions": {
+        "IDR": "CREATED",
+        "USD": "CREATED",
+        "EUR": "CREATED",
+        "SGD": "CREATED",
+        "DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_3.uoms": {
+      "endpoint": "/api/v1/master-data/uoms/",
+      "records": {
+        "PCS": "4323ca81-7ebf-4c09-9f44-1d425e3412f6",
+        "BOX": "d787776b-6a62-49d4-8ce1-524ec923a313",
+        "KG": "4070a6bb-76f8-4dad-8aa4-e19045c082fb",
+        "MTR": "52cbd20e-1db4-499b-9cb6-ba7d48f92afd",
+        "UOM-DEL": "99e4b885-d9f7-4f65-9b4a-8fe8cd851bd1"
+      },
+      "actions": {
+        "PCS": "CREATED",
+        "BOX": "CREATED",
+        "KG": "CREATED",
+        "MTR": "CREATED",
+        "UOM-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_3.categories": {
+      "endpoint": "/api/v1/master-data/product-categories/",
+      "records": {
+        "CAT-RAW": "88f11593-8ec2-4749-8811-c341607d23d6",
+        "CAT-FG": "a410486e-9207-4349-b14a-29853dd7dd00",
+        "CAT-SERVICE": "afa8dd63-9e28-442e-90a2-bb6340565d4b",
+        "CAT-SPARE": "39e98875-bc82-44be-963b-42ca87ebf0c4",
+        "CAT-DEL": "8c7366a4-f147-4094-a17b-31f5011c3bf9"
+      },
+      "actions": {
+        "CAT-RAW": "CREATED",
+        "CAT-FG": "CREATED",
+        "CAT-SERVICE": "CREATED",
+        "CAT-SPARE": "CREATED",
+        "CAT-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_3.products": {
+      "endpoint": "/api/v1/master-data/products/",
+      "records": {
+        "PROD-ITEM-A": "03780dfc-1760-4e20-a347-3c1b345f2d8d",
+        "PROD-ITEM-B": "d4d18d8b-0cd7-47c1-a9d1-8d7a75ada786",
+        "PROD-SVC-A": "0fb77671-8e57-48ce-a91f-9b652ea72b18",
+        "PROD-INACTIVE": "f13b3cf0-0a5c-46cd-944c-0bd3b4e74f2e",
+        "PROD-DEL": "d9b5a189-d403-4ad8-a2b8-08ce838692e6"
+      },
+      "actions": {
+        "PROD-ITEM-A": "CREATED",
+        "PROD-ITEM-B": "CREATED",
+        "PROD-SVC-A": "CREATED",
+        "PROD-INACTIVE": "CREATED",
+        "PROD-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_3.parties": {
+      "endpoint": "/api/v1/master-data/parties/",
+      "records": {
+        "PARTY-CUST-01": "0afdc96d-7c06-41e1-a1fd-7387468ea5b7",
+        "PARTY-SUPP-01": "30dcc2b1-372f-44fe-ae35-0f974a542487",
+        "PARTY-BOTH-01": "dfd6e4f6-4ed7-4d35-a356-46e49613dbd4",
+        "PARTY-INACTIVE": "00adbb93-26d3-46e3-abb4-fa0b23188b8f",
+        "PARTY-DEL": "96cb0b74-8d3d-4fde-ad7e-a25393b3edf5"
+      },
+      "actions": {
+        "PARTY-CUST-01": "CREATED",
+        "PARTY-SUPP-01": "CREATED",
+        "PARTY-BOTH-01": "CREATED",
+        "PARTY-INACTIVE": "CREATED",
+        "PARTY-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_4.leads": {
+      "endpoint": "/api/v1/crm/leads/",
+      "records": {
+        "LEAD-001": "205fcbcd-a5e2-431a-9dba-4548920f3608",
+        "LEAD-002": "b2e73764-8974-4450-8258-997b1ba0387e",
+        "LEAD-003": "194795df-9724-4ab3-820d-1a1fa59e2c2f",
+        "LEAD-INACTIVE": "ac3707c0-1a86-4fa6-b34b-440b919a1745",
+        "LEAD-DEL": "e0ae191c-aa69-4eeb-91dc-8c3f9be87f17"
+      },
+      "actions": {
+        "LEAD-001": "CREATED",
+        "LEAD-002": "CREATED",
+        "LEAD-003": "CREATED",
+        "LEAD-INACTIVE": "CREATED",
+        "LEAD-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_4.quotations": {
+      "endpoint": "/api/v1/sales/quotations/",
+      "records": {
+        "SQ-2026-001": "610bec75-1a39-428b-9ff8-921b4f55066e",
+        "SQ-2026-002": "2afee705-7c35-45ee-b283-e13922447f43",
+        "SQ-2026-003": "bd910b60-b5c5-4800-9da5-d4e0b2597d49",
+        "SQ-2026-EXPIRED": "873c66e4-a53e-4cd2-91b2-35f5f6e8ec8b",
+        "SQ-DEL": "25c526cd-e105-4f4d-a9f6-001415bef98c"
+      },
+      "actions": {
+        "SQ-2026-001": "CREATED",
+        "SQ-2026-002": "CREATED",
+        "SQ-2026-003": "CREATED",
+        "SQ-2026-EXPIRED": "CREATED",
+        "SQ-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_4.sales_orders": {
+      "endpoint": "/api/v1/sales/orders/",
+      "records": {
+        "SO-2026-001": "fe9a8d52-fa3d-4d48-a3f4-6d0aad8bee7e",
+        "SO-2026-002": "1b9fa0b1-e2ec-49f2-b0c8-d7f1c60dff27",
+        "SO-2026-003": "8f4a6e86-2317-43e8-b5af-6c18a0692da6",
+        "SO-CANCELLED": "2498eaef-4da1-4cd1-ba25-6166232ce47a",
+        "SO-DEL": "ea35094e-2866-4b58-a87e-0890f82e3d13"
+      },
+      "actions": {
+        "SO-2026-001": "CREATED",
+        "SO-2026-002": "CREATED",
+        "SO-2026-003": "CREATED",
+        "SO-CANCELLED": "CREATED",
+        "SO-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_4.deliveries": {
+      "endpoint": "/api/v1/sales/deliveries/",
+      "records": {
+        "DO-2026-001": "74cb5e30-d05b-4038-aec1-6585f302738c",
+        "DO-2026-002": "dfeb5999-4611-457c-9430-e2174e812d1b",
+        "DO-2026-003": "6479cb66-474c-44e8-a137-ff921f17de6a",
+        "DO-RETURNED": "9c7c5e40-4425-4aa1-8440-9fae2e1a5861",
+        "DO-DEL": "cebbe592-2444-400f-80db-67e6c6823306"
+      },
+      "actions": {
+        "DO-2026-001": "CREATED",
+        "DO-2026-002": "CREATED",
+        "DO-2026-003": "CREATED",
+        "DO-RETURNED": "CREATED",
+        "DO-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_5.purchase_requisitions": {
+      "endpoint": "/api/v1/procurement/purchase-requisitions/",
+      "records": {
+        "PR-2026-001": "a1cb1bf4-d4ce-4547-8f57-2d74e9555901",
+        "PR-2026-002": "22b91de9-b720-4785-a2ec-8fe3d117c477",
+        "PR-2026-003": "b79ddb07-12b5-4832-bc33-4f3b9482441f",
+        "PR-CANCELLED": "14a1d7bc-f819-4524-affd-2dcb552456eb",
+        "PR-DEL": "40f1b1e7-4dfa-479b-9d09-de7eab8d0b8f"
+      },
+      "actions": {
+        "PR-2026-001": "CREATED",
+        "PR-2026-002": "CREATED",
+        "PR-2026-003": "CREATED",
+        "PR-CANCELLED": "CREATED",
+        "PR-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_5.rfqs": {
+      "endpoint": "/api/v1/procurement/rfqs/",
+      "records": {
+        "RFQ-2026-001": "09b19f89-83a6-4549-9e1e-77023c360cc3",
+        "RFQ-2026-002": "94b24f11-855c-4102-8aed-decac962c069",
+        "RFQ-2026-003": "96271735-41d8-44e4-b9f1-e1680e5f5686",
+        "RFQ-EXPIRED": "09ab5115-8080-46d7-90d5-588f1d3c2ee0",
+        "RFQ-DEL": "aa1eb2fc-3dbc-4597-8db5-3f7530e4c81c"
+      },
+      "actions": {
+        "RFQ-2026-001": "CREATED",
+        "RFQ-2026-002": "CREATED",
+        "RFQ-2026-003": "CREATED",
+        "RFQ-EXPIRED": "CREATED",
+        "RFQ-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_5.purchase_orders": {
+      "endpoint": "/api/v1/procurement/purchase-orders/",
+      "records": {
+        "PO-2026-001": "75f6e1d5-4fc0-41b5-91fa-bb1a764b74ef",
+        "PO-2026-002": "37469e79-5c08-4631-8804-d467270cb091",
+        "PO-2026-003": "fb28c9b7-4bc9-4115-a819-641469641932",
+        "PO-CANCELLED": "dd98ae84-b6e0-435c-91f9-995698ca4eeb",
+        "PO-DEL": "51c6e05f-7e8e-444e-a235-baddd0b1689e"
+      },
+      "actions": {
+        "PO-2026-001": "CREATED",
+        "PO-2026-002": "CREATED",
+        "PO-2026-003": "CREATED",
+        "PO-CANCELLED": "CREATED",
+        "PO-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_5.stock_moves": {
+      "endpoint": "/api/v1/inventory/stock-moves/",
+      "records": {
+        "SM-2026-001": "ec1c7856-f253-4110-a2eb-c947dd46f201",
+        "SM-2026-002": "148c936e-f2ce-4d3b-a534-efc65ccc1a0a",
+        "SM-2026-003": "dca4af62-7df1-4c19-a08a-051d16f7e15b",
+        "SM-CANCELLED": "3d72a2fc-835d-4896-85b2-baca22b46e6e",
+        "SM-DEL": "b76f93fc-7d88-45a1-a631-18bff331ada9"
+      },
+      "actions": {
+        "SM-2026-001": "CREATED",
+        "SM-2026-002": "CREATED",
+        "SM-2026-003": "CREATED",
+        "SM-CANCELLED": "CREATED",
+        "SM-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_5.stock_counts": {
+      "endpoint": "/api/v1/inventory/stock-counts/",
+      "records": {
+        "SC-2026-Q1": "897f1f41-c03a-4741-9173-34f5596c6f2a",
+        "SC-2026-Q2": "94880fb0-23cb-4c8f-88e9-af61c6e7f478",
+        "SC-2025-FINISH": "d6312fe3-2606-4b7b-9685-4fd9b94e214e",
+        "SC-CANCELLED": "e1146ead-beda-4f6a-a1e4-9fbd8950befe",
+        "SC-DEL": "65f2bc0f-9540-48e7-b4cb-410494bd9da2"
+      },
+      "actions": {
+        "SC-2026-Q1": "CREATED",
+        "SC-2026-Q2": "CREATED",
+        "SC-2025-FINISH": "CREATED",
+        "SC-CANCELLED": "CREATED",
+        "SC-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_6.projects": {
+      "endpoint": "/api/v1/projects/projects/",
+      "records": {
+        "PROJ-2026-001": "492d0513-c8cb-4400-8eaf-2f6c4b0fe721",
+        "PROJ-2026-002": "6bad3f73-994a-450c-a476-d18998b1dc93",
+        "PROJ-2026-003": "7ca6691a-0c88-4bc6-92d5-c0587ab7375f",
+        "PROJ-COMPLETED": "56cef580-a799-4285-a8a1-1c91b652dce3",
+        "PROJ-DEL": "167b573c-01e5-4a13-9a9d-ab817055b416"
+      },
+      "actions": {
+        "PROJ-2026-001": "CREATED",
+        "PROJ-2026-002": "CREATED",
+        "PROJ-2026-003": "CREATED",
+        "PROJ-COMPLETED": "CREATED",
+        "PROJ-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_6.project_tasks": {
+      "endpoint": "/api/v1/projects/tasks/",
+      "records": {
+        "TASK-001": "236ffe9a-ac85-405f-a134-e0f242732436",
+        "TASK-002": "6bd592b6-d533-46f4-9d92-78449a2ca459",
+        "TASK-003": "896a5715-d058-400e-87a1-57cb1a8729f4",
+        "TASK-BLOCKED": "b348f536-f030-4c7d-aafd-8b5175722bc0",
+        "TASK-DEL": "7283e1f6-1a9f-4593-9b4f-5e33984296dd"
+      },
+      "actions": {
+        "TASK-001": "CREATED",
+        "TASK-002": "CREATED",
+        "TASK-003": "CREATED",
+        "TASK-BLOCKED": "CREATED",
+        "TASK-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_6.production_orders": {
+      "endpoint": "/api/v1/manufacturing/production-orders/",
+      "records": {
+        "PO-MFG-2026-001": "5019143b-e86d-44a3-9978-b1f38d2e5056",
+        "PO-MFG-2026-002": "eba71708-ce81-4e26-95a6-7cdd74d02e6f",
+        "PO-MFG-2026-003": "01eeaca9-0528-429b-9cf0-fbb05b45ba32",
+        "PO-MFG-CANCELLED": "7765ea75-21af-4d63-a5ce-f3f1981b6f80",
+        "PO-MFG-DEL": "4ac8a63a-4cb0-4df9-8390-ea3e91764fde"
+      },
+      "actions": {
+        "PO-MFG-2026-001": "CREATED",
+        "PO-MFG-2026-002": "CREATED",
+        "PO-MFG-2026-003": "CREATED",
+        "PO-MFG-CANCELLED": "CREATED",
+        "PO-MFG-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_6.work_orders": {
+      "endpoint": "/api/v1/manufacturing/work-orders/",
+      "records": {
+        "WO-2026-001": "0ffe382d-1d58-468d-8110-b637378edbc5",
+        "WO-2026-002": "fb11c5bc-8ab9-45d7-9160-76af7dd4249e",
+        "WO-2026-003": "691707e1-bdeb-4075-8227-d9793890795c",
+        "WO-PAUSED": "1ab1c67d-074c-4f48-9393-e1bf03da13d2",
+        "WO-DEL": "ee94cae1-b672-4841-a3ab-e9d374c7b47b"
+      },
+      "actions": {
+        "WO-2026-001": "CREATED",
+        "WO-2026-002": "CREATED",
+        "WO-2026-003": "CREATED",
+        "WO-PAUSED": "CREATED",
+        "WO-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_7.asset_categories": {
+      "endpoint": "/api/v1/assets/categories/",
+      "records": {
+        "ACAT-IT": "646fb8b1-a947-4b0c-9e73-7a764e1e9e92",
+        "ACAT-VEHICLE": "93af3f5f-de8d-40f1-9d86-573e8a56b1e5",
+        "ACAT-MACHINERY": "feea8823-53d0-4960-bf4b-e6f349a851a6",
+        "ACAT-BUILDING": "459c6e6b-f495-4cd0-a66d-5b44b18b719b",
+        "ACAT-DEL": "32cf3f09-5e21-4e9e-8625-1dfd71302db9"
+      },
+      "actions": {
+        "ACAT-IT": "CREATED",
+        "ACAT-VEHICLE": "CREATED",
+        "ACAT-MACHINERY": "CREATED",
+        "ACAT-BUILDING": "CREATED",
+        "ACAT-DEL": "CREATED"
+      },
+      "tests": {
+        "upsert": "PASS",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "PASS",
+        "patch": "PASS",
+        "delete": "PASS"
+      },
+      "errors": [],
+      "success": true
+    },
+    "stage_7.assets": {
+      "endpoint": "/api/v1/assets/assets/",
+      "records": {},
+      "actions": {},
+      "tests": {
+        "upsert": "FAIL",
+        "pagination": "PASS",
+        "search": "PASS",
+        "ordering": "PASS",
+        "retrieve": "FAIL",
+        "patch": "SKIP",
+        "delete": "FAIL"
+      },
+      "errors": [
+        "POST /api/v1/assets/assets/ gagal (400); expected [200, 201]: {\"success\": false, \"status_code\": 400, \"errors\": {\"category\": [\"Objek dengan primary key \\\"646fb8b1-a947-4b0c-9e73-7a764e1e9e92\\\" tidak ditemukan.\"]}}",
+        "POST /api/v1/assets/assets/ gagal (400); expected [200, 201]: {\"success\": false, \"status_code\": 400, \"errors\": {\"category\": [\"Objek dengan primary key \\\"646fb8b1-a947-4b0c-9e73-7a764e1e9e92\\\" tidak ditemukan.\"]}}",
+        "POST /api/v1/assets/assets/ gagal (400); expected [200, 201]: {\"success\": false, \"status_code\": 400, \"errors\": {\"category\": [\"Objek dengan primary key \\\"646fb8b1-a947-4b0c-9e73-7a764e1e9e92\\\" tidak ditemukan.\"]}}",
+        "POST /api/v1/assets/assets/ gagal (400); expected [200, 201]: {\"success\": false, \"status_code\": 400, \"errors\": {\"category\": [\"Objek dengan primary key \\\"646fb8b1-a947-4b0c-9e73-7a764e1e9e92\\\" tidak ditemukan.\"]}}",
+        "POST /api/v1/assets/assets/ gagal (400); expected [200, 201]: {\"success\": false, \"status_code\": 400, \"errors\": {\"category\": [\"Objek dengan primary key \\\"646fb8b1-a947-4b0c-9e73-7a764e1e9e92\\\" tidak ditemukan.\"]}}",
+        "Delete key AST-DEL tidak memiliki UUID."
+      ],
+      "success": false
+    }
+  },
+  "stage_2": {
+    "companies": {
+      "COMP-HOLDING": "aa1d8ce0-7117-4e7d-8733-6a325f962e0b",
+      "COMP-MFG": "fd88f8b9-65b3-4f39-ae58-d9905e7e260d",
+      "COMP-SVC": "90140e2b-9ce4-429c-b135-bfdcf7ab018f",
+      "COMP-INACTIVE": "f654a1bd-88ef-46c9-b8bf-c1cc955ffbe9",
+      "COMP-DELETE": "4039aa3a-ec1b-4d3f-b942-daef2c6ece33"
+    },
+    "organizations": {
+      "ORG-HQ": "455bcacb-e0ba-4b35-9b46-fe0e61d7d2e3",
+      "ORG-FINANCE": "6c77cc8e-7c09-442a-a561-f91321652842",
+      "ORG-OPERATIONAL": "3de758a7-0ef3-4869-8df1-ae810d38cd93",
+      "ORG-INACTIVE": "f7635d4b-6f3a-4faa-9fee-e9beec24af35",
+      "ORG-DELETE": "d14dd493-e5f8-4921-b518-f57eeee41efb"
+    },
+    "roles": {
+      "ROLE-ADMIN": "0ced48ad-d9ef-44f5-a87b-b2eacf56a2c0",
+      "ROLE-MANAGER": "a5c69b75-1cc2-4984-a318-b1e9836044ce",
+      "ROLE-STAFF": "ad3771dc-74fc-481b-b7db-de42f42138b9",
+      "ROLE-INACTIVE": "95aed084-2215-4a12-bd8f-029c3868df56",
+      "ROLE-DELETE": "ab8566a5-f533-4460-a9c1-c731c5511bb9"
+    },
+    "users": {
+      "dummy.admin@example.com": "848f7ce4-88ac-4c39-9a99-8e929c810b19",
+      "dummy.manager@example.com": "e1cce3fb-0e4f-4887-95ee-6e479ba77ad6",
+      "dummy.staff@example.com": "e2ca8e22-15b0-4893-b8d7-0fa7247dff05",
+      "dummy.inactive@example.com": "b9754ef5-4f04-4fa4-8f4f-401be09c4281",
+      "dummy.delete@example.com": "ba17090b-4143-4322-975e-50dfa1aba9b3"
+    },
+    "user_roles": {
+      "UR-ADMIN": "07aa87a3-2b00-4763-99fc-02b0ba6e72d7",
+      "UR-MANAGER": "3bb0f1b1-7cb6-43c7-9ccf-20da5a7080d2",
+      "UR-STAFF": "3ecafae5-81c0-400a-98f2-67e600acc569",
+      "UR-DELETE": "755edbc0-60bf-43ec-a82d-c7069ea726a2"
+    }
+  },
+  "stage_3": {
+    "currencies": {
+      "IDR": "d28f831a-6b66-4cd8-b6a6-3d538d25e296",
+      "USD": "d47414de-f95f-413f-8f21-499942c9a0bc",
+      "EUR": "97c79df7-ee77-4009-9a2b-4ce42d00268a",
+      "SGD": "c4f95a6b-7c10-4c10-9818-0cd8b2b362bd",
+      "DEL": "b8eb431d-75fb-4c00-94ca-529c59583b11"
+    },
+    "uoms": {
+      "PCS": "4323ca81-7ebf-4c09-9f44-1d425e3412f6",
+      "BOX": "d787776b-6a62-49d4-8ce1-524ec923a313",
+      "KG": "4070a6bb-76f8-4dad-8aa4-e19045c082fb",
+      "MTR": "52cbd20e-1db4-499b-9cb6-ba7d48f92afd",
+      "UOM-DEL": "99e4b885-d9f7-4f65-9b4a-8fe8cd851bd1"
+    },
+    "categories": {
+      "CAT-RAW": "88f11593-8ec2-4749-8811-c341607d23d6",
+      "CAT-FG": "a410486e-9207-4349-b14a-29853dd7dd00",
+      "CAT-SERVICE": "afa8dd63-9e28-442e-90a2-bb6340565d4b",
+      "CAT-SPARE": "39e98875-bc82-44be-963b-42ca87ebf0c4",
+      "CAT-DEL": "8c7366a4-f147-4094-a17b-31f5011c3bf9"
+    },
+    "products": {
+      "PROD-ITEM-A": "03780dfc-1760-4e20-a347-3c1b345f2d8d",
+      "PROD-ITEM-B": "d4d18d8b-0cd7-47c1-a9d1-8d7a75ada786",
+      "PROD-SVC-A": "0fb77671-8e57-48ce-a91f-9b652ea72b18",
+      "PROD-INACTIVE": "f13b3cf0-0a5c-46cd-944c-0bd3b4e74f2e",
+      "PROD-DEL": "d9b5a189-d403-4ad8-a2b8-08ce838692e6"
+    },
+    "parties": {
+      "PARTY-CUST-01": "0afdc96d-7c06-41e1-a1fd-7387468ea5b7",
+      "PARTY-SUPP-01": "30dcc2b1-372f-44fe-ae35-0f974a542487",
+      "PARTY-BOTH-01": "dfd6e4f6-4ed7-4d35-a356-46e49613dbd4",
+      "PARTY-INACTIVE": "00adbb93-26d3-46e3-abb4-fa0b23188b8f",
+      "PARTY-DEL": "96cb0b74-8d3d-4fde-ad7e-a25393b3edf5"
+    }
+  },
+  "stage_4": {
+    "leads": {
+      "LEAD-001": "205fcbcd-a5e2-431a-9dba-4548920f3608",
+      "LEAD-002": "b2e73764-8974-4450-8258-997b1ba0387e",
+      "LEAD-003": "194795df-9724-4ab3-820d-1a1fa59e2c2f",
+      "LEAD-INACTIVE": "ac3707c0-1a86-4fa6-b34b-440b919a1745",
+      "LEAD-DEL": "e0ae191c-aa69-4eeb-91dc-8c3f9be87f17"
+    },
+    "quotations": {
+      "SQ-2026-001": "610bec75-1a39-428b-9ff8-921b4f55066e",
+      "SQ-2026-002": "2afee705-7c35-45ee-b283-e13922447f43",
+      "SQ-2026-003": "bd910b60-b5c5-4800-9da5-d4e0b2597d49",
+      "SQ-2026-EXPIRED": "873c66e4-a53e-4cd2-91b2-35f5f6e8ec8b",
+      "SQ-DEL": "25c526cd-e105-4f4d-a9f6-001415bef98c"
+    },
+    "sales_orders": {
+      "SO-2026-001": "fe9a8d52-fa3d-4d48-a3f4-6d0aad8bee7e",
+      "SO-2026-002": "1b9fa0b1-e2ec-49f2-b0c8-d7f1c60dff27",
+      "SO-2026-003": "8f4a6e86-2317-43e8-b5af-6c18a0692da6",
+      "SO-CANCELLED": "2498eaef-4da1-4cd1-ba25-6166232ce47a",
+      "SO-DEL": "ea35094e-2866-4b58-a87e-0890f82e3d13"
+    },
+    "deliveries": {
+      "DO-2026-001": "74cb5e30-d05b-4038-aec1-6585f302738c",
+      "DO-2026-002": "dfeb5999-4611-457c-9430-e2174e812d1b",
+      "DO-2026-003": "6479cb66-474c-44e8-a137-ff921f17de6a",
+      "DO-RETURNED": "9c7c5e40-4425-4aa1-8440-9fae2e1a5861",
+      "DO-DEL": "cebbe592-2444-400f-80db-67e6c6823306"
+    }
+  },
+  "stage_5": {
+    "purchase_requisitions": {
+      "PR-2026-001": "a1cb1bf4-d4ce-4547-8f57-2d74e9555901",
+      "PR-2026-002": "22b91de9-b720-4785-a2ec-8fe3d117c477",
+      "PR-2026-003": "b79ddb07-12b5-4832-bc33-4f3b9482441f",
+      "PR-CANCELLED": "14a1d7bc-f819-4524-affd-2dcb552456eb",
+      "PR-DEL": "40f1b1e7-4dfa-479b-9d09-de7eab8d0b8f"
+    },
+    "rfqs": {
+      "RFQ-2026-001": "09b19f89-83a6-4549-9e1e-77023c360cc3",
+      "RFQ-2026-002": "94b24f11-855c-4102-8aed-decac962c069",
+      "RFQ-2026-003": "96271735-41d8-44e4-b9f1-e1680e5f5686",
+      "RFQ-EXPIRED": "09ab5115-8080-46d7-90d5-588f1d3c2ee0",
+      "RFQ-DEL": "aa1eb2fc-3dbc-4597-8db5-3f7530e4c81c"
+    },
+    "purchase_orders": {
+      "PO-2026-001": "75f6e1d5-4fc0-41b5-91fa-bb1a764b74ef",
+      "PO-2026-002": "37469e79-5c08-4631-8804-d467270cb091",
+      "PO-2026-003": "fb28c9b7-4bc9-4115-a819-641469641932",
+      "PO-CANCELLED": "dd98ae84-b6e0-435c-91f9-995698ca4eeb",
+      "PO-DEL": "51c6e05f-7e8e-444e-a235-baddd0b1689e"
+    },
+    "stock_moves": {
+      "SM-2026-001": "ec1c7856-f253-4110-a2eb-c947dd46f201",
+      "SM-2026-002": "148c936e-f2ce-4d3b-a534-efc65ccc1a0a",
+      "SM-2026-003": "dca4af62-7df1-4c19-a08a-051d16f7e15b",
+      "SM-CANCELLED": "3d72a2fc-835d-4896-85b2-baca22b46e6e",
+      "SM-DEL": "b76f93fc-7d88-45a1-a631-18bff331ada9"
+    },
+    "stock_counts": {
+      "SC-2026-Q1": "897f1f41-c03a-4741-9173-34f5596c6f2a",
+      "SC-2026-Q2": "94880fb0-23cb-4c8f-88e9-af61c6e7f478",
+      "SC-2025-FINISH": "d6312fe3-2606-4b7b-9685-4fd9b94e214e",
+      "SC-CANCELLED": "e1146ead-beda-4f6a-a1e4-9fbd8950befe",
+      "SC-DEL": "65f2bc0f-9540-48e7-b4cb-410494bd9da2"
+    }
+  },
+  "stage_6": {
+    "projects": {
+      "PROJ-2026-001": "492d0513-c8cb-4400-8eaf-2f6c4b0fe721",
+      "PROJ-2026-002": "6bad3f73-994a-450c-a476-d18998b1dc93",
+      "PROJ-2026-003": "7ca6691a-0c88-4bc6-92d5-c0587ab7375f",
+      "PROJ-COMPLETED": "56cef580-a799-4285-a8a1-1c91b652dce3",
+      "PROJ-DEL": "167b573c-01e5-4a13-9a9d-ab817055b416"
+    },
+    "project_tasks": {
+      "TASK-001": "236ffe9a-ac85-405f-a134-e0f242732436",
+      "TASK-002": "6bd592b6-d533-46f4-9d92-78449a2ca459",
+      "TASK-003": "896a5715-d058-400e-87a1-57cb1a8729f4",
+      "TASK-BLOCKED": "b348f536-f030-4c7d-aafd-8b5175722bc0",
+      "TASK-DEL": "7283e1f6-1a9f-4593-9b4f-5e33984296dd"
+    },
+    "production_orders": {
+      "PO-MFG-2026-001": "5019143b-e86d-44a3-9978-b1f38d2e5056",
+      "PO-MFG-2026-002": "eba71708-ce81-4e26-95a6-7cdd74d02e6f",
+      "PO-MFG-2026-003": "01eeaca9-0528-429b-9cf0-fbb05b45ba32",
+      "PO-MFG-CANCELLED": "7765ea75-21af-4d63-a5ce-f3f1981b6f80",
+      "PO-MFG-DEL": "4ac8a63a-4cb0-4df9-8390-ea3e91764fde"
+    },
+    "work_orders": {
+      "WO-2026-001": "0ffe382d-1d58-468d-8110-b637378edbc5",
+      "WO-2026-002": "fb11c5bc-8ab9-45d7-9160-76af7dd4249e",
+      "WO-2026-003": "691707e1-bdeb-4075-8227-d9793890795c",
+      "WO-PAUSED": "1ab1c67d-074c-4f48-9393-e1bf03da13d2",
+      "WO-DEL": "ee94cae1-b672-4841-a3ab-e9d374c7b47b"
+    }
+  },
+  "stage_7": {
+    "asset_categories": {
+      "ACAT-IT": "646fb8b1-a947-4b0c-9e73-7a764e1e9e92",
+      "ACAT-VEHICLE": "93af3f5f-de8d-40f1-9d86-573e8a56b1e5",
+      "ACAT-MACHINERY": "feea8823-53d0-4960-bf4b-e6f349a851a6",
+      "ACAT-BUILDING": "459c6e6b-f495-4cd0-a66d-5b44b18b719b",
+      "ACAT-DEL": "32cf3f09-5e21-4e9e-8625-1dfd71302db9"
+    },
+    "assets": {}
+  }
+}

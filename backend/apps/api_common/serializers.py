@@ -15,6 +15,8 @@ SYSTEM_READ_ONLY_FIELDS = {
     "date_joined",
     "posted_by",
     "approved_by",
+    "created_by",
+    "updated_by",
     "occurred_at",
 }
 

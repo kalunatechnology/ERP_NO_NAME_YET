@@ -35,11 +35,18 @@ class Opportunity(models.Model):
     """ERD entity: CRM_OPPORTUNITY."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey("core.Tenant", on_delete=models.PROTECT, related_name="crm_opportunities", null=True, blank=True)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="crm_opportunities", null=True, blank=True)
     document = models.ForeignKey("core.BusinessDocument", on_delete=models.PROTECT, db_column="document_id", related_name="crm_opportunity_document_set", null=True, blank=True)
     customer_party = models.ForeignKey("master_data.Party", on_delete=models.PROTECT, db_column="customer_party_id", related_name="crm_opportunity_customer_party_set", null=True, blank=True)
     lead = models.ForeignKey("crm.Lead", on_delete=models.PROTECT, db_column="lead_id", related_name="crm_opportunity_lead_set", null=True, blank=True)
     owner_user = models.ForeignKey("accounts.User", on_delete=models.PROTECT, db_column="owner_user_id", related_name="crm_opportunity_owner_user_set", null=True, blank=True)
     pipeline_stage = models.CharField(max_length=255, blank=True, default="")
+    stage = models.ForeignKey("crm.PipelineStage", on_delete=models.PROTECT, related_name="opportunities", null=True, blank=True)
+    opportunity_name = models.CharField(max_length=255, blank=True, default="")
+    lost_reason = models.TextField(blank=True, default="")
+    opened_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
     probability_percent = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
     expected_amount = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
     expected_margin = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
@@ -151,6 +158,7 @@ class ExecutiveApproval(models.Model):
     """ERD entity: CRM_EXECUTIVE_APPROVAL."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="crm_executive_approvals", null=True, blank=True)
     document = models.ForeignKey("core.BusinessDocument", on_delete=models.PROTECT, db_column="document_id", related_name="crm_executiveapproval_document_set", null=True, blank=True)
     opportunity = models.ForeignKey("crm.Opportunity", on_delete=models.PROTECT, db_column="opportunity_id", related_name="crm_executiveapproval_opportunity_set", null=True, blank=True)
     quotation = models.ForeignKey("sales.Quotation", on_delete=models.PROTECT, db_column="quotation_id", related_name="crm_executiveapproval_quotation_set", null=True, blank=True)
@@ -407,3 +415,145 @@ class SurveyAnswer(models.Model):
 
     def __str__(self):
         return str(self.id)
+
+
+class CustomerInquiry(models.Model):
+    """Incoming customer question that starts the CRM commercial workflow."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey("core.Tenant", on_delete=models.PROTECT, related_name="crm_inquiries", null=True, blank=True)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="crm_inquiries", null=True, blank=True)
+    document = models.ForeignKey("core.BusinessDocument", on_delete=models.PROTECT, related_name="crm_inquiries", null=True, blank=True)
+    customer_party = models.ForeignKey("master_data.Party", on_delete=models.PROTECT, related_name="crm_inquiries", null=True, blank=True)
+    contact = models.ForeignKey("master_data.Contact", on_delete=models.PROTECT, related_name="crm_inquiries", null=True, blank=True)
+    owner_user = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="owned_crm_inquiries", null=True, blank=True)
+    opportunity = models.OneToOneField("crm.Opportunity", on_delete=models.PROTECT, related_name="source_inquiry", null=True, blank=True)
+    inquiry_number = models.CharField(max_length=64, blank=True, default="")
+    source_channel = models.CharField(max_length=32, blank=True, default="MANUAL")
+    subject = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    customer_name = models.CharField(max_length=255, blank=True, default="")
+    customer_email = models.EmailField(blank=True, default="")
+    expected_delivery_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=32, blank=True, default="NEW")
+    qualified_at = models.DateTimeField(null=True, blank=True)
+    quoted_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "crm_customer_inquiry"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["company", "status"], name="crm_inquiry_queue")]
+
+
+class InquiryRequirement(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    inquiry = models.ForeignKey("crm.CustomerInquiry", on_delete=models.CASCADE, related_name="requirements")
+    product = models.ForeignKey("master_data.Product", on_delete=models.PROTECT, related_name="crm_inquiry_requirements", null=True, blank=True)
+    uom = models.ForeignKey("master_data.UOM", on_delete=models.PROTECT, related_name="crm_inquiry_requirements", null=True, blank=True)
+    requirement_type = models.CharField(max_length=32, blank=True, default="PRODUCT")
+    description = models.CharField(max_length=255)
+    specification_json = models.JSONField(default=dict, blank=True)
+    quantity = models.DecimalField(max_digits=24, decimal_places=6, default=1)
+    target_unit_price = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    status = models.CharField(max_length=32, blank=True, default="DRAFT")
+
+    class Meta:
+        db_table = "crm_inquiry_requirement"
+
+
+class CostEstimate(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey("core.Tenant", on_delete=models.PROTECT, related_name="crm_cost_estimates", null=True, blank=True)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="crm_cost_estimates", null=True, blank=True)
+    inquiry = models.ForeignKey("crm.CustomerInquiry", on_delete=models.PROTECT, related_name="cost_estimates", null=True, blank=True)
+    opportunity = models.ForeignKey("crm.Opportunity", on_delete=models.PROTECT, related_name="cost_estimates", null=True, blank=True)
+    estimate_number = models.CharField(max_length=64, blank=True, default="")
+    version_number = models.PositiveIntegerField(default=1)
+    direct_cost = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    overhead_cost = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    contingency_amount = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    total_cost = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    markup_percent = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    offered_amount = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    margin_amount = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    margin_percent = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    status = models.CharField(max_length=32, blank=True, default="DRAFT")
+    calculated_at = models.DateTimeField(null=True, blank=True)
+    calculated_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="calculated_crm_estimates", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "crm_cost_estimate"
+        constraints = [models.UniqueConstraint(fields=["inquiry", "version_number"], name="crm_estimate_inquiry_version")]
+
+
+class CostEstimateLine(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    estimate = models.ForeignKey("crm.CostEstimate", on_delete=models.CASCADE, related_name="lines")
+    requirement = models.ForeignKey("crm.InquiryRequirement", on_delete=models.PROTECT, related_name="estimate_lines", null=True, blank=True)
+    product = models.ForeignKey("master_data.Product", on_delete=models.PROTECT, related_name="crm_estimate_lines", null=True, blank=True)
+    cost_element = models.CharField(max_length=32, blank=True, default="MATERIAL")
+    description = models.CharField(max_length=255)
+    quantity = models.DecimalField(max_digits=24, decimal_places=6, default=1)
+    unit_cost = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    amount = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    calculation_source = models.CharField(max_length=32, blank=True, default="MANUAL")
+
+    class Meta:
+        db_table = "crm_cost_estimate_line"
+
+
+class QuotationVersion(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    quotation = models.ForeignKey("sales.Quotation", on_delete=models.CASCADE, related_name="versions")
+    estimate = models.ForeignKey("crm.CostEstimate", on_delete=models.PROTECT, related_name="quotation_versions", null=True, blank=True)
+    version_number = models.PositiveIntegerField(default=1)
+    subtotal = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    tax_amount = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    total_amount = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    estimated_cost = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    margin_percent = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    payload_json = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="created_quotation_versions", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "crm_quotation_version"
+        constraints = [models.UniqueConstraint(fields=["quotation", "version_number"], name="crm_quotation_version_unique")]
+
+
+class QuotationDelivery(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    quotation = models.ForeignKey("sales.Quotation", on_delete=models.CASCADE, related_name="deliveries")
+    version = models.ForeignKey("crm.QuotationVersion", on_delete=models.PROTECT, related_name="deliveries", null=True, blank=True)
+    channel = models.CharField(max_length=32, blank=True, default="EMAIL")
+    recipient = models.CharField(max_length=255, blank=True, default="")
+    external_reference = models.CharField(max_length=255, blank=True, default="")
+    status = models.CharField(max_length=32, blank=True, default="QUEUED")
+    sent_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "crm_quotation_delivery"
+
+
+class CRMWorkflowEvent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, related_name="crm_workflow_events", null=True, blank=True)
+    inquiry = models.ForeignKey("crm.CustomerInquiry", on_delete=models.CASCADE, related_name="workflow_events", null=True, blank=True)
+    opportunity = models.ForeignKey("crm.Opportunity", on_delete=models.CASCADE, related_name="workflow_events", null=True, blank=True)
+    event_type = models.CharField(max_length=64)
+    from_status = models.CharField(max_length=32, blank=True, default="")
+    to_status = models.CharField(max_length=32, blank=True, default="")
+    actor = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="crm_workflow_events", null=True, blank=True)
+    payload_json = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "crm_workflow_event"
+        ordering = ["-created_at"]
