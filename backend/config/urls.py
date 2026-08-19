@@ -3,11 +3,8 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-from drf_spectacular.views import (
-    SpectacularAPIView,
-    SpectacularRedocView,
-    SpectacularSwaggerView,
-)
+from drf_spectacular.views import SpectacularAPIView
+from django_scalar.views import scalar_viewer
 
 from config.health import HealthView
 
@@ -26,30 +23,21 @@ urlpatterns = [
         name="health",
     ),
 
-    # OpenAPI schema
+    # OpenAPI schema (JSON/YAML)
     path(
         "api/schema/",
         SpectacularAPIView.as_view(),
         name="api-schema",
     ),
 
-    # Swagger UI
+    # Scalar API Documentation (menggantikan Swagger UI & ReDoc)
     path(
         "api/docs/",
-        SpectacularSwaggerView.as_view(
-            url_name="api-schema",
-        ),
-        name="swagger-ui",
+        scalar_viewer,
+        {"openapi_url": "/api/schema/"},
+        name="scalar-docs",
     ),
 
-    # ReDoc
-    path(
-        "api/redoc/",
-        SpectacularRedocView.as_view(
-            url_name="api-schema",
-        ),
-        name="redoc",
-    ),
 
     # Seluruh ERP API masuk melalui satu file pusat
     path(
@@ -57,6 +45,7 @@ urlpatterns = [
         include("config.api_urls"),
     ),
 ]
+
 
 
 if settings.DEBUG:

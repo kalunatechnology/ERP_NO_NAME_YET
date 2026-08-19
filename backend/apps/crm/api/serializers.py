@@ -128,7 +128,9 @@ class CustomerInquirySerializer(ERPModelSerializer):
     customer_display = serializers.SerializerMethodField()
 
     def get_customer_display(self, obj):
-        return obj.customer_party.display_name or obj.customer_party.legal_name if obj.customer_party else obj.customer_name
+        if obj.customer_party:
+            return obj.customer_party.display_name or obj.customer_party.legal_name or obj.customer_name
+        return obj.customer_name
 
     class Meta:
         model = CustomerInquiry

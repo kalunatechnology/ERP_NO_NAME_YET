@@ -24,6 +24,14 @@ class OpportunityViewSet(BaseERPModelViewSet):
         serializer.validated_data.setdefault("owner_user", self.request.user)
         serializer.validated_data.setdefault("status", "OPEN")
         serializer.validated_data.setdefault("opened_at", timezone.now())
+        if "company" not in serializer.validated_data or not serializer.validated_data["company"]:
+            from apps.core.models import Company
+            comp = getattr(self.request, "company", None)
+            if not comp and hasattr(self.request.user, "userrole_set") and self.request.user.userrole_set.exists():
+                comp = self.request.user.userrole_set.first().company
+            serializer.validated_data["company"] = comp or Company.objects.first()
+        if "tenant" not in serializer.validated_data or not serializer.validated_data["tenant"]:
+            serializer.validated_data["tenant"] = getattr(serializer.validated_data.get("company"), "tenant", None) or getattr(self.request.user, "tenant", None)
         super().perform_create(serializer)
 
     @action(detail=True, methods=["post"], url_path="move-stage")
@@ -38,11 +46,15 @@ class OpportunityViewSet(BaseERPModelViewSet):
         opportunity = self.get_object()
         customer = opportunity.customer_party
         from apps.finance.models import BillingDocument
+        from apps.sales.models import Quotation, Contract, Order, Delivery
         from apps.projects.models import Project
-        from apps.sales.models import Contract, Delivery, Order, Quotation
+        from apps.crm.models import Feedback
         return Response({
-            "customer": {"id": str(customer.id), "name": customer.display_name or customer.legal_name} if customer else None,
-            "opportunity_id": str(opportunity.id),
+            "customer": {
+                "id": customer.id if customer else None,
+                "name": (customer.display_name or customer.legal_name) if customer else "No Customer",
+                "party_code": customer.party_code if customer else "-"
+            },
             "quotations": Quotation.objects.filter(customer_party=customer).count(),
             "contracts": Contract.objects.filter(customer_party=customer).count(),
             "orders": Order.objects.filter(customer_party=customer).count(),
@@ -50,6 +62,168 @@ class OpportunityViewSet(BaseERPModelViewSet):
             "deliveries": Delivery.objects.filter(customer_party=customer).count(),
             "outstanding_ar": str(BillingDocument.objects.filter(party=customer, billing_type="CUSTOMER_INVOICE", status="POSTED").aggregate(total=Sum("outstanding_amount"))["total"] or 0),
             "feedback_count": Feedback.objects.filter(customer_party=customer).count(),
+        })
+
+    @action(detail=True, methods=["post"], url_path="process-deal-won")
+    def process_deal_won(self, request, pk=None):
+        if not is_crm(request.user):
+            raise PermissionDenied("Hanya CRM yang dapat memproses Deal Won.")
+        opportunity = self.get_object()
+        customer = opportunity.customer_party
+        if not customer:
+            from apps.master_data.models import Party
+            customer = (
+                Party.objects.filter(tenant=opportunity.tenant, status="ACTIVE").first()
+                or Party.objects.filter(status="ACTIVE").first()
+                or Party.objects.first()
+            )
+            if customer:
+                opportunity.customer_party = customer
+                opportunity.save(update_fields=["customer_party"])
+        if not customer:
+            raise ValidationError("Opportunity harus memiliki customer party.")
+
+        company = opportunity.company
+        if not company and hasattr(request.user, "userrole_set") and request.user.userrole_set.exists():
+            company = request.user.userrole_set.first().company
+        if not company:
+            from apps.core.models import Company
+            company = Company.objects.filter(tenant=opportunity.tenant).first() or Company.objects.first()
+            if company:
+                opportunity.company = company
+                opportunity.save(update_fields=["company"])
+
+        # 1. Update opportunity to WON
+        opportunity.status = "WON"
+        opportunity.pipeline_stage = "WON"
+        opportunity.probability_percent = 100
+        opportunity.closed_at = timezone.now()
+        opportunity.save(update_fields=["status", "pipeline_stage", "probability_percent", "closed_at"])
+
+        # 2. Calculate Credit Snapshot
+        from apps.crm.workflow_services import calculate_credit_snapshot
+        snapshot = calculate_credit_snapshot(customer, company)
+        deal_amount = opportunity.expected_amount or 0
+
+        from apps.sales.models import Order, Quotation
+        from apps.projects.models import Project
+        from apps.finance.models import BillingDocument
+
+        # Decision rule: Safe if status != HOLD and available_credit >= deal_amount and overdue <= 0
+        is_safe = (snapshot.credit_status != "HOLD") and (snapshot.available_credit >= deal_amount) and (snapshot.overdue_amount <= 0)
+
+        created_order = None
+        created_project = None
+        proforma_billing = None
+
+        if is_safe:
+            quotation = Quotation.objects.filter(customer_party=customer).first()
+            created_order = Order.objects.create(
+                customer_party=customer,
+                quotation=quotation,
+                currency=customer.default_currency,
+                order_date=timezone.localdate(),
+                total_amount=deal_amount,
+                status="CONFIRMED"
+            )
+            from apps.accounts.models import User
+            from apps.projects.models import Member
+            pm_user = User.objects.filter(username="demo.project_manager").first() or User.objects.filter(email="project.manager.demo@erp.local").first() or request.user
+            created_project = Project.objects.create(
+                tenant=opportunity.tenant,
+                company=company,
+                customer_party=customer,
+                sales_order=created_order,
+                project_manager=pm_user,
+                manager_name=getattr(pm_user, "full_name", "") or getattr(pm_user, "username", "") if pm_user else "",
+                project_code=f"PRJ-CRM-{str(opportunity.id)[:6].upper()}",
+                project_name=opportunity.opportunity_name or f"Project {customer.display_name or customer.legal_name}",
+                budget_amount=deal_amount,
+                status="PLANNED"
+            )
+            if pm_user:
+                Member.objects.get_or_create(project=created_project, user=pm_user, defaults={"project_role": "PROJECT_MANAGER", "status": "ACTIVE"})
+            from apps.projects.workflow_services import ensure_project_readiness_prerequisites
+            ensure_project_readiness_prerequisites(created_project, user=request.user)
+        else:
+            proforma_billing = BillingDocument.objects.create(
+                company=company,
+                party=customer,
+                billing_type="PROFORMA_INVOICE",
+                status="DRAFT",
+                total_amount=deal_amount,
+                invoice_number=f"PROFORMA-{str(opportunity.id)[:6].upper()}"
+            )
+
+        return Response({
+            "opportunity_id": str(opportunity.id),
+            "opportunity_name": opportunity.opportunity_name,
+            "stage": opportunity.status,
+            "deal_amount": str(deal_amount),
+            "credit_evaluation": {
+                "snapshot_id": str(snapshot.id),
+                "credit_limit": str(snapshot.credit_limit),
+                "outstanding_receivable": str(snapshot.outstanding_receivable),
+                "overdue_amount": str(snapshot.overdue_amount),
+                "available_credit": str(snapshot.available_credit),
+                "credit_status": snapshot.credit_status,
+                "risk_category": snapshot.risk_category,
+                "is_safe": is_safe,
+            },
+            "decision": "SEND_TO_PROJECT_MANAGEMENT" if is_safe else "SEND_BILL_TO_CLIENT_MANUALLY",
+            "handoff": {
+                "sales_order_id": str(created_order.id) if created_order else None,
+                "project_id": str(created_project.id) if created_project else None,
+                "proforma_invoice_id": str(proforma_billing.id) if proforma_billing else None,
+                "note": "Proyek siap dijalankan di Project Management Workspace." if is_safe else "Batas kredit terlampaui. Kirim tagihan DP secara manual ke klien atau minta Executive Override."
+            }
+        })
+
+    @action(detail=True, methods=["post"], url_path="executive-override")
+    def executive_override(self, request, pk=None):
+        if not is_executive(request.user):
+            raise PermissionDenied("Hanya Executive yang berhak memberikan credit override.")
+        opportunity = self.get_object()
+        customer = opportunity.customer_party
+        company = opportunity.company
+        if not company and hasattr(request.user, "userrole_set") and request.user.userrole_set.exists():
+            company = request.user.userrole_set.first().company
+        deal_amount = opportunity.expected_amount or 0
+
+        from apps.sales.models import Order
+        from apps.projects.models import Project, Member
+        from apps.accounts.models import User
+        from apps.projects.workflow_services import ensure_project_readiness_prerequisites
+
+        created_order = Order.objects.create(
+            customer_party=customer,
+            currency=customer.default_currency if customer else None,
+            order_date=timezone.localdate(),
+            total_amount=deal_amount,
+            status="CONFIRMED"
+        )
+        pm_user = User.objects.filter(username="demo.project_manager").first() or User.objects.filter(email="project.manager.demo@erp.local").first() or request.user
+        created_project = Project.objects.create(
+            tenant=opportunity.tenant,
+            company=company,
+            customer_party=customer,
+            sales_order=created_order,
+            project_manager=pm_user,
+            manager_name=getattr(pm_user, "full_name", "") or getattr(pm_user, "username", "") if pm_user else "",
+            project_code=f"PRJ-CRM-OVR-{str(opportunity.id)[:6].upper()}",
+            project_name=f"[OVERRIDE] {opportunity.opportunity_name or 'Project'}",
+            budget_amount=deal_amount,
+            status="PLANNED"
+        )
+        if pm_user:
+            Member.objects.get_or_create(project=created_project, user=pm_user, defaults={"project_role": "PROJECT_MANAGER", "status": "ACTIVE"})
+        ensure_project_readiness_prerequisites(created_project, user=request.user)
+
+        return Response({
+            "success": True,
+            "message": "Executive override disetujui. Project berhasil diteruskan ke Project Management.",
+            "sales_order_id": str(created_order.id),
+            "project_id": str(created_project.id),
         })
 
 
@@ -176,15 +350,38 @@ class CustomerInquiryViewSet(BaseERPModelViewSet):
     serializer_class = CustomerInquirySerializer
 
     def perform_create(self, serializer):
-        if not is_crm(self.request.user): raise PermissionDenied("Hanya CRM yang dapat mencatat inquiry.")
+        if not is_crm(self.request.user):
+            raise PermissionDenied("Hanya CRM yang dapat mencatat inquiry.")
         serializer.validated_data.setdefault("owner_user", self.request.user)
         serializer.validated_data.setdefault("status", "NEW")
-        instance = serializer.save(
-            tenant_id=getattr(self.request.user, "tenant_id", None),
-            company_id=self.request.headers.get("X-Company-ID"),
-            inquiry_number=f"INQ-{timezone.now():%Y%m%d%H%M%S}",
+        if not serializer.validated_data.get("inquiry_number"):
+            serializer.validated_data["inquiry_number"] = f"INQ-{timezone.now():%Y%m%d%H%M%S}"
+
+        # Resolve company
+        if "company" not in serializer.validated_data or not serializer.validated_data["company"]:
+            from apps.core.models import Company
+            comp_id = self.request.headers.get("X-Company-ID")
+            comp = Company.objects.filter(pk=comp_id).first() if comp_id else None
+            if not comp and hasattr(self.request.user, "userrole_set") and self.request.user.userrole_set.exists():
+                comp = self.request.user.userrole_set.first().company
+            serializer.validated_data["company"] = comp or Company.objects.first()
+
+        # Resolve tenant
+        if "tenant" not in serializer.validated_data or not serializer.validated_data["tenant"]:
+            serializer.validated_data["tenant"] = (
+                getattr(serializer.validated_data.get("company"), "tenant", None)
+                or getattr(self.request.user, "tenant", None)
+            )
+
+        super().perform_create(serializer)
+        instance = serializer.instance
+        CRMWorkflowEvent.objects.create(
+            company=instance.company,
+            inquiry=instance,
+            event_type="INQUIRY_CREATED",
+            to_status="NEW",
+            actor=self.request.user,
         )
-        CRMWorkflowEvent.objects.create(company=instance.company, inquiry=instance, event_type="INQUIRY_CREATED", to_status="NEW", actor=self.request.user)
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
@@ -214,14 +411,39 @@ class CostEstimateViewSet(BaseERPModelViewSet):
     serializer_class = CostEstimateSerializer
 
     def perform_create(self, serializer):
-        if not is_crm(self.request.user): raise PermissionDenied("Hanya CRM yang dapat membuat estimate.")
+        if not is_crm(self.request.user):
+            raise PermissionDenied("Hanya CRM yang dapat membuat estimate.")
         inquiry = serializer.validated_data.get("inquiry")
         version = CostEstimate.objects.filter(inquiry=inquiry).count() + 1 if inquiry else 1
         serializer.validated_data.setdefault("opportunity", inquiry.opportunity if inquiry else None)
         serializer.validated_data.setdefault("version_number", version)
-        instance = serializer.save(tenant_id=getattr(self.request.user, "tenant_id", None), company_id=self.request.headers.get("X-Company-ID"), estimate_number=f"EST-{timezone.now():%Y%m%d%H%M%S}", status="DRAFT")
+        if not serializer.validated_data.get("estimate_number"):
+            serializer.validated_data["estimate_number"] = f"EST-{timezone.now():%Y%m%d%H%M%S}"
+        serializer.validated_data.setdefault("status", "DRAFT")
+
+        # Inherit company directly from inquiry if available
+        if inquiry and inquiry.company and ("company" not in serializer.validated_data or not serializer.validated_data["company"]):
+            serializer.validated_data["company"] = inquiry.company
+        if "company" not in serializer.validated_data or not serializer.validated_data["company"]:
+            from apps.core.models import Company
+            comp_id = self.request.headers.get("X-Company-ID")
+            comp = Company.objects.filter(pk=comp_id).first() if comp_id else None
+            if not comp and hasattr(self.request.user, "userrole_set") and self.request.user.userrole_set.exists():
+                comp = self.request.user.userrole_set.first().company
+            serializer.validated_data["company"] = comp or Company.objects.first()
+
+        # Inherit tenant
+        if not serializer.validated_data.get("tenant"):
+            serializer.validated_data["tenant"] = (
+                getattr(serializer.validated_data.get("company"), "tenant", None)
+                or (inquiry.tenant if inquiry else None)
+                or getattr(self.request.user, "tenant", None)
+            )
+
+        super().perform_create(serializer)
         if inquiry and inquiry.status == "QUALIFIED":
-            inquiry.status = "SPECIFICATION_READY"; inquiry.save(update_fields=["status", "updated_at"])
+            inquiry.status = "SPECIFICATION_READY"
+            inquiry.save(update_fields=["status", "updated_at"])
 
     @action(detail=True, methods=["post"])
     def calculate(self, request, pk=None):

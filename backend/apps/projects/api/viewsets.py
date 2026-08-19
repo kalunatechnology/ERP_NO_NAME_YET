@@ -19,10 +19,11 @@ class ProjectViewSet(BaseERPModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if is_executive(self.request.user) or is_finance(self.request.user):
+        if is_executive(self.request.user) or is_finance(self.request.user) or is_project_management(self.request.user):
             return queryset
         return queryset.filter(
             Q(project_manager=self.request.user)
+            | Q(project_manager__isnull=True)
             | Q(projects_member_project_set__user=self.request.user, projects_member_project_set__status__in=["", "ACTIVE"])
         ).distinct()
 

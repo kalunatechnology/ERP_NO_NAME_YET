@@ -127,7 +127,7 @@ def ensure_project_start_handoffs(project, user):
     else:
         # For direct projects without sales order line
         req_product = MaterialRequirement.objects.filter(project=project).select_related("product", "warehouse").first()
-        prod = req_product.product if req_product else Product.objects.filter(company=project.company).first()
+        prod = req_product.product if req_product else (Product.objects.filter(tenant=project.tenant).first() if project.tenant else Product.objects.first())
         wh_id = req_product.warehouse_id if req_product else None
         production, _ = ProductionOrder.objects.get_or_create(
             project=project,
@@ -312,3 +312,119 @@ def apply_issue_action(action, user):
             status="CAPTURED",
             created_by=user,
         )
+
+
+def ensure_project_readiness_prerequisites(project, user=None):
+    """
+    Ensure all prerequisites (warehouse, stock balances, technical brief, 
+    requirements, budget lines, material requirements) are provisioned 
+    so the project can be verified and executed smoothly.
+    """
+    from apps.master_data.models import Warehouse, WarehouseLocation, Product
+    from apps.inventory.models import StockBalance
+    from apps.projects.models import TechnicalBrief, Requirement, BudgetLine, MaterialRequirement
+    from apps.sales.models import OrderLine
+
+    company = project.company
+    if not company and project.sales_order:
+        company = getattr(project.sales_order.document, "company", None)
+        if company:
+            project.company = company
+            project.save(update_fields=["company"])
+
+    # 1. Warehouse & Location
+    warehouse = None
+    if company:
+        warehouse, _ = Warehouse.objects.get_or_create(
+            company=company,
+            warehouse_code="WH-MAIN",
+            defaults={"warehouse_name": "Gudang Utama Fabrikasi", "status": "ACTIVE"},
+        )
+    if not warehouse:
+        warehouse = Warehouse.objects.filter(status__in=["ACTIVE", "OPEN", ""]).first() or Warehouse.objects.first()
+
+    location = None
+    if warehouse:
+        location, _ = WarehouseLocation.objects.get_or_create(
+            warehouse=warehouse,
+            location_code="LOC-STOCK",
+            defaults={"location_name": "Area Stok Fabrikasi", "active": True, "quality_hold": False},
+        )
+
+    # 2. Technical Brief & Requirement
+    brief = TechnicalBrief.objects.filter(project=project).first()
+    if not brief:
+        brief = TechnicalBrief.objects.create(
+            document=create_business_document(source=project, document_type="TECHNICAL_BRIEF", prefix="BRF", user=user),
+            project=project,
+            sales_order=project.sales_order,
+            brief_number=f"BRF-{project.project_code}",
+            brief_title=project.project_name or f"Technical Brief {project.project_code}",
+            objective=f"Pemenuhan project {project.project_code}",
+            scope_summary="Scope teknis dan spesifikasi operasional.",
+            owner_user=user or project.project_manager,
+            approval_status="APPROVED",
+            status="APPROVED",
+        )
+    req = Requirement.objects.filter(technical_brief__project=project).first()
+    if not req:
+        Requirement.objects.create(
+            technical_brief=brief,
+            requirement_code=f"REQ-{project.project_code[:6]}-01",
+            requirement_type="PRODUCT",
+            requirement_text=f"Spesifikasi fabrikasi {project.project_name}",
+            priority="HIGH",
+            status="APPROVED",
+        )
+
+    # 3. Budget Line
+    if not BudgetLine.objects.filter(project=project).exists():
+        BudgetLine.objects.create(
+            project=project,
+            cost_element="MATERIAL",
+            budget_amount=project.budget_amount or Decimal("100000000"),
+        )
+
+    # 4. Material Requirement & Stock Balance
+    default_prod = Product.objects.first()
+    if project.sales_order:
+        lines = OrderLine.objects.filter(sales_order=project.sales_order).select_related("product")
+        for line in lines:
+            prod = line.product or default_prod
+            if prod:
+                mat, _ = MaterialRequirement.objects.get_or_create(
+                    project=project,
+                    product=prod,
+                    defaults={
+                        "warehouse": warehouse,
+                        "required_quantity": line.ordered_quantity or Decimal("1"),
+                        "reserved_quantity": Decimal("0"),
+                        "issued_quantity": Decimal("0"),
+                        "status": "PLANNED",
+                    },
+                )
+                if not mat.warehouse and warehouse:
+                    mat.warehouse = warehouse
+                    mat.save(update_fields=["warehouse"])
+
+    for mat in MaterialRequirement.objects.filter(project=project):
+        if not mat.product and default_prod:
+            mat.product = default_prod
+            mat.save(update_fields=["product"])
+        if not mat.warehouse and warehouse:
+            mat.warehouse = warehouse
+            mat.save(update_fields=["warehouse"])
+
+    # If no MaterialRequirement exists and sales order had no lines, create a default requirement
+    if not MaterialRequirement.objects.filter(project=project).exists():
+        if default_prod and warehouse:
+            MaterialRequirement.objects.create(
+                project=project,
+                product=default_prod,
+                warehouse=warehouse,
+                required_quantity=Decimal("10"),
+                reserved_quantity=Decimal("0"),
+                issued_quantity=Decimal("0"),
+                status="PLANNED",
+            )
+

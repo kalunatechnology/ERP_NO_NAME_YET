@@ -77,6 +77,11 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class ERPTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["email"] = serializers.CharField(required=False)
+        self.fields["username"] = serializers.CharField(required=False)
+
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
@@ -102,6 +107,19 @@ class ERPTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
+        identifier = attrs.get("email") or attrs.get("username") or ""
+        identifier = identifier.strip()
+        if identifier:
+            from apps.accounts.models import User
+            if "@" not in identifier:
+                u = User.objects.filter(username=identifier).first()
+                if u:
+                    attrs[self.username_field] = u.email
+                else:
+                    attrs[self.username_field] = identifier
+            else:
+                attrs[self.username_field] = identifier
+
         data = super().validate(attrs)
 
         data["user"] = UserSerializer(

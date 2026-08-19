@@ -463,7 +463,7 @@ class QuotationConvertToOrderView(ERPCommandView):
             subtotal=quotation.subtotal,
             tax_amount=quotation.tax_amount,
             total_amount=quotation.total_amount,
-            status="DRAFT",
+            status="CONFIRMED",
         )
         for line in QuotationLine.objects.filter(quotation=quotation):
             OrderLine.objects.create(
@@ -678,6 +678,8 @@ class SalesOrderConvertToProjectView(ERPCommandView):
             )
         order.status = "PROJECT_CREATED"
         order.save(update_fields=["status"])
+        from apps.projects.workflow_services import ensure_project_readiness_prerequisites
+        ensure_project_readiness_prerequisites(project, user=request.user)
         create_audit_event(request=request, instance=project, event_type="CREATE_FROM_ORDER", after=snapshot(project))
         return self.ok(project_flow_data(project), "Project dan data awal berhasil dibuat dari sales order.", status.HTTP_201_CREATED)
 
@@ -889,7 +891,7 @@ class ProjectReserveMaterialsView(ERPCommandView):
         from apps.sales.models import DemandSupplyLink, OrderLine
 
         project = get_object_or_404(Project.objects.select_for_update(), pk=id)
-        if project.status not in {"VERIFIED", "MATERIAL_RESERVED"}:
+        if project.status not in {"VERIFIED", "MATERIAL_RESERVED", "RESOURCE_RESERVED"} and project.lifecycle_status not in {"VERIFIED", "RESOURCE_RESERVED"}:
             raise ValidationError({"status": "Project harus VERIFIED sebelum material di-reserve."})
         # Lock only material requirement rows. PostgreSQL rejects FOR UPDATE
         # when select_related adds an outer join for nullable product/warehouse.
@@ -968,7 +970,7 @@ class ProjectStartView(ERPCommandView):
         flow = project_flow_data(project)
         if project.lifecycle_status == "IN_PROGRESS" or project.status == "IN_PROGRESS":
             return self.ok(flow, "Project sudah berjalan.")
-        if not flow["can_start"] or project.status != "MATERIAL_RESERVED":
+        if not flow["can_start"] or (project.status not in {"MATERIAL_RESERVED", "RESOURCE_RESERVED"} and project.lifecycle_status != "RESOURCE_RESERVED"):
             raise ValidationError({
                 "code": "PROJECT_START_PREREQUISITES_MISSING",
                 "message": "Project harus VERIFIED dan seluruh material harus di-reserve sebelum dimulai.",
