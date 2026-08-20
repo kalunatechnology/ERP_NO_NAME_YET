@@ -1192,6 +1192,196 @@ class ProjectRecalculateProgressView(ERPCommandView):
         return self.ok({"project": model_payload(project), "task_count": len(tasks), "weight_total": str(explicit or Decimal("100")), "progress_percent": str(progress)}, "Progress project dihitung ulang dari task.")
 
 
+class ProjectWeeklyMonitoringView(ERPCommandView):
+    """
+    Get weekly monitoring summary & history for a project.
+    Strategy-driven: Arsalynk tenant gets full weekly schedule & delta comparison;
+    other tenants get standard project progress metrics.
+    """
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Get weekly monitoring metrics & progress history",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+    )
+    def get(self, request, id=None, pk=None, project_id=None, *args, **kwargs):
+        from apps.projects.models import Project
+        from apps.projects.access import can_access_project
+        from apps.projects.weekly_monitoring import WeeklyMonitoringFactory
+        from rest_framework.exceptions import PermissionDenied
+
+        target_id = id or pk or project_id or kwargs.get("id") or kwargs.get("pk") or kwargs.get("project_id")
+        project = get_object_or_404(Project, pk=target_id)
+        if not can_access_project(request.user, project):
+            raise PermissionDenied("Anda tidak memiliki akses ke project ini.")
+
+        tenant_code = "default"
+        if project.tenant and getattr(project.tenant, "code", None):
+            tenant_code = project.tenant.code
+        elif getattr(request.user, "tenant", None) and getattr(request.user.tenant, "code", None):
+            tenant_code = request.user.tenant.code
+
+        strategy = WeeklyMonitoringFactory.get_strategy(tenant_code)
+        summary = strategy.get_monitoring_summary(project, request.user)
+        return self.ok(summary, "Data weekly monitoring berhasil diambil.")
+
+
+class ProjectWeeklySnapshotView(ERPCommandView):
+    """
+    Record or update weekly review notes / target progress for current or specified week.
+    Only PM and Executive roles can perform weekly review.
+    """
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Record or update weekly project review snapshot",
+        request_serializer=inline_serializer(
+            name="ProjectWeeklySnapshotCommandRequest",
+            fields={
+                "week_number": serializers.IntegerField(required=False),
+                "target_progress": optional_decimal_field(),
+                "notes": serializers.CharField(required=False, allow_blank=True),
+                "issues": serializers.CharField(required=False, allow_blank=True),
+                "achievements": serializers.CharField(required=False, allow_blank=True),
+                "next_week_plan": serializers.CharField(required=False, allow_blank=True),
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+    )
+    @transaction.atomic
+    def post(self, request, id=None, pk=None, project_id=None, *args, **kwargs):
+        from apps.projects.models import Project
+        from apps.projects.access import can_manage_project
+        from apps.projects.weekly_monitoring import WeeklyMonitoringFactory
+        from rest_framework.exceptions import PermissionDenied
+
+        target_id = id or pk or project_id or kwargs.get("id") or kwargs.get("pk") or kwargs.get("project_id")
+        project = get_object_or_404(Project.objects.select_for_update(), pk=target_id)
+        if not can_manage_project(request.user, project):
+            raise PermissionDenied("Hanya Project Manager yang dapat mencatat atau mengubah review mingguan.")
+
+        tenant_code = "default"
+        if project.tenant and getattr(project.tenant, "code", None):
+            tenant_code = project.tenant.code
+        elif getattr(request.user, "tenant", None) and getattr(request.user.tenant, "code", None):
+            tenant_code = request.user.tenant.code
+
+        strategy = WeeklyMonitoringFactory.get_strategy(tenant_code)
+        try:
+            result = strategy.record_weekly_snapshot(project, request.user, request.data)
+            return self.ok(result, "Weekly review berhasil disimpan.")
+        except ValueError as e:
+            raise ValidationError({"week_number": str(e)})
+
+
+class ProjectFinancialSummaryView(ERPCommandView):
+    """
+    Get real-time Financial Performance summary for a project:
+    Budget, Actual Cost, Expected Revenue, Invoiced Revenue, Realized Revenue,
+    Gross Profit, Gross Margin %, Variances, and Historical Snapshots.
+    """
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Get comprehensive project financial performance (Revenue, Cost, Profit, Margin)",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+    )
+    def get(self, request, id=None, pk=None, project_id=None, *args, **kwargs):
+        from apps.projects.models import Project, ProjectFinancialSnapshot
+        from apps.projects.access import can_access_project
+        from apps.projects.financial_services import calculate_project_financials
+        from rest_framework.exceptions import PermissionDenied
+
+        target_id = id or pk or project_id or kwargs.get("id") or kwargs.get("pk") or kwargs.get("project_id")
+        project = get_object_or_404(Project, pk=target_id)
+        if not can_access_project(request.user, project):
+            raise PermissionDenied("Anda tidak memiliki akses ke project ini.")
+
+        financials = calculate_project_financials(project)
+        snapshots = ProjectFinancialSnapshot.objects.filter(project=project).order_by("-snapshot_date")[:10]
+        snapshots_data = [
+            {
+                "id": str(s.id),
+                "snapshot_date": str(s.snapshot_date),
+                "planned_budget": str(s.planned_budget),
+                "actual_cost": str(s.actual_cost),
+                "expected_revenue": str(s.expected_revenue),
+                "actual_revenue": str(s.invoiced_revenue),
+                "actual_gross_profit": str(s.actual_gross_profit),
+                "actual_margin_percent": str(s.actual_margin_percent),
+                "financial_health_status": s.financial_health_status,
+                "note": s.note,
+            }
+            for s in snapshots
+        ]
+        financials["snapshots"] = snapshots_data
+        return self.ok(financials, "Data performa finansial proyek berhasil diambil.")
+
+
+class ProjectFinancialTargetView(ERPCommandView):
+    """
+    Update project contract amount (expected revenue), budget, and target margin.
+    Creates an updated snapshot.
+    """
+    @command_schema(
+        tag="Commands — Projects",
+        summary="Update project financial targets & contract value",
+        request_serializer=inline_serializer(
+            name="ProjectFinancialTargetCommandRequest",
+            fields={
+                "contract_amount": optional_decimal_field(),
+                "budget_amount": optional_decimal_field(),
+                "target_margin_percent": optional_decimal_field(),
+                "note": serializers.CharField(required=False, allow_blank=True),
+            },
+        ),
+        success_status=status.HTTP_200_OK,
+    )
+    @transaction.atomic
+    def post(self, request, id=None, pk=None, project_id=None, *args, **kwargs):
+        from apps.projects.models import Project
+        from apps.projects.access import can_manage_project
+        from apps.projects.financial_services import calculate_project_financials, record_project_financial_snapshot
+        from rest_framework.exceptions import PermissionDenied
+
+        target_id = id or pk or project_id or kwargs.get("id") or kwargs.get("pk") or kwargs.get("project_id")
+        project = get_object_or_404(Project.objects.select_for_update(), pk=target_id)
+        if not can_manage_project(request.user, project):
+            raise PermissionDenied("Hanya Project Manager atau Executive yang dapat mengubah target finansial proyek.")
+
+        if "contract_amount" in request.data and request.data["contract_amount"] is not None:
+            project.contract_amount = dec(request.data["contract_amount"])
+        if "budget_amount" in request.data and request.data["budget_amount"] is not None:
+            project.budget_amount = dec(request.data["budget_amount"])
+        if "target_margin_percent" in request.data and request.data["target_margin_percent"] is not None:
+            project.target_margin_percent = dec(request.data["target_margin_percent"])
+
+        project.save(update_fields=["contract_amount", "budget_amount", "target_margin_percent"])
+
+        note = request.data.get("note", "Target finansial diperbarui")
+        record_project_financial_snapshot(project, note=note)
+        financials = calculate_project_financials(project)
+        return self.ok(financials, "Target finansial proyek berhasil diperbarui.")
+
+
+class PortfolioFinancialPerformanceView(ERPCommandView):
+    """
+    Portfolio-level financial performance summary for Executive / Reporting dashboard.
+    """
+    @command_schema(
+        tag="Commands — Reporting",
+        summary="Get company-wide portfolio financial performance",
+        request_serializer=None,
+        success_status=status.HTTP_200_OK,
+    )
+    def get(self, request):
+        from apps.projects.financial_services import get_portfolio_financial_performance
+
+        company_id = request.headers.get("X-Company-ID") or request.query_params.get("company_id")
+        tenant_id = getattr(request.user, "tenant_id", None)
+        data = get_portfolio_financial_performance(company_id=company_id, tenant_id=tenant_id)
+        return self.ok(data, "Portfolio financial performance berhasil diambil.")
+
+
 class ProjectTaskMoveView(ERPCommandView):
     @command_schema(
         tag="Commands — Projects",

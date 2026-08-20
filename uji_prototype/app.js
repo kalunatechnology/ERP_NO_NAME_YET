@@ -551,36 +551,785 @@
   function pmUsersUI(){const project=state.pm.projects.find(p=>String(p.id)===String(state.pm.selectedId))||state.pm.projects[0],members=state.pm.members.filter(m=>project&&String(m.project)===String(project.id));return `<div class="role-matrix"><article><b>Executive</b><span>All company data</span></article><article><b>Project Manager</b><span>Workflow + assignment</span></article><article><b>Assignee</b><span>Assigned project/task</span></article><article><b>Finance</b><span>Funding + accounting</span></article></div><div class="pm-operation-grid"><article><header><h3>Project membership</h3><select id="pmMemberProject">${pmOptions(state.pm.projects,p=>`${p.code} · ${p.name}`)}</select></header>${members.map(m=>`<div class="operation-row"><span><strong>${esc(pmUser(m.user))}</strong><small>${esc(m.project_role)} · ${esc(m.status)}</small></span>${accountingStatus("ACTIVE")}</div>`).join("")||empty("Belum ada member.")}</article><article><h3>Access rule</h3><p class="permission-note">Global role ditetapkan Executive. Project Manager hanya memberi membership. Task assignee wajib sudah terdaftar sebagai member.</p>${pmCanManage()?'<button id="assignMember" class="button primary">+ Assign User</button>':accountingStatus("READ_ONLY")}</article></div>`}
   function pmForm(title,html,onSubmit){if(title==="Create corrective action")html+=`<label class="field"><span>Machine pengganti</span><select name="equipment_reference"><option value="">Pilih otomatis</option>${state.pm.machines.map(x=>`<option value="${attr(x.machine_code||x.id)}">${esc(x.machine_code||x.id)} · ${esc(x.machine_name||"")}</option>`).join("")}</select></label><label class="field"><span>Additional labor hours</span><input name="additional_labor_hours" type="number" min="0" step="0.5" value="0"></label>`;openModal("Live workflow",title,`<form id="pmLiveForm" class="dynamic-form">${html}<button class="button primary" type="submit">Simpan & proses</button></form>`);document.getElementById("pmLiveForm").onsubmit=e=>{e.preventDefault();onSubmit(e.target,e.target.querySelector("button[type=submit]"))}}
   function bindPMChangeMaterials(root){root.querySelectorAll("[data-change-material]").forEach(button=>button.onclick=()=>pmForm("Additional material",`<label class="field"><span>Product</span><select name="product" required>${pmOptions(state.pm.products,x=>x.product_name||x.product_code||x.id)}</select></label><label class="field"><span>Warehouse</span><select name="warehouse">${pmOptions(state.pm.warehouses,x=>x.warehouse_name||x.warehouse_code||x.id)}</select></label><label class="field"><span>Quantity delta</span><input name="quantity_delta" type="number" step="0.01" required></label><label class="field"><span>Unit cost</span><input name="unit_cost" type="number" min="0" required></label><label class="field full"><span>Reason</span><input name="reason"></label>`,(form,submit)=>pmAction("/api/v1/projects/change-request-materials/",{...Object.fromEntries(new FormData(form)),change_request:button.dataset.changeMaterial,warehouse:form.warehouse.value||null},"Additional material recorded.",submit)))}
-  function bindPMOperational(root){root.querySelector("#pmGateProject")?.addEventListener("change",e=>{state.pm.selectedId=e.target.value;renderPMOperationalWorkspace()});root.querySelector("#pmMemberProject")?.addEventListener("change",e=>{state.pm.selectedId=e.target.value;renderPMOperationalWorkspace()});root.querySelector("#pmMfgProject")?.addEventListener("change",e=>{state.pm.selectedId=e.target.value;renderPMOperationalWorkspace()});root.querySelectorAll("[data-verify]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/commands/projects/projects/${b.dataset.verify}/verify/`,{},"Project verified.",b));root.querySelectorAll("[data-reserve]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/commands/projects/projects/${b.dataset.reserve}/reserve-materials/`,{},"Material reserved.",b));root.querySelectorAll("[data-start]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/commands/projects/projects/${b.dataset.start}/start/`,{},"Project started dan report terkirim.",b));root.querySelectorAll("[data-convert]").forEach(b=>b.onclick=()=>pmForm("Convert incoming order",`<label class="field full"><span>Project name</span><input name="project_name" required></label><label class="field"><span>Budget</span><input name="budget_amount" type="number" required></label>`,(f,btn)=>pmAction(`/api/v1/commands/sales/orders/${b.dataset.convert}/convert-to-project/`,Object.fromEntries(new FormData(f)),"Order converted.",btn)));root.querySelector("#newChange")?.addEventListener("click",()=>pmForm("Create change request",`<label class="field"><span>Project</span><select name="project" required>${pmOptions(state.pm.projects,p=>`${p.code} · ${p.name}`)}</select></label><label class="field"><span>Type</span><select name="change_type"><option>SCOPE</option><option>MATERIAL</option><option>SCHEDULE</option></select></label><label class="field full"><span>Request</span><textarea name="description" required></textarea></label>`,(f,b)=>pmAction("/api/v1/projects/change-requests/",Object.fromEntries(new FormData(f)),"Change request created.",b)));root.querySelectorAll("[data-analyze-change]").forEach(b=>b.onclick=()=>pmForm("Analyze change request",`<label class="field"><span>Schedule impact days</span><input name="schedule_impact_days" type="number" value="0"></label><label class="field"><span>Cost impact</span><input name="cost_impact" type="number" value="0"></label><label class="field"><span>Revised end</span><input name="revised_end_date" type="date"></label><label class="field"><span>Billing adjustment</span><input name="billing_adjustment" type="number" value="0"></label>`,(f,btn)=>pmAction(`/api/v1/projects/change-requests/${b.dataset.analyzeChange}/analyze/`,Object.fromEntries(new FormData(f)),"Analysis recorded.",btn)));root.querySelectorAll("[data-submit-change]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/projects/change-requests/${b.dataset.submitChange}/submit-client/`,{},"Sent to client.",b));root.querySelectorAll("[data-decide-change]").forEach(b=>b.onclick=()=>pmForm("Record client decision",`<label class="field"><span>Decision</span><select name="approved"><option value="true">APPROVED</option><option value="false">REJECTED</option></select></label><label class="field full"><span>Note</span><textarea name="note"></textarea></label>`,(f,btn)=>pmAction(`/api/v1/projects/change-requests/${b.dataset.decideChange}/client-decision/`,{approved:f.approved.value==="true",note:f.note.value},"Client decision applied.",btn)));root.querySelector("#newIssue")?.addEventListener("click",()=>pmForm("Report factory issue",`<label class="field"><span>Project</span><select name="project" required>${pmOptions(state.pm.projects,p=>`${p.code} · ${p.name}`)}</select></label><label class="field"><span>Type</span><select name="issue_type"><option>MACHINE_FAILURE</option><option>MATERIAL</option><option>QUALITY</option></select></label><label class="field"><span>Severity</span><select name="severity"><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option></select></label><label class="field full"><span>Problem</span><textarea name="description" required></textarea></label>`,(f,b)=>pmAction("/api/v1/projects/issues/",Object.fromEntries(new FormData(f)),"Issue reported.",b)));root.querySelectorAll("[data-analyze-issue]").forEach(b=>b.onclick=()=>pmForm("Analyze operational issue",`<label class="field"><span>Severity</span><select name="severity"><option>HIGH</option><option>CRITICAL</option><option>MEDIUM</option></select></label><label class="field full"><span>Root cause</span><textarea name="root_cause" required></textarea></label><label class="field full"><span>Milestone impact</span><textarea name="milestone_impact" required></textarea></label>`,(f,btn)=>pmAction(`/api/v1/projects/issues/${b.dataset.analyzeIssue}/analyze/`,Object.fromEntries(new FormData(f)),"Alert activated.",btn)));root.querySelectorAll("[data-add-action]").forEach(b=>b.onclick=()=>pmForm("Create corrective action",`<label class="field"><span>Action</span><select name="action_type"><option>REALLOCATE_MACHINE</option><option>ADD_LABOR</option></select></label><label class="field"><span>Assign user</span><select name="assigned_to">${pmOptions(state.pm.users,u=>displayName(u))}</select></label><label class="field full"><span>Description</span><textarea name="description" required></textarea></label>`,(f,btn)=>pmAction("/api/v1/projects/issue-actions/",{...Object.fromEntries(new FormData(f)),issue:b.dataset.addAction,assigned_to:f.assigned_to.value||null},"Corrective action created.",btn)));root.querySelectorAll("[data-complete-action]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/projects/issue-actions/${b.dataset.completeAction}/complete/`,{},"Action completed.",b));root.querySelector("#assignMember")?.addEventListener("click",()=>pmForm("Assign user to project",`<label class="field"><span>Project</span><select name="project" required>${pmOptions(state.pm.projects,p=>`${p.code} · ${p.name}`)}</select></label><label class="field"><span>User</span><select name="user" required>${pmOptions(state.pm.users,u=>`${displayName(u)} · ${u.email||""}`)}</select></label><label class="field"><span>Role</span><select name="project_role"><option>PROJECT_ASSIGNEE</option><option>PROJECT_LEAD</option><option>OBSERVER</option></select></label>`,(f,b)=>pmAction("/api/v1/projects/members/",{...Object.fromEntries(new FormData(f)),status:"ACTIVE",permissions_json:{tasks:true,issues:true}},"Project access assigned.",b)));root.querySelector("#newProductionOrder")?.addEventListener("click",()=>pmForm("Create Production Order",`<label class="field"><span>Project</span><select name="project" required>${pmOptions(state.pm.projects,p=>`${p.code} · ${p.name}`)}</select></label><label class="field"><span>Product</span><select name="product">${pmOptions(state.pm.products,p=>p.product_name||p.product_code||p.id)}</select></label><label class="field"><span>Quantity</span><input name="planned_quantity" type="number" min="1" value="10" required></label>`,(f,b)=>pmAction("/api/v1/manufacturing/production-orders/",{...Object.fromEntries(new FormData(f)),status:"RELEASED"},"Production Order created.",b)));root.querySelector("#newWorkOrder")?.addEventListener("click",()=>pmForm("Create Work Order",`<label class="field"><span>Production Order</span><select name="production_order" required>${pmOptions(state.pm.productionOrders,mo=>`MO ${String(mo.id).slice(0,8)} · ${pmName(mo.project)}`)}</select></label><label class="field"><span>Machine</span><select name="machine">${pmOptions(state.pm.machines,m=>`${m.machine_code||m.id} · ${m.machine_name||""}`)}</select></label><label class="field"><span>Quantity</span><input name="planned_quantity" type="number" min="1" value="10" required></label>`,(f,b)=>pmAction("/api/v1/manufacturing/work-orders/",{...Object.fromEntries(new FormData(f)),status:"IN_PROGRESS",sequence_number:1},"Work Order created.",b)))}
-  function renderProjectManagementV2(){loadPMState();page("Portfolio & delivery","Project Management");const rows=state.pm.filter==="ALL"?state.pm.projects:state.pm.projects.filter(p=>p.status===state.pm.filter),selected=state.pm.projects.find(p=>p.id===state.pm.selectedId)||state.pm.projects[0],totalBudget=state.pm.projects.reduce((n,p)=>n+Number(p.budget||0),0),actual=state.pm.projects.reduce((n,p)=>n+Number(p.actual||0),0),avg=state.pm.projects.length?Math.round(state.pm.projects.reduce((n,p)=>n+Number(p.progress||0),0)/state.pm.projects.length):0;el.workspace.innerHTML=`<section class="pm-head"><div><span class="eyebrow">Project portfolio</span><h2>Kelola proyek, delivery, resource, dan biaya.</h2><p>Prototype frontend lokal untuk mencoba Project Management secara aman.</p></div><div><button id="resetPMDemo" class="button ghost">Reset demo</button><button id="addPMProject" class="button primary">+ Tambah proyek</button></div></section><section class="pm-metrics">${metric("Total Project",state.pm.projects.length,"Portfolio")}${metric("Average Progress",`${avg}%`,"Seluruh project")}${metric("Total Budget",formatMoney(totalBudget),"Baseline")}${metric("Actual Cost",formatMoney(actual),`${totalBudget?Math.round(actual/totalBudget*100):0}% terpakai`)}</section><section class="pm-layout"><aside class="pm-list"><header><div><h3>Project portfolio</h3><small>${rows.length} proyek</small></div><select id="pmFilter"><option value="ALL">Semua status</option>${["PLANNED","IN_PROGRESS","AT_RISK","ON_HOLD","COMPLETED"].map(x=>`<option value="${x}" ${state.pm.filter===x?"selected":""}>${x}</option>`).join("")}</select></header><div>${rows.map(p=>`<button class="pm-project-item ${p.id===selected?.id?"active":""}" data-pm-project="${p.id}"><span><strong>${esc(p.code)}</strong><small>${esc(p.name)}</small></span><b>${p.progress}%</b><i><em style="width:${Math.min(100,p.progress)}%"></em></i><span class="badge ${pmStatusClass(p.status)}">${esc(p.status)}</span></button>`).join("")||empty("Tidak ada proyek.")}</div></aside><main class="pm-detail">${selected?pmProjectDetail(selected):empty("Tambahkan project pertama.")}</main></section>`;document.getElementById("addPMProject").onclick=()=>openPMProjectForm();document.getElementById("resetPMDemo").onclick=()=>{state.pm.projects=structuredClone(PM_SEED);state.pm.selectedId=state.pm.projects[0].id;savePMState();renderProjectManagementV2()};document.getElementById("pmFilter").onchange=e=>{state.pm.filter=e.target.value;renderProjectManagementV2()};document.querySelectorAll("[data-pm-project]").forEach(b=>b.onclick=()=>{state.pm.selectedId=b.dataset.pmProject;state.pm.tab="overview";renderProjectManagementV2()});document.querySelectorAll("[data-pm-tab]").forEach(b=>b.onclick=()=>{state.pm.tab=b.dataset.pmTab;renderProjectManagementV2()});document.getElementById("updatePMProgress")?.addEventListener("click",()=>openPMProgress(selected));document.getElementById("editPMProject")?.addEventListener("click",()=>openPMProjectForm(selected));document.getElementById("addPMMember")?.addEventListener("click",()=>openPMMemberForm(selected));document.getElementById("addPMTimesheet")?.addEventListener("click",()=>openPMTimesheetForm(selected));document.querySelectorAll("[data-pm-remove-member]").forEach(b=>b.onclick=async()=>{if(!confirm("Hapus anggota tim ini dari proyek?"))return;try{await requestJSON(`/api/v1/projects/members/${b.dataset.pmRemoveMember}/`,{method:"DELETE"});await loadPMBackend(true);toast("Anggota Dihapus","Anggota berhasil dihapus dari proyek.","success")}catch(err){toast("Gagal menghapus anggota",err.message,"error")}});document.querySelectorAll("[data-pm-remove-timesheet]").forEach(b=>b.onclick=async()=>{if(!confirm("Hapus log timesheet ini?"))return;try{await requestJSON(`/api/v1/projects/timesheets/${b.dataset.pmRemoveTimesheet}/`,{method:"DELETE"});await loadPMBackend(true);toast("Timesheet Dihapus","Log jam kerja berhasil dihapus.","success")}catch(err){toast("Gagal menghapus timesheet",err.message,"error")}});document.querySelectorAll("[data-pm-approve-timesheet]").forEach(b=>b.onclick=async()=>{try{await requestJSON(`/api/v1/projects/timesheets/${b.dataset.pmApproveTimesheet}/`,{method:"PATCH",body:{approval_status:"APPROVED"}});await loadPMBackend(true);toast("Timesheet Disetujui","Status timesheet berhasil disetujui (APPROVED).","success")}catch(err){toast("Gagal menyetujui timesheet",err.message,"error")}})}
-  function pmProjectDetail(p){const variance=Number(p.budget||0)-Number(p.actual||0),tabs=["overview","tasks","members","timesheets","timeline","resources","budget","risk","quality","documents"];return `<section class="pm-detail-head"><div><span class="badge ${pmStatusClass(p.health)}">${esc(p.health)}</span><h2>${esc(p.name)}</h2><p>${esc(p.code)} · ${esc(p.customer||"-")} · PM: ${esc(p.manager||"-")}</p></div><div><button id="editPMProject" class="button ghost small">Edit</button><button id="updatePMProgress" class="button primary small">Update progress</button></div></section><div class="pm-progress"><div><strong>${p.progress}% complete</strong><span>${esc(p.start||"-")} → ${esc(p.end||"-")}</span></div><i><em style="width:${Math.min(100,p.progress)}%"></em></i></div>${pmLifecycle(p)}<nav class="pm-tabs">${tabs.map(t=>`<button data-pm-tab="${t}" class="${state.pm.tab===t?"active":""}">${t==="members"?"👥 Anggota Tim":t==="timesheets"?"⏱️ Timesheet":humanize(t)}</button>`).join("")}</nav><section class="pm-tab-body">${pmTabContent(p,variance)}</section>`}
-  function pmTabContent(p,variance){if(state.pm.tab==="overview"){const tw=weightedStats(p,"tasks"),mw=weightedStats(p,"timeline"),totalHrs=(p.timesheets||[]).reduce((n,t)=>n+Number(t.hours||0),0);return `<div class="pm-summary-grid">${pmInfo("Scope",p.description||"Belum ada deskripsi","S")}${pmInfo("Task",`${p.tasks.done}/${p.tasks.total} selesai · bobot ${tw.allocated}%`,"T")}${pmInfo("Milestone",`${p.milestones.done}/${p.milestones.total} tercapai · bobot ${mw.allocated}%`,"M")}${pmInfo("Anggota Tim",`${(p.members||[]).length} orang terdaftar`,"👥")}${pmInfo("Timesheet",`${totalHrs} jam kerja tercatat`,"⏱️")}${pmInfo("Cost",`${formatMoney(p.actual)} / ${formatMoney(p.budget)}`,"$")}</div><div class="pm-health">${statusRow("Schedule",p.progress>=50?"On track":"Perlu monitoring",p.progress>=50?"success":"warning")}${statusRow("Budget",variance>=0?`${formatMoney(variance)} tersisa`:`Over ${formatMoney(Math.abs(variance))}`,variance>=0?"success":"warning")}${statusRow("Bobot Task",tw.allocated===100?"100% teralokasi":`${tw.remaining}% belum dialokasikan`,tw.allocated===100?"success":"warning")}</div><div style="margin-top:14px;padding:12px;border:1px solid #b9c9ee;border-radius:10px;background:#eef4ff;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between"><span><strong>⏱️ Quick Menu: Log Timesheet & Tim</strong><br><small style="color:var(--muted)">Catat jam kerja 8 jam atau kelola penugasan anggota tim proyek.</small></span><div style="display:flex;gap:8px"><button class="button secondary small" onclick="document.querySelector('[data-pm-tab=members]')?.click()">👥 Anggota Tim</button><button class="button primary small" onclick="document.querySelector('[data-pm-tab=timesheets]')?.click()">⏱️ Buka Timesheet</button></div></div>`}if(state.pm.tab==="tasks"||state.pm.tab==="timeline")return pmWeightedPanel(p,state.pm.tab);if(state.pm.tab==="members")return pmMembersPanel(p);if(state.pm.tab==="timesheets")return pmTimesheetPanel(p);if(state.pm.tab==="budget")return pmBudgetPanel(p);return pmFeaturePanel(p,state.pm.tab)}
-  function pmMembersPanel(p){const members=p.members||(state.pm.members||[]).filter(m=>String(m.project)===String(p.id)),users=state.pm.users||[];return `<div class="pm-feature-panel"><header><div><h3>Tim & Anggota Proyek</h3><p>Kelola Project Manager, Lead Engineer, QC Inspector, dan Assignee tim pelaksana proyek.</p></div><button id="addPMMember" class="button primary small">+ Tambah Anggota Tim</button></header><div class="table-wrap" style="margin-top:12px"><table class="data-table"><thead><tr><th>User / Pegawai</th><th>Role di Proyek</th><th>Status</th><th>Tanggal Bergabung</th><th>Aksi</th></tr></thead><tbody>${members.map(m=>{const u=users.find(x=>String(x.id)===String(m.user)),name=u?displayName(u):(m.user_name||m.user||"-"),email=u?.email||"";return `<tr><td><strong>${esc(name)}</strong><small style="color:var(--muted)">${esc(email)}</small></td><td><span class="badge info">${esc(m.project_role||"MEMBER")}</span></td><td><span class="badge ${String(m.status).toUpperCase()==="ACTIVE"?"success":"warning"}">${esc(m.status||"ACTIVE")}</span></td><td>${esc((m.assigned_at||m.joined_at||m.created_at||"").slice(0,10)||"-")}</td><td><button class="button danger ghost small" data-pm-remove-member="${attr(m.id)}">Hapus</button></td></tr>`}).join("")||`<tr><td colspan="5">${empty("Belum ada anggota tim terdaftar. Klik '+ Tambah Anggota Tim' di atas.")}</td></tr>`}</tbody></table></div></div>`}
-  function pmTimesheetPanel(p){const timesheets=p.timesheets||(state.pm.timesheets||[]).filter(t=>String(t.project)===String(p.id)),tasks=p.workItems?.tasks||[],users=state.pm.users||[],totalHours=timesheets.reduce((n,t)=>n+Number(t.hours||0),0),totalLaborCost=timesheets.reduce((n,t)=>n+Number(t.amount||(Number(t.hours||0)*Number(t.hourly_rate||0))),0),approvedCount=timesheets.filter(t=>String(t.approval_status).toUpperCase()==="APPROVED").length;return `<div class="pm-feature-panel"><div class="pm-summary-grid" style="margin-bottom:14px">${pmInfo("Total Jam Kerja",`${totalHours} Jam`,"⏱️")}${pmInfo("Estimasi Biaya Tenaga Kerja",formatMoney(totalLaborCost),"💵")}${pmInfo("Persetujuan",`${approvedCount}/${timesheets.length} Disetujui`,"✅")}</div><header><div><h3>Timesheet Jam Kerja Proyek (Labor Hours)</h3><p>Catat dan setujui jam kerja harian anggota tim yang dialokasikan pada setiap Task.</p></div><button id="addPMTimesheet" class="button primary small">+ Catat Timesheet (Log Hours)</button></header><div class="table-wrap" style="margin-top:12px"><table class="data-table"><thead><tr><th>Tanggal Kerja</th><th>Task Terkait</th><th>Personel / User</th><th>Jam Kerja</th><th>Tarif / Biaya</th><th>Status Persetujuan</th><th>Aksi</th></tr></thead><tbody>${timesheets.map(t=>{const task=tasks.find(x=>String(x.id)===String(t.task)),taskName=task?.title||t.task_name||(t.task?`Task (${String(t.task).slice(0,8)})`:"Umum / Non-Task"),u=users.find(x=>String(x.id)===String(t.employee||t.user)),uName=u?displayName(u):(t.employee_name||t.user_name||displayName(state.user)),hours=Number(t.hours||0),rate=Number(t.hourly_rate||0),amt=Number(t.amount||(hours*rate)),isApp=String(t.approval_status).toUpperCase()==="APPROVED";return `<tr><td><strong>${esc(t.work_date||"-")}</strong></td><td><strong>${esc(taskName)}</strong></td><td>${esc(uName)}</td><td><span class="badge info">${hours} Jam</span></td><td>${rate?`${formatMoney(rate)}/jam<br>`:""}<strong>${formatMoney(amt)}</strong></td><td><span class="badge ${isApp?"success":"warning"}">${esc(t.approval_status||"SUBMITTED")}</span></td><td><div class="inline-actions">${!isApp?`<button class="button primary ghost small" data-pm-approve-timesheet="${attr(t.id)}">Setujui</button>`:""}<button class="button danger ghost small" data-pm-remove-timesheet="${attr(t.id)}">Hapus</button></div></td></tr>`}).join("")||`<tr><td colspan="7">${empty("Belum ada log timesheet pada proyek ini. Klik '+ Catat Timesheet' di atas.")}</td></tr>`}</tbody></table></div></div>`}
-  async function openPMTimesheetForm(project){let tasks=project.workItems?.tasks||[];if(!tasks.length){try{tasks=normalizeList(await requestJSON(`/api/v1/projects/tasks/?project=${project.id}`,{method:"GET"})).rows}catch{}}let users=state.pm.users||[];if(!users.length){try{users=normalizeList(await requestJSON("/api/v1/accounts/users/?page_size=200",{method:"GET"})).rows;state.pm.users=users}catch{}}const taskOpts=tasks.map(t=>`<option value="${attr(t.id)}">${esc(t.title||t.task_name||t.id)} (${esc(t.status||"PLANNED")})</option>`).join(""),userOpts=users.map(u=>`<option value="${attr(u.id)}" ${String(u.id)===String(state.user?.user?.id||state.user?.id)?"selected":""}>${esc(displayName(u))} (${esc(u.email||u.username)})</option>`).join("");openModal("Catat Timesheet Jam Kerja",`Input Jam Kerja: ${project.name}`,`<form id="pmTimesheetForm" class="dynamic-form"><label class="field full"><span>Pilih Task Terkait Proyek</span><select name="task"><option value="">-- Pekerjaan Umum Proyek --</option>${taskOpts}</select></label><label class="field"><span>Personel / Pekerja *</span><select name="user" required><option value="">-- Pilih User --</option>${userOpts}</select></label><label class="field"><span>Tanggal Pelaksanaan *</span><input name="work_date" type="date" value="${new Date().toISOString().slice(0,10)}" required></label><label class="field"><span>Jumlah Jam Kerja *</span><input name="hours" type="number" min="0.5" step="0.5" value="8" required></label><label class="field"><span>Tarif per Jam (IDR)</span><input name="hourly_rate" type="number" min="0" value="150000"></label><label class="field"><span>Status Approval</span><select name="approval_status"><option value="APPROVED" selected>APPROVED (Langsung Disetujui)</option><option value="SUBMITTED">SUBMITTED (Menunggu Review)</option><option value="DRAFT">DRAFT</option></select></label><label class="field full"><span>Deskripsi Aktivitas / Pekerjaan</span><textarea name="description" placeholder="Aktivitas teknis / pengerjaan yang diselesaikan..."></textarea></label></form>`,`<button id="cancelTimesheetForm" class="button secondary">Batal</button><button id="saveTimesheetForm" class="button primary">Simpan Timesheet</button>`);document.getElementById("cancelTimesheetForm").onclick=closeModal;document.getElementById("saveTimesheetForm").onclick=async e=>{const f=document.getElementById("pmTimesheetForm");if(!f.reportValidity())return;const d=Object.fromEntries(new FormData(f).entries()),hours=Number(d.hours||0),rate=Number(d.hourly_rate||0),amount=hours*rate;try{e.target.disabled=true;await requestJSON("/api/v1/projects/timesheets/",{method:"POST",body:{project:project.id,task:d.task||null,work_date:d.work_date,hours:String(hours),hourly_rate:String(rate),amount:String(amount),approval_status:d.approval_status||"APPROVED"}});closeModal();await loadPMBackend(true);toast("Timesheet Tersimpan",`${hours} jam kerja berhasil dicatat pada proyek ini.`,"success")}catch(err){e.target.disabled=false;toast("Gagal mencatat timesheet",err.message,"error")}}}
-  async function openPMMemberForm(project){let users=state.pm.users||[];if(!users.length){try{users=normalizeList(await requestJSON("/api/v1/accounts/users/?page_size=200",{method:"GET"})).rows;state.pm.users=users}catch{}}const userOpts=users.map(u=>`<option value="${attr(u.id)}">${esc(displayName(u))} (${esc(u.email||u.username)})</option>`).join("");openModal("Penugasan Tim Proyek",`Tambah Anggota ke ${project.name}`,`<form id="pmMemberForm" class="dynamic-form"><label class="field full"><span>Pilih User / Karyawan *</span><select name="user" required><option value="">-- Pilih User --</option>${userOpts}</select></label><label class="field"><span>Role di Proyek *</span><select name="project_role" required><option value="ASSIGNEE" selected>🧑‍💻 Project Assignee / Pelaksana Lapangan</option><option value="LEAD_ENGINEER">🛠️ Lead Engineer / Technical Lead</option><option value="PROJECT_MANAGER">👔 Project Manager</option><option value="QC_INSPECTOR">🔍 Quality / QC Inspector</option><option value="MEMBER">👤 Team Member</option></select></label><label class="field"><span>Status Keanggotaan</span><select name="status"><option value="ACTIVE" selected>ACTIVE</option><option value="INACTIVE">INACTIVE</option></select></label></form>`,`<button id="cancelMemberForm" class="button secondary">Batal</button><button id="saveMemberForm" class="button primary">Simpan Anggota Tim</button>`);document.getElementById("cancelMemberForm").onclick=closeModal;document.getElementById("saveMemberForm").onclick=async e=>{const f=document.getElementById("pmMemberForm");if(!f.reportValidity())return;const d=Object.fromEntries(new FormData(f).entries());try{e.target.disabled=true;await requestJSON("/api/v1/projects/members/",{method:"POST",body:{project:project.id,user:d.user,project_role:d.project_role,status:d.status||"ACTIVE"}});closeModal();await loadPMBackend(true);toast("Anggota Tim Ditambahkan","User berhasil ditugaskan ke proyek ini.","success")}catch(err){e.target.disabled=false;toast("Gagal menambahkan anggota",err.message,"error")}}}
-  function pmInfo(title,value,icon){return `<article class="pm-info"><i>${esc(icon)}</i><div><small>${esc(title)}</small><strong>${esc(String(value))}</strong></div></article>`}
-  function pmFeaturePanel(project,type){const rows=project.workItems?.[type]||[],labels={resources:"Resource & Material",risk:"Risk & Issue",quality:"Quality Control",documents:"Documents"},label=labels[type]||humanize(type);return `<div class="pm-feature-panel"><header><div><h3>${esc(label)}</h3><p>Item dapat ditambah dan diedit; owner, status, quantity, serta updater tersimpan.</p></div><button class="button primary small" data-pm-add="${attr(type)}">+ Tambah item</button></header><div>${rows.map((x,i)=>`<article><i>${i+1}</i><span><strong>${esc(x.title)}</strong><small>Owner: ${esc(x.owner||"-")} · ${esc(x.date||"Tanpa tanggal")} · ${esc(x.updatedBy||"-")}</small></span><span class="badge ${pmStatusClass(x.status)}">${esc(x.status||"PLANNED")}</span><button class="button ghost small" data-pm-edit="${attr(x.id)}" data-pm-type="${type}">Edit</button></article>`).join("")||empty(`Belum ada ${label}. Klik Tambah item.`)}</div></div>`}
-  function pmBudgetPanel(p){syncPMExpenses(p);const remaining=Number(p.budget||0)-Number(p.actual||0),rows=p.expenses||[];return `<div class="pm-summary-grid">${pmInfo("Budget",formatMoney(p.budget),"B")}${pmInfo("Pengeluaran",formatMoney(p.actual),"A")}${pmInfo("Sisa",formatMoney(remaining),"R")}${pmInfo("Utilization",`${p.budget?Math.round(p.actual/p.budget*100):0}%`,"%")}</div><div class="pm-expense-head"><div><h3>Daftar pengeluaran proyek</h3><p>Billing ID menghubungkan item ini ke Accounts Payable Finance. Status dan outstanding mengikuti billing live.</p></div><div><button class="button secondary small" data-pm-refresh-billing>Refresh billing Finance</button><button class="button primary small" data-pm-expense="">+ Tambah pengeluaran</button></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Pengeluaran</th><th>Kategori / vendor</th><th>Nilai</th><th>Billing Finance</th><th>Status pembayaran</th><th>Aksi</th></tr></thead><tbody>${rows.map(x=>{const b=financeBill(x.billingId),amount=Number(b?.total_amount??x.amount??0),payment=b?.payment_status||x.paymentStatus||"UNLINKED";return `<tr><td><strong>${esc(x.title)}</strong><small>${esc(x.date||"-")}</small></td><td>${esc(x.category||"OTHER")}<small>${esc(x.vendor||financeParty(b?.party)||"-")}</small></td><td>${formatMoney(amount)}</td><td>${b?`<strong>${esc(b.invoice_number||b.id)}</strong><small>${esc(b.status||"")}</small>`:x.billingId?`<span class="badge warning">ID tidak ditemukan</span><small>${esc(x.billingId)}</small>`:`<span class="badge info">Belum terhubung</span>`}</td><td>${accountingStatus(payment)}</td><td><button class="button ghost small" data-pm-expense="${attr(x.id)}">Edit</button></td></tr>`}).join("")||`<tr><td colspan="6">${empty("Belum ada pengeluaran proyek.")}</td></tr>`}</tbody></table></div>`}
-  function pmWeightedPanel(project,type){const s=weightedStats(project,type),label=type==="tasks"?"Task":"Milestone",valid=s.allocated===100,status=s.allocated>100?"Melebihi 100%":valid?"Valid 100%":`${s.remaining}% belum dialokasikan`;return `<div class="pm-feature-panel pm-weighted-panel"><header><div><h3>${label} & bobot progress</h3><p>${type==="tasks"?"Progress proyek dihitung otomatis dari kontribusi bobot setiap task.":"Milestone mengukur pencapaian gate proyek dan tidak dihitung ganda ke progress task."}</p></div><button class="button primary small" data-pm-add="${type}">+ Tambah ${label}</button></header><div class="pm-weight-summary"><div><small>Total bobot</small><strong>${s.allocated}%</strong></div><div><small>Progress berbobot</small><strong>${s.progress}%</strong></div><div><small>Kontribusi tercapai</small><strong>${Math.round(s.points*10)/10} poin</strong></div><span class="badge ${valid?"success":"warning"}">${status}</span><i><em style="width:${Math.min(100,s.allocated)}%"></em></i></div><div class="pm-weight-list">${s.rows.map((x,i)=>{const contribution=Math.round(Number(x.weight||0)*Number(x.progress||0))/100;return `<article><i>${i+1}</i><span><strong>${esc(x.title)}</strong><small>Owner: ${esc(x.owner||"Belum ditetapkan")} · Status ${esc(x.status||"PLANNED")}</small><div class="pm-item-progress"><em style="width:${Number(x.progress||0)}%"></em></div></span><div class="pm-weight-values"><b>${Number(x.weight||0)}% bobot</b><small>${Number(x.progress||0)}% selesai · ${contribution} poin</small></div><button class="button ghost small" data-pm-edit="${attr(x.id)}" data-pm-type="${type}">Edit</button></article>`}).join("")||empty(`Belum ada ${label.toLowerCase()}.`)}</div></div>`}
-  function openPMExpense(project,id=""){project.expenses=project.expenses||[];const item=project.expenses.find(x=>x.id===id),bills=state.finance.data.billings||[];openModal("Project cost control",item?"Edit pengeluaran":"Tambah pengeluaran",`<form id="pmExpenseForm" class="dynamic-form"><label class="field full"><span>Apa yang dibayar</span><input name="title" value="${attr(item?.title||"")}" placeholder="Contoh: Pembelian kabel jaringan" required></label><label class="field"><span>Kategori</span><select name="category">${["MATERIAL","LABOR","EQUIPMENT","SERVICE","TRAVEL","OTHER"].map(x=>`<option ${item?.category===x?"selected":""}>${x}</option>`).join("")}</select></label><label class="field"><span>Vendor / penerima</span><input name="vendor" value="${attr(item?.vendor||"")}"></label><label class="field"><span>Tanggal pengeluaran</span><input name="date" type="date" value="${attr(item?.date||new Date().toISOString().slice(0,10))}"></label><label class="field"><span>Nilai rencana / aktual</span><input name="amount" type="number" min="0" value="${Number(item?.amount||0)}" required></label><label class="field full"><span>Hubungkan ke billing Finance</span><select name="billingId"><option value="">-- Belum terhubung --</option>${bills.map(b=>`<option value="${attr(b.id)}" ${String(item?.billingId)===String(b.id)?"selected":""}>${esc(b.invoice_number||b.id)} · ${esc(financeParty(b.party))} · ${formatMoney(b.total_amount)} · ${esc(b.payment_status||b.status||"")}</option>`).join("")}</select><small>${bills.length?`${bills.length} billing Finance tersedia.`:"Klik Refresh billing Finance pada tab Budget agar pilihan billing muncul."}</small></label><label class="field full"><span>Catatan</span><textarea name="description">${esc(item?.description||"")}</textarea></label></form>`,`<button id="cancelPMExpense" class="button secondary">Batal</button><button id="savePMExpense" class="button primary">Simpan pengeluaran</button>`);document.getElementById("cancelPMExpense").onclick=closeModal;document.getElementById("savePMExpense").onclick=()=>{const d=Object.fromEntries(new FormData(document.getElementById("pmExpenseForm")).entries());if(!d.title||Number(d.amount)<0)return toast("Pengeluaran belum valid","Nama pengeluaran dan nilai wajib diisi.","warning");const b=financeBill(d.billingId),record={...item,...d,amount:Number(b?.total_amount??d.amount),paymentStatus:b?.payment_status||"UNLINKED",id:item?.id||`expense-${Date.now()}`,updatedBy:displayName(state.user),updatedAt:new Date().toISOString()};if(item)Object.assign(item,record);else project.expenses.push(record);syncPMExpenses(project);savePMState();closeModal();renderProjectManagementV2();toast("Pengeluaran tersimpan",b?`Terhubung ke billing ${b.invoice_number||b.id}.`:"Belum terhubung ke billing Finance.",b?"success":"warning")}}
-  async function refreshPMBilling(project,button){try{button.disabled=true;button.textContent="Memuat…";state.finance.data.billings=normalizeList(await requestJSON(FINANCE_SOURCES.billings,{method:"GET"})).rows;syncPMExpenses(project);savePMState();renderProjectManagementV2();toast("Billing Finance diperbarui",`${state.finance.data.billings.length} billing tersedia untuk tracking proyek.`,"success")}catch(error){button.disabled=false;button.textContent="Refresh billing Finance";toast("Billing gagal dimuat",error.message,"error")}}
-  function openPMWorkItem(project,type,itemId=""){const labels={tasks:"Task",timeline:"Milestone",resources:"Resource / Material",risk:"Risk / Issue",quality:"Quality item",documents:"Document"},label=labels[type]||"Item",items=project.workItems?.[type]||[],item=items.find(x=>x.id===itemId),weighted=["tasks","timeline"].includes(type),used=items.filter(x=>x.id!==itemId).reduce((n,x)=>n+Number(x.weight||0),0);openModal("Project planning",`${item?"Edit":"Tambah"} ${label}`,`<form id="pmWorkItemForm" class="dynamic-form"><label class="field full"><span>Nama / judul</span><input name="title" value="${attr(item?.title||"")}" required></label><label class="field"><span>Owner / assignee</span><input name="owner" value="${attr(item?.owner||project.manager||displayName(state.user))}" required></label><label class="field"><span>Status</span><select name="status">${["PLANNED","IN_PROGRESS","BLOCKED","DONE"].map(x=>`<option ${item?.status===x?"selected":""}>${x}</option>`).join("")}</select></label><label class="field"><span>Start / due date</span><input name="date" type="date" value="${attr(item?.date||"")}"></label>${weighted?`<label class="field"><span>Bobot ${label} (%)</span><input name="weight" type="number" min="0" max="${100-used}" value="${Number(item?.weight||0)}" required><small>${used}% sudah dipakai · maksimal ${100-used}%</small></label><label class="field"><span>Progress ${label} (%)</span><input name="progress" type="number" min="0" max="100" value="${Number(item?.progress||0)}" required></label>`:`<label class="field"><span>Quantity</span><input name="weight" type="number" min="0" value="${Number(item?.weight||0)}"></label>`}<label class="field full"><span>Deskripsi / acceptance criteria</span><textarea name="description">${esc(item?.description||"")}</textarea></label></form>`,`<button id="cancelPMItem" class="button secondary">Batal</button><button id="savePMItem" class="button primary">Simpan ${label}</button>`);document.getElementById("cancelPMItem").onclick=closeModal;document.getElementById("savePMItem").onclick=()=>{const d=Object.fromEntries(new FormData(document.getElementById("pmWorkItemForm")).entries()),weight=Number(d.weight||0),progress=d.status==="DONE"?100:Number(d.progress||0);if(!d.title||!d.owner)return toast("Item belum lengkap","Judul dan owner wajib diisi.","warning");if(weighted&&used+weight>100)return toast("Bobot tidak valid",`Total bobot ${label} tidak boleh melebihi 100%. Sisa ${100-used}%.`,"warning");const record={...item,...d,weight,progress,id:item?.id||`item-${Date.now()}`,createdBy:item?.createdBy||displayName(state.user),updatedBy:displayName(state.user),updatedAt:new Date().toISOString()};if(item)Object.assign(item,record);else items.push(record);project.workItems[type]=items;if(type==="resources"&&!item)project.resources++;if(type==="risk"&&!item)project.risks++;if(type==="quality"&&!item)project.qa++;if(type==="documents"&&!item)project.documents++;syncPMWeightedStats(project);project.activity=project.activity||[];project.activity.unshift({action:`${item?"UPDATE":"CREATE"}_${type.toUpperCase()}`,by:displayName(state.user),at:new Date().toISOString(),title:d.title});savePMState();closeModal();renderProjectManagementV2();toast(`${label} ${item?"diperbarui":"ditambahkan"}`,`${d.title} · bobot ${weight}%`,"success")}}
-  function openPMProjectForm(project=null){openModal("Project Management",project?"Edit proyek":"Tambah proyek baru",`<form id="pmProjectForm" class="dynamic-form"><label class="field"><span>Project code</span><input name="code" value="${attr(project?.code||`PRJ-${new Date().getFullYear()}-${String(state.pm.projects.length+1).padStart(3,"0")}`)}" required></label><label class="field"><span>Status</span><select name="status">${["PLANNED","IN_PROGRESS","AT_RISK","ON_HOLD","COMPLETED"].map(x=>`<option ${project?.status===x?"selected":""}>${x}</option>`).join("")}</select></label><label class="field full"><span>Project name</span><input name="name" value="${attr(project?.name||"")}" required></label><label class="field"><span>Customer / owner</span><input name="customer" value="${attr(project?.customer||"")}"></label><label class="field"><span>Project manager</span><input name="manager" value="${attr(project?.manager||"")}" required></label><label class="field"><span>Start date</span><input name="start" type="date" value="${attr(project?.start||"")}"></label><label class="field"><span>End date</span><input name="end" type="date" value="${attr(project?.end||"")}"></label><label class="field"><span>Budget</span><input name="budget" type="number" min="0" value="${attr(project?.budget||0)}"></label><label class="field"><span>Health</span><select name="health">${["HEALTHY","ON_TRACK","WARNING","CRITICAL"].map(x=>`<option ${project?.health===x?"selected":""}>${x}</option>`).join("")}</select></label><label class="field full"><span>Description / scope</span><textarea name="description">${esc(project?.description||"")}</textarea></label></form>`,`<button id="cancelPMForm" class="button secondary">Batal</button><button id="savePMForm" class="button primary">Simpan proyek</button>`);document.getElementById("cancelPMForm").onclick=closeModal;document.getElementById("savePMForm").onclick=()=>savePMProject(project)}
-  function savePMProject(existing){const data=Object.fromEntries(new FormData(document.getElementById("pmProjectForm")).entries());if(!data.code||!data.name||!data.manager)return toast("Project belum lengkap","Code, nama, dan Project Manager wajib diisi.","warning");const base=existing||{id:`pm-${Date.now()}`,lifecycleStage:"INTAKE",progress:0,actual:0,tasks:{total:0,done:0,blocked:0},milestones:{total:0,done:0},resources:0,materials:0,risks:0,issues:0,qa:0,documents:0,workItems:{tasks:[],timeline:[]}};Object.assign(base,data,{budget:Number(data.budget||0)});if(!existing)state.pm.projects.unshift(base);else ensurePMStructure(base);state.pm.selectedId=base.id;savePMState();closeModal();renderProjectManagementV2();toast("Project tersimpan",`${base.code} masuk tahap Order / Intake.`,"success")}
-  function openPMProgress(project){openModal("Progress update",project.name,`<form id="pmProgressForm" class="dynamic-form"><label class="field"><span>Progress (%)</span><input name="progress" type="number" min="0" max="100" value="${project.progress}" required></label><label class="field"><span>Actual cost</span><input name="actual" type="number" min="0" value="${project.actual||0}"></label><label class="field"><span>Completed tasks</span><input name="done" type="number" min="0" value="${project.tasks.done}"></label><label class="field"><span>Blocked tasks</span><input name="blocked" type="number" min="0" value="${project.tasks.blocked}"></label><label class="field full"><span>Progress note</span><textarea name="note" placeholder="Pekerjaan, kendala, dan rencana berikutnya"></textarea></label></form>`,`<button id="cancelPMProgress" class="button secondary">Batal</button><button id="savePMProgress" class="button primary">Simpan progress</button>`);document.getElementById("cancelPMProgress").onclick=closeModal;document.getElementById("savePMProgress").onclick=()=>{const d=Object.fromEntries(new FormData(document.getElementById("pmProgressForm")).entries());project.progress=Math.min(100,Math.max(0,Number(d.progress)));project.actual=Number(d.actual||0);project.tasks.done=Number(d.done||0);project.tasks.blocked=Number(d.blocked||0);if(project.progress===100)project.status="COMPLETED";savePMState();closeModal();renderProjectManagementV2();toast("Progress diperbarui",`${project.name}: ${project.progress}%`,"success")}}
+  function bindPMOperational(root){root.querySelector("#pmGateProject")?.addEventListener("change",e=>{state.pm.selectedId=e.target.value;renderPMOperationalWorkspace()});root.querySelector("#pmMemberProject")?.addEventListener("change",e=>{state.pm.selectedId=e.target.value;renderPMOperationalWorkspace()});root.querySelector("#pmMfgProject")?.addEventListener("change",e=>{state.pm.selectedId=e.target.value;renderPMOperationalWorkspace()});root.querySelectorAll("[data-verify]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/commands/projects/projects/${b.dataset.verify}/verify/`,{},"Project verified.",b));root.querySelectorAll("[data-reserve]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/commands/projects/projects/${b.dataset.reserve}/reserve-materials/`,{},"Material reserved.",b));root.querySelectorAll("[data-start]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/commands/projects/projects/${b.dataset.start}/start/`,{},"Project started dan report terkirim.",b));root.querySelectorAll("[data-convert]").forEach(b=>b.onclick=()=>pmForm("Convert incoming order",`<label class="field full"><span>Project name</span><input name="project_name" required></label><label class="field"><span>Budget</span><input name="budget_amount" type="number" required></label>`,(f,btn)=>pmAction(`/api/v1/commands/sales/orders/${b.dataset.convert}/convert-to-project/`,Object.fromEntries(new FormData(f)),"Order converted.",btn)));root.querySelector("#newChange")?.addEventListener("click",()=>pmForm("Create change request",`<label class="field"><span>Project</span><select name="project" required>${pmOptions(state.pm.projects,p=>`${p.code} · ${p.name}`)}</select></label><label class="field"><span>Type</span><select name="change_type"><option>SCOPE</option><option>MATERIAL</option><option>SCHEDULE</option></select></label><label class="field full"><span>Request</span><textarea name="description" required></textarea></label>`,(f,b)=>pmAction("/api/v1/projects/change-requests/",Object.fromEntries(new FormData(f)),"Change request created.",b)));root.querySelectorAll("[data-analyze-change]").forEach(b=>b.onclick=()=>pmForm("Analyze change request",`<label class="field"><span>Schedule impact days</span><input name="schedule_impact_days" type="number" value="0"></label><label class="field"><span>Cost impact</span><input name="cost_impact" type="number" value="0"></label><label class="field"><span>Revised end</span><input name="revised_end_date" type="date"></label><label class="field"><span>Billing adjustment</span><input name="billing_adjustment" type="number" value="0"></label>`,(f,btn)=>pmAction(`/api/v1/projects/change-requests/${b.dataset.analyzeChange}/analyze/`,Object.fromEntries(new FormData(f)),"Analysis recorded.",btn)));root.querySelectorAll("[data-submit-change]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/projects/change-requests/${b.dataset.submitChange}/submit-client/`,{},"Sent to client.",b));root.querySelectorAll("[data-decide-change]").forEach(b=>b.onclick=()=>pmForm("Record client decision",`<label class="field"><span>Decision</span><select name="approved"><option value="true">APPROVED</option><option value="false">REJECTED</option></select></label><label class="field full"><span>Note</span><textarea name="note"></textarea></label>`,(f,btn)=>pmAction(`/api/v1/projects/change-requests/${b.dataset.decideChange}/client-decision/`,{approved:f.approved.value==="true",note:f.note.value},"Client decision applied.",btn)));root.querySelector("#newIssue")?.addEventListener("click",()=>pmForm("Report factory issue",`<label class="field"><span>Project</span><select name="project" required>${pmOptions(state.pm.projects,p=>`${p.code} · ${p.name}`)}</select></label><label class="field"><span>Type</span><select name="issue_type"><option>MACHINE_FAILURE</option><option>MATERIAL</option><option>QUALITY</option></select></label><label class="field"><span>Severity</span><select name="severity"><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option></select></label><label class="field full"><span>Problem</span><textarea name="description" required></textarea></label>`,(f,b)=>pmAction("/api/v1/projects/issues/",Object.fromEntries(new FormData(f)),"Issue reported.",b)));root.querySelectorAll("[data-analyze-issue]").forEach(b=>b.onclick=()=>pmForm("Analyze operational issue",`<label class="field"><span>Severity</span><select name="severity"><option>HIGH</option><option>CRITICAL</option><option>MEDIUM</option></select></label><label class="field full"><span>Root cause</span><textarea name="root_cause" required></textarea></label><label class="field full"><span>Milestone impact</span><textarea name="milestone_impact" required></textarea></label>`,(f,btn)=>pmAction(`/api/v1/projects/issues/${b.dataset.analyzeIssue}/analyze/`,Object.fromEntries(new FormData(f)),"Alert activated.",btn)));root.querySelectorAll("[data-add-action]").forEach(b=>b.onclick=()=>pmForm("Create corrective action",`<label class="field"><span>Action</span><select name="action_type"><option>REALLOCATE_MACHINE</option><option>ADD_LABOR</option></select></label><label class="field"><span>Assign user</span><select name="assigned_to">${pmOptions(state.pm.users,u=>displayName(u))}</select></label><label class="field full"><span>Description</span><textarea name="description" required></textarea></label>`,(f,btn)=>pmAction("/api/v1/projects/issue-actions/",{...Object.fromEntries(new FormData(f)),issue:b.dataset.addAction,assigned_to:f.assigned_to.value||null},"Corrective action created.",btn)));root.querySelectorAll("[data-complete-action]").forEach(b=>b.onclick=()=>pmAction(`/api/v1/projects/issue-actions/${b.dataset.completeAction}/complete/`,{},"Action completed.",b));root.querySelector("#assignMember")?.addEventListener("click",()=>pmForm("Assign user to project",`<label class="field"><span>Project</span><select name="project" required>${pmOptions(state.pm.projects,p=>`${p.code} · ${p.name}`)}</select></label><label class="field"><span>User</span><select name="user" required>${pmOptions(state.pm.users,u=>`${displayName(u)} · ${u.email||""}`)}</select></label><label class="field"><span>Role</span><select name="project_role"><option>PROJECT_ASSIGNEE</option><option>PROJECT_LEAD</option><option>OBSERVER</option></select></label>`,(f,b)=>pmAction("/api/v1/projects/members/",{...Object.fromEntries(new FormData(f)),status:"ACTIVE",permissions_json:{tasks:true,issues:true}},"Project access assigned.",b)));root.querySelector("#newProductionOrder")?.addEventListener("click",()=>pmForm("Create Production Order",`<label class="field"><span>Project</span><select name="project" required>${pmOptions(state.pm.projects,p=>`${p.code} · ${p.name}`)}</select></label><label class="field"><span>Product</span><select name="product">${pmOptions(state.pm.products,p=>p.product_name||p.product_code||p.id)}</select></label><label class="field"><span>Quantity</span><input name="planned_quantity" type="number" min="1" value="10" required></label>`,(f,b)=>pmAction("/api/v1/manufacturing/production-orders/",{...Object.fromEntries(new FormData(f)),status:"RELEASED"},"Production Order created.",b)));root.querySelector("#newWorkOrder")?.addEventListener("click",()=>pmForm("Create Work Order",`<label class="field"><span>Production Order</span><select name="production_order" required>${pmOptions(state.pm.productionOrders,mo=>`MO ${String(mo.id).slice(0,8)} · ${pmName(mo.project)}`)}</select></label><label class="field"><span>Machine</span><select name="machine">${pmOptions(state.pm.machines,m=>`${m.machine_code||m.id} · ${m.machine_name||""}`)}</select></label><label class="field"><span>Quantity</span><input name="planned_quantity" type="number" min="1" value="10" required></label>`,(f,b)=>pmAction("/api/v1/manufacturing/work-orders/",{...Object.fromEntries(new FormData(f)),status:"RELEASED"},"Work Order created.",b)));}
 
-  async function persistPMWorkItem(project,type,item,d){const apiType=type==="tasks"?"tasks":type==="timeline"?"milestones":"control-items",path=`/api/v1/projects/${apiType}/${item?.id?`${item.id}/`:""}`,body=type==="tasks"?{project:project.id,task_code:item?.task_code||`TASK-${Date.now()}`,task_name:d.title,status:d.status,planned_end_at:d.date?`${d.date}T23:59:00Z`:null,weight_percent:String(Number(d.weight||0)),progress_percent:String(d.status==="DONE"?100:Number(d.progress||0))}:type==="timeline"?{project:project.id,milestone_name:d.title,status:d.status,planned_date:d.date||null,weight_percent:String(Number(d.weight||0))}:{project:project.id,item_type:{resources:"RESOURCE",risk:"RISK",quality:"QUALITY",documents:"DOCUMENT"}[type],title:d.title,owner_name:d.owner,status:d.status,target_date:d.date||null,quantity:String(Number(d.weight||0)),description:d.description||""};await requestJSON(path,{method:item?"PATCH":"POST",body});await loadPMBackend(true)}
-  function openPMWorkItem(project,type,itemId=""){const labels={tasks:"Task",timeline:"Milestone",resources:"Resource / Material",risk:"Risk / Issue",quality:"Quality item",documents:"Document"},label=labels[type]||"Item",items=project.workItems?.[type]||[],item=items.find(x=>x.id===itemId),weighted=["tasks","timeline"].includes(type),used=items.filter(x=>x.id!==itemId).reduce((n,x)=>n+Number(x.weight||0),0);openModal("Project planning",`${item?"Edit":"Tambah"} ${label}`,`<form id="pmWorkItemForm" class="dynamic-form"><label class="field full"><span>Nama / judul</span><input name="title" value="${attr(item?.title||"")}" required></label><label class="field"><span>Owner / assignee</span><input name="owner" value="${attr(item?.owner||project.manager||displayName(state.user))}" required></label><label class="field"><span>Status</span><select name="status">${["PLANNED","IN_PROGRESS","BLOCKED","DONE"].map(x=>`<option ${item?.status===x?"selected":""}>${x}</option>`).join("")}</select></label><label class="field"><span>Target date</span><input name="date" type="date" value="${attr(item?.date||"")}"></label><label class="field"><span>${weighted?`Bobot ${label} (%)`:"Quantity"}</span><input name="weight" type="number" min="0" ${weighted?`max="${100-used}"`:""} value="${Number(item?.weight||0)}"></label>${weighted?`<label class="field"><span>Progress (%)</span><input name="progress" type="number" min="0" max="100" value="${Number(item?.progress||0)}"></label>`:""}<label class="field full"><span>Deskripsi</span><textarea name="description">${esc(item?.description||"")}</textarea></label></form>`,`<button id="cancelPMItem" class="button secondary">Batal</button><button id="savePMItem" class="button primary">Simpan ke backend</button>`);document.getElementById("cancelPMItem").onclick=closeModal;document.getElementById("savePMItem").onclick=async e=>{const d=Object.fromEntries(new FormData(document.getElementById("pmWorkItemForm")).entries());if(!d.title||!d.owner)return toast("Item belum lengkap","Judul dan owner wajib diisi.","warning");if(weighted&&used+Number(d.weight||0)>100)return toast("Bobot tidak valid",`Total bobot ${label} tidak boleh melebihi 100%.`,"warning");try{e.target.disabled=true;await persistPMWorkItem(project,type,item,d);closeModal();toast(`${label} tersimpan`,`Data sudah ditulis ke backend.`,"success")}catch(error){e.target.disabled=false;toast(`${label} gagal disimpan`,error.message,"error")}}}
-  function openPMExpense(project,id=""){const item=(project.expenses||[]).find(x=>x.id===id),bills=(state.finance.data.billings||[]).filter(b=>!b.project||String(b.project)===String(project.id));openModal("Project cost control",item?"Edit pengeluaran":"Tambah pengeluaran",`<form id="pmExpenseForm" class="dynamic-form"><label class="field full"><span>Apa yang dibayar</span><input name="title" value="${attr(item?.title||"")}" required></label><label class="field"><span>Kategori</span><select name="category">${["MATERIAL","LABOR","EQUIPMENT","SERVICE","TRAVEL","OTHER"].map(x=>`<option ${item?.category===x?"selected":""}>${x}</option>`).join("")}</select></label><label class="field"><span>Vendor / penerima</span><input name="vendor" value="${attr(item?.vendor||"")}"></label><label class="field"><span>Tanggal</span><input name="date" type="date" value="${attr(item?.date||new Date().toISOString().slice(0,10))}"></label><label class="field"><span>Nilai</span><input name="amount" type="number" min="0" value="${Number(item?.amount||0)}" required></label><label class="field full"><span>Billing Finance</span><select name="billingId"><option value="">-- Belum terhubung --</option>${bills.map(b=>`<option value="${attr(b.id)}" ${String(item?.billingId)===String(b.id)?"selected":""}>${esc(b.invoice_number||b.id)} · ${formatMoney(b.total_amount)} · ${esc(b.payment_status||b.status||"")}</option>`).join("")}</select></label><label class="field full"><span>Catatan</span><textarea name="description">${esc(item?.description||"")}</textarea></label></form>`,`<button id="cancelPMExpense" class="button secondary">Batal</button><button id="savePMExpense" class="button primary">Simpan ke backend</button>`);document.getElementById("cancelPMExpense").onclick=closeModal;document.getElementById("savePMExpense").onclick=async e=>{const d=Object.fromEntries(new FormData(document.getElementById("pmExpenseForm")).entries()),body={project:project.id,billing_document:d.billingId||null,title:d.title,category:d.category,vendor_name:d.vendor,expense_date:d.date||null,amount:String(Number(d.amount||0)),description:d.description||""};try{e.target.disabled=true;await requestJSON(`/api/v1/projects/expenses/${item?`${item.id}/`:""}`,{method:item?"PATCH":"POST",body});await loadPMBackend(true);closeModal();toast("Pengeluaran tersimpan","Budget dan tracking billing dimuat ulang dari backend.","success")}catch(error){e.target.disabled=false;toast("Pengeluaran gagal",error.message,"error")}}}
-  async function savePMProject(existing){const data=Object.fromEntries(new FormData(document.getElementById("pmProjectForm")).entries()),body={company:state.company||undefined,project_code:data.code,project_name:data.name,status:data.status,lifecycle_status:existing?.lifecycle_status||"DRAFT",health_status:data.health,planned_start_date:data.start||null,planned_end_date:data.end||null,budget_amount:String(Number(data.budget||0))};if(!data.code||!data.name)return toast("Project belum lengkap","Code dan nama wajib diisi.","warning");try{await requestJSON(`/api/v1/projects/projects/${existing?`${existing.id}/`:""}`,{method:existing?"PATCH":"POST",body});await loadPMBackend(true);closeModal();toast("Project tersimpan","Data proyek sudah ditulis ke backend.","success")}catch(error){toast("Project gagal disimpan",error.message,"error")}}
-  function openPMProgress(project){openModal("Progress backend",project.name,`<form id="pmProgressForm" class="dynamic-form"><label class="field"><span>Progress (%)</span><input name="progress" type="number" min="0" max="100" value="${project.progress}" required></label><label class="field full"><span>Catatan</span><textarea name="note"></textarea></label></form>`,`<button id="cancelPMProgress" class="button secondary">Batal</button><button id="savePMProgress" class="button primary">Simpan ke backend</button>`);document.getElementById("cancelPMProgress").onclick=closeModal;document.getElementById("savePMProgress").onclick=async e=>{const d=Object.fromEntries(new FormData(document.getElementById("pmProgressForm")).entries());try{e.target.disabled=true;await requestJSON(`/api/v1/commands/projects/projects/${project.id}/progress/`,{method:"POST",body:{progress_percent:String(Number(d.progress)),note:d.note||"Update dari Project Management"}});await loadPMBackend(true);closeModal();toast("Progress diperbarui","Backend berhasil mencatat progress proyek.","success")}catch(error){e.target.disabled=false;toast("Progress gagal",error.message,"error")}}}
+  state.pm.weekly = state.pm.weekly || {};
+  state.pm.financials = state.pm.financials || {};
+  state.pm.portfolioFinancials = state.pm.portfolioFinancials || null;
 
-  async function persistPMWorkItem(project,type,item,d){const apiType=type==="tasks"?"tasks":type==="timeline"?"milestones":"control-items",path=`/api/v1/projects/${apiType}/${item?.id?`${item.id}/`:""}`,body=type==="tasks"?{project:project.id,task_code:item?.task_code||`TASK-${Date.now()}`,task_name:d.title,status:d.status,planned_end_at:d.date?`${d.date}T23:59:00Z`:null,weight_percent:String(Number(d.weight||0)),progress_percent:String(d.status==="DONE"?100:Number(d.progress||0))}:type==="timeline"?{project:project.id,milestone_name:d.title,status:d.status,planned_date:d.date||null,weight_percent:String(Number(d.weight||0))}:{project:project.id,item_type:{resources:"RESOURCE",risk:"RISK",quality:"QUALITY",documents:"DOCUMENT"}[type],title:d.title,owner_name:d.owner,status:d.status,target_date:d.date||null,quantity:String(Number(d.weight||0)),description:d.description||""};await requestJSON(path,{method:item?"PATCH":"POST",body});if(type==="tasks")await requestJSON(`/api/v1/commands/projects/projects/${project.id}/recalculate-progress/`,{method:"POST",body:{}});await loadPMBackend(true)}
+  async function loadPMWeekly(projectId){
+    if(!projectId || !state.access) return;
+    try{
+      const res = await requestJSON(`/api/v1/commands/projects/projects/${projectId}/weekly-monitoring/`, {method:"GET"});
+      const data = res?.data || res;
+      state.pm.weekly[projectId] = data;
+      renderProjectManagementV2();
+    }catch(err){
+      console.warn("Weekly monitoring not loaded:", err.message);
+    }
+  }
 
-  function openPMProgress(project){openModal("Progress backend",project.name,`<form id="pmProgressForm" class="dynamic-form"><label class="field"><span>Actual progress (%)</span><input name="actual" type="number" min="0" max="100" value="${project.progress}" required></label><label class="field"><span>Planned progress (%)</span><input name="planned" type="number" min="0" max="100" value="${project.progress}" required></label><label class="field"><span>Actual cost</span><input name="cost" type="number" min="0" value="${project.actual||0}"></label><label class="field"><span>Status</span><select name="status"><option>ON_TRACK</option><option>BEHIND</option><option>AT_RISK</option></select></label></form>`,`<button id="cancelPMProgress" class="button secondary">Batal</button><button id="savePMProgress" class="button primary">Simpan ke backend</button>`);document.getElementById("cancelPMProgress").onclick=closeModal;document.getElementById("savePMProgress").onclick=async e=>{const d=Object.fromEntries(new FormData(document.getElementById("pmProgressForm")).entries());try{e.target.disabled=true;await requestJSON(`/api/v1/commands/projects/projects/${project.id}/progress/`,{method:"POST",body:{actual_progress_percent:String(Number(d.actual)),planned_progress_percent:String(Number(d.planned)),actual_cost:String(Number(d.cost||0)),progress_status:d.status}});await loadPMBackend(true);closeModal();toast("Progress diperbarui","Backend berhasil mencatat progress snapshot.","success")}catch(error){e.target.disabled=false;toast("Progress gagal",error.message,"error")}}}
+  async function loadPMFinancials(projectId){
+    if(!projectId || !state.access) return;
+    try{
+      const res = await requestJSON(`/api/v1/commands/projects/projects/${projectId}/financial-summary/`, {method:"GET"});
+      const data = res?.data || res;
+      state.pm.financials[projectId] = data;
+      renderProjectManagementV2();
+    }catch(err){
+      console.warn("Financial summary not loaded:", err.message);
+    }
+  }
 
-  async function savePMProject(existing){const data=Object.fromEntries(new FormData(document.getElementById("pmProjectForm")).entries()),body={company:state.company||undefined,project_code:data.code,project_name:data.name,customer_name:data.customer||"",manager_name:data.manager||"",description:data.description||"",status:data.status,lifecycle_status:existing?.lifecycle_status||"DRAFT",health_status:data.health,planned_start_date:data.start||null,planned_end_date:data.end||null,budget_amount:String(Number(data.budget||0))};if(!data.code||!data.name||!data.manager)return toast("Project belum lengkap","Code, nama, dan Project Manager wajib diisi.","warning");try{await requestJSON(`/api/v1/projects/projects/${existing?`${existing.id}/`:""}`,{method:existing?"PATCH":"POST",body});await loadPMBackend(true);closeModal();toast("Project tersimpan","Seluruh field proyek sudah ditulis ke backend.","success")}catch(error){toast("Project gagal disimpan",error.message,"error")}}
+  async function loadPortfolioFinancials(){
+    if(!state.access) return;
+    try{
+      const res = await requestJSON(`/api/v1/commands/reporting/portfolio-financial-performance/`, {method:"GET"});
+      state.pm.portfolioFinancials = res?.data || res;
+      renderProjectManagementV2();
+    }catch(err){
+      console.warn("Portfolio financials not loaded:", err.message);
+    }
+  }
+
+  function renderProjectManagementV2(){
+    loadPMState();
+    page("Portfolio & delivery","Project Management");
+    const rows=state.pm.filter==="ALL"?state.pm.projects:state.pm.projects.filter(p=>p.status===state.pm.filter),
+          selected=state.pm.projects.find(p=>p.id===state.pm.selectedId)||state.pm.projects[0],
+          totalBudget=state.pm.projects.reduce((n,p)=>n+Number(p.budget||0),0),
+          actual=state.pm.projects.reduce((n,p)=>n+Number(p.actual||0),0),
+          avg=state.pm.projects.length?Math.round(state.pm.projects.reduce((n,p)=>n+Number(p.progress||0),0)/state.pm.projects.length):0,
+          port=state.pm.portfolioFinancials;
+
+    if(selected && !state.pm.weekly[selected.id] && state.access){
+      loadPMWeekly(selected.id);
+    }
+    if(selected && !state.pm.financials[selected.id] && state.access){
+      loadPMFinancials(selected.id);
+    }
+    if(!state.pm.portfolioFinancials && state.access){
+      loadPortfolioFinancials();
+    }
+
+    const expRev = port?.total_expected_revenue ? formatMoney(port.total_expected_revenue) : formatMoney(totalBudget * 1.3),
+          actRev = port?.total_actual_revenue ? formatMoney(port.total_actual_revenue) : formatMoney(totalBudget),
+          totProfit = port?.total_actual_gross_profit ? formatMoney(port.total_actual_gross_profit) : formatMoney(Math.max(0, totalBudget - actual)),
+          avgMargin = port?.average_actual_margin_percent ? `${port.average_actual_margin_percent}%` : `${totalBudget ? Math.round((totalBudget - actual) / totalBudget * 100) : 0}%`;
+
+    el.workspace.innerHTML=`<section class="pm-head">
+      <div>
+        <span class="eyebrow">Project & Financial Portfolio</span>
+        <h2>Kelola proyek, revenue, cost, profit, dan delivery.</h2>
+        <p>Core Financial Architecture terintegrasi: Budget, Realisasi Biaya, Revenue Invoiced, Laba Kotor, dan Profit Margin.</p>
+      </div>
+      <div>
+        <button id="resetPMDemo" class="button ghost">Reset demo</button>
+        <button id="addPMProject" class="button primary">+ Tambah proyek</button>
+      </div>
+    </section>
+    <section class="pm-metrics">
+      ${metric("Portfolio Revenue", actRev, `Target: ${expRev}`)}
+      ${metric("Total Project Cost", formatMoney(port?.total_actual_cost || actual), `Pagu: ${formatMoney(totalBudget)}`)}
+      ${metric("Gross Profit", totProfit, "Realisasi Laba Kotor")}
+      ${metric("Avg Profit Margin", avgMargin, "Efisiensi Finansial Portfolio")}
+    </section>
+    <section class="pm-layout">
+      <aside class="pm-list">
+        <header>
+          <div>
+            <h3>Project portfolio</h3>
+            <small>${rows.length} proyek</small>
+          </div>
+          <select id="pmFilter">
+            <option value="ALL">Semua status</option>
+            ${["PLANNED","IN_PROGRESS","AT_RISK","ON_HOLD","COMPLETED"].map(x=>`<option value="${x}" ${state.pm.filter===x?"selected":""}>${x}</option>`).join("")}
+          </select>
+        </header>
+        <div>
+          ${rows.map(p=>{
+            const f = state.pm.financials[p.id];
+            const marginText = f ? `${f.actual_margin_percent}% margin` : `${p.progress}% done`;
+            return `<button class="pm-project-item ${p.id===selected?.id?"active":""}" data-pm-project="${p.id}">
+              <span>
+                <strong>${esc(p.code)}</strong>
+                <small>${esc(p.name)}</small>
+              </span>
+              <b>${p.progress}%</b>
+              <i><em style="width:${Math.min(100,p.progress)}%"></em></i>
+              <span class="badge ${pmStatusClass(f?.financial_health_status || p.status)}">${esc(f?.financial_health_status || p.status)}</span>
+            </button>`;
+          }).join("")||empty("Tidak ada proyek.")}
+        </div>
+      </aside>
+      <main class="pm-detail">${selected?pmProjectDetail(selected):empty("Tambahkan project pertama.")}</main>
+    </section>`;
+    
+    document.getElementById("addPMProject").onclick=()=>openPMProjectForm();
+    document.getElementById("resetPMDemo").onclick=()=>{state.pm.projects=structuredClone(PM_SEED);state.pm.selectedId=state.pm.projects[0].id;savePMState();renderProjectManagementV2()};
+    document.getElementById("pmFilter").onchange=e=>{state.pm.filter=e.target.value;renderProjectManagementV2()};
+    document.querySelectorAll("[data-pm-project]").forEach(b=>b.onclick=()=>{
+      state.pm.selectedId=b.dataset.pmProject;
+      state.pm.tab="overview";
+      renderProjectManagementV2();
+      if(!state.pm.weekly[b.dataset.pmProject]) loadPMWeekly(b.dataset.pmProject);
+      if(!state.pm.financials[b.dataset.pmProject]) loadPMFinancials(b.dataset.pmProject);
+    });
+    document.querySelectorAll("[data-pm-tab]").forEach(b=>b.onclick=()=>{state.pm.tab=b.dataset.pmTab;renderProjectManagementV2()});
+    document.getElementById("updatePMProgress")?.addEventListener("click",()=>openPMProgress(selected));
+    document.getElementById("editPMProject")?.addEventListener("click",()=>openPMProjectForm(selected));
+    document.getElementById("btnFinancialTarget")?.addEventListener("click",()=>openPMFinancialTargetModal(selected));
+    document.getElementById("btnFinancialTargetTab")?.addEventListener("click",()=>openPMFinancialTargetModal(selected));
+    document.getElementById("btnWeeklyReview")?.addEventListener("click",()=>openPMWeeklySnapshotModal(selected));
+    document.getElementById("btnWeeklyReviewTab")?.addEventListener("click",()=>openPMWeeklySnapshotModal(selected));
+    document.querySelectorAll("[data-pm-weekly-edit]").forEach(b=>b.onclick=()=>openPMWeeklySnapshotModal(selected, Number(b.dataset.pmWeeklyEdit)));
+    document.getElementById("addPMMember")?.addEventListener("click",()=>openPMMemberForm(selected));
+    document.getElementById("addPMTimesheet")?.addEventListener("click",()=>openPMTimesheetForm(selected));
+    document.querySelectorAll("[data-pm-remove-member]").forEach(b=>b.onclick=async()=>{if(!confirm("Hapus anggota tim ini dari proyek?"))return;try{await requestJSON(`/api/v1/projects/members/${b.dataset.pmRemoveMember}/`,{method:"DELETE"});await loadPMBackend(true);toast("Anggota Dihapus","Anggota berhasil dihapus dari proyek.","success")}catch(err){toast("Gagal menghapus anggota",err.message,"error")}});
+    document.querySelectorAll("[data-pm-remove-timesheet]").forEach(b=>b.onclick=async()=>{if(!confirm("Hapus log timesheet ini?"))return;try{await requestJSON(`/api/v1/projects/timesheets/${b.dataset.pmRemoveTimesheet}/`,{method:"DELETE"});await loadPMBackend(true);toast("Timesheet Dihapus","Log jam kerja berhasil dihapus.","success")}catch(err){toast("Gagal menghapus timesheet",err.message,"error")}});
+    document.querySelectorAll("[data-pm-approve-timesheet]").forEach(b=>b.onclick=async()=>{try{await requestJSON(`/api/v1/projects/timesheets/${b.dataset.pmApproveTimesheet}/`,{method:"PATCH",body:{approval_status:"APPROVED"}});await loadPMBackend(true);toast("Timesheet Disetujui","Status timesheet berhasil disetujui (APPROVED).","success")}catch(err){toast("Gagal menyetujui timesheet",err.message,"error")}});
+  }
+
+  function pmProjectDetail(p){
+    const variance=Number(p.budget||0)-Number(p.actual||0),
+          weekly=state.pm.weekly[p.id],
+          hasWeekly=weekly?.has_weekly_monitoring,
+          fin=state.pm.financials[p.id],
+          tabs=["overview", "financial", ...(hasWeekly?["weekly"]:[]), "tasks","members","timesheets","timeline","resources","budget","risk","quality","documents"];
+    
+    return `<section class="pm-detail-head">
+      <div>
+        <span class="badge ${pmStatusClass(fin?.financial_health_status||weekly?.monitoring_status||p.health)}">${esc(fin?.financial_health_status||weekly?.monitoring_status||p.health)}</span>
+        <h2>${esc(p.name)}</h2>
+        <p>${esc(p.code)} · ${esc(p.customer||"-")} · PM: ${esc(p.manager||"-")}</p>
+      </div>
+      <div>
+        <button id="editPMProject" class="button ghost small">Edit</button>
+        <button id="btnFinancialTarget" class="button secondary small">💰 Target Finansial</button>
+        ${hasWeekly?`<button id="btnWeeklyReview" class="button secondary small">📝 Catat Review Mingguan</button>`:""}
+        <button id="updatePMProgress" class="button primary small">Recalculate Progress</button>
+      </div>
+    </section>
+    ${pmFinancialBanner(p, fin)}
+    ${hasWeekly?pmWeeklyBanner(p, weekly):""}
+    ${pmLifecycle(p)}
+    <nav class="pm-tabs">${tabs.map(t=>`<button data-pm-tab="${t}" class="${state.pm.tab===t?"active":""}">${t==="financial"?"💰 Performa Finansial":t==="weekly"?"📅 Monitoring Mingguan":t==="members"?"👥 Anggota Tim":t==="timesheets"?"⏱️ Timesheet":humanize(t)}</button>`).join("")}</nav>
+    <section class="pm-tab-body">${pmTabContent(p,variance,weekly,fin)}</section>`;
+  }
+
+  function pmFinancialBanner(p, fin){
+    if(!fin) return "";
+    const healthClass = String(fin.financial_health_status||"").toLowerCase().replace("_","-");
+    return `<div class="pm-fin-banner">
+      <div class="pm-fin-banner-head">
+        <div>
+          <h3>💰 Financial Performance Matrix <span class="badge ${healthClass}">${esc(fin.financial_health_status)}</span></h3>
+          <p>Ringkasan real-time: Expected vs Actual Revenue, Planned Budget vs Actual Cost, Gross Profit, dan Margin.</p>
+        </div>
+        <div>
+          <button id="btnFinancialTargetTab" class="button primary small">⚙️ Set Target Kontrak & Margin</button>
+        </div>
+      </div>
+      <div class="pm-fin-grid">
+        <div class="pm-fin-card">
+          <small>Revenue (Inflow)</small>
+          <strong>${formatMoney(fin.actual_revenue)}</strong>
+          <span>Target: <strong>${formatMoney(fin.expected_revenue)}</strong> (${fin.revenue_achievement_percent}%)</span>
+          <div class="pm-fin-progress-track">
+            <div class="pm-fin-progress-fill" style="width:${Math.min(100, Number(fin.revenue_achievement_percent))}%;background:#15803d"></div>
+          </div>
+        </div>
+
+        <div class="pm-fin-card">
+          <small>Cost (Outflow)</small>
+          <strong>${formatMoney(fin.actual_cost)}</strong>
+          <span>Pagu: <strong>${formatMoney(fin.planned_budget)}</strong> (${fin.budget_utilization_percent}%)</span>
+          <div class="pm-fin-progress-track">
+            <div class="pm-fin-progress-fill" style="width:${Math.min(100, Number(fin.budget_utilization_percent))}%;background:${Number(fin.budget_utilization_percent)>100?'#b91c1c':'#0284c7'}"></div>
+          </div>
+        </div>
+
+        <div class="pm-fin-card">
+          <small>Gross Profit</small>
+          <strong style="color:${Number(fin.actual_gross_profit)>=0?'#15803d':'#b91c1c'}">${formatMoney(fin.actual_gross_profit)}</strong>
+          <span>Sisa Budget: <strong>${formatMoney(fin.budget_variance)}</strong></span>
+        </div>
+
+        <div class="pm-fin-card">
+          <small>Profit Margin</small>
+          <strong style="color:${Number(fin.actual_margin_percent)>=Number(fin.target_margin_percent)?'#15803d':'#b45309'}">${fin.actual_margin_percent}%</strong>
+          <span>Target Margin: <strong>${fin.target_margin_percent}%</strong></span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function pmWeeklyBanner(p, w){
+    if(!w || !w.has_weekly_monitoring) return "";
+    const curr = w.current_week || {week_number:1, start_date:"-", end_date:"-"},
+          statusClass = String(w.monitoring_status||"").toLowerCase().replace("_","-");
+    return `<div class="pm-weekly-banner">
+      <div class="pm-weekly-banner-head">
+        <div>
+          <h3>📅 Weekly Project Monitoring · Minggu ke-${curr.week_number} <span class="badge ${statusClass}">${esc(w.monitoring_status||"ON_TRACK")}</span></h3>
+          <p>Periode aktif: <strong>${esc(curr.start_date)}</strong> s/d <strong>${esc(curr.end_date)}</strong> · Target progres vs aktual terukur otomatis.</p>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">
+          Durasi Proyek: <strong>${w.total_weeks} Minggu</strong>
+        </div>
+      </div>
+      <div class="pm-weekly-metrics">
+        <div class="pm-weekly-metric-card">
+          <small>Progres Saat Ini</small>
+          <strong>${w.current_progress}%</strong>
+          <span style="color:#258a4b">Aktual dari task</span>
+        </div>
+        <div class="pm-weekly-metric-card">
+          <small>Target Minggu Ini</small>
+          <strong>${w.target_this_week}%</strong>
+          <span style="color:var(--muted)">Baseline jadwal</span>
+        </div>
+        <div class="pm-weekly-metric-card">
+          <small>Minggu Sebelumnya</small>
+          <strong>${w.previous_week_progress}%</strong>
+          <span style="color:var(--muted)">Snapshot minggu lalu</span>
+        </div>
+        <div class="pm-weekly-metric-card">
+          <small>Peningkatan Mingguan</small>
+          <strong style="color:${Number(w.weekly_improvement||0)>=0?'#15803d':'#b91c1c'}">${esc(w.weekly_improvement||"0%")}</strong>
+          <span>${Number(w.gap_to_target||0)>=0?'✅ Di atas target':'⚠️ Di bawah target'}</span>
+        </div>
+      </div>
+      <div class="pm-weekly-bar-track" style="height:12px;margin-top:4px">
+        <div class="pm-weekly-bar-fill" style="width:${Math.min(100, Number(w.current_progress))}%"></div>
+        <div class="pm-weekly-bar-target" style="left:${Math.min(100, Number(w.target_this_week))}%" title="Target: ${w.target_this_week}%"></div>
+      </div>
+    </div>`;
+  }
+
+  function pmTabContent(p,variance,weekly,fin){
+    if(state.pm.tab==="financial") return pmFinancialPanel(p, fin);
+    if(state.pm.tab==="weekly" && weekly) return pmWeeklyPanel(p, weekly);
+    if(state.pm.tab==="overview"){
+      const tw=weightedStats(p,"tasks"),mw=weightedStats(p,"timeline"),totalHrs=(p.timesheets||[]).reduce((n,t)=>n+Number(t.hours||0),0);
+      return `<div class="pm-summary-grid">
+        ${pmInfo("Scope",p.description||"Belum ada deskripsi","S")}
+        ${pmInfo("Task",`${p.tasks.done}/${p.tasks.total} selesai · bobot ${tw.allocated}%`,"T")}
+        ${pmInfo("Milestone",`${p.milestones.done}/${p.milestones.total} tercapai · bobot ${mw.allocated}%`,"M")}
+        ${pmInfo("Anggota Tim",`${(p.members||[]).length} orang terdaftar`,"👥")}
+        ${pmInfo("Timesheet",`${totalHrs} jam kerja tercatat`,"⏱️")}
+        ${pmInfo("Cost / Budget",`${formatMoney(fin?.actual_cost||p.actual)} / ${formatMoney(fin?.planned_budget||p.budget)}`,"$")}
+      </div>
+      ${fin?`
+      <div style="margin-top:14px;padding:14px;border:1px solid #bce6cb;border-radius:12px;background:#f2fbf5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div>
+          <strong style="color:#155724">💰 Performa Finansial: Laba Kotor ${formatMoney(fin.actual_gross_profit)} (${fin.actual_margin_percent}% Margin)</strong>
+          <p style="margin:2px 0 0;font-size:11px;color:#1e7e34">Revenue: ${formatMoney(fin.actual_revenue)} · Cost: ${formatMoney(fin.actual_cost)} · Achievement: ${fin.revenue_achievement_percent}%</p>
+        </div>
+        <button class="button primary small" onclick="document.querySelector('[data-pm-tab=financial]')?.click()">Buka Detail Finansial →</button>
+      </div>`:""}
+      ${weekly?.has_weekly_monitoring?`
+      <div style="margin-top:10px;padding:14px;border:1px solid #c3e6cb;border-radius:12px;background:#f0fff4;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div>
+          <strong style="color:#155724">📈 Monitoring Mingguan: Minggu ke-${weekly.current_week?.week_number} (${esc(weekly.monitoring_status)})</strong>
+          <p style="margin:2px 0 0;font-size:11px;color:#1e7e34">Target: ${weekly.target_this_week}% · Aktual: ${weekly.current_progress}% · Peningkatan: ${weekly.weekly_improvement}</p>
+        </div>
+        <button class="button secondary small" onclick="document.querySelector('[data-pm-tab=weekly]')?.click()">Buka History Mingguan →</button>
+      </div>`:""}
+      <div class="pm-health">
+        ${statusRow("Schedule",p.progress>=50?"On track":"Perlu monitoring",p.progress>=50?"success":"warning")}
+        ${statusRow("Budget",variance>=0?`${formatMoney(variance)} tersisa`:`Over ${formatMoney(Math.abs(variance))}`,variance>=0?"success":"warning")}
+        ${statusRow("Bobot Task",tw.allocated===100?"100% teralokasi":`${tw.remaining}% belum dialokasikan`,tw.allocated===100?"success":"warning")}
+      </div>
+      <div style="margin-top:14px;padding:12px;border:1px solid #b9c9ee;border-radius:10px;background:#eef4ff;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+        <span><strong>⏱️ Quick Menu: Log Timesheet & Tim</strong><br><small style="color:var(--muted)">Catat jam kerja 8 jam atau kelola penugasan anggota tim proyek.</small></span>
+        <div style="display:flex;gap:8px">
+          <button class="button secondary small" onclick="document.querySelector('[data-pm-tab=members]')?.click()">👥 Anggota Tim</button>
+          <button class="button primary small" onclick="document.querySelector('[data-pm-tab=timesheets]')?.click()">⏱️ Buka Timesheet</button>
+        </div>
+      </div>`;
+    }
+    if(state.pm.tab==="tasks"||state.pm.tab==="timeline")return pmWeightedPanel(p,state.pm.tab);
+    if(state.pm.tab==="members")return pmMembersPanel(p);
+    if(state.pm.tab==="timesheets")return pmTimesheetPanel(p);
+    if(state.pm.tab==="budget")return pmBudgetPanel(p);
+    return pmFeaturePanel(p,state.pm.tab);
+  }
+
+  function pmFinancialPanel(p, fin){
+    if(!fin) return `<div class="empty">Memuat data finansial proyek…</div>`;
+    const snapshots = fin.snapshots || [];
+    return `<div class="pm-feature-panel">
+      <header>
+        <div>
+          <h3>Performa Finansial Proyek (Revenue, Cost, Profit & Margin)</h3>
+          <p>Pengawasan menyeluruh pendapatan proyek, realisasi biaya, laba kotor, dan marjin keuntungan berbasis transaksi valid.</p>
+        </div>
+        <button id="btnFinancialTargetTab" class="button primary small">⚙️ Update Target Finansial</button>
+      </header>
+
+      <!-- Financial Comparison Breakdown -->
+      <div class="pm-summary-grid" style="margin-top:14px">
+        ${pmInfo("Expected Revenue (Target)", formatMoney(fin.expected_revenue), "🎯")}
+        ${pmInfo("Invoiced Revenue", formatMoney(fin.invoiced_revenue), "📄")}
+        ${pmInfo("Realized Cash Revenue", formatMoney(fin.realized_revenue), "💵")}
+        ${pmInfo("Planned Budget", formatMoney(fin.planned_budget), "📋")}
+        ${pmInfo("Actual Direct Cost", formatMoney(fin.actual_cost), "💸")}
+        ${pmInfo("Actual Gross Profit", formatMoney(fin.actual_gross_profit), "🏆")}
+      </div>
+
+      <!-- Detail Tables: Revenue vs Cost Breakdown -->
+      <div class="pm-accounting-columns" style="margin-top:16px">
+        <article>
+          <header>
+            <h3>Arus Pendapatan (Revenue Breakdown)</h3>
+            <span>Achievement: ${fin.revenue_achievement_percent}%</span>
+          </header>
+          <div style="padding:12px;display:grid;gap:8px">
+            <div class="pm-accounting-row">
+              <span><strong>Target Nilai Kontrak Proyek</strong><small>Baseline kesepakatan / Sales Order</small></span>
+              <strong>${formatMoney(fin.expected_revenue)}</strong>
+            </div>
+            <div class="pm-accounting-row">
+              <span><strong>Total Invoice Diterbitkan (AR)</strong><small>Customer invoice yang telah disetujui</small></span>
+              <strong style="color:#15803d">${formatMoney(fin.invoiced_revenue)}</strong>
+            </div>
+            <div class="pm-accounting-row">
+              <span><strong>Kas Pembayaran Diterima</strong><small>Realisasi pelunasan dari customer</small></span>
+              <strong>${formatMoney(fin.realized_revenue)}</strong>
+            </div>
+            <div class="pm-accounting-row">
+              <span><strong>Target Belum Ditagihkan</strong><small>Expected Revenue - Invoiced Revenue</small></span>
+              <span style="color:#b45309">${formatMoney(fin.outstanding_revenue)}</span>
+            </div>
+            <div class="pm-accounting-row">
+              <span><strong>Piutang Belum Terbayar (Uncollected)</strong><small>Invoice terbit belum lunas</small></span>
+              <span style="color:#b91c1c">${formatMoney(fin.uncollected_revenue)}</span>
+            </div>
+          </div>
+        </article>
+
+        <article>
+          <header>
+            <h3>Arus Biaya Langsung (Cost Breakdown)</h3>
+            <span>Utilization: ${fin.budget_utilization_percent}%</span>
+          </header>
+          <div style="padding:12px;display:grid;gap:8px">
+            <div class="pm-accounting-row">
+              <span><strong>Pagu Anggaran Disetujui (Budget)</strong><small>Plafon alokasi biaya proyek</small></span>
+              <strong>${formatMoney(fin.planned_budget)}</strong>
+            </div>
+            <div class="pm-accounting-row">
+              <span><strong>Tenaga Kerja (Labor Timesheets)</strong><small>Jam kerja approved dikalikan tarif</small></span>
+              <strong>${formatMoney(fin.labor_cost)}</strong>
+            </div>
+            <div class="pm-accounting-row">
+              <span><strong>Material & Pabrikasi</strong><small>Penggunaan material produksi</small></span>
+              <strong>${formatMoney(fin.material_cost)}</strong>
+            </div>
+            <div class="pm-accounting-row">
+              <span><strong>Pengeluaran Operasional / Vendor AP</strong><small>Project expenses & billing vendor</small></span>
+              <strong>${formatMoney(fin.registered_expenses)}</strong>
+            </div>
+            <div class="pm-accounting-row">
+              <span><strong>Sisa Pagu Anggaran (Budget Variance)</strong><small>Plafon - Realisasi Biaya Total</small></span>
+              <strong style="color:${Number(fin.budget_variance)>=0?'#15803d':'#b91c1c'}">${formatMoney(fin.budget_variance)}</strong>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- Profit & Margin Card -->
+      <div style="margin-top:16px;padding:16px;border-radius:12px;background:#ffffff;border:1px solid var(--line)">
+        <h4 style="margin:0 0 12px">Analisis Profitabilitas & Marjin Proyek</h4>
+        <div class="pm-weekly-metrics">
+          <div class="pm-weekly-metric-card">
+            <small>Expected Gross Profit</small>
+            <strong>${formatMoney(fin.expected_gross_profit)}</strong>
+            <span>Expected Revenue - Planned Budget</span>
+          </div>
+          <div class="pm-weekly-metric-card">
+            <small>Actual Gross Profit</small>
+            <strong style="color:${Number(fin.actual_gross_profit)>=0?'#15803d':'#b91c1c'}">${formatMoney(fin.actual_gross_profit)}</strong>
+            <span>Actual Revenue - Actual Cost</span>
+          </div>
+          <div class="pm-weekly-metric-card">
+            <small>Expected Margin</small>
+            <strong>${fin.expected_margin_percent}%</strong>
+            <span>Target awal</span>
+          </div>
+          <div class="pm-weekly-metric-card">
+            <small>Actual Gross Margin</small>
+            <strong style="color:${Number(fin.actual_margin_percent)>=Number(fin.target_margin_percent)?'#15803d':'#b91c1c'}">${fin.actual_margin_percent}%</strong>
+            <span>Target: ${fin.target_margin_percent}%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Historical Financial Snapshots Table -->
+      <div class="table-wrap" style="margin-top:16px">
+        <h4 style="margin:10px 0 8px">Riwayat Snapshot Finansial Berkala</h4>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Tanggal Snapshot</th>
+              <th>Pagu Budget</th>
+              <th>Realisasi Biaya</th>
+              <th>Revenue Diakui</th>
+              <th>Laba Kotor</th>
+              <th>Margin %</th>
+              <th>Status Kesehatan</th>
+              <th>Catatan</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${snapshots.map(s=>`
+              <tr>
+                <td><strong>${esc(s.snapshot_date)}</strong></td>
+                <td>${formatMoney(s.planned_budget)}</td>
+                <td>${formatMoney(s.actual_cost)}</td>
+                <td><strong style="color:#15803d">${formatMoney(s.actual_revenue)}</strong></td>
+                <td><strong style="color:${Number(s.actual_gross_profit)>=0?'#15803d':'#b91c1c'}">${formatMoney(s.actual_gross_profit)}</strong></td>
+                <td><strong>${s.actual_margin_percent}%</strong></td>
+                <td><span class="badge ${String(s.financial_health_status).toLowerCase().replace('_','-')}">${esc(s.financial_health_status)}</span></td>
+                <td><small>${esc(s.note||"-")}</small></td>
+              </tr>
+            `).join("") || `<tr><td colspan="8">${empty("Belum ada snapshot historis finansial.")}</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  function openPMFinancialTargetModal(project){
+    const fin = state.pm.financials[project.id];
+    openModal("Pengaturan Target Finansial Proyek", `Target Finansial: ${project.name}`, `
+      <form id="pmFinancialTargetForm" class="dynamic-form">
+        <div class="prototype-banner project-banner" style="margin-bottom:10px">
+          Pendapatan (Revenue), Biaya (Cost), Laba Kotor (Profit), dan Margin dihitung secara universal dari Core System.
+        </div>
+        <label class="field full">
+          <span>Nilai Kontrak / Expected Revenue (IDR) *</span>
+          <input name="contract_amount" type="number" min="0" value="${fin?.expected_revenue || project.contract_amount || 0}" required>
+          <small style="color:var(--muted)">Total nilai kontrak proyek yang disepakati dengan customer.</small>
+        </label>
+        <label class="field">
+          <span>Pagu Anggaran / Planned Budget (IDR) *</span>
+          <input name="budget_amount" type="number" min="0" value="${fin?.planned_budget || project.budget || 0}" required>
+        </label>
+        <label class="field">
+          <span>Target Profit Margin (%)</span>
+          <input name="target_margin_percent" type="number" min="0" max="100" step="0.1" value="${fin?.target_margin_percent || project.target_margin_percent || 25}">
+        </label>
+        <label class="field full">
+          <span>Catatan Penyesuaian Target</span>
+          <textarea name="note" placeholder="Alasan perubahan target atau addendum kontrak..."></textarea>
+        </label>
+      </form>
+    `, `
+      <button id="cancelFinTarget" class="button secondary">Batal</button>
+      <button id="saveFinTarget" class="button primary">Simpan Target Finansial</button>
+    `);
+
+    document.getElementById("cancelFinTarget").onclick = closeModal;
+    document.getElementById("saveFinTarget").onclick = async (e) => {
+      const f = document.getElementById("pmFinancialTargetForm");
+      if(!f.reportValidity()) return;
+      const d = Object.fromEntries(new FormData(f).entries()),
+            payload = {
+              contract_amount: String(Number(d.contract_amount || 0)),
+              budget_amount: String(Number(d.budget_amount || 0)),
+              target_margin_percent: String(Number(d.target_margin_percent || 0)),
+              note: d.note || "Update target finansial",
+            };
+
+      try {
+        e.target.disabled = true;
+        await requestJSON(`/api/v1/commands/projects/projects/${project.id}/financial-target/`, {
+          method: "POST",
+          body: payload,
+        });
+        closeModal();
+        await loadPMFinancials(project.id);
+        await loadPortfolioFinancials();
+        await loadPMBackend(true);
+        toast("Target Finansial Tersimpan", "Nilai kontrak, pagu budget, dan target marjin berhasil diperbarui.", "success");
+      } catch (err) {
+        e.target.disabled = false;
+        toast("Gagal menyimpan target", err.message, "error");
+      }
+    };
+  }
+
+
+  function pmWeeklyPanel(p, w){
+    const history = w.history || [];
+    return `<div class="pm-feature-panel">
+      <header>
+        <div>
+          <h3>Weekly Project Monitoring & Historical Progress</h3>
+          <p>Pelacakan progres per minggu terhubung dengan penyelesaian task, milestone, dan evaluasi berkala Project Manager.</p>
+        </div>
+        <button id="btnWeeklyReviewTab" class="button primary small">+ Catat Evaluasi Minggu Ini</button>
+      </header>
+
+      <!-- Weekly Progress Trend Chart -->
+      <div class="pm-weekly-chart" style="margin-top:14px">
+        <header>
+          <h4>Perkembangan Progres Mingguan (Target 🔴 vs Realisasi 🟢)</h4>
+          <span style="font-size:11px;color:var(--muted)">Target kumulatif vs Progres tercapai</span>
+        </header>
+        <div class="pm-weekly-chart-bars">
+          ${history.map(item => `
+            <div class="pm-weekly-bar-row">
+              <small><strong>${esc(item.label)}</strong><br>${esc(item.start_date.slice(5))} - ${esc(item.end_date.slice(5))}</small>
+              <div class="pm-weekly-bar-track" title="Aktual: ${item.actual_progress}%, Target: ${item.target_progress}%">
+                <div class="pm-weekly-bar-fill" style="width:${Math.min(100, Number(item.actual_progress))}%"></div>
+                <div class="pm-weekly-bar-target" style="left:${Math.min(100, Number(item.target_progress))}%"></div>
+              </div>
+              <div class="pm-weekly-bar-val">
+                <span style="color:#15803d">${item.actual_progress}%</span> / <span style="color:#e11d48">${item.target_progress}%</span>
+                <br><span class="badge ${String(item.status).toLowerCase().replace('_','-')}" style="font-size:9px;padding:1px 5px">${esc(item.status)}</span>
+              </div>
+            </div>
+          `).join("") || empty("Belum ada data jadwal mingguan.")}
+        </div>
+      </div>
+
+      <!-- Weekly History Table -->
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Minggu</th>
+              <th>Rentang Tanggal</th>
+              <th>Target</th>
+              <th>Aktual</th>
+              <th>Peningkatan</th>
+              <th>Gap Target</th>
+              <th>Status</th>
+              <th>Catatan & Rencana</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${history.map(item => `
+              <tr style="${item.is_current ? 'background:#f6fdf8;font-weight:600' : ''}">
+                <td>
+                  <strong>${esc(item.label)}</strong>
+                  ${item.is_current ? '<span class="badge info" style="font-size:8px">Aktif</span>' : item.is_locked ? '<span class="badge" style="font-size:8px">Arsip</span>' : ''}
+                </td>
+                <td><small>${esc(item.start_date)}<br>s/d ${esc(item.end_date)}</small></td>
+                <td><strong>${item.target_progress}%</strong></td>
+                <td><strong style="color:#15803d">${item.actual_progress}%</strong></td>
+                <td><span style="color:${Number(item.progress_difference)>=0?'#15803d':'#b91c1c'}">${Number(item.progress_difference)>0?'+':''}${item.progress_difference}%</span></td>
+                <td><span style="color:${Number(item.gap_to_target)>=0?'#15803d':'#b91c1c'}">${Number(item.gap_to_target)>0?'+':''}${item.gap_to_target}%</span></td>
+                <td><span class="badge ${String(item.status).toLowerCase().replace('_','-')}">${esc(item.status)}</span></td>
+                <td>
+                  ${item.notes ? `<div style="font-size:11px"><strong>Catatan:</strong> ${esc(item.notes)}</div>` : ''}
+                  ${item.issues ? `<div style="font-size:11px;color:#b91c1c"><strong>Kendala:</strong> ${esc(item.issues)}</div>` : ''}
+                  ${item.achievements ? `<div style="font-size:11px;color:#15803d"><strong>Pencapaian:</strong> ${esc(item.achievements)}</div>` : ''}
+                  ${item.next_week_plan ? `<div style="font-size:11px;color:#1d4ed8"><strong>Rencana:</strong> ${esc(item.next_week_plan)}</div>` : ''}
+                  ${!item.notes && !item.issues && !item.achievements && !item.next_week_plan ? '<small style="color:var(--muted)">Belum ada catatan review</small>' : ''}
+                </td>
+                <td>
+                  <button class="button ghost small" data-pm-weekly-edit="${item.week_number}">📝 Review</button>
+                </td>
+              </tr>
+            `).join("") || `<tr><td colspan="9">${empty("Belum ada history mingguan.")}</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  function openPMWeeklySnapshotModal(project, weekNum = null){
+    const weekly = state.pm.weekly[project.id],
+          activeWeek = weekNum || weekly?.current_week?.week_number || 1,
+          existing = (weekly?.history || []).find(h => h.week_number === activeWeek);
+
+    openModal("Evaluasi & Review Mingguan Proyek", `Catatan Progres: ${project.name} · Minggu ke-${activeWeek}`, `
+      <form id="pmWeeklySnapshotForm" class="dynamic-form">
+        <input type="hidden" name="week_number" value="${activeWeek}">
+        <div class="prototype-banner project-banner" style="margin-bottom:10px">
+          Progres aktual saat ini: <strong>${weekly?.current_progress || project.progress}%</strong> (terkalkulasi otomatis dari completion task).
+        </div>
+        <label class="field">
+          <span>Target Mingguan (%)</span>
+          <input name="target_progress" type="number" min="0" max="100" step="0.1" value="${existing?.target_progress || ''}" placeholder="Contoh: 25.0">
+          <small style="color:var(--muted)">Kosongkan jika menggunakan baseline kalkulasi durasi.</small>
+        </label>
+        <label class="field">
+          <span>Pencapaian Minggu Ini (Achievements)</span>
+          <input name="achievements" value="${attr(existing?.achievements || '')}" placeholder="Fitur/modul/pekerjaan yang selesai...">
+        </label>
+        <label class="field full">
+          <span>Catatan Evaluasi / Progress Notes</span>
+          <textarea name="notes" placeholder="Deskripsi pekerjaan yang telah dikerjakan minggu ini...">${esc(existing?.notes || '')}</textarea>
+        </label>
+        <label class="field full">
+          <span>Kendala / Blockers / Risks</span>
+          <textarea name="issues" placeholder="Kendala teknis, keterlambatan material, atau kendala lapangan...">${esc(existing?.issues || '')}</textarea>
+        </label>
+        <label class="field full">
+          <span>Rencana Minggu Depan (Next Week Plan)</span>
+          <textarea name="next_week_plan" placeholder="Target dan rencana kerja untuk minggu berikutnya...">${esc(existing?.next_week_plan || '')}</textarea>
+        </label>
+      </form>
+    `, `
+      <button id="cancelWeeklySnapshot" class="button secondary">Batal</button>
+      <button id="saveWeeklySnapshot" class="button primary">Simpan Review Mingguan</button>
+    `);
+
+    document.getElementById("cancelWeeklySnapshot").onclick = closeModal;
+    document.getElementById("saveWeeklySnapshot").onclick = async (e) => {
+      const f = document.getElementById("pmWeeklySnapshotForm");
+      if(!f.reportValidity()) return;
+      const d = Object.fromEntries(new FormData(f).entries()),
+            payload = {
+              week_number: Number(d.week_number),
+              notes: d.notes,
+              issues: d.issues,
+              achievements: d.achievements,
+              next_week_plan: d.next_week_plan,
+            };
+      if (d.target_progress) {
+        payload.target_progress = String(Number(d.target_progress));
+      }
+
+      try {
+        e.target.disabled = true;
+        await requestJSON(`/api/v1/commands/projects/projects/${project.id}/weekly-snapshot/`, {
+          method: "POST",
+          body: payload,
+        });
+        closeModal();
+        await loadPMWeekly(project.id);
+        await loadPMBackend(true);
+        toast("Review Mingguan Tersimpan", `Catatan evaluasi Minggu ke-${activeWeek} berhasil direkam ke riwayat.`, "success");
+      } catch (err) {
+        e.target.disabled = false;
+        toast("Gagal merekam review", err.message, "error");
+      }
+    };
+  }
+
+  function openPMProgress(project){
+    openModal("Recalculate & Sync Progres", project.name, `
+      <div style="padding:10px 0">
+        <p>Hitung ulang progres proyek secara otomatis berdasarkan kontribusi bobot task dan task completion aktual.</p>
+        <p>Progres saat ini: <strong>${project.progress}%</strong></p>
+      </div>
+    `, `
+      <button id="cancelPMProgress" class="button secondary">Batal</button>
+      <button id="savePMProgress" class="button primary">Hitung Ulang Sekarang</button>
+    `);
+    document.getElementById("cancelPMProgress").onclick = closeModal;
+    document.getElementById("savePMProgress").onclick = async (e) => {
+      try {
+        e.target.disabled = true;
+        await requestJSON(`/api/v1/commands/projects/projects/${project.id}/recalculate-progress/`, {method:"POST", body:{}});
+        if(state.pm.weekly[project.id]) await loadPMWeekly(project.id);
+        await loadPMBackend(true);
+        closeModal();
+        toast("Progres Dihitung Ulang", "Progres proyek berhasil disinkronisasi dengan seluruh task.", "success");
+      } catch (err) {
+        e.target.disabled = false;
+        toast("Gagal menghitung ulang", err.message, "error");
+      }
+    };
+  }
+
+  function openPMProjectForm(project){
+    const isEdit = !!project;
+    openModal(isEdit ? "Edit Proyek" : "Tambah Proyek Baru", isEdit ? project.name : "Inisiasi Proyek Baru", `
+      <form id="pmProjectEditForm" class="dynamic-form">
+        <label class="field">
+          <span>Kode Proyek *</span>
+          <input name="project_code" value="${esc(project?.code || "")}" required placeholder="PRJ-2026-XXX">
+        </label>
+        <label class="field">
+          <span>Nama Proyek *</span>
+          <input name="project_name" value="${esc(project?.name || "")}" required>
+        </label>
+        <label class="field">
+          <span>Customer / Client</span>
+          <input name="customer_name" value="${esc(project?.customer || "")}">
+        </label>
+        <label class="field">
+          <span>Project Manager</span>
+          <input name="manager_name" value="${esc(project?.manager || "")}">
+        </label>
+        <label class="field">
+          <span>Nilai Kontrak / Expected Revenue (IDR)</span>
+          <input name="contract_amount" type="number" min="0" value="${project?.contract_amount || 0}">
+        </label>
+        <label class="field">
+          <span>Pagu Anggaran / Planned Budget (IDR) *</span>
+          <input name="budget_amount" type="number" min="0" value="${project?.budget || 0}" required>
+        </label>
+        <label class="field">
+          <span>Tanggal Mulai</span>
+          <input name="planned_start_date" type="date" value="${project?.start || ""}">
+        </label>
+        <label class="field">
+          <span>Target Selesai</span>
+          <input name="planned_end_date" type="date" value="${project?.end || ""}">
+        </label>
+        <label class="field full">
+          <span>Deskripsi & Scope</span>
+          <textarea name="description">${esc(project?.description || "")}</textarea>
+        </label>
+      </form>
+    `, `
+      <button id="cancelPMProjectEdit" class="button secondary">Batal</button>
+      <button id="savePMProjectEdit" class="button primary">Simpan Proyek</button>
+    `);
+
+    document.getElementById("cancelPMProjectEdit").onclick = closeModal;
+    document.getElementById("savePMProjectEdit").onclick = async (e) => {
+      const f = document.getElementById("pmProjectEditForm");
+      if(!f.reportValidity()) return;
+      const d = Object.fromEntries(new FormData(f).entries()),
+            payload = {
+              project_code: d.project_code,
+              project_name: d.project_name,
+              customer_name: d.customer_name || "",
+              manager_name: d.manager_name || "",
+              contract_amount: String(Number(d.contract_amount || 0)),
+              budget_amount: String(Number(d.budget_amount || 0)),
+              planned_start_date: d.planned_start_date || null,
+              planned_end_date: d.planned_end_date || null,
+              description: d.description || "",
+            };
+
+      try {
+        e.target.disabled = true;
+        if(isEdit) {
+          await requestJSON(`/api/v1/projects/projects/${project.id}/`, {
+            method: "PATCH",
+            body: payload,
+          });
+        } else {
+          await requestJSON(`/api/v1/projects/projects/`, {
+            method: "POST",
+            body: {
+              ...payload,
+              status: "PLANNED",
+              lifecycle_status: "DRAFT",
+              health_status: "ON_TRACK",
+            },
+          });
+        }
+        closeModal();
+        await loadPMBackend(true);
+        toast("Proyek Tersimpan", "Seluruh field proyek sudah ditulis ke backend.", "success");
+      } catch (error) {
+        e.target.disabled = false;
+        toast("Project gagal disimpan", error.message, "error");
+      }
+    };
+  }
 
   const PROJECT_CATALOG=[
     {group:"Dashboard Project",items:[{title:"Key Performance Index",desc:"KPI dan indikator berbobot proyek.",path:"/api/v1/projects/weight-indicators/",source:"weights",live:true},{title:"Gantt Chart / Summary Task",desc:"Timeline visual dari task dan dependency.",demo:"gantt",source:"tasks",live:false,shared:true},{title:"Notifikasi dan Quick Actions",desc:"Peringatan serta tindakan cepat lintas modul.",path:"/api/v1/core/notifications/",source:"notifications",live:true,shared:true}]},

@@ -1,5 +1,5 @@
 from rest_framework.routers import DefaultRouter
-from .viewsets import ProjectViewSet, ProjectControlItemViewSet, ProjectExpenseViewSet, ProjectLifecycleEventViewSet, ProjectReadinessCheckViewSet, MemberViewSet, TaskViewSet, TaskDependencyViewSet, MilestoneViewSet, MaterialRequirementViewSet, BudgetLineViewSet, TimesheetViewSet, ChangeRequestViewSet, ChangeRequestMaterialViewSet, BoardViewSet, BoardColumnViewSet, TaskBoardPositionViewSet, HealthRuleViewSet, HealthSnapshotViewSet, RiskViewSet, IssueViewSet, IssueActionViewSet, ProjectDispatchViewSet, TechnicalBriefViewSet, TechnicalBriefVersionViewSet, RequirementViewSet, AcceptanceCriteriaViewSet, ResourceRequestViewSet, ResourceRequestLineViewSet, ResourceAllocationViewSet, ProgressSnapshotViewSet, EquipmentUsageViewSet, WeightIndicatorViewSet, WeightComponentViewSet
+from .viewsets import ProjectViewSet, ProjectControlItemViewSet, ProjectExpenseViewSet, ProjectLifecycleEventViewSet, ProjectReadinessCheckViewSet, MemberViewSet, TaskViewSet, TaskDependencyViewSet, MilestoneViewSet, MaterialRequirementViewSet, BudgetLineViewSet, TimesheetViewSet, ChangeRequestViewSet, ChangeRequestMaterialViewSet, BoardViewSet, BoardColumnViewSet, TaskBoardPositionViewSet, HealthRuleViewSet, HealthSnapshotViewSet, RiskViewSet, IssueViewSet, IssueActionViewSet, ProjectDispatchViewSet, TechnicalBriefViewSet, TechnicalBriefVersionViewSet, RequirementViewSet, AcceptanceCriteriaViewSet, ResourceRequestViewSet, ResourceRequestLineViewSet, ResourceAllocationViewSet, ProgressSnapshotViewSet, EquipmentUsageViewSet, WeightIndicatorViewSet, WeightComponentViewSet, ProjectWeeklyProgressViewSet
 
 app_name = "projects"
 router = DefaultRouter()
@@ -34,8 +34,10 @@ router.register(r"resource-requests", ResourceRequestViewSet, basename="resource
 router.register(r"resource-request-lines", ResourceRequestLineViewSet, basename="resource-request-line")
 router.register(r"resource-allocations", ResourceAllocationViewSet, basename="resource-allocation")
 router.register(r"progress-snapshots", ProgressSnapshotViewSet, basename="progress-snapshot")
+router.register(r"weekly-progress", ProjectWeeklyProgressViewSet, basename="weekly-progress")
 router.register(r"equipment-usages", EquipmentUsageViewSet, basename="equipment-usage")
 router.register(r"weight-indicators", WeightIndicatorViewSet, basename="weight-indicator")
 router.register(r"weight-components", WeightComponentViewSet, basename="weight-component")
+
 
 urlpatterns = router.urls

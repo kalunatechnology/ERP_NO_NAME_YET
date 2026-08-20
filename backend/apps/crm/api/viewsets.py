@@ -34,6 +34,19 @@ class OpportunityViewSet(BaseERPModelViewSet):
             serializer.validated_data["tenant"] = getattr(serializer.validated_data.get("company"), "tenant", None) or getattr(self.request.user, "tenant", None)
         super().perform_create(serializer)
 
+    def perform_destroy(self, instance):
+        from apps.crm.models import OpportunityProduct, OpportunityStageHistory, ExecutiveApproval, CostEstimate, CRMWorkflowEvent
+        from apps.sales.models import Quotation, Contract, Order
+        OpportunityProduct.objects.filter(opportunity=instance).delete()
+        OpportunityStageHistory.objects.filter(opportunity=instance).delete()
+        ExecutiveApproval.objects.filter(opportunity=instance).delete()
+        CRMWorkflowEvent.objects.filter(opportunity=instance).delete()
+        CostEstimate.objects.filter(opportunity=instance).delete()
+        Quotation.objects.filter(opportunity=instance).delete()
+        Contract.objects.filter(opportunity=instance).delete()
+        Order.objects.filter(opportunity=instance).delete()
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=["post"], url_path="move-stage")
     def move_stage(self, request, pk=None):
         if not is_crm(request.user): raise PermissionDenied("Hanya CRM yang dapat memindahkan pipeline stage.")
@@ -273,6 +286,18 @@ class ExecutiveApprovalViewSet(BaseERPModelViewSet):
             item.contract.save(update_fields=["status"])
         return Response(self.get_serializer(item).data)
 
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        if "decision" not in request.data:
+            request.data["decision"] = "APPROVED"
+        return self.decide(request, pk)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        if "decision" not in request.data:
+            request.data["decision"] = "REJECTED"
+        return self.decide(request, pk)
+
 
 class CreditStatusSnapshotViewSet(BaseERPModelViewSet):
     queryset = CreditStatusSnapshot.objects.all()
@@ -383,6 +408,13 @@ class CustomerInquiryViewSet(BaseERPModelViewSet):
             actor=self.request.user,
         )
 
+    def perform_destroy(self, instance):
+        from apps.crm.models import InquiryRequirement, CostEstimate, CRMWorkflowEvent
+        InquiryRequirement.objects.filter(inquiry=instance).delete()
+        CostEstimate.objects.filter(inquiry=instance).delete()
+        CRMWorkflowEvent.objects.filter(inquiry=instance).delete()
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def qualify(self, request, pk=None):
@@ -445,6 +477,12 @@ class CostEstimateViewSet(BaseERPModelViewSet):
             inquiry.status = "SPECIFICATION_READY"
             inquiry.save(update_fields=["status", "updated_at"])
 
+    def perform_destroy(self, instance):
+        from apps.crm.models import CostEstimateLine, QuotationVersion
+        CostEstimateLine.objects.filter(estimate=instance).delete()
+        QuotationVersion.objects.filter(estimate=instance).delete()
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=["post"])
     def calculate(self, request, pk=None):
         if not is_crm(request.user): raise PermissionDenied("Hanya CRM yang dapat menghitung estimate.")
@@ -473,11 +511,11 @@ class QuotationVersionViewSet(ReadOnlyERPModelViewSet):
     serializer_class = QuotationVersionSerializer
 
 
-class QuotationDeliveryViewSet(ReadOnlyERPModelViewSet):
-    queryset = QuotationDelivery.objects.all()
+class QuotationDeliveryViewSet(BaseERPModelViewSet):
+    queryset = QuotationDelivery.objects.all().order_by("-id")
     serializer_class = QuotationDeliverySerializer
 
 
 class CRMWorkflowEventViewSet(ReadOnlyERPModelViewSet):
-    queryset = CRMWorkflowEvent.objects.all()
+    queryset = CRMWorkflowEvent.objects.all().order_by("-id")
     serializer_class = CRMWorkflowEventSerializer

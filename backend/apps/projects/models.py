@@ -30,7 +30,9 @@ class Project(models.Model):
     planned_end_date = models.DateField(null=True, blank=True)
     actual_start_date = models.DateField(null=True, blank=True)
     actual_end_date = models.DateField(null=True, blank=True)
-    budget_amount = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
+    budget_amount = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True, default=0)
+    contract_amount = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True, default=0)
+    target_margin_percent = models.DecimalField(max_digits=9, decimal_places=4, null=True, blank=True, default=0)
     progress_percent = models.DecimalField(max_digits=24, decimal_places=6, null=True, blank=True)
     status = models.CharField(max_length=255, blank=True, default="")
     lifecycle_status = models.CharField(max_length=32, blank=True, default="DRAFT")
@@ -741,3 +743,95 @@ class WeightComponent(models.Model):
 
     def __str__(self):
         return str(self.id)
+
+
+class ProjectWeeklyProgress(models.Model):
+    """
+    Weekly Project Monitoring & Progress Tracking snapshot entity.
+    Stores historical weekly progress, target vs actual gaps, and PM review notes.
+    """
+
+    STATUS_CHOICES = (
+        ("ON_TRACK", "On Track"),
+        ("AT_RISK", "At Risk"),
+        ("BEHIND", "Behind"),
+        ("COMPLETED", "Completed"),
+        ("PLANNED", "Planned"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="weekly_progresses")
+    week_number = models.IntegerField()
+    start_date = models.DateField()
+    end_date = models.DateField()
+    target_progress = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    actual_progress = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    previous_progress = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    progress_difference = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    gap_to_target = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="ON_TRACK")
+    notes = models.TextField(blank=True, default="")
+    issues = models.TextField(blank=True, default="")
+    achievements = models.TextField(blank=True, default="")
+    next_week_plan = models.TextField(blank=True, default="")
+    is_locked = models.BooleanField(default=False)
+    recorded_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="recorded_weekly_progresses", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "project_weekly_progress"
+        ordering = ["week_number"]
+        constraints = [
+            models.UniqueConstraint(fields=["project", "week_number"], name="uniq_project_weekly_progress")
+        ]
+
+    def __str__(self):
+        return f"{self.project.project_code or self.project.id} - Week {self.week_number} ({self.actual_progress}%)"
+
+
+class ProjectFinancialSnapshot(models.Model):
+    """
+    Periodic or triggered persistent financial performance snapshot of a project.
+    Stores computed Revenue, Cost, Gross Profit, Margins, and Variances.
+    """
+    STATUS_CHOICES = (
+        ("PROFITABLE", "Profitable"),
+        ("AT_RISK", "At Risk"),
+        ("LOSS_MAKING", "Loss Making"),
+        ("BUDGET_OVERRUN", "Budget Overrun"),
+        ("BREAK_EVEN", "Break Even"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="financial_snapshots")
+    snapshot_date = models.DateField()
+    planned_budget = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    actual_cost = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    expected_revenue = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    invoiced_revenue = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    realized_revenue = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    expected_gross_profit = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    actual_gross_profit = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    expected_margin_percent = models.DecimalField(max_digits=9, decimal_places=4, default=0)
+    actual_margin_percent = models.DecimalField(max_digits=9, decimal_places=4, default=0)
+    budget_variance = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    revenue_variance = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    cost_variance = models.DecimalField(max_digits=24, decimal_places=6, default=0)
+    budget_utilization_percent = models.DecimalField(max_digits=9, decimal_places=4, default=0)
+    revenue_achievement_percent = models.DecimalField(max_digits=9, decimal_places=4, default=0)
+    financial_health_status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="PROFITABLE")
+    note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "project_financial_snapshot"
+        ordering = ["-snapshot_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["project", "snapshot_date"], name="proj_fin_snapshot_lookup")
+        ]
+
+    def __str__(self):
+        return f"{self.project.project_code or self.project.id} Financial Snapshot ({self.snapshot_date}): Profit {self.actual_gross_profit} ({self.actual_margin_percent}%)"
+
+

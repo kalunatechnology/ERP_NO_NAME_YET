@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "apps.logistics.apps.LogisticsConfig",
     "apps.implementation.apps.ImplementationConfig",
     "apps.reporting.apps.ReportingConfig",
+    "apps.workflows.apps.WorkflowsConfig",
 ]
 
 MIDDLEWARE = [

@@ -428,3 +428,126 @@ def ensure_project_readiness_prerequisites(project, user=None):
                 status="PLANNED",
             )
 
+
+# ---------------------------------------------------------------------------
+# Workflow Engine Bridge
+# ---------------------------------------------------------------------------
+# Bridges existing project lifecycle command views to the Strategy Pattern
+# Workflow Engine. Backward-compatible: views call transition_project()
+# instead of directly mutating lifecycle_status.
+# ---------------------------------------------------------------------------
+
+
+def transition_project(project, action: str, user, note: str = "") -> dict:
+    """
+    Execute a project lifecycle transition via the Workflow Engine.
+
+    Replaces direct lifecycle_status mutations in command views, ensuring
+    tenant-specific rules (Arsalynk vs. default) are always applied
+    along with audit trail and post-transition hooks.
+
+    Args:
+        project:  Project model instance.
+        action:   Action key (e.g. 'verify', 'start', 'reserve-materials', 'request-qc').
+        user:     Django user executing the transition.
+        note:     Optional note for the audit log.
+
+    Returns:
+        dict: {from_status, to_status, module, tenant, timestamp}
+    """
+    from apps.workflows import StateMachine, WorkflowRegistry
+    from apps.workflows.base import TransitionContext
+    from apps.workflows.exceptions import WorkflowNotFoundError, WorkflowTransitionError
+
+    tenant_code = "default"
+    try:
+        tenant = getattr(project, "tenant", None)
+        if tenant and getattr(tenant, "code", None):
+            tenant_code = tenant.code
+    except Exception:
+        pass
+
+    ctx = TransitionContext(
+        user=user,
+        company_id=str(getattr(project, "company_id", "") or ""),
+        tenant_code=tenant_code,
+        note=note,
+    )
+
+    current_status = (
+        getattr(project, "lifecycle_status", "")
+        or getattr(project, "status", "")
+        or ""
+    )
+
+    try:
+        workflow = WorkflowRegistry.get(tenant_code=tenant_code, module_code="PROJECT")
+        available = workflow.get_available_transitions(current_status, ctx)
+    except WorkflowNotFoundError:
+        # Hard-coded fallback if no workflow registered
+        _FALLBACK = {
+            "verify": "VERIFIED",
+            "reserve-materials": "RESOURCE_RESERVED",
+            "start": "IN_PROGRESS",
+            "complete": "COMPLETED",
+            "request-qc": "QC_REVIEW",
+            "qc-pass": "COMPLETED",
+            "qc-fail": "IN_PROGRESS",
+            "hold": "ON_HOLD",
+            "resume": "IN_PROGRESS",
+        }
+        to_status = _FALLBACK.get(action)
+        if not to_status:
+            raise ValueError(f"Unknown project action: '{action}'")
+        project.lifecycle_status = to_status
+        project.save(update_fields=["lifecycle_status"])
+        return {
+            "from_status": current_status, "to_status": to_status,
+            "module": "PROJECT", "tenant": tenant_code,
+        }
+
+    to_status = next((t.to_status for t in available if t.action == action), None)
+    if not to_status:
+        raise WorkflowTransitionError(
+            from_status=current_status,
+            to_status=f"(via action '{action}')",
+            reason=f"Action '{action}' not available from '{current_status}'. "
+                   f"Available: {[t.action for t in available]}",
+        )
+
+    return StateMachine.transition(
+        document=project,
+        module_code="PROJECT",
+        to_status=to_status,
+        context=ctx,
+        status_field="lifecycle_status",
+    )
+
+
+def get_project_transitions(project, user) -> list:
+    """Return available workflow transitions for a project (for frontend button rendering)."""
+    from apps.workflows import StateMachine
+    from apps.workflows.base import TransitionContext
+
+    tenant_code = "default"
+    try:
+        tenant = getattr(project, "tenant", None)
+        if tenant and getattr(tenant, "code", None):
+            tenant_code = tenant.code
+    except Exception:
+        pass
+
+    ctx = TransitionContext(
+        user=user,
+        company_id=str(getattr(project, "company_id", "") or ""),
+        tenant_code=tenant_code,
+    )
+    try:
+        return StateMachine.get_available_transitions(
+            document=project,
+            module_code="PROJECT",
+            context=ctx,
+            status_field="lifecycle_status",
+        )
+    except Exception:
+        return []

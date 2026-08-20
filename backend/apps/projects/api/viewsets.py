@@ -6,12 +6,12 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from apps.projects.models import Project, ProjectControlItem, ProjectExpense, ProjectLifecycleEvent, ProjectReadinessCheck, Member, Task, TaskDependency, Milestone, MaterialRequirement, BudgetLine, Timesheet, ChangeRequest, ChangeRequestMaterial, Board, BoardColumn, TaskBoardPosition, HealthRule, HealthSnapshot, Risk, Issue, IssueAction, ProjectDispatch, TechnicalBrief, TechnicalBriefVersion, Requirement, AcceptanceCriteria, ResourceRequest, ResourceRequestLine, ResourceAllocation, ProgressSnapshot, EquipmentUsage, WeightIndicator, WeightComponent
+from apps.projects.models import Project, ProjectControlItem, ProjectExpense, ProjectLifecycleEvent, ProjectReadinessCheck, Member, Task, TaskDependency, Milestone, MaterialRequirement, BudgetLine, Timesheet, ChangeRequest, ChangeRequestMaterial, Board, BoardColumn, TaskBoardPosition, HealthRule, HealthSnapshot, Risk, Issue, IssueAction, ProjectDispatch, TechnicalBrief, TechnicalBriefVersion, Requirement, AcceptanceCriteria, ResourceRequest, ResourceRequestLine, ResourceAllocation, ProgressSnapshot, EquipmentUsage, WeightIndicator, WeightComponent, ProjectWeeklyProgress
 from apps.api_common.viewsets import BaseERPModelViewSet, ReadOnlyERPModelViewSet
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 from apps.projects.access import can_access_project, can_manage_project, is_executive, is_project_management, is_finance
-from .serializers import ProjectSerializer, ProjectControlItemSerializer, ProjectExpenseSerializer, ProjectLifecycleEventSerializer, ProjectReadinessCheckSerializer, MemberSerializer, TaskSerializer, TaskDependencySerializer, MilestoneSerializer, MaterialRequirementSerializer, BudgetLineSerializer, TimesheetSerializer, ChangeRequestSerializer, ChangeRequestMaterialSerializer, BoardSerializer, BoardColumnSerializer, TaskBoardPositionSerializer, HealthRuleSerializer, HealthSnapshotSerializer, RiskSerializer, IssueSerializer, IssueActionSerializer, ProjectDispatchSerializer, TechnicalBriefSerializer, TechnicalBriefVersionSerializer, RequirementSerializer, AcceptanceCriteriaSerializer, ResourceRequestSerializer, ResourceRequestLineSerializer, ResourceAllocationSerializer, ProgressSnapshotSerializer, EquipmentUsageSerializer, WeightIndicatorSerializer, WeightComponentSerializer
+from .serializers import ProjectSerializer, ProjectControlItemSerializer, ProjectExpenseSerializer, ProjectLifecycleEventSerializer, ProjectReadinessCheckSerializer, MemberSerializer, TaskSerializer, TaskDependencySerializer, MilestoneSerializer, MaterialRequirementSerializer, BudgetLineSerializer, TimesheetSerializer, ChangeRequestSerializer, ChangeRequestMaterialSerializer, BoardSerializer, BoardColumnSerializer, TaskBoardPositionSerializer, HealthRuleSerializer, HealthSnapshotSerializer, RiskSerializer, IssueSerializer, IssueActionSerializer, ProjectDispatchSerializer, TechnicalBriefSerializer, TechnicalBriefVersionSerializer, RequirementSerializer, AcceptanceCriteriaSerializer, ResourceRequestSerializer, ResourceRequestLineSerializer, ResourceAllocationSerializer, ProgressSnapshotSerializer, EquipmentUsageSerializer, WeightIndicatorSerializer, WeightComponentSerializer, ProjectWeeklyProgressSerializer
 
 class ProjectViewSet(BaseERPModelViewSet):
     queryset = Project.objects.all()
@@ -392,3 +392,35 @@ class WeightIndicatorViewSet(BaseERPModelViewSet):
 class WeightComponentViewSet(BaseERPModelViewSet):
     queryset = WeightComponent.objects.all()
     serializer_class = WeightComponentSerializer
+
+
+class ProjectWeeklyProgressViewSet(BaseERPModelViewSet):
+    queryset = ProjectWeeklyProgress.objects.all()
+    serializer_class = ProjectWeeklyProgressSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get("project") or self.request.query_params.get("project_id")
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        if is_executive(self.request.user) or is_finance(self.request.user) or is_project_management(self.request.user):
+            return queryset
+        return queryset.filter(
+            Q(project__project_manager=self.request.user)
+            | Q(project__projects_member_project_set__user=self.request.user, project__projects_member_project_set__status__in=["", "ACTIVE"])
+        ).distinct()
+
+    def perform_create(self, serializer):
+        project = serializer.validated_data.get("project")
+        if not project or not can_manage_project(self.request.user, project):
+            raise PermissionDenied("Hanya manager project yang dapat mencatat weekly progress review.")
+        serializer.validated_data["recorded_by"] = self.request.user
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        project = serializer.instance.project
+        if not can_manage_project(self.request.user, project):
+            raise PermissionDenied("Hanya manager project yang dapat mengubah weekly progress review.")
+        serializer.validated_data["recorded_by"] = self.request.user
+        super().perform_update(serializer)
+

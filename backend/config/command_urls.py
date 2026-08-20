@@ -1,5 +1,11 @@
 from django.urls import path
 
+from apps.workflows.commands import (
+    WorkflowTransitionsView,
+    WorkflowExecuteTransitionView,
+    WorkflowRegistryView,
+)
+
 from .commands import (
     AlertEvaluateView,
     AssetDisposeView,
@@ -45,6 +51,9 @@ from .commands import (
     ProjectCloseView,
     ProjectDashboardView,
     ProjectHealthView,
+    ProjectFinancialSummaryView,
+    ProjectFinancialTargetView,
+    PortfolioFinancialPerformanceView,
     ProjectFundingDrawView,
     ProjectProgressView,
     ProjectRecalculateProgressView,
@@ -53,6 +62,8 @@ from .commands import (
     ProjectStartView,
     ProjectTaskMoveView,
     ProjectVerifyView,
+    ProjectWeeklyMonitoringView,
+    ProjectWeeklySnapshotView,
     ProjectWIPCalculateView,
     PurchaseOrderSendView,
     PurchaseOrderThreeWayMatchView,
@@ -97,8 +108,13 @@ urlpatterns = [
     path("projects/projects/<uuid:id>/reserve-materials/", ProjectReserveMaterialsView.as_view(), name="project-reserve-materials"),
     path("projects/projects/<uuid:id>/health/", ProjectHealthView.as_view(), name="project-health"),
     path("projects/projects/<uuid:id>/costs/", ProjectCostsView.as_view(), name="project-costs"),
+    path("projects/projects/<uuid:id>/financial-summary/", ProjectFinancialSummaryView.as_view(), name="project-financial-summary"),
+    path("projects/projects/<uuid:id>/financial-target/", ProjectFinancialTargetView.as_view(), name="project-financial-target"),
     path("projects/projects/<uuid:id>/progress/", ProjectProgressView.as_view(), name="project-progress"),
     path("projects/projects/<uuid:id>/recalculate-progress/", ProjectRecalculateProgressView.as_view(), name="project-recalculate-progress"),
+    path("projects/projects/<uuid:id>/weekly-monitoring/", ProjectWeeklyMonitoringView.as_view(), name="project-weekly-monitoring"),
+    path("projects/projects/<uuid:id>/weekly-snapshot/", ProjectWeeklySnapshotView.as_view(), name="project-weekly-snapshot"),
+    path("reporting/portfolio-financial-performance/", PortfolioFinancialPerformanceView.as_view(), name="portfolio-financial-performance"),
     path("projects/tasks/<uuid:id>/move/", ProjectTaskMoveView.as_view(), name="project-task-move"),
     path("projects/timesheets/<uuid:id>/approve/", TimesheetApproveView.as_view(), name="timesheet-approve"),
     path("procurement/purchase-requisitions/<uuid:id>/convert-to-rfq/", PurchaseRequisitionConvertToRFQView.as_view(), name="purchase-requisition-convert-to-rfq"),
@@ -151,4 +167,23 @@ urlpatterns = [
     path("reporting/finance-main-dashboard/", FinanceMainDashboardView.as_view(), name="finance-main-dashboard"),
     path("reporting/project-dashboard/<uuid:project_id>/", ProjectDashboardView.as_view(), name="project-dashboard"),
     path("reporting/crm-sales-dashboard/", CRMSalesDashboardView.as_view(), name="crm-sales-dashboard"),
+
+    # -----------------------------------------------------------------------
+    # Workflow Engine API
+    # -----------------------------------------------------------------------
+    path(
+        "workflow/transitions/<str:module>/<uuid:document_id>/",
+        WorkflowTransitionsView.as_view(),
+        name="workflow-transitions",
+    ),
+    path(
+        "workflow/execute/<str:module>/<uuid:document_id>/",
+        WorkflowExecuteTransitionView.as_view(),
+        name="workflow-execute",
+    ),
+    path(
+        "workflow/registry/",
+        WorkflowRegistryView.as_view(),
+        name="workflow-registry",
+    ),
 ]

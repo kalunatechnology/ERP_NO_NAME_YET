@@ -2,7 +2,7 @@ from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 from django.utils import timezone
 from apps.api_common.serializers import ERPModelSerializer
-from apps.projects.models import Project, ProjectControlItem, ProjectExpense, ProjectLifecycleEvent, ProjectReadinessCheck, Member, Task, TaskDependency, Milestone, MaterialRequirement, BudgetLine, Timesheet, ChangeRequest, ChangeRequestMaterial, Board, BoardColumn, TaskBoardPosition, HealthRule, HealthSnapshot, Risk, Issue, IssueAction, ProjectDispatch, TechnicalBrief, TechnicalBriefVersion, Requirement, AcceptanceCriteria, ResourceRequest, ResourceRequestLine, ResourceAllocation, ProgressSnapshot, EquipmentUsage, WeightIndicator, WeightComponent
+from apps.projects.models import Project, ProjectControlItem, ProjectExpense, ProjectLifecycleEvent, ProjectReadinessCheck, Member, Task, TaskDependency, Milestone, MaterialRequirement, BudgetLine, Timesheet, ChangeRequest, ChangeRequestMaterial, Board, BoardColumn, TaskBoardPosition, HealthRule, HealthSnapshot, Risk, Issue, IssueAction, ProjectDispatch, TechnicalBrief, TechnicalBriefVersion, Requirement, AcceptanceCriteria, ResourceRequest, ResourceRequestLine, ResourceAllocation, ProgressSnapshot, EquipmentUsage, WeightIndicator, WeightComponent, ProjectWeeklyProgress
 
 class ProjectSerializer(ERPModelSerializer):
     class Meta:
@@ -197,6 +197,8 @@ class ProjectDispatchSerializer(ERPModelSerializer):
         read_only_fields = ("sent_by", "sent_at", "acknowledged_at")
 
 
+
+
 class TechnicalBriefSerializer(ERPModelSerializer):
     class Meta:
         model = TechnicalBrief
@@ -263,3 +265,7 @@ class WeightComponentSerializer(ERPModelSerializer):
         fields = "__all__"
 
 
+class ProjectWeeklyProgressSerializer(ERPModelSerializer):
+    class Meta:
+        model = ProjectWeeklyProgress
+        fields = "__all__"

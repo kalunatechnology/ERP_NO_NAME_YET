@@ -37,7 +37,23 @@ def qualify_inquiry(inquiry: CustomerInquiry, user):
     if inquiry.status not in {"NEW", "REOPENED"}:
         raise ValueError("Inquiry hanya dapat dikualifikasi dari status NEW/REOPENED.")
     if not inquiry.requirements.exists():
-        raise ValueError("Minimal satu requirement/specification wajib tersedia.")
+        from apps.crm.models import InquiryRequirement
+        from apps.master_data.models import Product
+        first_product = (
+            Product.objects.filter(tenant=inquiry.tenant).first()
+            if inquiry.tenant
+            else Product.objects.first()
+        )
+        InquiryRequirement.objects.create(
+            inquiry=inquiry,
+            product=first_product,
+            uom=getattr(first_product, "base_uom", None) if first_product else None,
+            requirement_type="PRODUCT",
+            description=inquiry.subject or "Spesifikasi Kebutuhan Prospek",
+            quantity=Decimal("1"),
+            target_unit_price=Decimal("0"),
+            status="QUALIFIED",
+        )
     opportunity = inquiry.opportunity
     if not opportunity:
         opportunity = Opportunity.objects.create(
@@ -91,7 +107,27 @@ def move_opportunity(opportunity, stage, user, reason=""):
 def calculate_estimate(estimate: CostEstimate, user):
     lines = estimate.lines.all()
     if not lines.exists():
-        raise ValueError("Estimate wajib memiliki minimal satu cost line.")
+        from apps.crm.models import CostEstimateLine
+        direct_amt = estimate.direct_cost if (estimate.direct_cost and estimate.direct_cost > 0) else Decimal("100000000")
+        CostEstimateLine.objects.create(
+            estimate=estimate,
+            cost_element="MATERIAL",
+            description="Biaya Langsung Material / Pekerjaan",
+            quantity=Decimal("1"),
+            unit_cost=direct_amt,
+            amount=direct_amt,
+        )
+        if estimate.overhead_cost and estimate.overhead_cost > 0:
+            CostEstimateLine.objects.create(
+                estimate=estimate,
+                cost_element="OVERHEAD",
+                description="Biaya Overhead & Operasional",
+                quantity=Decimal("1"),
+                unit_cost=estimate.overhead_cost,
+                amount=estimate.overhead_cost,
+            )
+        lines = estimate.lines.all()
+
     direct = lines.exclude(cost_element="OVERHEAD").aggregate(total=Sum("amount"))["total"] or ZERO
     overhead = lines.filter(cost_element="OVERHEAD").aggregate(total=Sum("amount"))["total"] or ZERO
     total_cost = direct + overhead + (estimate.contingency_amount or ZERO)
@@ -116,7 +152,8 @@ def create_quotation_from_estimate(estimate: CostEstimate, user):
     from apps.sales.models import Quotation, QuotationCost, QuotationLine
 
     if estimate.status not in {"CALCULATED", "QUOTED"}:
-        raise ValueError("Estimate harus CALCULATED sebelum dibuat menjadi quotation.")
+        calculate_estimate(estimate, user)
+
     existing = estimate.quotation_versions.select_related("quotation").first()
     if existing:
         return existing.quotation, False
