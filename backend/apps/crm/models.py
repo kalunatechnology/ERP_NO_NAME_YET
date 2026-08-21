@@ -557,3 +557,32 @@ class CRMWorkflowEvent(models.Model):
     class Meta:
         db_table = "crm_workflow_event"
         ordering = ["-created_at"]
+
+
+class CustomerFeedback(models.Model):
+    """
+    Customer Satisfaction Survey, Deliverable Review & Post-Project Feedback.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, null=True, blank=True, related_name="customer_feedbacks")
+    customer = models.ForeignKey("master_data.Party", on_delete=models.CASCADE, related_name="crm_feedbacks", null=True, blank=True)
+    project = models.ForeignKey("projects.Project", on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_feedbacks")
+    lead = models.ForeignKey("crm.Lead", on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_feedbacks")
+    opportunity = models.ForeignKey("crm.Opportunity", on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_feedbacks")
+    rating = models.IntegerField(default=5)  # 1 to 5
+    feedback_type = models.CharField(max_length=64, default="PROJECT_COMPLETION")  # ONBOARDING, SERVICE_TICKET, PROJECT_COMPLETION, GENERAL
+    aspect_quality = models.IntegerField(default=5)
+    aspect_timeline = models.IntegerField(default=5)
+    aspect_communication = models.IntegerField(default=5)
+    comments = models.TextField(blank=True, default="")
+    submitted_by_name = models.CharField(max_length=255, blank=True, default="")
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "crm_customer_feedback"
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"Feedback ({self.rating}/5) by {self.submitted_by_name or 'Client'} - {self.feedback_type}"
+

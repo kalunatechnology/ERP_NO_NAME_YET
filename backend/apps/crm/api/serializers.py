@@ -185,3 +185,14 @@ class CRMWorkflowEventSerializer(ERPModelSerializer):
     class Meta:
         model = CRMWorkflowEvent
         fields = "__all__"
+
+
+class CustomerFeedbackSerializer(ERPModelSerializer):
+    customer_name = serializers.CharField(source="customer.party_name", read_only=True)
+    project_code = serializers.CharField(source="project.project_code", read_only=True)
+
+    class Meta:
+        from apps.crm.models import CustomerFeedback
+        model = CustomerFeedback
+        fields = "__all__"
+

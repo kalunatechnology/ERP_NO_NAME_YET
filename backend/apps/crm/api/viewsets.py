@@ -5,19 +5,39 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
-from apps.crm.models import Lead, Opportunity, OpportunityProduct, Activity, Pipeline, PipelineStage, OpportunityStageHistory, ExecutiveApproval, CreditStatusSnapshot, ChannelAccount, Conversation, ConversationParticipant, Message, MessageAttachment, MessageDeliveryStatus, Feedback, Survey, SurveyQuestion, SurveyResponse, SurveyAnswer, CustomerInquiry, InquiryRequirement, CostEstimate, CostEstimateLine, QuotationVersion, QuotationDelivery, CRMWorkflowEvent
+from apps.crm.models import Lead, Opportunity, OpportunityProduct, Activity, Pipeline, PipelineStage, OpportunityStageHistory, ExecutiveApproval, CreditStatusSnapshot, ChannelAccount, Conversation, ConversationParticipant, Message, MessageAttachment, MessageDeliveryStatus, Feedback, Survey, SurveyQuestion, SurveyResponse, SurveyAnswer, CustomerInquiry, InquiryRequirement, CostEstimate, CostEstimateLine, QuotationVersion, QuotationDelivery, CRMWorkflowEvent, CustomerFeedback
 from apps.api_common.viewsets import BaseERPModelViewSet, ReadOnlyERPModelViewSet
 from apps.projects.access import is_crm, is_executive, is_finance
-from .serializers import LeadSerializer, OpportunitySerializer, OpportunityProductSerializer, ActivitySerializer, PipelineSerializer, PipelineStageSerializer, OpportunityStageHistorySerializer, ExecutiveApprovalSerializer, CreditStatusSnapshotSerializer, ChannelAccountSerializer, ConversationSerializer, ConversationParticipantSerializer, MessageSerializer, MessageAttachmentSerializer, MessageDeliveryStatusSerializer, FeedbackSerializer, SurveySerializer, SurveyQuestionSerializer, SurveyResponseSerializer, SurveyAnswerSerializer, CustomerInquirySerializer, InquiryRequirementSerializer, CostEstimateSerializer, CostEstimateLineSerializer, QuotationVersionSerializer, QuotationDeliverySerializer, CRMWorkflowEventSerializer
+from apps.crm.analytics_services import calculate_sales_pipeline_analytics, validate_customer_credit
+from .serializers import LeadSerializer, OpportunitySerializer, OpportunityProductSerializer, ActivitySerializer, PipelineSerializer, PipelineStageSerializer, OpportunityStageHistorySerializer, ExecutiveApprovalSerializer, CreditStatusSnapshotSerializer, ChannelAccountSerializer, ConversationSerializer, ConversationParticipantSerializer, MessageSerializer, MessageAttachmentSerializer, MessageDeliveryStatusSerializer, FeedbackSerializer, SurveySerializer, SurveyQuestionSerializer, SurveyResponseSerializer, SurveyAnswerSerializer, CustomerInquirySerializer, InquiryRequirementSerializer, CostEstimateSerializer, CostEstimateLineSerializer, QuotationVersionSerializer, QuotationDeliverySerializer, CRMWorkflowEventSerializer, CustomerFeedbackSerializer
 
 class LeadViewSet(BaseERPModelViewSet):
     queryset = Lead.objects.all()
     serializer_class = LeadSerializer
 
+    @action(detail=False, methods=["get"])
+    def sales_kpi(self, request):
+        """Returns dynamic Sales KPI (Win Rate, Sales Cycle days, Margin %, CSAT)."""
+        company_id = request.query_params.get("company")
+        from apps.core.models import Company
+        company = Company.objects.filter(id=company_id).first() if company_id else None
+        data = calculate_sales_pipeline_analytics(company)
+        return Response(data)
+
 
 class OpportunityViewSet(BaseERPModelViewSet):
     queryset = Opportunity.objects.all()
     serializer_class = OpportunitySerializer
+
+    @action(detail=False, methods=["get"])
+    def pipeline_analytics(self, request):
+        """Returns pipeline analytics summary."""
+        company_id = request.query_params.get("company")
+        from apps.core.models import Company
+        company = Company.objects.filter(id=company_id).first() if company_id else None
+        data = calculate_sales_pipeline_analytics(company)
+        return Response(data)
+
 
     def perform_create(self, serializer):
         if not is_crm(self.request.user): raise PermissionDenied("Hanya CRM yang dapat membuat opportunity.")
@@ -519,3 +539,9 @@ class QuotationDeliveryViewSet(BaseERPModelViewSet):
 class CRMWorkflowEventViewSet(ReadOnlyERPModelViewSet):
     queryset = CRMWorkflowEvent.objects.all().order_by("-id")
     serializer_class = CRMWorkflowEventSerializer
+
+
+class CustomerFeedbackViewSet(BaseERPModelViewSet):
+    queryset = CustomerFeedback.objects.all()
+    serializer_class = CustomerFeedbackSerializer
+

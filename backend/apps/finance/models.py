@@ -818,3 +818,30 @@ class InvoiceVarianceCase(models.Model):
         db_table = "fin_invoice_variance_case"
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["company", "status"], name="fin_invoice_variance_queue")]
+
+
+class CustomerCreditLimit(models.Model):
+    """
+    Finance control for Customer Credit Limit & Payment Terms validation.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey("core.Company", on_delete=models.PROTECT, null=True, blank=True, related_name="customer_credit_limits")
+    customer = models.ForeignKey("master_data.Party", on_delete=models.CASCADE, related_name="credit_limits")
+    credit_limit = models.DecimalField(max_digits=18, decimal_places=2, default=0.00)
+    used_credit = models.DecimalField(max_digits=18, decimal_places=2, default=0.00)
+    payment_term_days = models.IntegerField(default=30)
+    status = models.CharField(max_length=32, default="APPROVED")  # APPROVED, HOLD, SUSPENDED
+    notes = models.TextField(blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "fin_customer_credit_limit"
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.customer} - Limit: {self.credit_limit} (Status: {self.status})"
+
+    def available_credit(self):
+        return max(self.credit_limit - self.used_credit, 0)
+

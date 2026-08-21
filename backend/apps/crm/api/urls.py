@@ -1,5 +1,5 @@
 from rest_framework.routers import DefaultRouter
-from .viewsets import LeadViewSet, OpportunityViewSet, OpportunityProductViewSet, ActivityViewSet, PipelineViewSet, PipelineStageViewSet, OpportunityStageHistoryViewSet, ExecutiveApprovalViewSet, CreditStatusSnapshotViewSet, ChannelAccountViewSet, ConversationViewSet, ConversationParticipantViewSet, MessageViewSet, MessageAttachmentViewSet, MessageDeliveryStatusViewSet, FeedbackViewSet, SurveyViewSet, SurveyQuestionViewSet, SurveyResponseViewSet, SurveyAnswerViewSet, CustomerInquiryViewSet, InquiryRequirementViewSet, CostEstimateViewSet, CostEstimateLineViewSet, QuotationVersionViewSet, QuotationDeliveryViewSet, CRMWorkflowEventViewSet
+from .viewsets import LeadViewSet, OpportunityViewSet, OpportunityProductViewSet, ActivityViewSet, PipelineViewSet, PipelineStageViewSet, OpportunityStageHistoryViewSet, ExecutiveApprovalViewSet, CreditStatusSnapshotViewSet, ChannelAccountViewSet, ConversationViewSet, ConversationParticipantViewSet, MessageViewSet, MessageAttachmentViewSet, MessageDeliveryStatusViewSet, FeedbackViewSet, SurveyViewSet, SurveyQuestionViewSet, SurveyResponseViewSet, SurveyAnswerViewSet, CustomerInquiryViewSet, InquiryRequirementViewSet, CostEstimateViewSet, CostEstimateLineViewSet, QuotationVersionViewSet, QuotationDeliveryViewSet, CRMWorkflowEventViewSet, CustomerFeedbackViewSet
 
 app_name = "crm"
 router = DefaultRouter()
@@ -19,6 +19,7 @@ router.register(r"messages", MessageViewSet, basename="message")
 router.register(r"message-attachments", MessageAttachmentViewSet, basename="message-attachment")
 router.register(r"message-delivery-statuses", MessageDeliveryStatusViewSet, basename="message-delivery-status")
 router.register(r"feedbacks", FeedbackViewSet, basename="feedback")
+router.register(r"customer-feedbacks", CustomerFeedbackViewSet, basename="customer-feedback")
 router.register(r"surveys", SurveyViewSet, basename="survey")
 router.register(r"survey-questions", SurveyQuestionViewSet, basename="survey-question")
 router.register(r"survey-responses", SurveyResponseViewSet, basename="survey-response")
@@ -32,3 +33,4 @@ router.register(r"quotation-deliveries", QuotationDeliveryViewSet, basename="quo
 router.register(r"workflow-events", CRMWorkflowEventViewSet, basename="crm-workflow-event")
 
 urlpatterns = router.urls
+

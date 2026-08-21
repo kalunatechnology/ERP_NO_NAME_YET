@@ -1,5 +1,5 @@
 from rest_framework.routers import DefaultRouter
-from .viewsets import FiscalYearViewSet, FiscalPeriodViewSet, AccountViewSet, JournalViewSet, JournalEntryViewSet, JournalLineViewSet, BillingDocumentViewSet, BillingDocumentLineViewSet, ARAPScheduleViewSet, PaymentViewSet, PaymentAllocationViewSet, BankAccountViewSet, BankStatementViewSet, BankStatementLineViewSet, BankReconciliationViewSet, TaxTransactionViewSet, BudgetViewSet, BudgetLineViewSet, PeriodClosingViewSet, FinancialSnapshotViewSet, UnitCostSnapshotViewSet, RecurringPaymentRuleViewSet, RecurringPaymentRunViewSet, CreditFacilityViewSet, ProjectWIPSnapshotViewSet, ProjectFundingViewSet, ProjectFundingTransactionViewSet, CostBaselineViewSet, CostBaselineLineViewSet, CostVarianceViewSet, OverheadRuleViewSet, OverheadAllocationViewSet, ProjectCostSnapshotViewSet, ProjectCostEntryViewSet, BillingProposalViewSet, InvoiceVarianceCaseViewSet
+from .viewsets import FiscalYearViewSet, FiscalPeriodViewSet, AccountViewSet, JournalViewSet, JournalEntryViewSet, JournalLineViewSet, BillingDocumentViewSet, BillingDocumentLineViewSet, ARAPScheduleViewSet, PaymentViewSet, PaymentAllocationViewSet, BankAccountViewSet, BankStatementViewSet, BankStatementLineViewSet, BankReconciliationViewSet, TaxTransactionViewSet, BudgetViewSet, BudgetLineViewSet, PeriodClosingViewSet, FinancialSnapshotViewSet, UnitCostSnapshotViewSet, RecurringPaymentRuleViewSet, RecurringPaymentRunViewSet, CreditFacilityViewSet, ProjectWIPSnapshotViewSet, ProjectFundingViewSet, ProjectFundingTransactionViewSet, CostBaselineViewSet, CostBaselineLineViewSet, CostVarianceViewSet, OverheadRuleViewSet, OverheadAllocationViewSet, ProjectCostSnapshotViewSet, ProjectCostEntryViewSet, BillingProposalViewSet, InvoiceVarianceCaseViewSet, CustomerCreditLimitViewSet
 
 app_name = "finance"
 router = DefaultRouter()
@@ -39,5 +39,7 @@ router.register(r"project-cost-snapshots", ProjectCostSnapshotViewSet, basename=
 router.register(r"project-cost-entries", ProjectCostEntryViewSet, basename="project-cost-entry")
 router.register(r"billing-proposals", BillingProposalViewSet, basename="billing-proposal")
 router.register(r"invoice-variance-cases", InvoiceVarianceCaseViewSet, basename="invoice-variance-case")
+router.register(r"customer-credit-limits", CustomerCreditLimitViewSet, basename="customer-credit-limit")
 
 urlpatterns = router.urls
+

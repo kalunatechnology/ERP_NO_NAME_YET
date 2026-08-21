@@ -85,9 +85,36 @@ def scope_queryset(queryset, user, company_id: str | None = None):
 
     company_path = find_scope_path(model, "company")
     if company_id and company_path:
-        queryset = queryset.filter(
-            models.Q(**{f"{company_path}_id": company_id}) | models.Q(**{f"{company_path}_id__isnull": True})
-        )
+        import uuid
+        is_valid_uuid = False
+        resolved_company_id = None
+        try:
+            uuid.UUID(str(company_id))
+            is_valid_uuid = True
+            resolved_company_id = company_id
+        except (ValueError, AttributeError):
+            is_valid_uuid = False
+
+        if not is_valid_uuid:
+            # Try to resolve by company code or name (e.g. 'arsalyn', 'ARSLN')
+            try:
+                from apps.core.models import Company
+                comp = Company.objects.filter(
+                    models.Q(code__iexact=company_id) |
+                    models.Q(name__icontains=company_id)
+                ).first()
+                if comp:
+                    resolved_company_id = str(comp.id)
+            except Exception:
+                resolved_company_id = None
+
+        if resolved_company_id:
+            queryset = queryset.filter(
+                models.Q(**{f"{company_path}_id": resolved_company_id}) | models.Q(**{f"{company_path}_id__isnull": True})
+            )
+        else:
+            # If not a specific company UUID, include all accessible null/tenant company records
+            queryset = queryset.filter(models.Q(**{f"{company_path}_id__isnull": True}))
     elif company_path:
         try:
             accessible_company_ids = list(

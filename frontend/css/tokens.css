@@ -1,0 +1,105 @@
+/* =====================================================
+   MARKA+ ERP — Design Tokens
+   Extracted from Figma spec: Project Management Dashboard
+   DO NOT MODIFY unless updating the design system
+   ===================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap');
+
+:root {
+  /* ── Brand Colors ──────────────────────────────── */
+  --color-brand-deep-green:    #275433;
+  --color-brand-green:         #5A861F;
+  --color-brand-lighter-green: #F0FEE0;
+  --color-brand-gradient:      linear-gradient(180deg, #7CDA24 0%, #3E9B4B 100%);
+  --color-brand-blue-gradient: linear-gradient(180deg, #007AD2 0%, #3DADFF 100%);
+
+  /* ── Text Colors ───────────────────────────────── */
+  --color-text-primary:   #0E341F;
+  --color-text-secondary: #768779;
+  --color-text-tertiary:  #E8E8E8;
+
+  /* ── Background Colors ─────────────────────────── */
+  --color-bg-lighter: #FFFFFF;
+  --color-bg-light:   #FDFDFD;
+
+  /* ── Status Colors ─────────────────────────────── */
+  --color-status-online:   #66D575;
+  --color-status-offline:  #CACACA;
+  --color-status-warning:  #F59E0B;
+  --color-status-danger:   #EF4444;
+
+  /* ── Typography ────────────────────────────────── */
+  --font-family: 'Google Sans', 'Roboto', sans-serif;
+
+  /* Font Sizes */
+  --text-8:  8px;
+  --text-10: 10px;
+  --text-12: 12px;
+  --text-14: 14px;
+  --text-16: 16px;
+  --text-20: 20px;
+  --text-24: 24px;
+  --text-32: 32px;
+  --text-40: 40px;
+
+  /* Line Heights */
+  --leading-10: 10px;
+  --leading-13: 13px;
+  --leading-15: 15px;
+  --leading-18: 18px;
+  --leading-20: 20px;
+  --leading-25: 25px;
+  --leading-30: 30px;
+  --leading-40: 40px;
+  --leading-50: 50px;
+
+  /* Font Weights */
+  --font-regular: 400;
+  --font-medium:  500;
+  --font-bold:    700;
+
+  /* ── Spacing ───────────────────────────────────── */
+  --space-3:  3px;
+  --space-4:  4px;
+  --space-8:  8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-18: 18px;
+  --space-19: 19px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-25: 25px;
+  --space-32: 32px;
+  --space-35: 35px;
+  --space-36: 36px;
+  --space-45: 45px;
+
+  /* ── Sizing ────────────────────────────────────── */
+  --sidebar-width:      280px;
+  --sidebar-inner:      245px;
+  --main-canvas-width:  903px;
+  --right-panel-width:  260px;
+  --topbar-height:      68px;
+
+  /* ── Border Radius ─────────────────────────────── */
+  --radius-4:    4px;
+  --radius-6:    6px;
+  --radius-12:   12px;
+  --radius-16:   16px;
+  --radius-24:   24px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ───────────────────────────────────── */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04);
+
+  /* ── Borders ───────────────────────────────────── */
+  --border-default: 1px solid #E8E8E8;
+  --border-green:   1px solid #5A861F;
+
+  /* ── Transitions ───────────────────────────────── */
+  --transition-fast:   150ms ease;
+  --transition-normal: 200ms ease;
+}

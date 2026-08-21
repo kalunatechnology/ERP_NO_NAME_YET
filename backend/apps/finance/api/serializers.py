@@ -298,3 +298,14 @@ class BillingProposalSerializer(ERPModelSerializer):
         return attrs
 
 
+class CustomerCreditLimitSerializer(ERPModelSerializer):
+    customer_name = serializers.CharField(source="customer.party_name", read_only=True)
+    available_credit = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
+
+    class Meta:
+        from apps.finance.models import CustomerCreditLimit
+        model = CustomerCreditLimit
+        fields = "__all__"
+
+
+

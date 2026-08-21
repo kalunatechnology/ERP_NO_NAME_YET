@@ -1067,4 +1067,34 @@ class TaskActivityLog(models.Model):
         return f"[{self.created_at}] {self.actor}: {self.action} on {self.task_level} ({self.task_title})"
 
 
+class ProjectEVMRecord(models.Model):
+    """
+    Earned Value Management (EVM) Snapshot for S-Curve, Schedule Variance, and Cost Performance Tracking.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="evm_records")
+    as_of_date = models.DateField()
+    week_number = models.IntegerField(default=1)
+    planned_value = models.DecimalField(max_digits=18, decimal_places=2, default=0.00)  # PV (Budgeted Cost of Work Scheduled)
+    earned_value = models.DecimalField(max_digits=18, decimal_places=2, default=0.00)   # EV (Budgeted Cost of Work Performed)
+    actual_cost = models.DecimalField(max_digits=18, decimal_places=2, default=0.00)    # AC (Actual Cost of Work Performed)
+    cost_variance = models.DecimalField(max_digits=18, decimal_places=2, default=0.00)  # CV = EV - AC
+    schedule_variance = models.DecimalField(max_digits=18, decimal_places=2, default=0.00)  # SV = EV - PV
+    cost_performance_index = models.DecimalField(max_digits=7, decimal_places=4, default=1.0000)  # CPI = EV / AC
+    schedule_performance_index = models.DecimalField(max_digits=7, decimal_places=4, default=1.0000)  # SPI = EV / PV
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "project_evm_record"
+        ordering = ["as_of_date"]
+        indexes = [
+            models.Index(fields=["project", "as_of_date"], name="proj_evm_date_idx"),
+        ]
+
+    def __str__(self):
+        return f"EVM [{self.project.project_code}] W{self.week_number} ({self.as_of_date}) - CPI: {self.cost_performance_index}, SPI: {self.schedule_performance_index}"
+
+
+
 

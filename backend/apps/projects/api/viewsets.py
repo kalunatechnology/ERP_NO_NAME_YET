@@ -221,7 +221,18 @@ class ProjectViewSet(BaseERPModelViewSet):
             "main_tasks": serializer.data,
         })
 
-
+    @action(detail=True, methods=["get"])
+    def evm(self, request, pk=None):
+        """Calculates Earned Value Management (EVM), Schedule Variance, and Cost Performance Index."""
+        project = self.get_object()
+        from apps.projects.evm_services import calculate_project_evm, record_weekly_evm_snapshot
+        evm_data = calculate_project_evm(project)
+        # Snapshot record
+        try:
+            record_weekly_evm_snapshot(project)
+        except Exception as e:
+            print("EVM snapshot warning:", e)
+        return Response(evm_data)
 
 
 class ProjectControlItemViewSet(BaseERPModelViewSet):
@@ -233,9 +244,20 @@ class ProjectExpenseViewSet(BaseERPModelViewSet):
     queryset = ProjectExpense.objects.all()
     serializer_class = ProjectExpenseSerializer
 
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        instance = serializer.instance
+        try:
+            from apps.finance.accounting_services import post_project_expense_journal
+            post_project_expense_journal(instance, self.request.user)
+        except Exception as e:
+            print("Auto-journal expense warning:", e)
+
+
 class ProjectLifecycleEventViewSet(ReadOnlyERPModelViewSet):
     queryset = ProjectLifecycleEvent.objects.all()
     serializer_class = ProjectLifecycleEventSerializer
+
 
 class ProjectReadinessCheckViewSet(ReadOnlyERPModelViewSet):
     queryset = ProjectReadinessCheck.objects.all()
@@ -852,9 +874,12 @@ class ProjectDailyTaskViewSet(BaseERPModelViewSet):
         weekly_task = serializer.validated_data.get("weekly_task")
         project = weekly_task.main_task.project
 
-        # Only the designated Weekly Task PIC can create daily tasks under this weekly target
-        if weekly_task.assignee_id and weekly_task.assignee_id != self.request.user.id:
-            raise PermissionDenied("Hanya PIC Weekly Task yang bersangkutan yang dapat membuat Daily Task.")
+        # Allow PM, Admin/Staff, and designated assignees
+        is_pm = project.project_manager_id == self.request.user.id or getattr(self.request.user, "is_superuser", False) or getattr(self.request.user, "is_staff", False)
+        if not is_pm and weekly_task.assignee_id and weekly_task.assignee_id != self.request.user.id:
+            is_main_assignee = TaskAssignment.objects.filter(main_task=weekly_task.main_task, user=self.request.user).exists()
+            if not is_main_assignee:
+                raise PermissionDenied("Hanya PIC Weekly Task atau tim ter-assign yang dapat membuat Daily Task.")
 
         if not serializer.validated_data.get("owner"):
             serializer.validated_data["owner"] = self.request.user

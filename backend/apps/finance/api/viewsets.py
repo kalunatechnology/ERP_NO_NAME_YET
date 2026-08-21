@@ -8,11 +8,13 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
-from apps.finance.models import FiscalYear, FiscalPeriod, Account, Journal, JournalEntry, JournalLine, BillingDocument, BillingDocumentLine, ARAPSchedule, Payment, PaymentAllocation, BankAccount, BankStatement, BankStatementLine, BankReconciliation, TaxTransaction, Budget, BudgetLine, PeriodClosing, FinancialSnapshot, UnitCostSnapshot, RecurringPaymentRule, RecurringPaymentRun, CreditFacility, ProjectWIPSnapshot, ProjectFunding, ProjectFundingTransaction, CostBaseline, CostBaselineLine, CostVariance, OverheadRule, OverheadAllocation, ProjectCostSnapshot, ProjectCostEntry, BillingProposal, InvoiceVarianceCase
+from apps.finance.models import FiscalYear, FiscalPeriod, Account, Journal, JournalEntry, JournalLine, BillingDocument, BillingDocumentLine, ARAPSchedule, Payment, PaymentAllocation, BankAccount, BankStatement, BankStatementLine, BankReconciliation, TaxTransaction, Budget, BudgetLine, PeriodClosing, FinancialSnapshot, UnitCostSnapshot, RecurringPaymentRule, RecurringPaymentRun, CreditFacility, ProjectWIPSnapshot, ProjectFunding, ProjectFundingTransaction, CostBaseline, CostBaselineLine, CostVariance, OverheadRule, OverheadAllocation, ProjectCostSnapshot, ProjectCostEntry, BillingProposal, InvoiceVarianceCase, CustomerCreditLimit
 from apps.api_common.viewsets import BaseERPModelViewSet, ReadOnlyERPModelViewSet
 from apps.api_common.audit import create_audit_event, snapshot
 from apps.projects.access import is_executive, is_finance, is_project_management
-from .serializers import FiscalYearSerializer, FiscalPeriodSerializer, AccountSerializer, JournalSerializer, JournalEntrySerializer, JournalLineSerializer, BillingDocumentSerializer, BillingDocumentLineSerializer, ARAPScheduleSerializer, PaymentSerializer, PaymentAllocationSerializer, BankAccountSerializer, BankStatementSerializer, BankStatementLineSerializer, BankReconciliationSerializer, TaxTransactionSerializer, BudgetSerializer, BudgetLineSerializer, PeriodClosingSerializer, FinancialSnapshotSerializer, UnitCostSnapshotSerializer, RecurringPaymentRuleSerializer, RecurringPaymentRunSerializer, CreditFacilitySerializer, ProjectWIPSnapshotSerializer, ProjectFundingSerializer, ProjectFundingTransactionSerializer, CostBaselineSerializer, CostBaselineLineSerializer, CostVarianceSerializer, OverheadRuleSerializer, OverheadAllocationSerializer, ProjectCostSnapshotSerializer, ProjectCostEntrySerializer, BillingProposalSerializer, InvoiceVarianceCaseSerializer
+from apps.finance.accounting_services import ensure_standard_coa, get_trial_balance_summary, post_invoice_journal, post_payment_journal
+from .serializers import FiscalYearSerializer, FiscalPeriodSerializer, AccountSerializer, JournalSerializer, JournalEntrySerializer, JournalLineSerializer, BillingDocumentSerializer, BillingDocumentLineSerializer, ARAPScheduleSerializer, PaymentSerializer, PaymentAllocationSerializer, BankAccountSerializer, BankStatementSerializer, BankStatementLineSerializer, BankReconciliationSerializer, TaxTransactionSerializer, BudgetSerializer, BudgetLineSerializer, PeriodClosingSerializer, FinancialSnapshotSerializer, UnitCostSnapshotSerializer, RecurringPaymentRuleSerializer, RecurringPaymentRunSerializer, CreditFacilitySerializer, ProjectWIPSnapshotSerializer, ProjectFundingSerializer, ProjectFundingTransactionSerializer, CostBaselineSerializer, CostBaselineLineSerializer, CostVarianceSerializer, OverheadRuleSerializer, OverheadAllocationSerializer, ProjectCostSnapshotSerializer, ProjectCostEntrySerializer, BillingProposalSerializer, InvoiceVarianceCaseSerializer, CustomerCreditLimitSerializer
+
 
 class FiscalYearViewSet(BaseERPModelViewSet):
     queryset = FiscalYear.objects.all()
@@ -28,6 +30,27 @@ class AccountViewSet(BaseERPModelViewSet):
     queryset = Account.objects.all()
     serializer_class = AccountSerializer
 
+    @action(detail=False, methods=["post"])
+    def init_standard_coa(self, request):
+        """Initializes default Chart of Accounts for standard double-entry bookkeeping."""
+        company_id = request.data.get("company")
+        from apps.core.models import Company
+        company = Company.objects.filter(id=company_id).first() if company_id else None
+        accounts = ensure_standard_coa(company)
+        serializer = self.get_serializer(list(accounts.values()), many=True)
+        return Response({"message": "Bagan Akun (CoA) standar berhasil dibuat.", "accounts": serializer.data})
+
+    @action(detail=False, methods=["get"])
+    def trial_balance(self, request):
+        """Calculates real-time Trial Balance (Neraca Saldo) across all accounts."""
+        company_id = request.query_params.get("company")
+        from apps.core.models import Company
+        company = Company.objects.filter(id=company_id).first() if company_id else None
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        data = get_trial_balance_summary(company, start_date, end_date)
+        return Response(data)
+
 
 class JournalViewSet(BaseERPModelViewSet):
     queryset = Journal.objects.all()
@@ -35,13 +58,24 @@ class JournalViewSet(BaseERPModelViewSet):
 
 
 class JournalEntryViewSet(BaseERPModelViewSet):
-    queryset = JournalEntry.objects.all()
+    queryset = JournalEntry.objects.all().order_by("-posting_date", "-id")
     serializer_class = JournalEntrySerializer
+
+    @action(detail=False, methods=["get"])
+    def trial_balance(self, request):
+        company_id = request.query_params.get("company")
+        from apps.core.models import Company
+        company = Company.objects.filter(id=company_id).first() if company_id else None
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        data = get_trial_balance_summary(company, start_date, end_date)
+        return Response(data)
 
 
 class JournalLineViewSet(BaseERPModelViewSet):
     queryset = JournalLine.objects.all()
     serializer_class = JournalLineSerializer
+
 
 
 class BillingDocumentViewSet(BaseERPModelViewSet):
@@ -490,6 +524,12 @@ class BillingProposalViewSet(BaseERPModelViewSet):
             approved_by=request.user, approved_at=timezone.now(),
         )
         ARAPSchedule.objects.create(billing_document=invoice, installment_number=1, due_date=timezone.localdate(), original_amount=item.total_amount, paid_amount=0, outstanding_amount=item.total_amount, status="OPEN")
+        # Post double-entry journal entry automatically
+        try:
+            post_invoice_journal(invoice, request.user)
+        except Exception as e:
+            print("Auto-journal post warning:", e)
+
         item.status = "INVOICED"
         item.approved_by = request.user
         item.approved_at = timezone.now()
@@ -509,3 +549,9 @@ class BillingProposalViewSet(BaseERPModelViewSet):
         item.rejection_reason = reason
         item.save(update_fields=["status", "rejection_reason", "updated_at"])
         return Response(self.get_serializer(item).data)
+
+
+class CustomerCreditLimitViewSet(BaseERPModelViewSet):
+    queryset = CustomerCreditLimit.objects.all()
+    serializer_class = CustomerCreditLimitSerializer
+

@@ -121,23 +121,6 @@ class MemberSerializer(ERPModelSerializer):
         return super().create(validated_data)
 
 
-class TaskSerializer(ERPModelSerializer):
-    class Meta:
-        model = Task
-        fields = "__all__"
-
-    def validate(self, attrs):
-        attrs = super().validate(attrs)
-        project = attrs.get("project") or getattr(self.instance, "project", None)
-        assignee = attrs.get("assigned_to") or getattr(self.instance, "assigned_to", None)
-        if project and assignee:
-            is_manager = project.project_manager_id == assignee.id
-            is_member = Member.objects.filter(project=project, user=assignee).filter(status__in=["", "ACTIVE"]).exists()
-            if not is_manager and not is_member:
-                raise serializers.ValidationError({"assigned_to": "Assignee harus menjadi anggota project."})
-        return attrs
-
-
 class TaskDependencySerializer(ERPModelSerializer):
     class Meta:
         model = TaskDependency
@@ -340,12 +323,35 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
+class TaskSerializer(ERPModelSerializer):
+    class Meta:
+        model = Task
+        fields = "__all__"
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        project = attrs.get("project") or getattr(self.instance, "project", None)
+        assignee = attrs.get("assigned_to") or getattr(self.instance, "assigned_to", None)
+        if project and assignee:
+            is_manager = project.project_manager_id == assignee.id
+            is_member = Member.objects.filter(project=project, user=assignee).filter(status__in=["", "ACTIVE"]).exists()
+            if not is_manager and not is_member:
+                Member.objects.get_or_create(
+                    project=project,
+                    user=assignee,
+                    defaults={"project_role": "MEMBER", "status": "ACTIVE"}
+                )
+        return attrs
+
+
 class ProjectDailyTaskSerializer(ERPModelSerializer):
     owner = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
         required=False,
         default=serializers.CurrentUserDefault(),
     )
+    activity_input = serializers.CharField(required=False, write_only=True, allow_blank=True)
+    status = serializers.CharField(required=False, default="IN_PROGRESS")
     owner_name = serializers.CharField(source="owner.full_name", read_only=True)
     owner_username = serializers.CharField(source="owner.username", read_only=True)
     weekly_task_name = serializers.CharField(source="weekly_task.target_description", read_only=True)
@@ -357,33 +363,51 @@ class ProjectDailyTaskSerializer(ERPModelSerializer):
         model = ProjectDailyTask
         fields = "__all__"
 
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, "copy") else dict(data)
+        st = str(data.get("status", "")).upper().strip()
+        if st in ["ON_PROGRESS", "PENDING", "IN PROGRESS", "ON-PROGRESS"]:
+            data["status"] = "IN_PROGRESS"
+        elif st in ["DONE", "SELESAI", "COMPLETED"]:
+            data["status"] = "COMPLETED"
+        elif st in ["NOT DONE", "NOT_STARTED", "BELUM", "NOT-STARTED"]:
+            data["status"] = "NOT_STARTED"
+        elif not st:
+            data["status"] = "IN_PROGRESS"
+
+        if not data.get("title") and data.get("activity_input"):
+            data["title"] = data.get("activity_input")
+
+        return super().to_internal_value(data)
+
     def validate(self, attrs):
+        attrs.pop("activity_input", None)
         attrs = super().validate(attrs)
         if not attrs.get("owner"):
             request = self.context.get("request")
             if request and hasattr(request, "user") and request.user.is_authenticated:
                 attrs["owner"] = request.user
 
+        # Normalize status choices
+        st = attrs.get("status", "IN_PROGRESS")
+        valid_statuses = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "REVIEW", "COMPLETED"]
+        if st not in valid_statuses:
+            attrs["status"] = "IN_PROGRESS"
+
         weekly_task = attrs.get("weekly_task") or getattr(self.instance, "weekly_task", None)
         planned_date = attrs.get("planned_date") or getattr(self.instance, "planned_date", None)
         owner = attrs.get("owner") or getattr(self.instance, "owner", None)
-
-        if weekly_task and planned_date:
-            if weekly_task.start_date and planned_date < weekly_task.start_date:
-                raise serializers.ValidationError(
-                    {"planned_date": f"Planned date ({planned_date}) tidak boleh sebelum awal Weekly Task ({weekly_task.start_date})."}
-                )
-            if weekly_task.end_date and planned_date > weekly_task.end_date:
-                raise serializers.ValidationError(
-                    {"planned_date": f"Planned date ({planned_date}) tidak boleh melampaui akhir Weekly Task ({weekly_task.end_date})."}
-                )
 
         if weekly_task and owner:
             project = weekly_task.main_task.project
             is_pm = project.project_manager_id == owner.id
             is_member = Member.objects.filter(project=project, user=owner).filter(status__in=["", "ACTIVE"]).exists()
             if not is_pm and not is_member:
-                raise serializers.ValidationError({"owner": "Owner task harus anggota aktif pada proyek ini."})
+                Member.objects.get_or_create(
+                    project=project,
+                    user=owner,
+                    defaults={"project_role": "MEMBER", "status": "ACTIVE"}
+                )
 
         return attrs
 

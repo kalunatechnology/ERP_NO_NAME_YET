@@ -1,0 +1,717 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import {
+  FolderKanban, CheckSquare, TrendingUp, DollarSign, AlertTriangle,
+  Clock, Users, ArrowRight, RefreshCw, Activity, Target,
+  ChevronUp, ChevronDown, Zap, ShieldAlert, CheckCircle2,
+  XCircle, BarChart3, Building2, CalendarDays, Layers,
+} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { loadAllProjects, Project } from "@/lib/api/project.api";
+import { loadFinanceDashboard, FinanceDashboardData } from "@/lib/api/finance.api";
+import { formatMoney, formatDate, getStatusColor, cn } from "@/lib/utils";
+
+/* ═══════════════════════════════════════════════════════════════
+   SHARED COMPONENTS
+═══════════════════════════════════════════════════════════════ */
+
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  subLabel?: string;
+  icon: React.ElementType;
+  iconBg?: string;
+  iconColor?: string;
+  trend?: { value: string; up: boolean } | null;
+  onClick?: () => void;
+}
+
+function KpiCard({ label, value, subLabel, icon: Icon, iconBg = "#F0FDF4", iconColor = "#16A34A", trend, onClick }: KpiCardProps) {
+  return (
+    <div
+      className={cn("card flex flex-col gap-3 p-4 rounded-xl min-w-0", onClick && "cursor-pointer hover:shadow-card-md transition-shadow")}
+      onClick={onClick}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+          <span className="text-xs font-medium text-text-secondary truncate">{label}</span>
+          <span className="text-2xl font-bold text-text-primary tracking-tight leading-tight">{value}</span>
+          {subLabel && <span className="text-xs text-text-secondary">{subLabel}</span>}
+        </div>
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: iconBg }}>
+          <Icon size={18} style={{ color: iconColor }} />
+        </div>
+      </div>
+      {trend && (
+        <div className="flex items-center gap-1">
+          {trend.up ? <ChevronUp size={12} className="text-green-600" /> : <ChevronDown size={12} className="text-red-500" />}
+          <span className={cn("text-2xs font-medium", trend.up ? "text-green-600" : "text-red-500")}>{trend.value}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionHeader({ title, actionLabel, actionHref }: { title: string; actionLabel?: string; actionHref?: string }) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <h2 className="text-sm font-bold text-text-primary">{title}</h2>
+      {actionLabel && actionHref && (
+        <Link href={actionHref} className="flex items-center gap-1 text-xs font-medium text-brand-green hover:text-brand-deep-green transition-colors">
+          {actionLabel}
+          <ArrowRight size={12} />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span className={cn("inline-flex px-2 py-0.5 rounded-full text-2xs font-semibold", getStatusColor(status))}>
+      {status}
+    </span>
+  );
+}
+
+function ProgressBar({ value, color = "#16A34A", height = 6 }: { value: number; color?: string; height?: number }) {
+  return (
+    <div className="w-full bg-gray-100 rounded-full overflow-hidden" style={{ height }}>
+      <div
+        className="h-full rounded-full transition-all duration-500"
+        style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }}
+      />
+    </div>
+  );
+}
+
+function LoadingDashboard() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-4 gap-3">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="card rounded-xl p-4 animate-pulse">
+            <div className="h-3 bg-gray-200 rounded w-2/3 mb-2" />
+            <div className="h-7 bg-gray-200 rounded w-1/2" />
+          </div>
+        ))}
+      </div>
+      <div className="card rounded-xl p-4 h-48 animate-pulse">
+        <div className="h-4 bg-gray-200 rounded w-1/4 mb-4" />
+        {[...Array(4)].map((_, i) => <div key={i} className="h-8 bg-gray-100 rounded mb-2" />)}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PM DASHBOARD
+═══════════════════════════════════════════════════════════════ */
+
+function PMDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
+  const today = new Date().toISOString().split("T")[0];
+
+  if (loading) return <LoadingDashboard />;
+
+  const total     = projects.length;
+  const active    = projects.filter(p => ["ACTIVE", "IN_PROGRESS", "PLANNING"].includes((p.status || "").toUpperCase())).length;
+  const completed = projects.filter(p => ["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase())).length;
+  const delayed   = projects.filter(p => {
+    const end = p.end_date || p.planned_end_date;
+    return end && end < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
+  }).length;
+  const avgProgress = total > 0
+    ? Math.round(projects.reduce((acc, p) => acc + (p.progress_percentage || p.progress || 0), 0) / total)
+    : 0;
+
+  // All daily tasks across projects (flattened)
+  const allDailyTasks = projects.flatMap(p =>
+    (p.main_tasks || []).flatMap(mt =>
+      (mt.weekly_tasks || mt.weekly_plans || []).flatMap(wt => wt.daily_tasks || [])
+    )
+  );
+  const todayTasks  = allDailyTasks.filter(d => d.planned_date === today);
+  const overdueTasks = allDailyTasks.filter(d => {
+    const pd = d.planned_date;
+    return pd && pd < today && !["COMPLETED", "DONE"].includes((d.status || "").toUpperCase());
+  });
+  const completedToday = todayTasks.filter(d => ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase())).length;
+
+  return (
+    <div className="flex flex-col gap-6 pb-8">
+      {/* ── KPI Row ───────────────────────── */}
+      <section>
+        <SectionHeader title="Overview Proyek Saya" actionLabel="Lihat semua" actionHref="/projects" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard label="Total Proyek"    value={total}        subLabel="semua status"       icon={FolderKanban}  iconBg="#EFF6FF" iconColor="#1D4ED8" />
+          <KpiCard label="Aktif Berjalan"  value={active}       subLabel="in progress"         icon={Activity}      iconBg="#F0FDF4" iconColor="#16A34A" trend={active > 0 ? { value: `${active} proyek aktif`, up: true } : null} />
+          <KpiCard label="Terlambat"       value={delayed}      subLabel="melewati deadline"   icon={AlertTriangle} iconBg="#FEF2F2" iconColor="#DC2626" trend={delayed > 0 ? { value: `${delayed} perlu perhatian`, up: false } : null} />
+          <KpiCard label="Rata-rata Progress" value={`${avgProgress}%`} subLabel="seluruh proyek" icon={Target}    iconBg="#FAF5FF" iconColor="#7E22CE" />
+        </div>
+      </section>
+
+      {/* ── Today's Task Summary ──────────── */}
+      <section>
+        <SectionHeader title="Tugas Hari Ini" actionLabel="Buka task harian" actionHref="/projects" />
+        <div className="grid grid-cols-3 gap-3">
+          <div className="card rounded-xl p-4 text-center">
+            <div className="text-2xl font-bold text-text-primary">{todayTasks.length}</div>
+            <div className="text-xs text-text-secondary mt-1">Total Task Hari Ini</div>
+          </div>
+          <div className="card rounded-xl p-4 text-center">
+            <div className="text-2xl font-bold text-brand-green">{completedToday}</div>
+            <div className="text-xs text-text-secondary mt-1">Selesai</div>
+          </div>
+          <div className="card rounded-xl p-4 text-center border-l-2 border-red-300">
+            <div className="text-2xl font-bold text-red-600">{overdueTasks.length}</div>
+            <div className="text-xs text-text-secondary mt-1">Terlambat / Carry-over</div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Overdue tasks alert ───────────── */}
+      {overdueTasks.length > 0 && (
+        <section>
+          <div className="card rounded-xl p-4 border-l-4 border-red-400 bg-red-50">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle size={16} className="text-red-600" />
+              <span className="text-sm font-semibold text-red-700">{overdueTasks.length} Task Belum Selesai dari Hari Sebelumnya</span>
+            </div>
+            <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto">
+              {overdueTasks.slice(0, 6).map(d => (
+                <div key={d.id} className="flex items-center justify-between text-xs">
+                  <span className="text-red-700 truncate flex-1">{d.title || d.activity_input || "Aktivitas"}</span>
+                  <span className="text-red-500 ml-2 flex-shrink-0">{d.planned_date}</span>
+                </div>
+              ))}
+            </div>
+            <Link href="/projects" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-red-700 hover:text-red-900">
+              Lihat semua & kelola transfer <ArrowRight size={11} />
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* ── Project list table ────────────── */}
+      <section>
+        <SectionHeader title="Daftar Proyek" actionLabel="Kelola proyek" actionHref="/projects" />
+        <div className="card rounded-xl overflow-hidden">
+          {projects.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <FolderKanban size={40} className="text-text-secondary opacity-40" />
+              <p className="text-sm text-text-secondary">Belum ada proyek. Mulai dengan membuat proyek baru.</p>
+              <Link href="/projects" className="btn-primary">+ Tambah Proyek</Link>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-text-tertiary bg-bg-lighter">
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Nama Proyek</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Progress</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Status</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Deadline</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Task</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map((p, i) => {
+                    const progress = p.progress_percentage || p.progress || 0;
+                    const deadline = p.end_date || p.planned_end_date;
+                    const isDelayed = deadline && deadline < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
+                    const taskCount = (p.main_tasks || []).reduce((acc, mt) => acc + (mt.weekly_tasks || mt.weekly_plans || []).reduce((a2, wt) => a2 + (wt.daily_tasks || []).length, 0), 0);
+                    return (
+                      <tr key={p.id} className={cn("border-b border-text-tertiary/50 hover:bg-bg-lighter/50 transition-colors", i % 2 === 0 && "bg-white")}>
+                        <td className="px-4 py-3">
+                          <Link href="/projects" className="font-medium text-brand-deep-green hover:underline">
+                            {p.project_name || p.name || `Project #${p.id}`}
+                          </Link>
+                          {p.project_manager_name && (
+                            <div className="text-2xs text-text-secondary">PM: {p.project_manager_name}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 min-w-24">
+                            <ProgressBar value={progress} color={progress >= 80 ? "#16A34A" : progress >= 40 ? "#D97706" : "#DC2626"} />
+                            <span className="text-xs font-medium text-text-primary w-9 text-right">{Math.round(progress)}%</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={p.status || "DRAFT"} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={cn("text-xs", isDelayed ? "text-red-600 font-semibold" : "text-text-secondary")}>
+                            {deadline ? formatDate(deadline) : "-"}
+                            {isDelayed && " ⚠️"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs text-text-secondary">{taskCount} task</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FINANCE DASHBOARD
+═══════════════════════════════════════════════════════════════ */
+
+function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData | null; loading: boolean }) {
+  if (loading || !finData) return <LoadingDashboard />;
+
+  const { kpis, pendingItems, recentTransactions, projectSummaries } = finData;
+  const urgentCount = pendingItems.filter(i => i.urgency === "urgent").length;
+
+  return (
+    <div className="flex flex-col gap-6 pb-8">
+      {/* ── KPI Row ──────────────────────── */}
+      <section>
+        <SectionHeader title="Financial Overview" actionLabel="Detail keuangan" actionHref="/finance" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard
+            label="Total Anggaran"    value={formatMoney(kpis.totalBudget)}
+            subLabel="budget proyek"  icon={DollarSign}  iconBg="#F0FDF4" iconColor="#16A34A"
+          />
+          <KpiCard
+            label="Terpakai"          value={formatMoney(kpis.usedBudget)}
+            subLabel={`${kpis.budgetUtilization}% utilisasi`} icon={TrendingUp} iconBg="#EFF6FF" iconColor="#1D4ED8"
+          />
+          <KpiCard
+            label="Sisa Anggaran"     value={formatMoney(kpis.remainingBudget)}
+            subLabel="tersedia"       icon={Layers}      iconBg="#FAF5FF" iconColor="#7E22CE"
+          />
+          <KpiCard
+            label="Perlu Persetujuan" value={kpis.pendingRequests}
+            subLabel={formatMoney(kpis.pendingAmount)}   icon={Clock}    iconBg="#FEF2F2" iconColor="#DC2626"
+            trend={urgentCount > 0 ? { value: `${urgentCount} URGENT`, up: false } : null}
+          />
+        </div>
+      </section>
+
+      {/* ── Need Action Panel ──────────── */}
+      {pendingItems.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Zap size={15} className="text-amber-500" />
+            <h2 className="text-sm font-bold text-text-primary">Perlu Tindakan Segera</h2>
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-2xs font-bold">{pendingItems.length}</span>
+          </div>
+          <div className="card rounded-xl overflow-hidden divide-y divide-text-tertiary/50">
+            {pendingItems.slice(0, 8).map(item => (
+              <div key={`${item.type}-${item.id}`} className={cn("flex items-center gap-3 px-4 py-3 hover:bg-bg-lighter/50 transition-colors", item.urgency === "urgent" && "border-l-2 border-red-400")}>
+                <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", item.urgency === "urgent" ? "bg-red-500" : "bg-amber-400")} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-text-primary truncate">{item.label}</div>
+                  <div className="text-2xs text-text-secondary">
+                    {item.type === "funding" ? "Pengajuan Dana" : "Billing Termin"}
+                    {item.project ? ` · ${item.project}` : ""}
+                    {item.date ? ` · ${formatDate(item.date)}` : ""}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end flex-shrink-0">
+                  <span className="text-sm font-bold text-text-primary">{formatMoney(item.amount)}</span>
+                  <StatusBadge status={item.status} />
+                </div>
+                <Link href="/finance" className="btn-ghost text-brand-green text-xs px-2 py-1 ml-1">Review</Link>
+              </div>
+            ))}
+          </div>
+          {pendingItems.length > 8 && (
+            <div className="mt-2 text-center">
+              <Link href="/finance" className="text-xs text-brand-green hover:underline">
+                Lihat {pendingItems.length - 8} item lainnya →
+              </Link>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Budget Utilization per Project ── */}
+      <section>
+        <SectionHeader title="Utilisasi Anggaran per Proyek" actionLabel="Detail finance" actionHref="/finance" />
+        <div className="card rounded-xl overflow-hidden">
+          {projectSummaries.length === 0 ? (
+            <div className="py-10 text-center text-sm text-text-secondary">Belum ada data anggaran proyek.</div>
+          ) : (
+            <div className="flex flex-col divide-y divide-text-tertiary/50">
+              {projectSummaries.slice(0, 8).map(ps => (
+                <div key={ps.projectId} className="px-4 py-3 hover:bg-bg-lighter/50 transition-colors">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-medium text-text-primary truncate flex-1">{ps.projectName}</span>
+                    <span className="text-xs text-text-secondary ml-2">{formatMoney(ps.spent)} / {formatMoney(ps.budget)}</span>
+                    <span className={cn("text-xs font-bold ml-3", ps.utilization > 90 ? "text-red-600" : ps.utilization > 70 ? "text-amber-600" : "text-brand-green")}>
+                      {ps.utilization}%
+                    </span>
+                  </div>
+                  <ProgressBar
+                    value={ps.utilization}
+                    color={ps.utilization > 90 ? "#DC2626" : ps.utilization > 70 ? "#D97706" : "#16A34A"}
+                    height={5}
+                  />
+                  {ps.pendingAmount > 0 && (
+                    <div className="text-2xs text-amber-600 mt-1">
+                      + {formatMoney(ps.pendingAmount)} pending approval
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Recent Transactions ──────────── */}
+      <section>
+        <SectionHeader title="Transaksi Terbaru" actionLabel="Lihat semua" actionHref="/finance" />
+        <div className="card rounded-xl overflow-hidden">
+          {recentTransactions.length === 0 ? (
+            <div className="py-10 text-center text-sm text-text-secondary">Belum ada transaksi.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-text-tertiary bg-bg-lighter">
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Keterangan</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Proyek</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Tipe</th>
+                    <th className="text-right text-xs font-semibold text-text-secondary px-4 py-3">Jumlah</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Status</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Tanggal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentTransactions.map((t, i) => (
+                    <tr key={`${t.type}-${t.id}`} className={cn("border-b border-text-tertiary/50 hover:bg-bg-lighter/50", i % 2 === 0 && "bg-white")}>
+                      <td className="px-4 py-2.5 font-medium text-text-primary text-xs max-w-48 truncate">{t.label}</td>
+                      <td className="px-4 py-2.5 text-text-secondary text-xs">{t.project || "-"}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={cn("px-2 py-0.5 rounded text-2xs font-medium",
+                          t.type === "cost" ? "bg-blue-100 text-blue-700" :
+                          t.type === "funding" ? "bg-green-100 text-green-700" :
+                          "bg-purple-100 text-purple-700"
+                        )}>
+                          {t.type === "cost" ? "Biaya" : t.type === "funding" ? "Funding" : "Billing"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-text-primary text-xs">{formatMoney(t.amount)}</td>
+                      <td className="px-4 py-2.5"><StatusBadge status={t.status} /></td>
+                      <td className="px-4 py-2.5 text-text-secondary text-xs">{formatDate(t.date)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EXECUTIVE DASHBOARD
+═══════════════════════════════════════════════════════════════ */
+
+function ExecutiveDashboard({ projects, finData, loading }: {
+  projects: Project[];
+  finData: FinanceDashboardData | null;
+  loading: boolean;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+
+  if (loading) return <LoadingDashboard />;
+
+  const total     = projects.length;
+  const active    = projects.filter(p => ["ACTIVE", "IN_PROGRESS", "PLANNING"].includes((p.status || "").toUpperCase())).length;
+  const completed = projects.filter(p => ["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase())).length;
+  const delayed   = projects.filter(p => {
+    const end = p.end_date || p.planned_end_date;
+    return end && end < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
+  }).length;
+  const avgProgress = total > 0
+    ? Math.round(projects.reduce((acc, p) => acc + (p.progress_percentage || p.progress || 0), 0) / total)
+    : 0;
+
+  const kpis = finData?.kpis;
+  const pendingCount = kpis?.pendingRequests || 0;
+  const urgentPending = (finData?.pendingItems || []).filter(i => i.urgency === "urgent").length;
+
+  return (
+    <div className="flex flex-col gap-6 pb-8">
+      {/* ── Executive KPI Row ─────────────── */}
+      <section>
+        <SectionHeader title="Company Overview" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard label="Total Proyek"       value={total}               subLabel={`${active} aktif`}    icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
+          <KpiCard label="Overall Progress"   value={`${avgProgress}%`}   subLabel="rata-rata"            icon={Target}       iconBg="#F0FDF4" iconColor="#16A34A" />
+          <KpiCard label="Total Anggaran"     value={kpis ? formatMoney(kpis.totalBudget) : "-"}
+                   subLabel={kpis ? `${kpis.budgetUtilization}% digunakan` : ""}                          icon={DollarSign}   iconBg="#FAF5FF" iconColor="#7E22CE" />
+          <KpiCard label="Perlu Keputusan"    value={pendingCount}
+                   subLabel={urgentPending > 0 ? `${urgentPending} URGENT` : "pending approval"}          icon={ShieldAlert}  iconBg="#FEF2F2" iconColor="#DC2626"
+                   trend={urgentPending > 0 ? { value: `${urgentPending} butuh perhatian`, up: false } : null} />
+        </div>
+      </section>
+
+      {/* ── Secondary KPI Row ─────────────── */}
+      <div className="grid grid-cols-4 gap-3">
+        <div className="card rounded-xl p-4 text-center">
+          <div className="text-xl font-bold text-green-600">{completed}</div>
+          <div className="text-xs text-text-secondary mt-0.5">Selesai</div>
+        </div>
+        <div className="card rounded-xl p-4 text-center">
+          <div className="text-xl font-bold text-blue-600">{active}</div>
+          <div className="text-xs text-text-secondary mt-0.5">Berjalan</div>
+        </div>
+        <div className="card rounded-xl p-4 text-center">
+          <div className="text-xl font-bold text-red-600">{delayed}</div>
+          <div className="text-xs text-text-secondary mt-0.5">Terlambat</div>
+        </div>
+        <div className="card rounded-xl p-4 text-center">
+          <div className="text-xl font-bold text-text-primary">{total - completed - active - delayed}</div>
+          <div className="text-xs text-text-secondary mt-0.5">Lainnya</div>
+        </div>
+      </div>
+
+      {/* ── Action Required ───────────────── */}
+      {pendingCount > 0 && finData && (
+        <section>
+          <div className="card rounded-xl p-4 border-l-4 border-amber-400">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap size={15} className="text-amber-500" />
+              <span className="text-sm font-bold text-text-primary">Action Required — Financial Approvals</span>
+              <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-2xs font-bold">{pendingCount}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="text-center">
+                <div className="text-lg font-bold text-text-primary">{kpis?.pendingRequests}</div>
+                <div className="text-2xs text-text-secondary">Pending</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-green-600">{kpis?.approvedRequests}</div>
+                <div className="text-2xs text-text-secondary">Approved</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-red-600">{kpis?.rejectedRequests}</div>
+                <div className="text-2xs text-text-secondary">Rejected</div>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Link href="/finance" className="btn-primary text-xs py-1.5 px-3">Buka Finance Dashboard</Link>
+              <Link href="/projects" className="btn-ghost text-xs py-1.5 px-3">Lihat Projects</Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Project Performance Grid ──────── */}
+      <section>
+        <SectionHeader title="Performance Proyek" actionLabel="Kelola semua proyek" actionHref="/projects" />
+        {projects.length === 0 ? (
+          <div className="card rounded-xl py-12 text-center">
+            <FolderKanban size={40} className="mx-auto text-text-secondary opacity-30 mb-2" />
+            <p className="text-sm text-text-secondary">Belum ada proyek.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {projects.slice(0, 8).map(p => {
+              const progress = p.progress_percentage || p.progress || 0;
+              const deadline = p.end_date || p.planned_end_date;
+              const isDelayed = deadline && deadline < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
+              const budget = p.budget_amount || p.total_budget || p.budget || 0;
+              const finSum = finData?.projectSummaries.find(ps => String(ps.projectId) === String(p.id));
+              return (
+                <div key={p.id} className={cn("card rounded-xl p-4", isDelayed && "border-l-2 border-red-400")}>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-text-primary truncate">
+                        {p.project_name || p.name || `Project #${p.id}`}
+                      </div>
+                      {p.project_manager_name && (
+                        <div className="text-2xs text-text-secondary">PM: {p.project_manager_name}</div>
+                      )}
+                    </div>
+                    <StatusBadge status={p.status || "DRAFT"} />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-text-secondary">Progress</span>
+                        <span className="font-semibold text-text-primary">{Math.round(progress)}%</span>
+                      </div>
+                      <ProgressBar value={progress} color={progress >= 80 ? "#16A34A" : progress >= 40 ? "#D97706" : "#DC2626"} />
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-text-secondary">
+                      <span className={cn("flex items-center gap-0.5", isDelayed && "text-red-600 font-medium")}>
+                        <CalendarDays size={11} />
+                        {deadline ? formatDate(deadline) : "Belum ada deadline"}
+                        {isDelayed && " ⚠️"}
+                      </span>
+                      {budget > 0 && (
+                        <span>{finSum ? `${finSum.utilization}% budget` : formatMoney(budget)}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ── Financial Summary ─────────────── */}
+      {kpis && (
+        <section>
+          <SectionHeader title="Ringkasan Keuangan" actionLabel="Detail finance" actionHref="/finance" />
+          <div className="card rounded-xl p-4">
+            <div className="flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-text-secondary">Total Anggaran</span>
+                <span className="text-sm font-bold text-text-primary">{formatMoney(kpis.totalBudget)}</span>
+              </div>
+              <div>
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="text-text-secondary">Terpakai</span>
+                  <span className="font-medium">{formatMoney(kpis.usedBudget)} ({kpis.budgetUtilization}%)</span>
+                </div>
+                <ProgressBar
+                  value={kpis.budgetUtilization}
+                  color={kpis.budgetUtilization > 90 ? "#DC2626" : kpis.budgetUtilization > 70 ? "#D97706" : "#16A34A"}
+                  height={8}
+                />
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-text-tertiary/50">
+                <span className="text-sm text-text-secondary">Sisa Anggaran</span>
+                <span className={cn("text-sm font-bold", kpis.remainingBudget < kpis.totalBudget * 0.1 ? "text-red-600" : "text-brand-green")}>
+                  {formatMoney(kpis.remainingBudget)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CRM / STAFF DASHBOARD (basic)
+═══════════════════════════════════════════════════════════════ */
+
+function CRMDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
+  if (loading) return <LoadingDashboard />;
+  return (
+    <div className="flex flex-col gap-6 pb-8">
+      <section>
+        <SectionHeader title="Ringkasan" />
+        <div className="grid grid-cols-2 gap-3">
+          <KpiCard label="Total Proyek" value={projects.length} subLabel="semua" icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
+          <KpiCard label="Proyek Aktif" value={projects.filter(p => ["ACTIVE","IN_PROGRESS"].includes((p.status||"").toUpperCase())).length}
+                   subLabel="berjalan" icon={Activity} iconBg="#F0FDF4" iconColor="#16A34A" />
+        </div>
+      </section>
+      <section>
+        <SectionHeader title="Proyek Terkait" actionLabel="Kelola CRM" actionHref="/crm" />
+        <div className="card rounded-xl p-4 text-center">
+          <Building2 size={40} className="mx-auto text-text-secondary opacity-30 mb-2" />
+          <p className="text-sm text-text-secondary mb-3">Akses modul CRM & Sales lengkap</p>
+          <Link href="/crm" className="btn-primary">Buka CRM & Sales</Link>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN DASHBOARD CLIENT — Role Router
+═══════════════════════════════════════════════════════════════ */
+
+export default function DashboardClient() {
+  const { userRole, user } = useAuth();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [finData, setFinData] = useState<FinanceDashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    try {
+      // Load project data for all roles
+      const projectData = await loadAllProjects().catch(() => []);
+      setProjects(projectData);
+
+      // Load finance data for finance & executive roles
+      if (userRole === "finance" || userRole === "executive") {
+        const fin = await loadFinanceDashboard().catch(() => null);
+        setFinData(fin);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [userRole]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  /* ── Role-specific title & subtitle ─── */
+  const titles: Record<string, { title: string; subtitle: string }> = {
+    executive: { title: "Executive Dashboard",      subtitle: "Company-wide overview — semua proyek & keuangan" },
+    pm:        { title: "Project Manager Dashboard", subtitle: "Monitoring proyek & task operasional Anda" },
+    finance:   { title: "Finance Dashboard",         subtitle: "Monitoring keuangan, anggaran & approval" },
+    crm:       { title: "CRM & Sales Dashboard",     subtitle: "Monitoring pipeline, deal & aktivitas CRM" },
+    staff:     { title: "Dashboard",                  subtitle: "Ringkasan aktivitas Anda" },
+  };
+
+  const { title, subtitle } = titles[userRole] || titles.staff;
+  const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* ── Page Header ─────────────────── */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-brand-deep-green">{title}</h1>
+          <p className="text-xs text-text-secondary mt-0.5">
+            Selamat datang, <span className="font-medium">{displayName}</span> · {subtitle}
+          </p>
+        </div>
+        <button
+          onClick={() => loadData(true)}
+          disabled={refreshing}
+          className="btn-ghost gap-1.5 text-xs flex-shrink-0"
+          aria-label="Refresh data"
+        >
+          <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
+          {refreshing ? "Memuat..." : "Refresh"}
+        </button>
+      </div>
+
+      {/* ── Role-Based Dashboard Content ── */}
+      {userRole === "executive" && (
+        <ExecutiveDashboard projects={projects} finData={finData} loading={loading} />
+      )}
+      {userRole === "pm" && (
+        <PMDashboard projects={projects} loading={loading} />
+      )}
+      {userRole === "finance" && (
+        <FinanceDashboard finData={finData} loading={loading} />
+      )}
+      {(userRole === "crm" || userRole === "staff") && (
+        <CRMDashboard projects={projects} loading={loading} />
+      )}
+    </div>
+  );
+}

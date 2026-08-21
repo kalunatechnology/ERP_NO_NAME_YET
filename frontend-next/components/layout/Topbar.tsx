@@ -1,0 +1,290 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { usePathname } from "next/navigation";
+import { Search, Bell, Menu, ChevronDown, Check, Building2, LogOut, ShieldCheck, Lock } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
+
+interface TopbarProps {
+  onMenuToggle?: () => void;
+}
+
+const DEMO_PERSONAS = [
+  { email: "dummy.admin@example.com", name: "Dummy Administrator", role: "ROLE-ADMIN · Full Access (Bisa Ganti Company)", icon: "👑", company: "Semua Company" },
+  { email: "executive.demo@erp.local", name: "Executive Demo", role: "EXECUTIVE · Direksi Arsalynt", icon: "🏛️", company: "Arsalynt" },
+  { email: "dummy.manager@example.com", name: "Operational Manager", role: "ROLE-MANAGER · CRM & PM", icon: "👔", company: "Arsalynt" },
+  { email: "dummy.staff@example.com", name: "Operational Staff", role: "ROLE-STAFF · Support & Inquiry", icon: "🧑‍💼", company: "Arsalynt" },
+  { email: "project.manager.demo@erp.local", name: "Project Manager Demo", role: "PROJECT_MANAGEMENT · WBS", icon: "🏗️", company: "Arsalynt" },
+  { email: "assignee.demo@erp.local", name: "Project Assignee Demo", role: "PROJECT_ASSIGNEE · Timesheet", icon: "👷", company: "Arsalynt" },
+  { email: "finance.demo@erp.local", name: "Finance Demo", role: "ACCOUNTING_FINANCE · AR/AP", icon: "💼", company: "Arsalynt" },
+  { email: "finance.approver@example.com", name: "Finance Approver", role: "FINANCE · Approvals", icon: "✍️", company: "Arsalynt" },
+];
+
+/* ── Breadcrumb builder ─────────────────────────── */
+function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
+  const LABELS: Record<string, string> = {
+    dashboard:  "Dashboard",
+    projects:   "Projects",
+    tasks:      "Tasks",
+    finance:    "Finance",
+    crm:        "CRM & Sales",
+    resources:  "Data Explorer",
+    reporting:  "Reporting",
+    settings:   "Settings",
+  };
+  const parts = pathname.split("/").filter(Boolean);
+  return parts.map((part, i) => ({
+    label: LABELS[part] || part.charAt(0).toUpperCase() + part.slice(1),
+    href: "/" + parts.slice(0, i + 1).join("/"),
+  }));
+}
+
+export function Topbar({ onMenuToggle }: TopbarProps) {
+  const pathname = usePathname();
+  const { user, login, logout, company, setCompany, companies, isAdmin } = useAuth();
+  const crumbs = buildBreadcrumb(pathname);
+
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const compRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+      if (compRef.current && !compRef.current.contains(e.target as Node)) {
+        setIsCompanyDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleQuickSwitchUser = async (email: string) => {
+    setSwitching(true);
+    try {
+      await login(email, "DummyPass123!");
+      toast.success(`Berhasil beralih ke: ${email}`, { icon: "⚡" });
+      setIsUserMenuOpen(false);
+      window.location.reload();
+    } catch {
+      toast.error("Gagal beralih akun");
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const initial = user?.full_name?.[0] ?? user?.email?.[0]?.toUpperCase() ?? "U";
+  const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
+
+  return (
+    <header
+      className="flex items-center justify-between bg-bg-lighter border-b border-text-tertiary flex-shrink-0 px-6 gap-6 z-30 relative"
+      style={{ height: "var(--topbar-h, 68px)" }}
+    >
+      {/* Left: Menu + Breadcrumb */}
+      <div className="flex items-center gap-6">
+        <button
+          onClick={onMenuToggle}
+          className="p-1 rounded text-text-secondary hover:text-text-primary transition-colors"
+          id="topbar-menu-btn"
+          aria-label="Toggle menu"
+        >
+          <Menu size={24} aria-hidden="true" />
+        </button>
+
+        <nav aria-label="Breadcrumb">
+          <ol className="flex items-center gap-3">
+            <li>
+              <span className="text-lg text-text-secondary">Contents</span>
+            </li>
+            {crumbs.map((crumb, i) => (
+              <li key={crumb.href} className="flex items-center gap-3">
+                <span className="text-lg text-text-secondary" aria-hidden="true">/</span>
+                <span
+                  className={cn(
+                    "text-lg",
+                    i === crumbs.length - 1
+                      ? "text-brand-deep-green font-normal"
+                      : "text-text-secondary"
+                  )}
+                  aria-current={i === crumbs.length - 1 ? "page" : undefined}
+                >
+                  {crumb.label}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      </div>
+
+      {/* Right: Company Context + Search + Quick Persona Switcher */}
+      <div className="flex items-center gap-3">
+
+        {/* Company Selector Box */}
+        {isAdmin ? (
+          /* Admin can pick any company */
+          <div className="relative hidden md:block" ref={compRef}>
+            <button
+              onClick={() => setIsCompanyDropdownOpen(!isCompanyDropdownOpen)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-brand-green/40 hover:border-brand-green text-xs shadow-sm transition-all"
+            >
+              <Building2 size={13} className="text-brand-green" />
+              <span className="text-text-secondary font-medium">Company:</span>
+              <strong className="text-brand-deep-green">{company || "Arsalynt"}</strong>
+              <span className="badge text-2xs bg-brand-light-green text-brand-deep-green font-bold">Admin Pick</span>
+              <ChevronDown size={12} className="text-text-secondary" />
+            </button>
+
+            {isCompanyDropdownOpen && (
+              <div className="absolute left-0 mt-2 w-64 bg-white rounded-2xl border border-text-tertiary shadow-card-lg p-2 z-50 animate-in fade-in zoom-in-95">
+                <div className="px-2 py-1 text-2xs font-bold text-text-secondary uppercase">Pilih Context Company</div>
+                <div className="flex flex-col gap-1 mt-1">
+                  {companies.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        setCompany(String(c.id));
+                        setIsCompanyDropdownOpen(false);
+                        toast.success(`Company aktif: ${c.name}`);
+                      }}
+                      className={cn(
+                        "w-full text-left p-2 rounded-xl text-xs flex items-center justify-between hover:bg-brand-light-green/40",
+                        company === String(c.id) && "bg-brand-light-green font-bold text-brand-deep-green"
+                      )}
+                    >
+                      <span>{c.name}</span>
+                      {company === String(c.id) && <Check size={13} className="text-brand-deep-green" />}
+                    </button>
+                  ))}
+                  <div className="pt-2 border-t border-text-tertiary">
+                    <label className="text-2xs text-text-secondary px-2 block mb-1">Custom X-Company-ID:</label>
+                    <input
+                      type="text"
+                      placeholder="arsalyn"
+                      value={company || ""}
+                      onChange={e => setCompany(e.target.value || null)}
+                      className="input py-1 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Non-admin is automatically locked to Arsalynt */
+          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-light-green/60 border border-brand-green/30 text-xs" title="Akun Anda terikat otomatis ke PT. Arsalynt">
+            <Building2 size={13} className="text-brand-deep-green" />
+            <span className="text-text-secondary font-medium">Company:</span>
+            <strong className="text-brand-deep-green font-semibold">PT. Arsalynt</strong>
+            <Lock size={11} className="text-brand-green" />
+          </div>
+        )}
+
+        {/* Search Input */}
+        <label
+          htmlFor="topbar-search"
+          className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-text-tertiary cursor-text"
+        >
+          <Search size={16} className="text-text-secondary flex-shrink-0" aria-hidden="true" />
+          <input
+            id="topbar-search"
+            type="text"
+            placeholder="Cari data…"
+            className="bg-transparent border-none outline-none text-sm text-text-secondary placeholder:text-text-secondary w-24 focus:w-40 transition-all duration-200"
+            aria-label="Cari"
+          />
+        </label>
+
+        {/* Notification Bell */}
+        <button
+          onClick={() => toast("Semua notifikasi tersinkronisasi", { icon: "🔔" })}
+          className="p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/40 transition-colors relative"
+          aria-label="Notifikasi"
+        >
+          <Bell size={20} aria-hidden="true" />
+          <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full" aria-hidden="true" />
+        </button>
+
+        {/* Quick User Avatar & Persona Switcher */}
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+            className="flex items-center gap-2 p-1 pl-2 pr-2.5 rounded-full bg-white border border-text-tertiary hover:border-brand-green transition-all shadow-sm"
+          >
+            <div className="w-7 h-7 rounded-full bg-brand-light-green flex items-center justify-center text-xs font-bold text-brand-deep-green">
+              {initial}
+            </div>
+            <div className="hidden sm:flex flex-col text-left leading-tight">
+              <span className="text-xs font-semibold text-text-primary truncate max-w-[110px]">{displayName}</span>
+              <span className="text-2xs text-text-secondary">Ganti Akun ⚡</span>
+            </div>
+            <ChevronDown size={14} className="text-text-secondary" />
+          </button>
+
+          {/* Quick Account Switcher Dropdown Menu */}
+          {isUserMenuOpen && (
+            <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-text-tertiary shadow-card-lg py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="px-3.5 py-2 border-b border-text-tertiary">
+                <span className="text-2xs font-extrabold text-brand-deep-green tracking-wider uppercase">
+                  Ganti Akun Cepat (8 User Siap Uji)
+                </span>
+                <p className="text-2xs text-text-secondary mt-0.5">
+                  Semua akun operasional otomatis masuk ke <b>PT. Arsalynt</b>, admin bebas memilih company.
+                </p>
+              </div>
+
+              <div className="max-h-64 overflow-y-auto divide-y divide-gray-50 p-1">
+                {DEMO_PERSONAS.map(p => {
+                  const isCurrent = user?.email === p.email;
+                  return (
+                    <button
+                      key={p.email}
+                      disabled={switching}
+                      onClick={() => handleQuickSwitchUser(p.email)}
+                      className={cn(
+                        "w-full flex items-center justify-between p-2.5 rounded-xl text-left hover:bg-brand-light-green/50 transition-colors",
+                        isCurrent && "bg-brand-light-green/80 font-bold"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-lg flex-shrink-0">{p.icon}</span>
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-text-primary truncate font-medium">{p.name}</span>
+                            <span className="text-2xs px-1 rounded bg-gray-100 text-gray-600">{p.company}</span>
+                          </div>
+                          <span className="text-2xs text-text-secondary truncate">{p.role}</span>
+                        </div>
+                      </div>
+                      {isCurrent && <Check size={14} className="text-brand-deep-green flex-shrink-0 ml-2" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="p-2 pt-2 border-t border-text-tertiary">
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    logout();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut size={14} /> Log Out Sesi
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </header>
+  );
+}
