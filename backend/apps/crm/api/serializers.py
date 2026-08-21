@@ -124,9 +124,12 @@ class SurveyAnswerSerializer(ERPModelSerializer):
         fields = "__all__"
 
 
+from drf_spectacular.utils import extend_schema_field
+
 class CustomerInquirySerializer(ERPModelSerializer):
     customer_display = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.CharField())
     def get_customer_display(self, obj):
         if obj.customer_party:
             return obj.customer_party.display_name or obj.customer_party.legal_name or obj.customer_name

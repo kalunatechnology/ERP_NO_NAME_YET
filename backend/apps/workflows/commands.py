@@ -1,4 +1,4 @@
-﻿"""
+"""
 Workflow Engine API Commands.
 
 Two endpoints to integrate the Workflow Engine with the frontend:
@@ -242,10 +242,12 @@ class WorkflowExecuteTransitionView(GenericAPIView):
 class WorkflowRegistryView(GenericAPIView):
     """Returns a summary of all registered workflows (admin/debug endpoint)."""
     permission_classes = [permissions.IsAdminUser]
+    serializer_class = None
 
     @extend_schema(
         tags=["Workflow Engine"],
         summary="List all registered workflows (admin)",
+        responses={200: OpenApiTypes.OBJECT},
     )
     def get(self, request):
         registry = WorkflowRegistry.list_all()

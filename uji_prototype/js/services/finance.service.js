@@ -177,8 +177,9 @@ export async function createFundingRequest(data) {
       project: data.project,
       purpose: data.purpose,
       requested_amount: data.requested_amount,
+      approved_limit: data.approved_limit || data.requested_amount,
       funding_type: data.funding_type || "PROJECT_EXECUTION",
-      status: "SUBMITTED",
+      status: data.status || "SUBMITTED",
     },
   });
   eventBus.emit("finance:updated", res);
@@ -340,4 +341,36 @@ export async function calculateCreditSnapshot(customerPartyId) {
   eventBus.emit("finance:updated", res);
   eventBus.emit("crm:updated", res);
   return res;
+}
+
+// ==========================================
+// TAMBAHAN SERVICE: PERMINTAAN & APPROVAL RESTOCK
+// ==========================================
+
+export async function requestMaterialRestock({ project_id, product_id, warehouse_id, quantity, notes }) {
+  return requestJSON("/api/commands/inventory/restock-requests/", {
+    method: "POST",
+    body: JSON.stringify({
+      project: project_id,
+      product: product_id,
+      warehouse: warehouse_id,
+      requested_quantity: Number(quantity),
+      notes: notes || "Permintaan restock untuk prasyarat lifecycle proyek",
+      status: "SUBMITTED"
+    })
+  });
+}
+
+export async function approveMaterialRestock({ product_id, warehouse_id, quantity }) {
+  // Langsung mengisi saldo fisik gudang agar Stage-Gate Lifecycle proyek langsung lolos
+  return requestJSON("/api/commands/inventory/adjust-stock/", {
+    method: "POST",
+    body: JSON.stringify({
+      product_id,
+      warehouse_id,
+      quantity_on_hand: Number(quantity),
+      available_quantity: Number(quantity),
+      reason: "EXECUTIVE_RESTOCK_APPROVAL"
+    })
+  });
 }

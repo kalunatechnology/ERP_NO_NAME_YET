@@ -771,19 +771,20 @@ def project_flow_data(project):
         material_rows.append(row)
         if not item.product_id or not item.warehouse_id or shortage > ZERO:
             shortages.append(row)
+    has_materials = materials.exists()
     funding_project = project.source_type == "FUNDING_REQUEST"
-    has_order = bool(project.sales_order_id) or funding_project
-    scope_ready = (briefs.exists() and requirements.exists()) or (funding_project and bool(project.description.strip()))
-    material_defined = materials.exists() or funding_project
+    has_order = bool(project.sales_order_id) or funding_project or bool(project.project_name)
+    scope_ready = (briefs.exists() and requirements.exists()) or (funding_project and bool(project.description.strip())) or bool(project.project_name)
+    material_defined = True
     budget_ready = budget_total > ZERO
-    stock_ready = material_defined and not shortages
+    stock_ready = not shortages if has_materials else True
     lifecycle = project.lifecycle_status or project.status or "DRAFT"
-    verified = lifecycle in {"VERIFIED", "RESOURCE_RESERVED", "IN_PROGRESS", "QA_REVIEW", "COMPLETED", "CLOSED"}
-    reservation_ready = funding_project and not materials.exists()
-    if materials.exists():
-        reservation_ready = all(
-            (item.reserved_quantity or ZERO) >= (item.required_quantity or ZERO) for item in materials
-        ) and StockReservation.objects.filter(project=project, status="ACTIVE").exists()
+    verified = lifecycle in {"VERIFIED", "RESOURCE_RESERVED", "MATERIAL_RESERVED", "IN_PROGRESS", "QA_REVIEW", "COMPLETED", "CLOSED"}
+    reservation_ready = (
+        (all((item.reserved_quantity or ZERO) >= (item.required_quantity or ZERO) for item in materials) and StockReservation.objects.filter(project=project, status="ACTIVE").exists())
+        if has_materials
+        else True
+    )
     started = lifecycle in {"IN_PROGRESS", "QA_REVIEW", "COMPLETED", "CLOSED"}
     checks = {
         "incoming_order": has_order,
@@ -896,8 +897,11 @@ class ProjectReserveMaterialsView(ERPCommandView):
         # Lock only material requirement rows. PostgreSQL rejects FOR UPDATE
         # when select_related adds an outer join for nullable product/warehouse.
         materials = list(MaterialRequirement.objects.select_for_update().filter(project=project))
-        if not materials and project.source_type != "FUNDING_REQUEST":
-            raise ValidationError({"materials": "Material requirement belum tersedia."})
+        if not materials:
+            transition_project(project, "MATERIAL_RESERVED", "RESERVE_MATERIALS", request.user, note="Proyek jasa: tidak memerlukan reservasi material fisik.")
+            project.status = "MATERIAL_RESERVED"
+            project.save(update_fields=["status"])
+            return self.ok(project_flow_data(project), "Proyek non-material siap: tidak memerlukan reservasi stok.")
         if project_flow_data(project)["shortages"]:
             raise ValidationError({"code": "PROJECT_STOCK_INSUFFICIENT", "materials": project_flow_data(project)["shortages"]})
         created = []

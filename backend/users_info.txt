@@ -1,0 +1,17 @@
+director | is_super=False | roles=['DIRECTOR'] | exec=True | fin=True | pm=True
+dummy_admin | is_super=True | roles=['SUPER_ADMIN'] | exec=True | fin=True | pm=True
+pm_demo | is_super=False | roles=['PROJECT_MANAGER'] | exec=True | fin=True | pm=True
+sales | is_super=False | roles=['SALES'] | exec=True | fin=True | pm=True
+qc | is_super=False | roles=['QUALITY_CONTROL'] | exec=False | fin=False | pm=True
+warehouse | is_super=False | roles=['WAREHOUSE'] | exec=False | fin=False | pm=True
+assignee_demo | is_super=False | roles=['SUPERVISOR'] | exec=False | fin=False | pm=True
+supervisor | is_super=False | roles=['SUPERVISOR'] | exec=False | fin=False | pm=True
+finance | is_super=False | roles=['FINANCE'] | exec=False | fin=True | pm=False
+dummy_staff | is_super=False | roles=['SALES'] | exec=True | fin=True | pm=True
+dummy_manager | is_super=False | roles=['MANAGER'] | exec=True | fin=True | pm=True
+finance_demo | is_super=False | roles=['FINANCE'] | exec=False | fin=True | pm=False
+admin | is_super=True | roles=[] | exec=True | fin=True | pm=True
+pm | is_super=False | roles=['PROJECT_MANAGER'] | exec=True | fin=True | pm=True
+finance_approver | is_super=False | roles=['FINANCE'] | exec=False | fin=True | pm=False
+manager | is_super=False | roles=['MANAGER'] | exec=True | fin=True | pm=True
+executive_demo | is_super=False | roles=['DIRECTOR'] | exec=True | fin=True | pm=True

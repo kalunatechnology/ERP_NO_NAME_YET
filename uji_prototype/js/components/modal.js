@@ -35,28 +35,48 @@ function initModalDOM() {
   });
 }
 
-export function openModal(eyebrow, title, bodyHTML, footerHTML = "", onClose = null) {
+export function openModal(eyebrowOrOptions, title, bodyHTML, footerHTML = "", onClose = null) {
   if (!modalBackdrop) initModalDOM();
-  currentOnClose = onClose;
+  
+  let eyebrow = "Modal";
+  let body = "";
+  let footer = "";
+  let heading = "Detail";
+  let closeCb = onClose;
 
-  if (modalEyebrow) modalEyebrow.textContent = eyebrow || "Modal";
-  if (modalTitle) modalTitle.textContent = title || "Detail";
+  if (typeof eyebrowOrOptions === "object" && eyebrowOrOptions !== null) {
+    heading = eyebrowOrOptions.title || "Detail";
+    eyebrow = eyebrowOrOptions.eyebrow || "Action";
+    body = eyebrowOrOptions.content || eyebrowOrOptions.body || "";
+    footer = eyebrowOrOptions.footer || "";
+    closeCb = eyebrowOrOptions.onClose || null;
+  } else {
+    eyebrow = eyebrowOrOptions || "Modal";
+    heading = title || "Detail";
+    body = bodyHTML || "";
+    footer = footerHTML || "";
+  }
+
+  currentOnClose = closeCb;
+
+  if (modalEyebrow) modalEyebrow.textContent = eyebrow;
+  if (modalTitle) modalTitle.textContent = heading;
 
   if (modalBody) {
-    if (typeof bodyHTML === "string") {
-      modalBody.innerHTML = bodyHTML;
-    } else if (bodyHTML instanceof Node) {
+    if (typeof body === "string") {
+      modalBody.innerHTML = body;
+    } else if (body instanceof Node) {
       modalBody.innerHTML = "";
-      modalBody.appendChild(bodyHTML);
+      modalBody.appendChild(body);
     }
   }
 
   if (modalFooter) {
-    if (typeof footerHTML === "string") {
-      modalFooter.innerHTML = footerHTML;
-    } else if (footerHTML instanceof Node) {
+    if (typeof footer === "string") {
+      modalFooter.innerHTML = footer;
+    } else if (footer instanceof Node) {
       modalFooter.innerHTML = "";
-      modalFooter.appendChild(footerHTML);
+      modalFooter.appendChild(footer);
     }
   }
 
@@ -80,3 +100,6 @@ export const Modal = {
   open: openModal,
   close: closeModal,
 };
+
+export const modal = Modal;
+

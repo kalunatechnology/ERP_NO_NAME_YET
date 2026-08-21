@@ -238,11 +238,9 @@ class ProjectFundingViewSet(BaseERPModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
-        if is_executive(user) or is_finance(user):
+        if is_executive(user) or is_finance(user) or is_project_management(user):
             return queryset
-        if is_project_management(user):
-            return queryset.filter(requested_by=user)
-        return queryset.none()
+        return queryset
 
     def perform_create(self, serializer):
         if not is_project_management(self.request.user):
@@ -273,8 +271,8 @@ class ProjectFundingViewSet(BaseERPModelViewSet):
     @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
         instance = self.get_object()
-        if instance.requested_by_id != request.user.id and not is_executive(request.user):
-            raise PermissionDenied("Hanya pembuat pengajuan yang dapat melakukan submit.")
+        if instance.requested_by_id and instance.requested_by_id != request.user.id and not (is_executive(request.user) or is_project_management(request.user)):
+            raise PermissionDenied("Hanya pembuat pengajuan atau PM yang dapat melakukan submit.")
         if not instance.purpose or not instance.requested_amount:
             raise ValidationError({"funding": "Purpose dan requested_amount wajib diisi."})
         return self._transition(request, instance, ["", "DRAFT", "REJECTED"], "SUBMITTED", submitted_at=timezone.now())

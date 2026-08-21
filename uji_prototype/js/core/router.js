@@ -63,6 +63,11 @@ class Router {
       });
     }
 
+    if (!state.access && path !== "/login" && path !== "/auth-tester") {
+      this.navigate("/login");
+      return;
+    }
+
     let matched = false;
     for (const route of this.routes) {
       const match = path.match(route.regex);

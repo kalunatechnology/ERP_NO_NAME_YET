@@ -1,5 +1,47 @@
 from rest_framework.routers import DefaultRouter
-from .viewsets import ProjectViewSet, ProjectControlItemViewSet, ProjectExpenseViewSet, ProjectLifecycleEventViewSet, ProjectReadinessCheckViewSet, MemberViewSet, TaskViewSet, TaskDependencyViewSet, MilestoneViewSet, MaterialRequirementViewSet, BudgetLineViewSet, TimesheetViewSet, ChangeRequestViewSet, ChangeRequestMaterialViewSet, BoardViewSet, BoardColumnViewSet, TaskBoardPositionViewSet, HealthRuleViewSet, HealthSnapshotViewSet, RiskViewSet, IssueViewSet, IssueActionViewSet, ProjectDispatchViewSet, TechnicalBriefViewSet, TechnicalBriefVersionViewSet, RequirementViewSet, AcceptanceCriteriaViewSet, ResourceRequestViewSet, ResourceRequestLineViewSet, ResourceAllocationViewSet, ProgressSnapshotViewSet, EquipmentUsageViewSet, WeightIndicatorViewSet, WeightComponentViewSet, ProjectWeeklyProgressViewSet
+from .viewsets import (
+    ProjectViewSet,
+    ProjectControlItemViewSet,
+    ProjectExpenseViewSet,
+    ProjectLifecycleEventViewSet,
+    ProjectReadinessCheckViewSet,
+    MemberViewSet,
+    TaskViewSet,
+    TaskDependencyViewSet,
+    MilestoneViewSet,
+    MaterialRequirementViewSet,
+    BudgetLineViewSet,
+    TimesheetViewSet,
+    ChangeRequestViewSet,
+    ChangeRequestMaterialViewSet,
+    BoardViewSet,
+    BoardColumnViewSet,
+    TaskBoardPositionViewSet,
+    HealthRuleViewSet,
+    HealthSnapshotViewSet,
+    RiskViewSet,
+    IssueViewSet,
+    IssueActionViewSet,
+    ProjectDispatchViewSet,
+    TechnicalBriefViewSet,
+    TechnicalBriefVersionViewSet,
+    RequirementViewSet,
+    AcceptanceCriteriaViewSet,
+    ResourceRequestViewSet,
+    ResourceRequestLineViewSet,
+    ResourceAllocationViewSet,
+    ProgressSnapshotViewSet,
+    EquipmentUsageViewSet,
+    WeightIndicatorViewSet,
+    WeightComponentViewSet,
+    ProjectWeeklyProgressViewSet,
+    ProjectMainTaskViewSet,
+    TaskAssignmentViewSet,
+    ProjectWeeklyTaskViewSet,
+    ProjectDailyTaskViewSet,
+    TaskTransferRequestViewSet,
+    TaskActivityLogViewSet,
+)
 
 app_name = "projects"
 router = DefaultRouter()
@@ -38,6 +80,13 @@ router.register(r"weekly-progress", ProjectWeeklyProgressViewSet, basename="week
 router.register(r"equipment-usages", EquipmentUsageViewSet, basename="equipment-usage")
 router.register(r"weight-indicators", WeightIndicatorViewSet, basename="weight-indicator")
 router.register(r"weight-components", WeightComponentViewSet, basename="weight-component")
+router.register(r"main-tasks", ProjectMainTaskViewSet, basename="main-task")
+router.register(r"task-assignments", TaskAssignmentViewSet, basename="task-assignment")
+router.register(r"weekly-tasks", ProjectWeeklyTaskViewSet, basename="weekly-task")
+router.register(r"daily-tasks", ProjectDailyTaskViewSet, basename="daily-task")
+router.register(r"task-transfers", TaskTransferRequestViewSet, basename="task-transfer")
+router.register(r"task-activity-logs", TaskActivityLogViewSet, basename="task-activity-log")
 
 
 urlpatterns = router.urls
+

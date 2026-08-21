@@ -19,13 +19,24 @@ function ensureContainer() {
   return toastContainer;
 }
 
-export function toast(title, message = "", type = "info") {
+export function toast(titleOrMessage, message = "", type = "info") {
   const container = ensureContainer();
   const item = document.createElement("div");
-  item.className = `toast ${type}`;
+
+  let t = titleOrMessage;
+  let m = message;
+  let tp = type;
+
+  if (!message && (type === "info" || !type)) {
+    // Single argument passed like toast.error("Error occurred")
+    t = type === "error" ? "Gagal" : type === "success" ? "Berhasil" : "Info";
+    m = titleOrMessage;
+  }
+
+  item.className = `toast ${tp}`;
   item.innerHTML = `
-    <strong>${esc(title)}</strong>
-    ${message ? `<p>${esc(message)}</p>` : ""}
+    <strong>${esc(t)}</strong>
+    ${m ? `<p>${esc(m)}</p>` : ""}
   `;
 
   container.appendChild(item);
@@ -39,3 +50,9 @@ export function toast(title, message = "", type = "info") {
     }, 300);
   }, 4000);
 }
+
+toast.success = (message, title = "Berhasil") => toast(title, message, "success");
+toast.error = (message, title = "Gagal") => toast(title, message, "error");
+toast.info = (message, title = "Informasi") => toast(title, message, "info");
+toast.warning = (message, title = "Peringatan") => toast(title, message, "warning");
+

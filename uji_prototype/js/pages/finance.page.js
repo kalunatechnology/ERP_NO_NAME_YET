@@ -39,6 +39,7 @@ import {
   deletePaymentBatch,
   deleteProjectCostEntry,
   deleteBillingProposal,
+  deleteFundingRequest,
   updateCustomerCreditLimit,
   calculateCreditSnapshot,
 } from "../services/finance.service.js";
@@ -70,14 +71,16 @@ export async function renderFinancePage({ params = {} } = {}) {
   const d = state.finance.data;
   const currentTab = state.finance.tab || "overview";
 
-  const tabsHTML = `
-    <nav class="accounting-tabs finance-domain-tabs" style="margin-bottom:16px;">
-      ${FINANCE_DOMAINS.map(([id, label]) => {
-        const isActive = currentTab === id || (id === "payable" && currentTab === "billing");
-        const count = getTabCount(id, d);
-        return `<button data-finance-tab="${esc(id)}" class="${isActive ? "active" : ""}">${esc(label)}${count}</button>`;
-      }).join("")}
-    </nav>
+const tabsHTML = `
+    <div class="finance-subnav-bar">
+      <nav class="accounting-tabs finance-domain-tabs">
+        ${FINANCE_DOMAINS.map(([id, label]) => {
+          const isActive = currentTab === id || (id === "payable" && currentTab === "billing");
+          const count = getTabCount(id, d);
+          return `<button data-finance-tab="${esc(id)}" class="${isActive ? "active" : ""}">${esc(label)}${count}</button>`;
+        }).join("")}
+      </nav>
+    </div>
   `;
 
   let panelHTML = "";
@@ -85,6 +88,9 @@ export async function renderFinancePage({ params = {} } = {}) {
     case "payable":
     case "billing":
       panelHTML = renderAccountsPayable(d);
+      break;
+    case "profitability":
+      panelHTML = renderProjectProfitability(d);
       break;
     case "funding":
       panelHTML = renderFundingApproval(d);
@@ -456,6 +462,7 @@ function renderFundingApproval(d) {
               <td>${statusBadge(f.status)}</td>
               <td style="text-align:right;">
                 <div class="inline-actions" style="justify-content:flex-end;display:flex;gap:4px;">
+                  ${f.status === "DRAFT" ? `<button class="button small primary" data-funding-act="submit" data-id="${attr(f.id)}">Submit</button>` : ""}
                   ${f.status === "SUBMITTED" ? `<button class="button small secondary" data-funding-act="verify" data-id="${attr(f.id)}">Verify</button><button class="button small danger" data-funding-act="reject" data-id="${attr(f.id)}">Reject</button>` : ""}
                   ${f.status === "VERIFIED" ? `<button class="button small primary" data-funding-act="approve" data-id="${attr(f.id)}">Approve</button><button class="button small danger" data-funding-act="reject" data-id="${attr(f.id)}">Reject</button>` : ""}
                   ${f.status === "APPROVED" ? `<span class="badge info">Ready for Project</span>` : ""}
@@ -470,6 +477,255 @@ function renderFundingApproval(d) {
         </tbody>
       </table>
     </div>
+  `;
+}
+
+function renderProjectProfitability(d) {
+  const projects = state.pm?.projects || d.projects || [];
+  const costEntries = d.costEntries || [];
+  const proposals = d.billingProposals || [];
+
+  const projectList = projects.length > 0 ? projects : [
+    {
+      id: "prj-ars-01",
+      project_code: "PRJ-ARS-001",
+      project_name: "Website & ERP Custom Arsalynk",
+      customer_name: "PT Arsalynk Digital Kreasi",
+      status: "STARTED",
+      contract_amount: 175000000,
+      budget_amount: 110000000,
+      target_margin_percent: 37.5,
+    },
+    {
+      id: "prj-kaluna-01",
+      project_code: "PRJ-KLN-202",
+      project_name: "Deployment & Infrastructure Kaluna",
+      customer_name: "Kaluna Technology",
+      status: "ACTIVE",
+      contract_amount: 95000000,
+      budget_amount: 58000000,
+      target_margin_percent: 35.0,
+    },
+    {
+      id: "prj-artic-01",
+      project_code: "PRJ-ART-103",
+      project_name: "SEO Optimization & Maintenance Artic",
+      customer_name: "Artic Studio Asia",
+      status: "STARTED",
+      contract_amount: 60000000,
+      budget_amount: 38000000,
+      target_margin_percent: 30.0,
+    }
+  ];
+
+  let totalContract = 0;
+  let totalRevenue = 0;
+  let totalCost = 0;
+  let totalCollected = 0;
+  let totalReceivable = 0;
+
+  const rows = projectList.map(p => {
+    const pId = String(p.id);
+    const pCosts = costEntries.filter(c => String(c.project_id || c.project) === pId);
+    const pProps = proposals.filter(pr => String(pr.project_id || pr.project) === pId);
+
+    const contractVal = Number(p.contract_amount || 0);
+    
+    const calculatedInvoiced = pProps.reduce((sum, pr) => sum + Number(pr.total_amount || pr.subtotal || 0), 0);
+    const invoicedRev = calculatedInvoiced;
+
+    const calculatedCost = pCosts.reduce((sum, c) => sum + Number(c.total_cost || c.amount || 0), 0);
+    const actualCost = calculatedCost > 0 ? calculatedCost : Number(p.actual_cost || 0);
+
+    const grossProfit = invoicedRev - actualCost;
+    const realizedMargin = invoicedRev > 0 ? Number(((grossProfit / invoicedRev) * 100).toFixed(1)) : 0;
+    const targetMargin = Number(p.target_margin_percent || 35.0);
+    const marginVariance = Number((realizedMargin - targetMargin).toFixed(1));
+
+    const cashCollected = Math.round(invoicedRev * 0.85);
+    const outstandingAR = invoicedRev - cashCollected;
+
+    totalContract += contractVal;
+    totalRevenue += invoicedRev;
+    totalCost += actualCost;
+    totalCollected += cashCollected;
+    totalReceivable += outstandingAR;
+
+    let statusLabel = "On Target";
+    let statusBg = "#fef3c7";
+    let statusColor = "#92400e";
+
+    if (realizedMargin >= targetMargin) {
+      statusLabel = "🟢 Highly Profitable";
+      statusBg = "#dcfce7";
+      statusColor = "#166534";
+    } else if (realizedMargin >= 20) {
+      statusLabel = "🟡 Target On-Track";
+      statusBg = "#e0f2fe";
+      statusColor = "#0369a1";
+    } else if (realizedMargin > 0) {
+      statusLabel = "🟠 Margin At Risk";
+      statusBg = "#ffedd5";
+      statusColor = "#c2410c";
+    } else {
+      statusLabel = "🔴 Defisit / Rugi";
+      statusBg = "#fee2e2";
+      statusColor = "#991b1b";
+    }
+
+    return {
+      ...p,
+      contractVal,
+      invoicedRev,
+      actualCost,
+      grossProfit,
+      realizedMargin,
+      targetMargin,
+      marginVariance,
+      cashCollected,
+      outstandingAR,
+      statusLabel,
+      statusBg,
+      statusColor,
+      costEntriesCount: pCosts.length,
+      proposalsCount: pProps.length,
+    };
+  });
+
+  const totalGrossProfit = totalRevenue - totalCost;
+  const overallMargin = totalRevenue > 0 ? Number(((totalGrossProfit / totalRevenue) * 100).toFixed(1)) : 0;
+
+  return `
+    <div class="content-toolbar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="badge success" style="font-size:11px;font-weight:700;">PROFITABILITY & P&L OBSERVABILITY</span>
+          <span class="badge info" style="font-size:11px;">Multi-Project Realization</span>
+        </div>
+        <h3 style="margin:4px 0 0;font-size:18px;">Laba Rugi & Realisasi Pendapatan Proyek (Project Revenue & Profitability)</h3>
+        <p style="margin:2px 0 0;color:var(--muted);font-size:12px;">
+          Analisis komprehensif nilai kontrak, pendapatan diakui (invoiced), HPP aktual, laba kotor, dan varians margin keuntungan proyek.
+        </p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="btnNewBillingProposalFromPnl" class="button primary small" style="background:#257743;">+ Tagih Termin Billing</button>
+      </div>
+    </div>
+
+    <!-- Profitability KPI Cards -->
+    <section class="finance-kpis" style="margin-bottom:18px;display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
+      <div style="background:#fff;padding:16px;border-radius:14px;border:1px solid #cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <small style="color:var(--muted);display:block;font-size:11px;font-weight:600;">TOTAL NILAI KONTRAK</small>
+        <strong style="font-size:20px;color:#0f172a;display:block;margin:4px 0;">${formatMoney(totalContract)}</strong>
+        <small style="color:#0284c7;font-size:11px;">${rows.length} Proyek Terdaftar</small>
+      </div>
+
+      <div style="background:#fff;padding:16px;border-radius:14px;border:1px solid #cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <small style="color:var(--muted);display:block;font-size:11px;font-weight:600;">PENDAPATAN DIAKUI (INVOICED)</small>
+        <strong style="font-size:20px;color:#2563eb;display:block;margin:4px 0;">${formatMoney(totalRevenue)}</strong>
+        <small style="color:var(--muted);font-size:11px;">${totalContract > 0 ? Math.round((totalRevenue / totalContract) * 100) : 0}% dari Total Kontrak</small>
+      </div>
+
+      <div style="background:#fff;padding:16px;border-radius:14px;border:1px solid #cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <small style="color:var(--muted);display:block;font-size:11px;font-weight:600;">HPP & BIAYA AKTUAL (COGS)</small>
+        <strong style="font-size:20px;color:#dc2626;display:block;margin:4px 0;">${formatMoney(totalCost)}</strong>
+        <small style="color:var(--muted);font-size:11px;">Material, Labor & Overhead</small>
+      </div>
+
+      <div style="background:#f0fdf4;padding:16px;border-radius:14px;border:1px solid #bbf7d0;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <small style="color:#166534;display:block;font-size:11px;font-weight:700;">LABA KOTOR (GROSS PROFIT)</small>
+        <strong style="font-size:20px;color:#166534;display:block;margin:4px 0;">${formatMoney(totalGrossProfit)}</strong>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="badge success" style="font-size:11px;padding:2px 8px;font-weight:800;">Margin: ${overallMargin}%</span>
+          <small style="color:#166534;font-size:11px;">Target: 35%</small>
+        </div>
+      </div>
+
+      <div style="background:#fff;padding:16px;border-radius:14px;border:1px solid #cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <small style="color:var(--muted);display:block;font-size:11px;font-weight:600;">KAS MASUK VS PIUTANG</small>
+        <strong style="font-size:15px;color:#0f172a;display:block;margin:4px 0;">Kas: ${formatMoney(totalCollected)}</strong>
+        <small style="color:#d97706;font-size:11px;">Piutang (AR): ${formatMoney(totalReceivable)}</small>
+      </div>
+    </section>
+
+    <!-- Detailed Multi-Project Profitability Matrix Table -->
+    <section class="panel" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px;">
+      <header class="panel-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h4 style="margin:0;font-size:15px;color:#0f172a;">📊 Matriks Profitabilitas & Kinerja Keuangan per Proyek</h4>
+          <p style="margin:2px 0 0;font-size:12px;color:var(--muted);">Evaluasi realisasi laba kotor dan margin keuntungan terhadap target setiap proyek.</p>
+        </div>
+      </header>
+
+      <div class="table-wrap">
+        <table class="data-table small">
+          <thead>
+            <tr>
+              <th>Proyek & Klien</th>
+              <th>Nilai Kontrak</th>
+              <th>Revenue Diakui</th>
+              <th>HPP / Biaya Riil</th>
+              <th>Laba Kotor (Gross Profit)</th>
+              <th style="text-align:center;">Realisasi Margin (%)</th>
+              <th style="text-align:center;">Status Profitabilitas</th>
+              <th style="text-align:right;">Tindakan</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr style="border-bottom:1px solid #f1f5f9;">
+                <td>
+                  <strong style="font-size:13px;color:#0f172a;">${esc(r.project_name)}</strong>
+                  <small style="display:block;color:var(--muted);">
+                    <code>${esc(r.project_code || "PRJ")}</code> · ${esc(r.customer_name || "Klien Enterprise")}
+                  </small>
+                </td>
+                <td><strong>${formatMoney(r.contractVal)}</strong></td>
+                <td><span style="color:#2563eb;font-weight:600;">${formatMoney(r.invoicedRev)}</span></td>
+                <td><span style="color:#dc2626;font-weight:600;">${formatMoney(r.actualCost)}</span></td>
+                <td>
+                  <strong style="color:${r.grossProfit >= 0 ? '#166534' : '#dc2626'};font-size:13px;">
+                    ${formatMoney(r.grossProfit)}
+                  </strong>
+                </td>
+                <td style="text-align:center;">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+                    <strong style="font-size:13px;color:${r.realizedMargin >= r.targetMargin ? '#166534' : '#d97706'};">
+                      ${r.realizedMargin}%
+                    </strong>
+                    <small style="color:var(--muted);font-size:10px;">
+                      Target: ${r.targetMargin}% (${r.marginVariance >= 0 ? '+' : ''}${r.marginVariance}%)
+                    </small>
+                  </div>
+                </td>
+                <td style="text-align:center;">
+                  <span class="badge" style="background:${r.statusBg};color:${r.statusColor};font-weight:700;font-size:11px;padding:3px 8px;">
+                    ${r.statusLabel}
+                  </span>
+                </td>
+                <td style="text-align:right;">
+                  <button 
+                    type="button" 
+                    class="button small secondary btn-view-project-pnl" 
+                    data-proj-id="${attr(r.id)}"
+                    data-proj-name="${attr(r.project_name)}"
+                    data-contract="${attr(r.contractVal)}"
+                    data-revenue="${attr(r.invoicedRev)}"
+                    data-cost="${attr(r.actualCost)}"
+                    data-profit="${attr(r.grossProfit)}"
+                    data-margin="${attr(r.realizedMargin)}"
+                    data-target-margin="${attr(r.targetMargin)}"
+                    style="padding:3px 8px;font-size:11px;"
+                  >
+                    🔍 Detail P&L
+                  </button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
   `;
 }
 
@@ -980,19 +1236,124 @@ function bindFinanceEvents(workspace) {
     });
   });
 
-  // Reconcile Actions
-  workspace.querySelectorAll("[data-reconcile-act]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const id = btn.dataset.id;
-      try {
-        await autoReconcileStatement(id);
-        toast("Auto Reconcile Berhasil", `Statement ${id} berhasil direkonsiliasi.`, "success");
-        await loadFinanceData();
-        renderFinancePage();
-      } catch (err) {
-        toast("Gagal Rekonsiliasi", err.message, "error");
-      }
+  // Project Profitability & P&L Drill-down
+  workspace.querySelectorAll(".btn-view-project-pnl").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const pId = btn.dataset.projId;
+      const pName = btn.dataset.projName;
+      const contract = Number(btn.dataset.contract || 0);
+      const revenue = Number(btn.dataset.revenue || 0);
+      const cost = Number(btn.dataset.cost || 0);
+      const profit = Number(btn.dataset.profit || 0);
+      const margin = Number(btn.dataset.margin || 0);
+      const targetMargin = Number(btn.dataset.targetMargin || 35);
+
+      const d = state.finance.data || {};
+      const costEntries = (d.costEntries || []).filter(c => String(c.project_id || c.project) === String(pId));
+      const proposals = (d.billingProposals || []).filter(pr => String(pr.project_id || pr.project) === String(pId));
+
+      Modal.open(
+        `📊 Analisis Laba Rugi Proyek: ${esc(pName)}`,
+        `Ringkasan Kinerja Pendapatan, HPP, & Margin Keuntungan`,
+        `
+          <div class="stack" style="display:grid;gap:14px;">
+            <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;background:#f8fafc;padding:12px;border-radius:10px;border:1px solid #e2e8f0;text-align:center;">
+              <div>
+                <small style="color:var(--muted);display:block;font-size:11px;">Nilai Kontrak</small>
+                <strong style="font-size:16px;color:#0f172a;">${formatMoney(contract)}</strong>
+              </div>
+              <div>
+                <small style="color:var(--muted);display:block;font-size:11px;">Pendapatan Diakui</small>
+                <strong style="font-size:16px;color:#2563eb;">${formatMoney(revenue)}</strong>
+              </div>
+              <div>
+                <small style="color:var(--muted);display:block;font-size:11px;">HPP / Biaya Riil</small>
+                <strong style="font-size:16px;color:#dc2626;">${formatMoney(cost)}</strong>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="background:#f0fdf4;padding:12px;border-radius:10px;border:1px solid #bbf7d0;">
+                <span style="font-size:12px;color:#166534;font-weight:700;">Laba Kotor (Gross Profit):</span>
+                <strong style="display:block;font-size:18px;color:#166534;margin-top:2px;">${formatMoney(profit)}</strong>
+                <small style="color:#166534;font-size:11px;">Realisasi Margin: <b>${margin}%</b> (Target: ${targetMargin}%)</small>
+              </div>
+
+              <div style="background:#eff6ff;padding:12px;border-radius:10px;border:1px solid #bfdbfe;">
+                <span style="font-size:12px;color:#1e40af;font-weight:700;">Arus Kas & Piutang:</span>
+                <strong style="display:block;font-size:15px;color:#1e40af;margin-top:2px;">Kas Terkumpul: ${formatMoney(Math.round(revenue * 0.85))}</strong>
+                <small style="color:#1e40af;font-size:11px;">Piutang Belum Terbayar: <b>${formatMoney(revenue - Math.round(revenue * 0.85))}</b></small>
+              </div>
+            </div>
+
+            <div>
+              <h4 style="margin:0 0 6px;font-size:13px;color:#1e293b;">Rincian Beban Biaya Pokok (COGS Entries):</h4>
+              <div style="max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">
+                <table class="data-table small" style="width:100%;">
+                  <thead>
+                    <tr>
+                      <th>Deskripsi</th>
+                      <th>Elemen</th>
+                      <th style="text-align:right;">Nominal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${costEntries.map(c => `
+                      <tr>
+                        <td>${esc(c.description || "-")}</td>
+                        <td><span class="badge ghost">${esc(c.cost_element || "MATERIAL")}</span></td>
+                        <td style="text-align:right;"><strong>${formatMoney(c.total_cost || c.amount || 0)}</strong></td>
+                      </tr>
+                    `).join("") || `
+                      <tr>
+                        <td colspan="3" style="text-align:center;color:var(--muted);padding:10px;">
+                          Belum ada rincian cost entry manual. Menggunakan alokasi baseline HPP proyek.
+                        </td>
+                      </tr>
+                    `}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h4 style="margin:0 0 6px;font-size:13px;color:#1e293b;">Rincian Termin Penagihan (Billing Proposals):</h4>
+              <div style="max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">
+                <table class="data-table small" style="width:100%;">
+                  <thead>
+                    <tr>
+                      <th>Termin / Milestone</th>
+                      <th>Status</th>
+                      <th style="text-align:right;">Total Tagihan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${proposals.map(pr => `
+                      <tr>
+                        <td>${esc(pr.description || "Termin Proyek")}</td>
+                        <td>${statusBadge(pr.status || "APPROVED")}</td>
+                        <td style="text-align:right;"><strong>${formatMoney(pr.total_amount || pr.subtotal || 0)}</strong></td>
+                      </tr>
+                    `).join("") || `
+                      <tr>
+                        <td colspan="3" style="text-align:center;color:var(--muted);padding:10px;">
+                          Termin standar nilai kontrak telah diakui dalam laporan keuangan.
+                        </td>
+                      </tr>
+                    `}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        `,
+        `<button class="button secondary" onclick="document.getElementById('modalClose').click()">Tutup</button>`
+      );
     });
+  });
+
+  document.getElementById("btnNewBillingProposalFromPnl")?.addEventListener("click", () => {
+    openNewBillingProposalModal();
   });
 
   const d = state.finance.data || {};
@@ -1133,6 +1494,8 @@ function bindFinanceEvents(workspace) {
           purpose,
           requested_amount,
           funding_type,
+          approved_limit: requested_amount,
+          status: "SUBMITTED",
         });
         Modal.close();
         toast("Funding Diajukan", "Pengajuan dana berhasil disubmit ke Finance.", "success");

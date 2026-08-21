@@ -79,11 +79,15 @@ def scope_queryset(queryset, user, company_id: str | None = None):
     tenant_id = getattr(user, "tenant_id", None)
     tenant_path = find_scope_path(model, "tenant")
     if tenant_id and tenant_path:
-        queryset = queryset.filter(**{f"{tenant_path}_id": tenant_id})
+        queryset = queryset.filter(
+            models.Q(**{f"{tenant_path}_id": tenant_id}) | models.Q(**{f"{tenant_path}_id__isnull": True})
+        )
 
     company_path = find_scope_path(model, "company")
     if company_id and company_path:
-        queryset = queryset.filter(**{f"{company_path}_id": company_id})
+        queryset = queryset.filter(
+            models.Q(**{f"{company_path}_id": company_id}) | models.Q(**{f"{company_path}_id__isnull": True})
+        )
     elif company_path:
         try:
             accessible_company_ids = list(
@@ -94,6 +98,8 @@ def scope_queryset(queryset, user, company_id: str | None = None):
         except Exception:
             accessible_company_ids = []
         if accessible_company_ids:
-            queryset = queryset.filter(**{f"{company_path}_id__in": accessible_company_ids})
+            queryset = queryset.filter(
+                models.Q(**{f"{company_path}_id__in": accessible_company_ids}) | models.Q(**{f"{company_path}_id__isnull": True})
+            )
 
     return queryset.distinct()

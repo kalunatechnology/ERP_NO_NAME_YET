@@ -385,16 +385,14 @@ def ensure_project_readiness_prerequisites(project, user=None):
             budget_amount=project.budget_amount or Decimal("100000000"),
         )
 
-    # 4. Material Requirement & Stock Balance
-    default_prod = Product.objects.first()
+    # 4. Material Requirement (Only if Sales Order has physical stock items)
     if project.sales_order:
         lines = OrderLine.objects.filter(sales_order=project.sales_order).select_related("product")
         for line in lines:
-            prod = line.product or default_prod
-            if prod:
+            if line.product and getattr(line.product, "stock_item", True):
                 mat, _ = MaterialRequirement.objects.get_or_create(
                     project=project,
-                    product=prod,
+                    product=line.product,
                     defaults={
                         "warehouse": warehouse,
                         "required_quantity": line.ordered_quantity or Decimal("1"),
@@ -406,27 +404,6 @@ def ensure_project_readiness_prerequisites(project, user=None):
                 if not mat.warehouse and warehouse:
                     mat.warehouse = warehouse
                     mat.save(update_fields=["warehouse"])
-
-    for mat in MaterialRequirement.objects.filter(project=project):
-        if not mat.product and default_prod:
-            mat.product = default_prod
-            mat.save(update_fields=["product"])
-        if not mat.warehouse and warehouse:
-            mat.warehouse = warehouse
-            mat.save(update_fields=["warehouse"])
-
-    # If no MaterialRequirement exists and sales order had no lines, create a default requirement
-    if not MaterialRequirement.objects.filter(project=project).exists():
-        if default_prod and warehouse:
-            MaterialRequirement.objects.create(
-                project=project,
-                product=default_prod,
-                warehouse=warehouse,
-                required_quantity=Decimal("10"),
-                reserved_quantity=Decimal("0"),
-                issued_quantity=Decimal("0"),
-                status="PLANNED",
-            )
 
 
 # ---------------------------------------------------------------------------

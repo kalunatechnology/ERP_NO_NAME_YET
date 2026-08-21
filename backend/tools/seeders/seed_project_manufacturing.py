@@ -221,6 +221,151 @@ def run_stage(client: Optional[SeederClient] = None) -> bool:
         )
         reports.append(task_report)
 
+        # -----------------------------------------------------------------
+        # HIERARCHICAL PROJECT & TASK MANAGEMENT SEEDING
+        # (Project -> Main Task -> Weekly Task -> Daily Task)
+        # -----------------------------------------------------------------
+        main_tasks = [
+            {
+                "_key": "MTASK-001",
+                "project": main_project_id,
+                "name": "Analisis Kebutuhan & Desain Arsitektur",
+                "description": "Tahap inisiasi, wawancara stakeholder, dan penyusunan SRS.",
+                "priority": "HIGH",
+                "start_date": "2026-08-15",
+                "due_date": "2026-09-15",
+                "weight": "1.5000",
+                "status": "IN_PROGRESS",
+            },
+            {
+                "_key": "MTASK-002",
+                "project": main_project_id,
+                "name": "Pengembangan Backend & Rollup Engine",
+                "description": "Implementasi Django models, workflow services, dan REST API.",
+                "priority": "URGENT",
+                "start_date": "2026-09-01",
+                "due_date": "2026-10-31",
+                "weight": "2.0000",
+                "status": "PLANNED",
+            },
+            {
+                "_key": "MTASK-DEL",
+                "project": main_project_id,
+                "name": "Temporary Main Task Delete Test",
+                "priority": "LOW",
+                "start_date": "2026-12-01",
+                "due_date": "2026-12-10",
+                "weight": "1.0000",
+                "status": "PLANNED",
+            },
+        ]
+        main_task_report = client.seed_resource(
+            stage_name="stage_6.project_main_tasks",
+            state_path=("stage_6", "project_main_tasks"),
+            endpoint="/api/v1/projects/main-tasks/",
+            items=main_tasks,
+            match_fields=("name", "project"),
+            patch_payload={"description": "Deskripsi Analisis Kebutuhan Diperbarui"},
+            delete_key="MTASK-DEL",
+            search_term="Analisis",
+            company_id=company_id,
+        )
+        reports.append(main_task_report)
+
+        main_task_1_id = client.require_state_id(
+            ("stage_6", "project_main_tasks", "MTASK-001"),
+            "MTASK-001 main task",
+        )
+
+        weekly_tasks = [
+            {
+                "_key": "WTASK-001",
+                "main_task": main_task_1_id,
+                "week_number": 1,
+                "start_date": "2026-08-15",
+                "end_date": "2026-08-21",
+                "target_description": "Kickoff Proyek dan Pengumpulan Data User Requirements",
+                "status": "IN_PROGRESS",
+            },
+            {
+                "_key": "WTASK-002",
+                "main_task": main_task_1_id,
+                "week_number": 2,
+                "start_date": "2026-08-22",
+                "end_date": "2026-08-28",
+                "target_description": "Finalisasi Blueprint Arsitektur & Approval Stakeholder",
+                "status": "PLANNED",
+            },
+            {
+                "_key": "WTASK-DEL",
+                "main_task": main_task_1_id,
+                "week_number": 99,
+                "start_date": "2026-12-01",
+                "end_date": "2026-12-07",
+                "target_description": "Weekly Task Delete Test",
+                "status": "PLANNED",
+            },
+        ]
+        weekly_task_report = client.seed_resource(
+            stage_name="stage_6.project_weekly_tasks",
+            state_path=("stage_6", "project_weekly_tasks"),
+            endpoint="/api/v1/projects/weekly-tasks/",
+            items=weekly_tasks,
+            match_fields=("week_number", "main_task"),
+            patch_payload={"target_description": "Kickoff dan Pengumpulan Data Diperbarui"},
+            delete_key="WTASK-DEL",
+            search_term="Kickoff",
+            company_id=company_id,
+        )
+        reports.append(weekly_task_report)
+
+        weekly_task_1_id = client.require_state_id(
+            ("stage_6", "project_weekly_tasks", "WTASK-001"),
+            "WTASK-001 weekly task",
+        )
+
+        daily_tasks = [
+            {
+                "_key": "DTASK-001",
+                "weekly_task": weekly_task_1_id,
+                "title": "Wawancara Key Users Finance & Procurement",
+                "description": "Identifikasi flow transaksi eksisting.",
+                "planned_date": "2026-08-16",
+                "progress": "100.00",
+                "status": "COMPLETED",
+            },
+            {
+                "_key": "DTASK-002",
+                "weekly_task": weekly_task_1_id,
+                "title": "Pembuatan ERD dan Kamus Data",
+                "description": "Mapping entitas bisnis ke database relational.",
+                "planned_date": "2026-08-18",
+                "progress": "60.00",
+                "status": "IN_PROGRESS",
+            },
+            {
+                "_key": "DTASK-DEL",
+                "weekly_task": weekly_task_1_id,
+                "title": "Daily Task Delete Test",
+                "planned_date": "2026-08-20",
+                "progress": "0.00",
+                "status": "NOT_STARTED",
+            },
+        ]
+        daily_task_report = client.seed_resource(
+            stage_name="stage_6.project_daily_tasks",
+            state_path=("stage_6", "project_daily_tasks"),
+            endpoint="/api/v1/projects/daily-tasks/",
+            items=daily_tasks,
+            match_fields=("title", "weekly_task"),
+            patch_payload={"description": "Deskripsi Wawancara Diperbarui"},
+            delete_key="DTASK-DEL",
+            search_term="Wawancara",
+            company_id=company_id,
+        )
+        reports.append(daily_task_report)
+
+
         production_orders = [
             {
                 "_key": "PO-MFG-2026-001",

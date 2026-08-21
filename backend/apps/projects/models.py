@@ -835,3 +835,236 @@ class ProjectFinancialSnapshot(models.Model):
         return f"{self.project.project_code or self.project.id} Financial Snapshot ({self.snapshot_date}): Profit {self.actual_gross_profit} ({self.actual_margin_percent}%)"
 
 
+class ProjectMainTask(models.Model):
+    """
+    1st Level Hierarchy Task: Main Task defined by PM.
+    Represents major milestones and work packages of a Project.
+    """
+
+    PRIORITY_CHOICES = (
+        ("LOW", "Low"),
+        ("MEDIUM", "Medium"),
+        ("HIGH", "High"),
+        ("URGENT", "Urgent"),
+    )
+
+    STATUS_CHOICES = (
+        ("PLANNED", "Planned"),
+        ("IN_PROGRESS", "In Progress"),
+        ("COMPLETED", "Completed"),
+        ("BLOCKED", "Blocked"),
+        ("ON_HOLD", "On Hold"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="main_tasks")
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    priority = models.CharField(max_length=16, choices=PRIORITY_CHOICES, default="MEDIUM")
+    start_date = models.DateField(null=True, blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    weight = models.DecimalField(max_digits=8, decimal_places=4, default=1.0000)
+    progress = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="PLANNED")
+    is_progress_overridden = models.BooleanField(default=False)
+    override_reason = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="created_main_tasks", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "project_main_task"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["project", "status"], name="proj_main_task_status_idx")
+        ]
+
+    def __str__(self):
+        return f"[{self.project.project_code}] {self.name} ({self.progress}%)"
+
+    def recalculate_progress(self, save=True):
+        from apps.projects.task_hierarchy_services import recalculate_task_tree
+        return recalculate_task_tree(main_task=self)
+
+
+class TaskAssignment(models.Model):
+    """
+    Assignees designated to a Main Task by the PM.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    main_task = models.ForeignKey("projects.ProjectMainTask", on_delete=models.CASCADE, related_name="assignments")
+    assignee = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="main_task_assignments")
+    assigned_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="assigned_by_pm", null=True, blank=True)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "project_task_assignment"
+        constraints = [
+            models.UniqueConstraint(fields=["main_task", "assignee"], name="uniq_main_task_assignee")
+        ]
+
+    def __str__(self):
+        return f"{self.main_task.name} -> {self.assignee.username}"
+
+
+class ProjectWeeklyTask(models.Model):
+    """
+    2nd Level Hierarchy Task: Weekly Target breakdown derived from Main Task.
+    """
+
+    STATUS_CHOICES = (
+        ("PLANNED", "Planned"),
+        ("IN_PROGRESS", "In Progress"),
+        ("COMPLETED", "Completed"),
+        ("BLOCKED", "Blocked"),
+        ("ON_HOLD", "On Hold"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    main_task = models.ForeignKey("projects.ProjectMainTask", on_delete=models.CASCADE, related_name="weekly_tasks")
+    assignee = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="assigned_weekly_tasks", null=True, blank=True)
+    week_number = models.IntegerField(default=1)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    target_description = models.TextField(blank=True, default="")
+    progress = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="PLANNED")
+    is_progress_overridden = models.BooleanField(default=False)
+    override_reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "project_weekly_task"
+        ordering = ["week_number", "start_date"]
+        indexes = [
+            models.Index(fields=["main_task", "week_number"], name="proj_wk_task_week_idx")
+        ]
+
+    def __str__(self):
+        return f"Week {self.week_number}: {self.main_task.name} ({self.progress}%)"
+
+    def recalculate_progress(self, save=True):
+        from apps.projects.task_hierarchy_services import recalculate_task_tree
+        return recalculate_task_tree(weekly_task=self)
+
+
+class ProjectDailyTask(models.Model):
+    """
+    3rd Level Hierarchy Task: Daily execution task owned by Assignee.
+    """
+
+    STATUS_CHOICES = (
+        ("NOT_STARTED", "Not Started"),
+        ("IN_PROGRESS", "In Progress"),
+        ("BLOCKED", "Blocked"),
+        ("REVIEW", "In Review"),
+        ("COMPLETED", "Completed"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    weekly_task = models.ForeignKey("projects.ProjectWeeklyTask", on_delete=models.CASCADE, related_name="daily_tasks")
+    owner = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="owned_daily_tasks")
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    planned_date = models.DateField(null=True, blank=True)
+    time_slot = models.CharField(max_length=64, blank=True, default="")
+    output_result = models.TextField(blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+    progress = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="NOT_STARTED")
+    is_blocked = models.BooleanField(default=False)
+    block_reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "project_daily_task"
+        ordering = ["planned_date", "created_at"]
+        indexes = [
+            models.Index(fields=["weekly_task", "planned_date"], name="proj_dl_task_date_idx"),
+            models.Index(fields=["owner", "status"], name="proj_dl_task_owner_idx"),
+        ]
+
+    def __str__(self):
+        return f"[{self.planned_date}] {self.title} ({self.status} - {self.progress}%)"
+
+    def recalculate_progress(self, save=True):
+        from apps.projects.task_hierarchy_services import recalculate_task_tree
+        return recalculate_task_tree(daily_task=self)
+
+
+
+class TaskTransferRequest(models.Model):
+    """
+    Task Transfer Governance: Request to transfer Daily Task ownership between project members.
+    """
+
+    STATUS_CHOICES = (
+        ("PENDING", "Pending Review"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+        ("CANCELLED", "Cancelled"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    daily_task = models.ForeignKey("projects.ProjectDailyTask", on_delete=models.CASCADE, related_name="transfer_requests")
+    requested_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="sent_task_transfers")
+    target_user = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="received_task_transfers")
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="PENDING")
+    reason = models.TextField(blank=True, default="")
+    reviewed_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, null=True, blank=True, related_name="reviewed_task_transfers")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "project_task_transfer_request"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="task_transfer_status_idx")
+        ]
+
+    def __str__(self):
+        return f"Transfer {self.daily_task.title}: {self.requested_by} -> {self.target_user} ({self.status})"
+
+
+class TaskActivityLog(models.Model):
+    """
+    Audit trail for project and hierarchical task changes.
+    """
+
+    LEVEL_CHOICES = (
+        ("PROJECT", "Project"),
+        ("MAIN", "Main Task"),
+        ("WEEKLY", "Weekly Task"),
+        ("DAILY", "Daily Task"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="task_activity_logs")
+    actor = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="task_activities", null=True, blank=True)
+    task_level = models.CharField(max_length=16, choices=LEVEL_CHOICES, default="DAILY")
+    task_id = models.UUIDField(null=True, blank=True)
+    task_title = models.CharField(max_length=255, blank=True, default="")
+    action = models.CharField(max_length=64)
+    field_name = models.CharField(max_length=64, blank=True, default="")
+    old_value = models.TextField(blank=True, default="")
+    new_value = models.TextField(blank=True, default="")
+    reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "project_task_activity_log"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["project", "-created_at"], name="task_act_log_proj_idx"),
+            models.Index(fields=["task_id", "-created_at"], name="task_act_log_task_idx"),
+        ]
+
+    def __str__(self):
+        return f"[{self.created_at}] {self.actor}: {self.action} on {self.task_level} ({self.task_title})"
+
+
+

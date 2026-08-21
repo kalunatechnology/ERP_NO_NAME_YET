@@ -70,3 +70,52 @@ def can_manage_project(user, project):
     return project.project_manager_id == user.id or active_memberships(user).filter(
         project=project, project_role__in=["MANAGER", "PROJECT_MANAGER"]
     ).exists()
+
+
+from rest_framework.permissions import BasePermission, SAFE_METHODS
+
+
+class IsProjectPMPermission(BasePermission):
+    """
+    Allows full access to PM / Executive, read-only to project members.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated)
+
+    def has_object_permission(self, request, view, obj):
+        project = getattr(obj, "project", None)
+        if project is None and hasattr(obj, "main_task"):
+            project = obj.main_task.project
+        elif project is None and hasattr(obj, "weekly_task"):
+            project = obj.weekly_task.main_task.project
+        elif project is None and hasattr(obj, "daily_task"):
+            project = obj.daily_task.weekly_task.main_task.project
+
+        if project is None:
+            return True
+
+        if request.method in SAFE_METHODS:
+            return can_access_project(request.user, project)
+        return can_manage_project(request.user, project)
+
+
+class IsDailyTaskOwnerOrPM(BasePermission):
+    """
+    Allows read-only access to all project members.
+    Allows modification strictly to the Daily Task owner only.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated)
+
+    def has_object_permission(self, request, view, obj):
+        daily_task = obj if hasattr(obj, "weekly_task") else getattr(obj, "daily_task", None)
+        if daily_task is None:
+            return True
+
+        project = daily_task.weekly_task.main_task.project
+        if request.method in SAFE_METHODS:
+            return can_access_project(request.user, project)
+
+        return daily_task.owner_id == request.user.id or can_manage_project(request.user, project)
+
+

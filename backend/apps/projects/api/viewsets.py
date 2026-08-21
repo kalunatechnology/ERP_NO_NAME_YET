@@ -1,17 +1,121 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
+
+from rest_framework import filters
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from apps.projects.models import Project, ProjectControlItem, ProjectExpense, ProjectLifecycleEvent, ProjectReadinessCheck, Member, Task, TaskDependency, Milestone, MaterialRequirement, BudgetLine, Timesheet, ChangeRequest, ChangeRequestMaterial, Board, BoardColumn, TaskBoardPosition, HealthRule, HealthSnapshot, Risk, Issue, IssueAction, ProjectDispatch, TechnicalBrief, TechnicalBriefVersion, Requirement, AcceptanceCriteria, ResourceRequest, ResourceRequestLine, ResourceAllocation, ProgressSnapshot, EquipmentUsage, WeightIndicator, WeightComponent, ProjectWeeklyProgress
+
+from apps.projects.models import (
+    Project,
+    ProjectControlItem,
+    ProjectExpense,
+    ProjectLifecycleEvent,
+    ProjectReadinessCheck,
+    Member,
+    Task,
+    TaskDependency,
+    Milestone,
+    MaterialRequirement,
+    BudgetLine,
+    Timesheet,
+    ChangeRequest,
+    ChangeRequestMaterial,
+    Board,
+    BoardColumn,
+    TaskBoardPosition,
+    HealthRule,
+    HealthSnapshot,
+    Risk,
+    Issue,
+    IssueAction,
+    ProjectDispatch,
+    TechnicalBrief,
+    TechnicalBriefVersion,
+    Requirement,
+    AcceptanceCriteria,
+    ResourceRequest,
+    ResourceRequestLine,
+    ResourceAllocation,
+    ProgressSnapshot,
+    EquipmentUsage,
+    WeightIndicator,
+    WeightComponent,
+    ProjectWeeklyProgress,
+    ProjectMainTask,
+    TaskAssignment,
+    ProjectWeeklyTask,
+    ProjectDailyTask,
+    TaskTransferRequest,
+    TaskActivityLog,
+)
 from apps.api_common.viewsets import BaseERPModelViewSet, ReadOnlyERPModelViewSet
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
-from apps.projects.access import can_access_project, can_manage_project, is_executive, is_project_management, is_finance
-from .serializers import ProjectSerializer, ProjectControlItemSerializer, ProjectExpenseSerializer, ProjectLifecycleEventSerializer, ProjectReadinessCheckSerializer, MemberSerializer, TaskSerializer, TaskDependencySerializer, MilestoneSerializer, MaterialRequirementSerializer, BudgetLineSerializer, TimesheetSerializer, ChangeRequestSerializer, ChangeRequestMaterialSerializer, BoardSerializer, BoardColumnSerializer, TaskBoardPositionSerializer, HealthRuleSerializer, HealthSnapshotSerializer, RiskSerializer, IssueSerializer, IssueActionSerializer, ProjectDispatchSerializer, TechnicalBriefSerializer, TechnicalBriefVersionSerializer, RequirementSerializer, AcceptanceCriteriaSerializer, ResourceRequestSerializer, ResourceRequestLineSerializer, ResourceAllocationSerializer, ProgressSnapshotSerializer, EquipmentUsageSerializer, WeightIndicatorSerializer, WeightComponentSerializer, ProjectWeeklyProgressSerializer
+from apps.projects.access import (
+    can_access_project,
+    can_manage_project,
+    is_executive,
+    is_project_management,
+    is_finance,
+    IsProjectPMPermission,
+    IsDailyTaskOwnerOrPM,
+)
+from .serializers import (
+    ProjectSerializer,
+    ProjectControlItemSerializer,
+    ProjectExpenseSerializer,
+    ProjectLifecycleEventSerializer,
+    ProjectReadinessCheckSerializer,
+    MemberSerializer,
+    TaskSerializer,
+    TaskDependencySerializer,
+    MilestoneSerializer,
+    MaterialRequirementSerializer,
+    BudgetLineSerializer,
+    TimesheetSerializer,
+    ChangeRequestSerializer,
+    ChangeRequestMaterialSerializer,
+    BoardSerializer,
+    BoardColumnSerializer,
+    TaskBoardPositionSerializer,
+    HealthRuleSerializer,
+    HealthSnapshotSerializer,
+    RiskSerializer,
+    IssueSerializer,
+    IssueActionSerializer,
+    ProjectDispatchSerializer,
+    TechnicalBriefSerializer,
+    TechnicalBriefVersionSerializer,
+    RequirementSerializer,
+    AcceptanceCriteriaSerializer,
+    ResourceRequestSerializer,
+    ResourceRequestLineSerializer,
+    ResourceAllocationSerializer,
+    ProgressSnapshotSerializer,
+    EquipmentUsageSerializer,
+    WeightIndicatorSerializer,
+    WeightComponentSerializer,
+    ProjectWeeklyProgressSerializer,
+    ProjectMainTaskSerializer,
+    TaskAssignmentSerializer,
+    ProjectWeeklyTaskSerializer,
+    ProjectDailyTaskSerializer,
+    TaskTransferRequestSerializer,
+    TaskActivityLogSerializer,
+)
+from apps.projects.task_hierarchy_services import (
+    recalculate_task_tree,
+    process_transfer_approval,
+    direct_reassign_task,
+    override_task_progress,
+    log_task_activity,
+)
+
 
 class ProjectViewSet(BaseERPModelViewSet):
     queryset = Project.objects.all()
@@ -31,6 +135,93 @@ class ProjectViewSet(BaseERPModelViewSet):
         if not is_project_management(self.request.user):
             raise PermissionDenied("Hanya Project Management yang dapat membuat project.")
         super().perform_create(serializer)
+
+    @action(detail=True, methods=["get"])
+    def hierarchy(self, request, pk=None):
+        project = self.get_object()
+        main_tasks = project.main_tasks.prefetch_related(
+            "assignments__assignee",
+            "weekly_tasks__daily_tasks__owner",
+            "weekly_tasks__assignee",
+        ).all()
+        serializer = ProjectMainTaskSerializer(main_tasks, many=True)
+
+        members_data = []
+        user_ids_seen = set()
+
+        if project.project_manager:
+            members_data.append({
+                "id": str(project.project_manager.id),
+                "user_id": str(project.project_manager.id),
+                "username": project.project_manager.username,
+                "full_name": project.project_manager.full_name or project.project_manager.username,
+                "role_in_project": "PROJECT_MANAGER",
+            })
+            user_ids_seen.add(project.project_manager.id)
+
+        for m in project.projects_member_project_set.select_related("user").filter(status__in=["", "ACTIVE"]):
+            if m.user and m.user.id not in user_ids_seen:
+                members_data.append({
+                    "id": str(m.user.id),
+                    "user_id": str(m.user.id),
+                    "username": m.user.username,
+                    "full_name": m.user.full_name or m.user.username,
+                    "role_in_project": m.project_role or "MEMBER",
+                })
+                user_ids_seen.add(m.user.id)
+
+        # Also provide all active tenant/company users for PM assignment flexibility
+        from apps.accounts.models import User
+        users_qs = User.objects.filter(is_active=True)
+        if hasattr(project, "tenant_id") and project.tenant_id:
+            users_qs = users_qs.filter(tenant_id=project.tenant_id)
+        elif hasattr(project, "company_id") and project.company_id:
+            users_qs = users_qs.filter(company_id=project.company_id)
+
+        all_users = []
+        for u in users_qs[:100]:
+            u_info = {
+                "id": str(u.id),
+                "user_id": str(u.id),
+                "username": u.username,
+                "full_name": u.full_name or u.username,
+                "email": u.email,
+            }
+            all_users.append(u_info)
+            if u.id not in user_ids_seen:
+                members_data.append({
+                    "id": str(u.id),
+                    "user_id": str(u.id),
+                    "username": u.username,
+                    "full_name": u.full_name or u.username,
+                    "role_in_project": "TEAM_MEMBER",
+                })
+                user_ids_seen.add(u.id)
+
+        return Response({
+            "project_id": str(project.id),
+            "id": str(project.id),
+            "project_code": project.project_code,
+            "code": project.project_code,
+            "project_name": project.project_name,
+            "name": project.project_name,
+            "description": project.description,
+            "progress_percent": project.progress_percent,
+            "progress": project.progress_percent,
+            "status": project.status or project.lifecycle_status,
+            "planned_start_date": str(project.planned_start_date or ""),
+            "planned_end_date": str(project.planned_end_date or ""),
+            "project_manager": str(project.project_manager_id) if project.project_manager_id else None,
+            "pm": str(project.project_manager_id) if project.project_manager_id else None,
+            "project_manager_name": project.project_manager.full_name if project.project_manager else "Project Manager",
+            "pm_name": project.project_manager.full_name if project.project_manager else "Project Manager",
+            "members": members_data,
+            "members_detail": members_data,
+            "available_users": all_users,
+            "main_tasks": serializer.data,
+        })
+
+
 
 
 class ProjectControlItemViewSet(BaseERPModelViewSet):
@@ -423,4 +614,513 @@ class ProjectWeeklyProgressViewSet(BaseERPModelViewSet):
             raise PermissionDenied("Hanya manager project yang dapat mengubah weekly progress review.")
         serializer.validated_data["recorded_by"] = self.request.user
         super().perform_update(serializer)
+
+
+class ProjectMainTaskViewSet(BaseERPModelViewSet):
+    queryset = ProjectMainTask.objects.all()
+    serializer_class = ProjectMainTaskSerializer
+    permission_classes = [IsProjectPMPermission]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get("project") or self.request.query_params.get("project_id")
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        if is_executive(self.request.user) or is_project_management(self.request.user):
+            return queryset
+        return queryset.filter(
+            Q(project__project_manager=self.request.user)
+            | Q(project__projects_member_project_set__user=self.request.user, project__projects_member_project_set__status__in=["", "ACTIVE"])
+        ).distinct()
+
+    def perform_create(self, serializer):
+        project = serializer.validated_data.get("project")
+        if not project or not can_manage_project(self.request.user, project):
+            raise PermissionDenied("Hanya Project Manager yang dapat membuat Main Task.")
+        serializer.validated_data["created_by"] = self.request.user
+        instance = serializer.save()
+        log_task_activity(
+            project=project,
+            actor=self.request.user,
+            task_level="MAIN",
+            task_id=instance.id,
+            task_title=instance.name,
+            action="CREATED",
+            reason="Main task created by PM",
+        )
+        recalculate_task_tree(main_task=instance)
+
+    def perform_update(self, serializer):
+        project = serializer.instance.project
+        if not can_manage_project(self.request.user, project):
+            raise PermissionDenied("Hanya Project Manager yang dapat mengubah Main Task.")
+        instance = serializer.save()
+        recalculate_task_tree(main_task=instance)
+
+    def perform_destroy(self, instance):
+        project = instance.project
+        if not can_manage_project(self.request.user, project):
+            raise PermissionDenied("Hanya Project Manager yang dapat menghapus Main Task.")
+        task_title = instance.name
+        task_id = instance.id
+        super().perform_destroy(instance)
+        log_task_activity(
+            project=project,
+            actor=self.request.user,
+            task_level="MAIN",
+            task_id=task_id,
+            task_title=task_title,
+            action="DELETED",
+            reason="Main task deleted by PM",
+        )
+        recalculate_task_tree(project=project)
+
+    @action(detail=True, methods=["post"])
+    def assign_members(self, request, pk=None):
+        main_task = self.get_object()
+        project = main_task.project
+        if not can_manage_project(request.user, project):
+            raise PermissionDenied("Hanya Project Manager yang dapat menugaskan anggota.")
+
+        raw_users = request.data.get("user_ids") or request.data.get("assignee")
+        if raw_users is None:
+            user_ids = []
+        elif isinstance(raw_users, list):
+            user_ids = [str(u) for u in raw_users if u]
+        else:
+            user_ids = [str(raw_users)]
+
+        with transaction.atomic():
+            # Remove unselected
+            TaskAssignment.objects.filter(main_task=main_task).exclude(assignee_id__in=user_ids).delete()
+            # Add new
+            for uid in user_ids:
+                TaskAssignment.objects.get_or_create(
+                    main_task=main_task,
+                    assignee_id=uid,
+                    defaults={"assigned_by": request.user}
+                )
+                Member.objects.get_or_create(
+                    project=project,
+                    user_id=uid,
+                    defaults={"project_role": "MEMBER", "status": "ACTIVE"}
+                )
+
+            log_task_activity(
+                project=project,
+                actor=request.user,
+                task_level="MAIN",
+                task_id=main_task.id,
+                task_title=main_task.name,
+                action="ASSIGNMENT_UPDATED",
+                new_value=str(user_ids),
+                reason="Updated assignees for main task",
+            )
+
+        serializer = self.get_serializer(main_task)
+        return Response(serializer.data)
+
+
+    @action(detail=True, methods=["post"])
+    def override_progress(self, request, pk=None):
+        main_task = self.get_object()
+        if not can_manage_project(request.user, main_task.project):
+            raise PermissionDenied("Hanya Project Manager yang dapat melakukan manual override progress.")
+
+        progress = request.data.get("progress")
+        reason = request.data.get("reason", "")
+        if progress is None:
+            raise ValidationError({"progress": "Field progress wajib diisi."})
+        if not reason:
+            raise ValidationError({"reason": "Alasan override progress wajib disertakan."})
+
+        override_task_progress(main_task, progress, request.user, reason)
+        serializer = self.get_serializer(main_task)
+        return Response(serializer.data)
+
+
+class TaskAssignmentViewSet(BaseERPModelViewSet):
+    queryset = TaskAssignment.objects.all()
+    serializer_class = TaskAssignmentSerializer
+
+
+class ProjectWeeklyTaskViewSet(BaseERPModelViewSet):
+    queryset = ProjectWeeklyTask.objects.all()
+    serializer_class = ProjectWeeklyTaskSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        main_task_id = self.request.query_params.get("main_task") or self.request.query_params.get("main_task_id")
+        project_id = self.request.query_params.get("project") or self.request.query_params.get("project_id")
+        if main_task_id:
+            queryset = queryset.filter(main_task_id=main_task_id)
+        if project_id:
+            queryset = queryset.filter(main_task__project_id=project_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        main_task = serializer.validated_data.get("main_task")
+        project = main_task.project
+        is_pm = can_manage_project(self.request.user, project)
+        is_assigned = TaskAssignment.objects.filter(main_task=main_task, assignee=self.request.user).exists()
+
+        if not is_pm and not is_assigned:
+            raise PermissionDenied("Hanya PM atau Assignee Main Task yang dapat membuat Weekly Task breakdown.")
+
+        if not serializer.validated_data.get("assignee"):
+            serializer.validated_data["assignee"] = self.request.user
+
+        instance = serializer.save()
+        log_task_activity(
+            project=project,
+            actor=self.request.user,
+            task_level="WEEKLY",
+            task_id=instance.id,
+            task_title=f"Week {instance.week_number}: {main_task.name}",
+            action="CREATED",
+            reason="Weekly task breakdown created",
+        )
+        recalculate_task_tree(weekly_task=instance)
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        recalculate_task_tree(weekly_task=instance)
+
+    def perform_destroy(self, instance):
+        main_task = instance.main_task
+        project = main_task.project
+        is_pm = can_manage_project(self.request.user, project)
+        is_assignee = instance.assignee_id == self.request.user.id
+        if not is_pm and not is_assignee:
+            raise PermissionDenied("Hanya Project Manager atau PIC Weekly Task yang dapat menghapus target mingguan ini.")
+
+        task_id = instance.id
+        task_title = f"Week {instance.week_number}: {instance.target_description or main_task.name}"
+        super().perform_destroy(instance)
+        log_task_activity(
+            project=project,
+            actor=self.request.user,
+            task_level="WEEKLY",
+            task_id=task_id,
+            task_title=task_title,
+            action="DELETED",
+            reason="Weekly task deleted",
+        )
+        recalculate_task_tree(main_task=main_task)
+
+    @action(detail=True, methods=["post"])
+    def override_progress(self, request, pk=None):
+        weekly_task = self.get_object()
+        if not can_manage_project(request.user, weekly_task.main_task.project):
+            raise PermissionDenied("Hanya Project Manager yang dapat melakukan manual override progress.")
+
+        progress = request.data.get("progress")
+        reason = request.data.get("reason", "")
+        if progress is None:
+            raise ValidationError({"progress": "Field progress wajib diisi."})
+        if not reason:
+            raise ValidationError({"reason": "Alasan override progress wajib disertakan."})
+
+        override_task_progress(weekly_task, progress, request.user, reason)
+        serializer = self.get_serializer(weekly_task)
+        return Response(serializer.data)
+
+
+class ProjectDailyTaskViewSet(BaseERPModelViewSet):
+    queryset = ProjectDailyTask.objects.all()
+    serializer_class = ProjectDailyTaskSerializer
+    permission_classes = [IsDailyTaskOwnerOrPM]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        weekly_task_id = self.request.query_params.get("weekly_task") or self.request.query_params.get("weekly_task_id")
+        project_id = self.request.query_params.get("project") or self.request.query_params.get("project_id")
+        owner_id = self.request.query_params.get("owner") or self.request.query_params.get("owner_id")
+
+        if weekly_task_id:
+            queryset = queryset.filter(weekly_task_id=weekly_task_id)
+        if project_id:
+            queryset = queryset.filter(weekly_task__main_task__project_id=project_id)
+        if owner_id:
+            queryset = queryset.filter(owner_id=owner_id)
+        return queryset
+
+
+    def perform_create(self, serializer):
+        weekly_task = serializer.validated_data.get("weekly_task")
+        project = weekly_task.main_task.project
+
+        # Only the designated Weekly Task PIC can create daily tasks under this weekly target
+        if weekly_task.assignee_id and weekly_task.assignee_id != self.request.user.id:
+            raise PermissionDenied("Hanya PIC Weekly Task yang bersangkutan yang dapat membuat Daily Task.")
+
+        if not serializer.validated_data.get("owner"):
+            serializer.validated_data["owner"] = self.request.user
+
+        instance = serializer.save()
+        log_task_activity(
+            project=project,
+            actor=self.request.user,
+            task_level="DAILY",
+            task_id=instance.id,
+            task_title=instance.title,
+            action="CREATED",
+            reason="Daily task created",
+        )
+        recalculate_task_tree(daily_task=instance)
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        recalculate_task_tree(daily_task=instance)
+
+    def perform_destroy(self, instance):
+        weekly_task = instance.weekly_task
+        project = weekly_task.main_task.project
+        task_id = instance.id
+        task_title = instance.title
+        super().perform_destroy(instance)
+        log_task_activity(
+            project=project,
+            actor=self.request.user,
+            task_level="DAILY",
+            task_id=task_id,
+            task_title=task_title,
+            action="DELETED",
+            reason="Daily task deleted",
+        )
+        recalculate_task_tree(weekly_task=weekly_task)
+
+    @action(detail=True, methods=["patch"])
+    def update_progress(self, request, pk=None):
+        daily_task = self.get_object()
+        project = daily_task.weekly_task.main_task.project
+
+        # Owner or PM can update daily task progress
+        if daily_task.owner_id != request.user.id and not can_manage_project(request.user, project):
+            raise PermissionDenied("Hanya pemilik task (Owner) atau Project Manager yang dapat memperbarui progress dan status pekerjaan ini.")
+
+        progress = request.data.get("progress")
+        status = request.data.get("status")
+        is_blocked = request.data.get("is_blocked")
+        block_reason = request.data.get("block_reason")
+
+        if "time_slot" in request.data:
+            daily_task.time_slot = request.data.get("time_slot") or ""
+        if "output_result" in request.data:
+            daily_task.output_result = request.data.get("output_result") or ""
+        if "notes" in request.data:
+            daily_task.notes = request.data.get("notes") or ""
+        if "title" in request.data and request.data.get("title"):
+            daily_task.title = request.data.get("title")
+        if "description" in request.data:
+            daily_task.description = request.data.get("description") or ""
+
+        old_progress = daily_task.progress
+        old_status = daily_task.status
+
+        if progress is not None:
+            daily_task.progress = Decimal(str(progress))
+            if Decimal(str(progress)) >= Decimal("100.00") and not status:
+                daily_task.status = "COMPLETED"
+
+        if status is not None:
+            daily_task.status = status
+            if status == "COMPLETED" and progress is None:
+                daily_task.progress = Decimal("100.00")
+            elif status == "NOT_STARTED" and progress is None:
+                daily_task.progress = Decimal("0.00")
+
+        if is_blocked is not None:
+            daily_task.is_blocked = bool(is_blocked)
+            if daily_task.is_blocked:
+                daily_task.status = "BLOCKED"
+                daily_task.block_reason = block_reason or ""
+            else:
+                if daily_task.status == "BLOCKED":
+                    daily_task.status = "IN_PROGRESS" if daily_task.progress > 0 else "NOT_STARTED"
+                daily_task.block_reason = ""
+
+        daily_task.save()
+
+        log_task_activity(
+            project=project,
+            actor=request.user,
+            task_level="DAILY",
+            task_id=daily_task.id,
+            task_title=daily_task.title,
+            action="PROGRESS_UPDATED",
+            field_name="progress/status",
+            old_value=f"{old_progress}% ({old_status})",
+            new_value=f"{daily_task.progress}% ({daily_task.status})",
+            reason=block_reason or "Regular progress update",
+        )
+
+        recalculate_task_tree(daily_task=daily_task)
+        serializer = self.get_serializer(daily_task)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def report_blocked(self, request, pk=None):
+        daily_task = self.get_object()
+        project = daily_task.weekly_task.main_task.project
+
+        reason = request.data.get("reason", "")
+        if not reason:
+            raise ValidationError({"reason": "Alasan kendala (block reason) wajib diisi."})
+
+        daily_task.is_blocked = True
+        daily_task.status = "BLOCKED"
+        daily_task.block_reason = reason
+        daily_task.save(update_fields=["is_blocked", "status", "block_reason", "updated_at"])
+
+        log_task_activity(
+            project=project,
+            actor=request.user,
+            task_level="DAILY",
+            task_id=daily_task.id,
+            task_title=daily_task.title,
+            action="BLOCKED",
+            field_name="status",
+            old_value="ACTIVE",
+            new_value="BLOCKED",
+            reason=reason,
+        )
+
+        recalculate_task_tree(daily_task=daily_task)
+        serializer = self.get_serializer(daily_task)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def request_transfer(self, request, pk=None):
+        daily_task = self.get_object()
+        project = daily_task.weekly_task.main_task.project
+
+        if daily_task.owner_id != request.user.id and not can_manage_project(request.user, project):
+            raise PermissionDenied("Hanya pemilik task saat ini yang dapat mengajukan transfer.")
+
+        target_user_id = request.data.get("target_user_id") or request.data.get("target_user")
+        reason = request.data.get("reason", "")
+        if not target_user_id:
+            raise ValidationError({"target_user_id": "Target user ID wajib diisi."})
+
+        transfer_request = TaskTransferRequest.objects.create(
+            daily_task=daily_task,
+            requested_by=request.user,
+            target_user_id=target_user_id,
+            status="PENDING",
+            reason=reason,
+        )
+
+        log_task_activity(
+            project=project,
+            actor=request.user,
+            task_level="DAILY",
+            task_id=daily_task.id,
+            task_title=daily_task.title,
+            action="TRANSFER_REQUESTED",
+            field_name="owner",
+            old_value=str(request.user),
+            new_value=str(target_user_id),
+            reason=reason,
+        )
+
+        serializer = TaskTransferRequestSerializer(transfer_request)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def direct_reassign(self, request, pk=None):
+        daily_task = self.get_object()
+        project = daily_task.weekly_task.main_task.project
+
+        if not can_manage_project(request.user, project):
+            raise PermissionDenied("Hanya Project Manager yang dapat melakukan direct reassign.")
+
+        target_user_id = request.data.get("target_user_id") or request.data.get("target_user")
+        reason = request.data.get("reason", "")
+        if not target_user_id:
+            raise ValidationError({"target_user_id": "Target user ID wajib diisi."})
+
+        from apps.accounts.models import User
+        target_user = User.objects.get(pk=target_user_id)
+        direct_reassign_task(daily_task, target_user, request.user, reason)
+        serializer = self.get_serializer(daily_task)
+        return Response(serializer.data)
+
+
+class TaskTransferRequestViewSet(BaseERPModelViewSet):
+    queryset = TaskTransferRequest.objects.all()
+    serializer_class = TaskTransferRequestSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get("project") or self.request.query_params.get("project_id")
+        if project_id:
+            queryset = queryset.filter(daily_task__weekly_task__main_task__project_id=project_id)
+        return queryset
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        transfer_req = self.get_object()
+        project = transfer_req.daily_task.weekly_task.main_task.project
+        if not can_manage_project(request.user, project):
+            raise PermissionDenied("Hanya Project Manager yang dapat menyetujui transfer task.")
+
+        review_note = request.data.get("review_note", "")
+        process_transfer_approval(transfer_req, approved=True, pm_user=request.user, review_note=review_note)
+        serializer = self.get_serializer(transfer_req)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        transfer_req = self.get_object()
+        project = transfer_req.daily_task.weekly_task.main_task.project
+        if not can_manage_project(request.user, project):
+            raise PermissionDenied("Hanya Project Manager yang dapat menolak transfer task.")
+
+        review_note = request.data.get("review_note", "")
+        process_transfer_approval(transfer_req, approved=False, pm_user=request.user, review_note=review_note)
+        serializer = self.get_serializer(transfer_req)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        transfer_req = self.get_object()
+        project = transfer_req.daily_task.weekly_task.main_task.project
+        if transfer_req.requested_by_id != request.user.id and not can_manage_project(request.user, project):
+            raise PermissionDenied("Hanya pemohon atau PM yang dapat membatalkan pengajuan transfer.")
+
+        transfer_req.status = "CANCELLED"
+        transfer_req.save(update_fields=["status"])
+        log_task_activity(
+            project=project,
+            actor=request.user,
+            task_level="DAILY",
+            task_id=transfer_req.daily_task.id,
+            task_title=transfer_req.daily_task.title,
+            action="TRANSFER_CANCELLED",
+            reason="Cancelled by requester or PM",
+        )
+        serializer = self.get_serializer(transfer_req)
+        return Response(serializer.data)
+
+
+class TaskActivityLogViewSet(ReadOnlyERPModelViewSet):
+    queryset = TaskActivityLog.objects.all()
+    serializer_class = TaskActivityLogSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get("project") or self.request.query_params.get("project_id")
+        task_id = self.request.query_params.get("task_id")
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        if task_id:
+            queryset = queryset.filter(task_id=task_id)
+        return queryset
+
+
 

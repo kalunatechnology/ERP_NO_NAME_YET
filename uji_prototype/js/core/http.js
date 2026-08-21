@@ -57,6 +57,14 @@ export async function rawRequest(path, { method = "GET", body, headers = {}, aut
       return rawRequest(path, { method, body, headers, auth, retry: false });
     } catch {
       setTokens("", "");
+      if (typeof window !== "undefined" && window.location.hash !== "#/login" && window.location.hash !== "#/auth-tester") {
+        window.location.hash = "#/login";
+      }
+    }
+  } else if (response.status === 401 && !path.includes(AUTH_ENDPOINTS.login)) {
+    setTokens("", "");
+    if (typeof window !== "undefined" && window.location.hash !== "#/login" && window.location.hash !== "#/auth-tester") {
+      window.location.hash = "#/login";
     }
   }
 
@@ -128,3 +136,19 @@ export async function refreshAccessToken() {
   setTokens(payload.access, payload.refresh || state.refresh);
   return payload.access;
 }
+
+export const http = {
+  get: (path, params) => {
+    let url = path;
+    if (params && Object.keys(params).length > 0) {
+      const q = new URLSearchParams(params).toString();
+      url = `${path}${path.includes('?') ? '&' : '?'}${q}`;
+    }
+    return requestJSON(url, { method: "GET" });
+  },
+  post: (path, body) => requestJSON(path, { method: "POST", body }),
+  patch: (path, body) => requestJSON(path, { method: "PATCH", body }),
+  put: (path, body) => requestJSON(path, { method: "PUT", body }),
+  delete: (path) => requestJSON(path, { method: "DELETE" }),
+};
+

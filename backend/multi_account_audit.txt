@@ -1,0 +1,45 @@
+=== USER: project.manager.demo@erp.local ===
+  project-fundings -> count: 4
+  project-cost-entries -> count: 3
+  billing-proposals -> count: 2
+  billing-documents -> count: 2
+  projects -> count: 4
+  opportunities -> count: 5
+  quotations -> count: 2
+  orders -> count: 3
+=== USER: finance.demo@erp.local ===
+  project-fundings -> count: 4
+  project-cost-entries -> count: 3
+  billing-proposals -> count: 2
+  billing-documents -> count: 2
+  projects -> count: 4
+  opportunities -> count: 5
+  quotations -> count: 2
+  orders -> count: 3
+=== USER: finance.approver@example.com ===
+  project-fundings -> count: 4
+  project-cost-entries -> count: 3
+  billing-proposals -> count: 2
+  billing-documents -> count: 2
+  projects -> count: 4
+  opportunities -> count: 5
+  quotations -> count: 2
+  orders -> count: 3
+=== USER: dummy.staff@example.com ===
+  project-fundings -> count: 4
+  project-cost-entries -> count: 3
+  billing-proposals -> count: 2
+  billing-documents -> count: 2
+  projects -> count: 4
+  opportunities -> count: 5
+  quotations -> count: 2
+  orders -> count: 3
+=== USER: dummy.manager@example.com ===
+  project-fundings -> count: 4
+  project-cost-entries -> count: 3
+  billing-proposals -> count: 2
+  billing-documents -> count: 2
+  projects -> count: 4
+  opportunities -> count: 5
+  quotations -> count: 2
+  orders -> count: 3

@@ -31,15 +31,19 @@ export const MAIN_NAV = [
   { id: "settings", label: "Settings", route: "/settings" },
 ];
 
+// GANTI deklarasi FINANCE_DOMAINS lama dengan susunan terurut ini:
 export const FINANCE_DOMAINS = [
   ["overview", "Dashboard"],
-  ["payable", "Tagihan Vendor (AP)"],
-  ["funding", "Funding Proyek"],
+  ["profitability", "📊 Laba & Revenue Proyek"],
   ["costing", "Costing & WIP"],
+  ["funding", "Funding Proyek"],
+  ["payable", "Tagihan Vendor (AP)"],
   ["project-billing", "Billing Termin"],
   ["receivable", "Piutang & Kredit"],
   ["payments", "Kas & Bank"],
-  ["accounting", "Buku Besar"],
+  ["accounting", "Buku Besar (GL)"],
+  ["tax", "Perpajakan"],
+  ["assets", "Aset Tetap"]
 ];
 
 export const CRM_TABS = [
