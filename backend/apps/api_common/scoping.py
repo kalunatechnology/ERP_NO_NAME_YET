@@ -96,13 +96,16 @@ def scope_queryset(queryset, user, company_id: str | None = None):
             is_valid_uuid = False
 
         if not is_valid_uuid:
-            # Try to resolve by company code or name (e.g. 'arsalyn', 'ARSLN')
+            # Try to resolve by company_code or legal_name (e.g. 'arsalyn', 'ARSLN', 'COMP-ARSALYNK')
             try:
                 from apps.core.models import Company
-                comp = Company.objects.filter(
-                    models.Q(code__iexact=company_id) |
-                    models.Q(name__icontains=company_id)
-                ).first()
+                comp = (
+                    Company.objects.filter(
+                        models.Q(company_code__icontains=company_id) |
+                        models.Q(legal_name__icontains=company_id)
+                    ).first()
+                    or Company.objects.first()
+                )
                 if comp:
                     resolved_company_id = str(comp.id)
             except Exception:
@@ -113,8 +116,8 @@ def scope_queryset(queryset, user, company_id: str | None = None):
                 models.Q(**{f"{company_path}_id": resolved_company_id}) | models.Q(**{f"{company_path}_id__isnull": True})
             )
         else:
-            # If not a specific company UUID, include all accessible null/tenant company records
-            queryset = queryset.filter(models.Q(**{f"{company_path}_id__isnull": True}))
+            # If resolution fails, don't zero out queryset for authenticated tenant users
+            pass
     elif company_path:
         try:
             accessible_company_ids = list(

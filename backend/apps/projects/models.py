@@ -1096,5 +1096,10 @@ class ProjectEVMRecord(models.Model):
         return f"EVM [{self.project.project_code}] W{self.week_number} ({self.as_of_date}) - CPI: {self.cost_performance_index}, SPI: {self.schedule_performance_index}"
 
 
+# Alias for backward compatibility & semantic clarity
+ProjectMembership = Member
+
+
+
 
 

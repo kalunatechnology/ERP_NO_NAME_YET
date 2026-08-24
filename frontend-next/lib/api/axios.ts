@@ -1,5 +1,5 @@
 /**
- * Axios instance dengan JWT interceptor
+ * Axios instance dengan JWT interceptor & Cookie Sync
  * Ported dari uji_prototype/js/core/http.js
  */
 
@@ -13,16 +13,31 @@ const api = axios.create({
   timeout: 30000,
 });
 
-/* ── Request Interceptor: tambah Authorization header ── */
+/* ── Helper Cookie ── */
+function syncCookie(token?: string) {
+  if (typeof document === "undefined") return;
+  if (token) {
+    document.cookie = `access_token=${token}; path=/; max-age=86400; SameSite=Lax`;
+  } else {
+    document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
+  }
+}
+
+/* ── Request Interceptor: tambah Authorization & Company header ── */
 api.interceptors.request.use(
   (config) => {
     if (typeof window !== "undefined") {
-      const access = localStorage.getItem("erp.access");
+      const access =
+        localStorage.getItem("erp.access") ||
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("token");
+
       if (access) {
         config.headers.Authorization = `Bearer ${access}`;
       }
+
       const company = localStorage.getItem("erp.company");
-      if (company && company !== "arsalyn" && company !== "all") {
+      if (company && company !== "all") {
         config.headers["X-Company-ID"] = company;
       }
     }
@@ -44,19 +59,40 @@ api.interceptors.response.use(
     ) {
       original._retry = true;
       const refresh = localStorage.getItem("erp.refresh");
+
       if (refresh) {
         try {
           const { data } = await axios.post(
             `${API_BASE}/api/v1/auth/token/refresh/`,
             { refresh }
           );
-          localStorage.setItem("erp.access", data.access);
-          original.headers.Authorization = `Bearer ${data.access}`;
-          return api(original);
+
+          const newAccess = data.access || data.token;
+          if (newAccess) {
+            localStorage.setItem("erp.access", newAccess);
+            localStorage.setItem("access_token", newAccess);
+            syncCookie(newAccess);
+
+            original.headers.Authorization = `Bearer ${newAccess}`;
+            return api(original);
+          }
         } catch {
-          // Refresh failed → clear tokens
+          // Refresh gagal → bersihkan seluruh storage & cookie, lalu redirect login
           localStorage.removeItem("erp.access");
           localStorage.removeItem("erp.refresh");
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("token");
+          localStorage.removeItem("erp.company");
+          syncCookie();
+
+          if (!window.location.pathname.includes("/login")) {
+            window.location.href = "/login";
+          }
+        }
+      } else {
+        // Tidak ada refresh token → arahkan ke login
+        syncCookie();
+        if (!window.location.pathname.includes("/login")) {
           window.location.href = "/login";
         }
       }

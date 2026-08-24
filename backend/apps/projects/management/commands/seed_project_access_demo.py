@@ -1,46 +1,24 @@
-from decimal import Decimal
-
-from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
-from django.db import transaction
-from django.utils import timezone
-
-from apps.accounts.models import Role, UserRole
+from django.contrib.auth import get_user_model
 from apps.core.models import Company, Tenant
-from apps.projects.models import Member, Project
+from apps.projects.models import Project, Member
+from apps.accounts.models import Role, UserRole
 
 User = get_user_model()
-DEMO_PASSWORD = "DummyPass123!"
 
 
 class Command(BaseCommand):
     help = "Seed akses lengkap untuk PM Demo dan PM Arsalynk ke semua Project dan Main Tasks"
 
-    def add_arguments(self, parser):
-        parser.add_argument("--tenant-code", default=None)
-        parser.add_argument("--company-code", default=None)
-
-    @transaction.atomic
     def handle(self, *args, **options):
-        tenant_code = options.get("tenant_code")
-        company_code = options.get("company_code")
-
-        tenant = None
-        if tenant_code:
-            tenant = Tenant.objects.filter(code=tenant_code).first()
-        if not tenant:
-            tenant = Tenant.objects.first()
+        tenant = Tenant.objects.first()
         if not tenant:
             tenant = Tenant.objects.create(name="Arsalynk ERP Tenant", code="TENANT-ARSALYNK", status="ACTIVE")
 
-        company = None
-        if company_code:
-            company = Company.objects.filter(company_code=company_code).first()
-        if not company:
-            company = (
-                Company.objects.filter(company_code__in=["ARSLN", "arsalynk", "COMP-ARSALYNK", "COMP-DEMO", "arsalyn", "MAIN"]).first()
-                or Company.objects.first()
-            )
+        company = (
+            Company.objects.filter(company_code__in=["ARSLN", "arsalynk", "COMP-ARSALYNK", "COMP-DEMO", "arsalyn", "MAIN"]).first()
+            or Company.objects.first()
+        )
         if not company:
             company = Company.objects.create(
                 tenant=tenant,
@@ -54,12 +32,12 @@ class Command(BaseCommand):
             defaults={"role_name": "Project Manager", "description": "Full access to projects and tasks", "tenant": tenant}
         )
 
+        # Daftar user PM yang akan disinkronkan
         pm_usernames = [
             ("pm_user", "pm.user@arsalynk.id", "PM User"),
             ("pm_arsalynk", "pm@arsalynk.id", "Project Manager Arsalynk"),
             ("pm", "pm@arsalynk.id", "Project Manager Arsalynk"),
             ("pm_demo", "project.manager.demo@erp.local", "Project Manager Demo"),
-            ("demo.project_manager", "project.manager.demo@erp.local", "Project Manager Demo"),
         ]
 
         synced_users = []
@@ -69,7 +47,7 @@ class Command(BaseCommand):
                 user = User.objects.create_user(
                     email=default_email,
                     username=username,
-                    password=DEMO_PASSWORD,
+                    password="password123",
                     full_name=full_name,
                     tenant=tenant,
                 )
@@ -87,6 +65,7 @@ class Command(BaseCommand):
             UserRole.objects.get_or_create(user=user, role=pm_role, company=company)
             synced_users.append(user)
 
+        # Daftarkan ke seluruh project yang ada
         projects = Project.objects.all()
         for proj in projects:
             if not proj.company:

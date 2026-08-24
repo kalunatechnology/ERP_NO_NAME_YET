@@ -59,6 +59,7 @@ from rest_framework.exceptions import PermissionDenied
 from apps.projects.access import (
     can_access_project,
     can_manage_project,
+    has_project_access,
     is_executive,
     is_project_management,
     is_finance,
@@ -644,20 +645,24 @@ class ProjectMainTaskViewSet(BaseERPModelViewSet):
     permission_classes = [IsProjectPMPermission]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        user = self.request.user
+        queryset = ProjectMainTask.objects.select_related("project", "created_by").prefetch_related("assignments__assignee").all()
         project_id = self.request.query_params.get("project") or self.request.query_params.get("project_id")
         if project_id:
             queryset = queryset.filter(project_id=project_id)
-        if is_executive(self.request.user) or is_project_management(self.request.user):
+        if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False) or is_executive(user) or is_project_management(user):
             return queryset
         return queryset.filter(
-            Q(project__project_manager=self.request.user)
-            | Q(project__projects_member_project_set__user=self.request.user, project__projects_member_project_set__status__in=["", "ACTIVE"])
+            Q(project__project_manager=user)
+            | Q(project__project_manager__isnull=True)
+            | Q(project__projects_member_project_set__user=user, project__projects_member_project_set__status__in=["", "ACTIVE"])
+            | Q(assignments__assignee=user)
+            | Q(created_by=user)
         ).distinct()
 
     def perform_create(self, serializer):
         project = serializer.validated_data.get("project")
-        if not project or not can_manage_project(self.request.user, project):
+        if not can_manage_project(self.request.user, project) and not has_project_access(self.request.user, project, required_roles=["PROJECT_MANAGER"]):
             raise PermissionDenied("Hanya Project Manager yang dapat membuat Main Task.")
         serializer.validated_data["created_by"] = self.request.user
         instance = serializer.save()

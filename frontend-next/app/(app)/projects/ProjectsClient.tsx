@@ -22,7 +22,7 @@ import {
   createMilestone,
   assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers
 } from "@/lib/api/project.api";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, detectRole } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
@@ -43,7 +43,7 @@ const LIFECYCLE_STEPS = [
 ];
 
 export default function ProjectsClient() {
-  const { user } = useAuth();
+  const { user, userRole, isAdmin } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [activeTab, setActiveTab] = useState("TREE");
@@ -126,18 +126,24 @@ export default function ProjectsClient() {
 
   const selectedProject = projects.find(p => String(p.id) === String(selectedId)) || projects[0] || null;
 
-  /* Strict Project Manager Role Guard */
+  /* Project Manager & Executive Role Guard */
   const isPM = useMemo(() => {
     if (!user) return false;
-    if (user.email === "dummy.pm@example.com" || user.email === "dummy.admin@example.com") return true;
+    if (userRole === "pm" || userRole === "executive" || isAdmin) return true;
     if ((user as any).is_superuser || (user as any).is_staff) return true;
-    const userRoles = (user.roles || []).map((r: any) => typeof r === "string" ? r : (r.role || r.name || ""));
-    if (userRoles.some(r => r.includes("PROJECT_MANAGER") || r.includes("PM") || r.includes("ADMIN") || r.includes("ROLE-ADMIN") || r.includes("ROLE-PROJECT_MANAGER"))) {
+    const role = detectRole(user);
+    if (role === "pm" || role === "executive") return true;
+    const email = (user.email || "").toLowerCase();
+    const username = (user.username || "").toLowerCase();
+    if (username.includes("pm") || username.includes("project") || username.includes("admin")) return true;
+    if (email.includes("pm") || email.includes("project") || email.includes("admin")) return true;
+    const userRoles = (user.roles || []).map((r: any) => typeof r === "string" ? r : (r.role_code || r.role || r.name || r.code || ""));
+    if (userRoles.some((r: string) => r.toUpperCase().includes("PROJECT_MANAGER") || r.toUpperCase().includes("PM") || r.toUpperCase().includes("ADMIN") || r.toUpperCase().includes("SUPERVISOR"))) {
       return true;
     }
-    if (selectedProject && String((selectedProject as any).pm_id || "") === String(user.id)) return true;
+    if (selectedProject && String((selectedProject as any).pm_id || (selectedProject as any).project_manager_id || (selectedProject as any).project_manager || "") === String(user.id)) return true;
     return false;
-  }, [user, selectedProject]);
+  }, [user, userRole, isAdmin, selectedProject]);
 
   const fetchProjects = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -493,11 +499,15 @@ export default function ProjectsClient() {
             onChange={(e) => setSelectedId(e.target.value)}
             className="px-3 py-1.5 rounded-xl border border-text-tertiary bg-white text-xs font-bold text-text-primary outline-none focus:border-brand-green min-w-[280px]"
           >
-            {projects.map((proj) => (
-              <option key={proj.id} value={proj.id}>
-                [{proj.project_code}] {proj.project_name}
-              </option>
-            ))}
+            {projects.map((proj) => {
+              const code = proj.project_code || proj.code || "PRJ";
+              const name = proj.project_name || proj.name || "Proyek";
+              return (
+                <option key={proj.id} value={proj.id}>
+                  [{code}] {name}
+                </option>
+              );
+            })}
           </select>
 
           <button

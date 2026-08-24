@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from django.db import models, transaction
+from django.db.models import ProtectedError, RestrictedError
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from .audit import create_audit_event, snapshot
@@ -93,8 +95,33 @@ class BaseERPModelViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         before = snapshot(instance)
-        create_audit_event(request=self.request, instance=instance, event_type="DELETE", before=before)
-        instance.delete()
+        try:
+            instance.delete()
+            create_audit_event(request=self.request, instance=instance, event_type="DELETE", before=before)
+        except (ProtectedError, RestrictedError) as exc:
+            protected_objects = getattr(exc, "protected_objects", None) or getattr(exc, "restricted_objects", [])
+            protected_classes = list({obj.__class__.__name__ for obj in protected_objects})
+            raise ValidationError(
+                f"Tidak dapat menghapus {instance.__class__.__name__} karena masih memiliki relasi aktif di: {', '.join(protected_classes)}."
+            )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+            return Response(
+                {"success": True, "message": "Data berhasil dihapus."},
+                status=status.HTTP_200_OK,
+            )
+        except ValidationError as e:
+            return Response(
+                {
+                    "success": False,
+                    "error": "VALIDATION_ERROR",
+                    "detail": str(e.detail[0]) if isinstance(e.detail, list) else str(e.detail),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     @action(detail=False, methods=["post"], url_path="bulk-create")
     def bulk_create(self, request):
@@ -202,3 +229,6 @@ class ReadOnlyERPModelViewSet(viewsets.ReadOnlyModelViewSet):
     @property
     def ordering_fields(self):
         return [field.name for field in self.queryset.model._meta.concrete_fields]
+
+
+BaseViewSet = BaseERPModelViewSet

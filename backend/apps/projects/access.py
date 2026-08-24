@@ -1,8 +1,14 @@
+from __future__ import annotations
+
+from typing import Iterable
 from django.db.models import Q
+from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 from apps.accounts.models import UserRole
-from apps.projects.models import Member
+from apps.projects.models import Member, Project
 
+# Alias for backward compatibility & semantic clarity
+ProjectMembership = Member
 
 EXECUTIVE_ROLES = {
     "EXECUTIVE", "ROLE-ADMIN", "ADMIN", "SUPERADMIN", "SUPER_ADMIN",
@@ -10,7 +16,7 @@ EXECUTIVE_ROLES = {
     "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "SALES", "CRM_MANAGER"
 }
 PROJECT_MANAGEMENT_ROLES = {
-    "PROJECT_MANAGEMENT", "PROJECT_MANAGER", "SUPERVISOR", "QUALITY_CONTROL",
+    "PROJECT_MANAGEMENT", "PROJECT_MANAGER", "PM", "SUPERVISOR", "QUALITY_CONTROL",
     "WAREHOUSE", "ROLE-MANAGER", "ROLE-ADMIN", "SUPER_ADMIN", "ADMIN", "DIRECTOR"
 }
 FINANCE_ROLES = {
@@ -23,7 +29,7 @@ CRM_ROLES = {
 }
 
 
-def role_codes(user):
+def role_codes(user) -> set[str]:
     if not user or not user.is_authenticated:
         return set()
     return set(
@@ -32,38 +38,44 @@ def role_codes(user):
     )
 
 
-def is_executive(user):
+def is_executive(user) -> bool:
     if not user or not user.is_authenticated:
         return False
     email = getattr(user, "email", "").lower()
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False) or "admin" in email or "exec" in email or "director" in email:
+    username = getattr(user, "username", "").lower()
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return True
+    if any(k in email for k in ["admin", "exec", "director"]) or any(k in username for k in ["admin", "exec", "director"]):
         return True
     return bool(role_codes(user) & EXECUTIVE_ROLES)
 
 
-def is_project_management(user):
+def is_project_management(user) -> bool:
     if not user or not user.is_authenticated:
         return False
     email = getattr(user, "email", "").lower()
-    if is_executive(user) or "pm" in email or "project" in email or "supervisor" in email:
+    username = getattr(user, "username", "").lower()
+    if is_executive(user) or any(k in email for k in ["pm", "project", "supervisor"]) or any(k in username for k in ["pm", "project", "supervisor"]):
         return True
     return bool(role_codes(user) & PROJECT_MANAGEMENT_ROLES)
 
 
-def is_finance(user):
+def is_finance(user) -> bool:
     if not user or not user.is_authenticated:
         return False
     email = getattr(user, "email", "").lower()
-    if is_executive(user) or "fin" in email or "accounting" in email:
+    username = getattr(user, "username", "").lower()
+    if is_executive(user) or "fin" in email or "accounting" in email or "fin" in username:
         return True
     return bool(role_codes(user) & FINANCE_ROLES)
 
 
-def is_crm(user):
+def is_crm(user) -> bool:
     if not user or not user.is_authenticated:
         return False
     email = getattr(user, "email", "").lower()
-    if is_executive(user) or "crm" in email or "sales" in email or "manager" in email or "staff" in email:
+    username = getattr(user, "username", "").lower()
+    if is_executive(user) or any(k in email for k in ["crm", "sales", "manager", "staff"]) or any(k in username for k in ["crm", "sales", "manager", "staff"]):
         return True
     return bool(role_codes(user) & CRM_ROLES)
 
@@ -72,27 +84,65 @@ def active_memberships(user):
     return Member.objects.filter(user=user).filter(Q(status="ACTIVE") | Q(status=""))
 
 
-def can_access_project(user, project):
-    if is_executive(user) or is_project_management(user) or is_finance(user):
+def has_project_access(user, project: Project | None, required_roles: Iterable[str] | None = None) -> bool:
+    """
+    Memeriksa apakah user memiliki hak akses ke project dan task di dalamnya.
+    """
+    if not user or not user.is_authenticated:
+        return False
+
+    # Superuser, Admin, atau Executive memiliki akses global
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
         return True
-    if project.project_manager_id == getattr(user, "id", None) or project.project_manager_id is None:
+
+    # Cek user role level
+    roles = role_codes(user)
+    if is_executive(user) or any(r in ["ADMIN", "EXECUTIVE", "SUPERADMIN", "SUPER_ADMIN", "DIRECTOR"] for r in roles):
         return True
-    return active_memberships(user).filter(project=project).exists()
+
+    # Jika user adalah PM (role atau username/email pattern)
+    if is_project_management(user):
+        return True
+
+    if project is None:
+        return True
+
+    # Jika PM berada di tenant/company yang sama dengan project
+    user_company = getattr(user, "company_id", None) or getattr(user, "company", None)
+    if user_company and str(user_company) == str(project.company_id):
+        if is_project_management(user):
+            return True
+
+    # Cek membership spesifik
+    membership = active_memberships(user).filter(project=project).first()
+    if membership:
+        if not required_roles:
+            return True
+        return membership.project_role in required_roles or membership.project_role in ["PROJECT_MANAGER", "MANAGER"]
+
+    # Fallback jika user adalah PM yang membuat atau mengelola project
+    if getattr(project, "project_manager_id", None) == user.id or getattr(project, "project_manager_id", None) is None:
+        return True
+    if getattr(project, "created_by_id", None) == user.id or getattr(project, "verified_by_id", None) == user.id:
+        return True
+
+    return False
 
 
-def can_manage_project(user, project):
+def can_access_project(user, project: Project | None) -> bool:
+    return has_project_access(user, project)
+
+
+def can_manage_project(user, project: Project | None) -> bool:
     if not user or not user.is_authenticated:
         return False
     if is_executive(user) or is_project_management(user):
         return True
-    if not project.project_manager_id or project.project_manager_id == user.id:
+    if project is None or not project.project_manager_id or project.project_manager_id == user.id:
         return True
     return active_memberships(user).filter(
-        project=project, project_role__in=["MANAGER", "PROJECT_MANAGER"]
+        project=project, project_role__in=["MANAGER", "PROJECT_MANAGER", "SUPERVISOR"]
     ).exists()
-
-
-from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
 class IsProjectPMPermission(BasePermission):
@@ -137,5 +187,3 @@ class IsDailyTaskOwnerOrPM(BasePermission):
             return can_access_project(request.user, project)
 
         return daily_task.owner_id == request.user.id or can_manage_project(request.user, project)
-
-

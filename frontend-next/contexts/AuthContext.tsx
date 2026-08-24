@@ -11,6 +11,19 @@ import {
   loginUser, logoutUser, getMyProfile, getCompanies, UserProfile,
 } from "@/lib/api/auth.api";
 
+/* ── Cookie Helpers ──────────────────────────── */
+function setAuthCookie(token: string) {
+  if (typeof document !== "undefined") {
+    document.cookie = `access_token=${token}; path=/; max-age=86400; SameSite=Lax`;
+  }
+}
+
+function removeAuthCookie() {
+  if (typeof document !== "undefined") {
+    document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
+  }
+}
+
 /* ── Role Type ───────────────────────────────── */
 export type UserRoleType = "executive" | "pm" | "finance" | "crm" | "staff";
 
@@ -18,35 +31,67 @@ export type UserRoleType = "executive" | "pm" | "finance" | "crm" | "staff";
  * Detects user's primary role from their profile (roles array + email pattern fallback).
  * Priority: executive > pm > finance > crm > staff
  */
-export function detectRole(user: UserProfile | null): UserRoleType {
+export function detectRole(user: any): UserRoleType {
   if (!user) return "staff";
+
   const email = (user.email || "").toLowerCase();
-  const roles = (user.roles || []).map(r => (r.role || r.role_code || "").toUpperCase());
+  const username = (user.username || "").toLowerCase();
+  const rawRole = (user.role || "").toUpperCase();
+
+  // Parse list roles baik jika format array string ataupun array of objects
+  const roles: string[] = [];
+  if (Array.isArray(user.roles)) {
+    user.roles.forEach((r: any) => {
+      if (typeof r === "string") {
+        roles.push(r.toUpperCase());
+      } else if (r && typeof r === "object") {
+        if (r.role) roles.push(String(r.role).toUpperCase());
+        if (r.role_code) roles.push(String(r.role_code).toUpperCase());
+        if (r.name) roles.push(String(r.name).toUpperCase());
+        if (r.code) roles.push(String(r.code).toUpperCase());
+      }
+    });
+  }
+  if (rawRole) roles.push(rawRole);
 
   // Executive / Admin first (highest privilege)
   if (
-    (user as any).is_superuser ||
+    user.is_superuser ||
     roles.some(r => ["ADMIN", "EXECUTIVE", "DIRECTOR", "ROLE-ADMIN", "SUPERADMIN", "SUPER_ADMIN"].includes(r)) ||
+    username.includes("admin") ||
     email.includes("admin") || email.includes("exec") || email.includes("director") ||
-    email.includes("arsalynk") && (email.includes("admin") || email.includes("director"))
+    (email.includes("arsalynk") && (email.includes("admin") || email.includes("director")))
   ) return "executive";
 
   // Project Manager
   if (
-    roles.some(r => ["PROJECT_MANAGER", "PROJECT_MANAGEMENT", "SUPERVISOR", "QUALITY_CONTROL", "WAREHOUSE"].includes(r)) ||
+    roles.some(r => [
+      "PROJECT_MANAGER", "PM", "PROJECT_MANAGEMENT", "SUPERVISOR",
+      "QUALITY_CONTROL", "WAREHOUSE", "ROLE-PM", "ROLE_PROJECT_MANAGER"
+    ].includes(r)) ||
+    username.includes("pm") ||
+    username.includes("project") ||
     email.includes("pm@") || email.includes("pm.") || email.includes("project") ||
     email.includes("supervisor") || email.includes("qc") || email.includes("warehouse")
   ) return "pm";
 
   // Finance
   if (
-    roles.some(r => ["ACCOUNTING_FINANCE", "FINANCE", "FINANCE_APPROVER"].includes(r)) ||
+    roles.some(r => [
+      "ACCOUNTING_FINANCE", "FINANCE", "FINANCE_APPROVER",
+      "ACCOUNTING", "ROLE-FINANCE"
+    ].includes(r)) ||
+    username.includes("finance") ||
     email.includes("finance") || email.includes("accounting") || email.includes("keuangan")
   ) return "finance";
 
   // CRM / Sales / Manager
   if (
-    roles.some(r => ["CRM_MANAGER", "CRM_STAFF", "CRM", "SALES", "MANAGER", "ROLE-MANAGER", "ROLE-STAFF"].includes(r)) ||
+    roles.some(r => [
+      "CRM_MANAGER", "CRM_STAFF", "CRM", "SALES", "MANAGER",
+      "ROLE-MANAGER", "ROLE-STAFF", "ROLE-CRM"
+    ].includes(r)) ||
+    username.includes("crm") || username.includes("sales") ||
     email.includes("crm") || email.includes("sales") || email.includes("manager") ||
     email.includes("staff") || email.includes("commercial")
   ) return "crm";
@@ -102,13 +147,23 @@ type AuthAction =
   | { type: "SET_COMPANY"; company: string | null }
   | { type: "CLEAR_ERROR" };
 
-function checkIsAdmin(user: UserProfile | null): boolean {
+function checkIsAdmin(user: any): boolean {
   if (!user) return false;
-  if ((user as any).is_superuser || (user as any).is_staff) return true;
-  const roles = (user.roles || []).map(r => (r.role || "").toUpperCase());
+  if (user.is_superuser || user.is_staff) return true;
+  const roles: string[] = [];
+  if (Array.isArray(user.roles)) {
+    user.roles.forEach((r: any) => {
+      if (typeof r === "string") roles.push(r.toUpperCase());
+      else if (r && typeof r === "object") {
+        if (r.role) roles.push(String(r.role).toUpperCase());
+        if (r.name) roles.push(String(r.name).toUpperCase());
+      }
+    });
+  }
   if (roles.some(r => ["ADMIN", "ROLE-ADMIN", "SUPERADMIN", "SUPER_ADMIN", "EXECUTIVE", "DIRECTOR"].includes(r))) return true;
   const email = (user.email || "").toLowerCase();
-  if (email.includes("admin") || email.includes("exec") || email.includes("director")) return true;
+  const username = (user.username || "").toLowerCase();
+  if (email.includes("admin") || email.includes("exec") || email.includes("director") || username.includes("admin")) return true;
   return false;
 }
 
@@ -178,11 +233,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /* Check existing token on mount */
   useEffect(() => {
-    const access = localStorage.getItem("erp.access");
+    const access = localStorage.getItem("erp.access") || localStorage.getItem("access_token");
     if (!access) {
+      removeAuthCookie();
       dispatch({ type: "LOGOUT" });
       return;
     }
+
+    // Sync cookie ke middleware Next.js
+    setAuthCookie(access);
 
     getMyProfile()
       .then(async (user) => {
@@ -218,6 +277,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         localStorage.removeItem("erp.access");
         localStorage.removeItem("erp.refresh");
+        localStorage.removeItem("access_token");
+        removeAuthCookie();
         dispatch({ type: "LOGOUT" });
       });
   }, []);
@@ -227,6 +288,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "LOADING" });
     try {
       await loginUser(email, password);
+      
+      const savedToken = localStorage.getItem("erp.access") || localStorage.getItem("access_token");
+      if (savedToken) {
+        setAuthCookie(savedToken);
+      }
+
       const user = await getMyProfile();
       let companiesList: CompanyItem[] = [
         { id: "arsalyn", name: "PT. Arsalynt Automation", code: "ARSLN" },
@@ -258,7 +325,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /* Logout */
   const logout = useCallback(async () => {
-    await logoutUser();
+    try {
+      await logoutUser();
+    } catch {/* ignore */}
+    
+    localStorage.removeItem("erp.access");
+    localStorage.removeItem("erp.refresh");
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("erp.company");
+    removeAuthCookie();
     dispatch({ type: "LOGOUT" });
     window.location.href = "/login";
   }, []);
