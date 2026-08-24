@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { RightPanel } from "@/components/ui/RightPanel";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -13,6 +15,19 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+
+  /* Persist collapse state across routes */
+  useEffect(() => {
+    const stored = localStorage.getItem("erp.rightPanel");
+    if (stored === "false") setRightPanelOpen(false);
+  }, []);
+
+  const toggleRightPanel = () => {
+    const next = !rightPanelOpen;
+    setRightPanelOpen(next);
+    localStorage.setItem("erp.rightPanel", String(next));
+  };
 
   /* Redirect to login if not authenticated */
   useEffect(() => {
@@ -61,13 +76,14 @@ export function AppShell({ children }: AppShellProps) {
         {/* Topbar */}
         <Topbar />
 
-        {/* Page content */}
+        {/* Page content row */}
         <div
           className="flex flex-row flex-1 overflow-hidden"
-          style={{ height: "calc(100vh - var(--topbar-h, 68px))" }}
+          style={{ height: "calc(100vh - var(--topbar-h, 64px))" }}
         >
+          {/* Main scrollable content */}
           <main
-            className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden"
+            className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden relative"
             id="main-content"
             role="main"
           >
@@ -75,6 +91,33 @@ export function AppShell({ children }: AppShellProps) {
               {children}
             </div>
           </main>
+
+          {/* ── Right Panel (persistent across all routes) ── */}
+          <div
+            className="flex-shrink-0 flex flex-col border-l border-text-tertiary bg-bg-light transition-all duration-300 overflow-hidden relative"
+            style={{ width: rightPanelOpen ? "var(--right-panel-w, 260px)" : "36px" }}
+          >
+            {/* Toggle button */}
+            <button
+              onClick={toggleRightPanel}
+              className="absolute top-3 z-10 p-1.5 rounded-md text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors flex-shrink-0"
+              style={{ left: rightPanelOpen ? "auto" : "4px", right: rightPanelOpen ? "8px" : "auto" }}
+              aria-label={rightPanelOpen ? "Tutup panel kanan" : "Buka panel kanan"}
+              title={rightPanelOpen ? "Tutup panel" : "Buka panel"}
+            >
+              {rightPanelOpen
+                ? <PanelRightClose size={16} />
+                : <PanelRightOpen size={16} />
+              }
+            </button>
+
+            {/* Panel content — only visible when open */}
+            {rightPanelOpen && (
+              <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                <RightPanel />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

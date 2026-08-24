@@ -9,15 +9,31 @@ import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 
 const RESOURCES = [
-  { id: "projects",      name: "Projects",              endpoint: "/api/v1/projects/projects/",         category: "Project" },
-  { id: "tasks",         name: "Project Tasks (WBS)",   endpoint: "/api/v1/projects/tasks/",            category: "Project" },
-  { id: "costs",         name: "Project Cost Entries",  endpoint: "/api/v1/finance/project-cost-entries/", category: "Finance" },
-  { id: "fundings",      name: "Project Fundings",      endpoint: "/api/v1/finance/project-fundings/",  category: "Finance" },
-  { id: "proposals",     name: "Billing Proposals",     endpoint: "/api/v1/finance/billing-proposals/", category: "Finance" },
-  { id: "deals",         name: "Opportunities / Deals", endpoint: "/api/v1/crm/opportunities/",         category: "CRM" },
-  { id: "customers",     name: "Customers & Accounts",  endpoint: "/api/v1/crm/customers/",             category: "CRM" },
-  { id: "tickets",       name: "Tickets & Warranty",    endpoint: "/api/v1/crm/tickets/",               category: "CRM" },
-  { id: "users",         name: "Users & Personas",      endpoint: "/api/v1/auth/users/",                category: "Core" },
+  /* ── Projects ────────── */
+  { id: "projects",      name: "Projects",              endpoint: "/api/v1/projects/projects/",               category: "Project" },
+  { id: "main-tasks",    name: "Main Tasks (WBS L1)",   endpoint: "/api/v1/projects/main-tasks/",             category: "Project" },
+  { id: "weekly-tasks",  name: "Weekly Tasks (WBS L2)", endpoint: "/api/v1/projects/weekly-tasks/",           category: "Project" },
+  { id: "daily-tasks",   name: "Daily Tasks (WBS L3)",  endpoint: "/api/v1/projects/daily-tasks/",            category: "Project" },
+  { id: "milestones",    name: "Milestones",             endpoint: "/api/v1/projects/milestones/",             category: "Project" },
+  /* ── Finance ─────────── */
+  { id: "costs",         name: "Cost Entries",           endpoint: "/api/v1/finance/cost-entries/",            category: "Finance" },
+  { id: "fundings",      name: "Project Fundings",       endpoint: "/api/v1/finance/project-fundings/",        category: "Finance" },
+  { id: "proposals",     name: "Billing Proposals",      endpoint: "/api/v1/finance/billing-proposals/",       category: "Finance" },
+  { id: "journals",      name: "Journal Entries",        endpoint: "/api/v1/finance/journal-entries/",         category: "Finance" },
+  /* ── CRM ────────────── */
+  { id: "inquiries",     name: "Customer Inquiries",     endpoint: "/api/v1/crm/customer-inquiries/",          category: "CRM" },
+  { id: "opportunities", name: "Opportunities",          endpoint: "/api/v1/crm/opportunities/",               category: "CRM" },
+  { id: "estimates",     name: "Cost Estimates",         endpoint: "/api/v1/crm/cost-estimates/",              category: "CRM" },
+  { id: "quotations",    name: "Sales Quotations",       endpoint: "/api/v1/sales/quotations/",                category: "CRM" },
+  { id: "orders",        name: "Sales Orders",           endpoint: "/api/v1/sales/orders/?page_size=50",       category: "CRM" },
+  { id: "tickets",       name: "Service Cases",          endpoint: "/api/v1/service/cases/",                   category: "CRM" },
+  { id: "credit",        name: "Credit Snapshots",       endpoint: "/api/v1/crm/credit-status-snapshots/",     category: "CRM" },
+  /* ── Master Data ─────── */
+  { id: "parties",       name: "Parties / Customers",    endpoint: "/api/v1/master-data/parties/",             category: "Master" },
+  { id: "products",      name: "Products & Services",    endpoint: "/api/v1/master-data/products/",            category: "Master" },
+  /* ── Core / IAM ─────── */
+  { id: "users",         name: "Users & Personas",       endpoint: "/api/v1/auth/users/",                      category: "Core" },
+  { id: "companies",     name: "Companies",              endpoint: "/api/v1/core/companies/",                  category: "Core" },
 ];
 
 export default function ResourcesClient() {
