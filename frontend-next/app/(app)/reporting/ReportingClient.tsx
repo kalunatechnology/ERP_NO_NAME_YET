@@ -22,7 +22,7 @@ const REPORT_TABS = [
 async function loadReportingData() {
   const pairs = await Promise.allSettled([
     api.get("/api/v1/projects/projects/?page_size=100").then(r => normalizeList<any>(r.data).rows),
-    api.get("/api/v1/finance/cost-entries/?page_size=500").then(r => normalizeList<any>(r.data).rows),
+    api.get("/api/v1/finance/project-cost-entries/?page_size=500").then(r => normalizeList<any>(r.data).rows),
     api.get("/api/v1/finance/billing-proposals/?page_size=200").then(r => normalizeList<any>(r.data).rows),
     api.get("/api/v1/sales/orders/?page_size=200").then(r => normalizeList<any>(r.data).rows),
     api.get("/api/v1/finance/journal-entries/?page_size=200").then(r => normalizeList<any>(r.data).rows).catch(() => []),
@@ -130,7 +130,7 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard label="Nilai Kontrak (Revenue)" value={formatMoney(revenue)} sub="Target Pendapatan" icon={DollarSign} iconBg="#F0FDF4" iconColor="#16A34A" />
         <MetricCard label="Total Biaya Aktual" value={formatMoney(totalCost)} sub="Cost of Goods Sold (HPP)" icon={TrendingUp} iconBg="#FEF2F2" iconColor="#DC2626" valueColor="#DC2626" />
         <MetricCard
@@ -139,68 +139,59 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
           valueColor={grossProfit >= 0 ? "#16A34A" : "#DC2626"}
         />
         <MetricCard
-          label="Gross Margin %" value={`${grossMarginPct.toFixed(1)}%`} sub="Efisiensi Margin" icon={BarChart3}
-          iconBg={grossMarginPct >= 0 ? "#F0FDF4" : "#FEF2F2"} iconColor={grossMarginPct >= 0 ? "#16A34A" : "#DC2626"}
-          valueColor={grossMarginPct >= 0 ? "#16A34A" : "#DC2626"}
+          label="Gross Margin" value={`${grossMarginPct.toFixed(1)}%`} sub={`Target: > 20%`} icon={BarChart3}
+          iconBg={grossMarginPct >= 20 ? "#F0FDF4" : "#FFFBEB"} iconColor={grossMarginPct >= 20 ? "#16A34A" : "#D97706"}
+          valueColor={grossMarginPct >= 20 ? "#16A34A" : "#D97706"}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {/* Cost Breakdown */}
-        <div className="card rounded-xl p-4">
-          <h3 className="text-sm font-bold text-text-primary mb-3">Rincian Beban Biaya (Cost Breakdown)</h3>
-          <p className="text-xs text-text-secondary mb-3">Komposisi HPP proyek berdasarkan elemen biaya.</p>
-          <div className="flex flex-col gap-2">
-            {breakdownRows.map(row => (
-              <div key={row.label} className="flex flex-col gap-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-text-secondary">{row.label}</span>
-                  <span className="font-semibold text-text-primary">{formatMoney(row.value)}</span>
+      {/* Cost Breakdown + Progress */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Breakdown Card */}
+        <div className="card rounded-xl p-4 flex flex-col gap-3">
+          <div className="text-xs font-bold text-text-primary uppercase tracking-wide">Rincian Komponen Biaya Aktual</div>
+          <div className="flex flex-col gap-2.5">
+            {breakdownRows.map((row, i) => {
+              const pct = totalCost > 0 ? (row.value / totalCost) * 100 : 0;
+              return (
+                <div key={i} className="flex flex-col gap-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-text-secondary">{row.label}</span>
+                    <span className="font-semibold text-text-primary">{formatMoney(row.value)} ({pct.toFixed(0)}%)</span>
+                  </div>
+                  <ProgressBarSimple value={pct} color={["#16A34A","#2563EB","#7C3AED","#EA580C"][i]} />
                 </div>
-                <ProgressBarSimple
-                  value={totalCost > 0 ? (row.value / totalCost) * 100 : 0}
-                  color={row.label.includes("Material") ? "#1D4ED8" : row.label.includes("Tenaga") ? "#7E22CE" : row.label.includes("Overhead") ? "#D97706" : "#6B7280"}
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
-          {/* Cost breakdown visual bar */}
-          {totalCost > 0 && (
-            <div className="mt-4">
-              <div className="text-xs text-text-secondary mb-1.5 font-medium">Proporsi biaya:</div>
-              <div className="flex h-4 rounded-full overflow-hidden gap-px">
-                {[
-                  { value: materialCost, color: "#1D4ED8" },
-                  { value: laborCost,    color: "#7E22CE"  },
-                  { value: overheadCost, color: "#D97706"  },
-                  { value: otherCost,    color: "#6B7280"  },
-                ].filter(r => r.value > 0).map((r, i) => (
-                  <div key={i} style={{ flex: r.value / totalCost, background: r.color }} title={formatMoney(r.value)} />
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Cost History */}
-        <div className="card rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-text-primary">Riwayat Pencatatan Cost</h3>
-            <span className="text-xs text-text-secondary">{costEntries.length} catatan</span>
-          </div>
-          {costEntries.length === 0 ? <EmptyState msg="Belum ada cost entry untuk proyek ini." /> : (
-            <div className="flex flex-col divide-y divide-text-tertiary/50 max-h-60 overflow-y-auto">
-              {costEntries.slice(0,10).map(c => (
-                <div key={c.id} className="flex justify-between items-start py-2">
-                  <div>
-                    <div className="text-sm font-medium text-text-primary">{c.description || "-"}</div>
-                    <div className="text-xs text-text-secondary">{c.cost_element} · {formatDate(c.transaction_date)}</div>
-                  </div>
-                  <span className="text-sm font-semibold text-text-primary">{formatMoney(c.total_cost)}</span>
-                </div>
-              ))}
+        {/* Financial Summary Card */}
+        <div className="card rounded-xl p-4 flex flex-col gap-3 justify-between">
+          <div className="text-xs font-bold text-text-primary uppercase tracking-wide">Ringkasan Margin & Kontrak</div>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between py-1 border-b border-text-tertiary/40">
+              <span className="text-text-secondary">Customer:</span>
+              <span className="font-semibold">{selectedProj.customer_name || selectedProj.party_name || "Client Proyek"}</span>
             </div>
-          )}
+            <div className="flex justify-between py-1 border-b border-text-tertiary/40">
+              <span className="text-text-secondary">Target Selesai:</span>
+              <span className="font-semibold">{formatDate(selectedProj.planned_end_date)}</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-text-tertiary/40">
+              <span className="text-text-secondary">Cost Variance:</span>
+              <span className={cn("font-semibold", revenue - totalCost >= 0 ? "text-emerald-600" : "text-red-600")}>
+                {revenue - totalCost >= 0 ? "Under Budget (Hemat)" : "Over Budget"}
+              </span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-text-secondary">Health Status:</span>
+              <StatusBadge status={grossMarginPct >= 20 ? "HEALTHY" : grossMarginPct > 0 ? "WARNING" : "CRITICAL"} />
+            </div>
+          </div>
+          <div className="p-2.5 rounded-lg bg-bg-lighter text-2xs text-text-secondary">
+            💡 Proyek ini berkontribusi terhadap total gross revenue portofolio aktif.
+          </div>
         </div>
       </div>
     </div>
@@ -211,76 +202,66 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
    TAB: EXECUTIVE VIEW
 ══════════════════════════════════════════════════ */
 function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) {
-  const totalRev     = data.orders.reduce((s, o) => s + Number(o.total_amount || 0), 0);
-  const totalPayable = data.billings.reduce((s, b) => s + Number(b.outstanding_amount || 0), 0);
-  const totalCostAll = data.costEntries.reduce((s, c) => s + Number(c.total_cost || 0), 0);
-  const grossAll     = totalRev - totalCostAll;
-  const margAll      = totalRev > 0 ? ((grossAll / totalRev) * 100).toFixed(1) : "0.0";
-
-  const activeProjects = data.projects.filter(p => !["COMPLETED","CLOSED","DONE"].includes((p.status||"").toUpperCase()));
+  const totalRevenue   = data.projects.reduce((s, p) => s + Number(p.budget_amount || p.budget || 0), 0);
+  const totalActualCost = data.projects.reduce((s, p) => s + Number(p.actual_cost || 0), 0);
+  const totalGrossProfit = totalRevenue - totalActualCost;
+  const avgMargin = totalRevenue > 0 ? (totalGrossProfit / totalRevenue) * 100 : 0;
+  const activeProjects = data.projects.filter(p => ["ACTIVE","IN_PROGRESS","PLANNING"].includes(p.status || "")).length;
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Executive KPIs */}
-      <div className="grid grid-cols-3 gap-3">
-        <MetricCard label="Total Sales Order Booked" value={formatMoney(totalRev)} sub={`${data.orders.length} Order`} icon={DollarSign} iconBg="#F0FDF4" iconColor="#16A34A" />
-        <MetricCard label="Accounts Payable Outstanding" value={formatMoney(totalPayable)} sub="Hutang ke Vendor" icon={TrendingUp} iconBg="#FEF2F2" iconColor="#DC2626" valueColor="#DC2626" />
-        <MetricCard label="Active Cost Projects" value={String(activeProjects.length)} sub="Proyek Berjalan" icon={Layers} iconBg="#EFF6FF" iconColor="#1D4ED8" />
+      {/* Portfolio KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetricCard label="Total Portofolio Kontrak" value={formatMoney(totalRevenue)} sub={`${data.projects.length} Proyek Terdaftar`} icon={DollarSign} iconBg="#F0FDF4" iconColor="#16A34A" />
+        <MetricCard label="Total Pengeluaran Riil" value={formatMoney(totalActualCost)} sub="Seluruh Proyek Aktif" icon={TrendingUp} iconBg="#FEF2F2" iconColor="#DC2626" valueColor="#DC2626" />
+        <MetricCard label="Total Laba Kotor" value={formatMoney(totalGrossProfit)} sub={`Rata-rata Margin ${avgMargin.toFixed(1)}%`} icon={ArrowUpRight} iconBg="#F0FDF4" iconColor="#16A34A" valueColor="#16A34A" />
+        <MetricCard label="Proyek Berjalan" value={`${activeProjects} Aktif`} sub={`${data.projects.length - activeProjects} Selesai/Draft`} icon={Layers} iconBg="#EFF6FF" iconColor="#2563EB" />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="card rounded-xl p-4">
-          <h3 className="text-sm font-bold mb-3">Company Gross Profit Summary</h3>
-          <div className="flex flex-col gap-2 text-sm">
-            <div className="flex justify-between p-2.5 rounded-lg border border-text-tertiary/60">
-              <span className="text-text-secondary">Total Revenue</span>
-              <span className="font-semibold text-brand-green">{formatMoney(totalRev)}</span>
-            </div>
-            <div className="flex justify-between p-2.5 rounded-lg border border-text-tertiary/60">
-              <span className="text-text-secondary">Total Cost</span>
-              <span className="font-semibold text-red-600">{formatMoney(totalCostAll)}</span>
-            </div>
-            <div className="flex justify-between p-2.5 rounded-xl bg-brand-light-green border border-brand-green/20 font-bold">
-              <span>Gross Profit</span>
-              <span className={grossAll >= 0 ? "text-brand-green" : "text-red-600"}>{formatMoney(grossAll)}</span>
-            </div>
-            <div className="flex justify-between p-2.5 rounded-lg border border-text-tertiary/60">
-              <span className="text-text-secondary">Gross Margin</span>
-              <span className={cn("font-bold", Number(margAll) >= 0 ? "text-brand-green" : "text-red-600")}>{margAll}%</span>
-            </div>
-          </div>
+      {/* Portfolio Table */}
+      <div className="card rounded-2xl overflow-hidden border border-text-tertiary bg-white">
+        <div className="p-4 border-b border-text-tertiary flex items-center justify-between">
+          <h3 className="text-sm font-bold text-text-primary">Kinerja Finansial Seluruh Proyek</h3>
+          <span className="text-xs text-text-secondary">{data.projects.length} Proyek</span>
         </div>
-
-        {/* Project performance table */}
-        <div className="card rounded-xl p-4">
-          <h3 className="text-sm font-bold mb-3">Project Performance Overview</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-text-tertiary bg-bg-lighter">
-                  <th className="text-left px-2 py-1.5 font-semibold text-text-secondary">Proyek</th>
-                  <th className="text-right px-2 py-1.5 font-semibold text-text-secondary">Budget</th>
-                  <th className="text-right px-2 py-1.5 font-semibold text-text-secondary">Actual</th>
-                  <th className="text-right px-2 py-1.5 font-semibold text-text-secondary">Margin</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.projects.slice(0,8).map(p => {
-                  const pCost = data.costEntries.filter(c => String(c.project) === String(p.id)).reduce((s, c) => s + Number(c.total_cost || 0), 0) || Number(p.actual_cost || 0);
-                  const budget = Number(p.budget_amount || p.budget || 0);
-                  const mgn = budget > 0 ? ((budget - pCost) / budget * 100).toFixed(0) : "-";
-                  return (
-                    <tr key={p.id} className="border-b border-text-tertiary/50 hover:bg-bg-lighter">
-                      <td className="px-2 py-1.5 font-medium truncate max-w-32">{p.project_name || p.name}</td>
-                      <td className="px-2 py-1.5 text-right">{formatMoney(budget)}</td>
-                      <td className="px-2 py-1.5 text-right text-red-600">{formatMoney(pCost)}</td>
-                      <td className={cn("px-2 py-1.5 text-right font-bold", Number(mgn) >= 0 ? "text-brand-green" : "text-red-600")}>{mgn}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-text-tertiary bg-bg-lighter">
+                <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Kode & Nama Proyek</th>
+                <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Status</th>
+                <th className="text-right text-xs font-semibold text-text-secondary px-4 py-3">Revenue (Budget)</th>
+                <th className="text-right text-xs font-semibold text-text-secondary px-4 py-3">Actual Cost</th>
+                <th className="text-right text-xs font-semibold text-text-secondary px-4 py-3">Gross Profit</th>
+                <th className="text-right text-xs font-semibold text-text-secondary px-4 py-3">Margin %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.projects.map((p, i) => {
+                const pBudget = Number(p.budget_amount || p.budget || 0);
+                const pCost   = Number(p.actual_cost || 0);
+                const pProfit = pBudget - pCost;
+                const pMargin = pBudget > 0 ? (pProfit / pBudget) * 100 : 0;
+                return (
+                  <tr key={p.id} className={cn("border-b border-text-tertiary/50 hover:bg-bg-lighter", i % 2 === 0 && "bg-white")}>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-brand-deep-green">{p.project_name || p.name}</div>
+                      <div className="text-2xs text-text-secondary">{p.project_code || p.code || p.id}</div>
+                    </td>
+                    <td className="px-4 py-3"><StatusBadge status={p.status || "DRAFT"} /></td>
+                    <td className="px-4 py-3 text-right font-medium">{formatMoney(pBudget)}</td>
+                    <td className="px-4 py-3 text-right font-medium text-red-600">{formatMoney(pCost)}</td>
+                    <td className="px-4 py-3 text-right font-bold" style={{ color: pProfit >= 0 ? "#16A34A" : "#DC2626" }}>
+                      {formatMoney(pProfit)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold" style={{ color: pMargin >= 20 ? "#16A34A" : "#D97706" }}>
+                      {pMargin.toFixed(1)}%
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -292,11 +273,12 @@ function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) 
 ══════════════════════════════════════════════════ */
 function TabJournals({ data }: { data: ReturnType<typeof createDefaultData> }) {
   const journals = data.journals;
+
   return (
-    <div className="card rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-text-tertiary bg-bg-lighter flex items-center justify-between">
-        <h3 className="text-sm font-bold">General Ledger — Journal Entries</h3>
-        <span className="text-xs text-text-secondary">{journals.length} entri</span>
+    <div className="card rounded-2xl overflow-hidden border border-text-tertiary bg-white">
+      <div className="p-4 border-b border-text-tertiary flex items-center justify-between">
+        <h3 className="text-sm font-bold text-text-primary">Buku Besar Akuntansi (General Ledger Entries)</h3>
+        <span className="text-xs text-text-secondary">{journals.length} Jurnal Tercatat</span>
       </div>
       {journals.length === 0 ? (
         <div className="py-12 text-center text-sm text-text-secondary">Belum ada jurnal umum tercatat.</div>
@@ -363,9 +345,8 @@ export default function ReportingClient() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleExport = (format: "csv" | "pdf") => {
-    toast(`Export ${format.toUpperCase()} sedang disiapkan...`, { icon: "📊" });
-    // Simple CSV export for current tab data
-    if (format === "csv" && activeTab === "project-pnl") {
+    if (format === "csv") {
+      toast("Mengunduh laporan CSV...", { icon: "📊" });
       const rows = [
         ["Proyek", "Budget", "Actual Cost", "Gross Profit", "Margin %"],
         ...data.projects.map(p => {
@@ -382,19 +363,66 @@ export default function ReportingClient() {
       a.href = URL.createObjectURL(blob);
       a.download = `marka_report_${new Date().toISOString().slice(0,10)}.csv`;
       a.click();
+      toast.success("File CSV berhasil diunduh.");
+    } else if (format === "pdf") {
+      toast("Membuka dialog cetak PDF...", { icon: "🖨️" });
+      const reportElement = document.getElementById("printable-report-area");
+      if (!reportElement) {
+        window.print();
+        return;
+      }
+
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Laporan Finansial & Observabilitas Proyek - Marka+ ERP</title>
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 32px; color: #1e293b; }
+                h2 { color: #1e3a1e; border-bottom: 2px solid #3E9B4B; padding-bottom: 8px; margin-bottom: 16px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
+                th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
+                th { background-color: #f1f5f9; font-weight: bold; }
+                .card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+                @media print {
+                  button { display: none; }
+                }
+              </style>
+            </head>
+            <body>
+              <h2>Marka+ ERP — Laporan Finansial Proyek</h2>
+              <p style="font-size: 12px; color: #64748b;">Tanggal Cetak: ${new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</p>
+              ${reportElement.innerHTML}
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+          printWindow.close();
+        }, 300);
+      } else {
+        window.print();
+      }
     }
   };
 
   return (
     <div className="flex flex-col gap-5">
       {/* ── Header ─────────────────────────── */}
-      <div className="card rounded-2xl p-5 flex items-center justify-between" style={{ background: "linear-gradient(135deg, #fcfaff, #f3edff)", border: "1px solid #a488f2" }}>
+      <div className="card rounded-2xl p-5 flex items-center justify-between flex-wrap gap-4" style={{ background: "linear-gradient(135deg, #fcfaff, #f3edff)", border: "1px solid #a488f2" }}>
         <div>
           <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Executive Intelligence</div>
           <h1 className="text-xl font-bold text-text-primary">Pelaporan Laba/Rugi Proyek & Observabilitas Finansial</h1>
           <p className="text-xs text-text-secondary mt-0.5">Visibilitas real-time: Revenue, Biaya Aktual (Labor/Material), Gross Margin, dan General Ledger.</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => handleExport("pdf")} className="btn-outline text-xs gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50">
+            <FileText size={13} /> Cetak / PDF
+          </button>
           <button onClick={() => handleExport("csv")} className="btn-ghost text-xs gap-1.5">
             <Download size={13} /> Export CSV
           </button>
@@ -424,18 +452,20 @@ export default function ReportingClient() {
         ))}
       </div>
 
-      {/* ── Content ────────────────────────── */}
-      {loading ? (
-        <div className="flex flex-col gap-4">
-          {[...Array(3)].map((_, i) => <div key={i} className="card rounded-xl p-4 h-20 animate-pulse"><div className="h-4 bg-gray-200 rounded w-1/3" /></div>)}
-        </div>
-      ) : (
-        <>
-          {activeTab === "project-pnl" && <TabProjectPnL data={data} />}
-          {activeTab === "executive"   && <TabExecutive data={data} />}
-          {activeTab === "journals"    && <TabJournals data={data} />}
-        </>
-      )}
+      {/* ── Content (Printable Area) ───────── */}
+      <div id="printable-report-area">
+        {loading ? (
+          <div className="flex flex-col gap-4">
+            {[...Array(3)].map((_, i) => <div key={i} className="card rounded-xl p-4 h-20 animate-pulse"><div className="h-4 bg-gray-200 rounded w-1/3" /></div>)}
+          </div>
+        ) : (
+          <>
+            {activeTab === "project-pnl" && <TabProjectPnL data={data} />}
+            {activeTab === "executive"   && <TabExecutive data={data} />}
+            {activeTab === "journals"    && <TabJournals data={data} />}
+          </>
+        )}
+      </div>
     </div>
   );
 }

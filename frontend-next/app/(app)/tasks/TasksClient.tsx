@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useDeferredValue } from "react";
 import { cn, formatDate, getStatusColor } from "@/lib/utils";
 import { loadAllProjects, Project, DailyTask, updateDailyTask } from "@/lib/api/project.api";
 import { useAuth, detectRole } from "@/contexts/AuthContext";
@@ -46,7 +46,7 @@ function QuickEdit({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl border border-text-tertiary w-full max-w-lg z-10 p-5 flex flex-col gap-4">
+      <div className="relative bg-white rounded-2xl shadow-xl border border-text-tertiary w-full max-w-lg z-10 p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-sm font-bold text-text-primary">Edit Task</h3>
@@ -98,23 +98,25 @@ function QuickEdit({
             <select
               value={status}
               onChange={e => setStatus(e.target.value as "PENDING" | "ON_PROGRESS" | "COMPLETED" | "BLOCKED" | "DONE")}
-              className="w-full border border-text-tertiary rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-brand-green"
+              className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
             >
-              {["PENDING","ON_PROGRESS","COMPLETED","BLOCKED","CANCELLED"].map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="PENDING">PENDING</option>
+              <option value="ON_PROGRESS">ON_PROGRESS</option>
+              <option value="COMPLETED">COMPLETED</option>
+              <option value="BLOCKED">BLOCKED</option>
             </select>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-2 justify-end pt-1">
-          <button onClick={onClose} className="btn-ghost text-xs py-1.5 px-3">Batal</button>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+          <button onClick={onClose} className="btn-ghost py-2 px-4 text-xs">Batal</button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="btn-primary text-xs py-1.5 px-4 gap-1.5"
+            className="btn-primary py-2 px-4 text-xs gap-1.5 font-bold"
           >
-            <Save size={12} />
-            {saving ? "Menyimpan..." : "Simpan Perubahan"}
+            {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+            {saving ? "Menyimpan…" : "Simpan Perubahan"}
           </button>
         </div>
       </div>
@@ -292,22 +294,31 @@ export default function TasksClient() {
   }, [projects]);
 
   const today = new Date().toISOString().split("T")[0];
+  const deferredSearch = useDeferredValue(search);
 
   const filteredTasks = useMemo(() => {
+    const q = deferredSearch.toLowerCase().trim();
     return allTasks.filter(item => {
-      const matchSearch = search
-        ? (item.task.title || item.task.activity_input || "").toLowerCase().includes(search.toLowerCase()) ||
-          item.projectName.toLowerCase().includes(search.toLowerCase())
+      const matchSearch = q
+        ? (item.task.title || item.task.activity_input || "").toLowerCase().includes(q) ||
+          item.projectName.toLowerCase().includes(q) ||
+          item.projectCode.toLowerCase().includes(q)
         : true;
       if (!matchSearch) return false;
       if (activeFilter === "TODAY") return item.task.planned_date === today;
       if (activeFilter === "ACTIVE") return ["ON_PROGRESS","PENDING"].includes(item.task.status || "");
       if (activeFilter === "COMPLETED") return ["COMPLETED","DONE"].includes(item.task.status || "");
       if (activeFilter === "OVERDUE") return item.task.planned_date && item.task.planned_date < today && !["COMPLETED","DONE"].includes(item.task.status || "");
-      if (activeFilter === "BLOCKED") return item.task.is_blocked || item.task.status === "BLOCKED";
+      if (activeFilter === "BLOCKED") {
+        return Boolean(item.task.is_blocked) ||
+               item.task.status === "BLOCKED" ||
+               Boolean((item.task as any).block_reason) ||
+               Boolean((item.task as any).blocker_reason) ||
+               Boolean(item.task.notes?.toLowerCase().includes("kendala") || item.task.notes?.toLowerCase().includes("blocked") || item.task.notes?.toLowerCase().includes("hambatan"));
+      }
       return true; // ALL
     });
-  }, [allTasks, activeFilter, search, today]);
+  }, [allTasks, activeFilter, deferredSearch, today]);
 
   /* Date-grouped view */
   const groupedByDate = useMemo(() => {
@@ -320,26 +331,57 @@ export default function TasksClient() {
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
   }, [filteredTasks]);
 
+  /* Optimistic local state modifier */
+  const updateLocalDailyTask = useCallback((id: string | number, patch: Partial<DailyTask>) => {
+    setProjects(prevProjects =>
+      prevProjects.map(p => ({
+        ...p,
+        main_tasks: (p.main_tasks || []).map(m => ({
+          ...m,
+          weekly_tasks: (m.weekly_tasks || m.weekly_plans || []).map(w => ({
+            ...w,
+            daily_tasks: (w.daily_tasks || []).map(d =>
+              String(d.id) === String(id) ? { ...d, ...patch } : d
+            )
+          }))
+        }))
+      }))
+    );
+  }, []);
+
   const handleToggle = async (task: DailyTask) => {
     const isDone = ["COMPLETED","DONE"].includes(task.status || "");
     const nextStatus = isDone ? "ON_PROGRESS" : "COMPLETED";
     const nextProg = isDone ? 50 : 100;
+    const prevStatus = task.status;
+    const prevProg = task.progress;
+
+    // 1. Optimistic Update Local UI Immediately (60fps)
+    updateLocalDailyTask(task.id, { status: nextStatus, progress: nextProg });
+    toast.success(isDone ? "Task dibuka kembali" : "Task selesai ✅", { icon: isDone ? "🔄" : "✅" });
+
+    // 2. Sync to Backend in Background
     try {
       await updateDailyTask(task.id, { status: nextStatus, progress: nextProg });
-      toast.success(isDone ? "Task dibuka kembali" : "Task selesai ✅");
-      fetchTasks(true);
     } catch {
-      toast.error("Gagal memperbarui status task");
+      // Rollback on error
+      updateLocalDailyTask(task.id, { status: prevStatus, progress: prevProg });
+      toast.error("Gagal menyinkronkan status ke server. Perubahan dikembalikan.");
     }
   };
 
   const handleSaveEdit = async (id: string | number, patch: Partial<DailyTask>) => {
+    // 1. Optimistic Update Local UI Immediately
+    updateLocalDailyTask(id, patch);
+    toast.success("Task berhasil diperbarui!");
+    setEditingTask(null);
+
+    // 2. Sync to Backend in Background
     try {
       await updateDailyTask(id, patch);
-      toast.success("Task berhasil diperbarui!");
-      fetchTasks(true);
     } catch {
-      toast.error("Gagal menyimpan perubahan");
+      toast.error("Gagal menyimpan perubahan ke server.");
+      fetchTasks(true);
     }
   };
 
@@ -348,13 +390,20 @@ export default function TasksClient() {
   const overdueCount  = allTasks.filter(i => i.task.planned_date && i.task.planned_date < today && !["COMPLETED","DONE"].includes(i.task.status || "")).length;
   const doneToday     = allTasks.filter(i => i.task.planned_date === today && ["COMPLETED","DONE"].includes(i.task.status || "")).length;
   const activeCount   = allTasks.filter(i => ["ON_PROGRESS","PENDING"].includes(i.task.status || "")).length;
+  const blockedCount  = allTasks.filter(i =>
+    Boolean(i.task.is_blocked) ||
+    i.task.status === "BLOCKED" ||
+    Boolean((i.task as any).block_reason) ||
+    Boolean((i.task as any).blocker_reason) ||
+    Boolean(i.task.notes?.toLowerCase().includes("kendala") || i.task.notes?.toLowerCase().includes("blocked") || i.task.notes?.toLowerCase().includes("hambatan"))
+  ).length;
 
   const FILTERS = [
     { id: "TODAY",     label: `⚡ Hari Ini (${todayCount})` },
     { id: "OVERDUE",   label: `⚠️ Terlambat (${overdueCount})` },
     { id: "ACTIVE",    label: `Berjalan (${activeCount})` },
     { id: "COMPLETED", label: "Selesai" },
-    { id: "BLOCKED",   label: "Terkendala" },
+    { id: "BLOCKED",   label: `Terkendala${blockedCount > 0 ? ` (${blockedCount})` : ""}` },
     { id: "ALL",       label: `Semua (${allTasks.length})` },
   ];
 

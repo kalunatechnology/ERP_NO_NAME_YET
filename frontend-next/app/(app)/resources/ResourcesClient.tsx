@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Search, RefreshCw, Database, ChevronRight, Eye, Layers, Filter } from "lucide-react";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
@@ -16,7 +17,7 @@ const RESOURCES = [
   { id: "daily-tasks",   name: "Daily Tasks (WBS L3)",  endpoint: "/api/v1/projects/daily-tasks/",            category: "Project" },
   { id: "milestones",    name: "Milestones",             endpoint: "/api/v1/projects/milestones/",             category: "Project" },
   /* ── Finance ─────────── */
-  { id: "costs",         name: "Cost Entries",           endpoint: "/api/v1/finance/cost-entries/",            category: "Finance" },
+  { id: "costs",         name: "Cost Entries (Project)", endpoint: "/api/v1/finance/project-cost-entries/",    category: "Finance" },
   { id: "fundings",      name: "Project Fundings",       endpoint: "/api/v1/finance/project-fundings/",        category: "Finance" },
   { id: "proposals",     name: "Billing Proposals",      endpoint: "/api/v1/finance/billing-proposals/",       category: "Finance" },
   { id: "journals",      name: "Journal Entries",        endpoint: "/api/v1/finance/journal-entries/",         category: "Finance" },
@@ -37,12 +38,21 @@ const RESOURCES = [
 ];
 
 export default function ResourcesClient() {
+  const searchParams = useSearchParams();
+  const initialQuery = searchParams?.get("search") || "";
+
   const [selectedRes, setSelectedRes] = useState(RESOURCES[0]);
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialQuery);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialQuery) {
+      setSearch(initialQuery);
+    }
+  }, [initialQuery]);
 
   const fetchRows = async (res = selectedRes) => {
     setLoading(true);

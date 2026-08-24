@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Search, Bell, Menu, ChevronDown, Check, Building2, LogOut, ShieldCheck, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -41,16 +41,43 @@ function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
   }));
 }
 
+import { GlobalCommandPalette } from "./GlobalCommandPalette";
+
 export function Topbar({ onMenuToggle }: TopbarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, login, logout, company, setCompany, companies, isAdmin } = useAuth();
   const crumbs = buildBreadcrumb(pathname);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
   const menuRef = useRef<HTMLDivElement>(null);
   const compRef = useRef<HTMLDivElement>(null);
+
+  // Shortcut Ctrl+K / Cmd+K to open Command Palette
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) {
+      setIsCommandPaletteOpen(true);
+      return;
+    }
+    router.push(`/resources?search=${encodeURIComponent(searchQuery.trim())}`);
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -187,20 +214,20 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
           </div>
         )}
 
-        {/* Search Input */}
-        <label
-          htmlFor="topbar-search"
-          className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-text-tertiary cursor-text"
+        {/* Search Input / Command Palette Trigger */}
+        <button
+          type="button"
+          onClick={() => setIsCommandPaletteOpen(true)}
+          className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-text-tertiary/70 hover:bg-text-tertiary hover:border-brand-green/40 border border-transparent transition-all text-xs text-text-secondary cursor-pointer shadow-2xs"
+          title="Pencarian Cepat & Navigasi (Ctrl+K)"
         >
-          <Search size={16} className="text-text-secondary flex-shrink-0" aria-hidden="true" />
-          <input
-            id="topbar-search"
-            type="text"
-            placeholder="Cari data…"
-            className="bg-transparent border-none outline-none text-sm text-text-secondary placeholder:text-text-secondary w-24 focus:w-40 transition-all duration-200"
-            aria-label="Cari"
-          />
-        </label>
+          <Search size={14} className="text-text-secondary flex-shrink-0" aria-hidden="true" />
+          <span className="hidden sm:inline">Cari data, proyek, menu…</span>
+          <span className="inline sm:hidden">Cari…</span>
+          <kbd className="px-1.5 py-0.5 text-3xs text-text-secondary bg-white rounded-md border border-gray-200 font-mono shadow-2xs ml-1">
+            Ctrl+K
+          </kbd>
+        </button>
 
         {/* Notification Bell */}
         <button
@@ -285,6 +312,12 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
         </div>
 
       </div>
+
+      {/* Global Command Palette Modal (Cmd+K / Ctrl+K) */}
+      <GlobalCommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+      />
     </header>
   );
 }

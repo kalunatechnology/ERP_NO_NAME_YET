@@ -68,6 +68,8 @@ export default function ProjectsClient() {
   const [isLifecycleModalOpen, setIsLifecycleModalOpen] = useState(false);
   const [isEditFinancialsOpen, setIsEditFinancialsOpen] = useState(false);
   const [isFundingRequestOpen, setIsFundingRequestOpen] = useState(false);
+  const [collapsedMainTasks, setCollapsedMainTasks] = useState<Record<string, boolean>>({});
+  const [collapsedWeeklyTasks, setCollapsedWeeklyTasks] = useState<Record<string, boolean>>({});
 
   /* Real-time Project Financial Performance & Budgeting */
   const [financialPerformance, setFinancialPerformance] = useState<any>(null);
@@ -430,7 +432,7 @@ export default function ProjectsClient() {
     }
   };
 
-  /* Quick Toggle Complete */
+  /* Quick Toggle Complete (Optimistic UI 60fps) */
   const handleQuickToggleDaily = async (daily: DailyTask, isAllowed = true) => {
     if (!isAllowed && !isPM) {
       toast.error("Akses Ditolak: Anda tidak memiliki wewenang pada task ini!");
@@ -439,15 +441,49 @@ export default function ProjectsClient() {
     const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
     const nextStatus = isDone ? "ON_PROGRESS" : "COMPLETED";
     const nextProg = isDone ? 50 : 100;
+    const prevStatus = daily.status;
+    const prevProg = daily.progress;
+
+    // 1. Optimistic local update (instant response)
+    setProjects(prevProjects =>
+      prevProjects.map(p => ({
+        ...p,
+        main_tasks: (p.main_tasks || []).map(m => ({
+          ...m,
+          weekly_tasks: (m.weekly_tasks || m.weekly_plans || []).map(w => ({
+            ...w,
+            daily_tasks: (w.daily_tasks || []).map(d =>
+              String(d.id) === String(daily.id) ? { ...d, status: nextStatus, progress: nextProg } : d
+            )
+          }))
+        }))
+      }))
+    );
+    toast.success(isDone ? "Status task dikembalikan ke aktif" : "Selamat! Task diselesaikan 100%", { icon: "✅" });
+
+    // 2. Sync to backend in background
     try {
       await updateDailyTask(daily.id, {
         status: nextStatus,
         progress: nextProg
       });
-      toast.success(isDone ? "Status task dikembalikan ke aktif" : "Selamat! Task diselesaikan 100%", { icon: "✅" });
-      fetchProjects(true);
     } catch {
-      toast.error("Gagal mengubah status task");
+      // Rollback on error
+      setProjects(prevProjects =>
+        prevProjects.map(p => ({
+          ...p,
+          main_tasks: (p.main_tasks || []).map(m => ({
+            ...m,
+            weekly_tasks: (m.weekly_tasks || m.weekly_plans || []).map(w => ({
+              ...w,
+              daily_tasks: (w.daily_tasks || []).map(d =>
+                String(d.id) === String(daily.id) ? { ...d, status: prevStatus, progress: prevProg } : d
+              )
+            }))
+          }))
+        }))
+      );
+      toast.error("Gagal menyinkronkan status task ke server. Perubahan dikembalikan.");
     }
   };
 
@@ -562,14 +598,14 @@ export default function ProjectsClient() {
     <div className="flex flex-col gap-6 w-full max-w-full">
 
       {/* ── Top Selector & Action Toolbar ── */}
-      <div className="flex items-center justify-between flex-wrap gap-4 bg-white p-3.5 rounded-2xl border border-text-tertiary shadow-sm">
-        <div className="flex items-center gap-3 flex-wrap">
-          <label htmlFor="project-selector" className="text-xs font-bold text-text-secondary">Pilih Proyek:</label>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3.5 rounded-2xl border border-text-tertiary shadow-sm">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <label htmlFor="project-selector" className="text-xs font-bold text-text-secondary whitespace-nowrap">Pilih Proyek:</label>
           <select
             id="project-selector"
             value={selectedId ?? ""}
             onChange={(e) => setSelectedId(e.target.value)}
-            className="px-3 py-1.5 rounded-xl border border-text-tertiary bg-white text-xs font-bold text-text-primary outline-none focus:border-brand-green min-w-[280px]"
+            className="px-3 py-1.5 rounded-xl border border-text-tertiary bg-white text-xs font-bold text-text-primary outline-none focus:border-brand-green flex-1 sm:flex-initial min-w-[200px] sm:min-w-[280px]"
           >
             {projects.map((proj) => {
               const code = proj.project_code || proj.code || "PRJ";
@@ -584,16 +620,16 @@ export default function ProjectsClient() {
 
           <button
             onClick={() => setIsCreateProjOpen(true)}
-            className="btn-primary py-1.5 px-3 text-xs gap-1.5"
+            className="btn-primary py-1.5 px-3 text-xs gap-1.5 whitespace-nowrap"
           >
             <Plus size={14} /> Proyek Baru
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <button
             onClick={handleRecalculateHealth}
-            className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green"
+            className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green whitespace-nowrap"
           >
             <Zap size={14} className="text-amber-500 fill-amber-500" /> Hitung Health (EVM)
           </button>
@@ -602,6 +638,7 @@ export default function ProjectsClient() {
             onClick={() => fetchProjects(true)}
             disabled={refreshing}
             className="btn-ghost py-1.5 px-2.5 text-xs gap-1"
+            title="Segarkan data proyek"
           >
             <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
           </button>
@@ -816,18 +853,33 @@ export default function ProjectsClient() {
             <div className="flex flex-col gap-5">
               {mainTasks.map((main) => {
                 const weeklyPlans = main.weekly_tasks || main.weekly_plans || [];
+                const isMainExpanded = !collapsedMainTasks[String(main.id)];
 
                 return (
-                  <div key={main.id} className="card rounded-2xl border border-text-tertiary overflow-hidden shadow-sm bg-white">
+                  <div key={main.id} className="card rounded-2xl border border-text-tertiary overflow-hidden shadow-sm bg-white transition-all duration-200 hover:border-gray-300">
 
                     {/* Level 1 Header: Main Task */}
                     <div className="p-4 bg-gray-50/80 border-b border-text-tertiary flex items-center justify-between flex-wrap gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-brand-deep-green text-white flex items-center justify-center text-xs font-black shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => setCollapsedMainTasks(prev => ({ ...prev, [String(main.id)]: !prev[String(main.id)] }))}
+                          className="p-1 rounded-lg hover:bg-gray-200/70 text-text-secondary transition-colors"
+                          title={isMainExpanded ? "Tutup paket kerja" : "Buka paket kerja"}
+                        >
+                          <ChevronRight
+                            size={18}
+                            className={cn(
+                              "transform transition-transform duration-200 ease-out text-brand-deep-green",
+                              isMainExpanded ? "rotate-90" : "rotate-0"
+                            )}
+                          />
+                        </button>
+                        <div className="w-8 h-8 rounded-xl bg-brand-deep-green text-white flex items-center justify-center text-xs font-black shadow-sm flex-shrink-0">
                           {main.weight || 10}%
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h2 className="text-sm font-bold text-text-primary">{main.name || main.title}</h2>
                             <span className="badge badge-info text-2xs">{main.status}</span>
                             <span className="badge text-2xs bg-amber-50 text-amber-700 border border-amber-200">Bobot {main.weight || 10}%</span>
@@ -863,7 +915,7 @@ export default function ProjectsClient() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {isPM ? (
                           <button
                             onClick={() => openAssignModal(main)}
@@ -940,243 +992,276 @@ export default function ProjectsClient() {
                       </div>
                     </div>
 
-                    {/* Level 2 & 3: Weekly Plans List */}
-                    <div className="p-3 flex flex-col gap-3 bg-white">
-                      {weeklyPlans.length === 0 ? (
-                        <div className="p-6 rounded-xl bg-gray-50 border border-dashed border-gray-200 text-center">
-                          <p className="text-xs text-text-secondary">
-                            Belum ada Target Mingguan pada Main Task ini. Klik <b>+ Target Mingguan</b> untuk mendelegasikan sprint mingguan tim.
-                          </p>
-                        </div>
-                      ) : (
-                        weeklyPlans.map((weekly) => {
-                          const dailyTasks = weekly.daily_tasks || [];
-
-                          return (
-                            <div key={weekly.id} className="rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs">
-
-                              {/* Level 2 Header: Weekly Target */}
-                              <div className="p-3 bg-indigo-50/60 border-b border-indigo-100 flex items-center justify-between flex-wrap gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-2xs font-extrabold">
-                                    Minggu #{weekly.week_number}
-                                  </span>
-                                  <strong className="text-xs text-indigo-950 font-bold">{weekly.target_description || "Target Mingguan"}</strong>
-                                  <span className="text-2xs text-text-secondary">
-                                    (PIC: <b>{weekly.assignee_name || "Assignee"}</b>)
-                                  </span>
-                                  {weekly.start_date && (
-                                    <span className="text-2xs text-text-secondary">📅 {weekly.start_date} s/d {weekly.end_date || "-"}</span>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  <span className="badge badge-success text-2xs font-bold">
-                                    {weekly.status} ({weekly.progress}%)
-                                  </span>
-
-                                  {(() => {
-                                    const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
-                                    const isMainAssigned = (main.assignments || []).some(
-                                      (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
-                                    );
-                                    const canCreateDaily = isPM || isWeeklyPic || isMainAssigned;
-
-                                    if (canCreateDaily) {
-                                      return (
-                                        <button
-                                          onClick={() => {
-                                            setActiveWeeklyTask(weekly);
-                                            setDailyForm({
-                                              title: "",
-                                              time_slot: "09.00 - 12.00",
-                                              planned_date: new Date().toISOString().split("T")[0],
-                                              output_result: "",
-                                              notes: "",
-                                              status: "ON_PROGRESS"
-                                            });
-                                            setIsCreateDailyOpen(true);
-                                          }}
-                                          className="btn-primary py-0.5 px-2.5 text-2xs gap-1 bg-emerald-600 hover:bg-emerald-700"
-                                        >
-                                          <Plus size={11} /> + Daily Task Harian
-                                        </button>
-                                      );
-                                    }
-
-                                    return (
-                                      <span
-                                        className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-2 py-0.5 rounded"
-                                        title="Hanya PIC Weekly Task, tim ter-assign, atau PM yang dapat membuat Daily Task"
-                                      >
-                                        🔒 Hanya PIC / PM
-                                      </span>
-                                    );
-                                  })()}
-
-                                  {(isPM || String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id)) && (
-                                    <button
-                                      onClick={async () => {
-                                        if (confirm(`Hapus Target Mingguan #${weekly.week_number}?`)) {
-                                          await deleteWeeklyTask(weekly.id);
-                                          toast.success("Weekly Task dihapus");
-                                          fetchProjects(true);
-                                        }
-                                      }}
-                                      className="p-1 rounded text-text-secondary hover:text-red-600"
-                                      title="Hapus Target Mingguan (PIC / PM)"
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Level 3: Daily Tasks Table */}
-                              <div className="p-3 bg-white">
-                                {dailyTasks.length === 0 ? (
-                                  <div className="p-4 rounded-lg bg-gray-50 border border-dashed border-gray-200 text-center text-2xs text-text-secondary">
-                                    Belum ada aktivitas harian pada target ini. Klik <b>+ Daily Task Harian</b> untuk mencatat sesi kerja.
-                                  </div>
-                                ) : (
-                                  <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                                    <table className="w-full data-table text-xs text-left">
-                                      <thead>
-                                        <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider">
-                                          <th className="py-2 px-3 font-bold">Tanggal & Waktu</th>
-                                          <th className="py-2 px-3 font-bold">Input (Aktivitas yang Dikerjakan)</th>
-                                          <th className="py-2 px-3 font-bold">Output (Hasil Kerja)</th>
-                                          <th className="py-2 px-3 font-bold">Status & Progres</th>
-                                          <th className="py-2 px-3 font-bold">Catatan / Kendala</th>
-                                          <th className="py-2 px-3 font-bold text-right">Aksi</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {dailyTasks.map((daily) => {
-                                          const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
-                                          const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
-                                          const isDailyOwner = String(daily.owner_id || (daily as any).owner || "") === String(user?.id);
-                                          const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
-                                          const isMainAssigned = (main.assignments || []).some(
-                                            (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
-                                          );
-                                          const canManageDaily = isPM || isDailyOwner || isWeeklyPic || isMainAssigned;
-                                          const canDeleteDaily = isPM || isDailyOwner || isWeeklyPic;
-                                          const canTransferDaily = isPM || isDailyOwner;
-
-                                          return (
-                                            <tr key={daily.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-50", isBlocked && "bg-red-50/60")}>
-                                              <td className="py-2 px-3 whitespace-nowrap align-top font-semibold text-text-primary">
-                                                <div>{daily.planned_date}</div>
-                                                <span className="text-2xs text-text-secondary font-normal">{daily.time_slot}</span>
-                                              </td>
-                                              <td className="py-2 px-3 align-top max-w-[240px]">
-                                                <div className="flex items-start gap-2">
-                                                  <button
-                                                    onClick={() => handleQuickToggleDaily(daily, canManageDaily)}
-                                                    disabled={!canManageDaily}
-                                                    className={cn(
-                                                      "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
-                                                      !canManageDaily && "cursor-not-allowed opacity-40 bg-gray-100",
-                                                      canManageDaily && isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
-                                                    )}
-                                                    title={!canManageDaily ? "🔒 Hanya PIC / Assignee yang dapat mengubah status" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
-                                                  >
-                                                    {isDone && <Check size={11} strokeWidth={3} />}
-                                                  </button>
-                                                  <div>
-                                                    <strong className={cn("text-xs font-bold block text-text-primary", isDone && "line-through text-text-secondary")}>
-                                                      {daily.title || daily.activity_input}
-                                                    </strong>
-                                                    <span className="text-2xs text-text-secondary block mt-0.5">PIC: <b>{daily.owner_name}</b></span>
-                                                  </div>
-                                                </div>
-                                              </td>
-                                              <td className="py-2 px-3 align-top max-w-[200px] text-emerald-800 text-xs">
-                                                {daily.output_result || <span className="text-text-secondary italic text-2xs">-</span>}
-                                              </td>
-                                              <td className="py-2 px-3 align-top whitespace-nowrap">
-                                                <span className={cn(
-                                                  "badge text-2xs font-bold",
-                                                  isDone ? "badge-success" : isBlocked ? "badge-danger" : "badge-info"
-                                                )}>
-                                                  {daily.status} ({daily.progress}%)
-                                                </span>
-                                              </td>
-                                              <td className="py-2 px-3 align-top max-w-[160px] text-2xs">
-                                                {isBlocked && <div className="text-red-600 font-bold">⚠️ {daily.block_reason || "Terkendala"}</div>}
-                                                <div>{daily.notes || <span className="text-text-secondary italic">-</span>}</div>
-                                              </td>
-                                              <td className="py-2 px-3 align-top text-right whitespace-nowrap">
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                  {canManageDaily ? (
-                                                    <button
-                                                      onClick={() => {
-                                                        setActiveDailyTask(daily);
-                                                        setEditDailyForm({
-                                                          status: daily.status,
-                                                          progress: daily.progress || 0,
-                                                          output_result: daily.output_result || "",
-                                                          notes: daily.notes || "",
-                                                          is_blocked: !!daily.is_blocked,
-                                                          block_reason: daily.block_reason || ""
-                                                        });
-                                                        setIsEditDailyOpen(true);
-                                                      }}
-                                                      className="btn-outline py-0.5 px-2 text-2xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                                                      title="Update Aktivitas & Progres"
-                                                    >
-                                                      <Edit size={11} /> Update
-                                                    </button>
-                                                  ) : (
-                                                    <span className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded" title="Hanya PIC/Assignee yang dapat mengupdate task">
-                                                      🔒 Read Only
-                                                    </span>
-                                                  )}
-
-                                                  {canTransferDaily && (
-                                                    <button
-                                                      onClick={() => {
-                                                        setActiveDailyTask(daily);
-                                                        setIsTransferModalOpen(true);
-                                                      }}
-                                                      className="p-1 rounded text-amber-600 hover:bg-amber-50"
-                                                      title="Ajukan Alih Tugas (Transfer)"
-                                                    >
-                                                      <RefreshCw size={12} />
-                                                    </button>
-                                                  )}
-
-                                                  {canDeleteDaily && (
-                                                    <button
-                                                      onClick={async () => {
-                                                        if (confirm(`Hapus aktivitas "${daily.title}"?`)) {
-                                                          await deleteDailyTask(daily.id);
-                                                          toast.success("Aktivitas harian dihapus");
-                                                          fetchProjects(true);
-                                                        }
-                                                      }}
-                                                      className="p-1 rounded text-text-secondary hover:text-red-600"
-                                                      title="Hapus Daily Task"
-                                                    >
-                                                      <Trash2 size={12} />
-                                                    </button>
-                                                  )}
-                                                </div>
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
-                              </div>
-
-                            </div>
-                          );
-                        })
+                    {/* Level 2 & 3: Weekly Plans List (Smooth Auto-Height Grid) */}
+                    <div
+                      className={cn(
+                        "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+                        isMainExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
                       )}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="p-3 flex flex-col gap-3 bg-white">
+                          {weeklyPlans.length === 0 ? (
+                            <div className="p-6 rounded-xl bg-gray-50 border border-dashed border-gray-200 text-center">
+                              <p className="text-xs text-text-secondary">
+                                Belum ada Target Mingguan pada Main Task ini. Klik <b>+ Target Mingguan</b> untuk mendelegasikan sprint mingguan tim.
+                              </p>
+                            </div>
+                          ) : (
+                            weeklyPlans.map((weekly) => {
+                              const dailyTasks = weekly.daily_tasks || [];
+                              const isWeeklyExpanded = !collapsedWeeklyTasks[String(weekly.id)];
+
+                              return (
+                                <div key={weekly.id} className="rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200">
+
+                                  {/* Level 2 Header: Weekly Target */}
+                                  <div className="p-3 bg-indigo-50/60 border-b border-indigo-100 flex items-center justify-between flex-wrap gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <button
+                                        type="button"
+                                        onClick={() => setCollapsedWeeklyTasks(prev => ({ ...prev, [String(weekly.id)]: !prev[String(weekly.id)] }))}
+                                        className="p-0.5 rounded hover:bg-indigo-100 text-indigo-700 transition-colors"
+                                        title={isWeeklyExpanded ? "Tutup target mingguan" : "Buka target mingguan"}
+                                      >
+                                        <ChevronRight
+                                          size={15}
+                                          className={cn(
+                                            "transform transition-transform duration-200 ease-out",
+                                            isWeeklyExpanded ? "rotate-90" : "rotate-0"
+                                          )}
+                                        />
+                                      </button>
+                                      <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-2xs font-extrabold">
+                                        Minggu #{weekly.week_number}
+                                      </span>
+                                      <strong className="text-xs text-indigo-950 font-bold">{weekly.target_description || "Target Mingguan"}</strong>
+                                      <span className="text-2xs text-text-secondary">
+                                        (PIC: <b>{weekly.assignee_name || "Assignee"}</b>)
+                                      </span>
+                                      {weekly.start_date && (
+                                        <span className="text-2xs text-text-secondary">📅 {weekly.start_date} s/d {weekly.end_date || "-"}</span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      <span className="badge badge-success text-2xs font-bold">
+                                        {weekly.status} ({weekly.progress}%)
+                                      </span>
+
+                                      {(() => {
+                                        const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
+                                        const isMainAssigned = (main.assignments || []).some(
+                                          (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
+                                        );
+                                        const canCreateDaily = isPM || isWeeklyPic || isMainAssigned;
+
+                                        if (canCreateDaily) {
+                                          return (
+                                            <button
+                                              onClick={() => {
+                                                setActiveWeeklyTask(weekly);
+                                                setDailyForm({
+                                                  title: "",
+                                                  time_slot: "09.00 - 12.00",
+                                                  planned_date: new Date().toISOString().split("T")[0],
+                                                  output_result: "",
+                                                  notes: "",
+                                                  status: "ON_PROGRESS"
+                                                });
+                                                setIsCreateDailyOpen(true);
+                                              }}
+                                              className="btn-primary py-0.5 px-2.5 text-2xs gap-1 bg-emerald-600 hover:bg-emerald-700"
+                                            >
+                                              <Plus size={11} /> + Daily Task Harian
+                                            </button>
+                                          );
+                                        }
+
+                                        return (
+                                          <span
+                                            className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-2 py-0.5 rounded"
+                                            title="Hanya PIC Weekly Task, tim ter-assign, atau PM yang dapat membuat Daily Task"
+                                          >
+                                            🔒 Hanya PIC / PM
+                                          </span>
+                                        );
+                                      })()}
+
+                                      {(isPM || String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id)) && (
+                                        <button
+                                          onClick={async () => {
+                                            if (confirm(`Hapus Target Mingguan #${weekly.week_number}?`)) {
+                                              await deleteWeeklyTask(weekly.id);
+                                              toast.success("Weekly Task dihapus");
+                                              fetchProjects(true);
+                                            }
+                                          }}
+                                          className="p-1 rounded text-text-secondary hover:text-red-600"
+                                          title="Hapus Target Mingguan (PIC / PM)"
+                                        >
+                                          <Trash2 size={12} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Level 3: Daily Tasks Table (Smooth Auto-Height Grid) */}
+                                  <div
+                                    className={cn(
+                                      "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+                                      isWeeklyExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
+                                    )}
+                                  >
+                                    <div className="overflow-hidden">
+                                      <div className="p-3 bg-white">
+                                        {dailyTasks.length === 0 ? (
+                                          <div className="p-4 rounded-lg bg-gray-50 border border-dashed border-gray-200 text-center text-2xs text-text-secondary">
+                                            Belum ada aktivitas harian pada target ini. Klik <b>+ Daily Task Harian</b> untuk mencatat sesi kerja.
+                                          </div>
+                                        ) : (
+                                          <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                                            <table className="w-full data-table text-xs text-left">
+                                              <thead>
+                                                <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider">
+                                                  <th className="py-2 px-3 font-bold">Tanggal & Waktu</th>
+                                                  <th className="py-2 px-3 font-bold">Input (Aktivitas yang Dikerjakan)</th>
+                                                  <th className="py-2 px-3 font-bold">Output (Hasil Kerja)</th>
+                                                  <th className="py-2 px-3 font-bold">Status & Progres</th>
+                                                  <th className="py-2 px-3 font-bold">Catatan / Kendala</th>
+                                                  <th className="py-2 px-3 font-bold text-right">Aksi</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {dailyTasks.map((daily) => {
+                                                  const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
+                                                  const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
+                                                  const isDailyOwner = String(daily.owner_id || (daily as any).owner || "") === String(user?.id);
+                                                  const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
+                                                  const isMainAssigned = (main.assignments || []).some(
+                                                    (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
+                                                  );
+                                                  const canManageDaily = isPM || isDailyOwner || isWeeklyPic || isMainAssigned;
+                                                  const canDeleteDaily = isPM || isDailyOwner || isWeeklyPic;
+                                                  const canTransferDaily = isPM || isDailyOwner;
+
+                                                  return (
+                                                    <tr key={daily.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-50", isBlocked && "bg-red-50/60")}>
+                                                      <td className="py-2 px-3 whitespace-nowrap align-top font-semibold text-text-primary">
+                                                        <div>{daily.planned_date}</div>
+                                                        <span className="text-2xs text-text-secondary font-normal">{daily.time_slot}</span>
+                                                      </td>
+                                                      <td className="py-2 px-3 align-top max-w-[240px]">
+                                                        <div className="flex items-start gap-2">
+                                                          <button
+                                                            onClick={() => handleQuickToggleDaily(daily, canManageDaily)}
+                                                            disabled={!canManageDaily}
+                                                            className={cn(
+                                                              "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
+                                                              !canManageDaily && "cursor-not-allowed opacity-40 bg-gray-100",
+                                                              canManageDaily && isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
+                                                            )}
+                                                            title={!canManageDaily ? "🔒 Hanya PIC / Assignee yang dapat mengubah status" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
+                                                          >
+                                                            {isDone && <Check size={11} strokeWidth={3} />}
+                                                          </button>
+                                                          <div>
+                                                            <strong className={cn("text-xs font-bold block text-text-primary", isDone && "line-through text-text-secondary")}>
+                                                              {daily.title || daily.activity_input}
+                                                            </strong>
+                                                            <span className="text-2xs text-text-secondary block mt-0.5">PIC: <b>{daily.owner_name}</b></span>
+                                                          </div>
+                                                        </div>
+                                                      </td>
+                                                      <td className="py-2 px-3 align-top max-w-[200px] text-emerald-800 text-xs">
+                                                        {daily.output_result || <span className="text-text-secondary italic text-2xs">-</span>}
+                                                      </td>
+                                                      <td className="py-2 px-3 align-top whitespace-nowrap">
+                                                        <span className={cn(
+                                                          "badge text-2xs font-bold",
+                                                          isDone ? "badge-success" : isBlocked ? "badge-danger" : "badge-info"
+                                                        )}>
+                                                          {daily.status} ({daily.progress}%)
+                                                        </span>
+                                                      </td>
+                                                      <td className="py-2 px-3 align-top max-w-[160px] text-2xs">
+                                                        {isBlocked && <div className="text-red-600 font-bold">⚠️ {daily.block_reason || "Terkendala"}</div>}
+                                                        <div>{daily.notes || <span className="text-text-secondary italic">-</span>}</div>
+                                                      </td>
+                                                      <td className="py-2 px-3 align-top text-right whitespace-nowrap">
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                          {canManageDaily ? (
+                                                            <button
+                                                              onClick={() => {
+                                                                setActiveDailyTask(daily);
+                                                                setEditDailyForm({
+                                                                  status: daily.status,
+                                                                  progress: daily.progress || 0,
+                                                                  output_result: daily.output_result || "",
+                                                                  notes: daily.notes || "",
+                                                                  is_blocked: !!daily.is_blocked,
+                                                                  block_reason: daily.block_reason || ""
+                                                                });
+                                                                setIsEditDailyOpen(true);
+                                                              }}
+                                                              className="btn-outline py-0.5 px-2 text-2xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                                              title="Update Aktivitas & Progres"
+                                                            >
+                                                              <Edit size={11} /> Update
+                                                            </button>
+                                                          ) : (
+                                                            <span className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded" title="Hanya PIC/Assignee yang dapat mengupdate task">
+                                                              🔒 Read Only
+                                                            </span>
+                                                          )}
+
+                                                          {canTransferDaily && (
+                                                            <button
+                                                              onClick={() => {
+                                                                setActiveDailyTask(daily);
+                                                                setIsTransferModalOpen(true);
+                                                              }}
+                                                              className="p-1 rounded text-amber-600 hover:bg-amber-50"
+                                                              title="Ajukan Alih Tugas (Transfer)"
+                                                            >
+                                                              <RefreshCw size={12} />
+                                                            </button>
+                                                          )}
+
+                                                          {canDeleteDaily && (
+                                                            <button
+                                                              onClick={async () => {
+                                                                if (confirm(`Hapus aktivitas "${daily.title}"?`)) {
+                                                                  await deleteDailyTask(daily.id);
+                                                                  toast.success("Aktivitas harian dihapus");
+                                                                  fetchProjects(true);
+                                                                }
+                                                              }}
+                                                              className="p-1 rounded text-text-secondary hover:text-red-600"
+                                                              title="Hapus Daily Task"
+                                                            >
+                                                              <Trash2 size={12} />
+                                                            </button>
+                                                          )}
+                                                        </div>
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                   </div>
@@ -1531,7 +1616,7 @@ export default function ProjectsClient() {
             </div>
 
             {/* P&L Metrics Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
                 <span className="text-2xs text-white/60 block font-medium">Target Revenue (Nilai Kontrak)</span>
                 <span className="text-base font-extrabold text-white mt-1 block">
@@ -1578,7 +1663,7 @@ export default function ProjectsClient() {
           </div>
 
           {/* 3 Detail Columns: Funding Requests, Actual Cost Entries, Billing Termin */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Column 1: Funding Requests (Permintaan Dana Budgeting) */}
             <div className="card p-4 rounded-2xl border border-text-tertiary bg-white shadow-xs">
               <div className="flex justify-between items-center mb-3">
