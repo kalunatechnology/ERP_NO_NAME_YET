@@ -594,6 +594,34 @@ export async function deleteBillingProposal(id: string | number) {
   await api.delete(`/api/v1/finance/billing-proposals/${id}/`);
 }
 
+export async function fetchProjectFinancialPerformance(projectId: string | number) {
+  const { data } = await api.get(`/api/v1/projects/projects/${projectId}/financial-performance/`);
+  return data;
+}
+
+export async function updateProjectFinancials(projectId: string | number, payload: {
+  contract_amount?: number;
+  budget_amount?: number;
+  target_margin_percent?: number;
+}) {
+  const { data } = await api.post(`/api/v1/projects/projects/${projectId}/update_financials/`, payload);
+  return data;
+}
+
+export async function fetchProjectFundingRequests(projectId: string | number) {
+  const { data } = await api.get(`/api/v1/projects/projects/${projectId}/funding_requests/`);
+  return data;
+}
+
+export async function submitProjectFundingRequest(projectId: string | number, payload: {
+  amount: number;
+  category?: string;
+  description?: string;
+}) {
+  const { data } = await api.post(`/api/v1/projects/projects/${projectId}/funding_requests/`, payload);
+  return data;
+}
+
 export async function createMilestone(payload: {
   project: string | number;
   name: string;

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { cn, formatDate, getStatusColor } from "@/lib/utils";
 import { loadAllProjects, Project, DailyTask, updateDailyTask } from "@/lib/api/project.api";
+import { useAuth, detectRole } from "@/contexts/AuthContext";
 import {
   CheckCircle2, Search, Check, Layers, RefreshCw,
   CalendarDays, AlertTriangle, Clock, ChevronDown, ChevronRight, Pencil, X, Save,
@@ -124,10 +125,10 @@ function QuickEdit({
 /* ── Task Row ───────────────────────────────────── */
 function TaskRow({
   projectName, projectCode, mainTaskName, weekNumber, task,
-  onToggle, onEdit,
+  onToggle, onEdit, isAllowed = true,
 }: {
   projectName: string; projectCode: string; mainTaskName: string; weekNumber: number;
-  task: DailyTask; onToggle: () => void; onEdit: () => void;
+  task: DailyTask; onToggle: () => void; onEdit: () => void; isAllowed?: boolean;
 }) {
   const isDone = ["COMPLETED","DONE"].includes(task.status || "");
   const isBlocked = task.is_blocked || task.status === "BLOCKED";
@@ -164,12 +165,14 @@ function TaskRow({
       <td className="py-2.5 px-4 align-top max-w-56">
         <div className="flex items-start gap-2">
           <button
-            onClick={onToggle}
+            onClick={isAllowed ? onToggle : () => toast.error("Akses Ditolak: Anda tidak memiliki wewenang pada task ini!")}
+            disabled={!isAllowed}
             className={cn(
               "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
-              isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
+              !isAllowed && "cursor-not-allowed opacity-40 bg-gray-100",
+              isAllowed && isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
             )}
-            title={isDone ? "Buka kembali" : "Tandai selesai"}
+            title={!isAllowed ? "🔒 Hanya PIC / Owner atau PM yang dapat mengubah status" : (isDone ? "Buka kembali" : "Tandai selesai")}
           >
             {isDone && <Check size={11} strokeWidth={3} />}
           </button>
@@ -198,13 +201,19 @@ function TaskRow({
 
       {/* Actions */}
       <td className="py-2.5 px-4 align-top">
-        <button
-          onClick={onEdit}
-          className="p-1.5 rounded-lg text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors"
-          title="Edit output & catatan"
-        >
-          <Pencil size={13} />
-        </button>
+        {isAllowed ? (
+          <button
+            onClick={onEdit}
+            className="p-1.5 rounded-lg text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors"
+            title="Edit output & catatan"
+          >
+            <Pencil size={13} />
+          </button>
+        ) : (
+          <span className="text-3xs text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded" title="Hanya PIC / Owner atau PM yang dapat mengedit">
+            🔒 Read Only
+          </span>
+        )}
       </td>
     </tr>
   );
@@ -214,6 +223,7 @@ function TaskRow({
    MAIN TASKS CLIENT
 ══════════════════════════════════════════════════ */
 export default function TasksClient() {
+  const { user, userRole, isAdmin } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -222,6 +232,17 @@ export default function TasksClient() {
   const [viewMode, setViewMode] = useState<"list" | "grouped">("grouped");
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const isPM = useMemo(() => {
+    if (!user) return false;
+    if (userRole === "pm" || userRole === "executive" || isAdmin) return true;
+    if ((user as any).is_superuser || (user as any).is_staff) return true;
+    const role = detectRole(user);
+    if (role === "pm" || role === "executive") return true;
+    const email = (user.email || "").toLowerCase();
+    const username = (user.username || "").toLowerCase();
+    return username.includes("pm") || username.includes("project") || username.includes("admin") || email.includes("pm") || email.includes("project") || email.includes("admin");
+  }, [user, userRole, isAdmin]);
 
   const fetchTasks = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -350,18 +371,23 @@ export default function TasksClient() {
         </tr>
       </thead>
       <tbody>
-        {items.map(({ projectName, projectCode, mainTaskName, weekNumber, task }) => (
-          <TaskRow
-            key={task.id}
-            projectName={projectName}
-            projectCode={projectCode}
-            mainTaskName={mainTaskName}
-            weekNumber={weekNumber}
-            task={task}
-            onToggle={() => handleToggle(task)}
-            onEdit={() => setEditingTask(task)}
-          />
-        ))}
+        {items.map(({ projectName, projectCode, mainTaskName, weekNumber, task }) => {
+          const isOwner = String(task.owner_id || (task as any).owner || "") === String(user?.id);
+          const isAllowed = isPM || isOwner;
+          return (
+            <TaskRow
+              key={task.id}
+              projectName={projectName}
+              projectCode={projectCode}
+              mainTaskName={mainTaskName}
+              weekNumber={weekNumber}
+              task={task}
+              isAllowed={isAllowed}
+              onToggle={() => handleToggle(task)}
+              onEdit={() => setEditingTask(task)}
+            />
+          );
+        })}
       </tbody>
     </table>
   );

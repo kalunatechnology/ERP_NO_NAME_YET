@@ -235,6 +235,77 @@ class ProjectViewSet(BaseERPModelViewSet):
             print("EVM snapshot warning:", e)
         return Response(evm_data)
 
+    @action(detail=True, methods=["get"])
+    def financial_performance(self, request, pk=None):
+        """Calculates real-time P&L (Laba Rugi), Revenue, Costs, and Budget Variance."""
+        project = self.get_object()
+        from apps.projects.financial_services import calculate_project_financials
+        data = calculate_project_financials(project)
+        return Response(data)
+
+    @action(detail=True, methods=["post", "patch"])
+    def update_financials(self, request, pk=None):
+        """Allows PM / Finance to update budget_amount, contract_amount (Target Revenue), target_margin."""
+        project = self.get_object()
+        if not can_manage_project(request.user, project) and not is_finance(request.user):
+            raise PermissionDenied("Hanya Project Manager atau Divisi Finance yang dapat mengubah parameter keuangan proyek.")
+
+        contract_amount = request.data.get("contract_amount") or request.data.get("contract_value") or request.data.get("revenue_target")
+        budget_amount = request.data.get("budget_amount") or request.data.get("budget")
+        target_margin = request.data.get("target_margin_percent")
+
+        update_fields = []
+        if contract_amount is not None:
+            project.contract_amount = Decimal(str(contract_amount))
+            update_fields.append("contract_amount")
+        if budget_amount is not None:
+            project.budget_amount = Decimal(str(budget_amount))
+            update_fields.append("budget_amount")
+        if target_margin is not None:
+            project.target_margin_percent = Decimal(str(target_margin))
+            update_fields.append("target_margin_percent")
+
+        if update_fields:
+            update_fields.append("updated_at")
+            project.save(update_fields=update_fields)
+
+        from apps.projects.financial_services import calculate_project_financials
+        data = calculate_project_financials(project)
+        return Response(data)
+
+    @action(detail=True, methods=["get", "post"])
+    def funding_requests(self, request, pk=None):
+        """List or create project funding request / operational budget request."""
+        project = self.get_object()
+        from apps.projects.models import ProjectExpense
+
+        if request.method == "POST":
+            if not can_manage_project(request.user, project) and not has_project_access(request.user, project, required_roles=["PROJECT_MANAGER", "MEMBER"]):
+                raise PermissionDenied("Hanya PM atau anggota tim proyek yang dapat mengajukan permintaan anggaran.")
+
+            amount = request.data.get("amount") or request.data.get("requested_amount")
+            category = request.data.get("category") or "OPERATIONAL"
+            description = request.data.get("description") or request.data.get("reason") or "Permintaan dana proyek"
+
+            if not amount:
+                raise ValidationError({"amount": "Jumlah anggaran wajib diisi."})
+
+            expense = ProjectExpense.objects.create(
+                project=project,
+                company=project.company,
+                tenant=project.tenant,
+                amount=Decimal(str(amount)),
+                expense_type=category,
+                description=description,
+                expense_date=timezone.localdate(),
+                status="SUBMITTED",
+                created_by=request.user,
+            )
+            return Response(ProjectExpenseSerializer(expense).data, status=201)
+
+        expenses = ProjectExpense.objects.filter(project=project).order_by("-expense_date", "-created_at")
+        return Response(ProjectExpenseSerializer(expenses, many=True).data)
+
 
 class ProjectControlItemViewSet(BaseERPModelViewSet):
     queryset = ProjectControlItem.objects.all()
@@ -787,47 +858,91 @@ class ProjectWeeklyTaskViewSet(BaseERPModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         main_task = serializer.validated_data.get("main_task")
+        if not main_task:
+            raise PermissionDenied("Main task wajib disertakan.")
         project = main_task.project
-        is_pm = can_manage_project(self.request.user, project)
-        is_assigned = TaskAssignment.objects.filter(main_task=main_task, assignee=self.request.user).exists()
+
+        # Superuser, Admin/Staff, or PM has full authority
+        is_pm = (
+            getattr(user, "is_superuser", False)
+            or getattr(user, "is_staff", False)
+            or is_executive(user)
+            or is_project_management(user)
+            or can_manage_project(user, project)
+            or has_project_access(user, project, required_roles=["PROJECT_MANAGER", "MANAGER"])
+        )
+
+        # Check if user is explicitly assigned to this Main Task
+        is_assigned = (
+            TaskAssignment.objects.filter(main_task=main_task, assignee=user).exists()
+            or getattr(main_task, "created_by_id", None) == user.id
+        )
 
         if not is_pm and not is_assigned:
-            raise PermissionDenied("Hanya PM atau Assignee Main Task yang dapat membuat Weekly Task breakdown.")
+            raise PermissionDenied(
+                "Akses ditolak: Hanya pengguna yang di-assign pada task ini atau Project Manager yang dapat membuat target mingguan."
+            )
 
         if not serializer.validated_data.get("assignee"):
-            serializer.validated_data["assignee"] = self.request.user
+            serializer.validated_data["assignee"] = user
 
         instance = serializer.save()
         log_task_activity(
             project=project,
-            actor=self.request.user,
+            actor=user,
             task_level="WEEKLY",
             task_id=instance.id,
-            task_title=f"Week {instance.week_number}: {main_task.name}",
+            task_title=f"Week {instance.week_number}: {instance.target_description or main_task.name}",
             action="CREATED",
             reason="Weekly task breakdown created",
         )
         recalculate_task_tree(weekly_task=instance)
 
     def perform_update(self, serializer):
+        instance = serializer.instance
+        user = self.request.user
+        main_task = instance.main_task
+        project = main_task.project
+        is_pm = (
+            getattr(user, "is_superuser", False)
+            or getattr(user, "is_staff", False)
+            or is_executive(user)
+            or is_project_management(user)
+            or can_manage_project(user, project)
+        )
+        is_pic_or_assignee = (
+            instance.assignee_id == user.id
+            or TaskAssignment.objects.filter(main_task=main_task, assignee=user).exists()
+        )
+        if not is_pm and not is_pic_or_assignee:
+            raise PermissionDenied("Akses ditolak: Hanya PIC Weekly Task atau Project Manager yang dapat memperbarui target mingguan ini.")
+
         instance = serializer.save()
         recalculate_task_tree(weekly_task=instance)
 
     def perform_destroy(self, instance):
+        user = self.request.user
         main_task = instance.main_task
         project = main_task.project
-        is_pm = can_manage_project(self.request.user, project)
-        is_assignee = instance.assignee_id == self.request.user.id
+        is_pm = (
+            getattr(user, "is_superuser", False)
+            or getattr(user, "is_staff", False)
+            or is_executive(user)
+            or is_project_management(user)
+            or can_manage_project(user, project)
+        )
+        is_assignee = instance.assignee_id == user.id
         if not is_pm and not is_assignee:
-            raise PermissionDenied("Hanya Project Manager atau PIC Weekly Task yang dapat menghapus target mingguan ini.")
+            raise PermissionDenied("Akses ditolak: Hanya PIC Weekly Task atau Project Manager yang dapat menghapus target mingguan ini.")
 
         task_id = instance.id
         task_title = f"Week {instance.week_number}: {instance.target_description or main_task.name}"
         super().perform_destroy(instance)
         log_task_activity(
             project=project,
-            actor=self.request.user,
+            actor=user,
             task_level="WEEKLY",
             task_id=task_id,
             task_title=task_title,
@@ -876,23 +991,43 @@ class ProjectDailyTaskViewSet(BaseERPModelViewSet):
 
 
     def perform_create(self, serializer):
+        user = self.request.user
         weekly_task = serializer.validated_data.get("weekly_task")
-        project = weekly_task.main_task.project
+        if not weekly_task:
+            raise PermissionDenied("Weekly task wajib disertakan.")
+        main_task = weekly_task.main_task
+        project = main_task.project
 
-        # Allow PM, Admin/Staff, and designated assignees
-        is_pm = project.project_manager_id == self.request.user.id or getattr(self.request.user, "is_superuser", False) or getattr(self.request.user, "is_staff", False)
-        if not is_pm and weekly_task.assignee_id and weekly_task.assignee_id != self.request.user.id:
-            is_main_assignee = TaskAssignment.objects.filter(main_task=weekly_task.main_task, user=self.request.user).exists()
-            if not is_main_assignee:
-                raise PermissionDenied("Hanya PIC Weekly Task atau tim ter-assign yang dapat membuat Daily Task.")
+        # Allow PM, Executive, Superuser, Admin/Staff
+        is_pm = (
+            getattr(user, "is_superuser", False)
+            or getattr(user, "is_staff", False)
+            or is_executive(user)
+            or is_project_management(user)
+            or can_manage_project(user, project)
+            or has_project_access(user, project, required_roles=["PROJECT_MANAGER", "MANAGER"])
+        )
+
+        # Check if user is PIC of the weekly task, assigned to the main task, or creator
+        is_assigned = (
+            weekly_task.assignee_id == user.id
+            or TaskAssignment.objects.filter(main_task=main_task, assignee=user).exists()
+            or getattr(weekly_task, "created_by_id", None) == user.id
+            or getattr(main_task, "created_by_id", None) == user.id
+        )
+
+        if not is_pm and not is_assigned:
+            raise PermissionDenied(
+                "Akses ditolak: Hanya PIC Weekly Task, tim yang di-assign pada task ini, atau Project Manager yang dapat membuat Daily Task."
+            )
 
         if not serializer.validated_data.get("owner"):
-            serializer.validated_data["owner"] = self.request.user
+            serializer.validated_data["owner"] = user
 
         instance = serializer.save()
         log_task_activity(
             project=project,
-            actor=self.request.user,
+            actor=user,
             task_level="DAILY",
             task_id=instance.id,
             task_title=instance.title,
@@ -902,18 +1037,53 @@ class ProjectDailyTaskViewSet(BaseERPModelViewSet):
         recalculate_task_tree(daily_task=instance)
 
     def perform_update(self, serializer):
+        instance = serializer.instance
+        user = self.request.user
+        weekly_task = instance.weekly_task
+        main_task = weekly_task.main_task
+        project = main_task.project
+        is_pm = (
+            getattr(user, "is_superuser", False)
+            or getattr(user, "is_staff", False)
+            or is_executive(user)
+            or is_project_management(user)
+            or can_manage_project(user, project)
+        )
+        is_owner_or_pic = (
+            instance.owner_id == user.id
+            or weekly_task.assignee_id == user.id
+            or TaskAssignment.objects.filter(main_task=main_task, assignee=user).exists()
+        )
+        if not is_pm and not is_owner_or_pic:
+            raise PermissionDenied("Akses ditolak: Hanya pemilik task (Owner), PIC Weekly Task, atau Project Manager yang dapat memperbarui Daily Task ini.")
+
         instance = serializer.save()
         recalculate_task_tree(daily_task=instance)
 
     def perform_destroy(self, instance):
+        user = self.request.user
         weekly_task = instance.weekly_task
         project = weekly_task.main_task.project
+        is_pm = (
+            getattr(user, "is_superuser", False)
+            or getattr(user, "is_staff", False)
+            or is_executive(user)
+            or is_project_management(user)
+            or can_manage_project(user, project)
+        )
+        is_owner_or_pic = (
+            instance.owner_id == user.id
+            or weekly_task.assignee_id == user.id
+        )
+        if not is_pm and not is_owner_or_pic:
+            raise PermissionDenied("Akses ditolak: Hanya pemilik task (Owner), PIC Weekly Task, atau Project Manager yang dapat menghapus Daily Task ini.")
+
         task_id = instance.id
         task_title = instance.title
         super().perform_destroy(instance)
         log_task_activity(
             project=project,
-            actor=self.request.user,
+            actor=user,
             task_level="DAILY",
             task_id=task_id,
             task_title=task_title,

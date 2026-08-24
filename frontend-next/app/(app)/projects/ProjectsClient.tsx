@@ -20,7 +20,9 @@ import {
   createFundingRequest, deleteFundingRequest,
   createBillingProposal, deleteBillingProposal,
   createMilestone,
-  assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers
+  assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers,
+  fetchProjectFinancialPerformance, updateProjectFinancials,
+  fetchProjectFundingRequests, submitProjectFundingRequest
 } from "@/lib/api/project.api";
 import { useAuth, detectRole } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -64,6 +66,22 @@ export default function ProjectsClient() {
   const [isMilestoneModalOpen, setIsMilestoneModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
   const [isLifecycleModalOpen, setIsLifecycleModalOpen] = useState(false);
+  const [isEditFinancialsOpen, setIsEditFinancialsOpen] = useState(false);
+  const [isFundingRequestOpen, setIsFundingRequestOpen] = useState(false);
+
+  /* Real-time Project Financial Performance & Budgeting */
+  const [financialPerformance, setFinancialPerformance] = useState<any>(null);
+  const [fundingRequestsList, setFundingRequestsList] = useState<any[]>([]);
+  const [financialTargetForm, setFinancialTargetForm] = useState({
+    contract_amount: 150000000,
+    budget_amount: 100000000,
+    target_margin_percent: 25,
+  });
+  const [fundingRequestForm, setFundingRequestForm] = useState({
+    amount: 15000000,
+    category: "OPERATIONAL",
+    description: "Kebutuhan dana operasional tim proyek di lapangan"
+  });
 
   /* Team Users list for Assignment */
   const [companyUsers, setCompanyUsers] = useState<any[]>([]);
@@ -201,6 +219,56 @@ export default function ProjectsClient() {
   useEffect(() => {
     fetchProjects();
   }, []);
+
+  useEffect(() => {
+    if (selectedProject?.id) {
+      fetchProjectFinancialPerformance(selectedProject.id)
+        .then(data => setFinancialPerformance(data))
+        .catch(() => setFinancialPerformance(null));
+
+      fetchProjectFundingRequests(selectedProject.id)
+        .then(data => setFundingRequestsList(Array.isArray(data) ? data : []))
+        .catch(() => setFundingRequestsList([]));
+
+      setFinancialTargetForm({
+        contract_amount: Number((selectedProject as any).contract_amount || (selectedProject as any).revenue_target || 150000000),
+        budget_amount: Number(selectedProject.budget_amount || selectedProject.budget || 100000000),
+        target_margin_percent: Number((selectedProject as any).target_margin_percent || 20),
+      });
+    }
+  }, [selectedProject?.id, activeTab]);
+
+  const handleUpdateFinancialTargets = async () => {
+    if (!selectedProject) return;
+    try {
+      await updateProjectFinancials(selectedProject.id, {
+        contract_amount: Number(financialTargetForm.contract_amount),
+        budget_amount: Number(financialTargetForm.budget_amount),
+        target_margin_percent: Number(financialTargetForm.target_margin_percent)
+      });
+      toast.success("Target finansial & anggaran proyek berhasil diperbarui!", { icon: "💰" });
+      setIsEditFinancialsOpen(false);
+      fetchProjects(true);
+    } catch {
+      toast.error("Gagal memperbarui target keuangan proyek");
+    }
+  };
+
+  const handleCreateFundingRequest = async () => {
+    if (!selectedProject) return;
+    try {
+      await submitProjectFundingRequest(selectedProject.id, {
+        amount: Number(fundingRequestForm.amount),
+        category: fundingRequestForm.category,
+        description: fundingRequestForm.description
+      });
+      toast.success("Permintaan dana budgeting berhasil diajukan ke Finance!", { icon: "📑" });
+      setIsFundingRequestOpen(false);
+      fetchProjects(true);
+    } catch {
+      toast.error("Gagal mengajukan permintaan dana proyek");
+    }
+  };
 
   /* Timer interval */
   useEffect(() => {
@@ -363,7 +431,11 @@ export default function ProjectsClient() {
   };
 
   /* Quick Toggle Complete */
-  const handleQuickToggleDaily = async (daily: DailyTask) => {
+  const handleQuickToggleDaily = async (daily: DailyTask, isAllowed = true) => {
+    if (!isAllowed && !isPM) {
+      toast.error("Akses Ditolak: Anda tidak memiliki wewenang pada task ini!");
+      return;
+    }
     const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
     const nextStatus = isDone ? "ON_PROGRESS" : "COMPLETED";
     const nextProg = isDone ? 50 : 100;
@@ -534,12 +606,15 @@ export default function ProjectsClient() {
             <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
           </button>
 
-          <button
-            onClick={handleDeleteProject}
-            className="btn-ghost py-1.5 px-2.5 text-xs gap-1 text-red-600 hover:bg-red-50 hover:border-red-200"
-          >
-            <Trash2 size={13} />
-          </button>
+          {isPM && (
+            <button
+              onClick={handleDeleteProject}
+              className="btn-ghost py-1.5 px-2.5 text-xs gap-1 text-red-600 hover:bg-red-50 hover:border-red-200"
+              title="Hapus Proyek (Hanya PM)"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -806,25 +881,46 @@ export default function ProjectsClient() {
                           </span>
                         )}
 
-                        <button
-                          onClick={() => {
-                            setActiveMainTask(main);
-                            const defaultPic = main.assignments?.[0]?.assignee_name || user?.full_name || "Ahmad Rizki";
-                            const today = new Date().toISOString().split("T")[0];
-                            const nextWeek = new Date(Date.now() + 6 * 86400000).toISOString().split("T")[0];
-                            setWeeklyForm({
-                              week_number: (weeklyPlans.length + 1),
-                              target_description: "",
-                              start_date: today,
-                              end_date: nextWeek,
-                              assignee_name: defaultPic
-                            });
-                            setIsCreateWeeklyOpen(true);
-                          }}
-                          className="btn-outline py-1 px-2.5 text-2xs gap-1 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green"
-                        >
-                          <Plus size={12} /> + Target Mingguan (Weekly Plan)
-                        </button>
+                        {(() => {
+                          const isAssigned = (main.assignments || []).some(
+                            (a: any) =>
+                              String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
+                          );
+                          const canCreateWeekly = isPM || isAssigned;
+
+                          if (canCreateWeekly) {
+                            return (
+                              <button
+                                onClick={() => {
+                                  setActiveMainTask(main);
+                                  const defaultPic = main.assignments?.[0]?.assignee_name || user?.full_name || user?.username || "Ahmad Rizki";
+                                  const today = new Date().toISOString().split("T")[0];
+                                  const nextWeek = new Date(Date.now() + 6 * 86400000).toISOString().split("T")[0];
+                                  setWeeklyForm({
+                                    week_number: (weeklyPlans.length + 1),
+                                    target_description: "",
+                                    start_date: today,
+                                    end_date: nextWeek,
+                                    assignee_name: defaultPic
+                                  });
+                                  setIsCreateWeeklyOpen(true);
+                                }}
+                                className="btn-outline py-1 px-2.5 text-2xs gap-1 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green"
+                              >
+                                <Plus size={12} /> + Target Mingguan (Weekly Plan)
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <span
+                              className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-2 py-1 rounded-lg"
+                              title="Hanya pengguna yang di-assign pada Main Task ini atau PM yang dapat membuat target mingguan"
+                            >
+                              🔒 Hanya Assignee / PM
+                            </span>
+                          );
+                        })()}
 
                         {isPM && (
                           <button
@@ -879,36 +975,60 @@ export default function ProjectsClient() {
                                     {weekly.status} ({weekly.progress}%)
                                   </span>
 
-                                  <button
-                                    onClick={() => {
-                                      setActiveWeeklyTask(weekly);
-                                      setDailyForm({
-                                        title: "",
-                                        time_slot: "09.00 - 12.00",
-                                        planned_date: new Date().toISOString().split("T")[0],
-                                        output_result: "",
-                                        notes: "",
-                                        status: "ON_PROGRESS"
-                                      });
-                                      setIsCreateDailyOpen(true);
-                                    }}
-                                    className="btn-primary py-0.5 px-2.5 text-2xs gap-1 bg-emerald-600 hover:bg-emerald-700"
-                                  >
-                                    <Plus size={11} /> + Daily Task Harian
-                                  </button>
+                                  {(() => {
+                                    const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
+                                    const isMainAssigned = (main.assignments || []).some(
+                                      (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
+                                    );
+                                    const canCreateDaily = isPM || isWeeklyPic || isMainAssigned;
 
-                                  <button
-                                    onClick={async () => {
-                                      if (confirm(`Hapus Target Mingguan #${weekly.week_number}?`)) {
-                                        await deleteWeeklyTask(weekly.id);
-                                        toast.success("Weekly Task dihapus");
-                                        fetchProjects(true);
-                                      }
-                                    }}
-                                    className="p-1 rounded text-text-secondary hover:text-red-600"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
+                                    if (canCreateDaily) {
+                                      return (
+                                        <button
+                                          onClick={() => {
+                                            setActiveWeeklyTask(weekly);
+                                            setDailyForm({
+                                              title: "",
+                                              time_slot: "09.00 - 12.00",
+                                              planned_date: new Date().toISOString().split("T")[0],
+                                              output_result: "",
+                                              notes: "",
+                                              status: "ON_PROGRESS"
+                                            });
+                                            setIsCreateDailyOpen(true);
+                                          }}
+                                          className="btn-primary py-0.5 px-2.5 text-2xs gap-1 bg-emerald-600 hover:bg-emerald-700"
+                                        >
+                                          <Plus size={11} /> + Daily Task Harian
+                                        </button>
+                                      );
+                                    }
+
+                                    return (
+                                      <span
+                                        className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-2 py-0.5 rounded"
+                                        title="Hanya PIC Weekly Task, tim ter-assign, atau PM yang dapat membuat Daily Task"
+                                      >
+                                        🔒 Hanya PIC / PM
+                                      </span>
+                                    );
+                                  })()}
+
+                                  {(isPM || String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id)) && (
+                                    <button
+                                      onClick={async () => {
+                                        if (confirm(`Hapus Target Mingguan #${weekly.week_number}?`)) {
+                                          await deleteWeeklyTask(weekly.id);
+                                          toast.success("Weekly Task dihapus");
+                                          fetchProjects(true);
+                                        }
+                                      }}
+                                      className="p-1 rounded text-text-secondary hover:text-red-600"
+                                      title="Hapus Target Mingguan (PIC / PM)"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
 
@@ -935,6 +1055,14 @@ export default function ProjectsClient() {
                                         {dailyTasks.map((daily) => {
                                           const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
                                           const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
+                                          const isDailyOwner = String(daily.owner_id || (daily as any).owner || "") === String(user?.id);
+                                          const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
+                                          const isMainAssigned = (main.assignments || []).some(
+                                            (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
+                                          );
+                                          const canManageDaily = isPM || isDailyOwner || isWeeklyPic || isMainAssigned;
+                                          const canDeleteDaily = isPM || isDailyOwner || isWeeklyPic;
+                                          const canTransferDaily = isPM || isDailyOwner;
 
                                           return (
                                             <tr key={daily.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-50", isBlocked && "bg-red-50/60")}>
@@ -945,12 +1073,14 @@ export default function ProjectsClient() {
                                               <td className="py-2 px-3 align-top max-w-[240px]">
                                                 <div className="flex items-start gap-2">
                                                   <button
-                                                    onClick={() => handleQuickToggleDaily(daily)}
+                                                    onClick={() => handleQuickToggleDaily(daily, canManageDaily)}
+                                                    disabled={!canManageDaily}
                                                     className={cn(
                                                       "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
-                                                      isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
+                                                      !canManageDaily && "cursor-not-allowed opacity-40 bg-gray-100",
+                                                      canManageDaily && isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
                                                     )}
-                                                    title={isDone ? "Tandai belum selesai" : "Tandai selesai"}
+                                                    title={!canManageDaily ? "🔒 Hanya PIC / Assignee yang dapat mengubah status" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
                                                   >
                                                     {isDone && <Check size={11} strokeWidth={3} />}
                                                   </button>
@@ -979,48 +1109,59 @@ export default function ProjectsClient() {
                                               </td>
                                               <td className="py-2 px-3 align-top text-right whitespace-nowrap">
                                                 <div className="flex items-center justify-end gap-1.5">
-                                                  <button
-                                                    onClick={() => {
-                                                      setActiveDailyTask(daily);
-                                                      setEditDailyForm({
-                                                        status: daily.status,
-                                                        progress: daily.progress || 0,
-                                                        output_result: daily.output_result || "",
-                                                        notes: daily.notes || "",
-                                                        is_blocked: !!daily.is_blocked,
-                                                        block_reason: daily.block_reason || ""
-                                                      });
-                                                      setIsEditDailyOpen(true);
-                                                    }}
-                                                    className="btn-outline py-0.5 px-2 text-2xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                                                    title="Update Aktivitas & Progres"
-                                                  >
-                                                    <Edit size={11} /> Update
-                                                  </button>
+                                                  {canManageDaily ? (
+                                                    <button
+                                                      onClick={() => {
+                                                        setActiveDailyTask(daily);
+                                                        setEditDailyForm({
+                                                          status: daily.status,
+                                                          progress: daily.progress || 0,
+                                                          output_result: daily.output_result || "",
+                                                          notes: daily.notes || "",
+                                                          is_blocked: !!daily.is_blocked,
+                                                          block_reason: daily.block_reason || ""
+                                                        });
+                                                        setIsEditDailyOpen(true);
+                                                      }}
+                                                      className="btn-outline py-0.5 px-2 text-2xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                                      title="Update Aktivitas & Progres"
+                                                    >
+                                                      <Edit size={11} /> Update
+                                                    </button>
+                                                  ) : (
+                                                    <span className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded" title="Hanya PIC/Assignee yang dapat mengupdate task">
+                                                      🔒 Read Only
+                                                    </span>
+                                                  )}
 
-                                                  <button
-                                                    onClick={() => {
-                                                      setActiveDailyTask(daily);
-                                                      setIsTransferModalOpen(true);
-                                                    }}
-                                                    className="p-1 rounded text-amber-600 hover:bg-amber-50"
-                                                    title="Ajukan Alih Tugas (Transfer)"
-                                                  >
-                                                    <RefreshCw size={12} />
-                                                  </button>
+                                                  {canTransferDaily && (
+                                                    <button
+                                                      onClick={() => {
+                                                        setActiveDailyTask(daily);
+                                                        setIsTransferModalOpen(true);
+                                                      }}
+                                                      className="p-1 rounded text-amber-600 hover:bg-amber-50"
+                                                      title="Ajukan Alih Tugas (Transfer)"
+                                                    >
+                                                      <RefreshCw size={12} />
+                                                    </button>
+                                                  )}
 
-                                                  <button
-                                                    onClick={async () => {
-                                                      if (confirm(`Hapus aktivitas "${daily.title}"?`)) {
-                                                        await deleteDailyTask(daily.id);
-                                                        toast.success("Aktivitas harian dihapus");
-                                                        fetchProjects(true);
-                                                      }
-                                                    }}
-                                                    className="p-1 rounded text-text-secondary hover:text-red-600"
-                                                  >
-                                                    <Trash2 size={12} />
-                                                  </button>
+                                                  {canDeleteDaily && (
+                                                    <button
+                                                      onClick={async () => {
+                                                        if (confirm(`Hapus aktivitas "${daily.title}"?`)) {
+                                                          await deleteDailyTask(daily.id);
+                                                          toast.success("Aktivitas harian dihapus");
+                                                          fetchProjects(true);
+                                                        }
+                                                      }}
+                                                      className="p-1 rounded text-text-secondary hover:text-red-600"
+                                                      title="Hapus Daily Task"
+                                                    >
+                                                      <Trash2 size={12} />
+                                                    </button>
+                                                  )}
                                                 </div>
                                               </td>
                                             </tr>
@@ -1345,55 +1486,186 @@ export default function ProjectsClient() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════
-          TAB 5: FINANCIAL & COSTING
+          TAB 5: FINANCIAL & COSTING, LABA RUGI, REVENUE, BUDGETING
          ══════════════════════════════════════════════════════════════ */}
       {activeTab === "FINANCIAL" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="card p-4 rounded-2xl border border-text-tertiary">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-xs font-bold text-text-primary">Catatan Biaya Riil (Actual Cost)</h3>
-              <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
-                <Plus size={12} /> Catat Biaya
-              </button>
+        <div className="flex flex-col gap-5">
+          {/* Executive P&L (Laba Rugi) & Target Realization Banner */}
+          <div className="card p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-card-lg border border-slate-700">
+            <div className="flex justify-between items-center flex-wrap gap-3 mb-4 pb-4 border-b border-white/10">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-extrabold text-white tracking-wide flex items-center gap-2">
+                    <DollarSign size={18} className="text-emerald-400" /> Analisis Laba Rugi (P&L) & Realisasi Finansial Proyek
+                  </h3>
+                  <span className={cn(
+                    "badge text-2xs font-extrabold px-2 py-0.5 rounded-full",
+                    financialPerformance?.financial_health_status === "PROFITABLE" ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" :
+                    financialPerformance?.financial_health_status === "AT_RISK" ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" :
+                    "bg-red-500/20 text-red-300 border border-red-500/40"
+                  )}>
+                    {financialPerformance?.financial_health_status || "ANALYZING"}
+                  </span>
+                </div>
+                <p className="text-2xs text-white/60 mt-0.5">
+                  Perhitungan real-time pendapatan kontrak, progres penagihan, beban biaya aktual terpakai, dan sisa margin keuntungan.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isPM && (
+                  <button
+                    onClick={() => setIsEditFinancialsOpen(true)}
+                    className="btn-outline py-1 px-3 text-xs text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/10 gap-1.5"
+                  >
+                    <Edit size={12} /> Edit Target Finansial & Budget
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsFundingRequestOpen(true)}
+                  className="btn-primary py-1 px-3 text-xs bg-emerald-600 hover:bg-emerald-500 gap-1.5 font-bold"
+                >
+                  <Plus size={12} /> + Ajukan Permintaan Dana (Budgeting)
+                </button>
+              </div>
             </div>
-            <div className="divide-y divide-gray-100">
-              {(!selectedProject?.cost_entries || selectedProject.cost_entries.length === 0) ? (
-                <div className="p-4 text-center text-2xs text-text-secondary">Belum ada pengeluaran biaya tercatat.</div>
-              ) : (
-                selectedProject.cost_entries.map(c => (
-                  <div key={c.id} className="py-2 flex justify-between items-center text-xs">
-                    <div>
-                      <span className="font-semibold block">{c.description || c.category}</span>
-                      <span className="text-2xs text-text-secondary">{c.category}</span>
-                    </div>
-                    <strong className="text-brand-deep-green">{formatRupiah(c.amount)}</strong>
-                  </div>
-                ))
-              )}
+
+            {/* P&L Metrics Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
+                <span className="text-2xs text-white/60 block font-medium">Target Revenue (Nilai Kontrak)</span>
+                <span className="text-base font-extrabold text-white mt-1 block">
+                  {formatRupiah(Number(financialPerformance?.expected_revenue || (selectedProject as any)?.contract_amount || 0))}
+                </span>
+                <span className="text-3xs text-emerald-400 mt-0.5 block">
+                  Invoiced: {formatRupiah(Number(financialPerformance?.invoiced_revenue || 0))}
+                </span>
+              </div>
+
+              <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
+                <span className="text-2xs text-white/60 block font-medium">Total Anggaran (Budget Baseline)</span>
+                <span className="text-base font-extrabold text-white mt-1 block">
+                  {formatRupiah(Number(financialPerformance?.planned_budget || selectedProject?.budget_amount || selectedProject?.budget || 0))}
+                </span>
+                <span className="text-3xs text-cyan-400 mt-0.5 block">
+                  Utilisasi: {financialPerformance?.budget_utilization_percent || 0}%
+                </span>
+              </div>
+
+              <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
+                <span className="text-2xs text-white/60 block font-medium">Actual Cost (Biaya Riil Terpakai)</span>
+                <span className="text-base font-extrabold text-amber-300 mt-1 block">
+                  {formatRupiah(Number(financialPerformance?.actual_cost || selectedProject?.actual_cost || 0))}
+                </span>
+                <span className="text-3xs text-white/50 mt-0.5 block">
+                  Tenaga Kerja, Material & Alat
+                </span>
+              </div>
+
+              <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
+                <span className="text-2xs text-white/60 block font-medium">Proyeksi Laba Bersih (Gross Margin)</span>
+                <span className={cn(
+                  "text-base font-extrabold mt-1 block",
+                  Number(financialPerformance?.actual_gross_profit || 0) >= 0 ? "text-emerald-400" : "text-red-400"
+                )}>
+                  {formatRupiah(Number(financialPerformance?.actual_gross_profit || 0))}
+                </span>
+                <span className="text-3xs text-white/70 mt-0.5 block">
+                  Margin: <b>{financialPerformance?.actual_margin_percent || 0}%</b> (Target: {financialPerformance?.target_margin_percent || 20}%)
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="card p-4 rounded-2xl border border-text-tertiary">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-xs font-bold text-text-primary">Billing & Termin Invoice Proyek</h3>
-              <button onClick={() => setIsBillingModalOpen(true)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
-                <Plus size={12} /> Ajukan Termin
-              </button>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {(!selectedProject?.billing_proposals || selectedProject.billing_proposals.length === 0) ? (
-                <div className="p-4 text-center text-2xs text-text-secondary">Belum ada billing termin tercatat.</div>
-              ) : (
-                selectedProject.billing_proposals.map(b => (
-                  <div key={b.id} className="py-2 flex justify-between items-center text-xs">
-                    <div>
-                      <span className="font-semibold block">{b.description || "Proposal Termin"}</span>
-                      <span className="text-2xs text-text-secondary">Milestone: {b.milestone_percentage || 0}%</span>
+          {/* 3 Detail Columns: Funding Requests, Actual Cost Entries, Billing Termin */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Column 1: Funding Requests (Permintaan Dana Budgeting) */}
+            <div className="card p-4 rounded-2xl border border-text-tertiary bg-white shadow-xs">
+              <div className="flex justify-between items-center mb-3">
+                <div>
+                  <h3 className="text-xs font-bold text-text-primary">Permintaan Dana Proyek</h3>
+                  <span className="text-3xs text-text-secondary">Funding / Budgeting Request ke Finance</span>
+                </div>
+                <button onClick={() => setIsFundingRequestOpen(true)} className="btn-primary py-0.5 px-2 text-2xs gap-1">
+                  <Plus size={11} /> Ajukan
+                </button>
+              </div>
+              <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
+                {fundingRequestsList.length === 0 ? (
+                  <div className="p-6 text-center text-2xs text-text-secondary">Belum ada pengajuan dana operasional.</div>
+                ) : (
+                  fundingRequestsList.map((f: any) => (
+                    <div key={f.id} className="py-2.5 flex justify-between items-start text-xs">
+                      <div>
+                        <span className="font-bold text-text-primary block">{f.description || f.purpose || "Permintaan Anggaran"}</span>
+                        <span className="text-2xs text-text-secondary">{f.expense_type || f.category || "OPERATIONAL"} &bull; {f.expense_date || "-"}</span>
+                      </div>
+                      <div className="text-right">
+                        <strong className="text-emerald-700 block">{formatRupiah(Number(f.amount))}</strong>
+                        <span className={cn("badge text-3xs font-bold", f.status === "APPROVED" || f.status === "DISBURSED" ? "badge-success" : "badge-info")}>
+                          {f.status || "SUBMITTED"}
+                        </span>
+                      </div>
                     </div>
-                    <strong className="text-emerald-700">{formatRupiah(b.amount)}</strong>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Column 2: Actual Cost Entries */}
+            <div className="card p-4 rounded-2xl border border-text-tertiary bg-white shadow-xs">
+              <div className="flex justify-between items-center mb-3">
+                <div>
+                  <h3 className="text-xs font-bold text-text-primary">Catatan Biaya Riil (Actual Cost)</h3>
+                  <span className="text-3xs text-text-secondary">Pengeluaran & Belanja Lapangan</span>
+                </div>
+                <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-0.5 px-2 text-2xs gap-1">
+                  <Plus size={11} /> Catat
+                </button>
+              </div>
+              <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
+                {(!selectedProject?.cost_entries || selectedProject.cost_entries.length === 0) ? (
+                  <div className="p-6 text-center text-2xs text-text-secondary">Belum ada pengeluaran biaya tercatat.</div>
+                ) : (
+                  selectedProject.cost_entries.map(c => (
+                    <div key={c.id} className="py-2.5 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-bold text-text-primary block">{c.description || c.category}</span>
+                        <span className="text-2xs text-text-secondary">{c.category}</span>
+                      </div>
+                      <strong className="text-brand-deep-green">{formatRupiah(Number(c.amount))}</strong>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Column 3: Billing Termin & Penagihan */}
+            <div className="card p-4 rounded-2xl border border-text-tertiary bg-white shadow-xs">
+              <div className="flex justify-between items-center mb-3">
+                <div>
+                  <h3 className="text-xs font-bold text-text-primary">Billing & Termin Invoice</h3>
+                  <span className="text-3xs text-text-secondary">Klaim Pembayaran Customer</span>
+                </div>
+                <button onClick={() => setIsBillingModalOpen(true)} className="btn-primary py-0.5 px-2 text-2xs gap-1">
+                  <Plus size={11} /> Ajukan
+                </button>
+              </div>
+              <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
+                {(!selectedProject?.billing_proposals || selectedProject.billing_proposals.length === 0) ? (
+                  <div className="p-6 text-center text-2xs text-text-secondary">Belum ada billing termin tercatat.</div>
+                ) : (
+                  selectedProject.billing_proposals.map(b => (
+                    <div key={b.id} className="py-2.5 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-bold text-text-primary block">{b.description || "Proposal Termin"}</span>
+                        <span className="text-2xs text-text-secondary">Milestone: {b.milestone_percentage || 0}%</span>
+                      </div>
+                      <strong className="text-emerald-700">{formatRupiah(Number(b.amount))}</strong>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2206,6 +2478,113 @@ export default function ProjectsClient() {
               className="btn-primary py-1.5 px-4 text-xs"
             >
               Simpan Milestone
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 12. Modal: Edit Target Finansial & Budget Proyek */}
+      <Modal
+        isOpen={isEditFinancialsOpen}
+        onClose={() => setIsEditFinancialsOpen(false)}
+        title="Edit Parameter & Target Keuangan Proyek"
+        subtitle={`Proyek: ${selectedProject?.project_name}`}
+        size="md"
+      >
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-xs font-bold text-text-primary block mb-1">Target Pendapatan / Nilai Kontrak (Revenue Target Rp) *</label>
+            <input
+              type="number"
+              value={financialTargetForm.contract_amount}
+              onChange={e => setFinancialTargetForm({ ...financialTargetForm, contract_amount: Number(e.target.value) })}
+              className="input text-xs"
+            />
+            <span className="text-3xs text-text-secondary mt-0.5 block">Nilai kesepakatan kontrak penjualan/deal klien.</span>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-text-primary block mb-1">Pagu Anggaran Disetujui (Planned Budget Baseline Rp) *</label>
+            <input
+              type="number"
+              value={financialTargetForm.budget_amount}
+              onChange={e => setFinancialTargetForm({ ...financialTargetForm, budget_amount: Number(e.target.value) })}
+              className="input text-xs"
+            />
+            <span className="text-3xs text-text-secondary mt-0.5 block">Batas maksimal alokasi biaya pengeluaran proyek.</span>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-text-primary block mb-1">Target Profit Margin (%)</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={financialTargetForm.target_margin_percent}
+              onChange={e => setFinancialTargetForm({ ...financialTargetForm, target_margin_percent: Number(e.target.value) })}
+              className="input text-xs"
+            />
+            <span className="text-3xs text-text-secondary mt-0.5 block">Ambang batas margin keuntungan proyek yang diharapkan.</span>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-2">
+            <button onClick={() => setIsEditFinancialsOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
+            <button onClick={handleUpdateFinancialTargets} className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700">
+              Simpan Target Finansial
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 13. Modal: Permintaan Dana Budgeting (Funding Request) */}
+      <Modal
+        isOpen={isFundingRequestOpen}
+        onClose={() => setIsFundingRequestOpen(false)}
+        title="Ajukan Permintaan Dana & Budgeting Proyek"
+        subtitle={`Proyek: ${selectedProject?.project_name}`}
+        size="md"
+      >
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-xs font-bold text-text-primary block mb-1">Kategori Pengeluaran / Kebutuhan *</label>
+            <select
+              value={fundingRequestForm.category}
+              onChange={e => setFundingRequestForm({ ...fundingRequestForm, category: e.target.value })}
+              className="input text-xs"
+            >
+              <option value="OPERATIONAL">Dana Operasional Tim</option>
+              <option value="MATERIAL">Pengadaan Material Kritis</option>
+              <option value="LOGISTICS">Transportasi & Logistik Lapangan</option>
+              <option value="EQUIPMENT">Sewa Alat & Perizinan</option>
+              <option value="OTHER">Lain-lain (Emergency Fund)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-text-primary block mb-1">Jumlah Dana yang Diajukan (Rp) *</label>
+            <input
+              type="number"
+              value={fundingRequestForm.amount}
+              onChange={e => setFundingRequestForm({ ...fundingRequestForm, amount: Number(e.target.value) })}
+              className="input text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-text-primary block mb-1">Keterangan / Alasan Permintaan Dana *</label>
+            <textarea
+              rows={2}
+              placeholder="Jelaskan kebutuhan pengeluaran dana dan peruntukannya di lapangan..."
+              value={fundingRequestForm.description}
+              onChange={e => setFundingRequestForm({ ...fundingRequestForm, description: e.target.value })}
+              className="input text-xs"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 mt-2">
+            <button onClick={() => setIsFundingRequestOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
+            <button onClick={handleCreateFundingRequest} className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700">
+              Kirim Permintaan ke Finance
             </button>
           </div>
         </div>
