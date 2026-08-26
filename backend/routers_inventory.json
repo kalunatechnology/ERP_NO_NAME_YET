@@ -1,0 +1,1500 @@
+{
+  "accounts": [
+    {
+      "prefix": "users",
+      "viewset": "apps.accounts.api.viewsets.UserViewSet",
+      "basename": "user",
+      "model": "accounts.User"
+    },
+    {
+      "prefix": "roles",
+      "viewset": "apps.accounts.api.viewsets.RoleViewSet",
+      "basename": "role",
+      "model": "accounts.Role"
+    },
+    {
+      "prefix": "permissions",
+      "viewset": "apps.accounts.api.viewsets.PermissionViewSet",
+      "basename": "permission",
+      "model": "accounts.Permission"
+    },
+    {
+      "prefix": "user-roles",
+      "viewset": "apps.accounts.api.viewsets.UserRoleViewSet",
+      "basename": "user-role",
+      "model": "accounts.UserRole"
+    },
+    {
+      "prefix": "role-permissions",
+      "viewset": "apps.accounts.api.viewsets.RolePermissionViewSet",
+      "basename": "role-permission",
+      "model": "accounts.RolePermission"
+    },
+    {
+      "prefix": "role-hierarchies",
+      "viewset": "apps.accounts.api.viewsets.RoleHierarchyViewSet",
+      "basename": "role-hierarchy",
+      "model": "accounts.RoleHierarchy"
+    },
+    {
+      "prefix": "data-scope-policies",
+      "viewset": "apps.accounts.api.viewsets.DataScopePolicyViewSet",
+      "basename": "data-scope-policy",
+      "model": "accounts.DataScopePolicy"
+    },
+    {
+      "prefix": "role-data-scopes",
+      "viewset": "apps.accounts.api.viewsets.RoleDataScopeViewSet",
+      "basename": "role-data-scope",
+      "model": "accounts.RoleDataScope"
+    },
+    {
+      "prefix": "field-permissions",
+      "viewset": "apps.accounts.api.viewsets.FieldPermissionViewSet",
+      "basename": "field-permission",
+      "model": "accounts.FieldPermission"
+    },
+    {
+      "prefix": "information-share-rules",
+      "viewset": "apps.accounts.api.viewsets.InformationShareRuleViewSet",
+      "basename": "information-share-rule",
+      "model": "accounts.InformationShareRule"
+    },
+    {
+      "prefix": "approval-limits",
+      "viewset": "apps.accounts.api.viewsets.ApprovalLimitViewSet",
+      "basename": "approval-limit",
+      "model": "accounts.ApprovalLimit"
+    },
+    {
+      "prefix": "user-project-accesses",
+      "viewset": "apps.accounts.api.viewsets.UserProjectAccessViewSet",
+      "basename": "user-project-access",
+      "model": "accounts.UserProjectAccess"
+    }
+  ],
+  "analytics": [
+    {
+      "prefix": "dashboards",
+      "viewset": "apps.analytics.api.viewsets.DashboardViewSet",
+      "basename": "dashboard",
+      "model": "analytics.Dashboard"
+    },
+    {
+      "prefix": "dashboard-roles",
+      "viewset": "apps.analytics.api.viewsets.DashboardRoleViewSet",
+      "basename": "dashboard-role",
+      "model": "analytics.DashboardRole"
+    },
+    {
+      "prefix": "widgets",
+      "viewset": "apps.analytics.api.viewsets.WidgetViewSet",
+      "basename": "widget",
+      "model": "analytics.Widget"
+    },
+    {
+      "prefix": "kpi-definitions",
+      "viewset": "apps.analytics.api.viewsets.KPIDefinitionViewSet",
+      "basename": "kpi-definition",
+      "model": "analytics.KPIDefinition"
+    },
+    {
+      "prefix": "kpi-targets",
+      "viewset": "apps.analytics.api.viewsets.KPITargetViewSet",
+      "basename": "kpi-target",
+      "model": "analytics.KPITarget"
+    },
+    {
+      "prefix": "kpi-results",
+      "viewset": "apps.analytics.api.viewsets.KPIResultViewSet",
+      "basename": "kpi-result",
+      "model": "analytics.KPIResult"
+    },
+    {
+      "prefix": "alert-rules",
+      "viewset": "apps.analytics.api.viewsets.AlertRuleViewSet",
+      "basename": "alert-rule",
+      "model": "analytics.AlertRule"
+    },
+    {
+      "prefix": "alert-events",
+      "viewset": "apps.analytics.api.viewsets.AlertEventViewSet",
+      "basename": "alert-event",
+      "model": "analytics.AlertEvent"
+    }
+  ],
+  "assets": [
+    {
+      "prefix": "categories",
+      "viewset": "apps.assets.api.viewsets.CategoryViewSet",
+      "basename": "category",
+      "model": "assets.Category"
+    },
+    {
+      "prefix": "assets",
+      "viewset": "apps.assets.api.viewsets.AssetViewSet",
+      "basename": "asset",
+      "model": "assets.Asset"
+    },
+    {
+      "prefix": "books",
+      "viewset": "apps.assets.api.viewsets.BookViewSet",
+      "basename": "book",
+      "model": "assets.Book"
+    },
+    {
+      "prefix": "depreciation-lines",
+      "viewset": "apps.assets.api.viewsets.DepreciationLineViewSet",
+      "basename": "depreciation-line",
+      "model": "assets.DepreciationLine"
+    },
+    {
+      "prefix": "maintenances",
+      "viewset": "apps.assets.api.viewsets.MaintenanceViewSet",
+      "basename": "maintenance",
+      "model": "assets.Maintenance"
+    },
+    {
+      "prefix": "disposals",
+      "viewset": "apps.assets.api.viewsets.DisposalViewSet",
+      "basename": "disposal",
+      "model": "assets.Disposal"
+    }
+  ],
+  "core": [
+    {
+      "prefix": "tenants",
+      "viewset": "apps.core.api.viewsets.TenantViewSet",
+      "basename": "tenant",
+      "model": "core.Tenant"
+    },
+    {
+      "prefix": "companies",
+      "viewset": "apps.core.api.viewsets.CompanyViewSet",
+      "basename": "company",
+      "model": "core.Company"
+    },
+    {
+      "prefix": "organizations",
+      "viewset": "apps.core.api.viewsets.OrganizationViewSet",
+      "basename": "organization",
+      "model": "core.Organization"
+    },
+    {
+      "prefix": "business-documents",
+      "viewset": "apps.core.api.viewsets.BusinessDocumentViewSet",
+      "basename": "business-document",
+      "model": "core.BusinessDocument"
+    },
+    {
+      "prefix": "document-links",
+      "viewset": "apps.core.api.viewsets.DocumentLinkViewSet",
+      "basename": "document-link",
+      "model": "core.DocumentLink"
+    },
+    {
+      "prefix": "workflow-instances",
+      "viewset": "apps.core.api.viewsets.WorkflowInstanceViewSet",
+      "basename": "workflow-instance",
+      "model": "core.WorkflowInstance"
+    },
+    {
+      "prefix": "workflow-approvals",
+      "viewset": "apps.core.api.viewsets.WorkflowApprovalViewSet",
+      "basename": "workflow-approval",
+      "model": "core.WorkflowApproval"
+    },
+    {
+      "prefix": "audit-events",
+      "viewset": "apps.core.api.viewsets.AuditEventViewSet",
+      "basename": "audit-event",
+      "model": "core.AuditEvent"
+    },
+    {
+      "prefix": "notifications",
+      "viewset": "apps.core.api.viewsets.NotificationViewSet",
+      "basename": "notification",
+      "model": "core.Notification"
+    },
+    {
+      "prefix": "notification-recipients",
+      "viewset": "apps.core.api.viewsets.NotificationRecipientViewSet",
+      "basename": "notification-recipient",
+      "model": "core.NotificationRecipient"
+    },
+    {
+      "prefix": "quick-actions",
+      "viewset": "apps.core.api.viewsets.QuickActionViewSet",
+      "basename": "quick-action",
+      "model": "core.QuickAction"
+    },
+    {
+      "prefix": "files",
+      "viewset": "apps.core.api.viewsets.FileViewSet",
+      "basename": "file",
+      "model": "core.File"
+    },
+    {
+      "prefix": "document-attachments",
+      "viewset": "apps.core.api.viewsets.DocumentAttachmentViewSet",
+      "basename": "document-attachment",
+      "model": "core.DocumentAttachment"
+    },
+    {
+      "prefix": "document-templates",
+      "viewset": "apps.core.api.viewsets.DocumentTemplateViewSet",
+      "basename": "document-template",
+      "model": "core.DocumentTemplate"
+    },
+    {
+      "prefix": "document-template-versions",
+      "viewset": "apps.core.api.viewsets.DocumentTemplateVersionViewSet",
+      "basename": "document-template-version",
+      "model": "core.DocumentTemplateVersion"
+    },
+    {
+      "prefix": "document-template-fields",
+      "viewset": "apps.core.api.viewsets.DocumentTemplateFieldViewSet",
+      "basename": "document-template-field",
+      "model": "core.DocumentTemplateField"
+    },
+    {
+      "prefix": "generated-documents",
+      "viewset": "apps.core.api.viewsets.GeneratedDocumentViewSet",
+      "basename": "generated-document",
+      "model": "core.GeneratedDocument"
+    },
+    {
+      "prefix": "document-signatures",
+      "viewset": "apps.core.api.viewsets.DocumentSignatureViewSet",
+      "basename": "document-signature",
+      "model": "core.DocumentSignature"
+    },
+    {
+      "prefix": "sidebar-feed",
+      "viewset": "apps.core.api.viewsets.RightSidebarFeedViewSet",
+      "basename": "sidebar-feed",
+      "model": null
+    },
+    {
+      "prefix": "recent-items",
+      "viewset": "apps.core.api.viewsets.UserRecentItemViewSet",
+      "basename": "recent-item",
+      "model": null
+    },
+    {
+      "prefix": "team-contacts",
+      "viewset": "apps.core.api.viewsets.TeamContactViewSet",
+      "basename": "team-contact",
+      "model": "core.TeamContact"
+    }
+  ],
+  "crm": [
+    {
+      "prefix": "leads",
+      "viewset": "apps.crm.api.viewsets.LeadViewSet",
+      "basename": "lead",
+      "model": "crm.Lead"
+    },
+    {
+      "prefix": "opportunities",
+      "viewset": "apps.crm.api.viewsets.OpportunityViewSet",
+      "basename": "opportunity",
+      "model": "crm.Opportunity"
+    },
+    {
+      "prefix": "opportunity-products",
+      "viewset": "apps.crm.api.viewsets.OpportunityProductViewSet",
+      "basename": "opportunity-product",
+      "model": "crm.OpportunityProduct"
+    },
+    {
+      "prefix": "activities",
+      "viewset": "apps.crm.api.viewsets.ActivityViewSet",
+      "basename": "activity",
+      "model": "crm.Activity"
+    },
+    {
+      "prefix": "pipelines",
+      "viewset": "apps.crm.api.viewsets.PipelineViewSet",
+      "basename": "pipeline",
+      "model": "crm.Pipeline"
+    },
+    {
+      "prefix": "pipeline-stages",
+      "viewset": "apps.crm.api.viewsets.PipelineStageViewSet",
+      "basename": "pipeline-stage",
+      "model": "crm.PipelineStage"
+    },
+    {
+      "prefix": "opportunity-stage-histories",
+      "viewset": "apps.crm.api.viewsets.OpportunityStageHistoryViewSet",
+      "basename": "opportunity-stage-history",
+      "model": "crm.OpportunityStageHistory"
+    },
+    {
+      "prefix": "executive-approvals",
+      "viewset": "apps.crm.api.viewsets.ExecutiveApprovalViewSet",
+      "basename": "executive-approval",
+      "model": "crm.ExecutiveApproval"
+    },
+    {
+      "prefix": "credit-status-snapshots",
+      "viewset": "apps.crm.api.viewsets.CreditStatusSnapshotViewSet",
+      "basename": "credit-status-snapshot",
+      "model": "crm.CreditStatusSnapshot"
+    },
+    {
+      "prefix": "channel-accounts",
+      "viewset": "apps.crm.api.viewsets.ChannelAccountViewSet",
+      "basename": "channel-account",
+      "model": "crm.ChannelAccount"
+    },
+    {
+      "prefix": "conversations",
+      "viewset": "apps.crm.api.viewsets.ConversationViewSet",
+      "basename": "conversation",
+      "model": "crm.Conversation"
+    },
+    {
+      "prefix": "conversation-participants",
+      "viewset": "apps.crm.api.viewsets.ConversationParticipantViewSet",
+      "basename": "conversation-participant",
+      "model": "crm.ConversationParticipant"
+    },
+    {
+      "prefix": "messages",
+      "viewset": "apps.crm.api.viewsets.MessageViewSet",
+      "basename": "message",
+      "model": "crm.Message"
+    },
+    {
+      "prefix": "message-attachments",
+      "viewset": "apps.crm.api.viewsets.MessageAttachmentViewSet",
+      "basename": "message-attachment",
+      "model": "crm.MessageAttachment"
+    },
+    {
+      "prefix": "message-delivery-statuses",
+      "viewset": "apps.crm.api.viewsets.MessageDeliveryStatusViewSet",
+      "basename": "message-delivery-status",
+      "model": "crm.MessageDeliveryStatus"
+    },
+    {
+      "prefix": "feedbacks",
+      "viewset": "apps.crm.api.viewsets.FeedbackViewSet",
+      "basename": "feedback",
+      "model": "crm.Feedback"
+    },
+    {
+      "prefix": "customer-feedbacks",
+      "viewset": "apps.crm.api.viewsets.CustomerFeedbackViewSet",
+      "basename": "customer-feedback",
+      "model": "crm.CustomerFeedback"
+    },
+    {
+      "prefix": "surveys",
+      "viewset": "apps.crm.api.viewsets.SurveyViewSet",
+      "basename": "survey",
+      "model": "crm.Survey"
+    },
+    {
+      "prefix": "survey-questions",
+      "viewset": "apps.crm.api.viewsets.SurveyQuestionViewSet",
+      "basename": "survey-question",
+      "model": "crm.SurveyQuestion"
+    },
+    {
+      "prefix": "survey-responses",
+      "viewset": "apps.crm.api.viewsets.SurveyResponseViewSet",
+      "basename": "survey-response",
+      "model": "crm.SurveyResponse"
+    },
+    {
+      "prefix": "survey-answers",
+      "viewset": "apps.crm.api.viewsets.SurveyAnswerViewSet",
+      "basename": "survey-answer",
+      "model": "crm.SurveyAnswer"
+    },
+    {
+      "prefix": "customer-inquiries",
+      "viewset": "apps.crm.api.viewsets.CustomerInquiryViewSet",
+      "basename": "customer-inquiry",
+      "model": "crm.CustomerInquiry"
+    },
+    {
+      "prefix": "inquiry-requirements",
+      "viewset": "apps.crm.api.viewsets.InquiryRequirementViewSet",
+      "basename": "inquiry-requirement",
+      "model": "crm.InquiryRequirement"
+    },
+    {
+      "prefix": "cost-estimates",
+      "viewset": "apps.crm.api.viewsets.CostEstimateViewSet",
+      "basename": "cost-estimate",
+      "model": "crm.CostEstimate"
+    },
+    {
+      "prefix": "cost-estimate-lines",
+      "viewset": "apps.crm.api.viewsets.CostEstimateLineViewSet",
+      "basename": "cost-estimate-line",
+      "model": "crm.CostEstimateLine"
+    },
+    {
+      "prefix": "quotation-versions",
+      "viewset": "apps.crm.api.viewsets.QuotationVersionViewSet",
+      "basename": "quotation-version",
+      "model": "crm.QuotationVersion"
+    },
+    {
+      "prefix": "quotation-deliveries",
+      "viewset": "apps.crm.api.viewsets.QuotationDeliveryViewSet",
+      "basename": "quotation-delivery",
+      "model": "crm.QuotationDelivery"
+    },
+    {
+      "prefix": "workflow-events",
+      "viewset": "apps.crm.api.viewsets.CRMWorkflowEventViewSet",
+      "basename": "crm-workflow-event",
+      "model": "crm.CRMWorkflowEvent"
+    }
+  ],
+  "finance": [
+    {
+      "prefix": "fiscal-years",
+      "viewset": "apps.finance.api.viewsets.FiscalYearViewSet",
+      "basename": "fiscal-year",
+      "model": "finance.FiscalYear"
+    },
+    {
+      "prefix": "fiscal-periods",
+      "viewset": "apps.finance.api.viewsets.FiscalPeriodViewSet",
+      "basename": "fiscal-period",
+      "model": "finance.FiscalPeriod"
+    },
+    {
+      "prefix": "accounts",
+      "viewset": "apps.finance.api.viewsets.AccountViewSet",
+      "basename": "account",
+      "model": "finance.Account"
+    },
+    {
+      "prefix": "journals",
+      "viewset": "apps.finance.api.viewsets.JournalViewSet",
+      "basename": "journal",
+      "model": "finance.Journal"
+    },
+    {
+      "prefix": "journal-entries",
+      "viewset": "apps.finance.api.viewsets.JournalEntryViewSet",
+      "basename": "journal-entry",
+      "model": "finance.JournalEntry"
+    },
+    {
+      "prefix": "journal-lines",
+      "viewset": "apps.finance.api.viewsets.JournalLineViewSet",
+      "basename": "journal-line",
+      "model": "finance.JournalLine"
+    },
+    {
+      "prefix": "billing-documents",
+      "viewset": "apps.finance.api.viewsets.BillingDocumentViewSet",
+      "basename": "billing-document",
+      "model": "finance.BillingDocument"
+    },
+    {
+      "prefix": "billing-document-lines",
+      "viewset": "apps.finance.api.viewsets.BillingDocumentLineViewSet",
+      "basename": "billing-document-line",
+      "model": "finance.BillingDocumentLine"
+    },
+    {
+      "prefix": "arap-schedules",
+      "viewset": "apps.finance.api.viewsets.ARAPScheduleViewSet",
+      "basename": "arap-schedule",
+      "model": "finance.ARAPSchedule"
+    },
+    {
+      "prefix": "payments",
+      "viewset": "apps.finance.api.viewsets.PaymentViewSet",
+      "basename": "payment",
+      "model": "finance.Payment"
+    },
+    {
+      "prefix": "payment-allocations",
+      "viewset": "apps.finance.api.viewsets.PaymentAllocationViewSet",
+      "basename": "payment-allocation",
+      "model": "finance.PaymentAllocation"
+    },
+    {
+      "prefix": "bank-accounts",
+      "viewset": "apps.finance.api.viewsets.BankAccountViewSet",
+      "basename": "bank-account",
+      "model": "finance.BankAccount"
+    },
+    {
+      "prefix": "bank-statements",
+      "viewset": "apps.finance.api.viewsets.BankStatementViewSet",
+      "basename": "bank-statement",
+      "model": "finance.BankStatement"
+    },
+    {
+      "prefix": "bank-statement-lines",
+      "viewset": "apps.finance.api.viewsets.BankStatementLineViewSet",
+      "basename": "bank-statement-line",
+      "model": "finance.BankStatementLine"
+    },
+    {
+      "prefix": "bank-reconciliations",
+      "viewset": "apps.finance.api.viewsets.BankReconciliationViewSet",
+      "basename": "bank-reconciliation",
+      "model": "finance.BankReconciliation"
+    },
+    {
+      "prefix": "tax-transactions",
+      "viewset": "apps.finance.api.viewsets.TaxTransactionViewSet",
+      "basename": "tax-transaction",
+      "model": "finance.TaxTransaction"
+    },
+    {
+      "prefix": "budgets",
+      "viewset": "apps.finance.api.viewsets.BudgetViewSet",
+      "basename": "budget",
+      "model": "finance.Budget"
+    },
+    {
+      "prefix": "budget-lines",
+      "viewset": "apps.finance.api.viewsets.BudgetLineViewSet",
+      "basename": "budget-line",
+      "model": "finance.BudgetLine"
+    },
+    {
+      "prefix": "period-closings",
+      "viewset": "apps.finance.api.viewsets.PeriodClosingViewSet",
+      "basename": "period-closing",
+      "model": "finance.PeriodClosing"
+    },
+    {
+      "prefix": "financial-snapshots",
+      "viewset": "apps.finance.api.viewsets.FinancialSnapshotViewSet",
+      "basename": "financial-snapshot",
+      "model": "finance.FinancialSnapshot"
+    },
+    {
+      "prefix": "unit-cost-snapshots",
+      "viewset": "apps.finance.api.viewsets.UnitCostSnapshotViewSet",
+      "basename": "unit-cost-snapshot",
+      "model": "finance.UnitCostSnapshot"
+    },
+    {
+      "prefix": "recurring-payment-rules",
+      "viewset": "apps.finance.api.viewsets.RecurringPaymentRuleViewSet",
+      "basename": "recurring-payment-rule",
+      "model": "finance.RecurringPaymentRule"
+    },
+    {
+      "prefix": "recurring-payment-runs",
+      "viewset": "apps.finance.api.viewsets.RecurringPaymentRunViewSet",
+      "basename": "recurring-payment-run",
+      "model": "finance.RecurringPaymentRun"
+    },
+    {
+      "prefix": "credit-facilities",
+      "viewset": "apps.finance.api.viewsets.CreditFacilityViewSet",
+      "basename": "credit-facility",
+      "model": "finance.CreditFacility"
+    },
+    {
+      "prefix": "project-wip-snapshots",
+      "viewset": "apps.finance.api.viewsets.ProjectWIPSnapshotViewSet",
+      "basename": "project-wip-snapshot",
+      "model": "finance.ProjectWIPSnapshot"
+    },
+    {
+      "prefix": "project-fundings",
+      "viewset": "apps.finance.api.viewsets.ProjectFundingViewSet",
+      "basename": "project-funding",
+      "model": "finance.ProjectFunding"
+    },
+    {
+      "prefix": "project-funding-transactions",
+      "viewset": "apps.finance.api.viewsets.ProjectFundingTransactionViewSet",
+      "basename": "project-funding-transaction",
+      "model": "finance.ProjectFundingTransaction"
+    },
+    {
+      "prefix": "cost-baselines",
+      "viewset": "apps.finance.api.viewsets.CostBaselineViewSet",
+      "basename": "cost-baseline",
+      "model": "finance.CostBaseline"
+    },
+    {
+      "prefix": "cost-baseline-lines",
+      "viewset": "apps.finance.api.viewsets.CostBaselineLineViewSet",
+      "basename": "cost-baseline-line",
+      "model": "finance.CostBaselineLine"
+    },
+    {
+      "prefix": "cost-variances",
+      "viewset": "apps.finance.api.viewsets.CostVarianceViewSet",
+      "basename": "cost-variance",
+      "model": "finance.CostVariance"
+    },
+    {
+      "prefix": "overhead-rules",
+      "viewset": "apps.finance.api.viewsets.OverheadRuleViewSet",
+      "basename": "overhead-rule",
+      "model": "finance.OverheadRule"
+    },
+    {
+      "prefix": "overhead-allocations",
+      "viewset": "apps.finance.api.viewsets.OverheadAllocationViewSet",
+      "basename": "overhead-allocation",
+      "model": "finance.OverheadAllocation"
+    },
+    {
+      "prefix": "project-cost-snapshots",
+      "viewset": "apps.finance.api.viewsets.ProjectCostSnapshotViewSet",
+      "basename": "project-cost-snapshot",
+      "model": "finance.ProjectCostSnapshot"
+    },
+    {
+      "prefix": "project-cost-entries",
+      "viewset": "apps.finance.api.viewsets.ProjectCostEntryViewSet",
+      "basename": "project-cost-entry",
+      "model": "finance.ProjectCostEntry"
+    },
+    {
+      "prefix": "billing-proposals",
+      "viewset": "apps.finance.api.viewsets.BillingProposalViewSet",
+      "basename": "billing-proposal",
+      "model": "finance.BillingProposal"
+    },
+    {
+      "prefix": "invoice-variance-cases",
+      "viewset": "apps.finance.api.viewsets.InvoiceVarianceCaseViewSet",
+      "basename": "invoice-variance-case",
+      "model": "finance.InvoiceVarianceCase"
+    },
+    {
+      "prefix": "customer-credit-limits",
+      "viewset": "apps.finance.api.viewsets.CustomerCreditLimitViewSet",
+      "basename": "customer-credit-limit",
+      "model": "finance.CustomerCreditLimit"
+    }
+  ],
+  "implementation": [
+    {
+      "prefix": "releases",
+      "viewset": "apps.implementation.api.viewsets.ReleaseViewSet",
+      "basename": "release",
+      "model": "implementation.Release"
+    },
+    {
+      "prefix": "phases",
+      "viewset": "apps.implementation.api.viewsets.PhaseViewSet",
+      "basename": "phase",
+      "model": "implementation.Phase"
+    },
+    {
+      "prefix": "phase-items",
+      "viewset": "apps.implementation.api.viewsets.PhaseItemViewSet",
+      "basename": "phase-item",
+      "model": "implementation.PhaseItem"
+    },
+    {
+      "prefix": "workflows",
+      "viewset": "apps.implementation.api.viewsets.WorkflowViewSet",
+      "basename": "workflow",
+      "model": "implementation.Workflow"
+    },
+    {
+      "prefix": "workflow-stages",
+      "viewset": "apps.implementation.api.viewsets.WorkflowStageViewSet",
+      "basename": "workflow-stage",
+      "model": "implementation.WorkflowStage"
+    },
+    {
+      "prefix": "work-items",
+      "viewset": "apps.implementation.api.viewsets.WorkItemViewSet",
+      "basename": "work-item",
+      "model": "implementation.WorkItem"
+    },
+    {
+      "prefix": "test-cycles",
+      "viewset": "apps.implementation.api.viewsets.TestCycleViewSet",
+      "basename": "test-cycle",
+      "model": "implementation.TestCycle"
+    },
+    {
+      "prefix": "gtm-milestones",
+      "viewset": "apps.implementation.api.viewsets.GTMMilestoneViewSet",
+      "basename": "gtm-milestone",
+      "model": "implementation.GTMMilestone"
+    }
+  ],
+  "inventory": [
+    {
+      "prefix": "lots",
+      "viewset": "apps.inventory.api.viewsets.LotViewSet",
+      "basename": "lot",
+      "model": "inventory.Lot"
+    },
+    {
+      "prefix": "serial-numbers",
+      "viewset": "apps.inventory.api.viewsets.SerialNumberViewSet",
+      "basename": "serial-number",
+      "model": "inventory.SerialNumber"
+    },
+    {
+      "prefix": "stock-moves",
+      "viewset": "apps.inventory.api.viewsets.StockMoveViewSet",
+      "basename": "stock-move",
+      "model": "inventory.StockMove"
+    },
+    {
+      "prefix": "stock-move-lines",
+      "viewset": "apps.inventory.api.viewsets.StockMoveLineViewSet",
+      "basename": "stock-move-line",
+      "model": "inventory.StockMoveLine"
+    },
+    {
+      "prefix": "stock-reservations",
+      "viewset": "apps.inventory.api.viewsets.StockReservationViewSet",
+      "basename": "stock-reservation",
+      "model": "inventory.StockReservation"
+    },
+    {
+      "prefix": "stock-ledger-entries",
+      "viewset": "apps.inventory.api.viewsets.StockLedgerEntryViewSet",
+      "basename": "stock-ledger-entry",
+      "model": "inventory.StockLedgerEntry"
+    },
+    {
+      "prefix": "stock-balances",
+      "viewset": "apps.inventory.api.viewsets.StockBalanceViewSet",
+      "basename": "stock-balance",
+      "model": "inventory.StockBalance"
+    },
+    {
+      "prefix": "valuation-layers",
+      "viewset": "apps.inventory.api.viewsets.ValuationLayerViewSet",
+      "basename": "valuation-layer",
+      "model": "inventory.ValuationLayer"
+    },
+    {
+      "prefix": "stock-counts",
+      "viewset": "apps.inventory.api.viewsets.StockCountViewSet",
+      "basename": "stock-count",
+      "model": "inventory.StockCount"
+    },
+    {
+      "prefix": "stock-count-lines",
+      "viewset": "apps.inventory.api.viewsets.StockCountLineViewSet",
+      "basename": "stock-count-line",
+      "model": "inventory.StockCountLine"
+    }
+  ],
+  "logistics": [
+    {
+      "prefix": "shipments",
+      "viewset": "apps.logistics.api.viewsets.ShipmentViewSet",
+      "basename": "shipment",
+      "model": "logistics.Shipment"
+    },
+    {
+      "prefix": "shipment-lines",
+      "viewset": "apps.logistics.api.viewsets.ShipmentLineViewSet",
+      "basename": "shipment-line",
+      "model": "logistics.ShipmentLine"
+    },
+    {
+      "prefix": "tracking-events",
+      "viewset": "apps.logistics.api.viewsets.TrackingEventViewSet",
+      "basename": "tracking-event",
+      "model": "logistics.TrackingEvent"
+    },
+    {
+      "prefix": "proof-of-deliveries",
+      "viewset": "apps.logistics.api.viewsets.ProofOfDeliveryViewSet",
+      "basename": "proof-of-delivery",
+      "model": "logistics.ProofOfDelivery"
+    }
+  ],
+  "manufacturing": [
+    {
+      "prefix": "boms",
+      "viewset": "apps.manufacturing.api.viewsets.BOMViewSet",
+      "basename": "bom",
+      "model": "manufacturing.BOM"
+    },
+    {
+      "prefix": "bom-versions",
+      "viewset": "apps.manufacturing.api.viewsets.BOMVersionViewSet",
+      "basename": "bom-version",
+      "model": "manufacturing.BOMVersion"
+    },
+    {
+      "prefix": "bom-lines",
+      "viewset": "apps.manufacturing.api.viewsets.BOMLineViewSet",
+      "basename": "bom-line",
+      "model": "manufacturing.BOMLine"
+    },
+    {
+      "prefix": "routings",
+      "viewset": "apps.manufacturing.api.viewsets.RoutingViewSet",
+      "basename": "routing",
+      "model": "manufacturing.Routing"
+    },
+    {
+      "prefix": "routing-operations",
+      "viewset": "apps.manufacturing.api.viewsets.RoutingOperationViewSet",
+      "basename": "routing-operation",
+      "model": "manufacturing.RoutingOperation"
+    },
+    {
+      "prefix": "production-orders",
+      "viewset": "apps.manufacturing.api.viewsets.ProductionOrderViewSet",
+      "basename": "production-order",
+      "model": "manufacturing.ProductionOrder"
+    },
+    {
+      "prefix": "production-materials",
+      "viewset": "apps.manufacturing.api.viewsets.ProductionMaterialViewSet",
+      "basename": "production-material",
+      "model": "manufacturing.ProductionMaterial"
+    },
+    {
+      "prefix": "work-orders",
+      "viewset": "apps.manufacturing.api.viewsets.WorkOrderViewSet",
+      "basename": "work-order",
+      "model": "manufacturing.WorkOrder"
+    },
+    {
+      "prefix": "labor-logs",
+      "viewset": "apps.manufacturing.api.viewsets.LaborLogViewSet",
+      "basename": "labor-log",
+      "model": "manufacturing.LaborLog"
+    },
+    {
+      "prefix": "machine-logs",
+      "viewset": "apps.manufacturing.api.viewsets.MachineLogViewSet",
+      "basename": "machine-log",
+      "model": "manufacturing.MachineLog"
+    },
+    {
+      "prefix": "production-outputs",
+      "viewset": "apps.manufacturing.api.viewsets.ProductionOutputViewSet",
+      "basename": "production-output",
+      "model": "manufacturing.ProductionOutput"
+    },
+    {
+      "prefix": "scraps",
+      "viewset": "apps.manufacturing.api.viewsets.ScrapViewSet",
+      "basename": "scrap",
+      "model": "manufacturing.Scrap"
+    },
+    {
+      "prefix": "cost-ledger-entries",
+      "viewset": "apps.manufacturing.api.viewsets.CostLedgerEntryViewSet",
+      "basename": "cost-ledger-entry",
+      "model": "manufacturing.CostLedgerEntry"
+    }
+  ],
+  "master_data": [
+    {
+      "prefix": "parties",
+      "viewset": "apps.master_data.api.viewsets.PartyViewSet",
+      "basename": "party",
+      "model": "master_data.Party"
+    },
+    {
+      "prefix": "party-roles",
+      "viewset": "apps.master_data.api.viewsets.PartyRoleViewSet",
+      "basename": "party-role",
+      "model": "master_data.PartyRole"
+    },
+    {
+      "prefix": "contacts",
+      "viewset": "apps.master_data.api.viewsets.ContactViewSet",
+      "basename": "contact",
+      "model": "master_data.Contact"
+    },
+    {
+      "prefix": "addresses",
+      "viewset": "apps.master_data.api.viewsets.AddressViewSet",
+      "basename": "address",
+      "model": "master_data.Address"
+    },
+    {
+      "prefix": "customer-profiles",
+      "viewset": "apps.master_data.api.viewsets.CustomerProfileViewSet",
+      "basename": "customer-profile",
+      "model": "master_data.CustomerProfile"
+    },
+    {
+      "prefix": "supplier-profiles",
+      "viewset": "apps.master_data.api.viewsets.SupplierProfileViewSet",
+      "basename": "supplier-profile",
+      "model": "master_data.SupplierProfile"
+    },
+    {
+      "prefix": "product-categories",
+      "viewset": "apps.master_data.api.viewsets.ProductCategoryViewSet",
+      "basename": "product-category",
+      "model": "master_data.ProductCategory"
+    },
+    {
+      "prefix": "uoms",
+      "viewset": "apps.master_data.api.viewsets.UOMViewSet",
+      "basename": "uom",
+      "model": "master_data.UOM"
+    },
+    {
+      "prefix": "products",
+      "viewset": "apps.master_data.api.viewsets.ProductViewSet",
+      "basename": "product",
+      "model": "master_data.Product"
+    },
+    {
+      "prefix": "currencies",
+      "viewset": "apps.master_data.api.viewsets.CurrencyViewSet",
+      "basename": "currency",
+      "model": "master_data.Currency"
+    },
+    {
+      "prefix": "exchange-rates",
+      "viewset": "apps.master_data.api.viewsets.ExchangeRateViewSet",
+      "basename": "exchange-rate",
+      "model": "master_data.ExchangeRate"
+    },
+    {
+      "prefix": "payment-terms",
+      "viewset": "apps.master_data.api.viewsets.PaymentTermViewSet",
+      "basename": "payment-term",
+      "model": "master_data.PaymentTerm"
+    },
+    {
+      "prefix": "tax-codes",
+      "viewset": "apps.master_data.api.viewsets.TaxCodeViewSet",
+      "basename": "tax-code",
+      "model": "master_data.TaxCode"
+    },
+    {
+      "prefix": "cost-centers",
+      "viewset": "apps.master_data.api.viewsets.CostCenterViewSet",
+      "basename": "cost-center",
+      "model": "master_data.CostCenter"
+    },
+    {
+      "prefix": "departments",
+      "viewset": "apps.master_data.api.viewsets.DepartmentViewSet",
+      "basename": "department",
+      "model": "master_data.Department"
+    },
+    {
+      "prefix": "employees",
+      "viewset": "apps.master_data.api.viewsets.EmployeeViewSet",
+      "basename": "employee",
+      "model": "master_data.Employee"
+    },
+    {
+      "prefix": "warehouses",
+      "viewset": "apps.master_data.api.viewsets.WarehouseViewSet",
+      "basename": "warehouse",
+      "model": "master_data.Warehouse"
+    },
+    {
+      "prefix": "warehouse-locations",
+      "viewset": "apps.master_data.api.viewsets.WarehouseLocationViewSet",
+      "basename": "warehouse-location",
+      "model": "master_data.WarehouseLocation"
+    },
+    {
+      "prefix": "work-centers",
+      "viewset": "apps.master_data.api.viewsets.WorkCenterViewSet",
+      "basename": "work-center",
+      "model": "master_data.WorkCenter"
+    },
+    {
+      "prefix": "machines",
+      "viewset": "apps.master_data.api.viewsets.MachineViewSet",
+      "basename": "machine",
+      "model": "master_data.Machine"
+    }
+  ],
+  "procurement": [
+    {
+      "prefix": "purchase-requisitions",
+      "viewset": "apps.procurement.api.viewsets.PurchaseRequisitionViewSet",
+      "basename": "purchase-requisition",
+      "model": "procurement.PurchaseRequisition"
+    },
+    {
+      "prefix": "purchase-requisition-lines",
+      "viewset": "apps.procurement.api.viewsets.PurchaseRequisitionLineViewSet",
+      "basename": "purchase-requisition-line",
+      "model": "procurement.PurchaseRequisitionLine"
+    },
+    {
+      "prefix": "rfqs",
+      "viewset": "apps.procurement.api.viewsets.RFQViewSet",
+      "basename": "rfq",
+      "model": "procurement.RFQ"
+    },
+    {
+      "prefix": "supplier-quotations",
+      "viewset": "apps.procurement.api.viewsets.SupplierQuotationViewSet",
+      "basename": "supplier-quotation",
+      "model": "procurement.SupplierQuotation"
+    },
+    {
+      "prefix": "purchase-orders",
+      "viewset": "apps.procurement.api.viewsets.PurchaseOrderViewSet",
+      "basename": "purchase-order",
+      "model": "procurement.PurchaseOrder"
+    },
+    {
+      "prefix": "purchase-order-lines",
+      "viewset": "apps.procurement.api.viewsets.PurchaseOrderLineViewSet",
+      "basename": "purchase-order-line",
+      "model": "procurement.PurchaseOrderLine"
+    },
+    {
+      "prefix": "goods-receipts",
+      "viewset": "apps.procurement.api.viewsets.GoodsReceiptViewSet",
+      "basename": "goods-receipt",
+      "model": "procurement.GoodsReceipt"
+    },
+    {
+      "prefix": "goods-receipt-lines",
+      "viewset": "apps.procurement.api.viewsets.GoodsReceiptLineViewSet",
+      "basename": "goods-receipt-line",
+      "model": "procurement.GoodsReceiptLine"
+    },
+    {
+      "prefix": "three-way-matches",
+      "viewset": "apps.procurement.api.viewsets.ThreeWayMatchViewSet",
+      "basename": "three-way-match",
+      "model": "procurement.ThreeWayMatch"
+    }
+  ],
+  "projects": [
+    {
+      "prefix": "projects",
+      "viewset": "apps.projects.api.viewsets.ProjectViewSet",
+      "basename": "project",
+      "model": "projects.Project"
+    },
+    {
+      "prefix": "control-items",
+      "viewset": "apps.projects.api.viewsets.ProjectControlItemViewSet",
+      "basename": "project-control-item",
+      "model": "projects.ProjectControlItem"
+    },
+    {
+      "prefix": "expenses",
+      "viewset": "apps.projects.api.viewsets.ProjectExpenseViewSet",
+      "basename": "project-expense",
+      "model": "projects.ProjectExpense"
+    },
+    {
+      "prefix": "lifecycle-events",
+      "viewset": "apps.projects.api.viewsets.ProjectLifecycleEventViewSet",
+      "basename": "project-lifecycle-event",
+      "model": "projects.ProjectLifecycleEvent"
+    },
+    {
+      "prefix": "readiness-checks",
+      "viewset": "apps.projects.api.viewsets.ProjectReadinessCheckViewSet",
+      "basename": "project-readiness-check",
+      "model": "projects.ProjectReadinessCheck"
+    },
+    {
+      "prefix": "members",
+      "viewset": "apps.projects.api.viewsets.MemberViewSet",
+      "basename": "member",
+      "model": "projects.Member"
+    },
+    {
+      "prefix": "tasks",
+      "viewset": "apps.projects.api.viewsets.TaskViewSet",
+      "basename": "task",
+      "model": "projects.Task"
+    },
+    {
+      "prefix": "task-dependencies",
+      "viewset": "apps.projects.api.viewsets.TaskDependencyViewSet",
+      "basename": "task-dependency",
+      "model": "projects.TaskDependency"
+    },
+    {
+      "prefix": "milestones",
+      "viewset": "apps.projects.api.viewsets.MilestoneViewSet",
+      "basename": "milestone",
+      "model": "projects.Milestone"
+    },
+    {
+      "prefix": "material-requirements",
+      "viewset": "apps.projects.api.viewsets.MaterialRequirementViewSet",
+      "basename": "material-requirement",
+      "model": "projects.MaterialRequirement"
+    },
+    {
+      "prefix": "budget-lines",
+      "viewset": "apps.projects.api.viewsets.BudgetLineViewSet",
+      "basename": "budget-line",
+      "model": "projects.BudgetLine"
+    },
+    {
+      "prefix": "timesheets",
+      "viewset": "apps.projects.api.viewsets.TimesheetViewSet",
+      "basename": "timesheet",
+      "model": "projects.Timesheet"
+    },
+    {
+      "prefix": "change-requests",
+      "viewset": "apps.projects.api.viewsets.ChangeRequestViewSet",
+      "basename": "change-request",
+      "model": "projects.ChangeRequest"
+    },
+    {
+      "prefix": "change-request-materials",
+      "viewset": "apps.projects.api.viewsets.ChangeRequestMaterialViewSet",
+      "basename": "change-request-material",
+      "model": "projects.ChangeRequestMaterial"
+    },
+    {
+      "prefix": "boards",
+      "viewset": "apps.projects.api.viewsets.BoardViewSet",
+      "basename": "board",
+      "model": "projects.Board"
+    },
+    {
+      "prefix": "board-columns",
+      "viewset": "apps.projects.api.viewsets.BoardColumnViewSet",
+      "basename": "board-column",
+      "model": "projects.BoardColumn"
+    },
+    {
+      "prefix": "task-board-positions",
+      "viewset": "apps.projects.api.viewsets.TaskBoardPositionViewSet",
+      "basename": "task-board-position",
+      "model": "projects.TaskBoardPosition"
+    },
+    {
+      "prefix": "health-rules",
+      "viewset": "apps.projects.api.viewsets.HealthRuleViewSet",
+      "basename": "health-rule",
+      "model": "projects.HealthRule"
+    },
+    {
+      "prefix": "health-snapshots",
+      "viewset": "apps.projects.api.viewsets.HealthSnapshotViewSet",
+      "basename": "health-snapshot",
+      "model": "projects.HealthSnapshot"
+    },
+    {
+      "prefix": "risks",
+      "viewset": "apps.projects.api.viewsets.RiskViewSet",
+      "basename": "risk",
+      "model": "projects.Risk"
+    },
+    {
+      "prefix": "issues",
+      "viewset": "apps.projects.api.viewsets.IssueViewSet",
+      "basename": "issue",
+      "model": "projects.Issue"
+    },
+    {
+      "prefix": "issue-actions",
+      "viewset": "apps.projects.api.viewsets.IssueActionViewSet",
+      "basename": "issue-action",
+      "model": "projects.IssueAction"
+    },
+    {
+      "prefix": "dispatches",
+      "viewset": "apps.projects.api.viewsets.ProjectDispatchViewSet",
+      "basename": "project-dispatch",
+      "model": "projects.ProjectDispatch"
+    },
+    {
+      "prefix": "technical-briefs",
+      "viewset": "apps.projects.api.viewsets.TechnicalBriefViewSet",
+      "basename": "technical-brief",
+      "model": "projects.TechnicalBrief"
+    },
+    {
+      "prefix": "technical-brief-versions",
+      "viewset": "apps.projects.api.viewsets.TechnicalBriefVersionViewSet",
+      "basename": "technical-brief-version",
+      "model": "projects.TechnicalBriefVersion"
+    },
+    {
+      "prefix": "requirements",
+      "viewset": "apps.projects.api.viewsets.RequirementViewSet",
+      "basename": "requirement",
+      "model": "projects.Requirement"
+    },
+    {
+      "prefix": "acceptance-criterias",
+      "viewset": "apps.projects.api.viewsets.AcceptanceCriteriaViewSet",
+      "basename": "acceptance-criteria",
+      "model": "projects.AcceptanceCriteria"
+    },
+    {
+      "prefix": "resource-requests",
+      "viewset": "apps.projects.api.viewsets.ResourceRequestViewSet",
+      "basename": "resource-request",
+      "model": "projects.ResourceRequest"
+    },
+    {
+      "prefix": "resource-request-lines",
+      "viewset": "apps.projects.api.viewsets.ResourceRequestLineViewSet",
+      "basename": "resource-request-line",
+      "model": "projects.ResourceRequestLine"
+    },
+    {
+      "prefix": "resource-allocations",
+      "viewset": "apps.projects.api.viewsets.ResourceAllocationViewSet",
+      "basename": "resource-allocation",
+      "model": "projects.ResourceAllocation"
+    },
+    {
+      "prefix": "progress-snapshots",
+      "viewset": "apps.projects.api.viewsets.ProgressSnapshotViewSet",
+      "basename": "progress-snapshot",
+      "model": "projects.ProgressSnapshot"
+    },
+    {
+      "prefix": "weekly-progress",
+      "viewset": "apps.projects.api.viewsets.ProjectWeeklyProgressViewSet",
+      "basename": "weekly-progress",
+      "model": "projects.ProjectWeeklyProgress"
+    },
+    {
+      "prefix": "equipment-usages",
+      "viewset": "apps.projects.api.viewsets.EquipmentUsageViewSet",
+      "basename": "equipment-usage",
+      "model": "projects.EquipmentUsage"
+    },
+    {
+      "prefix": "weight-indicators",
+      "viewset": "apps.projects.api.viewsets.WeightIndicatorViewSet",
+      "basename": "weight-indicator",
+      "model": "projects.WeightIndicator"
+    },
+    {
+      "prefix": "weight-components",
+      "viewset": "apps.projects.api.viewsets.WeightComponentViewSet",
+      "basename": "weight-component",
+      "model": "projects.WeightComponent"
+    },
+    {
+      "prefix": "main-tasks",
+      "viewset": "apps.projects.api.viewsets.ProjectMainTaskViewSet",
+      "basename": "main-task",
+      "model": "projects.ProjectMainTask"
+    },
+    {
+      "prefix": "task-assignments",
+      "viewset": "apps.projects.api.viewsets.TaskAssignmentViewSet",
+      "basename": "task-assignment",
+      "model": "projects.TaskAssignment"
+    },
+    {
+      "prefix": "weekly-tasks",
+      "viewset": "apps.projects.api.viewsets.ProjectWeeklyTaskViewSet",
+      "basename": "weekly-task",
+      "model": "projects.ProjectWeeklyTask"
+    },
+    {
+      "prefix": "daily-tasks",
+      "viewset": "apps.projects.api.viewsets.ProjectDailyTaskViewSet",
+      "basename": "daily-task",
+      "model": "projects.ProjectDailyTask"
+    },
+    {
+      "prefix": "task-transfers",
+      "viewset": "apps.projects.api.viewsets.TaskTransferRequestViewSet",
+      "basename": "task-transfer",
+      "model": "projects.TaskTransferRequest"
+    },
+    {
+      "prefix": "task-activity-logs",
+      "viewset": "apps.projects.api.viewsets.TaskActivityLogViewSet",
+      "basename": "task-activity-log",
+      "model": "projects.TaskActivityLog"
+    }
+  ],
+  "quality": [
+    {
+      "prefix": "quality-plans",
+      "viewset": "apps.quality.api.viewsets.QualityPlanViewSet",
+      "basename": "quality-plan",
+      "model": "quality.QualityPlan"
+    },
+    {
+      "prefix": "quality-plan-points",
+      "viewset": "apps.quality.api.viewsets.QualityPlanPointViewSet",
+      "basename": "quality-plan-point",
+      "model": "quality.QualityPlanPoint"
+    },
+    {
+      "prefix": "inspections",
+      "viewset": "apps.quality.api.viewsets.InspectionViewSet",
+      "basename": "inspection",
+      "model": "quality.Inspection"
+    },
+    {
+      "prefix": "inspection-results",
+      "viewset": "apps.quality.api.viewsets.InspectionResultViewSet",
+      "basename": "inspection-result",
+      "model": "quality.InspectionResult"
+    },
+    {
+      "prefix": "nonconformances",
+      "viewset": "apps.quality.api.viewsets.NonconformanceViewSet",
+      "basename": "nonconformance",
+      "model": "quality.Nonconformance"
+    },
+    {
+      "prefix": "corrective-actions",
+      "viewset": "apps.quality.api.viewsets.CorrectiveActionViewSet",
+      "basename": "corrective-action",
+      "model": "quality.CorrectiveAction"
+    }
+  ],
+  "reporting": [
+    {
+      "prefix": "finance-main-dashboards",
+      "viewset": "apps.reporting.api.viewsets.FinanceMainDashboardViewSet",
+      "basename": "finance-main-dashboard",
+      "model": "reporting.FinanceMainDashboard"
+    },
+    {
+      "prefix": "project-dashboards",
+      "viewset": "apps.reporting.api.viewsets.ProjectDashboardViewSet",
+      "basename": "project-dashboard",
+      "model": "reporting.ProjectDashboard"
+    },
+    {
+      "prefix": "project-timeline-costs",
+      "viewset": "apps.reporting.api.viewsets.ProjectTimelineCostViewSet",
+      "basename": "project-timeline-cost",
+      "model": "reporting.ProjectTimelineCost"
+    },
+    {
+      "prefix": "crm-sales-dashboards",
+      "viewset": "apps.reporting.api.viewsets.CRMSalesDashboardViewSet",
+      "basename": "crm-sales-dashboard",
+      "model": "reporting.CRMSalesDashboard"
+    }
+  ],
+  "sales": [
+    {
+      "prefix": "quotations",
+      "viewset": "apps.sales.api.viewsets.QuotationViewSet",
+      "basename": "quotation",
+      "model": "sales.Quotation"
+    },
+    {
+      "prefix": "quotation-lines",
+      "viewset": "apps.sales.api.viewsets.QuotationLineViewSet",
+      "basename": "quotation-line",
+      "model": "sales.QuotationLine"
+    },
+    {
+      "prefix": "quotation-costs",
+      "viewset": "apps.sales.api.viewsets.QuotationCostViewSet",
+      "basename": "quotation-cost",
+      "model": "sales.QuotationCost"
+    },
+    {
+      "prefix": "contracts",
+      "viewset": "apps.sales.api.viewsets.ContractViewSet",
+      "basename": "contract",
+      "model": "sales.Contract"
+    },
+    {
+      "prefix": "contract-lines",
+      "viewset": "apps.sales.api.viewsets.ContractLineViewSet",
+      "basename": "contract-line",
+      "model": "sales.ContractLine"
+    },
+    {
+      "prefix": "orders",
+      "viewset": "apps.sales.api.viewsets.OrderViewSet",
+      "basename": "order",
+      "model": "sales.Order"
+    },
+    {
+      "prefix": "order-lines",
+      "viewset": "apps.sales.api.viewsets.OrderLineViewSet",
+      "basename": "order-line",
+      "model": "sales.OrderLine"
+    },
+    {
+      "prefix": "deliveries",
+      "viewset": "apps.sales.api.viewsets.DeliveryViewSet",
+      "basename": "delivery",
+      "model": "sales.Delivery"
+    },
+    {
+      "prefix": "delivery-lines",
+      "viewset": "apps.sales.api.viewsets.DeliveryLineViewSet",
+      "basename": "delivery-line",
+      "model": "sales.DeliveryLine"
+    },
+    {
+      "prefix": "demand-supply-links",
+      "viewset": "apps.sales.api.viewsets.DemandSupplyLinkViewSet",
+      "basename": "demand-supply-link",
+      "model": "sales.DemandSupplyLink"
+    },
+    {
+      "prefix": "order-change-requests",
+      "viewset": "apps.sales.api.viewsets.OrderChangeRequestViewSet",
+      "basename": "order-change-request",
+      "model": "sales.OrderChangeRequest"
+    },
+    {
+      "prefix": "recurring-order-rules",
+      "viewset": "apps.sales.api.viewsets.RecurringOrderRuleViewSet",
+      "basename": "recurring-order-rule",
+      "model": "sales.RecurringOrderRule"
+    },
+    {
+      "prefix": "recurring-order-runs",
+      "viewset": "apps.sales.api.viewsets.RecurringOrderRunViewSet",
+      "basename": "recurring-order-run",
+      "model": "sales.RecurringOrderRun"
+    }
+  ],
+  "service": [
+    {
+      "prefix": "cases",
+      "viewset": "apps.service.api.viewsets.CaseViewSet",
+      "basename": "case",
+      "model": "service.Case"
+    },
+    {
+      "prefix": "case-messages",
+      "viewset": "apps.service.api.viewsets.CaseMessageViewSet",
+      "basename": "case-message",
+      "model": "service.CaseMessage"
+    },
+    {
+      "prefix": "case-approvals",
+      "viewset": "apps.service.api.viewsets.CaseApprovalViewSet",
+      "basename": "case-approval",
+      "model": "service.CaseApproval"
+    },
+    {
+      "prefix": "resolutions",
+      "viewset": "apps.service.api.viewsets.ResolutionViewSet",
+      "basename": "resolution",
+      "model": "service.Resolution"
+    }
+  ]
+}

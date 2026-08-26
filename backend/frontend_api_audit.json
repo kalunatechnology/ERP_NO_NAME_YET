@@ -1,0 +1,280 @@
+{
+  "/api/v1/master-data/parties/": [
+    "app\\(app)\\crm\\CrmClient.tsx",
+    "app\\(app)\\resources\\ResourcesClient.tsx"
+  ],
+  "/api/v1/finance/project-cost-entries/${entryId}/": [
+    "app\\(app)\\finance\\FinanceClient.tsx"
+  ],
+  "/api/v1/finance/project-fundings/${fundingId}/": [
+    "app\\(app)\\finance\\FinanceClient.tsx"
+  ],
+  "/api/v1/finance/billing-proposals/${proposalId}/": [
+    "app\\(app)\\finance\\FinanceClient.tsx"
+  ],
+  "/api/v1/finance/billing-documents/${selectedBillForMatch.id}/": [
+    "app\\(app)\\finance\\FinanceClient.tsx"
+  ],
+  "/api/v1/finance/billing-documents/${selectedBillForPay.id}/": [
+    "app\\(app)\\finance\\FinanceClient.tsx"
+  ],
+  "/api/v1/finance/project-cost-entries/": [
+    "app\\(app)\\finance\\FinanceClient.tsx",
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/finance/project-fundings/": [
+    "app\\(app)\\finance\\FinanceClient.tsx",
+    "app\\(app)\\projects\\ProjectsClient.tsx",
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/finance/billing-proposals/": [
+    "app\\(app)\\finance\\FinanceClient.tsx",
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/finance/project-fundings/${selectedFunding.id}/decide/": [
+    "app\\(app)\\finance\\FinanceClient.tsx"
+  ],
+  "/api/v1/finance/project-fundings/${selectedFunding.id}/": [
+    "app\\(app)\\finance\\FinanceClient.tsx"
+  ],
+  "/api/v1/finance/project-fundings/${id}/": [
+    "app\\(app)\\finance\\FinanceClient.tsx",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/projects/${selectedProject.id}/update_financials/": [
+    "app\\(app)\\projects\\ProjectsClient.tsx"
+  ],
+  "/api/v1/projects/projects/${selectedProject.id}/advance-stage/": [
+    "app\\(app)\\projects\\ProjectsClient.tsx"
+  ],
+  "/api/v1/projects/projects/${selectedProject.id}/": [
+    "app\\(app)\\projects\\ProjectsClient.tsx"
+  ],
+  "/api/v1/projects/projects/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/main-tasks/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/weekly-tasks/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/daily-tasks/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/milestones/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/finance/journal-entries/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx"
+  ],
+  "/api/v1/crm/customer-inquiries/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/opportunities/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/cost-estimates/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/sales/quotations/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx"
+  ],
+  "/api/v1/service/cases/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/credit-status-snapshots/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx"
+  ],
+  "/api/v1/master-data/products/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx"
+  ],
+  "/api/v1/auth/users/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx"
+  ],
+  "/api/v1/core/companies/": [
+    "app\\(app)\\resources\\ResourcesClient.tsx",
+    "lib\\api\\auth.api.ts"
+  ],
+  "/api/v1/auth/token/": [
+    "lib\\api\\auth.api.ts"
+  ],
+  "/api/v1/auth/me/": [
+    "lib\\api\\auth.api.ts"
+  ],
+  "/api/v1/auth/logout/": [
+    "lib\\api\\auth.api.ts"
+  ],
+  "/api/v1/auth/change-password/": [
+    "lib\\api\\auth.api.ts"
+  ],
+  "/api/v1/auth/signup/": [
+    "lib\\api\\auth.api.ts"
+  ],
+  "/api/v1/commands/reporting/crm-sales-dashboard/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/opportunities/${id}/process-deal-won/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/opportunities/${id}/executive-override/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/opportunities/${id}/": [
+    "lib\\api\\crm.api.ts",
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/customer-inquiries/${id}/qualify/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/inquiry-requirements/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/customer-inquiries/${id}/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/cost-estimate-lines/": [
+    "lib\\api\\crm.api.ts",
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/cost-estimates/${id}/calculate/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/cost-estimates/${id}/create-quotation/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/cost-estimates/${id}/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/sales/quotations/${id}/submit-approval/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/executive-approvals/${approvalId}/decide/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/sales/quotations/${id}/send/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/sales/quotations/${id}/customer-decision/": [
+    "lib\\api\\crm.api.ts",
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/commands/sales/quotations/${id}/convert-to-order/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/service/cases/${id}/check-status/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/service/cases/${id}/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/master-data/customer-profiles/set-credit-limit/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/credit-status-snapshots/calculate/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/crm/inquiry-requirements/${id}/": [
+    "lib\\api\\crm.api.ts"
+  ],
+  "/api/v1/sidebar-feed/": [
+    "lib\\api\\feed.api.ts"
+  ],
+  "/api/v1/core/sidebar-feed/": [
+    "lib\\api\\feed.api.ts"
+  ],
+  "/api/v1/sidebar-feed/mark-read/": [
+    "lib\\api\\feed.api.ts"
+  ],
+  "/api/v1/core/sidebar-feed/mark-read/": [
+    "lib\\api\\feed.api.ts"
+  ],
+  "/api/v1/recent-items/track/": [
+    "lib\\api\\feed.api.ts"
+  ],
+  "/api/v1/core/recent-items/track/": [
+    "lib\\api\\feed.api.ts"
+  ],
+  "/api/v1/recent-items/": [
+    "lib\\api\\feed.api.ts"
+  ],
+  "/api/v1/core/recent-items/": [
+    "lib\\api\\feed.api.ts"
+  ],
+  "/api/v1/projects/projects/${id}/": [
+    "lib\\api\\project.api.ts",
+    "lib\\api\\project.api.ts",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/projects/${id}/recalculate_health/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/projects/${projectId}/advance_stage/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/tasks/": [
+    "lib\\api\\project.api.ts",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/main-tasks/${id}/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/tasks/${id}/": [
+    "lib\\api\\project.api.ts",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/weekly-tasks/${id}/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/daily-tasks/${id}/": [
+    "lib\\api\\project.api.ts",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/task-transfers/": [
+    "lib\\api\\project.api.ts",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/task-transfers/${id}/approve/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/task-transfers/${id}/reject/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/finance/project-cost-entries/${id}/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/finance/billing-proposals/${id}/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/projects/${projectId}/financial-performance/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/projects/${projectId}/update_financials/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/projects/${projectId}/funding_requests/": [
+    "lib\\api\\project.api.ts",
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/main-tasks/${payload.main_task}/assign_members/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/task-assignments/": [
+    "lib\\api\\project.api.ts"
+  ],
+  "/api/v1/projects/task-assignments/${id}/": [
+    "lib\\api\\project.api.ts"
+  ]
+}

@@ -1,0 +1,4519 @@
+{
+  "api_common": {},
+  "core": {
+    "Tenant": {
+      "table": "core_tenant",
+      "fields": [
+        "core_company_tenant_set",
+        "core_organization_tenant_set",
+        "core_businessdocument_tenant_set",
+        "core_auditevent_tenant_set",
+        "core_notification_tenant_set",
+        "core_quickaction_tenant_set",
+        "core_file_tenant_set",
+        "core_documenttemplate_tenant_set",
+        "accounts_user_tenant_set",
+        "accounts_role_tenant_set",
+        "accounts_datascopepolicy_tenant_set",
+        "accounts_informationsharerule_tenant_set",
+        "master_data_party_tenant_set",
+        "master_data_productcategory_tenant_set",
+        "master_data_uom_tenant_set",
+        "master_data_product_tenant_set",
+        "master_data_paymentterm_tenant_set",
+        "master_data_taxcode_tenant_set",
+        "master_data_employee_tenant_set",
+        "crm_lead_tenant_set",
+        "crm_opportunities",
+        "crm_pipeline_tenant_set",
+        "crm_channelaccount_tenant_set",
+        "crm_survey_tenant_set",
+        "crm_inquiries",
+        "crm_cost_estimates",
+        "projects_project_tenant_set",
+        "inventory_stockledgerentry_tenant_set",
+        "manufacturing_bom_tenant_set",
+        "manufacturing_routing_tenant_set",
+        "quality_qualityplan_tenant_set",
+        "project_fundings",
+        "project_cost_entries",
+        "billing_proposals",
+        "analytics_dashboard_tenant_set",
+        "analytics_kpidefinition_tenant_set",
+        "analytics_alertrule_tenant_set",
+        "implementation_release_tenant_set",
+        "workflow_configs",
+        "id",
+        "code",
+        "name",
+        "status",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "Company": {
+      "table": "core_company",
+      "fields": [
+        "core_organization_company_set",
+        "core_businessdocument_company_set",
+        "core_auditevent_company_set",
+        "core_notification_company_set",
+        "core_file_company_set",
+        "core_documenttemplate_company_set",
+        "activity_feeds",
+        "accounts_userrole_company_set",
+        "master_data_exchangerate_company_set",
+        "master_data_costcenter_company_set",
+        "master_data_department_company_set",
+        "master_data_warehouse_company_set",
+        "master_data_workcenter_company_set",
+        "master_data_machine_company_set",
+        "crm_lead_company_set",
+        "crm_opportunities",
+        "crm_pipeline_company_set",
+        "crm_executive_approvals",
+        "crm_creditstatussnapshot_company_set",
+        "crm_channelaccount_company_set",
+        "crm_survey_company_set",
+        "crm_inquiries",
+        "crm_cost_estimates",
+        "crm_workflow_events",
+        "customer_feedbacks",
+        "projects_project_company_set",
+        "projects_healthrule_company_set",
+        "procurement_purchaserequisition_company_set",
+        "inventory_stockmove_company_set",
+        "inventory_stockledgerentry_company_set",
+        "inventory_stockbalance_company_set",
+        "manufacturing_productionorder_company_set",
+        "manufacturing_costledgerentry_company_set",
+        "finance_fiscalyear_company_set",
+        "finance_account_company_set",
+        "finance_journal_company_set",
+        "finance_billingdocument_company_set",
+        "finance_payment_company_set",
+        "finance_bankaccount_company_set",
+        "tax_transactions",
+        "finance_budget_company_set",
+        "finance_financialsnapshot_company_set",
+        "finance_unitcostsnapshot_company_set",
+        "finance_recurringpaymentrule_company_set",
+        "finance_creditfacility_company_set",
+        "project_fundings",
+        "finance_overheadrule_company_set",
+        "project_cost_entries",
+        "billing_proposals",
+        "invoice_variance_cases",
+        "customer_credit_limits",
+        "assets_category_company_set",
+        "assets_asset_company_set",
+        "analytics_dashboard_company_set",
+        "analytics_kpitarget_company_set",
+        "analytics_kpiresult_company_set",
+        "analytics_alertevent_company_set",
+        "id",
+        "tenant",
+        "company_code",
+        "legal_name",
+        "tax_number",
+        "base_currency",
+        "fiscal_year_start",
+        "status"
+      ]
+    },
+    "Organization": {
+      "table": "core_organization",
+      "fields": [
+        "core_organization_parent_set",
+        "accounts_userrole_organization_set",
+        "analytics_kpitarget_organization_set",
+        "analytics_kpiresult_organization_set",
+        "id",
+        "tenant",
+        "company",
+        "parent",
+        "organization_code",
+        "organization_name",
+        "organization_type",
+        "status"
+      ]
+    },
+    "BusinessDocument": {
+      "table": "core_business_document",
+      "fields": [
+        "core_businessdocument_reversal_of_set",
+        "core_documentlink_source_document_set",
+        "core_documentlink_target_document_set",
+        "core_workflowinstance_document_set",
+        "core_auditevent_document_set",
+        "core_notification_source_document_set",
+        "core_documentattachment_document_set",
+        "core_generateddocument_business_document_set",
+        "crm_lead_document_set",
+        "crm_opportunity_document_set",
+        "crm_executiveapproval_document_set",
+        "crm_feedback_document_set",
+        "crm_inquiries",
+        "sales_quotation_document_set",
+        "sales_contract_document_set",
+        "sales_order_document_set",
+        "sales_delivery_document_set",
+        "sales_orderchangerequest_document_set",
+        "projects_project_document_set",
+        "projects_changerequest_document_set",
+        "projects_risk_document_set",
+        "projects_issue_document_set",
+        "projects_technicalbrief_document_set",
+        "projects_resourcerequest_document_set",
+        "procurement_purchaserequisition_document_set",
+        "procurement_rfq_document_set",
+        "procurement_supplierquotation_document_set",
+        "procurement_purchaseorder_document_set",
+        "procurement_goodsreceipt_document_set",
+        "inventory_stockmove_document_set",
+        "inventory_stockledgerentry_source_document_set",
+        "inventory_stockledgerentry_source_line_set",
+        "inventory_stockcount_document_set",
+        "manufacturing_productionorder_document_set",
+        "manufacturing_workorder_document_set",
+        "manufacturing_costledgerentry_source_document_set",
+        "quality_inspection_document_set",
+        "quality_nonconformance_document_set",
+        "finance_journalentry_document_set",
+        "finance_journalentry_source_document_set",
+        "finance_journalline_source_document_line_set",
+        "finance_billingdocument_document_set",
+        "finance_payment_document_set",
+        "finance_periodclosing_document_set",
+        "finance_projectfunding_document_set",
+        "finance_costbaseline_document_set",
+        "assets_asset_document_set",
+        "assets_disposal_document_set",
+        "service_case_document_set",
+        "analytics_alertevent_source_document_set",
+        "logistics_shipment_document_set",
+        "id",
+        "tenant",
+        "company",
+        "document_type",
+        "document_number",
+        "status",
+        "document_date",
+        "posting_date",
+        "version",
+        "created_by",
+        "approved_by",
+        "posted_by",
+        "reversal_of",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "DocumentLink": {
+      "table": "core_document_link",
+      "fields": [
+        "id",
+        "source_document",
+        "target_document",
+        "link_type",
+        "created_at"
+      ]
+    },
+    "WorkflowInstance": {
+      "table": "core_workflow_instance",
+      "fields": [
+        "core_workflowapproval_workflow_instance_set",
+        "id",
+        "document",
+        "workflow_code",
+        "current_state",
+        "status",
+        "started_at",
+        "completed_at"
+      ]
+    },
+    "WorkflowApproval": {
+      "table": "core_workflow_approval",
+      "fields": [
+        "id",
+        "workflow_instance",
+        "approver_user",
+        "approval_level",
+        "decision",
+        "remarks",
+        "decided_at"
+      ]
+    },
+    "AuditEvent": {
+      "table": "core_audit_event",
+      "fields": [
+        "id",
+        "tenant",
+        "company",
+        "document",
+        "user",
+        "entity_name",
+        "entity_id",
+        "event_type",
+        "before_data",
+        "after_data",
+        "occurred_at"
+      ]
+    },
+    "Notification": {
+      "table": "core_notification",
+      "fields": [
+        "core_notificationrecipient_notification_set",
+        "id",
+        "tenant",
+        "company",
+        "source_document",
+        "alert_event",
+        "notification_type",
+        "title",
+        "message",
+        "action_url",
+        "priority",
+        "created_at",
+        "expires_at"
+      ]
+    },
+    "NotificationRecipient": {
+      "table": "core_notification_recipient",
+      "fields": [
+        "id",
+        "notification",
+        "recipient_user",
+        "recipient_role",
+        "delivered_at",
+        "read_at",
+        "dismissed_at",
+        "delivery_status"
+      ]
+    },
+    "QuickAction": {
+      "table": "core_quick_action",
+      "fields": [
+        "id",
+        "tenant",
+        "action_code",
+        "action_name",
+        "module_code",
+        "entity_name",
+        "route_path",
+        "required_permission",
+        "default_payload",
+        "active"
+      ]
+    },
+    "File": {
+      "table": "core_file",
+      "fields": [
+        "core_documentattachment_file_set",
+        "core_generateddocument_file_set",
+        "crm_messageattachment_file_set",
+        "projects_technicalbriefversion_file_set",
+        "logistics_proofofdelivery_signature_file_set",
+        "logistics_proofofdelivery_photo_file_set",
+        "id",
+        "tenant",
+        "company",
+        "file_name",
+        "storage_key",
+        "mime_type",
+        "file_size",
+        "checksum",
+        "uploaded_by",
+        "uploaded_at",
+        "status"
+      ]
+    },
+    "DocumentAttachment": {
+      "table": "core_document_attachment",
+      "fields": [
+        "id",
+        "document",
+        "file",
+        "attachment_type",
+        "sort_order",
+        "visible_to_customer"
+      ]
+    },
+    "DocumentTemplate": {
+      "table": "core_document_template",
+      "fields": [
+        "core_documenttemplateversion_template_set",
+        "id",
+        "tenant",
+        "company",
+        "template_code",
+        "template_name",
+        "document_type",
+        "output_format",
+        "status"
+      ]
+    },
+    "DocumentTemplateVersion": {
+      "table": "core_document_template_version",
+      "fields": [
+        "core_documenttemplatefield_template_version_set",
+        "core_generateddocument_template_version_set",
+        "id",
+        "template",
+        "version_number",
+        "header_markup",
+        "body_markup",
+        "footer_markup",
+        "style_json",
+        "effective_from",
+        "effective_to",
+        "status"
+      ]
+    },
+    "DocumentTemplateField": {
+      "table": "core_document_template_field",
+      "fields": [
+        "id",
+        "template_version",
+        "field_code",
+        "source_path",
+        "field_type",
+        "format_pattern",
+        "required",
+        "sort_order"
+      ]
+    },
+    "GeneratedDocument": {
+      "table": "core_generated_document",
+      "fields": [
+        "core_documentsignature_generated_document_set",
+        "id",
+        "business_document",
+        "template_version",
+        "file",
+        "generation_number",
+        "generation_status",
+        "generated_by",
+        "generated_at"
+      ]
+    },
+    "DocumentSignature": {
+      "table": "core_document_signature",
+      "fields": [
+        "id",
+        "generated_document",
+        "signer_user",
+        "signer_party",
+        "signature_type",
+        "signature_status",
+        "requested_at",
+        "signed_at",
+        "verification_reference"
+      ]
+    },
+    "UserRecentItem": {
+      "table": "core_user_recent_item",
+      "fields": [
+        "id",
+        "created_at",
+        "updated_at",
+        "user",
+        "item_type",
+        "object_id",
+        "title",
+        "target_url",
+        "last_accessed_at"
+      ]
+    },
+    "AppNotification": {
+      "table": "core_app_notification",
+      "fields": [
+        "id",
+        "created_at",
+        "updated_at",
+        "recipient",
+        "actor",
+        "category",
+        "title",
+        "description",
+        "target_url",
+        "is_read"
+      ]
+    },
+    "ActivityFeed": {
+      "table": "core_activity_feed",
+      "fields": [
+        "id",
+        "created_at",
+        "updated_at",
+        "company",
+        "actor",
+        "verb",
+        "target_name",
+        "target_url"
+      ]
+    },
+    "TeamContact": {
+      "table": "core_team_contact",
+      "fields": [
+        "id",
+        "user",
+        "display_order",
+        "is_pinned",
+        "custom_status"
+      ]
+    }
+  },
+  "accounts": {
+    "User": {
+      "table": "iam_user",
+      "fields": [
+        "logentry",
+        "outstandingtoken",
+        "core_businessdocument_created_by_set",
+        "core_businessdocument_approved_by_set",
+        "core_businessdocument_posted_by_set",
+        "core_workflowapproval_approver_user_set",
+        "core_auditevent_user_set",
+        "core_notificationrecipient_recipient_user_set",
+        "core_file_uploaded_by_set",
+        "core_generateddocument_generated_by_set",
+        "core_documentsignature_signer_user_set",
+        "recent_items",
+        "received_notifications",
+        "triggered_notifications",
+        "activities_performed",
+        "contact_profile",
+        "accounts_userrole_user_set",
+        "accounts_approvallimit_user_set",
+        "accounts_userprojectaccess_user_set",
+        "crm_lead_owner_user_set",
+        "crm_opportunity_owner_user_set",
+        "crm_activity_assigned_user_set",
+        "crm_opportunitystagehistory_changed_by_set",
+        "crm_executiveapproval_requested_by_set",
+        "crm_executiveapproval_approver_user_set",
+        "crm_conversation_assigned_user_set",
+        "crm_conversationparticipant_user_set",
+        "crm_message_sender_user_set",
+        "owned_crm_inquiries",
+        "calculated_crm_estimates",
+        "created_quotation_versions",
+        "crm_workflow_events",
+        "sales_orderchangerequest_requested_by_set",
+        "projects_project_project_manager_set",
+        "verified_projects",
+        "closed_projects",
+        "created_project_control_items",
+        "updated_project_control_items",
+        "created_project_expenses",
+        "updated_project_expenses",
+        "project_lifecycle_events",
+        "projects_member_user_set",
+        "assigned_project_tasks",
+        "created_project_tasks",
+        "updated_project_tasks",
+        "owned_project_milestones",
+        "created_project_milestones",
+        "updated_project_milestones",
+        "requested_project_changes",
+        "analyzed_project_changes",
+        "applied_project_changes",
+        "projects_taskboardposition_moved_by_set",
+        "projects_risk_owner_user_set",
+        "projects_issue_assigned_user_set",
+        "reported_project_issues",
+        "analyzed_project_issues",
+        "assigned_issue_actions",
+        "created_issue_actions",
+        "sent_project_dispatches",
+        "projects_technicalbrief_owner_user_set",
+        "projects_technicalbriefversion_created_by_set",
+        "projects_acceptancecriteria_verified_by_set",
+        "projects_resourcerequest_requested_by_set",
+        "recorded_weekly_progresses",
+        "created_main_tasks",
+        "main_task_assignments",
+        "assigned_by_pm",
+        "assigned_weekly_tasks",
+        "owned_daily_tasks",
+        "sent_task_transfers",
+        "received_task_transfers",
+        "reviewed_task_transfers",
+        "task_activities",
+        "procurement_purchaserequisition_requested_by_set",
+        "procurement_threewaymatch_reviewed_by_set",
+        "quality_inspection_inspector_user_set",
+        "quality_correctiveaction_assigned_user_set",
+        "verified_billing_documents",
+        "approved_billing_documents",
+        "submitted_payments",
+        "approved_payments",
+        "executed_payments",
+        "validated_tax_transactions",
+        "finance_periodclosing_executed_by_set",
+        "requested_project_fundings",
+        "verified_project_fundings",
+        "approved_project_fundings",
+        "rejected_project_fundings",
+        "finance_costbaseline_approved_by_set",
+        "created_project_cost_entries",
+        "validated_project_cost_entries",
+        "posted_project_cost_entries",
+        "requested_billing_proposals",
+        "approved_billing_proposals",
+        "assigned_invoice_variances",
+        "resolved_invoice_variances",
+        "service_case_assigned_user_set",
+        "service_casemessage_sender_user_set",
+        "service_caseapproval_approver_user_set",
+        "analytics_kpitarget_owner_user_set",
+        "analytics_kpiresult_owner_user_set",
+        "analytics_alertevent_acknowledged_by_set",
+        "implementation_workitem_assigned_user_set",
+        "is_superuser",
+        "id",
+        "tenant",
+        "username",
+        "email",
+        "password",
+        "full_name",
+        "status",
+        "last_login",
+        "is_staff",
+        "is_active",
+        "date_joined",
+        "groups",
+        "user_permissions"
+      ]
+    },
+    "Role": {
+      "table": "iam_role",
+      "fields": [
+        "core_notificationrecipient_recipient_role_set",
+        "accounts_userrole_role_set",
+        "accounts_rolepermission_role_set",
+        "accounts_rolehierarchy_parent_role_set",
+        "accounts_rolehierarchy_child_role_set",
+        "accounts_roledatascope_role_set",
+        "accounts_fieldpermission_role_set",
+        "accounts_approvallimit_role_set",
+        "analytics_dashboardrole_role_set",
+        "id",
+        "tenant",
+        "role_code",
+        "role_name",
+        "description"
+      ]
+    },
+    "Permission": {
+      "table": "iam_permission",
+      "fields": [
+        "core_quickaction_required_permission_set",
+        "accounts_rolepermission_permission_set",
+        "id",
+        "permission_code",
+        "module_code",
+        "resource_name",
+        "action_name"
+      ]
+    },
+    "UserRole": {
+      "table": "iam_user_role",
+      "fields": [
+        "id",
+        "user",
+        "role",
+        "company",
+        "organization"
+      ]
+    },
+    "RolePermission": {
+      "table": "iam_role_permission",
+      "fields": [
+        "id",
+        "role",
+        "permission",
+        "allowed"
+      ]
+    },
+    "RoleHierarchy": {
+      "table": "iam_role_hierarchy",
+      "fields": [
+        "id",
+        "parent_role",
+        "child_role",
+        "inheritance_mode",
+        "active"
+      ]
+    },
+    "DataScopePolicy": {
+      "table": "iam_data_scope_policy",
+      "fields": [
+        "accounts_roledatascope_policy_set",
+        "id",
+        "tenant",
+        "policy_code",
+        "module_code",
+        "entity_name",
+        "scope_type",
+        "condition_json",
+        "active"
+      ]
+    },
+    "RoleDataScope": {
+      "table": "iam_role_data_scope",
+      "fields": [
+        "id",
+        "role",
+        "policy",
+        "access_level",
+        "can_export",
+        "can_share"
+      ]
+    },
+    "FieldPermission": {
+      "table": "iam_field_permission",
+      "fields": [
+        "id",
+        "role",
+        "module_code",
+        "entity_name",
+        "field_name",
+        "can_view",
+        "can_edit",
+        "masking_type"
+      ]
+    },
+    "InformationShareRule": {
+      "table": "iam_information_share_rule",
+      "fields": [
+        "id",
+        "tenant",
+        "source_module_code",
+        "target_module_code",
+        "entity_name",
+        "field_set_code",
+        "share_direction",
+        "filter_json",
+        "access_level",
+        "active"
+      ]
+    },
+    "ApprovalLimit": {
+      "table": "iam_approval_limit",
+      "fields": [
+        "id",
+        "role",
+        "user",
+        "currency",
+        "approval_type",
+        "minimum_amount",
+        "maximum_amount",
+        "active"
+      ]
+    },
+    "UserProjectAccess": {
+      "table": "iam_user_project_access",
+      "fields": [
+        "id",
+        "user",
+        "project",
+        "project_role",
+        "access_level",
+        "valid_from",
+        "valid_to"
+      ]
+    }
+  },
+  "master_data": {
+    "Party": {
+      "table": "master_party",
+      "fields": [
+        "core_documentsignature_signer_party_set",
+        "master_data_partyrole_party_set",
+        "master_data_contact_party_set",
+        "master_data_address_party_set",
+        "master_data_customerprofile_party_set",
+        "master_data_supplierprofile_party_set",
+        "master_data_employee_party_set",
+        "crm_lead_party_set",
+        "crm_opportunity_customer_party_set",
+        "crm_activity_party_set",
+        "crm_creditstatussnapshot_customer_party_set",
+        "crm_conversation_customer_party_set",
+        "crm_conversationparticipant_party_set",
+        "crm_message_sender_party_set",
+        "crm_feedback_customer_party_set",
+        "crm_surveyresponse_customer_party_set",
+        "crm_inquiries",
+        "crm_feedbacks",
+        "sales_quotation_customer_party_set",
+        "sales_contract_customer_party_set",
+        "sales_order_customer_party_set",
+        "sales_delivery_customer_party_set",
+        "sales_recurringorderrule_customer_party_set",
+        "projects_project_customer_party_set",
+        "procurement_supplierquotation_supplier_party_set",
+        "procurement_purchaseorder_supplier_party_set",
+        "procurement_goodsreceipt_supplier_party_set",
+        "finance_journalline_party_set",
+        "finance_billingdocument_party_set",
+        "finance_payment_party_set",
+        "finance_bankaccount_party_set",
+        "finance_recurringpaymentrule_party_set",
+        "finance_creditfacility_party_set",
+        "finance_projectfunding_funding_source_party_set",
+        "project_billing_proposals",
+        "credit_limits",
+        "assets_asset_supplier_party_set",
+        "service_case_customer_party_set",
+        "logistics_shipment_customer_party_set",
+        "logistics_proofofdelivery_received_by_party_set",
+        "id",
+        "tenant",
+        "party_code",
+        "party_type",
+        "legal_name",
+        "display_name",
+        "tax_number",
+        "default_currency",
+        "status"
+      ]
+    },
+    "PartyRole": {
+      "table": "master_party_role",
+      "fields": [
+        "id",
+        "party",
+        "role_type",
+        "valid_from",
+        "valid_to",
+        "active"
+      ]
+    },
+    "Contact": {
+      "table": "master_contact",
+      "fields": [
+        "crm_conversation_contact_set",
+        "crm_conversationparticipant_contact_set",
+        "crm_feedback_contact_set",
+        "crm_surveyresponse_contact_set",
+        "crm_inquiries",
+        "service_case_contact_set",
+        "id",
+        "party",
+        "contact_name",
+        "job_title",
+        "email",
+        "phone",
+        "primary_contact"
+      ]
+    },
+    "Address": {
+      "table": "master_address",
+      "fields": [
+        "id",
+        "party",
+        "address_type",
+        "address_line",
+        "city",
+        "province",
+        "postal_code",
+        "country_code",
+        "primary_address"
+      ]
+    },
+    "CustomerProfile": {
+      "table": "master_customer_profile",
+      "fields": [
+        "id",
+        "party",
+        "customer_code",
+        "credit_limit",
+        "credit_hold",
+        "payment_term",
+        "price_list_id",
+        "receivable_account",
+        "risk_category"
+      ]
+    },
+    "SupplierProfile": {
+      "table": "master_supplier_profile",
+      "fields": [
+        "id",
+        "party",
+        "supplier_code",
+        "payment_term",
+        "lead_time_days",
+        "minimum_order_value",
+        "payable_account",
+        "approved_supplier"
+      ]
+    },
+    "ProductCategory": {
+      "table": "master_product_category",
+      "fields": [
+        "master_data_productcategory_parent_set",
+        "master_data_product_category_set",
+        "assets_asset_category_set",
+        "id",
+        "tenant",
+        "parent",
+        "category_code",
+        "category_name",
+        "status"
+      ]
+    },
+    "UOM": {
+      "table": "master_uom",
+      "fields": [
+        "master_data_product_base_uom_set",
+        "crm_opportunityproduct_uom_set",
+        "crm_inquiry_requirements",
+        "sales_quotationline_uom_set",
+        "sales_orderline_uom_set",
+        "sales_deliveryline_uom_set",
+        "projects_resourcerequestline_uom_set",
+        "procurement_purchaserequisitionline_uom_set",
+        "procurement_purchaseorderline_uom_set",
+        "procurement_goodsreceiptline_uom_set",
+        "inventory_stockmoveline_uom_set",
+        "manufacturing_bomversion_output_uom_set",
+        "manufacturing_bomline_uom_set",
+        "finance_billingdocumentline_uom_set",
+        "logistics_shipmentline_uom_set",
+        "id",
+        "tenant",
+        "uom_code",
+        "uom_name",
+        "dimension_type",
+        "base_uom"
+      ]
+    },
+    "Product": {
+      "table": "master_product",
+      "fields": [
+        "crm_opportunityproduct_product_set",
+        "crm_inquiry_requirements",
+        "crm_estimate_lines",
+        "sales_quotationline_product_set",
+        "sales_contractline_product_set",
+        "sales_orderline_product_set",
+        "sales_deliveryline_product_set",
+        "projects_materialrequirement_product_set",
+        "changerequestmaterial",
+        "projects_resourcerequestline_product_set",
+        "procurement_purchaserequisitionline_product_set",
+        "procurement_purchaseorderline_product_set",
+        "procurement_goodsreceiptline_product_set",
+        "inventory_lot_product_set",
+        "inventory_serialnumber_product_set",
+        "inventory_stockmoveline_product_set",
+        "inventory_stockreservation_product_set",
+        "inventory_stockledgerentry_product_set",
+        "inventory_stockbalance_product_set",
+        "inventory_valuationlayer_product_set",
+        "inventory_stockcountline_product_set",
+        "manufacturing_bom_product_set",
+        "manufacturing_bomline_component_product_set",
+        "manufacturing_productionorder_product_set",
+        "manufacturing_productionmaterial_product_set",
+        "manufacturing_productionoutput_product_set",
+        "manufacturing_scrap_product_set",
+        "manufacturing_costledgerentry_product_set",
+        "quality_qualityplan_product_set",
+        "quality_inspection_product_set",
+        "finance_journalline_product_set",
+        "finance_billingdocumentline_product_set",
+        "finance_unitcostsnapshot_product_set",
+        "finance_costbaselineline_product_set",
+        "service_case_product_set",
+        "logistics_shipmentline_product_set",
+        "id",
+        "tenant",
+        "category",
+        "base_uom",
+        "product_code",
+        "product_name",
+        "product_type",
+        "costing_method",
+        "stock_item",
+        "purchase_item",
+        "sales_item",
+        "manufactured_item",
+        "lot_controlled",
+        "serial_controlled",
+        "status"
+      ]
+    },
+    "Currency": {
+      "table": "master_currency",
+      "fields": [
+        "core_company_base_currency_set",
+        "accounts_approvallimit_currency_set",
+        "master_data_party_default_currency_set",
+        "master_data_exchangerate_from_currency_set",
+        "master_data_exchangerate_to_currency_set",
+        "sales_quotation_currency_set",
+        "sales_order_currency_set",
+        "projects_weightindicator_currency_set",
+        "procurement_supplierquotation_currency_set",
+        "procurement_purchaseorder_currency_set",
+        "finance_account_currency_set",
+        "finance_journalentry_currency_set",
+        "finance_journalline_transaction_currency_set",
+        "finance_billingdocument_currency_set",
+        "finance_payment_currency_set",
+        "finance_bankaccount_currency_set",
+        "finance_recurringpaymentrule_currency_set",
+        "finance_creditfacility_currency_set",
+        "finance_projectfunding_currency_set",
+        "id",
+        "currency_code",
+        "currency_name",
+        "symbol",
+        "decimal_places"
+      ]
+    },
+    "ExchangeRate": {
+      "table": "master_exchange_rate",
+      "fields": [
+        "id",
+        "company",
+        "from_currency",
+        "to_currency",
+        "rate_date",
+        "exchange_rate",
+        "rate_source"
+      ]
+    },
+    "PaymentTerm": {
+      "table": "master_payment_term",
+      "fields": [
+        "master_data_customerprofile_payment_term_set",
+        "master_data_supplierprofile_payment_term_set",
+        "sales_quotation_payment_term_set",
+        "sales_order_payment_term_set",
+        "procurement_purchaseorder_payment_term_set",
+        "finance_billingdocument_payment_term_set",
+        "id",
+        "tenant",
+        "term_code",
+        "term_name",
+        "due_days",
+        "early_discount_percent",
+        "early_discount_days"
+      ]
+    },
+    "TaxCode": {
+      "table": "master_tax_code",
+      "fields": [
+        "sales_quotationline_tax_code_set",
+        "sales_contractline_tax_code_set",
+        "sales_orderline_tax_code_set",
+        "procurement_purchaseorderline_tax_code_set",
+        "finance_billingdocumentline_tax_code_set",
+        "finance_taxtransaction_tax_code_set",
+        "id",
+        "tenant",
+        "tax_code",
+        "tax_name",
+        "tax_type",
+        "tax_rate",
+        "effective_from",
+        "effective_to",
+        "input_account",
+        "output_account"
+      ]
+    },
+    "CostCenter": {
+      "table": "master_cost_center",
+      "fields": [
+        "master_data_costcenter_parent_set",
+        "projects_project_cost_center_set",
+        "projects_budgetline_cost_center_set",
+        "finance_journalline_cost_center_set",
+        "finance_billingdocumentline_cost_center_set",
+        "finance_budgetline_cost_center_set",
+        "finance_costbaselineline_cost_center_set",
+        "finance_overheadrule_target_cost_center_set",
+        "id",
+        "company",
+        "parent",
+        "cost_center_code",
+        "cost_center_name",
+        "status"
+      ]
+    },
+    "Department": {
+      "table": "master_department",
+      "fields": [
+        "master_data_department_parent_set",
+        "master_data_employee_department_set",
+        "finance_journalline_department_set",
+        "finance_budgetline_department_set",
+        "assets_asset_department_set",
+        "id",
+        "company",
+        "parent",
+        "department_code",
+        "department_name",
+        "status"
+      ]
+    },
+    "Employee": {
+      "table": "master_employee",
+      "fields": [
+        "projects_member_employee_set",
+        "projects_timesheet_employee_set",
+        "projects_resourcerequestline_employee_set",
+        "projects_resourceallocation_employee_set",
+        "projects_equipmentusage_employee_set",
+        "manufacturing_laborlog_employee_set",
+        "id",
+        "tenant",
+        "party",
+        "department",
+        "employee_number",
+        "employment_status",
+        "standard_hourly_rate"
+      ]
+    },
+    "Warehouse": {
+      "table": "master_warehouse",
+      "fields": [
+        "master_data_warehouselocation_warehouse_set",
+        "sales_delivery_warehouse_set",
+        "projects_materialrequirement_warehouse_set",
+        "changerequestmaterial",
+        "procurement_purchaserequisitionline_warehouse_set",
+        "procurement_goodsreceipt_warehouse_set",
+        "inventory_valuationlayer_warehouse_set",
+        "inventory_stockcount_warehouse_set",
+        "manufacturing_productionorder_warehouse_set",
+        "manufacturing_productionmaterial_warehouse_set",
+        "finance_journalline_warehouse_set",
+        "id",
+        "company",
+        "warehouse_code",
+        "warehouse_name",
+        "warehouse_type",
+        "status"
+      ]
+    },
+    "WarehouseLocation": {
+      "table": "master_warehouse_location",
+      "fields": [
+        "master_data_warehouselocation_parent_set",
+        "inventory_serialnumber_current_location_set",
+        "inventory_stockmove_source_location_set",
+        "inventory_stockmove_destination_location_set",
+        "inventory_stockreservation_warehouse_location_set",
+        "inventory_stockledgerentry_warehouse_location_set",
+        "inventory_stockbalance_warehouse_location_set",
+        "inventory_stockcountline_location_set",
+        "manufacturing_productionoutput_destination_location_set",
+        "assets_asset_warehouse_location_set",
+        "id",
+        "warehouse",
+        "parent",
+        "location_code",
+        "location_name",
+        "location_type",
+        "quality_hold",
+        "active"
+      ]
+    },
+    "WorkCenter": {
+      "table": "master_work_center",
+      "fields": [
+        "master_data_machine_work_center_set",
+        "projects_task_work_center_set",
+        "projects_resourcerequestline_work_center_set",
+        "manufacturing_routingoperation_work_center_set",
+        "manufacturing_workorder_work_center_set",
+        "id",
+        "company",
+        "work_center_code",
+        "work_center_name",
+        "hourly_rate",
+        "capacity_per_day",
+        "status"
+      ]
+    },
+    "Machine": {
+      "table": "master_machine",
+      "fields": [
+        "projects_resourcerequestline_machine_set",
+        "projects_resourceallocation_machine_set",
+        "projects_equipmentusage_machine_set",
+        "manufacturing_workorder_machine_set",
+        "manufacturing_machinelog_machine_set",
+        "assets_maintenance_machine_set",
+        "id",
+        "company",
+        "work_center",
+        "asset",
+        "machine_code",
+        "machine_name",
+        "hourly_rate",
+        "status"
+      ]
+    }
+  },
+  "crm": {
+    "Lead": {
+      "table": "crm_lead",
+      "fields": [
+        "crm_opportunity_lead_set",
+        "customer_feedbacks",
+        "id",
+        "document",
+        "tenant",
+        "company",
+        "party",
+        "owner_user",
+        "lead_source",
+        "lead_status",
+        "estimated_value",
+        "expected_close_date"
+      ]
+    },
+    "Opportunity": {
+      "table": "crm_opportunity",
+      "fields": [
+        "crm_opportunityproduct_opportunity_set",
+        "crm_activity_opportunity_set",
+        "crm_opportunitystagehistory_opportunity_set",
+        "crm_executiveapproval_opportunity_set",
+        "crm_conversation_opportunity_set",
+        "source_inquiry",
+        "cost_estimates",
+        "workflow_events",
+        "customer_feedbacks",
+        "sales_quotation_opportunity_set",
+        "projects_weightindicator_opportunity_set",
+        "id",
+        "tenant",
+        "company",
+        "document",
+        "customer_party",
+        "lead",
+        "owner_user",
+        "pipeline_stage",
+        "stage",
+        "opportunity_name",
+        "lost_reason",
+        "opened_at",
+        "closed_at",
+        "probability_percent",
+        "expected_amount",
+        "expected_margin",
+        "expected_close_date",
+        "status"
+      ]
+    },
+    "OpportunityProduct": {
+      "table": "crm_opportunity_product",
+      "fields": [
+        "id",
+        "opportunity",
+        "product",
+        "quantity",
+        "uom",
+        "estimated_unit_price",
+        "estimated_cost"
+      ]
+    },
+    "Activity": {
+      "table": "crm_activity",
+      "fields": [
+        "id",
+        "opportunity",
+        "party",
+        "assigned_user",
+        "activity_type",
+        "subject",
+        "scheduled_at",
+        "completed_at",
+        "status"
+      ]
+    },
+    "Pipeline": {
+      "table": "crm_pipeline",
+      "fields": [
+        "crm_pipelinestage_pipeline_set",
+        "id",
+        "tenant",
+        "company",
+        "pipeline_code",
+        "pipeline_name",
+        "default_pipeline",
+        "status"
+      ]
+    },
+    "PipelineStage": {
+      "table": "crm_pipeline_stage",
+      "fields": [
+        "opportunities",
+        "crm_opportunitystagehistory_from_stage_set",
+        "crm_opportunitystagehistory_to_stage_set",
+        "id",
+        "pipeline",
+        "stage_code",
+        "stage_name",
+        "position_order",
+        "default_probability_percent",
+        "closed_won",
+        "closed_lost",
+        "status"
+      ]
+    },
+    "OpportunityStageHistory": {
+      "table": "crm_opportunity_stage_history",
+      "fields": [
+        "id",
+        "opportunity",
+        "from_stage",
+        "to_stage",
+        "changed_by",
+        "changed_at",
+        "change_reason"
+      ]
+    },
+    "ExecutiveApproval": {
+      "table": "crm_executive_approval",
+      "fields": [
+        "id",
+        "company",
+        "document",
+        "opportunity",
+        "quotation",
+        "contract",
+        "project",
+        "requested_by",
+        "approver_user",
+        "approval_type",
+        "requested_amount",
+        "decision",
+        "remarks",
+        "requested_at",
+        "decided_at"
+      ]
+    },
+    "CreditStatusSnapshot": {
+      "table": "crm_credit_status_snapshot",
+      "fields": [
+        "id",
+        "customer_party",
+        "company",
+        "snapshot_at",
+        "credit_limit",
+        "outstanding_receivable",
+        "overdue_amount",
+        "available_credit",
+        "risk_category",
+        "credit_status"
+      ]
+    },
+    "ChannelAccount": {
+      "table": "crm_channel_account",
+      "fields": [
+        "crm_conversation_channel_account_set",
+        "id",
+        "tenant",
+        "company",
+        "channel_type",
+        "account_name",
+        "external_account_id",
+        "credential_reference",
+        "active"
+      ]
+    },
+    "Conversation": {
+      "table": "crm_conversation",
+      "fields": [
+        "crm_conversationparticipant_conversation_set",
+        "crm_message_conversation_set",
+        "id",
+        "channel_account",
+        "customer_party",
+        "contact",
+        "opportunity",
+        "service_case",
+        "assigned_user",
+        "external_conversation_id",
+        "subject",
+        "opened_at",
+        "closed_at",
+        "priority",
+        "status"
+      ]
+    },
+    "ConversationParticipant": {
+      "table": "crm_conversation_participant",
+      "fields": [
+        "id",
+        "conversation",
+        "party",
+        "contact",
+        "user",
+        "participant_type",
+        "joined_at",
+        "left_at"
+      ]
+    },
+    "Message": {
+      "table": "crm_message",
+      "fields": [
+        "crm_messageattachment_message_set",
+        "crm_messagedeliverystatus_message_set",
+        "id",
+        "conversation",
+        "sender_user",
+        "sender_party",
+        "external_message_id",
+        "direction",
+        "message_type",
+        "message_text",
+        "sent_at",
+        "received_at",
+        "status"
+      ]
+    },
+    "MessageAttachment": {
+      "table": "crm_message_attachment",
+      "fields": [
+        "id",
+        "message",
+        "file",
+        "attachment_type"
+      ]
+    },
+    "MessageDeliveryStatus": {
+      "table": "crm_message_delivery_status",
+      "fields": [
+        "id",
+        "message",
+        "delivery_status",
+        "status_at",
+        "failure_code",
+        "failure_message"
+      ]
+    },
+    "Feedback": {
+      "table": "crm_feedback",
+      "fields": [
+        "id",
+        "document",
+        "customer_party",
+        "contact",
+        "project",
+        "sales_order",
+        "delivery",
+        "service_case",
+        "feedback_type",
+        "rating_value",
+        "nps_score",
+        "feedback_text",
+        "submitted_at",
+        "status"
+      ]
+    },
+    "Survey": {
+      "table": "crm_survey",
+      "fields": [
+        "crm_surveyquestion_survey_set",
+        "crm_surveyresponse_survey_set",
+        "id",
+        "tenant",
+        "company",
+        "survey_code",
+        "survey_name",
+        "survey_type",
+        "active_from",
+        "active_to",
+        "status"
+      ]
+    },
+    "SurveyQuestion": {
+      "table": "crm_survey_question",
+      "fields": [
+        "crm_surveyanswer_question_set",
+        "id",
+        "survey",
+        "question_text",
+        "answer_type",
+        "required",
+        "position_order",
+        "option_json"
+      ]
+    },
+    "SurveyResponse": {
+      "table": "crm_survey_response",
+      "fields": [
+        "crm_surveyanswer_response_set",
+        "id",
+        "survey",
+        "customer_party",
+        "contact",
+        "project",
+        "sales_order",
+        "started_at",
+        "submitted_at",
+        "response_status"
+      ]
+    },
+    "SurveyAnswer": {
+      "table": "crm_survey_answer",
+      "fields": [
+        "id",
+        "response",
+        "question",
+        "numeric_answer",
+        "text_answer",
+        "option_answer"
+      ]
+    },
+    "CustomerInquiry": {
+      "table": "crm_customer_inquiry",
+      "fields": [
+        "requirements",
+        "cost_estimates",
+        "workflow_events",
+        "id",
+        "tenant",
+        "company",
+        "document",
+        "customer_party",
+        "contact",
+        "owner_user",
+        "opportunity",
+        "inquiry_number",
+        "source_channel",
+        "subject",
+        "description",
+        "customer_name",
+        "customer_email",
+        "expected_delivery_date",
+        "status",
+        "qualified_at",
+        "quoted_at",
+        "closed_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "InquiryRequirement": {
+      "table": "crm_inquiry_requirement",
+      "fields": [
+        "estimate_lines",
+        "id",
+        "inquiry",
+        "product",
+        "uom",
+        "requirement_type",
+        "description",
+        "specification_json",
+        "quantity",
+        "target_unit_price",
+        "status"
+      ]
+    },
+    "CostEstimate": {
+      "table": "crm_cost_estimate",
+      "fields": [
+        "lines",
+        "quotation_versions",
+        "id",
+        "tenant",
+        "company",
+        "inquiry",
+        "opportunity",
+        "estimate_number",
+        "version_number",
+        "direct_cost",
+        "overhead_cost",
+        "contingency_amount",
+        "total_cost",
+        "markup_percent",
+        "offered_amount",
+        "margin_amount",
+        "margin_percent",
+        "status",
+        "calculated_at",
+        "calculated_by",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "CostEstimateLine": {
+      "table": "crm_cost_estimate_line",
+      "fields": [
+        "id",
+        "estimate",
+        "requirement",
+        "product",
+        "cost_element",
+        "description",
+        "quantity",
+        "unit_cost",
+        "amount",
+        "calculation_source"
+      ]
+    },
+    "QuotationVersion": {
+      "table": "crm_quotation_version",
+      "fields": [
+        "deliveries",
+        "id",
+        "quotation",
+        "estimate",
+        "version_number",
+        "subtotal",
+        "tax_amount",
+        "total_amount",
+        "estimated_cost",
+        "margin_percent",
+        "payload_json",
+        "created_by",
+        "created_at"
+      ]
+    },
+    "QuotationDelivery": {
+      "table": "crm_quotation_delivery",
+      "fields": [
+        "id",
+        "quotation",
+        "version",
+        "channel",
+        "recipient",
+        "external_reference",
+        "status",
+        "sent_at",
+        "delivered_at",
+        "failure_reason"
+      ]
+    },
+    "CRMWorkflowEvent": {
+      "table": "crm_workflow_event",
+      "fields": [
+        "id",
+        "company",
+        "inquiry",
+        "opportunity",
+        "event_type",
+        "from_status",
+        "to_status",
+        "actor",
+        "payload_json",
+        "created_at"
+      ]
+    },
+    "CustomerFeedback": {
+      "table": "crm_customer_feedback",
+      "fields": [
+        "id",
+        "company",
+        "customer",
+        "project",
+        "lead",
+        "opportunity",
+        "rating",
+        "feedback_type",
+        "aspect_quality",
+        "aspect_timeline",
+        "aspect_communication",
+        "comments",
+        "submitted_by_name",
+        "submitted_at"
+      ]
+    }
+  },
+  "sales": {
+    "Quotation": {
+      "table": "sales_quotation",
+      "fields": [
+        "crm_executiveapproval_quotation_set",
+        "versions",
+        "deliveries",
+        "sales_quotationline_quotation_set",
+        "sales_order_quotation_set",
+        "id",
+        "document",
+        "opportunity",
+        "customer_party",
+        "currency",
+        "payment_term",
+        "valid_until",
+        "subtotal",
+        "tax_amount",
+        "total_amount",
+        "estimated_total_cost",
+        "estimated_margin",
+        "status"
+      ]
+    },
+    "QuotationLine": {
+      "table": "sales_quotation_line",
+      "fields": [
+        "sales_quotationcost_quotation_line_set",
+        "id",
+        "quotation",
+        "product",
+        "description",
+        "quantity",
+        "uom",
+        "unit_price",
+        "discount_amount",
+        "tax_code",
+        "line_total"
+      ]
+    },
+    "QuotationCost": {
+      "table": "sales_quotation_cost",
+      "fields": [
+        "id",
+        "quotation_line",
+        "cost_element",
+        "quantity",
+        "rate",
+        "amount",
+        "calculation_source"
+      ]
+    },
+    "Contract": {
+      "table": "sales_contract",
+      "fields": [
+        "crm_executiveapproval_contract_set",
+        "sales_contractline_contract_set",
+        "sales_order_contract_set",
+        "sales_recurringorderrule_contract_set",
+        "id",
+        "document",
+        "customer_party",
+        "contract_number",
+        "start_date",
+        "end_date",
+        "contract_type",
+        "billing_frequency",
+        "order_frequency",
+        "status"
+      ]
+    },
+    "ContractLine": {
+      "table": "sales_contract_line",
+      "fields": [
+        "id",
+        "contract",
+        "product",
+        "contracted_quantity",
+        "unit_price",
+        "tax_code",
+        "recurrence_rule"
+      ]
+    },
+    "Order": {
+      "table": "sales_order",
+      "fields": [
+        "crm_feedback_sales_order_set",
+        "crm_surveyresponse_sales_order_set",
+        "sales_orderline_sales_order_set",
+        "sales_delivery_sales_order_set",
+        "sales_orderchangerequest_sales_order_set",
+        "sales_recurringorderrule_source_sales_order_set",
+        "sales_recurringorderrun_generated_sales_order_set",
+        "projects_project_sales_order_set",
+        "projects_technicalbrief_sales_order_set",
+        "projects_weightindicator_sales_order_set",
+        "finance_billingdocument_sales_order_set",
+        "service_case_sales_order_set",
+        "logistics_shipment_sales_order_set",
+        "id",
+        "document",
+        "quotation",
+        "contract",
+        "customer_party",
+        "currency",
+        "payment_term",
+        "order_date",
+        "requested_delivery_date",
+        "subtotal",
+        "tax_amount",
+        "total_amount",
+        "status"
+      ]
+    },
+    "OrderLine": {
+      "table": "sales_order_line",
+      "fields": [
+        "sales_deliveryline_sales_order_line_set",
+        "sales_demandsupplylink_sales_order_line_set",
+        "inventory_stockreservation_sales_order_line_set",
+        "manufacturing_productionorder_sales_order_line_set",
+        "id",
+        "sales_order",
+        "product",
+        "ordered_quantity",
+        "delivered_quantity",
+        "invoiced_quantity",
+        "uom",
+        "unit_price",
+        "tax_code",
+        "project",
+        "fulfillment_method"
+      ]
+    },
+    "Delivery": {
+      "table": "sales_delivery",
+      "fields": [
+        "crm_feedback_delivery_set",
+        "sales_deliveryline_delivery_set",
+        "service_resolution_replacement_delivery_set",
+        "logistics_shipment_delivery_set",
+        "id",
+        "document",
+        "sales_order",
+        "customer_party",
+        "warehouse",
+        "delivery_date",
+        "delivery_status"
+      ]
+    },
+    "DeliveryLine": {
+      "table": "sales_delivery_line",
+      "fields": [
+        "logistics_shipmentline_delivery_line_set",
+        "id",
+        "delivery",
+        "sales_order_line",
+        "product",
+        "lot",
+        "serial_number",
+        "quantity",
+        "uom"
+      ]
+    },
+    "DemandSupplyLink": {
+      "table": "sales_demand_supply_link",
+      "fields": [
+        "id",
+        "sales_order_line",
+        "project",
+        "production_order",
+        "purchase_order_line",
+        "stock_reservation",
+        "demand_quantity",
+        "allocated_quantity",
+        "fulfilled_quantity",
+        "status"
+      ]
+    },
+    "OrderChangeRequest": {
+      "table": "sales_order_change_request",
+      "fields": [
+        "id",
+        "document",
+        "sales_order",
+        "project",
+        "requested_by",
+        "change_type",
+        "change_reason",
+        "value_impact",
+        "schedule_impact_days",
+        "approval_status",
+        "status"
+      ]
+    },
+    "RecurringOrderRule": {
+      "table": "sales_recurring_order_rule",
+      "fields": [
+        "sales_recurringorderrun_recurring_order_rule_set",
+        "id",
+        "contract",
+        "customer_party",
+        "source_sales_order",
+        "recurrence_rule",
+        "next_order_date",
+        "end_date",
+        "auto_create",
+        "approval_required",
+        "status"
+      ]
+    },
+    "RecurringOrderRun": {
+      "table": "sales_recurring_order_run",
+      "fields": [
+        "id",
+        "recurring_order_rule",
+        "generated_sales_order",
+        "scheduled_date",
+        "generated_at",
+        "run_status",
+        "failure_reason"
+      ]
+    }
+  },
+  "projects": {
+    "Project": {
+      "table": "project_project",
+      "fields": [
+        "accounts_userprojectaccess_project_set",
+        "crm_executiveapproval_project_set",
+        "crm_feedback_project_set",
+        "crm_surveyresponse_project_set",
+        "customer_feedbacks",
+        "sales_orderline_project_set",
+        "sales_demandsupplylink_project_set",
+        "sales_orderchangerequest_project_set",
+        "control_items",
+        "expenses",
+        "lifecycle_events",
+        "readiness_checks",
+        "projects_member_project_set",
+        "projects_task_project_set",
+        "projects_milestone_project_set",
+        "projects_materialrequirement_project_set",
+        "projects_budgetline_project_set",
+        "projects_timesheet_project_set",
+        "projects_changerequest_project_set",
+        "projects_board_project_set",
+        "projects_healthsnapshot_project_set",
+        "projects_risk_project_set",
+        "projects_issue_project_set",
+        "dispatches",
+        "projects_technicalbrief_project_set",
+        "projects_resourcerequest_project_set",
+        "projects_progresssnapshot_project_set",
+        "projects_equipmentusage_project_set",
+        "projects_weightindicator_project_set",
+        "weekly_progresses",
+        "financial_snapshots",
+        "main_tasks",
+        "task_activity_logs",
+        "evm_records",
+        "procurement_purchaserequisition_project_set",
+        "procurement_purchaseorderline_project_set",
+        "inventory_stockmove_project_set",
+        "inventory_stockreservation_project_set",
+        "inventory_stockledgerentry_project_set",
+        "manufacturing_productionorder_project_set",
+        "manufacturing_laborlog_project_set",
+        "manufacturing_machinelog_project_set",
+        "manufacturing_costledgerentry_project_set",
+        "finance_journalline_project_set",
+        "finance_billingdocument_project_set",
+        "finance_billingdocumentline_project_set",
+        "finance_budgetline_project_set",
+        "finance_unitcostsnapshot_project_set",
+        "finance_projectwipsnapshot_project_set",
+        "finance_projectfunding_project_set",
+        "finance_costbaseline_project_set",
+        "finance_costvariance_project_set",
+        "finance_overheadallocation_project_set",
+        "finance_projectcostsnapshot_project_set",
+        "cost_entries",
+        "billing_proposals",
+        "assets_asset_project_set",
+        "analytics_kpitarget_project_set",
+        "analytics_kpiresult_project_set",
+        "analytics_alertevent_project_set",
+        "id",
+        "document",
+        "tenant",
+        "company",
+        "customer_party",
+        "sales_order",
+        "project_manager",
+        "cost_center",
+        "project_code",
+        "project_name",
+        "customer_name",
+        "manager_name",
+        "description",
+        "planned_start_date",
+        "planned_end_date",
+        "actual_start_date",
+        "actual_end_date",
+        "budget_amount",
+        "contract_amount",
+        "target_margin_percent",
+        "progress_percent",
+        "status",
+        "lifecycle_status",
+        "health_status",
+        "source_type",
+        "verified_at",
+        "verified_by",
+        "started_at",
+        "closed_at",
+        "closed_by"
+      ]
+    },
+    "ProjectControlItem": {
+      "table": "project_control_item",
+      "fields": [
+        "id",
+        "project",
+        "item_type",
+        "title",
+        "owner_name",
+        "status",
+        "target_date",
+        "quantity",
+        "description",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "ProjectExpense": {
+      "table": "project_expense",
+      "fields": [
+        "id",
+        "project",
+        "billing_document",
+        "title",
+        "category",
+        "vendor_name",
+        "expense_date",
+        "amount",
+        "description",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "ProjectLifecycleEvent": {
+      "table": "project_lifecycle_event",
+      "fields": [
+        "id",
+        "project",
+        "from_status",
+        "to_status",
+        "action",
+        "actor",
+        "note",
+        "payload_json",
+        "created_at"
+      ]
+    },
+    "ProjectReadinessCheck": {
+      "table": "project_readiness_check",
+      "fields": [
+        "id",
+        "project",
+        "check_type",
+        "status",
+        "message",
+        "blocking",
+        "checked_at",
+        "details_json"
+      ]
+    },
+    "Member": {
+      "table": "project_member",
+      "fields": [
+        "id",
+        "project",
+        "user",
+        "employee",
+        "project_role",
+        "status",
+        "permissions_json",
+        "assigned_at",
+        "joined_at",
+        "left_at"
+      ]
+    },
+    "Task": {
+      "table": "project_task",
+      "fields": [
+        "projects_task_parent_task_set",
+        "projects_taskdependency_predecessor_task_set",
+        "projects_taskdependency_successor_task_set",
+        "projects_materialrequirement_task_set",
+        "projects_timesheet_task_set",
+        "projects_taskboardposition_task_set",
+        "projects_issue_task_set",
+        "projects_resourcerequest_task_set",
+        "projects_equipmentusage_task_set",
+        "id",
+        "project",
+        "parent_task",
+        "work_center",
+        "production_order",
+        "assigned_to",
+        "created_by",
+        "updated_by",
+        "task_code",
+        "task_name",
+        "description",
+        "priority",
+        "evidence_json",
+        "planned_start_at",
+        "planned_end_at",
+        "actual_start_at",
+        "actual_end_at",
+        "planned_hours",
+        "actual_hours",
+        "progress_percent",
+        "weight_percent",
+        "status",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "TaskDependency": {
+      "table": "project_task_dependency",
+      "fields": [
+        "id",
+        "predecessor_task",
+        "successor_task",
+        "dependency_type",
+        "lag_minutes"
+      ]
+    },
+    "Milestone": {
+      "table": "project_milestone",
+      "fields": [
+        "id",
+        "project",
+        "owner_user",
+        "created_by",
+        "updated_by",
+        "milestone_name",
+        "planned_date",
+        "actual_date",
+        "weight_percent",
+        "status",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "MaterialRequirement": {
+      "table": "project_material_requirement",
+      "fields": [
+        "changerequestmaterial",
+        "procurement_purchaserequisitionline_project_material_requirement_set",
+        "id",
+        "project",
+        "task",
+        "product",
+        "warehouse",
+        "required_quantity",
+        "reserved_quantity",
+        "issued_quantity",
+        "required_date",
+        "status"
+      ]
+    },
+    "BudgetLine": {
+      "table": "project_budget_line",
+      "fields": [
+        "id",
+        "project",
+        "cost_element",
+        "account",
+        "cost_center",
+        "budget_quantity",
+        "budget_rate",
+        "budget_amount"
+      ]
+    },
+    "Timesheet": {
+      "table": "project_timesheet",
+      "fields": [
+        "id",
+        "project",
+        "task",
+        "employee",
+        "work_date",
+        "hours",
+        "hourly_rate",
+        "amount",
+        "approval_status"
+      ]
+    },
+    "ChangeRequest": {
+      "table": "project_change_request",
+      "fields": [
+        "material_changes",
+        "id",
+        "document",
+        "project",
+        "change_type",
+        "description",
+        "schedule_impact_days",
+        "cost_impact",
+        "approval_status",
+        "requested_by",
+        "analyzed_by",
+        "analyzed_at",
+        "submitted_at",
+        "client_decided_at",
+        "client_decision_note",
+        "original_end_date",
+        "revised_end_date",
+        "billing_adjustment",
+        "applied_at",
+        "applied_by",
+        "status"
+      ]
+    },
+    "Board": {
+      "table": "project_board",
+      "fields": [
+        "projects_boardcolumn_board_set",
+        "id",
+        "project",
+        "board_name",
+        "board_type",
+        "default_board",
+        "status"
+      ]
+    },
+    "BoardColumn": {
+      "table": "project_board_column",
+      "fields": [
+        "projects_taskboardposition_board_column_set",
+        "id",
+        "board",
+        "column_name",
+        "mapped_task_status",
+        "position_order",
+        "wip_limit"
+      ]
+    },
+    "TaskBoardPosition": {
+      "table": "project_task_board_position",
+      "fields": [
+        "id",
+        "task",
+        "board_column",
+        "position_order",
+        "moved_at",
+        "moved_by"
+      ]
+    },
+    "HealthRule": {
+      "table": "project_health_rule",
+      "fields": [
+        "id",
+        "company",
+        "rule_code",
+        "health_dimension",
+        "operator",
+        "warning_threshold",
+        "critical_threshold",
+        "weight_percent",
+        "active"
+      ]
+    },
+    "HealthSnapshot": {
+      "table": "project_health_snapshot",
+      "fields": [
+        "id",
+        "project",
+        "snapshot_at",
+        "schedule_score",
+        "cost_score",
+        "quality_score",
+        "resource_score",
+        "risk_score",
+        "overall_score",
+        "health_status",
+        "explanation_json"
+      ]
+    },
+    "Risk": {
+      "table": "project_risk",
+      "fields": [
+        "id",
+        "document",
+        "project",
+        "owner_user",
+        "risk_code",
+        "risk_category",
+        "description",
+        "probability_score",
+        "impact_score",
+        "risk_score",
+        "mitigation_plan",
+        "due_date",
+        "status"
+      ]
+    },
+    "Issue": {
+      "table": "project_issue",
+      "fields": [
+        "actions",
+        "id",
+        "document",
+        "project",
+        "task",
+        "assigned_user",
+        "issue_type",
+        "severity",
+        "description",
+        "due_date",
+        "resolved_at",
+        "status",
+        "source_department",
+        "root_cause",
+        "milestone_impact",
+        "alert_status",
+        "reported_by",
+        "reported_at",
+        "analyzed_by",
+        "analyzed_at"
+      ]
+    },
+    "ChangeRequestMaterial": {
+      "table": "project_change_request_material",
+      "fields": [
+        "id",
+        "change_request",
+        "product",
+        "warehouse",
+        "quantity_delta",
+        "unit_cost",
+        "reason",
+        "applied_requirement"
+      ]
+    },
+    "IssueAction": {
+      "table": "project_issue_action",
+      "fields": [
+        "id",
+        "issue",
+        "action_type",
+        "description",
+        "assigned_to",
+        "equipment_reference",
+        "additional_labor_hours",
+        "status",
+        "created_by",
+        "created_at",
+        "completed_at"
+      ]
+    },
+    "ProjectDispatch": {
+      "table": "project_dispatch",
+      "fields": [
+        "id",
+        "project",
+        "target_department",
+        "dispatch_type",
+        "subject",
+        "payload_json",
+        "status",
+        "sent_by",
+        "sent_at",
+        "acknowledged_at"
+      ]
+    },
+    "TechnicalBrief": {
+      "table": "project_technical_brief",
+      "fields": [
+        "projects_technicalbriefversion_technical_brief_set",
+        "projects_requirement_technical_brief_set",
+        "id",
+        "document",
+        "project",
+        "sales_order",
+        "brief_number",
+        "brief_title",
+        "objective",
+        "scope_summary",
+        "owner_user",
+        "approval_status",
+        "status"
+      ]
+    },
+    "TechnicalBriefVersion": {
+      "table": "project_technical_brief_version",
+      "fields": [
+        "id",
+        "technical_brief",
+        "version_number",
+        "specification_text",
+        "specification_json",
+        "file",
+        "created_by",
+        "created_at",
+        "status"
+      ]
+    },
+    "Requirement": {
+      "table": "project_requirement",
+      "fields": [
+        "projects_requirement_parent_requirement_set",
+        "projects_acceptancecriteria_requirement_set",
+        "id",
+        "technical_brief",
+        "parent_requirement",
+        "requirement_code",
+        "requirement_type",
+        "requirement_text",
+        "priority",
+        "verification_method",
+        "status"
+      ]
+    },
+    "AcceptanceCriteria": {
+      "table": "project_acceptance_criteria",
+      "fields": [
+        "id",
+        "requirement",
+        "criteria_text",
+        "expected_result",
+        "actual_result",
+        "passed",
+        "verified_by",
+        "verified_at"
+      ]
+    },
+    "ResourceRequest": {
+      "table": "project_resource_request",
+      "fields": [
+        "projects_resourcerequestline_resource_request_set",
+        "id",
+        "document",
+        "project",
+        "task",
+        "requested_by",
+        "request_date",
+        "required_date",
+        "request_type",
+        "priority",
+        "approval_status",
+        "status"
+      ]
+    },
+    "ResourceRequestLine": {
+      "table": "project_resource_request_line",
+      "fields": [
+        "projects_resourceallocation_resource_request_line_set",
+        "id",
+        "resource_request",
+        "product",
+        "employee",
+        "machine",
+        "work_center",
+        "uom",
+        "resource_type",
+        "requested_quantity",
+        "requested_hours",
+        "specification"
+      ]
+    },
+    "ResourceAllocation": {
+      "table": "project_resource_allocation",
+      "fields": [
+        "id",
+        "resource_request_line",
+        "stock_reservation",
+        "employee",
+        "machine",
+        "allocation_start_at",
+        "allocation_end_at",
+        "allocated_quantity",
+        "allocated_hours",
+        "estimated_cost",
+        "actual_cost",
+        "status"
+      ]
+    },
+    "ProgressSnapshot": {
+      "table": "project_progress_snapshot",
+      "fields": [
+        "id",
+        "project",
+        "work_order",
+        "snapshot_at",
+        "planned_progress_percent",
+        "actual_progress_percent",
+        "earned_value",
+        "planned_value",
+        "actual_cost",
+        "progress_status"
+      ]
+    },
+    "EquipmentUsage": {
+      "table": "project_equipment_usage",
+      "fields": [
+        "id",
+        "project",
+        "task",
+        "machine",
+        "asset",
+        "employee",
+        "start_at",
+        "end_at",
+        "usage_hours",
+        "hourly_rate",
+        "total_cost",
+        "status"
+      ]
+    },
+    "WeightIndicator": {
+      "table": "project_weight_indicator",
+      "fields": [
+        "projects_weightcomponent_project_weight_indicator_set",
+        "id",
+        "project",
+        "opportunity",
+        "sales_order",
+        "currency",
+        "base_project_value",
+        "weight_percent",
+        "weighted_project_value",
+        "calculated_at",
+        "status"
+      ]
+    },
+    "WeightComponent": {
+      "table": "project_weight_component",
+      "fields": [
+        "id",
+        "project_weight_indicator",
+        "component_code",
+        "component_name",
+        "raw_value",
+        "normalized_score",
+        "component_weight",
+        "weighted_score"
+      ]
+    },
+    "ProjectWeeklyProgress": {
+      "table": "project_weekly_progress",
+      "fields": [
+        "id",
+        "project",
+        "week_number",
+        "start_date",
+        "end_date",
+        "target_progress",
+        "actual_progress",
+        "previous_progress",
+        "progress_difference",
+        "gap_to_target",
+        "status",
+        "notes",
+        "issues",
+        "achievements",
+        "next_week_plan",
+        "is_locked",
+        "recorded_by",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "ProjectFinancialSnapshot": {
+      "table": "project_financial_snapshot",
+      "fields": [
+        "id",
+        "project",
+        "snapshot_date",
+        "planned_budget",
+        "actual_cost",
+        "expected_revenue",
+        "invoiced_revenue",
+        "realized_revenue",
+        "expected_gross_profit",
+        "actual_gross_profit",
+        "expected_margin_percent",
+        "actual_margin_percent",
+        "budget_variance",
+        "revenue_variance",
+        "cost_variance",
+        "budget_utilization_percent",
+        "revenue_achievement_percent",
+        "financial_health_status",
+        "note",
+        "created_at"
+      ]
+    },
+    "ProjectMainTask": {
+      "table": "project_main_task",
+      "fields": [
+        "assignments",
+        "weekly_tasks",
+        "id",
+        "project",
+        "name",
+        "description",
+        "priority",
+        "start_date",
+        "due_date",
+        "weight",
+        "progress",
+        "status",
+        "is_progress_overridden",
+        "override_reason",
+        "created_by",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "TaskAssignment": {
+      "table": "project_task_assignment",
+      "fields": [
+        "id",
+        "main_task",
+        "assignee",
+        "assigned_by",
+        "assigned_at"
+      ]
+    },
+    "ProjectWeeklyTask": {
+      "table": "project_weekly_task",
+      "fields": [
+        "daily_tasks",
+        "id",
+        "main_task",
+        "assignee",
+        "week_number",
+        "start_date",
+        "end_date",
+        "target_description",
+        "progress",
+        "status",
+        "is_progress_overridden",
+        "override_reason",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "ProjectDailyTask": {
+      "table": "project_daily_task",
+      "fields": [
+        "transfer_requests",
+        "id",
+        "weekly_task",
+        "owner",
+        "title",
+        "description",
+        "planned_date",
+        "time_slot",
+        "output_result",
+        "notes",
+        "progress",
+        "status",
+        "is_blocked",
+        "block_reason",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "TaskTransferRequest": {
+      "table": "project_task_transfer_request",
+      "fields": [
+        "id",
+        "daily_task",
+        "requested_by",
+        "target_user",
+        "status",
+        "reason",
+        "reviewed_by",
+        "reviewed_at",
+        "review_note",
+        "created_at"
+      ]
+    },
+    "TaskActivityLog": {
+      "table": "project_task_activity_log",
+      "fields": [
+        "id",
+        "project",
+        "actor",
+        "task_level",
+        "task_id",
+        "task_title",
+        "action",
+        "field_name",
+        "old_value",
+        "new_value",
+        "reason",
+        "created_at"
+      ]
+    },
+    "ProjectEVMRecord": {
+      "table": "project_evm_record",
+      "fields": [
+        "id",
+        "project",
+        "as_of_date",
+        "week_number",
+        "planned_value",
+        "earned_value",
+        "actual_cost",
+        "cost_variance",
+        "schedule_variance",
+        "cost_performance_index",
+        "schedule_performance_index",
+        "created_at"
+      ]
+    }
+  },
+  "procurement": {
+    "PurchaseRequisition": {
+      "table": "proc_purchase_requisition",
+      "fields": [
+        "procurement_purchaserequisitionline_requisition_set",
+        "procurement_rfq_requisition_set",
+        "id",
+        "document",
+        "company",
+        "project",
+        "requested_by",
+        "request_date",
+        "required_date",
+        "status"
+      ]
+    },
+    "PurchaseRequisitionLine": {
+      "table": "proc_purchase_requisition_line",
+      "fields": [
+        "procurement_purchaseorderline_requisition_line_set",
+        "id",
+        "requisition",
+        "product",
+        "requested_quantity",
+        "uom",
+        "warehouse",
+        "project_material_requirement"
+      ]
+    },
+    "RFQ": {
+      "table": "proc_rfq",
+      "fields": [
+        "procurement_supplierquotation_rfq_set",
+        "id",
+        "document",
+        "requisition",
+        "issue_date",
+        "closing_date",
+        "status"
+      ]
+    },
+    "SupplierQuotation": {
+      "table": "proc_supplier_quotation",
+      "fields": [
+        "procurement_purchaseorder_supplier_quotation_set",
+        "id",
+        "document",
+        "rfq",
+        "supplier_party",
+        "currency",
+        "quotation_date",
+        "valid_until",
+        "total_amount",
+        "evaluation_status"
+      ]
+    },
+    "PurchaseOrder": {
+      "table": "proc_purchase_order",
+      "fields": [
+        "procurement_purchaseorderline_purchase_order_set",
+        "procurement_goodsreceipt_purchase_order_set",
+        "procurement_threewaymatch_purchase_order_set",
+        "finance_billingdocument_purchase_order_set",
+        "id",
+        "document",
+        "supplier_quotation",
+        "supplier_party",
+        "currency",
+        "payment_term",
+        "order_date",
+        "expected_receipt_date",
+        "subtotal",
+        "tax_amount",
+        "total_amount",
+        "status"
+      ]
+    },
+    "PurchaseOrderLine": {
+      "table": "proc_purchase_order_line",
+      "fields": [
+        "sales_demandsupplylink_purchase_order_line_set",
+        "procurement_goodsreceiptline_purchase_order_line_set",
+        "id",
+        "purchase_order",
+        "requisition_line",
+        "product",
+        "ordered_quantity",
+        "received_quantity",
+        "invoiced_quantity",
+        "uom",
+        "unit_price",
+        "tax_code",
+        "project"
+      ]
+    },
+    "GoodsReceipt": {
+      "table": "proc_goods_receipt",
+      "fields": [
+        "procurement_goodsreceiptline_goods_receipt_set",
+        "procurement_threewaymatch_goods_receipt_set",
+        "quality_inspection_goods_receipt_set",
+        "id",
+        "document",
+        "purchase_order",
+        "supplier_party",
+        "warehouse",
+        "receipt_date",
+        "inspection_status",
+        "status"
+      ]
+    },
+    "GoodsReceiptLine": {
+      "table": "proc_goods_receipt_line",
+      "fields": [
+        "id",
+        "goods_receipt",
+        "purchase_order_line",
+        "product",
+        "lot",
+        "serial_number",
+        "received_quantity",
+        "accepted_quantity",
+        "rejected_quantity",
+        "uom"
+      ]
+    },
+    "ThreeWayMatch": {
+      "table": "proc_three_way_match",
+      "fields": [
+        "variance_case",
+        "id",
+        "purchase_order",
+        "goods_receipt",
+        "supplier_invoice",
+        "quantity_variance",
+        "price_variance",
+        "tax_variance",
+        "match_status",
+        "reviewed_by",
+        "reviewed_at"
+      ]
+    }
+  },
+  "inventory": {
+    "Lot": {
+      "table": "inv_lot",
+      "fields": [
+        "sales_deliveryline_lot_set",
+        "procurement_goodsreceiptline_lot_set",
+        "inventory_stockmoveline_lot_set",
+        "inventory_stockledgerentry_lot_set",
+        "inventory_stockbalance_lot_set",
+        "inventory_stockcountline_lot_set",
+        "manufacturing_productionoutput_lot_set",
+        "quality_inspection_lot_set",
+        "id",
+        "product",
+        "lot_number",
+        "manufacture_date",
+        "expiry_date",
+        "quality_status"
+      ]
+    },
+    "SerialNumber": {
+      "table": "inv_serial_number",
+      "fields": [
+        "sales_deliveryline_serial_number_set",
+        "procurement_goodsreceiptline_serial_number_set",
+        "inventory_stockmoveline_serial_number_set",
+        "inventory_stockledgerentry_serial_number_set",
+        "inventory_stockbalance_serial_number_set",
+        "service_case_serial_number_set",
+        "id",
+        "product",
+        "serial_number",
+        "current_location",
+        "status"
+      ]
+    },
+    "StockMove": {
+      "table": "inv_stock_move",
+      "fields": [
+        "inventory_stockmoveline_stock_move_set",
+        "id",
+        "document",
+        "company",
+        "move_type",
+        "source_location",
+        "destination_location",
+        "project",
+        "production_order",
+        "scheduled_at",
+        "completed_at",
+        "status"
+      ]
+    },
+    "StockMoveLine": {
+      "table": "inv_stock_move_line",
+      "fields": [
+        "id",
+        "stock_move",
+        "product",
+        "lot",
+        "serial_number",
+        "quantity",
+        "uom",
+        "unit_cost",
+        "total_value"
+      ]
+    },
+    "StockReservation": {
+      "table": "inv_stock_reservation",
+      "fields": [
+        "sales_demandsupplylink_stock_reservation_set",
+        "projects_resourceallocation_stock_reservation_set",
+        "id",
+        "product",
+        "warehouse_location",
+        "project",
+        "sales_order_line",
+        "production_order",
+        "reserved_quantity",
+        "required_date",
+        "status"
+      ]
+    },
+    "StockLedgerEntry": {
+      "table": "inv_stock_ledger_entry",
+      "fields": [
+        "inventory_stockledgerentry_reversal_of_set",
+        "inventory_stockbalance_last_ledger_entry_set",
+        "inventory_valuationlayer_receipt_ledger_entry_set",
+        "manufacturing_costledgerentry_stock_ledger_entry_set",
+        "id",
+        "tenant",
+        "company",
+        "product",
+        "warehouse_location",
+        "lot",
+        "serial_number",
+        "source_document",
+        "source_line",
+        "project",
+        "production_order",
+        "posting_at",
+        "quantity_delta",
+        "value_delta",
+        "unit_cost",
+        "balance_quantity",
+        "balance_value",
+        "reversal_of"
+      ]
+    },
+    "StockBalance": {
+      "table": "inv_stock_balance",
+      "fields": [
+        "id",
+        "company",
+        "product",
+        "warehouse_location",
+        "lot",
+        "serial_number",
+        "on_hand_quantity",
+        "reserved_quantity",
+        "available_quantity",
+        "inventory_value",
+        "last_ledger_entry"
+      ]
+    },
+    "ValuationLayer": {
+      "table": "inv_valuation_layer",
+      "fields": [
+        "id",
+        "product",
+        "warehouse",
+        "receipt_ledger_entry",
+        "original_quantity",
+        "remaining_quantity",
+        "unit_cost",
+        "remaining_value",
+        "received_at"
+      ]
+    },
+    "StockCount": {
+      "table": "inv_stock_count",
+      "fields": [
+        "inventory_stockcountline_stock_count_set",
+        "id",
+        "document",
+        "warehouse",
+        "count_date",
+        "count_type",
+        "status"
+      ]
+    },
+    "StockCountLine": {
+      "table": "inv_stock_count_line",
+      "fields": [
+        "id",
+        "stock_count",
+        "product",
+        "location",
+        "lot",
+        "system_quantity",
+        "counted_quantity",
+        "variance_quantity",
+        "variance_value"
+      ]
+    }
+  },
+  "manufacturing": {
+    "BOM": {
+      "table": "mfg_bom",
+      "fields": [
+        "manufacturing_bomversion_bom_set",
+        "id",
+        "tenant",
+        "product",
+        "bom_code",
+        "status"
+      ]
+    },
+    "BOMVersion": {
+      "table": "mfg_bom_version",
+      "fields": [
+        "manufacturing_bomline_bom_version_set",
+        "manufacturing_productionorder_bom_version_set",
+        "id",
+        "bom",
+        "version_number",
+        "effective_from",
+        "effective_to",
+        "output_quantity",
+        "output_uom",
+        "status"
+      ]
+    },
+    "BOMLine": {
+      "table": "mfg_bom_line",
+      "fields": [
+        "id",
+        "bom_version",
+        "component_product",
+        "operation",
+        "quantity",
+        "uom",
+        "scrap_percent",
+        "issue_method"
+      ]
+    },
+    "Routing": {
+      "table": "mfg_routing",
+      "fields": [
+        "manufacturing_routingoperation_routing_set",
+        "manufacturing_productionorder_routing_set",
+        "id",
+        "tenant",
+        "routing_code",
+        "routing_name",
+        "status"
+      ]
+    },
+    "RoutingOperation": {
+      "table": "mfg_routing_operation",
+      "fields": [
+        "manufacturing_bomline_operation_set",
+        "manufacturing_workorder_routing_operation_set",
+        "id",
+        "routing",
+        "work_center",
+        "sequence_number",
+        "operation_name",
+        "setup_minutes",
+        "run_minutes_per_unit"
+      ]
+    },
+    "ProductionOrder": {
+      "table": "mfg_production_order",
+      "fields": [
+        "sales_demandsupplylink_production_order_set",
+        "projects_task_production_order_set",
+        "inventory_stockmove_production_order_set",
+        "inventory_stockreservation_production_order_set",
+        "inventory_stockledgerentry_production_order_set",
+        "manufacturing_productionmaterial_production_order_set",
+        "manufacturing_workorder_production_order_set",
+        "manufacturing_productionoutput_production_order_set",
+        "manufacturing_scrap_production_order_set",
+        "manufacturing_costledgerentry_production_order_set",
+        "quality_inspection_production_order_set",
+        "finance_unitcostsnapshot_production_order_set",
+        "finance_overheadallocation_production_order_set",
+        "id",
+        "document",
+        "company",
+        "product",
+        "bom_version",
+        "routing",
+        "project",
+        "sales_order_line",
+        "warehouse",
+        "planned_quantity",
+        "completed_quantity",
+        "scrapped_quantity",
+        "planned_start_at",
+        "planned_end_at",
+        "actual_start_at",
+        "actual_end_at",
+        "material_status",
+        "quality_status",
+        "status"
+      ]
+    },
+    "ProductionMaterial": {
+      "table": "mfg_production_material",
+      "fields": [
+        "id",
+        "production_order",
+        "product",
+        "warehouse",
+        "required_quantity",
+        "reserved_quantity",
+        "issued_quantity",
+        "returned_quantity",
+        "actual_cost"
+      ]
+    },
+    "WorkOrder": {
+      "table": "mfg_work_order",
+      "fields": [
+        "projects_progresssnapshot_work_order_set",
+        "manufacturing_laborlog_work_order_set",
+        "manufacturing_machinelog_work_order_set",
+        "manufacturing_scrap_work_order_set",
+        "manufacturing_costledgerentry_work_order_set",
+        "quality_inspection_work_order_set",
+        "id",
+        "document",
+        "production_order",
+        "routing_operation",
+        "work_center",
+        "machine",
+        "sequence_number",
+        "planned_start_at",
+        "planned_end_at",
+        "actual_start_at",
+        "actual_end_at",
+        "planned_quantity",
+        "completed_quantity",
+        "rejected_quantity",
+        "status"
+      ]
+    },
+    "LaborLog": {
+      "table": "mfg_labor_log",
+      "fields": [
+        "id",
+        "work_order",
+        "employee",
+        "project",
+        "start_at",
+        "end_at",
+        "duration_hours",
+        "hourly_rate",
+        "labor_cost"
+      ]
+    },
+    "MachineLog": {
+      "table": "mfg_machine_log",
+      "fields": [
+        "id",
+        "work_order",
+        "machine",
+        "project",
+        "start_at",
+        "end_at",
+        "run_hours",
+        "setup_hours",
+        "downtime_hours",
+        "hourly_rate",
+        "machine_cost"
+      ]
+    },
+    "ProductionOutput": {
+      "table": "mfg_production_output",
+      "fields": [
+        "id",
+        "production_order",
+        "product",
+        "lot",
+        "output_quantity",
+        "unit_cost",
+        "total_cost",
+        "destination_location",
+        "produced_at"
+      ]
+    },
+    "Scrap": {
+      "table": "mfg_scrap",
+      "fields": [
+        "id",
+        "production_order",
+        "work_order",
+        "product",
+        "scrap_quantity",
+        "scrap_value",
+        "reason_code",
+        "disposition"
+      ]
+    },
+    "CostLedgerEntry": {
+      "table": "mfg_cost_ledger_entry",
+      "fields": [
+        "manufacturing_costledgerentry_reversal_of_set",
+        "id",
+        "company",
+        "project",
+        "production_order",
+        "work_order",
+        "product",
+        "cost_element",
+        "quantity",
+        "rate",
+        "amount",
+        "stock_ledger_entry",
+        "journal_line",
+        "source_document",
+        "posting_at",
+        "reversal_of"
+      ]
+    }
+  },
+  "quality": {
+    "QualityPlan": {
+      "table": "qa_quality_plan",
+      "fields": [
+        "quality_qualityplanpoint_quality_plan_set",
+        "quality_inspection_quality_plan_set",
+        "id",
+        "tenant",
+        "product",
+        "plan_code",
+        "inspection_stage",
+        "status"
+      ]
+    },
+    "QualityPlanPoint": {
+      "table": "qa_quality_plan_point",
+      "fields": [
+        "quality_inspectionresult_plan_point_set",
+        "id",
+        "quality_plan",
+        "sequence_number",
+        "parameter_name",
+        "measurement_type",
+        "minimum_value",
+        "maximum_value",
+        "target_value",
+        "mandatory"
+      ]
+    },
+    "Inspection": {
+      "table": "qa_inspection",
+      "fields": [
+        "quality_inspectionresult_inspection_set",
+        "quality_nonconformance_inspection_set",
+        "id",
+        "document",
+        "quality_plan",
+        "product",
+        "lot",
+        "goods_receipt",
+        "production_order",
+        "work_order",
+        "inspector_user",
+        "inspection_type",
+        "quantity_inspected",
+        "quantity_accepted",
+        "quantity_rejected",
+        "inspection_at",
+        "result",
+        "status"
+      ]
+    },
+    "InspectionResult": {
+      "table": "qa_inspection_result",
+      "fields": [
+        "id",
+        "inspection",
+        "plan_point",
+        "numeric_value",
+        "text_value",
+        "passed",
+        "remarks"
+      ]
+    },
+    "Nonconformance": {
+      "table": "qa_nonconformance",
+      "fields": [
+        "quality_correctiveaction_nonconformance_set",
+        "id",
+        "document",
+        "inspection",
+        "severity",
+        "description",
+        "disposition",
+        "status"
+      ]
+    },
+    "CorrectiveAction": {
+      "table": "qa_corrective_action",
+      "fields": [
+        "id",
+        "nonconformance",
+        "assigned_user",
+        "action_description",
+        "due_date",
+        "completed_date",
+        "verification_result",
+        "status"
+      ]
+    }
+  },
+  "finance": {
+    "FiscalYear": {
+      "table": "fin_fiscal_year",
+      "fields": [
+        "finance_fiscalperiod_fiscal_year_set",
+        "finance_budget_fiscal_year_set",
+        "id",
+        "company",
+        "fiscal_year_name",
+        "start_date",
+        "end_date",
+        "status"
+      ]
+    },
+    "FiscalPeriod": {
+      "table": "fin_fiscal_period",
+      "fields": [
+        "finance_journalentry_fiscal_period_set",
+        "finance_periodclosing_fiscal_period_set",
+        "finance_financialsnapshot_fiscal_period_set",
+        "finance_projectwipsnapshot_fiscal_period_set",
+        "finance_costvariance_fiscal_period_set",
+        "finance_overheadallocation_fiscal_period_set",
+        "assets_depreciationline_fiscal_period_set",
+        "id",
+        "fiscal_year",
+        "period_number",
+        "start_date",
+        "end_date",
+        "status"
+      ]
+    },
+    "Account": {
+      "table": "fin_account",
+      "fields": [
+        "master_data_customerprofile_receivable_account_set",
+        "master_data_supplierprofile_payable_account_set",
+        "master_data_taxcode_input_account_set",
+        "master_data_taxcode_output_account_set",
+        "projects_budgetline_account_set",
+        "finance_account_parent_account_set",
+        "finance_journalline_account_set",
+        "finance_billingdocumentline_account_set",
+        "finance_bankaccount_ledger_account_set",
+        "finance_budgetline_account_set",
+        "finance_recurringpaymentrule_expense_account_set",
+        "finance_costbaselineline_account_set",
+        "finance_overheadrule_source_account_set",
+        "assets_category_asset_account_set",
+        "assets_category_accumulated_depreciation_account_set",
+        "assets_category_depreciation_expense_account_set",
+        "id",
+        "company",
+        "parent_account",
+        "account_code",
+        "account_name",
+        "account_type",
+        "normal_balance",
+        "currency",
+        "allow_manual_posting",
+        "reconciliation_required",
+        "status"
+      ]
+    },
+    "Journal": {
+      "table": "fin_journal",
+      "fields": [
+        "finance_journalentry_journal_set",
+        "id",
+        "company",
+        "journal_code",
+        "journal_name",
+        "journal_type",
+        "status"
+      ]
+    },
+    "JournalEntry": {
+      "table": "fin_journal_entry",
+      "fields": [
+        "finance_journalentry_reversal_of_entry_set",
+        "finance_journalline_journal_entry_set",
+        "finance_payment_journal_entry_set",
+        "finance_projectfundingtransaction_journal_entry_set",
+        "finance_overheadallocation_journal_entry_set",
+        "project_cost_entries",
+        "assets_depreciationline_journal_entry_set",
+        "assets_disposal_journal_entry_set",
+        "id",
+        "document",
+        "journal",
+        "fiscal_period",
+        "currency",
+        "entry_number",
+        "posting_date",
+        "exchange_rate",
+        "description",
+        "source_document",
+        "reversal_of_entry",
+        "status"
+      ]
+    },
+    "JournalLine": {
+      "table": "fin_journal_line",
+      "fields": [
+        "manufacturing_costledgerentry_journal_line_set",
+        "finance_bankreconciliation_journal_line_set",
+        "id",
+        "journal_entry",
+        "account",
+        "party",
+        "project",
+        "cost_center",
+        "department",
+        "product",
+        "warehouse",
+        "debit_base",
+        "credit_base",
+        "transaction_currency",
+        "transaction_amount",
+        "due_date",
+        "source_document_line"
+      ]
+    },
+    "BillingDocument": {
+      "table": "fin_billing_document",
+      "fields": [
+        "project_expenses",
+        "procurement_threewaymatch_supplier_invoice_set",
+        "finance_billingdocumentline_billing_document_set",
+        "finance_arapschedule_billing_document_set",
+        "finance_paymentallocation_billing_document_set",
+        "finance_taxtransaction_billing_document_set",
+        "billing_proposal",
+        "variance_cases",
+        "service_case_billing_document_set",
+        "service_resolution_credit_note_set",
+        "id",
+        "document",
+        "company",
+        "party",
+        "currency",
+        "payment_term",
+        "sales_order",
+        "purchase_order",
+        "project",
+        "billing_type",
+        "invoice_number",
+        "invoice_date",
+        "posting_date",
+        "due_date",
+        "subtotal",
+        "tax_amount",
+        "total_amount",
+        "paid_amount",
+        "outstanding_amount",
+        "payment_status",
+        "status",
+        "verified_by",
+        "verified_at",
+        "approved_by",
+        "approved_at",
+        "rejection_reason"
+      ]
+    },
+    "BillingDocumentLine": {
+      "table": "fin_billing_document_line",
+      "fields": [
+        "finance_taxtransaction_billing_document_line_set",
+        "id",
+        "billing_document",
+        "product",
+        "account",
+        "project",
+        "cost_center",
+        "quantity",
+        "uom",
+        "unit_price",
+        "discount_amount",
+        "tax_code",
+        "line_total"
+      ]
+    },
+    "ARAPSchedule": {
+      "table": "fin_ar_ap_schedule",
+      "fields": [
+        "finance_paymentallocation_schedule_set",
+        "id",
+        "billing_document",
+        "installment_number",
+        "due_date",
+        "original_amount",
+        "paid_amount",
+        "outstanding_amount",
+        "status"
+      ]
+    },
+    "Payment": {
+      "table": "fin_payment",
+      "fields": [
+        "finance_paymentallocation_payment_set",
+        "finance_bankreconciliation_payment_set",
+        "finance_recurringpaymentrun_payment_set",
+        "finance_projectfundingtransaction_payment_set",
+        "id",
+        "document",
+        "company",
+        "party",
+        "bank_account",
+        "currency",
+        "payment_type",
+        "payment_date",
+        "amount",
+        "payment_method",
+        "reference_number",
+        "journal_entry",
+        "status",
+        "allocation_plan",
+        "submitted_by",
+        "submitted_at",
+        "approved_by",
+        "approved_at",
+        "executed_by",
+        "executed_at",
+        "execution_reference",
+        "execution_note",
+        "failure_reason"
+      ]
+    },
+    "PaymentAllocation": {
+      "table": "fin_payment_allocation",
+      "fields": [
+        "id",
+        "payment",
+        "billing_document",
+        "schedule",
+        "allocated_amount",
+        "discount_amount",
+        "write_off_amount",
+        "exchange_difference"
+      ]
+    },
+    "BankAccount": {
+      "table": "fin_bank_account",
+      "fields": [
+        "finance_payment_bank_account_set",
+        "finance_bankstatement_bank_account_set",
+        "finance_recurringpaymentrule_bank_account_set",
+        "id",
+        "company",
+        "party",
+        "ledger_account",
+        "currency",
+        "bank_name",
+        "account_number",
+        "account_name",
+        "status"
+      ]
+    },
+    "BankStatement": {
+      "table": "fin_bank_statement",
+      "fields": [
+        "finance_bankstatementline_bank_statement_set",
+        "id",
+        "bank_account",
+        "statement_date",
+        "opening_balance",
+        "closing_balance",
+        "status"
+      ]
+    },
+    "BankStatementLine": {
+      "table": "fin_bank_statement_line",
+      "fields": [
+        "finance_bankreconciliation_bank_statement_line_set",
+        "id",
+        "bank_statement",
+        "transaction_date",
+        "reference_number",
+        "description",
+        "debit_amount",
+        "credit_amount",
+        "running_balance"
+      ]
+    },
+    "BankReconciliation": {
+      "table": "fin_bank_reconciliation",
+      "fields": [
+        "id",
+        "bank_statement_line",
+        "payment",
+        "journal_line",
+        "matched_amount",
+        "match_type",
+        "status"
+      ]
+    },
+    "TaxTransaction": {
+      "table": "fin_tax_transaction",
+      "fields": [
+        "id",
+        "company",
+        "billing_document",
+        "billing_document_line",
+        "tax_code",
+        "taxable_amount",
+        "tax_rate",
+        "tax_amount",
+        "tax_direction",
+        "tax_date",
+        "status",
+        "validation_note",
+        "validated_by",
+        "validated_at",
+        "billing_code",
+        "payment_reference",
+        "paid_at",
+        "ntpn",
+        "reported_at"
+      ]
+    },
+    "Budget": {
+      "table": "fin_budget",
+      "fields": [
+        "finance_budgetline_budget_set",
+        "id",
+        "company",
+        "fiscal_year",
+        "budget_name",
+        "budget_type",
+        "status"
+      ]
+    },
+    "BudgetLine": {
+      "table": "fin_budget_line",
+      "fields": [
+        "id",
+        "budget",
+        "account",
+        "project",
+        "cost_center",
+        "department",
+        "period_number",
+        "budget_amount"
+      ]
+    },
+    "PeriodClosing": {
+      "table": "fin_period_closing",
+      "fields": [
+        "id",
+        "document",
+        "fiscal_period",
+        "executed_by",
+        "started_at",
+        "completed_at",
+        "closing_type",
+        "status"
+      ]
+    },
+    "FinancialSnapshot": {
+      "table": "fin_financial_snapshot",
+      "fields": [
+        "id",
+        "company",
+        "fiscal_period",
+        "snapshot_at",
+        "revenue_amount",
+        "expense_amount",
+        "profit_loss_amount",
+        "operating_cashflow",
+        "investing_cashflow",
+        "financing_cashflow",
+        "cash_balance",
+        "snapshot_status"
+      ]
+    },
+    "UnitCostSnapshot": {
+      "table": "fin_unit_cost_snapshot",
+      "fields": [
+        "id",
+        "company",
+        "project",
+        "production_order",
+        "product",
+        "cost_unit_code",
+        "snapshot_at",
+        "material_cost",
+        "labor_cost",
+        "machine_cost",
+        "overhead_cost",
+        "total_cost",
+        "output_quantity",
+        "unit_cost"
+      ]
+    },
+    "RecurringPaymentRule": {
+      "table": "fin_recurring_payment_rule",
+      "fields": [
+        "finance_recurringpaymentrun_recurring_rule_set",
+        "id",
+        "company",
+        "party",
+        "bank_account",
+        "expense_account",
+        "currency",
+        "rule_code",
+        "amount",
+        "recurrence_rule",
+        "next_run_date",
+        "end_date",
+        "approval_required",
+        "status"
+      ]
+    },
+    "RecurringPaymentRun": {
+      "table": "fin_recurring_payment_run",
+      "fields": [
+        "id",
+        "recurring_rule",
+        "payment",
+        "scheduled_date",
+        "executed_at",
+        "run_status",
+        "failure_reason"
+      ]
+    },
+    "CreditFacility": {
+      "table": "fin_credit_facility",
+      "fields": [
+        "id",
+        "company",
+        "party",
+        "currency",
+        "facility_type",
+        "facility_number",
+        "credit_limit",
+        "utilized_amount",
+        "available_amount",
+        "effective_from",
+        "effective_to",
+        "status"
+      ]
+    },
+    "ProjectWIPSnapshot": {
+      "table": "fin_project_wip_snapshot",
+      "fields": [
+        "id",
+        "project",
+        "fiscal_period",
+        "snapshot_date",
+        "completion_percent",
+        "recognized_revenue",
+        "recognized_cost",
+        "wip_asset_amount",
+        "accrued_billing_amount",
+        "unbilled_amount",
+        "status"
+      ]
+    },
+    "ProjectFunding": {
+      "table": "fin_project_funding",
+      "fields": [
+        "finance_projectfundingtransaction_project_funding_set",
+        "id",
+        "tenant",
+        "company",
+        "document",
+        "project",
+        "funding_source_party",
+        "currency",
+        "funding_type",
+        "purpose",
+        "requested_amount",
+        "approved_limit",
+        "interest_rate",
+        "start_date",
+        "maturity_date",
+        "status",
+        "requested_by",
+        "submitted_at",
+        "verified_by",
+        "verified_at",
+        "approved_by",
+        "approved_at",
+        "rejected_by",
+        "rejected_at",
+        "review_note"
+      ]
+    },
+    "ProjectFundingTransaction": {
+      "table": "fin_project_funding_transaction",
+      "fields": [
+        "id",
+        "project_funding",
+        "payment",
+        "journal_entry",
+        "transaction_type",
+        "transaction_date",
+        "amount",
+        "outstanding_balance"
+      ]
+    },
+    "CostBaseline": {
+      "table": "fin_cost_baseline",
+      "fields": [
+        "finance_costbaselineline_cost_baseline_set",
+        "id",
+        "document",
+        "project",
+        "baseline_version",
+        "effective_date",
+        "total_ideal_cost",
+        "approved_by",
+        "status"
+      ]
+    },
+    "CostBaselineLine": {
+      "table": "fin_cost_baseline_line",
+      "fields": [
+        "finance_costvariance_cost_baseline_line_set",
+        "id",
+        "cost_baseline",
+        "product",
+        "account",
+        "cost_center",
+        "cost_element",
+        "quantity",
+        "unit_rate",
+        "ideal_amount"
+      ]
+    },
+    "CostVariance": {
+      "table": "fin_cost_variance",
+      "fields": [
+        "id",
+        "project",
+        "cost_baseline_line",
+        "fiscal_period",
+        "actual_amount",
+        "ideal_amount",
+        "variance_amount",
+        "variance_percent",
+        "calculated_at"
+      ]
+    },
+    "OverheadRule": {
+      "table": "fin_overhead_rule",
+      "fields": [
+        "finance_overheadallocation_overhead_rule_set",
+        "id",
+        "company",
+        "source_account",
+        "target_cost_center",
+        "rule_code",
+        "allocation_basis",
+        "rate_percent",
+        "effective_from",
+        "effective_to",
+        "status"
+      ]
+    },
+    "OverheadAllocation": {
+      "table": "fin_overhead_allocation",
+      "fields": [
+        "id",
+        "overhead_rule",
+        "project",
+        "production_order",
+        "fiscal_period",
+        "journal_entry",
+        "basis_quantity",
+        "allocated_amount",
+        "posted_at",
+        "status"
+      ]
+    },
+    "ProjectCostSnapshot": {
+      "table": "fin_project_cost_snapshot",
+      "fields": [
+        "id",
+        "project",
+        "snapshot_at",
+        "budget_amount",
+        "committed_cost",
+        "actual_cost",
+        "overhead_cost",
+        "forecast_cost",
+        "cost_variance",
+        "remaining_budget"
+      ]
+    },
+    "ProjectCostEntry": {
+      "table": "fin_project_cost_entry",
+      "fields": [
+        "id",
+        "tenant",
+        "company",
+        "project",
+        "source_type",
+        "source_reference",
+        "description",
+        "cost_element",
+        "transaction_date",
+        "quantity",
+        "unit_cost",
+        "total_cost",
+        "status",
+        "validation_note",
+        "created_by",
+        "validated_by",
+        "validated_at",
+        "posted_by",
+        "posted_at",
+        "journal_entry",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "BillingProposal": {
+      "table": "fin_billing_proposal",
+      "fields": [
+        "id",
+        "tenant",
+        "company",
+        "project",
+        "customer",
+        "trigger_type",
+        "description",
+        "subtotal",
+        "tax_rate",
+        "tax_amount",
+        "total_amount",
+        "status",
+        "requested_by",
+        "submitted_at",
+        "approved_by",
+        "approved_at",
+        "rejection_reason",
+        "billing_document",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "InvoiceVarianceCase": {
+      "table": "fin_invoice_variance_case",
+      "fields": [
+        "id",
+        "company",
+        "billing_document",
+        "three_way_match",
+        "variance_type",
+        "total_variance",
+        "status",
+        "resolution",
+        "assigned_to",
+        "resolved_by",
+        "resolved_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "CustomerCreditLimit": {
+      "table": "fin_customer_credit_limit",
+      "fields": [
+        "id",
+        "company",
+        "customer",
+        "credit_limit",
+        "used_credit",
+        "payment_term_days",
+        "status",
+        "notes",
+        "updated_at"
+      ]
+    }
+  },
+  "assets": {
+    "Category": {
+      "table": "asset_category",
+      "fields": [
+        "id",
+        "company",
+        "category_code",
+        "category_name",
+        "asset_account",
+        "accumulated_depreciation_account",
+        "depreciation_expense_account"
+      ]
+    },
+    "Asset": {
+      "table": "asset_asset",
+      "fields": [
+        "master_data_machine_asset_set",
+        "projects_equipmentusage_asset_set",
+        "assets_book_asset_set",
+        "assets_maintenance_asset_set",
+        "assets_disposal_asset_set",
+        "id",
+        "document",
+        "company",
+        "category",
+        "supplier_party",
+        "warehouse_location",
+        "department",
+        "project",
+        "asset_code",
+        "asset_name",
+        "serial_number",
+        "acquisition_date",
+        "available_for_use_date",
+        "acquisition_cost",
+        "salvage_value",
+        "useful_life_months",
+        "status"
+      ]
+    },
+    "Book": {
+      "table": "asset_book",
+      "fields": [
+        "assets_depreciationline_asset_book_set",
+        "id",
+        "asset",
+        "book_type",
+        "depreciation_method",
+        "cost_basis",
+        "salvage_value",
+        "useful_life_periods",
+        "depreciation_start_date",
+        "accumulated_depreciation",
+        "net_book_value"
+      ]
+    },
+    "DepreciationLine": {
+      "table": "asset_depreciation_line",
+      "fields": [
+        "id",
+        "asset_book",
+        "fiscal_period",
+        "depreciation_date",
+        "opening_book_value",
+        "depreciation_amount",
+        "accumulated_depreciation",
+        "closing_book_value",
+        "journal_entry",
+        "status"
+      ]
+    },
+    "Maintenance": {
+      "table": "asset_maintenance",
+      "fields": [
+        "id",
+        "asset",
+        "machine",
+        "scheduled_date",
+        "completed_date",
+        "maintenance_type",
+        "maintenance_cost",
+        "status"
+      ]
+    },
+    "Disposal": {
+      "table": "asset_disposal",
+      "fields": [
+        "id",
+        "document",
+        "asset",
+        "disposal_date",
+        "disposal_proceeds",
+        "net_book_value",
+        "gain_or_loss",
+        "journal_entry",
+        "status"
+      ]
+    }
+  },
+  "service": {
+    "Case": {
+      "table": "service_case",
+      "fields": [
+        "crm_conversation_service_case_set",
+        "crm_feedback_service_case_set",
+        "service_casemessage_service_case_set",
+        "service_caseapproval_service_case_set",
+        "service_resolution_service_case_set",
+        "id",
+        "document",
+        "customer_party",
+        "contact",
+        "sales_order",
+        "billing_document",
+        "product",
+        "serial_number",
+        "assigned_user",
+        "priority",
+        "subject",
+        "description",
+        "sla_due_at",
+        "resolved_at",
+        "status"
+      ]
+    },
+    "CaseMessage": {
+      "table": "service_case_message",
+      "fields": [
+        "id",
+        "service_case",
+        "sender_user",
+        "channel",
+        "message_text",
+        "sent_at"
+      ]
+    },
+    "CaseApproval": {
+      "table": "service_case_approval",
+      "fields": [
+        "id",
+        "service_case",
+        "approver_user",
+        "approval_type",
+        "approved_amount",
+        "decision",
+        "decided_at"
+      ]
+    },
+    "Resolution": {
+      "table": "service_resolution",
+      "fields": [
+        "id",
+        "service_case",
+        "resolution_type",
+        "resolution_notes",
+        "credit_note",
+        "replacement_delivery",
+        "resolved_at"
+      ]
+    }
+  },
+  "analytics": {
+    "Dashboard": {
+      "table": "analytics_dashboard",
+      "fields": [
+        "analytics_dashboardrole_dashboard_set",
+        "analytics_widget_dashboard_set",
+        "id",
+        "tenant",
+        "company",
+        "dashboard_code",
+        "dashboard_name",
+        "module_code",
+        "dashboard_type",
+        "realtime_enabled",
+        "status"
+      ]
+    },
+    "DashboardRole": {
+      "table": "analytics_dashboard_role",
+      "fields": [
+        "id",
+        "dashboard",
+        "role",
+        "is_default",
+        "can_customize"
+      ]
+    },
+    "Widget": {
+      "table": "analytics_widget",
+      "fields": [
+        "id",
+        "dashboard",
+        "widget_code",
+        "widget_name",
+        "widget_type",
+        "data_source_type",
+        "data_source_name",
+        "filter_json",
+        "layout_json",
+        "refresh_seconds",
+        "active"
+      ]
+    },
+    "KPIDefinition": {
+      "table": "analytics_kpi_definition",
+      "fields": [
+        "analytics_kpitarget_kpi_definition_set",
+        "analytics_kpiresult_kpi_definition_set",
+        "analytics_alertrule_kpi_definition_set",
+        "id",
+        "tenant",
+        "kpi_code",
+        "kpi_name",
+        "module_code",
+        "measurement_unit",
+        "aggregation_method",
+        "source_entity",
+        "formula_expression",
+        "period_type",
+        "active"
+      ]
+    },
+    "KPITarget": {
+      "table": "analytics_kpi_target",
+      "fields": [
+        "id",
+        "kpi_definition",
+        "company",
+        "organization",
+        "project",
+        "owner_user",
+        "period_start",
+        "period_end",
+        "target_value",
+        "warning_value",
+        "critical_value"
+      ]
+    },
+    "KPIResult": {
+      "table": "analytics_kpi_result",
+      "fields": [
+        "id",
+        "kpi_definition",
+        "company",
+        "organization",
+        "project",
+        "owner_user",
+        "measured_at",
+        "actual_value",
+        "target_value",
+        "health_status",
+        "dimension_json"
+      ]
+    },
+    "AlertRule": {
+      "table": "analytics_alert_rule",
+      "fields": [
+        "analytics_alertevent_alert_rule_set",
+        "id",
+        "tenant",
+        "kpi_definition",
+        "rule_code",
+        "module_code",
+        "entity_name",
+        "operator",
+        "threshold_value",
+        "severity",
+        "condition_json",
+        "active"
+      ]
+    },
+    "AlertEvent": {
+      "table": "analytics_alert_event",
+      "fields": [
+        "core_notification_alert_event_set",
+        "id",
+        "alert_rule",
+        "company",
+        "project",
+        "source_document",
+        "source_entity_id",
+        "measured_value",
+        "severity",
+        "message",
+        "triggered_at",
+        "acknowledged_at",
+        "acknowledged_by",
+        "status"
+      ]
+    }
+  },
+  "logistics": {
+    "Shipment": {
+      "table": "logistics_shipment",
+      "fields": [
+        "logistics_shipmentline_shipment_set",
+        "logistics_trackingevent_shipment_set",
+        "logistics_proofofdelivery_shipment_set",
+        "id",
+        "document",
+        "delivery",
+        "sales_order",
+        "customer_party",
+        "shipment_number",
+        "carrier_name",
+        "tracking_number",
+        "planned_dispatch_at",
+        "actual_dispatch_at",
+        "estimated_arrival_at",
+        "delivered_at",
+        "shipment_status"
+      ]
+    },
+    "ShipmentLine": {
+      "table": "logistics_shipment_line",
+      "fields": [
+        "id",
+        "shipment",
+        "delivery_line",
+        "product",
+        "shipped_quantity",
+        "uom"
+      ]
+    },
+    "TrackingEvent": {
+      "table": "logistics_tracking_event",
+      "fields": [
+        "id",
+        "shipment",
+        "event_code",
+        "event_description",
+        "location_text",
+        "latitude",
+        "longitude",
+        "event_at",
+        "source_system"
+      ]
+    },
+    "ProofOfDelivery": {
+      "table": "logistics_proof_of_delivery",
+      "fields": [
+        "id",
+        "shipment",
+        "received_by_party",
+        "signature_file",
+        "photo_file",
+        "receiver_name",
+        "received_at",
+        "remarks",
+        "verification_status"
+      ]
+    }
+  },
+  "implementation": {
+    "Release": {
+      "table": "implementation_release",
+      "fields": [
+        "implementation_phase_release_set",
+        "implementation_workflow_release_set",
+        "implementation_workitem_release_set",
+        "implementation_testcycle_release_set",
+        "implementation_gtmmilestone_release_set",
+        "id",
+        "tenant",
+        "release_code",
+        "release_name",
+        "planned_start_date",
+        "planned_launch_date",
+        "actual_launch_date",
+        "release_status"
+      ]
+    },
+    "Phase": {
+      "table": "implementation_phase",
+      "fields": [
+        "implementation_phaseitem_phase_set",
+        "implementation_workitem_phase_set",
+        "implementation_testcycle_phase_set",
+        "id",
+        "release",
+        "phase_code",
+        "phase_name",
+        "phase_order",
+        "planned_start_date",
+        "planned_end_date",
+        "actual_start_date",
+        "actual_end_date",
+        "status"
+      ]
+    },
+    "PhaseItem": {
+      "table": "implementation_phase_item",
+      "fields": [
+        "id",
+        "phase",
+        "module_code",
+        "item_type",
+        "item_name",
+        "sequence_order",
+        "status"
+      ]
+    },
+    "Workflow": {
+      "table": "implementation_workflow",
+      "fields": [
+        "implementation_workflowstage_workflow_set",
+        "id",
+        "release",
+        "workflow_code",
+        "workflow_name",
+        "methodology",
+        "status"
+      ]
+    },
+    "WorkflowStage": {
+      "table": "implementation_workflow_stage",
+      "fields": [
+        "implementation_workitem_workflow_stage_set",
+        "id",
+        "workflow",
+        "stage_code",
+        "stage_name",
+        "stage_order",
+        "stage_type",
+        "status"
+      ]
+    },
+    "WorkItem": {
+      "table": "implementation_work_item",
+      "fields": [
+        "id",
+        "release",
+        "phase",
+        "workflow_stage",
+        "assigned_user",
+        "module_code",
+        "work_item_type",
+        "title",
+        "description",
+        "planned_start_date",
+        "planned_end_date",
+        "completed_at",
+        "status"
+      ]
+    },
+    "TestCycle": {
+      "table": "implementation_test_cycle",
+      "fields": [
+        "id",
+        "release",
+        "phase",
+        "test_scope",
+        "test_type",
+        "planned_date",
+        "executed_date",
+        "passed_count",
+        "failed_count",
+        "status"
+      ]
+    },
+    "GTMMilestone": {
+      "table": "implementation_gtm_milestone",
+      "fields": [
+        "id",
+        "release",
+        "milestone_type",
+        "milestone_name",
+        "planned_date",
+        "actual_date",
+        "status"
+      ]
+    }
+  },
+  "reporting": {
+    "FinanceMainDashboard": {
+      "table": "view_finance_main_dashboard",
+      "fields": [
+        "company_id",
+        "calculated_at",
+        "profit_loss_amount",
+        "net_cashflow_amount",
+        "total_unit_hpp",
+        "active_alert_count",
+        "periodic_kpi_count"
+      ]
+    },
+    "ProjectDashboard": {
+      "table": "view_project_dashboard",
+      "fields": [
+        "project_id",
+        "calculated_at",
+        "overall_kpi_score",
+        "planned_progress_percent",
+        "actual_progress_percent",
+        "project_health_status",
+        "overdue_task_count",
+        "unread_notification_count"
+      ]
+    },
+    "ProjectTimelineCost": {
+      "table": "view_project_timeline_cost",
+      "fields": [
+        "project_id",
+        "calculated_at",
+        "labor_hours",
+        "machine_hours",
+        "labor_cost",
+        "equipment_cost",
+        "material_cost",
+        "overhead_cost",
+        "total_actual_cost"
+      ]
+    },
+    "CRMSalesDashboard": {
+      "table": "view_crm_sales_dashboard",
+      "fields": [
+        "company_id",
+        "calculated_at",
+        "weighted_project_value",
+        "win_rate_percent",
+        "prospect_count",
+        "pitch_count",
+        "closing_count",
+        "offering_margin_percent"
+      ]
+    }
+  },
+  "workflows": {
+    "TenantWorkflowConfig": {
+      "table": "workflow_tenant_config",
+      "fields": [
+        "id",
+        "tenant",
+        "module_code",
+        "workflow_class_path",
+        "is_active",
+        "config_json",
+        "description",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "WorkflowTransitionLog": {
+      "table": "workflow_transition_log",
+      "fields": [
+        "id",
+        "tenant_code",
+        "module_code",
+        "document_id",
+        "from_status",
+        "to_status",
+        "triggered_by",
+        "note",
+        "created_at"
+      ]
+    }
+  }
+}
