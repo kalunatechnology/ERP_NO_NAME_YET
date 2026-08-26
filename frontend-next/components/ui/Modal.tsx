@@ -54,7 +54,7 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -62,7 +62,7 @@ export function Modal({
       {/* Modal Card */}
       <div
         className={cn(
-          "relative w-full bg-white rounded-2xl shadow-xl border border-text-tertiary overflow-hidden z-10 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150",
+          "relative w-full bg-white rounded-3xl shadow-2xl border border-text-tertiary overflow-hidden z-10 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
           maxWidthClasses
         )}
         role="dialog"

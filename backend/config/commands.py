@@ -25,6 +25,14 @@ from rest_framework.generics import GenericAPIView
 from apps.api_common.audit import create_audit_event, snapshot
 from apps.api_common.scoping import get_scope_value
 
+from django.utils import timezone
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+from apps.core.models import Company
+from apps.crm.models import Opportunity, CostEstimate, ExecutiveApproval
+
 
 ZERO = Decimal("0")
 
@@ -3367,3 +3375,88 @@ class CRMSalesDashboardView(ERPCommandView):
                 "active_contract_count": Contract.objects.filter(document__company_id=company_id, status="ACTIVE").count() if company_id else 0,
             }
         )
+
+
+
+
+class CRMSalesDashboardAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # 1. Resolusi Company ID secara aman (UUID atau Slug)
+        company_param = (
+            request.headers.get("X-Company-ID")
+            or request.query_params.get("company_id")
+            or request.query_params.get("company")
+        )
+
+        target_company = None
+        if company_param:
+            comp_str = str(company_param).strip()
+            is_uuid = False
+            try:
+                uuid.UUID(comp_str)
+                is_uuid = True
+            except (ValueError, TypeError, AttributeError):
+                is_uuid = False
+
+            if is_uuid:
+                target_company = Company.objects.filter(pk=comp_str).first()
+            else:
+                target_company = Company.objects.filter(
+                    Q(company_code__iexact=comp_str) |
+                    Q(legal_name__icontains=comp_str)
+                ).first()
+
+        if not target_company and hasattr(request.user, "userrole_set") and request.user.userrole_set.exists():
+            target_company = request.user.userrole_set.first().company
+        if not target_company:
+            target_company = getattr(request.user, "company", None) or Company.objects.first()
+
+        # 2. Filter data Opportunity
+        opportunities = Opportunity.objects.all()
+        if target_company:
+            opportunities = opportunities.filter(company=target_company)
+
+        # 3. Hitung Metric Dashboard
+        won_opps = opportunities.filter(pipeline_stage__in=["WON", "CLOSED_WON"])
+        total_opps_count = opportunities.count()
+        won_count = won_opps.count()
+
+        win_rate = (won_count / total_opps_count * 100) if total_opps_count > 0 else 0.0
+
+        # Weighted project value: expected_amount * probability_percent / 100
+        weighted_val = sum(
+            (Decimal(str(o.expected_amount or 0)) * Decimal(str(o.probability_percent or 0)) / Decimal(100))
+            for o in opportunities.exclude(pipeline_stage__in=["LOST", "CLOSED_LOST"])
+        )
+
+        # Average Sales Cycle (hari)
+        avg_cycle_days = 0
+        closed_opps = opportunities.filter(closed_at__isnull=False, opened_at__isnull=False)
+        if closed_opps.exists():
+            diffs = [(o.closed_at - o.opened_at).days for o in closed_opps if o.closed_at >= o.opened_at]
+            if diffs:
+                avg_cycle_days = sum(diffs) / len(diffs)
+
+        # Offering Margin Percent dari CostEstimate
+        estimates = CostEstimate.objects.all()
+        if target_company:
+            estimates = estimates.filter(company=target_company)
+        avg_margin = estimates.aggregate(avg_m=Avg("markup_percent"))["avg_m"] or 30.0
+
+        # Pending Executive Approvals
+        pending_approvals_count = ExecutiveApproval.objects.filter(decision="PENDING").count()
+
+        dashboard_data = {
+            "weighted_project_value": float(weighted_val),
+            "win_rate_percent": float(round(win_rate, 2)),
+            "average_sales_cycle_days": int(round(avg_cycle_days)),
+            "offering_margin_percent": float(round(avg_margin, 2)),
+            "quotation_pending_approval_count": int(pending_approvals_count),
+        }
+
+        return Response({
+            "status": "success",
+            "data": dashboard_data
+        })

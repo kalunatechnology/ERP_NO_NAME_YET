@@ -11,6 +11,9 @@ import {
   loginUser, logoutUser, getMyProfile, getCompanies, UserProfile,
 } from "@/lib/api/auth.api";
 
+/* ── UUID Regex Helper ───────────────────────── */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /* ── Cookie Helpers ──────────────────────────── */
 function setAuthCookie(token: string) {
   if (typeof document !== "undefined") {
@@ -38,7 +41,6 @@ export function detectRole(user: any): UserRoleType {
   const username = (user.username || "").toLowerCase();
   const rawRole = (user.role || "").toUpperCase();
 
-  // Parse list roles baik jika format array string ataupun array of objects
   const roles: string[] = [];
   if (Array.isArray(user.roles)) {
     user.roles.forEach((r: any) => {
@@ -211,10 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(authReducer, {
     user: null,
     company: null,
-    companies: [
-      { id: "arsalyn", name: "PT. Arsalynt Automation (Default)", code: "ARSLN" },
-      { id: "kaluna", name: "Kaluna Technology Corp", code: "KLN" },
-    ],
+    companies: [],
     isAdmin: false,
     userRole: "staff",
     isAuthenticated: false,
@@ -223,10 +222,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const setCompany = useCallback((id: string | null) => {
-    if (id) {
+    if (id && (UUID_REGEX.test(String(id).trim()) || String(id) === "all")) {
       localStorage.setItem("erp.company", String(id));
+      localStorage.setItem("active_company_id", String(id));
     } else {
       localStorage.removeItem("erp.company");
+      localStorage.removeItem("active_company_id");
     }
     dispatch({ type: "SET_COMPANY", company: id });
   }, []);
@@ -240,36 +241,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Sync cookie ke middleware Next.js
     setAuthCookie(access);
 
     getMyProfile()
       .then(async (user) => {
-        let companiesList: CompanyItem[] = [
-          { id: "arsalyn", name: "PT. Arsalynt Automation", code: "ARSLN" },
-          { id: "kaluna", name: "Kaluna Technology", code: "KLN" },
-        ];
+        let companiesList: CompanyItem[] = [];
         try {
           const compRes = await getCompanies();
           if (compRes.rows?.length) {
             companiesList = compRes.rows.map((c: any) => ({
-              id: c.id || c.uuid || c.code || "arsalyn",
-              name: c.name || c.legal_name || "Company",
-              code: c.code || "COMP"
+              id: c.id,
+              name: c.legal_name || c.display_name || c.name || "Company",
+              code: c.company_code || c.code || "COMP"
             }));
           }
         } catch {/* ignore */}
 
         const isAdmin = checkIsAdmin(user);
         const userRole = detectRole(user);
-        let activeCompany: string | null = "arsalyn";
 
-        if (isAdmin) {
-          const stored = localStorage.getItem("erp.company");
-          activeCompany = stored || "arsalyn";
+        // Cari UUID company default yang valid
+        const primaryCompany = companiesList[0]?.id ? String(companiesList[0].id) : null;
+        const storedCompany = localStorage.getItem("erp.company");
+
+        let activeCompany: string | null = null;
+        if (storedCompany && (UUID_REGEX.test(storedCompany.trim()) || storedCompany === "all")) {
+          activeCompany = storedCompany.trim();
         } else {
-          activeCompany = "arsalyn";
-          localStorage.setItem("erp.company", "arsalyn");
+          activeCompany = primaryCompany;
+        }
+
+        if (activeCompany) {
+          localStorage.setItem("erp.company", activeCompany);
+          localStorage.setItem("active_company_id", activeCompany);
         }
 
         dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany, companies: companiesList, isAdmin, userRole });
@@ -278,6 +282,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("erp.access");
         localStorage.removeItem("erp.refresh");
         localStorage.removeItem("access_token");
+        localStorage.removeItem("erp.company");
+        localStorage.removeItem("active_company_id");
         removeAuthCookie();
         dispatch({ type: "LOGOUT" });
       });
@@ -295,25 +301,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const user = await getMyProfile();
-      let companiesList: CompanyItem[] = [
-        { id: "arsalyn", name: "PT. Arsalynt Automation", code: "ARSLN" },
-        { id: "kaluna", name: "Kaluna Technology", code: "KLN" },
-      ];
+      let companiesList: CompanyItem[] = [];
       try {
         const compRes = await getCompanies();
         if (compRes.rows?.length) {
           companiesList = compRes.rows.map((c: any) => ({
-            id: c.id || c.uuid || c.code || "arsalyn",
-            name: c.name || c.legal_name || "Company",
-            code: c.code || "COMP"
+            id: c.id,
+            name: c.legal_name || c.display_name || c.name || "Company",
+            code: c.company_code || c.code || "COMP"
           }));
         }
       } catch {/* ignore */}
 
       const isAdmin = checkIsAdmin(user);
       const userRole = detectRole(user);
-      const activeCompany = isAdmin ? (localStorage.getItem("erp.company") || "arsalyn") : "arsalyn";
-      localStorage.setItem("erp.company", activeCompany);
+
+      const primaryCompany = companiesList[0]?.id ? String(companiesList[0].id) : null;
+      const storedCompany = localStorage.getItem("erp.company");
+
+      let activeCompany: string | null = null;
+      if (storedCompany && (UUID_REGEX.test(storedCompany.trim()) || storedCompany === "all")) {
+        activeCompany = storedCompany.trim();
+      } else {
+        activeCompany = primaryCompany;
+      }
+
+      if (activeCompany) {
+        localStorage.setItem("erp.company", activeCompany);
+        localStorage.setItem("active_company_id", activeCompany);
+      }
 
       dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany, companies: companiesList, isAdmin, userRole });
     } catch (err: any) {
@@ -333,6 +349,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("erp.refresh");
     localStorage.removeItem("access_token");
     localStorage.removeItem("erp.company");
+    localStorage.removeItem("active_company_id");
     removeAuthCookie();
     dispatch({ type: "LOGOUT" });
     window.location.href = "/login";

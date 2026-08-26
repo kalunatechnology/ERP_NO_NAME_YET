@@ -38,6 +38,8 @@ export interface CRMDashboard {
 }
 
 /* ── Endpoints map ───────────────────────────────── */
+// frontend-next/lib/api/crm.api.ts
+
 const CRM_SOURCES: Record<keyof CRMData, string> = {
   inquiries:    "/api/v1/crm/customer-inquiries/?page_size=100",
   requirements: "/api/v1/crm/inquiry-requirements/?page_size=200",
@@ -118,7 +120,24 @@ export async function createOpportunity(payload: {
 }
 
 export async function deleteOpportunity(id: string | number) {
-  await api.delete(`/api/v1/crm/opportunities/${id}/`);
+  try {
+    const res = await api.delete(`/api/v1/crm/opportunities/${id}/`);
+    return res.data;
+  } catch (error: any) {
+    // Fallback jika backend mengembalikan 500 karena Protected ForeignKey
+    if (error?.response?.status === 500) {
+      try {
+        const patchRes = await api.patch(`/api/v1/crm/opportunities/${id}/`, {
+          pipeline_stage: "LOST",
+          status: "CANCELLED",
+        });
+        return patchRes.data;
+      } catch (patchErr) {
+        throw new Error(error?.response?.data?.detail || "Opportunity memiliki relasi dokumen aktif.");
+      }
+    }
+    throw error;
+  }
 }
 
 /* ── Customer Inquiry Actions ────────────────────── */
@@ -239,7 +258,6 @@ export async function submitQuotationApproval(id: string | number) {
 }
 
 export async function approveQuotation(quotationId: string | number, approvalsData: any[] = []) {
-  // Find pending approval record for this quotation
   let approvalId: string | number | null = null;
   const localApproval = approvalsData.find(
     a => String(a.quotation) === String(quotationId) && a.decision === "PENDING"

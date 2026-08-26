@@ -17,7 +17,7 @@ const RESOURCES = [
   { id: "daily-tasks",   name: "Daily Tasks (WBS L3)",  endpoint: "/api/v1/projects/daily-tasks/",            category: "Project" },
   { id: "milestones",    name: "Milestones",             endpoint: "/api/v1/projects/milestones/",             category: "Project" },
   /* ── Finance ─────────── */
-  { id: "costs",         name: "Cost Entries (Project)", endpoint: "/api/v1/finance/project-cost-entries/",    category: "Finance" },
+  { id: "costs",         name: "Project Cost Entries (WIP)", endpoint: "/api/v1/finance/project-cost-entries/",    category: "Finance" },
   { id: "fundings",      name: "Project Fundings",       endpoint: "/api/v1/finance/project-fundings/",        category: "Finance" },
   { id: "proposals",     name: "Billing Proposals",      endpoint: "/api/v1/finance/billing-proposals/",       category: "Finance" },
   { id: "journals",      name: "Journal Entries",        endpoint: "/api/v1/finance/journal-entries/",         category: "Finance" },

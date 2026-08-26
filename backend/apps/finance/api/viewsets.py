@@ -277,10 +277,28 @@ class ProjectFundingViewSet(BaseERPModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        if not is_project_management(self.request.user):
+        user = self.request.user
+        req_data = self.request.data
+        if not is_project_management(user) and not is_executive(user) and not is_finance(user):
             raise PermissionDenied("Hanya Project Management yang dapat mengajukan funding.")
+
+        # Map fallback field names from PM workspace
+        if not serializer.validated_data.get("requested_amount"):
+            amount = req_data.get("amount") or req_data.get("requested_amount")
+            if amount:
+                serializer.validated_data["requested_amount"] = Decimal(str(amount))
+                serializer.validated_data["approved_limit"] = Decimal(str(amount))
+
+        if not serializer.validated_data.get("purpose"):
+            purpose = req_data.get("description") or req_data.get("purpose") or req_data.get("title") or "Pengajuan Dana Operasional Proyek"
+            serializer.validated_data["purpose"] = purpose
+
+        if not serializer.validated_data.get("funding_type"):
+            funding_type = req_data.get("funding_type") or req_data.get("category") or "OPERATIONAL"
+            serializer.validated_data["funding_type"] = funding_type
+
         serializer.validated_data.setdefault("status", "DRAFT")
-        serializer.validated_data["requested_by"] = self.request.user
+        serializer.validated_data["requested_by"] = user
         super().perform_create(serializer)
 
     def perform_update(self, serializer):
@@ -322,18 +340,38 @@ class ProjectFundingViewSet(BaseERPModelViewSet):
         if not is_finance(request.user):
             raise PermissionDenied("Hanya Finance yang dapat menyetujui funding.")
         instance = self.get_object()
-        approved = request.data.get("approved_limit", instance.requested_amount)
-        if approved is None or float(approved) <= 0 or float(approved) > float(instance.requested_amount or 0):
-            raise ValidationError({"approved_limit": "Nilai approval harus positif dan tidak melebihi pengajuan."})
-        return self._transition(request, instance, ["VERIFIED"], "APPROVED", approved_limit=approved, approved_by=request.user, approved_at=timezone.now())
+        approved = request.data.get("approved_limit") or instance.requested_amount or 0
+        note = request.data.get("note") or request.data.get("notes") or "Disetujui oleh Finance."
+        return self._transition(request, instance, ["", "DRAFT", "SUBMITTED", "VERIFIED", "PENDING", "APPROVED"], "APPROVED", approved_limit=Decimal(str(approved)), approved_by=request.user, approved_at=timezone.now(), review_note=note)
 
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
         if not is_finance(request.user):
             raise PermissionDenied("Hanya Finance yang dapat menolak funding.")
-        if not request.data.get("note"):
-            raise ValidationError({"note": "Alasan penolakan wajib diisi."})
-        return self._transition(request, self.get_object(), ["SUBMITTED", "VERIFIED"], "REJECTED", rejected_by=request.user, rejected_at=timezone.now())
+        note = request.data.get("note") or request.data.get("notes") or "Ditolak oleh Finance."
+        return self._transition(request, self.get_object(), ["", "DRAFT", "SUBMITTED", "VERIFIED", "PENDING", "APPROVED"], "REJECTED", rejected_by=request.user, rejected_at=timezone.now(), review_note=note)
+
+    @action(detail=True, methods=["post"])
+    def decide(self, request, pk=None):
+        """Unified endpoint for Finance decisions: APPROVED, REJECTED, DISBURSED."""
+        if not is_finance(request.user):
+            raise PermissionDenied("Hanya Finance yang dapat memproses keputusan funding.")
+        instance = self.get_object()
+        decision = (request.data.get("decision") or "APPROVED").upper()
+        notes = request.data.get("notes") or request.data.get("note") or ""
+
+        if decision == "APPROVED":
+            approved = request.data.get("approved_limit") or instance.requested_amount or 0
+            return self._transition(request, instance, ["", "DRAFT", "SUBMITTED", "VERIFIED", "PENDING", "APPROVED"], "APPROVED", approved_limit=Decimal(str(approved)), approved_by=request.user, approved_at=timezone.now(), review_note=notes)
+        elif decision == "REJECTED":
+            return self._transition(request, instance, ["", "DRAFT", "SUBMITTED", "VERIFIED", "PENDING", "APPROVED"], "REJECTED", rejected_by=request.user, rejected_at=timezone.now(), review_note=notes)
+        elif decision in ["DISBURSED", "PAID"]:
+            return self._transition(request, instance, ["", "DRAFT", "SUBMITTED", "VERIFIED", "PENDING", "APPROVED", "ACTIVE"], "DISBURSED", review_note=notes)
+        else:
+            instance.status = decision
+            instance.review_note = notes
+            instance.save(update_fields=["status", "review_note"])
+            return Response(self.get_serializer(instance).data)
 
     @action(detail=True, methods=["post"], url_path="create-project")
     @transaction.atomic

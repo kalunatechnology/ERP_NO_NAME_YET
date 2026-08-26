@@ -59,7 +59,7 @@ export async function fetchDynamicRightPanelData(): Promise<{
     api.get("/api/v1/finance/billing-proposals/?page_size=20").catch(() => ({ data: [] })),
     api.get("/api/v1/finance/project-fundings/?page_size=20").catch(() => ({ data: [] })),
     api.get("/api/v1/crm/opportunities/?page_size=20").catch(() => ({ data: [] })),
-    api.get("/api/v1/auth/users/?page_size=20").catch(() => ({ data: [] })),
+    api.get("/api/v1/iam/users/?page_size=20").catch(() => ({ data: [] })),
   ]);
 
   const tasks     = normalizeList<any>(tasksRes.data).rows;

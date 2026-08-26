@@ -13,6 +13,9 @@ const api = axios.create({
   timeout: 30000,
 });
 
+/* ── Helper Regex UUID ── */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /* ── Helper Cookie ── */
 function syncCookie(token?: string) {
   if (typeof document === "undefined") return;
@@ -32,13 +35,19 @@ api.interceptors.request.use(
         localStorage.getItem("access_token") ||
         localStorage.getItem("token");
 
-      if (access) {
+      if (access && config.headers) {
         config.headers.Authorization = `Bearer ${access}`;
       }
 
-      const company = localStorage.getItem("erp.company");
-      if (company && company !== "all") {
-        config.headers["X-Company-ID"] = company;
+      // Validasi Company ID: Hanya pasang header jika nilainya adalah format UUID valid
+      const company =
+        localStorage.getItem("erp.company") ||
+        localStorage.getItem("active_company_id");
+
+      if (company && company !== "all" && UUID_REGEX.test(company.trim()) && config.headers) {
+        config.headers["X-Company-ID"] = company.trim();
+      } else if (config.headers && config.headers["X-Company-ID"]) {
+        delete config.headers["X-Company-ID"];
       }
     }
     return config;
@@ -46,7 +55,53 @@ api.interceptors.request.use(
   (err) => Promise.reject(err)
 );
 
-/* ── Response Interceptor: handle 401 → refresh token ── */
+/* ── Response Interceptor: handle 401 → refresh token with Mutex Singleton ── */
+let refreshPromise: Promise<string | null> | null = null;
+
+function refreshTokenOnce(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+
+  if (typeof window === "undefined") return Promise.resolve(null);
+  const refresh = localStorage.getItem("erp.refresh");
+  if (!refresh || refresh.startsWith("demo-")) {
+    return Promise.resolve(null);
+  }
+
+  refreshPromise = axios
+    .post(`${API_BASE}/api/v1/auth/token/refresh/`, { refresh })
+    .then((res) => {
+      const payload = res.data?.data || res.data;
+      const newAccess = payload?.access || payload?.token;
+      if (newAccess) {
+        localStorage.setItem("erp.access", newAccess);
+        localStorage.setItem("access_token", newAccess);
+        syncCookie(newAccess);
+        return newAccess;
+      }
+      return null;
+    })
+    .catch((err) => {
+      // Jika refresh token benar-benar invalid / expired
+      localStorage.removeItem("erp.access");
+      localStorage.removeItem("erp.refresh");
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("token");
+      localStorage.removeItem("erp.company");
+      localStorage.removeItem("active_company_id");
+      syncCookie();
+
+      if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
+        window.location.href = "/login";
+      }
+      throw err;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+
+  return refreshPromise;
+}
+
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
@@ -54,47 +109,19 @@ api.interceptors.response.use(
 
     if (
       error.response?.status === 401 &&
-      !original._retry &&
+      !original?._retry &&
       typeof window !== "undefined"
     ) {
       original._retry = true;
-      const refresh = localStorage.getItem("erp.refresh");
 
-      if (refresh) {
-        try {
-          const { data } = await axios.post(
-            `${API_BASE}/api/v1/auth/token/refresh/`,
-            { refresh }
-          );
-
-          const newAccess = data.access || data.token;
-          if (newAccess) {
-            localStorage.setItem("erp.access", newAccess);
-            localStorage.setItem("access_token", newAccess);
-            syncCookie(newAccess);
-
-            original.headers.Authorization = `Bearer ${newAccess}`;
-            return api(original);
-          }
-        } catch {
-          // Refresh gagal → bersihkan seluruh storage & cookie, lalu redirect login
-          localStorage.removeItem("erp.access");
-          localStorage.removeItem("erp.refresh");
-          localStorage.removeItem("access_token");
-          localStorage.removeItem("token");
-          localStorage.removeItem("erp.company");
-          syncCookie();
-
-          if (!window.location.pathname.includes("/login")) {
-            window.location.href = "/login";
-          }
+      try {
+        const newAccess = await refreshTokenOnce();
+        if (newAccess && original.headers) {
+          original.headers.Authorization = `Bearer ${newAccess}`;
+          return api(original);
         }
-      } else {
-        // Tidak ada refresh token → arahkan ke login
-        syncCookie();
-        if (!window.location.pathname.includes("/login")) {
-          window.location.href = "/login";
-        }
+      } catch (refreshErr) {
+        return Promise.reject(refreshErr);
       }
     }
     return Promise.reject(error);

@@ -235,13 +235,36 @@ class ProjectViewSet(BaseERPModelViewSet):
             print("EVM snapshot warning:", e)
         return Response(evm_data)
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["get"], url_path="financial-performance")
     def financial_performance(self, request, pk=None):
         """Calculates real-time P&L (Laba Rugi), Revenue, Costs, and Budget Variance."""
         project = self.get_object()
         from apps.projects.financial_services import calculate_project_financials
         data = calculate_project_financials(project)
         return Response(data)
+
+    @action(detail=True, methods=["post"], url_path="advance-stage")
+    def advance_stage(self, request, pk=None):
+        """Advances project lifecycle stage automatically."""
+        project = self.get_object()
+        target_status = request.data.get("target_status")
+        
+        stages = ["DRAFT", "VERIFIED", "RESERVED", "STARTED", "COMPLETED"]
+        if not target_status:
+            current_idx = stages.index(project.status) if project.status in stages else 0
+            target_status = stages[min(current_idx + 1, len(stages) - 1)]
+
+        project.status = target_status
+        project.lifecycle_status = target_status
+        project.save(update_fields=["status", "lifecycle_status"])
+        
+        return Response({
+            "success": True,
+            "project_id": str(project.id),
+            "status": project.status,
+            "lifecycle_status": project.lifecycle_status,
+            "message": f"Lifecycle proyek berhasil dimajukan ke status {project.status}."
+        })
 
     @action(detail=True, methods=["post", "patch"])
     def update_financials(self, request, pk=None):
@@ -266,7 +289,6 @@ class ProjectViewSet(BaseERPModelViewSet):
             update_fields.append("target_margin_percent")
 
         if update_fields:
-            update_fields.append("updated_at")
             project.save(update_fields=update_fields)
 
         from apps.projects.financial_services import calculate_project_financials

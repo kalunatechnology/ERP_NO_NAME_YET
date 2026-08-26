@@ -5,7 +5,7 @@ import {
   Plus, RefreshCw, CheckCircle2, DollarSign, TrendingUp, Users,
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
   Calculator, ShieldCheck, Award, BarChart3, MessageSquare, FileCheck,
-  ChevronRight, AlertCircle, Star,
+  ChevronRight, AlertCircle, Star, UserPlus,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
@@ -20,17 +20,18 @@ import {
   createSupportTicket, checkTicketWarrantyStatus, deleteSupportTicket,
   updateCustomerCreditLimit, calculateCreditSnapshot,
 } from "@/lib/api/crm.api";
+import api from "@/lib/api/axios";
 
-/* ── Tabs ────────────────────────────────────────── */
+/* ── Tabs Configuration ──────────────────────────── */
 const CRM_TABS = [
-  { id: "dashboard",   label: "Dashboard",       icon: BarChart3     },
-  { id: "deals",       label: "Deals & Credit",  icon: TrendingUp    },
-  { id: "estimate",    label: "Estimating & Quoting", icon: Calculator },
-  { id: "tickets",     label: "Support & Garansi", icon: PhoneCall   },
-  { id: "incoming",    label: "Incoming Inquiry", icon: FileText      },
-  { id: "accounts",    label: "Accounts",         icon: Building2     },
-  { id: "contracts",   label: "Contracts & Orders", icon: FileCheck   },
-  { id: "engagement",  label: "Engagement",       icon: MessageSquare },
+  { id: "dashboard",   label: "Dashboard",            icon: BarChart3     },
+  { id: "deals",       label: "Deals & Credit",       icon: TrendingUp    },
+  { id: "estimate",    label: "Estimating & Quoting", icon: Calculator    },
+  { id: "tickets",     label: "Support & Garansi",    icon: PhoneCall     },
+  { id: "incoming",    label: "Incoming Inquiry",     icon: FileText      },
+  { id: "accounts",    label: "Accounts",             icon: Building2     },
+  { id: "contracts",   label: "Contracts & Orders",   icon: FileCheck     },
+  { id: "engagement",  label: "Engagement",           icon: MessageSquare },
 ];
 
 /* ── Shared Helpers ──────────────────────────────── */
@@ -90,15 +91,97 @@ function KpiCard({ label, value, icon: Icon, iconBg = "#F0FDF4", iconColor = "#1
   icon: React.ElementType; iconBg?: string; iconColor?: string;
 }) {
   return (
-    <div className="card rounded-xl p-4 flex items-center gap-3">
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: iconBg }}>
-        <Icon size={20} style={{ color: iconColor }} />
+    <div className="card rounded-xl p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3 min-w-0 shadow-xs">
+      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: iconBg }}>
+        <Icon size={18} style={{ color: iconColor }} />
       </div>
-      <div>
-        <div className="text-xs text-text-secondary">{label}</div>
-        <div className="text-xl font-bold text-text-primary">{value}</div>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <div className="text-2xs sm:text-xs text-text-secondary truncate font-medium">{label}</div>
+        <div className="text-sm sm:text-base lg:text-lg font-bold text-text-primary truncate" title={String(value)}>{value}</div>
       </div>
     </div>
+  );
+}
+
+/* ── Shared Quick Add Party Modal ─────────────────── */
+function QuickAddPartyModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (newParty: any) => void;
+}) {
+  const [partyForm, setPartyForm] = useState({ legal_name: "", display_name: "", email: "", party_code: "" });
+  const [isPartySubmitting, setIsPartySubmitting] = useState(false);
+
+  const handleQuickAdd = async () => {
+    if (!partyForm.display_name.trim() && !partyForm.legal_name.trim()) {
+      toast.error("Nama pelanggan wajib diisi.");
+      return;
+    }
+    setIsPartySubmitting(true);
+    try {
+      const payload = {
+        display_name: partyForm.display_name.trim() || partyForm.legal_name.trim(),
+        legal_name: partyForm.legal_name.trim() || partyForm.display_name.trim(),
+        email: partyForm.email?.trim() || undefined,
+        party_code: partyForm.party_code?.trim() || `CUST-${Date.now().toString().slice(-4)}`,
+        party_type: "CUSTOMER",
+      };
+      const res = await api.post("/api/v1/master-data/parties/", payload);
+      const newParty = res.data;
+      toast.success("Pelanggan baru berhasil ditambahkan!");
+      onSuccess(newParty);
+      setPartyForm({ legal_name: "", display_name: "", email: "", party_code: "" });
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || "Gagal menambahkan pelanggan.");
+    } finally {
+      setIsPartySubmitting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Tambah Pelanggan Baru ke Database" size="sm">
+      <div className="flex flex-col gap-3 p-4">
+        <div>
+          <label className="text-xs font-medium text-text-secondary mb-1 block">Nama Instansi / Perusahaan *</label>
+          <input 
+            className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
+            placeholder="PT Mega Properti..." 
+            value={partyForm.display_name} 
+            onChange={e => setPartyForm(p => ({ ...p, display_name: e.target.value }))} 
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-text-secondary mb-1 block">Email Kontak (Opsional)</label>
+          <input 
+            type="email" 
+            className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
+            placeholder="procurement@megaproperti.com" 
+            value={partyForm.email} 
+            onChange={e => setPartyForm(p => ({ ...p, email: e.target.value }))} 
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-text-secondary mb-1 block">Kode Rekanan (Opsional)</label>
+          <input 
+            className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
+            placeholder="CUST-MP-01" 
+            value={partyForm.party_code} 
+            onChange={e => setPartyForm(p => ({ ...p, party_code: e.target.value }))} 
+          />
+        </div>
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="btn-ghost">Batal</button>
+          <button type="button" onClick={handleQuickAdd} disabled={isPartySubmitting} className="btn-primary">
+            {isPartySubmitting ? "Menyimpan..." : "Simpan Pelanggan"}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -108,21 +191,52 @@ function KpiCard({ label, value, icon: Icon, iconBg = "#F0FDF4", iconColor = "#1
 function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
   const activeTickets = (data.cases || []).filter(c => !["RESOLVED","CLOSED"].includes(c.status?.toUpperCase() || "")).length;
   const pendingApprovals = (data.approvals || []).filter(a => a.decision === "PENDING").length;
-  const pipeline = (data.opportunities || []).filter(o => !["WON","LOST"].includes(o.status?.toUpperCase() || ""));
+  const pipeline = (data.opportunities || []).filter(o => 
+    !["WON","LOST","CANCELLED","CANCEL","BATAL"].includes(o.status?.toUpperCase() || "") &&
+    !["LOST","CANCELLED","CANCEL","BATAL"].includes(o.pipeline_stage?.toUpperCase() || "")
+  );
 
   return (
     <div className="flex flex-col gap-5">
-      {/* KPI row */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <KpiCard label="Bobot Pipeline" value={formatMoney(dash.weighted_project_value)} icon={DollarSign} iconBg="#F0FDF4" iconColor="#16A34A" />
-        <KpiCard label="Win Rate" value={`${(dash.win_rate_percent||0).toFixed(1)}%`} icon={Award} iconBg="#EFF6FF" iconColor="#1D4ED8" />
-        <KpiCard label="Avg Sales Cycle" value={`${dash.average_sales_cycle_days||0} hari`} icon={TrendingUp} iconBg="#FAF5FF" iconColor="#7E22CE" />
-        <KpiCard label="Margin Offering" value={`${(dash.offering_margin_percent||0).toFixed(1)}%`} icon={BarChart3} iconBg="#FFF7ED" iconColor="#C2410C" />
-        <KpiCard label="Tiket Aktif" value={activeTickets} icon={PhoneCall} iconBg="#FEF2F2" iconColor="#DC2626" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+        <KpiCard 
+          label="Bobot Pipeline" 
+          value={formatMoney(dash?.weighted_project_value)} 
+          icon={DollarSign} 
+          iconBg="#F0FDF4" 
+          iconColor="#16A34A" 
+        />
+        <KpiCard 
+          label="Win Rate" 
+          value={`${Number(dash?.win_rate_percent || 0).toFixed(1)}%`} 
+          icon={Award} 
+          iconBg="#EFF6FF" 
+          iconColor="#1D4ED8" 
+        />
+        <KpiCard 
+          label="Avg Sales Cycle" 
+          value={`${Math.round(Number(dash?.average_sales_cycle_days || 0))} hari`} 
+          icon={TrendingUp} 
+          iconBg="#FAF5FF" 
+          iconColor="#7E22CE" 
+        />
+        <KpiCard 
+          label="Margin Offering" 
+          value={`${Number(dash?.offering_margin_percent || 0).toFixed(1)}%`} 
+          icon={BarChart3} 
+          iconBg="#FFF7ED" 
+          iconColor="#C2410C" 
+        />
+        <KpiCard 
+          label="Tiket Aktif" 
+          value={activeTickets} 
+          icon={PhoneCall} 
+          iconBg="#FEF2F2" 
+          iconColor="#DC2626" 
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        {/* Pipeline aktif */}
         <div className="card rounded-xl p-4">
           <h3 className="text-sm font-bold text-text-primary mb-3">Pipeline Aktif</h3>
           {pipeline.length === 0 ? <EmptyState msg="Belum ada opportunity aktif." /> : (
@@ -140,7 +254,6 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
           )}
         </div>
 
-        {/* Kontrol komersial */}
         <div className="card rounded-xl p-4">
           <h3 className="text-sm font-bold text-text-primary mb-3">Kontrol Komersial & Service</h3>
           <div className="flex flex-col gap-2">
@@ -172,13 +285,42 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
 ══════════════════════════════════════════════════ */
 function TabDeals({
   data, approvals, isNewOppOpen, setIsNewOppOpen, onRefresh,
+  onOpportunityCreated, onOpportunityDeleted, onPartyCreated
 }: {
   data: CRMData; approvals: any[]; isNewOppOpen: boolean;
   setIsNewOppOpen: (v: boolean) => void; onRefresh: () => void;
+  onOpportunityCreated?: (newOpp: any) => void;
+  onOpportunityDeleted?: (id: string | number) => void;
+  onPartyCreated?: (newParty: any) => void;
 }) {
-  const [form, setForm] = useState({ opportunity_name: "", customer_party: "", expected_amount: 150000000, probability_percent: 50, pipeline_stage: "OPEN" });
+  const [form, setForm] = useState({ 
+    opportunity_name: "", 
+    customer_party: "", 
+    expected_amount: 150000000, 
+    probability_percent: 50, 
+    pipeline_stage: "OPEN" 
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [resultModal, setResultModal] = useState<any>(null);
-  const [creditModal, setCreditModal] = useState<any>(null);
+  const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
+  const [oppFilter, setOppFilter] = useState<"ACTIVE" | "CANCELLED" | "ALL">("ACTIVE");
+
+  const allOpps = data.opportunities || [];
+  const activeOpps = allOpps.filter(o => {
+    const st = (o.status || "").toUpperCase();
+    const ps = (o.pipeline_stage || "").toUpperCase();
+    return !["CANCELLED", "CANCEL", "BATAL"].includes(st) && !["CANCELLED", "CANCEL", "BATAL"].includes(ps);
+  });
+  const cancelledOpps = allOpps.filter(o => {
+    const st = (o.status || "").toUpperCase();
+    const ps = (o.pipeline_stage || "").toUpperCase();
+    return ["CANCELLED", "CANCEL", "BATAL"].includes(st) || ["CANCELLED", "CANCEL", "BATAL"].includes(ps);
+  });
+  const displayedOpps = oppFilter === "ACTIVE" 
+    ? activeOpps 
+    : oppFilter === "CANCELLED" 
+    ? cancelledOpps 
+    : allOpps;
 
   const handleDealWon = async (opp: any) => {
     try {
@@ -186,7 +328,9 @@ function TabDeals({
       setResultModal({ type: "dealWon", data: res, opp });
       toast.success("Deal Won diproses!");
       onRefresh();
-    } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal proses Deal Won"); }
+    } catch (e: any) { 
+      toast.error(e?.response?.data?.detail || "Gagal proses Deal Won"); 
+    }
   };
 
   const handleExecOverride = async (opp: any) => {
@@ -194,29 +338,64 @@ function TabDeals({
       await executiveOverrideCredit(opp.id);
       toast.success("Executive override berhasil!");
       onRefresh();
-    } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal override"); }
+    } catch (e: any) { 
+      toast.error(e?.response?.data?.detail || "Gagal override"); 
+    }
   };
 
   const handleDelete = async (id: string | number) => {
-    if (!confirm("Hapus opportunity ini?")) return;
-    try { await deleteOpportunity(id); toast.success("Dihapus."); onRefresh(); }
-    catch { toast.error("Gagal hapus."); }
+    if (!confirm("Apakah Anda yakin ingin menghapus/membatalkan opportunity ini?")) return;
+    try { 
+      await deleteOpportunity(id); 
+      toast.success("Opportunity berhasil dihapus/dibatalkan.");
+      if (onOpportunityDeleted) {
+        onOpportunityDeleted(id);
+      }
+      onRefresh(); 
+    }
+    catch (e: any) { 
+      toast.error(e?.response?.data?.detail || e?.message || "Gagal menghapus opportunity."); 
+    }
   };
 
   const handleCreate = async () => {
-    if (!form.opportunity_name.trim()) { toast.error("Nama opportunity wajib diisi."); return; }
+    if (!form.opportunity_name.trim()) { 
+      toast.error("Nama opportunity wajib diisi."); 
+      return; 
+    }
+    setIsSubmitting(true);
     try {
-      await createOpportunity({ ...form, customer_party: form.customer_party || null });
-      toast.success("Opportunity dibuat!");
+      const payload = {
+        ...form,
+        customer_party: form.customer_party ? form.customer_party.trim() : null,
+      };
+      const res = await createOpportunity(payload);
+      toast.success("Opportunity berhasil dibuat!");
+      
+      const createdData = res?.data || res || { ...payload, id: Date.now(), status: payload.pipeline_stage };
+      if (onOpportunityCreated) {
+        onOpportunityCreated(createdData);
+      }
+      
       setIsNewOppOpen(false);
       setForm({ opportunity_name: "", customer_party: "", expected_amount: 150000000, probability_percent: 50, pipeline_stage: "OPEN" });
       onRefresh();
-    } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal buat opportunity"); }
+    } catch (e: any) { 
+      toast.error(e?.response?.data?.detail || "Gagal buat opportunity"); 
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCreditRecalc = async (partyId: string | number) => {
-    try { await calculateCreditSnapshot(partyId); toast.success("Credit snapshot diperbarui!"); onRefresh(); }
-    catch { toast.error("Gagal hitung credit."); }
+    try { 
+      await calculateCreditSnapshot(partyId); 
+      toast.success("Credit snapshot diperbarui!"); 
+      onRefresh(); 
+    }
+    catch { 
+      toast.error("Gagal hitung credit."); 
+    }
   };
 
   const handleCreditLimit = async (partyId: string | number, currentLimit: number) => {
@@ -224,43 +403,127 @@ function TabDeals({
     if (!newLimit) return;
     try {
       await updateCustomerCreditLimit({ party_id: partyId, credit_limit: Number(newLimit) });
-      toast.success("Credit limit diperbarui!"); onRefresh();
-    } catch { toast.error("Gagal update credit limit."); }
+      toast.success("Credit limit diperbarui!"); 
+      onRefresh();
+    } catch { 
+      toast.error("Gagal update credit limit."); 
+    }
   };
 
   return (
     <div className="grid grid-cols-5 gap-4">
       {/* Opportunities (col span 3) */}
       <div className="col-span-3 card rounded-xl p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold text-text-primary">Deal Pipeline & Closed Won</h3>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-text-primary">Deal Pipeline & Closed Won</h3>
+            <p className="text-2xs text-text-secondary">Kelola prospek penjualan dan pipeline deal aktif</p>
+          </div>
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.opportunities||[]).length} Opp</span>
-            <button onClick={() => setIsNewOppOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1">
+            <button onClick={() => setIsNewOppOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1 shadow-xs">
               <Plus size={12} /> Buat Opportunity
             </button>
           </div>
         </div>
-        {(data.opportunities||[]).length === 0 ? <EmptyState msg="Belum ada opportunity." /> : (
-          <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto">
-            {(data.opportunities||[]).map(o => {
+
+        {/* Filter Toggle Pills */}
+        <div className="flex items-center gap-1.5 mb-3 bg-gray-100 p-1 rounded-xl w-fit">
+          <button
+            type="button"
+            onClick={() => setOppFilter("ACTIVE")}
+            className={cn(
+              "px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+              oppFilter === "ACTIVE"
+                ? "bg-white text-brand-deep-green shadow-xs"
+                : "text-text-secondary hover:text-text-primary"
+            )}
+          >
+            <span>⚡ Aktif</span>
+            <span className="px-1.5 py-0.2 rounded-full text-2xs bg-brand-light-green text-brand-deep-green font-bold">
+              {activeOpps.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setOppFilter("CANCELLED")}
+            className={cn(
+              "px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+              oppFilter === "CANCELLED"
+                ? "bg-white text-red-600 shadow-xs"
+                : "text-text-secondary hover:text-text-primary"
+            )}
+          >
+            <span>🗑️ Dibatalkan / Arsip</span>
+            {cancelledOpps.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-2xs bg-red-100 text-red-700 font-bold">
+                {cancelledOpps.length}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setOppFilter("ALL")}
+            className={cn(
+              "px-3 py-1 rounded-lg text-xs font-semibold transition-all",
+              oppFilter === "ALL"
+                ? "bg-white text-text-primary shadow-xs"
+                : "text-text-secondary hover:text-text-primary"
+            )}
+          >
+            Semua ({allOpps.length})
+          </button>
+        </div>
+
+        {displayedOpps.length === 0 ? (
+          <EmptyState 
+            msg={
+              oppFilter === "ACTIVE" 
+                ? "Tidak ada opportunity aktif saat ini." 
+                : oppFilter === "CANCELLED" 
+                ? "Tidak ada opportunity yang dibatalkan." 
+                : "Belum ada opportunity."
+            } 
+          />
+        ) : (
+          <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto pr-1">
+            {displayedOpps.map(o => {
               const cust = (data.parties||[]).find(p => String(p.id) === String(o.customer_party));
               const isWon = ["WON","CLOSED_WON"].includes((o.status||"").toUpperCase());
+              const isCancelled = ["CANCELLED","CANCEL","BATAL"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL"].includes((o.pipeline_stage||"").toUpperCase());
+
               return (
-                <div key={o.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 hover:bg-bg-lighter gap-3">
+                <div 
+                  key={o.id} 
+                  className={cn(
+                    "flex items-center justify-between p-3 rounded-xl border transition-colors gap-3",
+                    isCancelled 
+                      ? "border-red-200 bg-red-50/40 opacity-75" 
+                      : "border-text-tertiary/60 hover:bg-bg-lighter"
+                  )}
+                >
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-text-primary truncate">{o.opportunity_name || `Opportunity ${String(o.id).slice(0,8)}`}</div>
-                    <div className="text-xs text-text-secondary mt-0.5">
-                      {cust?.display_name || cust?.legal_name || "Customer"} · <b>{formatMoney(o.expected_amount)}</b>
+                    <div className="flex items-center gap-2">
+                      <span className={cn("text-sm font-semibold truncate", isCancelled ? "line-through text-gray-500" : "text-text-primary")}>
+                        {o.opportunity_name || `Opportunity ${String(o.id).slice(0,8)}`}
+                      </span>
+                      <StatusBadge status={o.status || "OPEN"} />
                     </div>
-                    <StatusBadge status={o.status || "OPEN"} />
+                    <div className="text-xs text-text-secondary mt-0.5">
+                      <span className="font-medium text-slate-700">{cust?.display_name || cust?.legal_name || "Pelanggan Umum"}</span> · <b>{formatMoney(o.expected_amount)}</b>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <ActionBtn onClick={() => handleDealWon(o)} label="⚡ Deal Won" small />
-                    {isWon && (
+                    {!isCancelled && (
+                      <ActionBtn onClick={() => handleDealWon(o)} label="⚡ Deal Won" small />
+                    )}
+                    {isWon && !isCancelled && (
                       <ActionBtn onClick={() => handleExecOverride(o)} label="👑 Override" variant="ghost" small />
                     )}
-                    <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors">
+                    <button 
+                      onClick={() => handleDelete(o.id)} 
+                      title={isCancelled ? "Hapus permanen / bersihkan" : "Batalkan opportunity"}
+                      className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -311,39 +574,94 @@ function TabDeals({
         )}
       </div>
 
-      {/* New Opportunity Modal */}
+      {/* Modal: Buat Opportunity Baru */}
       <Modal isOpen={isNewOppOpen} onClose={() => setIsNewOppOpen(false)} title="Buat Opportunity Baru" size="md">
         <div className="flex flex-col gap-3 p-4">
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Nama Opportunity *</label>
-            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.opportunity_name} onChange={e => setForm(f => ({ ...f, opportunity_name: e.target.value }))} placeholder="Nama opportunity..." />
+            <input 
+              className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
+              value={form.opportunity_name} 
+              onChange={e => setForm(f => ({ ...f, opportunity_name: e.target.value }))} 
+              placeholder="Contoh: Pengadaan Server Smart Office..." 
+            />
           </div>
+
           <div>
-            <label className="text-xs font-medium text-text-secondary mb-1 block">Customer Party ID</label>
-            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.customer_party} onChange={e => setForm(f => ({ ...f, customer_party: e.target.value }))} placeholder="ID customer (opsional)" />
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-text-secondary">Pilih Rekanan / Pelanggan (Database)</label>
+              <button 
+                type="button" 
+                onClick={() => setIsQuickPartyOpen(true)}
+                className="text-2xs font-semibold text-brand-green hover:underline flex items-center gap-1"
+              >
+                <UserPlus size={12} /> + Pelanggan Baru
+              </button>
+            </div>
+            <select
+              className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
+              value={form.customer_party}
+              onChange={e => setForm(f => ({ ...f, customer_party: e.target.value }))}
+            >
+              <option value="">-- Pilih Rekanan dari Database (Opsional) --</option>
+              {(data.parties || []).map(p => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.display_name || p.legal_name} {p.party_code ? `(${p.party_code})` : ""}
+                </option>
+              ))}
+            </select>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Expected Amount (Rp)</label>
-              <input type="number" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.expected_amount} onChange={e => setForm(f => ({ ...f, expected_amount: Number(e.target.value) }))} />
+              <input 
+                type="number" 
+                className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
+                value={form.expected_amount} 
+                onChange={e => setForm(f => ({ ...f, expected_amount: Number(e.target.value) }))} 
+              />
             </div>
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Probabilitas (%)</label>
-              <input type="number" min={0} max={100} className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.probability_percent} onChange={e => setForm(f => ({ ...f, probability_percent: Number(e.target.value) }))} />
+              <input 
+                type="number" 
+                min={0} 
+                max={100} 
+                className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
+                value={form.probability_percent} 
+                onChange={e => setForm(f => ({ ...f, probability_percent: Number(e.target.value) }))} 
+              />
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Pipeline Stage</label>
-            <select className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.pipeline_stage} onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}>
+            <select 
+              className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white" 
+              value={form.pipeline_stage} 
+              onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}
+            >
               {["OPEN","QUALIFICATION","PROPOSAL","NEGOTIATION","WON","LOST"].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="flex gap-2 pt-2 justify-end">
-            <button onClick={() => setIsNewOppOpen(false)} className="btn-ghost">Batal</button>
-            <button onClick={handleCreate} className="btn-primary">Buat Opportunity</button>
+            <button onClick={() => setIsNewOppOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button>
+            <button onClick={handleCreate} disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? "Memproses..." : "Buat Opportunity"}
+            </button>
           </div>
         </div>
       </Modal>
+
+      {/* Quick Add Party Modal */}
+      <QuickAddPartyModal
+        isOpen={isQuickPartyOpen}
+        onClose={() => setIsQuickPartyOpen(false)}
+        onSuccess={(newParty) => {
+          if (onPartyCreated) onPartyCreated(newParty);
+          setForm(f => ({ ...f, customer_party: String(newParty.id) }));
+        }}
+      />
 
       {/* Deal Won Result Modal */}
       {resultModal?.type === "dealWon" && (
@@ -448,12 +766,23 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
         )}
       </div>
 
-      {/* Estimate Modal */}
+      {/* Modal: Buat Estimasi HPP */}
       <Modal isOpen={isEstModal} onClose={() => setIsEstModal(false)} title="Buat Estimasi HPP" size="md">
         <div className="flex flex-col gap-3 p-4">
           <div>
-            <label className="text-xs font-medium text-text-secondary mb-1 block">Opportunity ID (opsional)</label>
-            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.opportunity} onChange={e => setEstForm(f => ({...f, opportunity: e.target.value}))} placeholder="ID opportunity..." />
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Opportunity</label>
+            <select
+              className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
+              value={estForm.opportunity}
+              onChange={e => setEstForm(f => ({...f, opportunity: e.target.value}))}
+            >
+              <option value="">-- Pilih Opportunity Terkait --</option>
+              {(data.opportunities || []).map(o => (
+                <option key={o.id} value={String(o.id)}>
+                  {o.opportunity_name || `Opp #${o.id}`} ({formatMoney(o.expected_amount)})
+                </option>
+              ))}
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -486,8 +815,9 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
 /* ══════════════════════════════════════════════════
    TAB: SUPPORT TICKETS
 ══════════════════════════════════════════════════ */
-function TabTickets({ data, onRefresh }: { data: CRMData; onRefresh: () => void }) {
+function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", case_type: "WARRANTY_CLAIM", description: "" });
 
   const handleCreate = async () => {
@@ -560,25 +890,47 @@ function TabTickets({ data, onRefresh }: { data: CRMData; onRefresh: () => void 
         <div className="flex flex-col gap-3 p-4">
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Subject *</label>
-            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} placeholder="Judul tiket..." />
+            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} placeholder="Judul tiket..." />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-text-secondary">Pilih Pelanggan (Database)</label>
+              <button 
+                type="button" 
+                onClick={() => setIsQuickPartyOpen(true)}
+                className="text-2xs font-semibold text-brand-green hover:underline flex items-center gap-1"
+              >
+                <UserPlus size={12} /> + Pelanggan Baru
+              </button>
+            </div>
+            <select
+              className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-green"
+              value={form.customer_party}
+              onChange={e => setForm(f => ({...f, customer_party: e.target.value}))}
+            >
+              <option value="">-- Pilih Pelanggan --</option>
+              {(data.parties || []).map(p => (
+                <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name}</option>
+              ))}
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Prioritas</label>
-              <select className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={form.priority} onChange={e => setForm(f => ({...f, priority: e.target.value}))}>
+              <select className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.priority} onChange={e => setForm(f => ({...f, priority: e.target.value}))}>
                 {["LOW","NORMAL","HIGH","URGENT"].map(p => <option key={p}>{p}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Tipe Kasus</label>
-              <select className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={form.case_type} onChange={e => setForm(f => ({...f, case_type: e.target.value}))}>
+              <select className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.case_type} onChange={e => setForm(f => ({...f, case_type: e.target.value}))}>
                 {["WARRANTY_CLAIM","SERVICE_REQUEST","BUG_REPORT","COMPLAINT","GENERAL"].map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Deskripsi</label>
-            <textarea rows={3} className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} />
+            <textarea rows={3} className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} />
           </div>
           <div className="flex gap-2 justify-end pt-1">
             <button onClick={() => setIsOpen(false)} className="btn-ghost">Batal</button>
@@ -586,6 +938,15 @@ function TabTickets({ data, onRefresh }: { data: CRMData; onRefresh: () => void 
           </div>
         </div>
       </Modal>
+
+      <QuickAddPartyModal
+        isOpen={isQuickPartyOpen}
+        onClose={() => setIsQuickPartyOpen(false)}
+        onSuccess={(newParty) => {
+          if (onPartyCreated) onPartyCreated(newParty);
+          setForm(f => ({ ...f, customer_party: String(newParty.id) }));
+        }}
+      />
     </div>
   );
 }
@@ -593,14 +954,37 @@ function TabTickets({ data, onRefresh }: { data: CRMData; onRefresh: () => void 
 /* ══════════════════════════════════════════════════
    TAB: INCOMING INQUIRY
 ══════════════════════════════════════════════════ */
-function TabIncoming({ data, onRefresh }: { data: CRMData; onRefresh: () => void }) {
+function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", description: "" });
+  const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
+  const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_party: "", description: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleCreate = async () => {
-    if (!form.subject.trim() || !form.customer_name.trim()) { toast.error("Subject & nama customer wajib."); return; }
-    try { await createCustomerInquiry(form); toast.success("Inquiry dibuat!"); setIsOpen(false); onRefresh(); }
-    catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal buat inquiry"); }
+    if (!form.subject.trim() || !form.customer_name.trim()) { 
+      toast.error("Subject & nama customer wajib diisi."); 
+      return; 
+    }
+    setIsSubmitting(true);
+    try { 
+      const payload = {
+        subject: form.subject.trim(),
+        customer_name: form.customer_name.trim(),
+        customer_email: form.customer_email?.trim() || undefined,
+        customer_party: form.customer_party ? form.customer_party : null,
+        description: form.description?.trim() || "",
+      };
+      await createCustomerInquiry(payload); 
+      toast.success("Inquiry berhasil dibuat!"); 
+      setIsOpen(false); 
+      setForm({ subject: "", customer_name: "", customer_email: "", customer_party: "", description: "" });
+      onRefresh(); 
+    }
+    catch (e: any) { 
+      toast.error(e?.response?.data?.detail || e?.message || "Gagal membuat inquiry"); 
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -643,20 +1027,75 @@ function TabIncoming({ data, onRefresh }: { data: CRMData; onRefresh: () => void
       )}
       <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Buat Inquiry Baru" size="md">
         <div className="flex flex-col gap-3 p-4">
-          <div><label className="text-xs font-medium text-text-secondary mb-1 block">Subject *</label>
-            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} /></div>
-          <div><label className="text-xs font-medium text-text-secondary mb-1 block">Nama Customer *</label>
-            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={form.customer_name} onChange={e => setForm(f => ({...f, customer_name: e.target.value}))} /></div>
-          <div><label className="text-xs font-medium text-text-secondary mb-1 block">Email Customer</label>
-            <input type="email" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={form.customer_email} onChange={e => setForm(f => ({...f, customer_email: e.target.value}))} /></div>
-          <div><label className="text-xs font-medium text-text-secondary mb-1 block">Deskripsi Kebutuhan</label>
-            <textarea rows={3} className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} /></div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Subject *</label>
+            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} placeholder="Judul inquiry..." />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Nama Customer *</label>
+            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.customer_name} onChange={e => setForm(f => ({...f, customer_name: e.target.value}))} placeholder="Nama customer / PT..." />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Email Customer</label>
+            <input type="email" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.customer_email} onChange={e => setForm(f => ({...f, customer_email: e.target.value}))} placeholder="email@domain.com" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-text-secondary">Pilih Rekanan / Pelanggan (Database)</label>
+              <button 
+                type="button" 
+                onClick={() => setIsQuickPartyOpen(true)}
+                className="text-2xs font-semibold text-brand-green hover:underline flex items-center gap-1"
+              >
+                <UserPlus size={12} /> + Pelanggan Baru
+              </button>
+            </div>
+            <select
+              className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-green"
+              value={form.customer_party}
+              onChange={e => {
+                const selectedId = e.target.value;
+                const party = (data.parties || []).find(p => String(p.id) === String(selectedId));
+                setForm(f => ({
+                  ...f,
+                  customer_party: selectedId,
+                  customer_name: party ? (party.display_name || party.legal_name) : f.customer_name,
+                  customer_email: party?.email || f.customer_email,
+                }));
+              }}
+            >
+              <option value="">-- Rekanan Bebas / Input Manual --</option>
+              {(data.parties || []).map(p => (
+                <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Deskripsi Kebutuhan</label>
+            <textarea rows={3} className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} placeholder="Rincian kebutuhan klien..." />
+          </div>
           <div className="flex gap-2 justify-end pt-1">
-            <button onClick={() => setIsOpen(false)} className="btn-ghost">Batal</button>
-            <button onClick={handleCreate} className="btn-primary">Buat Inquiry</button>
+            <button onClick={() => setIsOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button>
+            <button onClick={handleCreate} disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? "Menyimpan..." : "Buat Inquiry"}
+            </button>
           </div>
         </div>
       </Modal>
+
+      <QuickAddPartyModal
+        isOpen={isQuickPartyOpen}
+        onClose={() => setIsQuickPartyOpen(false)}
+        onSuccess={(newParty) => {
+          if (onPartyCreated) onPartyCreated(newParty);
+          setForm(f => ({
+            ...f,
+            customer_party: String(newParty.id),
+            customer_name: newParty.display_name || newParty.legal_name,
+            customer_email: newParty.email || f.customer_email,
+          }));
+        }}
+      />
     </div>
   );
 }
@@ -785,6 +1224,36 @@ export default function CrmClient() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const handleOpportunityCreated = (newOpp: any) => {
+    setCrmData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        opportunities: [newOpp, ...(prev.opportunities || [])]
+      };
+    });
+  };
+
+  const handleOpportunityDeleted = (id: string | number) => {
+    setCrmData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        opportunities: (prev.opportunities || []).filter(item => String(item.id) !== String(id))
+      };
+    });
+  };
+
+  const handlePartyCreated = (newParty: any) => {
+    setCrmData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        parties: [newParty, ...(prev.parties || [])]
+      };
+    });
+  };
+
   const data: CRMData = crmData || {
     inquiries:[], requirements:[], opportunities:[], stages:[], estimates:[], estimateLines:[],
     quotations:[], approvals:[], deliveries:[], contracts:[], orders:[], conversations:[],
@@ -843,10 +1312,21 @@ export default function CrmClient() {
       ) : (
         <>
           {activeTab === "dashboard"  && <TabDashboard data={data} dash={crmDash} />}
-          {activeTab === "deals"      && <TabDeals data={data} approvals={data.approvals} isNewOppOpen={isNewOppOpen} setIsNewOppOpen={setIsNewOppOpen} onRefresh={() => loadData(true)} />}
+          {activeTab === "deals"      && (
+            <TabDeals 
+              data={data} 
+              approvals={data.approvals} 
+              isNewOppOpen={isNewOppOpen} 
+              setIsNewOppOpen={setIsNewOppOpen} 
+              onRefresh={() => loadData(true)} 
+              onOpportunityCreated={handleOpportunityCreated}
+              onOpportunityDeleted={handleOpportunityDeleted}
+              onPartyCreated={handlePartyCreated}
+            />
+          )}
           {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} />}
-          {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} />}
-          {activeTab === "incoming"   && <TabIncoming data={data} onRefresh={() => loadData(true)} />}
+          {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} />}
+          {activeTab === "incoming"   && <TabIncoming data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} />}
           {activeTab === "accounts"   && <TabAccounts data={data} />}
           {activeTab === "contracts"  && <TabContracts data={data} />}
           {activeTab === "engagement" && <TabEngagement data={data} />}

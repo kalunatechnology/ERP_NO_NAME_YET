@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   FolderKanban, Plus, RefreshCw, Trash2, CheckCircle2,
   TrendingUp, Users, Calendar, AlertTriangle, ShieldCheck,
   ChevronDown, ChevronRight, Activity, ArrowRight, Play,
   DollarSign, FileText, CheckSquare, Layers, Clock, Zap,
-  Edit, ArrowUpRight, Lock, UserCheck, Search, Check
+  Edit, ArrowUpRight, Lock, UserCheck, Search, Check, Wallet
 } from "lucide-react";
 import {
   Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, TaskAssignment,
@@ -28,6 +28,7 @@ import { useAuth, detectRole } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
+import api from "@/lib/api/axios";
 
 function formatRupiah(val?: number): string {
   if (!val && val !== 0) return "Rp 0";
@@ -40,7 +41,7 @@ const LIFECYCLE_STEPS = [
   { key: "DRAFT", label: "STEP 1", title: "DRAFT / INTAKE", desc: "Terima PO/Deal" },
   { key: "VERIFIED", label: "STEP 2", title: "VERIFIED", desc: "Kelayakan Order" },
   { key: "RESERVED", label: "STEP 3", title: "RESERVED", desc: "Alokasi Material" },
-  { key: "IN_PROGRESS", label: "STEP 4", title: "ACTIVE / STARTED", desc: "Eksekusi & QA" },
+  { key: "STARTED", label: "STEP 4", title: "ACTIVE / STARTED", desc: "Eksekusi & QA" },
   { key: "CLOSED", label: "STEP 5", title: "CLOSED", desc: "Serah Terima" },
 ];
 
@@ -80,9 +81,9 @@ export default function ProjectsClient() {
     target_margin_percent: 25,
   });
   const [fundingRequestForm, setFundingRequestForm] = useState({
-    amount: 15000000,
+    amount: 25000000,
     category: "OPERATIONAL",
-    description: "Kebutuhan dana operasional tim proyek di lapangan"
+    description: "Kebutuhan dana kas operasional tim proyek di lapangan"
   });
 
   /* Team Users list for Assignment */
@@ -112,7 +113,6 @@ export default function ProjectsClient() {
   const [mainTaskForm, setMainTaskForm] = useState({ title: "", description: "", weight: 15, priority: "MEDIUM" });
   const [weeklyForm, setWeeklyForm] = useState({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_name: "Assignee Tim" });
   
-  /* Simplified daily form (only title and time_slot required, all others optional) */
   const [dailyForm, setDailyForm] = useState({
     title: "",
     time_slot: "09.00 - 12.00",
@@ -165,7 +165,7 @@ export default function ProjectsClient() {
     return false;
   }, [user, userRole, isAdmin, selectedProject]);
 
-  const fetchProjects = async (silent = false) => {
+  const fetchProjects = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
@@ -175,9 +175,22 @@ export default function ProjectsClient() {
         fetchCompanyUsers().catch(() => [])
       ]);
       setProjects(data);
-      if (data.length > 0 && (!selectedId || !data.some(p => String(p.id) === String(selectedId)))) {
-        setSelectedId(data[0].id);
+
+      const targetId = selectedId && data.some(p => String(p.id) === String(selectedId))
+        ? selectedId
+        : data[0]?.id ?? null;
+
+      if (targetId) {
+        setSelectedId(targetId);
+        Promise.allSettled([
+          fetchProjectFinancialPerformance(targetId),
+          fetchProjectFundingRequests(targetId)
+        ]).then(([perfRes, fundingRes]) => {
+          if (perfRes.status === "fulfilled") setFinancialPerformance(perfRes.value);
+          if (fundingRes.status === "fulfilled") setFundingRequestsList(Array.isArray(fundingRes.value) ? fundingRes.value : []);
+        });
       }
+
       setTransfers(transferList);
       setCompanyUsers(uList);
     } catch {
@@ -186,7 +199,7 @@ export default function ProjectsClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedId]);
 
   const openAssignModal = (main: MainTask) => {
     if (!isPM) {
@@ -223,31 +236,40 @@ export default function ProjectsClient() {
   }, []);
 
   useEffect(() => {
-    if (selectedProject?.id) {
-      fetchProjectFinancialPerformance(selectedProject.id)
-        .then(data => setFinancialPerformance(data))
-        .catch(() => setFinancialPerformance(null));
+    if (!selectedId) return;
+    Promise.allSettled([
+      fetchProjectFinancialPerformance(selectedId),
+      fetchProjectFundingRequests(selectedId)
+    ]).then(([perfRes, fundingRes]) => {
+      if (perfRes.status === "fulfilled") setFinancialPerformance(perfRes.value);
+      if (fundingRes.status === "fulfilled") setFundingRequestsList(Array.isArray(fundingRes.value) ? fundingRes.value : []);
+    });
+  }, [selectedId]);
 
-      fetchProjectFundingRequests(selectedProject.id)
-        .then(data => setFundingRequestsList(Array.isArray(data) ? data : []))
-        .catch(() => setFundingRequestsList([]));
-
+  useEffect(() => {
+    if (selectedProject) {
       setFinancialTargetForm({
-        contract_amount: Number((selectedProject as any).contract_amount || (selectedProject as any).revenue_target || 150000000),
+        contract_amount: Number((selectedProject as any).contract_amount || selectedProject.budget_amount || selectedProject.budget || 150000000),
         budget_amount: Number(selectedProject.budget_amount || selectedProject.budget || 100000000),
-        target_margin_percent: Number((selectedProject as any).target_margin_percent || 20),
+        target_margin_percent: Number((selectedProject as any).target_margin_percent || 25),
       });
     }
-  }, [selectedProject?.id, activeTab]);
+  }, [selectedProject]);
 
   const handleUpdateFinancialTargets = async () => {
     if (!selectedProject) return;
     try {
-      await updateProjectFinancials(selectedProject.id, {
-        contract_amount: Number(financialTargetForm.contract_amount),
+      await api.post(`/api/v1/projects/projects/${selectedProject.id}/update_financials/`, {
         budget_amount: Number(financialTargetForm.budget_amount),
-        target_margin_percent: Number(financialTargetForm.target_margin_percent)
+        target_margin_percent: Number(financialTargetForm.target_margin_percent),
+      }).catch(async () => {
+        await updateProjectFinancials(selectedProject.id, {
+          contract_amount: Number(financialTargetForm.contract_amount),
+          budget_amount: Number(financialTargetForm.budget_amount),
+          target_margin_percent: Number(financialTargetForm.target_margin_percent)
+        });
       });
+
       toast.success("Target finansial & anggaran proyek berhasil diperbarui!", { icon: "💰" });
       setIsEditFinancialsOpen(false);
       fetchProjects(true);
@@ -259,12 +281,23 @@ export default function ProjectsClient() {
   const handleCreateFundingRequest = async () => {
     if (!selectedProject) return;
     try {
-      await submitProjectFundingRequest(selectedProject.id, {
+      await api.post("/api/v1/finance/project-fundings/", {
+        project: selectedProject.id,
+        requested_amount: Number(fundingRequestForm.amount),
         amount: Number(fundingRequestForm.amount),
-        category: fundingRequestForm.category,
-        description: fundingRequestForm.description
+        purpose: fundingRequestForm.description || "Pengajuan Dana Operasional Proyek",
+        description: fundingRequestForm.description || "Pengajuan Dana Operasional Proyek",
+        funding_type: fundingRequestForm.category || "OPERATIONAL",
+        status: "SUBMITTED",
+      }).catch(async () => {
+        await submitProjectFundingRequest(selectedProject.id, {
+          amount: Number(fundingRequestForm.amount),
+          category: fundingRequestForm.category,
+          description: fundingRequestForm.description
+        });
       });
-      toast.success("Permintaan dana budgeting berhasil diajukan ke Finance!", { icon: "📑" });
+
+      toast.success(`Permintaan dana kas sebesar ${formatRupiah(fundingRequestForm.amount)} berhasil diajukan ke Finance!`, { icon: "📑" });
       setIsFundingRequestOpen(false);
       fetchProjects(true);
     } catch {
@@ -283,7 +316,7 @@ export default function ProjectsClient() {
     return () => clearInterval(interval);
   }, [timerDailyId]);
 
-  /* ── Aggregate All Tasks Across Projects for Personal Workspace ── */
+  /* Aggregate All Tasks */
   const allPersonalTasks = useMemo(() => {
     const list: {
       projectId: string | number;
@@ -337,7 +370,6 @@ export default function ProjectsClient() {
     });
   }, [allPersonalTasks, personalFilter, personalSearch]);
 
-  /* ── Level 1: Create Main Task ── */
   const handleAddMainTask = async () => {
     if (!selectedProject || !mainTaskForm.title.trim()) return;
     try {
@@ -357,7 +389,6 @@ export default function ProjectsClient() {
     }
   };
 
-  /* ── Level 2: Create Weekly Plan ── */
   const handleAddWeeklyPlan = async () => {
     if (!selectedProject || !activeMainTask || !weeklyForm.target_description.trim()) return;
     try {
@@ -379,7 +410,6 @@ export default function ProjectsClient() {
     }
   };
 
-  /* ── Level 3: Create Daily Task (Fast & Simple) ── */
   const handleAddDailyTask = async () => {
     if (!activeWeeklyTask || !dailyForm.title.trim()) {
       toast.error("Mohon isi judul task / aktivitas");
@@ -412,7 +442,6 @@ export default function ProjectsClient() {
     }
   };
 
-  /* ── Level 3: Update Daily Task ── */
   const handleSaveEditDaily = async () => {
     if (!activeDailyTask) return;
     try {
@@ -432,7 +461,6 @@ export default function ProjectsClient() {
     }
   };
 
-  /* Quick Toggle Complete (Optimistic UI 60fps) */
   const handleQuickToggleDaily = async (daily: DailyTask, isAllowed = true) => {
     if (!isAllowed && !isPM) {
       toast.error("Akses Ditolak: Anda tidak memiliki wewenang pada task ini!");
@@ -444,7 +472,6 @@ export default function ProjectsClient() {
     const prevStatus = daily.status;
     const prevProg = daily.progress;
 
-    // 1. Optimistic local update (instant response)
     setProjects(prevProjects =>
       prevProjects.map(p => ({
         ...p,
@@ -461,14 +488,12 @@ export default function ProjectsClient() {
     );
     toast.success(isDone ? "Status task dikembalikan ke aktif" : "Selamat! Task diselesaikan 100%", { icon: "✅" });
 
-    // 2. Sync to backend in background
     try {
       await updateDailyTask(daily.id, {
         status: nextStatus,
         progress: nextProg
       });
     } catch {
-      // Rollback on error
       setProjects(prevProjects =>
         prevProjects.map(p => ({
           ...p,
@@ -483,11 +508,10 @@ export default function ProjectsClient() {
           }))
         }))
       );
-      toast.error("Gagal menyinkronkan status task ke server. Perubahan dikembalikan.");
+      toast.error("Gagal menyinkronkan status task ke server.");
     }
   };
 
-  /* ── Level 4: Request Task Transfer ── */
   const handleSendTransfer = async () => {
     if (!activeDailyTask || !transferReason.trim()) return;
     try {
@@ -504,7 +528,6 @@ export default function ProjectsClient() {
     }
   };
 
-  /* ── Create Project ── */
   const handleCreateProject = async () => {
     if (!newProjForm.name.trim()) return;
     try {
@@ -530,7 +553,6 @@ export default function ProjectsClient() {
     }
   };
 
-  /* ── Delete Project ── */
   const handleDeleteProject = async () => {
     if (!selectedProject) return;
     if (!confirm(`Hapus proyek "${selectedProject.project_name}" beserta seluruh paket kerja WBS?`)) return;
@@ -543,7 +565,6 @@ export default function ProjectsClient() {
     }
   };
 
-  /* ── Recalculate Health (EVM) ── */
   const handleRecalculateHealth = async () => {
     if (!selectedProject) return;
     try {
@@ -565,18 +586,26 @@ export default function ProjectsClient() {
     }
   };
 
-  /* ── Advance Lifecycle Flow ── */
   const handleAdvanceLifecycle = async () => {
     if (!selectedProject) return;
+    const stages = ["DRAFT", "VERIFIED", "RESERVED", "STARTED", "COMPLETED"];
+    const currentIdx = stages.indexOf(selectedProject.status || "DRAFT");
+    const nextStage = stages[currentIdx + 1] || stages[stages.length - 1];
+
     try {
-      await advancePMFlow(selectedProject.id, "advance");
-      toast.success("Lifecycle proyek berhasil dimajukan ke stage berikutnya!", { icon: "⚡" });
+      await api.post(`/api/v1/projects/projects/${selectedProject.id}/advance-stage/`, {
+        target_status: nextStage,
+      }).catch(async () => {
+        await api.patch(`/api/v1/projects/projects/${selectedProject.id}/`, {
+          status: nextStage,
+        });
+      });
+
+      toast.success(`Lifecycle proyek berhasil dimajukan ke: ${nextStage}!`, { icon: "⚡" });
       setIsLifecycleModalOpen(false);
       fetchProjects(true);
-    } catch {
-      toast.success("Gate disetujui: Tahap proyek dimajukan!", { icon: "✅" });
-      setIsLifecycleModalOpen(false);
-      fetchProjects(true);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || "Gagal memajukan lifecycle proyek.");
     }
   };
 
@@ -627,6 +656,22 @@ export default function ProjectsClient() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Tombol Target Finansial */}
+          <button
+            onClick={() => setIsEditFinancialsOpen(true)}
+            className="btn-secondary text-xs gap-1.5 py-1.5 px-3 border border-brand-green/30 text-brand-green hover:bg-brand-green/10 whitespace-nowrap shadow-xs font-semibold"
+          >
+            <TrendingUp size={14} /> Target Finansial Proyek
+          </button>
+
+          {/* Tombol Funding Request / Pengajuan Dana */}
+          <button
+            onClick={() => setIsFundingRequestOpen(true)}
+            className="btn-primary text-xs gap-1.5 py-1.5 px-3 bg-brand-green text-white hover:opacity-90 whitespace-nowrap font-semibold shadow-xs"
+          >
+            <Wallet size={14} /> Funding Request / Pengajuan Dana
+          </button>
+
           <button
             onClick={handleRecalculateHealth}
             className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green whitespace-nowrap"
@@ -888,7 +933,6 @@ export default function ProjectsClient() {
                             {main.description || "Tidak ada catatan deskripsi paket kerja."}
                           </p>
 
-                          {/* Assigned team member badges */}
                           {main.assignments && main.assignments.length > 0 && (
                             <div className="flex items-center gap-1.5 flex-wrap mt-2">
                               <span className="text-3xs font-bold text-text-secondary uppercase">👥 Tim Ter-assign:</span>
@@ -992,7 +1036,7 @@ export default function ProjectsClient() {
                       </div>
                     </div>
 
-                    {/* Level 2 & 3: Weekly Plans List (Smooth Auto-Height Grid) */}
+                    {/* Level 2 & 3: Weekly Plans List */}
                     <div
                       className={cn(
                         "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
@@ -1106,7 +1150,7 @@ export default function ProjectsClient() {
                                     </div>
                                   </div>
 
-                                  {/* Level 3: Daily Tasks Table (Smooth Auto-Height Grid) */}
+                                  {/* Level 3: Daily Tasks Table */}
                                   <div
                                     className={cn(
                                       "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
@@ -1274,7 +1318,7 @@ export default function ProjectsClient() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════
-          TAB 2: WORKSPACE PERSONAL SAYA (SEMUA PROYEK LINTAS WBS)
+          TAB 2: WORKSPACE PERSONAL SAYA
          ══════════════════════════════════════════════════════════════ */}
       {activeTab === "WORKSPACE" && (
         <div className="flex flex-col gap-4">
@@ -1575,7 +1619,6 @@ export default function ProjectsClient() {
          ══════════════════════════════════════════════════════════════ */}
       {activeTab === "FINANCIAL" && (
         <div className="flex flex-col gap-5">
-          {/* Executive P&L (Laba Rugi) & Target Realization Banner */}
           <div className="card p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-card-lg border border-slate-700">
             <div className="flex justify-between items-center flex-wrap gap-3 mb-4 pb-4 border-b border-white/10">
               <div>
@@ -1615,7 +1658,6 @@ export default function ProjectsClient() {
               </div>
             </div>
 
-            {/* P&L Metrics Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
                 <span className="text-2xs text-white/60 block font-medium">Target Revenue (Nilai Kontrak)</span>
@@ -1662,9 +1704,7 @@ export default function ProjectsClient() {
             </div>
           </div>
 
-          {/* 3 Detail Columns: Funding Requests, Actual Cost Entries, Billing Termin */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Column 1: Funding Requests (Permintaan Dana Budgeting) */}
             <div className="card p-4 rounded-2xl border border-text-tertiary bg-white shadow-xs">
               <div className="flex justify-between items-center mb-3">
                 <div>
@@ -1697,7 +1737,6 @@ export default function ProjectsClient() {
               </div>
             </div>
 
-            {/* Column 2: Actual Cost Entries */}
             <div className="card p-4 rounded-2xl border border-text-tertiary bg-white shadow-xs">
               <div className="flex justify-between items-center mb-3">
                 <div>
@@ -1725,7 +1764,6 @@ export default function ProjectsClient() {
               </div>
             </div>
 
-            {/* Column 3: Billing Termin & Penagihan */}
             <div className="card p-4 rounded-2xl border border-text-tertiary bg-white shadow-xs">
               <div className="flex justify-between items-center mb-3">
                 <div>
@@ -1756,11 +1794,7 @@ export default function ProjectsClient() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════
-          MODALS SECTION (FAST & OPTIMIZED)
-         ══════════════════════════════════════════════════════════════ */}
-
-      {/* 1. Modal: Level 1 Main Task */}
+      {/* ── Modals ── */}
       <Modal
         isOpen={isCreateMainTaskOpen}
         onClose={() => setIsCreateMainTaskOpen(false)}
@@ -1826,7 +1860,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* Modal: Assign Member to Main Task */}
       <Modal
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
@@ -1836,7 +1869,7 @@ export default function ProjectsClient() {
       >
         <div className="flex flex-col gap-3">
           <p className="text-xs text-text-secondary">
-            Pilih satu atau lebih anggota tim yang ditugaskan untuk mengeksekusi paket kerja ini. Anggota yang dicentang akan memiliki wewenang untuk memecah target mingguan & daily tasks:
+            Pilih satu atau lebih anggota tim yang ditugaskan untuk mengeksekusi paket kerja ini:
           </p>
 
           <div className="max-h-60 overflow-y-auto border border-text-tertiary rounded-xl p-2 flex flex-col gap-2 bg-gray-50/60">
@@ -1888,7 +1921,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 2. Modal: Level 2 Weekly Plan */}
       <Modal
         isOpen={isCreateWeeklyOpen}
         onClose={() => setIsCreateWeeklyOpen(false)}
@@ -1958,7 +1990,7 @@ export default function ProjectsClient() {
             <label className="text-xs font-bold text-text-primary block mb-1">Target Pekerjaan Mingguan *</label>
             <textarea
               rows={2}
-              placeholder="Contoh: Menyelesaikan skema tabel dan API endpoints atau Draft Animatic"
+              placeholder="Contoh: Menyelesaikan skema tabel dan API endpoints..."
               value={weeklyForm.target_description}
               onChange={e => setWeeklyForm({ ...weeklyForm, target_description: e.target.value })}
               className="input text-xs"
@@ -1974,7 +2006,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 3. Modal: Level 3 Daily Task (Struktur Proyek Harian) */}
       <Modal
         isOpen={isCreateDailyOpen}
         onClose={() => setIsCreateDailyOpen(false)}
@@ -1997,7 +2028,7 @@ export default function ProjectsClient() {
               <label className="text-xs font-bold text-text-primary block mb-1">Waktu (Rentang Jam) *</label>
               <input
                 type="text"
-                placeholder="Contoh: 09.00 - 09.15 atau 13.00 - 15.00"
+                placeholder="Contoh: 09.00 - 12.00"
                 value={dailyForm.time_slot}
                 onChange={e => setDailyForm({ ...dailyForm, time_slot: e.target.value })}
                 className="input text-xs"
@@ -2024,11 +2055,11 @@ export default function ProjectsClient() {
               <label className="text-xs font-bold text-text-primary">
                 Output (Hasil yang Didapat / Deliverable)
               </label>
-              <span className="text-3xs text-text-secondary bg-gray-100 px-2 py-0.5 rounded">Opsional &bull; Bisa diisi nanti saat sesi selesai</span>
+              <span className="text-3xs text-text-secondary bg-gray-100 px-2 py-0.5 rounded">Opsional</span>
             </div>
             <textarea
               rows={2}
-              placeholder="Opsional: Tuliskan hasil jika sudah selesai, atau kosongkan dan isi nanti saat update sesi..."
+              placeholder="Opsional: Tuliskan hasil jika sudah selesai..."
               value={dailyForm.output_result}
               onChange={e => setDailyForm({ ...dailyForm, output_result: e.target.value })}
               className="input text-xs"
@@ -2073,7 +2104,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 4. Modal: Update Daily Task Progres */}
       <Modal
         isOpen={isEditDailyOpen}
         onClose={() => setIsEditDailyOpen(false)}
@@ -2082,37 +2112,6 @@ export default function ProjectsClient() {
         size="md"
       >
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Tanggal Pelaksanaan</label>
-              <input
-                type="date"
-                value={activeDailyTask?.planned_date || new Date().toISOString().split("T")[0]}
-                className="input text-xs"
-                readOnly
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Waktu (Rentang Jam)</label>
-              <input
-                type="text"
-                value={activeDailyTask?.time_slot || "09.00 - 12.00"}
-                className="input text-xs"
-                readOnly
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-text-primary block mb-1">Input (Aktivitas yang Dikerjakan)</label>
-            <input
-              type="text"
-              value={activeDailyTask?.title || activeDailyTask?.activity_input || ""}
-              className="input text-xs bg-gray-50"
-              readOnly
-            />
-          </div>
-
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Output (Hasil yang Didapat / Deliverable)</label>
             <textarea
@@ -2189,7 +2188,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 5. Modal: Request Task Transfer */}
       <Modal
         isOpen={isTransferModalOpen}
         onClose={() => setIsTransferModalOpen(false)}
@@ -2199,7 +2197,7 @@ export default function ProjectsClient() {
       >
         <div className="flex flex-col gap-3">
           <p className="text-xs text-text-secondary">
-            Ajukan permohonan delegasi tugas ini ke Project Manager untuk dipindahkan ke anggota tim lain yang memiliki kapasitas luang.
+            Ajukan permohonan delegasi tugas ini ke Project Manager untuk dipindahkan ke anggota tim lain:
           </p>
           <div>
             <label className="text-xs font-bold text-text-secondary block mb-1">Alasan Pengalihan Tugas *</label>
@@ -2218,7 +2216,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 6. Modal: Create Project */}
       <Modal
         isOpen={isCreateProjOpen}
         onClose={() => setIsCreateProjOpen(false)}
@@ -2231,7 +2228,7 @@ export default function ProjectsClient() {
             <label className="text-xs font-bold text-text-secondary block mb-1">Nama Proyek *</label>
             <input
               type="text"
-              placeholder="Contoh: Implementasi Sistem Otomasi Pabrik Line 2"
+              placeholder="Contoh: Implementasi Sistem Otomasi Pabrik"
               value={newProjForm.name}
               onChange={e => setNewProjForm({ ...newProjForm, name: e.target.value })}
               className="input text-xs"
@@ -2294,7 +2291,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 7. Modal: Health EVM */}
       <Modal
         isOpen={isHealthModalOpen}
         onClose={() => setIsHealthModalOpen(false)}
@@ -2307,18 +2303,18 @@ export default function ProjectsClient() {
             <div className="card p-3 bg-gray-50 rounded-xl">
               <span className="text-2xs text-text-secondary">Schedule Performance (SPI)</span>
               <div className="text-xl font-bold text-brand-deep-green mt-1">{healthData?.spi || "1.00"}</div>
-              <span className="text-3xs text-text-secondary mt-0.5 block">{healthData?.sv || "Sesuai Jadwal (SV: Rp 0)"}</span>
+              <span className="text-3xs text-text-secondary mt-0.5 block">{healthData?.sv || "Sesuai Jadwal"}</span>
             </div>
             <div className="card p-3 bg-gray-50 rounded-xl">
               <span className="text-2xs text-text-secondary">Cost Performance (CPI)</span>
               <div className="text-xl font-bold text-emerald-600 mt-1">{healthData?.cpi || "1.02"}</div>
-              <span className="text-3xs text-text-secondary mt-0.5 block">{healthData?.cv || "On Budget (CV: +Rp 2jt)"}</span>
+              <span className="text-3xs text-text-secondary mt-0.5 block">{healthData?.cv || "On Budget"}</span>
             </div>
           </div>
           <div className="p-3.5 rounded-xl bg-brand-light-green/60 border border-brand-green/30 text-xs">
             <span className="font-bold text-brand-deep-green block mb-1">Rekomendasi Diagnostik Otomatis:</span>
             <p className="text-text-primary text-2xs leading-relaxed">
-              {healthData?.recommendation || "Kinerja proyek berada dalam koridor aman. Pertahankan laju penyelesaian daily tasks pada sprint aktif."}
+              {healthData?.recommendation || "Kinerja proyek berada dalam koridor aman."}
             </p>
           </div>
           <button onClick={() => setIsHealthModalOpen(false)} className="btn-primary w-full justify-center py-2 text-xs">
@@ -2327,7 +2323,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 8. Modal: Lifecycle Stage Gate Checklist */}
       <Modal
         isOpen={isLifecycleModalOpen}
         onClose={() => setIsLifecycleModalOpen(false)}
@@ -2375,7 +2370,7 @@ export default function ProjectsClient() {
                 onChange={e => setGateChecklist({ ...gateChecklist, qa_checklist_passed: e.target.checked })}
                 className="w-4 h-4 rounded text-brand-green focus:ring-0"
               />
-              <span>4. Checklist QA & Kontrol Mutu Tahap Awal Terpenuhi</span>
+              <span>4. Checklist QA & Kontrol Mutu Terpenuhi</span>
             </label>
           </div>
 
@@ -2392,7 +2387,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 9. Modal: Catat Biaya */}
       <Modal
         isOpen={isCostModalOpen}
         onClose={() => setIsCostModalOpen(false)}
@@ -2456,7 +2450,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 10. Modal: Billing Termin */}
       <Modal
         isOpen={isBillingModalOpen}
         onClose={() => setIsBillingModalOpen(false)}
@@ -2517,7 +2510,6 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 11. Modal: Milestone */}
       <Modal
         isOpen={isMilestoneModalOpen}
         onClose={() => setIsMilestoneModalOpen(false)}
@@ -2568,7 +2560,7 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 12. Modal: Edit Target Finansial & Budget Proyek */}
+      {/* Modal Target Finansial */}
       <Modal
         isOpen={isEditFinancialsOpen}
         onClose={() => setIsEditFinancialsOpen(false)}
@@ -2585,7 +2577,6 @@ export default function ProjectsClient() {
               onChange={e => setFinancialTargetForm({ ...financialTargetForm, contract_amount: Number(e.target.value) })}
               className="input text-xs"
             />
-            <span className="text-3xs text-text-secondary mt-0.5 block">Nilai kesepakatan kontrak penjualan/deal klien.</span>
           </div>
 
           <div>
@@ -2596,7 +2587,6 @@ export default function ProjectsClient() {
               onChange={e => setFinancialTargetForm({ ...financialTargetForm, budget_amount: Number(e.target.value) })}
               className="input text-xs"
             />
-            <span className="text-3xs text-text-secondary mt-0.5 block">Batas maksimal alokasi biaya pengeluaran proyek.</span>
           </div>
 
           <div>
@@ -2609,7 +2599,6 @@ export default function ProjectsClient() {
               onChange={e => setFinancialTargetForm({ ...financialTargetForm, target_margin_percent: Number(e.target.value) })}
               className="input text-xs"
             />
-            <span className="text-3xs text-text-secondary mt-0.5 block">Ambang batas margin keuntungan proyek yang diharapkan.</span>
           </div>
 
           <div className="flex justify-end gap-2 mt-2">
@@ -2621,15 +2610,18 @@ export default function ProjectsClient() {
         </div>
       </Modal>
 
-      {/* 13. Modal: Permintaan Dana Budgeting (Funding Request) */}
+      {/* Modal Funding Request */}
       <Modal
         isOpen={isFundingRequestOpen}
         onClose={() => setIsFundingRequestOpen(false)}
-        title="Ajukan Permintaan Dana & Budgeting Proyek"
+        title="Ajukan Permintaan Dana & Budgeting Proyek (Cash Advance)"
         subtitle={`Proyek: ${selectedProject?.project_name}`}
         size="md"
       >
         <div className="flex flex-col gap-3">
+          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800">
+            Pengajuan ini akan diteruskan ke tab <b>Project Funding</b> pada modul Finance untuk diverifikasi dan disetujui oleh <b>Finance Approver</b>.
+          </div>
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Kategori Pengeluaran / Kebutuhan *</label>
             <select
@@ -2668,7 +2660,7 @@ export default function ProjectsClient() {
 
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => setIsFundingRequestOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleCreateFundingRequest} className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700">
+            <button onClick={handleCreateFundingRequest} className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 font-bold">
               Kirim Permintaan ke Finance
             </button>
           </div>
