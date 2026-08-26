@@ -21,6 +21,7 @@ import {
   updateCustomerCreditLimit, calculateCreditSnapshot,
 } from "@/lib/api/crm.api";
 import api from "@/lib/api/axios";
+import { feedApi } from "@/lib/api/feed.api";
 
 /* ── Tabs Configuration ──────────────────────────── */
 const CRM_TABS = [
@@ -1223,6 +1224,16 @@ export default function CrmClient() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  /* Track recently opened CRM */
+  useEffect(() => {
+    feedApi.trackRecentItem({
+      item_type: "ORDER",
+      object_id: `crm-${activeTab}`,
+      title: `CRM — ${CRM_TABS.find(t => t.id === activeTab)?.label || "Dashboard"}`,
+      target_url: `/crm`,
+    }).catch(() => {});
+  }, [activeTab]);
 
   const handleOpportunityCreated = (newOpp: any) => {
     setCrmData(prev => {

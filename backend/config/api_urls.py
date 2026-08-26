@@ -7,9 +7,17 @@ dari config/urls.py.
 
 from django.urls import include, path
 from apps.accounts.api.user_seed import SeedUsersView
+from apps.core.api.viewsets import RightSidebarFeedViewSet, UserRecentItemViewSet
+from rest_framework.routers import DefaultRouter
 
+feed_router = DefaultRouter()
+feed_router.register(r"sidebar-feed", RightSidebarFeedViewSet, basename="top-sidebar-feed")
+feed_router.register(r"recent-items", UserRecentItemViewSet, basename="top-recent-items")
 
 urlpatterns = [
+    # Top-level direct shortcuts
+    path("", include(feed_router.urls)),
+
     # Authentication
 
     path(

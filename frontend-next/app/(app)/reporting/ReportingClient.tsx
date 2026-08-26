@@ -10,6 +10,7 @@ import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import toast from "react-hot-toast";
+import { feedApi } from "@/lib/api/feed.api";
 
 /* ── Tab Config ──────────────────────────────────── */
 const REPORT_TABS = [
@@ -343,6 +344,16 @@ export default function ReportingClient() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  /* Track recently opened Reporting */
+  useEffect(() => {
+    feedApi.trackRecentItem({
+      item_type: "REPORT",
+      object_id: `rep-${activeTab}`,
+      title: `Laporan — ${REPORT_TABS.find(t => t.id === activeTab)?.label || "Executive"}`,
+      target_url: "/reporting",
+    }).catch(() => {});
+  }, [activeTab]);
 
   const handleExport = (format: "csv" | "pdf") => {
     if (format === "csv") {

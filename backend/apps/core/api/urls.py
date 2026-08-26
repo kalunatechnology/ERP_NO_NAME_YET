@@ -1,5 +1,14 @@
 from rest_framework.routers import DefaultRouter
-from .viewsets import TenantViewSet, CompanyViewSet, OrganizationViewSet, BusinessDocumentViewSet, DocumentLinkViewSet, WorkflowInstanceViewSet, WorkflowApprovalViewSet, AuditEventViewSet, NotificationViewSet, NotificationRecipientViewSet, QuickActionViewSet, FileViewSet, DocumentAttachmentViewSet, DocumentTemplateViewSet, DocumentTemplateVersionViewSet, DocumentTemplateFieldViewSet, GeneratedDocumentViewSet, DocumentSignatureViewSet
+from .viewsets import (
+    TenantViewSet, CompanyViewSet, OrganizationViewSet, BusinessDocumentViewSet,
+    DocumentLinkViewSet, WorkflowInstanceViewSet, WorkflowApprovalViewSet,
+    AuditEventViewSet, NotificationViewSet, NotificationRecipientViewSet,
+    QuickActionViewSet, FileViewSet, DocumentAttachmentViewSet,
+    DocumentTemplateViewSet, DocumentTemplateVersionViewSet,
+    DocumentTemplateFieldViewSet, GeneratedDocumentViewSet,
+    DocumentSignatureViewSet, RightSidebarFeedViewSet,
+    UserRecentItemViewSet, TeamContactViewSet
+)
 
 app_name = "core"
 router = DefaultRouter()
@@ -21,5 +30,8 @@ router.register(r"document-template-versions", DocumentTemplateVersionViewSet, b
 router.register(r"document-template-fields", DocumentTemplateFieldViewSet, basename="document-template-field")
 router.register(r"generated-documents", GeneratedDocumentViewSet, basename="generated-document")
 router.register(r"document-signatures", DocumentSignatureViewSet, basename="document-signature")
+router.register(r"sidebar-feed", RightSidebarFeedViewSet, basename="sidebar-feed")
+router.register(r"recent-items", UserRecentItemViewSet, basename="recent-item")
+router.register(r"team-contacts", TeamContactViewSet, basename="team-contact")
 
 urlpatterns = router.urls

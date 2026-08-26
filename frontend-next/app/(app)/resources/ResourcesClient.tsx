@@ -8,6 +8,7 @@ import { normalizeList } from "@/lib/api/auth.api";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
+import { feedApi } from "@/lib/api/feed.api";
 
 const RESOURCES = [
   /* ── Projects ────────── */
@@ -53,6 +54,18 @@ export default function ResourcesClient() {
       setSearch(initialQuery);
     }
   }, [initialQuery]);
+
+  /* Track recently opened resource */
+  useEffect(() => {
+    if (selectedRes) {
+      feedApi.trackRecentItem({
+        item_type: "RESOURCE",
+        object_id: selectedRes.id,
+        title: `Data Explorer — ${selectedRes.name}`,
+        target_url: "/resources",
+      }).catch(() => {});
+    }
+  }, [selectedRes?.id]);
 
   const fetchRows = async (res = selectedRes) => {
     setLoading(true);

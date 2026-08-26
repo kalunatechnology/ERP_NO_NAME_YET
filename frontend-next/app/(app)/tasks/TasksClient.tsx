@@ -9,6 +9,7 @@ import {
   CalendarDays, AlertTriangle, Clock, ChevronDown, ChevronRight, Pencil, X, Save,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { feedApi } from "@/lib/api/feed.api";
 
 /* ── Status helpers ─────────────────────────────── */
 function StatusBadge({ status, progress }: { status: string; progress?: number }) {
@@ -234,6 +235,16 @@ export default function TasksClient() {
   const [viewMode, setViewMode] = useState<"list" | "grouped">("grouped");
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  /* Track recently opened Tasks */
+  useEffect(() => {
+    feedApi.trackRecentItem({
+      item_type: "PROJECT",
+      object_id: "tasks-overview",
+      title: "Daily Tasks & Assignment",
+      target_url: "/tasks",
+    }).catch(() => {});
+  }, []);
 
   const isPM = useMemo(() => {
     if (!user) return false;

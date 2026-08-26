@@ -7,6 +7,7 @@ Review nullability, choices, indexes, and on_delete policies before production r
 
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 
@@ -363,3 +364,130 @@ class DocumentSignature(models.Model):
 
     def __str__(self):
         return str(self.id)
+
+
+class TimeStampedModel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class UserRecentItem(TimeStampedModel):
+    """Mencatat riwayat item yang dibuka user (Recently Opened di Left Sidebar)"""
+    class ItemType(models.TextChoices):
+        PROJECT = 'PROJECT', 'Project'
+        ORDER = 'ORDER', 'Order'
+        RESOURCE = 'RESOURCE', 'Resource'
+        REPORT = 'REPORT', 'Report'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='recent_items'
+    )
+    item_type = models.CharField(max_length=32, choices=ItemType.choices)
+    object_id = models.CharField(max_length=255, db_index=True)
+    title = models.CharField(max_length=255)
+    target_url = models.CharField(max_length=512)
+    last_accessed_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        db_table = "core_user_recent_item"
+        ordering = ['-last_accessed_at']
+        indexes = [
+            models.Index(fields=['user', '-last_accessed_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.title} ({self.item_type})"
+
+
+class AppNotification(TimeStampedModel):
+    """Notifikasi terarah untuk user (Notifications di Right Sidebar)"""
+    class Category(models.TextChoices):
+        DOCUMENT = 'DOCUMENT', 'Document Sent'
+        ACCESS_REQUEST = 'ACCESS_REQUEST', 'Access Request'
+        STATUS_UPDATE = 'STATUS_UPDATE', 'Status Update'
+        AUTH = 'AUTH', 'Authentication'
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='received_notifications'
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='triggered_notifications'
+    )
+    category = models.CharField(max_length=32, choices=Category.choices, default=Category.DOCUMENT)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    target_url = models.CharField(max_length=512, blank=True)
+    is_read = models.BooleanField(default=False, db_index=True)
+
+    class Meta:
+        db_table = "core_app_notification"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} -> {self.recipient}"
+
+
+class ActivityFeed(TimeStampedModel):
+    """Audit log feed tim/proyek (Activities di Right Sidebar)"""
+    class ActionVerb(models.TextChoices):
+        REVIEW_ASKED = 'REVIEW_ASKED', 'Asking for a review'
+        DOC_SENT = 'DOC_SENT', 'Sent a document'
+        REPORT_APPROVED = 'REPORT_APPROVED', 'Report Approved'
+        REPORT_UPLOADED = 'REPORT_UPLOADED', 'Uploaded report'
+        GENERIC_ACTION = 'GENERIC_ACTION', 'Action'
+
+    company = models.ForeignKey(
+        'core.Company',
+        on_delete=models.CASCADE,
+        related_name='activity_feeds',
+        null=True,
+        blank=True
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='activities_performed'
+    )
+    verb = models.CharField(max_length=32, choices=ActionVerb.choices)
+    target_name = models.CharField(max_length=255, blank=True)
+    target_url = models.CharField(max_length=512, blank=True)
+
+    class Meta:
+        db_table = "core_activity_feed"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.actor} - {self.verb} ({self.target_name})"
+
+
+class TeamContact(models.Model):
+    """Relasi kontak rekan kerja aktif (Contacts di Right Sidebar)"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='contact_profile'
+    )
+    display_order = models.PositiveIntegerField(default=0)
+    is_pinned = models.BooleanField(default=True)
+    custom_status = models.CharField(max_length=120, blank=True)
+
+    class Meta:
+        db_table = "core_team_contact"
+        ordering = ['display_order']
+
+    def __str__(self):
+        return str(self.user)
+

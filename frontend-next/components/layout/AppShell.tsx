@@ -9,7 +9,11 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { RightPanel } from "@/components/ui/RightPanel";
 
-/* ── Route RBAC Matrix ──────────────────────────── */
+/* ── All Known App Routes for 404 passthrough ────── */
+const ALL_KNOWN_APP_ROUTES = [
+  "/dashboard", "/projects", "/finance", "/crm", "/reporting",
+  "/resources", "/tasks", "/settings", "/notifications"
+];
 const ALLOWED_ROUTES_BY_ROLE: Record<UserRoleType, string[]> = {
   executive: [
     "/dashboard", "/projects", "/finance", "/crm", "/reporting",
@@ -86,10 +90,15 @@ export function AppShell({ children }: AppShellProps) {
   if (!isAuthenticated) return null;
 
   /* ── Check Route Access for Current Role ── */
+  const isKnownAppRoute = ALL_KNOWN_APP_ROUTES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
   const allowedList = ALLOWED_ROUTES_BY_ROLE[userRole] || ["/dashboard", "/projects"];
   const isRouteAllowed =
+    !isKnownAppRoute ||
     userRole === "executive" ||
     pathname === "/" ||
+    pathname === "/401" ||
     allowedList.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
   return (

@@ -1,12 +1,58 @@
 /**
  * Live Feed & Observability API
  * Dynamically aggregates real-time notifications, audit activity stream,
- * and company team member contacts from all 3 pillars (PM, Finance, CRM).
+ * recently opened items, and company team member contacts.
  */
 
 import api from "./axios";
 import { normalizeList } from "./auth.api";
 import { formatMoney } from "../utils";
+
+export interface NotificationItem {
+  id: string;
+  actor?: { id: string; username: string; full_name: string; email: string; avatar_url?: string };
+  category: "DOCUMENT" | "ACCESS_REQUEST" | "STATUS_UPDATE" | "AUTH" | string;
+  title: string;
+  description: string;
+  target_url: string;
+  formatted_time: string;
+  is_read: boolean;
+  created_at?: string;
+}
+
+export interface ActivityItem {
+  id: string;
+  actor?: { id: string; username: string; full_name: string; email: string; avatar_url?: string };
+  verb: "REVIEW_ASKED" | "DOC_SENT" | "REPORT_APPROVED" | "REPORT_UPLOADED" | "GENERIC_ACTION" | string;
+  target_name: string;
+  target_url: string;
+  formatted_time: string;
+  created_at?: string;
+}
+
+export interface ContactItem {
+  id: string;
+  username: string;
+  full_name: string;
+  email: string;
+  avatar_url?: string;
+  is_active: boolean;
+}
+
+export interface UserRecentItemDto {
+  id: string;
+  item_type: "PROJECT" | "ORDER" | "RESOURCE" | "REPORT" | string;
+  object_id: string;
+  title: string;
+  target_url: string;
+  last_accessed_at: string;
+}
+
+export interface SidebarFeedResponse {
+  notifications: NotificationItem[];
+  activities: ActivityItem[];
+  contacts: ContactItem[];
+}
 
 export interface DynamicFeedItem {
   id: string | number;
@@ -27,6 +73,7 @@ export interface DynamicContact {
   initials: string;
   color: string;
   status: "online" | "away" | "offline";
+  avatar_url?: string;
 }
 
 function timeAgo(dateString?: string | Date): string {
@@ -45,11 +92,114 @@ function timeAgo(dateString?: string | Date): string {
   return `${diffDays} hari lalu`;
 }
 
+export const feedApi = {
+  getSidebarFeed: async (): Promise<SidebarFeedResponse> => {
+    try {
+      const res = await api.get<SidebarFeedResponse>("/api/v1/sidebar-feed/");
+      return res.data;
+    } catch {
+      const res = await api.get<SidebarFeedResponse>("/api/v1/core/sidebar-feed/");
+      return res.data;
+    }
+  },
+  markNotificationsRead: async () => {
+    try {
+      return await api.post("/api/v1/sidebar-feed/mark-read/");
+    } catch {
+      return await api.post("/api/v1/core/sidebar-feed/mark-read/");
+    }
+  },
+  trackRecentItem: async (data: {
+    item_type: "PROJECT" | "ORDER" | "RESOURCE" | "REPORT";
+    object_id: string;
+    title: string;
+    target_url: string;
+  }) => {
+    try {
+      return await api.post("/api/v1/recent-items/track/", data);
+    } catch {
+      return await api.post("/api/v1/core/recent-items/track/", data);
+    }
+  },
+  getRecentItems: async (): Promise<UserRecentItemDto[]> => {
+    try {
+      const res = await api.get("/api/v1/recent-items/");
+      return normalizeList<UserRecentItemDto>(res.data).rows;
+    } catch {
+      const res = await api.get("/api/v1/core/recent-items/");
+      return normalizeList<UserRecentItemDto>(res.data).rows;
+    }
+  }
+};
+
 export async function fetchDynamicRightPanelData(): Promise<{
   notifications: DynamicFeedItem[];
   activities: DynamicFeedItem[];
   contacts: DynamicContact[];
 }> {
+  // First attempt: fetch from backend dedicated feed engine
+  try {
+    const feed = await feedApi.getSidebarFeed();
+    if (feed && (feed.notifications?.length || feed.activities?.length || feed.contacts?.length)) {
+      const notifications: DynamicFeedItem[] = (feed.notifications || []).map((n) => ({
+        id: n.id,
+        label: n.title,
+        sublabel: n.description || (n.actor?.full_name ? `Dari ${n.actor.full_name}` : undefined),
+        time: n.formatted_time || timeAgo(n.created_at),
+        color: n.category === "ACCESS_REQUEST" ? "#EF4444" : n.category === "STATUS_UPDATE" ? "#F59E0B" : "#5A861F",
+        category: n.category === "ACCESS_REQUEST" ? "pm" : n.category === "STATUS_UPDATE" ? "crm" : "general",
+        href: n.target_url || "/dashboard",
+      }));
+
+      const activities: DynamicFeedItem[] = (feed.activities || []).map((a) => {
+        const actorName = a.actor?.full_name || a.actor?.username || "Sistem";
+        const verbMap: Record<string, string> = {
+          REVIEW_ASKED: "meminta review",
+          DOC_SENT: "mengirim dokumen",
+          REPORT_APPROVED: "menyetujui laporan",
+          REPORT_UPLOADED: "mengunggah laporan",
+          GENERIC_ACTION: "melakukan tindakan",
+        };
+        const actionText = verbMap[a.verb] || a.verb;
+        return {
+          id: a.id,
+          label: `${actorName} ${actionText}`,
+          sublabel: a.target_name || undefined,
+          time: a.formatted_time || timeAgo(a.created_at),
+          color: "#5A861F",
+          category: "general",
+          href: a.target_url || "/dashboard",
+        };
+      });
+
+      const PASTEL_COLORS = ["#F0FEE0", "#E8F5E9", "#F3E5F5", "#E3F2FD", "#FFF9C4", "#FFECB3"];
+      const contacts: DynamicContact[] = (feed.contacts || []).map((c, i) => {
+        const name = c.full_name || c.username || `User #${c.id}`;
+        const initials = name
+          .split(" ")
+          .map((w) => w[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase();
+        return {
+          id: c.id,
+          name,
+          role: "Team Member",
+          email: c.email,
+          initials,
+          color: PASTEL_COLORS[i % PASTEL_COLORS.length],
+          status: c.is_active ? "online" : "offline",
+          avatar_url: c.avatar_url,
+        };
+      });
+
+      return { notifications, activities, contacts };
+    }
+  } catch (err) {
+    console.warn("Backend sidebar feed fallback to direct modules:", err);
+  }
+
+  // Fallback: Aggregate from modular endpoints
   const [
     tasksRes, projectsRes, costsRes, proposalsRes, fundingsRes, dealsRes, usersRes
   ] = await Promise.all([
@@ -83,10 +233,8 @@ export async function fetchDynamicRightPanelData(): Promise<{
     return c.description || (c.category ? `Biaya ${c.category}` : `Pengeluaran #${c.id || "01"}`);
   }
 
-  /* ── 1. BUILD REAL NOTIFICATIONS ──────────────── */
   const notifications: DynamicFeedItem[] = [];
 
-  // Urgent / In-Progress Tasks with deadlines
   tasks.filter(t => t.status !== "DONE").slice(0, 3).forEach(t => {
     notifications.push({
       id: `task-${t.id}`,
@@ -99,7 +247,6 @@ export async function fetchDynamicRightPanelData(): Promise<{
     });
   });
 
-  // Pending Funding Requests
   fundings.filter(f => f.status === "PENDING").slice(0, 2).forEach(f => {
     notifications.push({
       id: `funding-${f.id}`,
@@ -112,7 +259,6 @@ export async function fetchDynamicRightPanelData(): Promise<{
     });
   });
 
-  // Pending Billing Proposals
   proposals.filter(p => p.status === "PENDING").slice(0, 2).forEach(p => {
     notifications.push({
       id: `billing-${p.id}`,
@@ -125,7 +271,6 @@ export async function fetchDynamicRightPanelData(): Promise<{
     });
   });
 
-  // Open high-value deals
   deals.filter(d => !["CLOSED_WON", "CLOSED_LOST"].includes(d.stage)).slice(0, 2).forEach(d => {
     notifications.push({
       id: `deal-${d.id}`,
@@ -138,10 +283,8 @@ export async function fetchDynamicRightPanelData(): Promise<{
     });
   });
 
-  /* ── 2. BUILD REAL RECENT ACTIVITIES ──────────── */
   const activities: DynamicFeedItem[] = [];
 
-  // Completed Tasks
   tasks.filter(t => t.status === "DONE").slice(0, 3).forEach(t => {
     activities.push({
       id: `act-task-${t.id}`,
@@ -154,7 +297,6 @@ export async function fetchDynamicRightPanelData(): Promise<{
     });
   });
 
-  // Recorded Costs
   costs.slice(0, 2).forEach(c => {
     activities.push({
       id: `act-cost-${c.id}`,
@@ -167,7 +309,6 @@ export async function fetchDynamicRightPanelData(): Promise<{
     });
   });
 
-  // Projects started / stage gates
   projects.slice(0, 2).forEach(p => {
     activities.push({
       id: `act-prj-${p.id}`,
@@ -180,7 +321,6 @@ export async function fetchDynamicRightPanelData(): Promise<{
     });
   });
 
-  /* ── 3. BUILD REAL CONTACTS / TEAM MEMBERS ───── */
   const PASTEL_COLORS = ["#F0FEE0", "#E8F5E9", "#F3E5F5", "#E3F2FD", "#FFF9C4", "#FFECB3"];
   const contacts: DynamicContact[] = [];
 
@@ -207,7 +347,6 @@ export async function fetchDynamicRightPanelData(): Promise<{
       });
     });
   } else {
-    // Fallback demo personas if no user list returned
     contacts.push(
       { id: "c1", name: "Rina Sari", role: "Project Manager", initials: "RS", color: "#F0FEE0", status: "online" },
       { id: "c2", name: "Budi Santoso", role: "Finance Controller", initials: "BS", color: "#E8F5E9", status: "online" },

@@ -1,0 +1,39 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="gradTopLeft" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(200 150) rotate(45) scale(850 650)">
+      <stop stop-color="#D5E6CB" stop-opacity="0.75" />
+      <stop offset="0.6" stop-color="#E8F2E2" stop-opacity="0.35" />
+      <stop offset="1" stop-color="#FAFCFA" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="gradBottomRight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1720 930) rotate(225) scale(850 650)">
+      <stop stop-color="#C2DDB5" stop-opacity="0.65" />
+      <stop offset="0.6" stop-color="#E1EFE0" stop-opacity="0.3" />
+      <stop offset="1" stop-color="#FAFCFA" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="gradCenterGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(960 540) rotate(90) scale(480 720)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="0.7" stop-color="#F2F8EE" stop-opacity="0.4" />
+      <stop offset="1" stop-color="#FAFCFA" stop-opacity="0" />
+    </radialGradient>
+    <filter id="blurFilter" x="-10%" y="-10%" width="120%" height="120%" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="70" />
+    </filter>
+  </defs>
+
+  <!-- Base background color -->
+  <rect width="1920" height="1080" fill="#FAFCFA" />
+
+  <!-- Ambient Glow Layers -->
+  <rect width="1920" height="1080" fill="url(#gradTopLeft)" />
+  <rect width="1920" height="1080" fill="url(#gradBottomRight)" />
+  <rect width="1920" height="1080" fill="url(#gradCenterGlow)" />
+
+  <!-- Organic Atmospheric Ambient Glow Shapes -->
+  <g filter="url(#blurFilter)" opacity="0.6">
+    <circle cx="180" cy="180" r="320" fill="#CDE2C2" />
+    <circle cx="1740" cy="900" r="340" fill="#BFDCB1" />
+    <circle cx="960" cy="540" r="280" fill="#EBF5E6" />
+    <circle cx="1400" cy="240" r="200" fill="#DDECD7" />
+    <circle cx="520" cy="840" r="220" fill="#D5E8CE" />
+  </g>
+</svg>

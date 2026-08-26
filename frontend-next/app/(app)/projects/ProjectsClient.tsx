@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
+import { feedApi } from "@/lib/api/feed.api";
 
 function formatRupiah(val?: number): string {
   if (!val && val !== 0) return "Rp 0";
@@ -145,6 +146,18 @@ export default function ProjectsClient() {
   const [transfers, setTransfers] = useState<TaskTransfer[]>([]);
 
   const selectedProject = projects.find(p => String(p.id) === String(selectedId)) || projects[0] || null;
+
+  /* Track recently opened project */
+  useEffect(() => {
+    if (selectedProject) {
+      feedApi.trackRecentItem({
+        item_type: "PROJECT",
+        object_id: String(selectedProject.id),
+        title: selectedProject.project_name || (selectedProject as any).name || `Proyek #${selectedProject.id}`,
+        target_url: `/projects`,
+      }).catch(() => {});
+    }
+  }, [selectedProject?.id]);
 
   /* Project Manager & Executive Role Guard */
   const isPM = useMemo(() => {

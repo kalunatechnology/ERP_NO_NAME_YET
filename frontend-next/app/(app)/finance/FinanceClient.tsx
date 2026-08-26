@@ -11,6 +11,7 @@ import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
+import { feedApi } from "@/lib/api/feed.api";
 
 const FINANCE_TABS = [
   { id: "overview",     label: "Dashboard Ringkasan"       },
@@ -101,6 +102,16 @@ export default function FinanceClient() {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  /* Track recently opened finance */
+  useEffect(() => {
+    feedApi.trackRecentItem({
+      item_type: "ORDER",
+      object_id: `fin-${activeTab}`,
+      title: `Finance — ${FINANCE_TABS.find(t => t.id === activeTab)?.label || "Overview"}`,
+      target_url: `/finance`,
+    }).catch(() => {});
+  }, [activeTab]);
 
   /* Data states */
   const [costEntries, setCostEntries] = useState<any[]>([]);

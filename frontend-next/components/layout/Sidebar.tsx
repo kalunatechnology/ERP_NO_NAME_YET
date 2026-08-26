@@ -1,13 +1,15 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderKanban, CheckSquare, ListTodo,
   DollarSign, Users, BarChart3, Zap, TrendingUp, Building2,
-  LogOut, ChevronRight,
+  LogOut, ChevronRight, Clock, FileText, Folder
 } from "lucide-react";
 import { useAuth, UserRoleType, getRoleLabel, getRoleBadgeStyle } from "@/contexts/AuthContext";
+import { feedApi, UserRecentItemDto } from "@/lib/api/feed.api";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -56,12 +58,19 @@ const NAV_BY_ROLE: Record<UserRoleType, NavItem[]> = {
 export function Sidebar() {
   const pathname = usePathname();
   const { user, userRole, logout } = useAuth();
+  const [recentItems, setRecentItems] = useState<UserRecentItemDto[]>([]);
 
   const initial = user?.full_name?.[0] ?? user?.email?.[0]?.toUpperCase() ?? "U";
   const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
   const roleLabel = getRoleLabel(userRole);
   const badgeStyle = getRoleBadgeStyle(userRole);
   const navItems = NAV_BY_ROLE[userRole] ?? NAV_BY_ROLE.staff;
+
+  useEffect(() => {
+    feedApi.getRecentItems().then(items => {
+      if (items && items.length) setRecentItems(items.slice(0, 4));
+    }).catch(() => {});
+  }, [pathname]);
 
   return (
     <aside
@@ -146,6 +155,28 @@ export function Sidebar() {
             })}
           </nav>
         </div>
+
+        {/* Recently Opened (UserRecentItems) */}
+        {recentItems.length > 0 && (
+          <div className="flex flex-col gap-1 mt-1">
+            <p className="text-2xs font-semibold text-text-secondary uppercase tracking-wider px-2 mb-0.5 flex items-center gap-1.5">
+              <Clock size={11} className="text-brand-green" />
+              <span>Recently Opened</span>
+            </p>
+            <div className="flex flex-col gap-0.5">
+              {recentItems.map((item) => (
+                <Link
+                  key={item.id}
+                  href={item.target_url || "/dashboard"}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-text-primary hover:bg-brand-light-green/40 hover:text-brand-deep-green transition-colors group"
+                >
+                  <FileText size={13} className="text-text-secondary group-hover:text-brand-green flex-shrink-0" />
+                  <span className="truncate flex-1">{item.title}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Bottom section ────────────────────── */}
