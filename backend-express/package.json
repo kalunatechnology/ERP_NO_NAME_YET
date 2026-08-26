@@ -2,11 +2,11 @@
   "name": "erp-backend-express",
   "version": "1.0.0",
   "description": "ERP Backend — Express.js + TypeScript + Prisma (100% Parity with Django REST Framework)",
-  "main": "dist/server.js",
+  "main": "server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --exit-child src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node server.js",
     "seed": "ts-node prisma/seed.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
