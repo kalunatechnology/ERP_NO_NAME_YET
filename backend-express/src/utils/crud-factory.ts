@@ -14,25 +14,58 @@ export interface CrudOptions {
   afterCreate?: (req: Request, record: any) => Promise<void> | void;
   afterUpdate?: (req: Request, record: any, before: any) => Promise<void> | void;
   afterDelete?: (req: Request, record: any) => Promise<void> | void;
+  transform?: (record: any) => any;
 }
 
 /**
- * Creates a standard DRF-compatible Router for any Prisma model.
- * Implements:
- *   - GET /               (list with pagination, search, ordering, filters)
- *   - POST /              (create)
- *   - GET /metadata/      (metadata)
- *   - POST /bulk-create/  (bulk create)
- *   - PATCH /bulk-update/ (bulk update)
- *   - POST /bulk-delete/  (bulk delete)
- *   - GET /:id/           (retrieve)
- *   - PUT /:id/           (update)
- *   - PATCH /:id/         (partial update)
- *   - DELETE /:id/        (delete)
+ * Universal record transformer to ensure 100% DRF serializer parity:
+ * Injects FK aliases (e.g. project_id -> project, weekly_task_id -> weekly_task)
+ * and domain field aliases (progress_percent -> progress, project_name -> name).
  */
+export function normalizeRecord(record: any, modelName?: string): any {
+  if (!record || typeof record !== 'object') return record;
+  const result: any = { ...record };
+
+  // Common FK aliases
+  if (result.project_id !== undefined && result.project === undefined) result.project = result.project_id;
+  if (result.main_task_id !== undefined && result.main_task === undefined) result.main_task = result.main_task_id;
+  if (result.weekly_task_id !== undefined && result.weekly_task === undefined) {
+    result.weekly_task = result.weekly_task_id;
+    result.weekly_plan_id = result.weekly_task_id;
+  }
+  if (result.owner_id !== undefined && result.owner === undefined) result.owner = result.owner_id;
+  if (result.assignee_id !== undefined && result.assignee === undefined) result.assignee = result.assignee_id;
+  if (result.customer_party_id !== undefined && result.customer === undefined) result.customer = result.customer_party_id;
+  if (result.vendor_party_id !== undefined && result.vendor === undefined) result.vendor = result.vendor_party_id;
+  if (result.product_id !== undefined && result.product === undefined) result.product = result.product_id;
+  if (result.warehouse_id !== undefined && result.warehouse === undefined) result.warehouse = result.warehouse_id;
+
+  // Project domain aliases
+  if (result.project_name !== undefined && result.name === undefined) result.name = result.project_name;
+  if (result.project_code !== undefined && result.code === undefined) result.code = result.project_code;
+  if (result.progress_percent !== undefined) {
+    if (result.progress === undefined) result.progress = Number(result.progress_percent);
+    if (result.progress_percentage === undefined) result.progress_percentage = Number(result.progress_percent);
+  }
+  if (result.budget_amount !== undefined && result.budget === undefined) result.budget = Number(result.budget_amount);
+  if (result.manager_name !== undefined && result.project_manager_name === undefined) result.project_manager_name = result.manager_name;
+
+  // Task aliases
+  if (result.title !== undefined && result.activity_input === undefined) result.activity_input = result.title;
+  if (result.name !== undefined && result.title === undefined) result.title = result.name;
+
+  return result;
+}
+
 export function createCrudRouter(options: CrudOptions): Router {
   const router = Router();
   const delegate = (prisma as any)[options.modelName];
+
+  const format = (rec: any) => {
+    let out = normalizeRecord(rec, String(options.modelName));
+    if (options.transform) out = options.transform(out);
+    return out;
+  };
 
   // 1. Metadata endpoint
   router.get('/metadata', (req: Request, res: Response) => {
@@ -57,7 +90,7 @@ export function createCrudRouter(options: CrudOptions): Router {
           if (req.user?.tenant_id && !payload.tenant_id) payload.tenant_id = req.user.tenant_id;
           if (req.companyId && !payload.company_id) payload.company_id = req.companyId;
           const rec = await tx[options.modelName].create({ data: payload });
-          results.push(rec);
+          results.push(format(rec));
         }
         return results;
       });
@@ -85,7 +118,7 @@ export function createCrudRouter(options: CrudOptions): Router {
             where: { id },
             data,
           });
-          results.push(rec);
+          results.push(format(rec));
         }
         return results;
       });
@@ -121,7 +154,6 @@ export function createCrudRouter(options: CrudOptions): Router {
       // Multi-tenant isolation filter
       if (req.user && !req.user.is_superuser) {
         if (req.user.tenant_id) {
-          // Check if model has tenant_id column in where filter
           where.OR = [
             { tenant_id: req.user.tenant_id },
             { tenant_id: null },
@@ -129,14 +161,21 @@ export function createCrudRouter(options: CrudOptions): Router {
         }
       }
 
-      // Query param filters
+      // Query param filters with FK alias mapping
       for (const [key, val] of Object.entries(req.query)) {
         if (['page', 'page_size', 'search', 'ordering'].includes(key)) continue;
         if (typeof val === 'string' && val !== '') {
-          if (val === 'true') where[key] = true;
-          else if (val === 'false') where[key] = false;
-          else if (val === 'null') where[key] = null;
-          else where[key] = val;
+          let resolvedKey = key;
+          if (key === 'project') resolvedKey = 'project_id';
+          else if (key === 'main_task') resolvedKey = 'main_task_id';
+          else if (key === 'weekly_task') resolvedKey = 'weekly_task_id';
+          else if (key === 'owner') resolvedKey = 'owner_id';
+          else if (key === 'assignee') resolvedKey = 'assignee_id';
+
+          if (val === 'true') where[resolvedKey] = true;
+          else if (val === 'false') where[resolvedKey] = false;
+          else if (val === 'null') where[resolvedKey] = null;
+          else where[resolvedKey] = val;
         }
       }
 
@@ -174,7 +213,8 @@ export function createCrudRouter(options: CrudOptions): Router {
         delegate.findMany(queryArgs),
       ]);
 
-      res.json(paginateArray(req, items, totalCount, page, pageSize));
+      const formattedItems = items.map(format);
+      res.json(paginateArray(req, formattedItems, totalCount, page, pageSize));
     } catch (err) {
       next(err);
     }
@@ -204,7 +244,7 @@ export function createCrudRouter(options: CrudOptions): Router {
         await options.afterCreate(req, record);
       }
 
-      res.status(201).json(record);
+      res.status(201).json(format(record));
     } catch (err) {
       next(err);
     }
@@ -219,7 +259,7 @@ export function createCrudRouter(options: CrudOptions): Router {
 
       const record = await delegate.findUnique(queryArgs);
       if (!record) throw new NotFoundError(String(options.modelName));
-      res.json(record);
+      res.json(format(record));
     } catch (err) {
       next(err);
     }
@@ -249,7 +289,7 @@ export function createCrudRouter(options: CrudOptions): Router {
         await options.afterUpdate(req, updated, existing);
       }
 
-      res.json(updated);
+      res.json(format(updated));
     } catch (err) {
       next(err);
     }
@@ -279,7 +319,7 @@ export function createCrudRouter(options: CrudOptions): Router {
         await options.afterUpdate(req, updated, existing);
       }
 
-      res.json(updated);
+      res.json(format(updated));
     } catch (err) {
       next(err);
     }
