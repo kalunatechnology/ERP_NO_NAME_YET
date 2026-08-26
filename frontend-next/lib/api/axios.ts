@@ -90,8 +90,12 @@ function refreshTokenOnce(): Promise<string | null> {
       localStorage.removeItem("active_company_id");
       syncCookie();
 
-      if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
-        window.location.href = "/login";
+      if (
+        typeof window !== "undefined" &&
+        !window.location.pathname.includes("/login") &&
+        !window.location.pathname.includes("/error/")
+      ) {
+        window.location.href = "/error/401";
       }
       throw err;
     })
@@ -106,9 +110,10 @@ api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
+    const status = error.response?.status;
 
     if (
-      error.response?.status === 401 &&
+      status === 401 &&
       !original?._retry &&
       typeof window !== "undefined"
     ) {
@@ -121,9 +126,25 @@ api.interceptors.response.use(
           return api(original);
         }
       } catch (refreshErr) {
+        if (
+          typeof window !== "undefined" &&
+          !window.location.pathname.includes("/login") &&
+          !window.location.pathname.includes("/error/")
+        ) {
+          window.location.href = "/error/401";
+        }
         return Promise.reject(refreshErr);
       }
     }
+
+    if (
+      status === 403 &&
+      typeof window !== "undefined" &&
+      !window.location.pathname.includes("/error/")
+    ) {
+      window.location.href = "/error/403";
+    }
+
     return Promise.reject(error);
   }
 );

@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  RefreshCw, Bell, Activity, Users, ChevronRight, ExternalLink,
-  CheckCheck, Mail, Phone, Copy, Check, X
+  RefreshCw, CheckCheck, Mail, Copy, Check, PanelRightClose
 } from "lucide-react";
 import {
   fetchDynamicRightPanelData,
@@ -17,7 +15,11 @@ import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 
-export function RightPanel() {
+interface RightPanelProps {
+  onToggleCollapse?: () => void;
+}
+
+export function RightPanel({ onToggleCollapse }: RightPanelProps) {
   const router = useRouter();
   const [notifications, setNotifications] = useState<DynamicFeedItem[]>([]);
   const [activities, setActivities] = useState<DynamicFeedItem[]>([]);
@@ -33,9 +35,9 @@ export function RightPanel() {
     else setRefreshing(true);
     try {
       const data = await fetchDynamicRightPanelData();
-      setNotifications(data.notifications);
-      setActivities(data.activities);
-      setContacts(data.contacts);
+      setNotifications((data.notifications || []).slice(0, 3));
+      setActivities((data.activities || []).slice(0, 3));
+      setContacts((data.contacts || []).slice(0, 4));
     } catch {
       // ignore silently on background poll
     } finally {
@@ -46,7 +48,6 @@ export function RightPanel() {
 
   useEffect(() => {
     loadFeed();
-    // Auto-refresh feed every 45 seconds for live background sync
     const timer = setInterval(() => loadFeed(true), 45000);
     return () => clearInterval(timer);
   }, [loadFeed]);
@@ -82,24 +83,16 @@ export function RightPanel() {
   return (
     <>
       <aside
-        className="flex flex-col bg-bg-light border-l border-text-tertiary flex-shrink-0 select-none overflow-y-auto"
-        style={{
-          width: "var(--right-panel-w, 260px)",
-          minHeight: "100%",
-          padding: "24px 16px",
-          gap: "24px",
-          boxSizing: "border-box"
-        }}
+        className="w-full h-full flex flex-col bg-bg-light select-none overflow-y-auto p-4 gap-4"
         role="complementary"
         aria-label="Panel informasi real-time"
       >
         {/* ── Section 1: Notifications ───────────────── */}
-        <section className="flex flex-col gap-3" aria-labelledby="rp-notifications-title">
-          <div className="flex items-center justify-between" style={{ width: "196px" }}>
+        <section className="flex flex-col gap-2.5 w-full" aria-labelledby="rp-notifications-title">
+          <div className="flex items-center justify-between pb-1.5 border-b border-text-tertiary/40">
             <h2
               id="rp-notifications-title"
-              className="text-base font-medium text-brand-deep-green flex items-center gap-1.5"
-              style={{ lineHeight: "20px" }}
+              className="text-xs font-bold text-brand-deep-green uppercase tracking-wider"
             >
               Notifications
             </h2>
@@ -107,7 +100,7 @@ export function RightPanel() {
               <button
                 onClick={handleMarkAllRead}
                 disabled={markingRead || notifications.length === 0}
-                className="text-text-secondary hover:text-brand-green p-0.5 rounded transition-colors disabled:opacity-30"
+                className="text-text-secondary hover:text-brand-green p-1 rounded-md transition-colors disabled:opacity-30"
                 title="Tandai semua telah dibaca"
                 aria-label="Tandai semua notifikasi telah dibaca"
               >
@@ -116,7 +109,7 @@ export function RightPanel() {
               <button
                 onClick={() => loadFeed(true)}
                 className={cn(
-                  "text-text-secondary hover:text-brand-deep-green p-0.5 rounded transition-colors",
+                  "text-text-secondary hover:text-brand-deep-green p-1 rounded-md transition-colors",
                   refreshing && "animate-spin"
                 )}
                 title="Sinkronkan notifikasi live"
@@ -124,42 +117,50 @@ export function RightPanel() {
               >
                 <RefreshCw size={13} />
               </button>
+              {onToggleCollapse && (
+                <button
+                  onClick={onToggleCollapse}
+                  className="text-text-secondary hover:text-brand-green p-1 rounded-md transition-colors ml-1"
+                  title="Tutup panel kanan"
+                  aria-label="Tutup panel kanan"
+                >
+                  <PanelRightClose size={14} />
+                </button>
+              )}
             </div>
           </div>
 
           {loading ? (
-            <div className="flex flex-col gap-2.5">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-2 animate-pulse" style={{ width: "196px", height: "36px" }}>
-                  <div className="w-9 h-9 rounded-full bg-brand-light-green/60 flex-shrink-0" />
-                  <div className="flex flex-col gap-1 flex-1">
-                    <div className="h-2.5 bg-gray-200 rounded w-4/5" />
-                    <div className="h-2 bg-gray-100 rounded w-1/2" />
+            <div className="flex flex-col gap-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-2.5 animate-pulse h-9 w-full">
+                  <div className="w-7 h-7 rounded-full bg-brand-light-green/60 flex-shrink-0" />
+                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    <div className="h-2 bg-gray-200 rounded w-4/5" />
+                    <div className="h-1.5 bg-gray-100 rounded w-1/2" />
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5 w-full">
               {notifications.length === 0 ? (
-                <p className="text-2xs text-text-secondary py-2" style={{ width: "196px" }}>
-                  Semua notifikasi telah diselesaikan.
+                <p className="text-3xs text-text-secondary py-1">
+                  Semua notifikasi telah dibaca.
                 </p>
               ) : (
-                notifications.map((item) => (
+                notifications.slice(0, 3).map((item) => (
                   <div
                     key={item.id}
                     onClick={() => handleItemClick(item)}
-                    className="flex items-center gap-2 cursor-pointer group hover:opacity-90 transition-opacity"
-                    style={{ width: "196px", height: "36px" }}
+                    className="flex items-center gap-2.5 cursor-pointer group hover:bg-brand-light-green/50 p-1.5 rounded-xl transition-all w-full"
                     title={`${item.label} (${item.sublabel || ""})`}
                   >
-                    {/* Avatar 36x36 Circle with SVG */}
                     <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-brand-light-green group-hover:ring-1 group-hover:ring-brand-green transition-all"
+                      className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-brand-light-green group-hover:ring-1 group-hover:ring-brand-green transition-all"
                       aria-hidden="true"
                     >
-                      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
                         <circle cx="12" cy="8" r="3" fill={item.color} opacity="0.8" />
                         <path
                           d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"
@@ -171,18 +172,11 @@ export function RightPanel() {
                       </svg>
                     </div>
 
-                    {/* Text Info */}
                     <div className="flex flex-col justify-center min-w-0 flex-1">
-                      <span
-                        className="text-xs font-normal text-text-primary truncate group-hover:text-brand-deep-green transition-colors"
-                        style={{ lineHeight: "15px" }}
-                      >
+                      <span className="text-2xs font-bold text-text-primary truncate group-hover:text-brand-deep-green transition-colors leading-tight">
                         {item.label}
                       </span>
-                      <span
-                        className="text-2xs font-normal text-text-secondary truncate"
-                        style={{ lineHeight: "13px" }}
-                      >
+                      <span className="text-3xs text-text-secondary truncate leading-tight mt-0.5">
                         {item.time}
                       </span>
                     </div>
@@ -193,56 +187,51 @@ export function RightPanel() {
           )}
         </section>
 
-        {/* Section Divider 1 */}
-        <div
-          className="w-full h-px bg-text-secondary opacity-30"
-          style={{ width: "199px" }}
-          aria-hidden="true"
-        />
+        {/* Section Divider */}
+        <div className="w-full h-px bg-text-tertiary/40" aria-hidden="true" />
 
         {/* ── Section 2: Activities ─────────────────── */}
-        <section className="flex flex-col gap-3" aria-labelledby="rp-activities-title">
-          <h2
-            id="rp-activities-title"
-            className="text-base font-medium text-brand-deep-green"
-            style={{ lineHeight: "20px" }}
-          >
-            Activities
-          </h2>
+        <section className="flex flex-col gap-2.5 w-full" aria-labelledby="rp-activities-title">
+          <div className="pb-1.5 border-b border-text-tertiary/40">
+            <h2
+              id="rp-activities-title"
+              className="text-xs font-bold text-brand-deep-green uppercase tracking-wider"
+            >
+              Activities
+            </h2>
+          </div>
 
           {loading ? (
-            <div className="flex flex-col gap-2.5">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-2 animate-pulse" style={{ width: "196px", height: "36px" }}>
-                  <div className="w-9 h-9 rounded-full bg-brand-light-green/60 flex-shrink-0" />
-                  <div className="flex flex-col gap-1 flex-1">
-                    <div className="h-2.5 bg-gray-200 rounded w-3/4" />
-                    <div className="h-2 bg-gray-100 rounded w-1/3" />
+            <div className="flex flex-col gap-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-2.5 animate-pulse h-9 w-full">
+                  <div className="w-7 h-7 rounded-full bg-brand-light-green/60 flex-shrink-0" />
+                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    <div className="h-2 bg-gray-200 rounded w-3/4" />
+                    <div className="h-1.5 bg-gray-100 rounded w-1/3" />
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5 w-full">
               {activities.length === 0 ? (
-                <p className="text-2xs text-text-secondary py-2" style={{ width: "196px" }}>
+                <p className="text-3xs text-text-secondary py-1">
                   Belum ada log aktivitas hari ini.
                 </p>
               ) : (
-                activities.map((item) => (
+                activities.slice(0, 3).map((item) => (
                   <div
                     key={item.id}
                     onClick={() => handleItemClick(item)}
-                    className="flex items-center gap-2 cursor-pointer group hover:opacity-90 transition-opacity"
-                    style={{ width: "196px", height: "36px" }}
+                    className="flex items-center gap-2.5 cursor-pointer group hover:bg-brand-light-green/50 p-1.5 rounded-xl transition-all w-full"
                     title={`${item.label} (${item.sublabel || ""})`}
                   >
-                    {/* Avatar 36x36 Circle with SVG */}
                     <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-brand-light-green group-hover:ring-1 group-hover:ring-brand-green transition-all"
+                      className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-brand-light-green group-hover:ring-1 group-hover:ring-brand-green transition-all"
                       aria-hidden="true"
                     >
-                      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
                         <circle cx="12" cy="8" r="3" fill={item.color} opacity="0.8" />
                         <path
                           d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"
@@ -254,18 +243,11 @@ export function RightPanel() {
                       </svg>
                     </div>
 
-                    {/* Text Info */}
                     <div className="flex flex-col justify-center min-w-0 flex-1">
-                      <span
-                        className="text-xs font-normal text-text-primary truncate group-hover:text-brand-deep-green transition-colors"
-                        style={{ lineHeight: "15px" }}
-                      >
+                      <span className="text-2xs font-bold text-text-primary truncate group-hover:text-brand-deep-green transition-colors leading-tight">
                         {item.label}
                       </span>
-                      <span
-                        className="text-2xs font-normal text-text-secondary truncate"
-                        style={{ lineHeight: "13px" }}
-                      >
+                      <span className="text-3xs text-text-secondary truncate leading-tight mt-0.5">
                         {item.time}
                       </span>
                     </div>
@@ -276,40 +258,32 @@ export function RightPanel() {
           )}
         </section>
 
-        {/* Section Divider 2 */}
-        <div
-          className="w-full h-px bg-text-secondary opacity-30"
-          style={{ width: "199px" }}
-          aria-hidden="true"
-        />
+        {/* Section Divider */}
+        <div className="w-full h-px bg-text-tertiary/40" aria-hidden="true" />
 
         {/* ── Section 3: Contacts ───────────────────── */}
-        <section className="flex flex-col gap-3" aria-labelledby="rp-contacts-title">
-          <h2
-            id="rp-contacts-title"
-            className="text-base font-medium text-brand-deep-green"
-            style={{ lineHeight: "20px" }}
-          >
-            Contacts
-          </h2>
+        <section className="flex flex-col gap-2.5 w-full" aria-labelledby="rp-contacts-title">
+          <div className="pb-1.5 border-b border-text-tertiary/40">
+            <h2
+              id="rp-contacts-title"
+              className="text-xs font-bold text-brand-deep-green uppercase tracking-wider"
+            >
+              Contacts
+            </h2>
+          </div>
 
-          <div className="flex flex-col gap-3">
-            {contacts.map((contact) => (
+          <div className="flex flex-col gap-1.5 w-full">
+            {contacts.slice(0, 4).map((contact) => (
               <div
                 key={contact.id}
                 onClick={() => setSelectedContact(contact)}
-                className="flex items-center gap-2 cursor-pointer group hover:bg-brand-light-green/40 p-1 -m-1 rounded-lg transition-colors"
-                style={{ width: "196px", height: "34px" }}
+                className="flex items-center gap-2.5 cursor-pointer group hover:bg-brand-light-green/50 p-1.5 rounded-xl transition-all w-full"
                 title={`${contact.name} · ${contact.role}`}
               >
-                {/* Avatar 32x32 Circle with Initial & Status Dot */}
                 <div className="relative flex-shrink-0">
                   <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium text-brand-deep-green"
-                    style={{
-                      background: contact.color,
-                      fontFamily: "'Google Sans', Roboto, sans-serif"
-                    }}
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-2xs font-bold text-brand-deep-green shadow-2xs"
+                    style={{ background: contact.color }}
                     aria-hidden="true"
                   >
                     {contact.initials}
@@ -324,18 +298,11 @@ export function RightPanel() {
                   />
                 </div>
 
-                {/* Contact Name & Role */}
                 <div className="flex flex-col justify-center min-w-0 flex-1">
-                  <span
-                    className="text-sm font-normal text-text-primary truncate group-hover:text-brand-deep-green transition-colors"
-                    style={{ lineHeight: "18px" }}
-                  >
+                  <span className="text-2xs font-bold text-text-primary truncate group-hover:text-brand-deep-green transition-colors leading-tight">
                     {contact.name}
                   </span>
-                  <span
-                    className="text-2xs text-text-secondary truncate"
-                    style={{ lineHeight: "12px" }}
-                  >
+                  <span className="text-3xs text-text-secondary truncate leading-tight">
                     {contact.role}
                   </span>
                 </div>
@@ -417,3 +384,5 @@ export function RightPanel() {
     </>
   );
 }
+
+export default RightPanel;

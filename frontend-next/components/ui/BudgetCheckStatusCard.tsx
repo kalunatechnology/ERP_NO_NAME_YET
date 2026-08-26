@@ -1,0 +1,81 @@
+"use client";
+
+import React from "react";
+import { CheckCircle2, AlertTriangle } from "lucide-react";
+import { formatMoney, cn } from "@/lib/utils";
+
+interface BudgetCheckProps {
+  materialBudget?: number | string;
+  allocationFormula?: string;
+  allocationCost?: number | string;
+  remainingBudget?: number | string;
+  isValid?: boolean;
+  className?: string;
+}
+
+export function BudgetCheckStatusCard({
+  materialBudget = 56000000,
+  allocationFormula = "(Total Alokasi Biaya Material PO)",
+  allocationCost = 12500000,
+  remainingBudget = 43500000,
+  isValid = true,
+  className,
+}: BudgetCheckProps) {
+  const formatVal = (v: number | string) =>
+    typeof v === "number" ? formatMoney(v) : v;
+
+  return (
+    <div className={cn("w-full bg-white border border-[#C7C7C7] rounded-[20px] p-5 shadow-xs flex flex-col justify-between h-full select-none", className)}>
+      {/* Header Banner */}
+      <div className="bg-[#F0FEE0] rounded-xl px-3.5 py-2 flex items-center justify-between">
+        <span className="text-xs font-bold text-[#0E341F]">Budget Check Status</span>
+        <span className="text-[10px] font-bold text-[#5A861F] tracking-wider">REAL TIME</span>
+      </div>
+
+      {/* Metric Breakdown */}
+      <div className="flex flex-col gap-2.5 text-xs py-1">
+        <div className="flex justify-between items-center">
+          <span className="text-[#637566] font-medium">Material Budget</span>
+          <span className="font-bold text-[#0E341F]">{formatVal(materialBudget)}</span>
+        </div>
+
+        <div className="flex justify-between items-start">
+          <div className="flex flex-col min-w-0 pr-2">
+            <span className="text-[#637566] font-medium">Current Allocation Cost:</span>
+            <span className="text-[10px] text-[#637566] truncate">{allocationFormula}</span>
+          </div>
+          <span className="font-bold text-[#0E341F] flex-shrink-0">{formatVal(allocationCost)}</span>
+        </div>
+
+        <hr className="border-gray-100 my-0.5" />
+
+        <div className="flex justify-between items-center">
+          <span className="text-[#637566] font-medium">Remaining Budget</span>
+          <span className="font-bold text-[#0E341F]">{formatVal(remainingBudget)}</span>
+        </div>
+
+        <hr className="border-gray-100 my-0.5" />
+
+        <div className="flex justify-between items-center pt-0.5">
+          <span className="text-xs text-[#637566] font-medium">Budget is acceptable</span>
+          <div
+            className={`flex items-center gap-1.5 px-3.5 py-1 rounded-xl text-xs font-bold ${
+              isValid
+                ? "bg-[#BBF7D0] text-[#166534]"
+                : "bg-red-100 text-red-700"
+            }`}
+          >
+            <span>{isValid ? "Valid" : "Overbudget"}</span>
+            {isValid ? (
+              <CheckCircle2 size={13} className="text-[#166534]" />
+            ) : (
+              <AlertTriangle size={13} className="text-red-700" />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default BudgetCheckStatusCard;

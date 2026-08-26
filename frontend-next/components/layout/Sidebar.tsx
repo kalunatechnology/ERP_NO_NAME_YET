@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, FolderKanban, CheckSquare, ListTodo,
-  DollarSign, Users, BarChart3, Zap, TrendingUp, Building2,
-  LogOut, ChevronRight, Clock, FileText, Folder
+  LayoutDashboard, FolderKanban, CheckSquare,
+  DollarSign, Users, BarChart3, TrendingUp, Building2,
+  LogOut, ChevronRight, Clock, FileText
 } from "lucide-react";
 import { useAuth, UserRoleType, getRoleLabel, getRoleBadgeStyle } from "@/contexts/AuthContext";
 import { feedApi, UserRecentItemDto } from "@/lib/api/feed.api";
@@ -67,54 +67,46 @@ export function Sidebar() {
   const navItems = NAV_BY_ROLE[userRole] ?? NAV_BY_ROLE.staff;
 
   useEffect(() => {
-    feedApi.getRecentItems().then(items => {
-      if (items && items.length) setRecentItems(items.slice(0, 4));
+    feedApi.getRecentItems().then((items) => {
+      if (items && items.length) setRecentItems(items.slice(0, 3));
     }).catch(() => {});
   }, [pathname]);
 
   return (
     <aside
-      className="flex flex-col justify-between bg-bg-light border-r border-text-tertiary flex-shrink-0"
-      style={{ width: "var(--sidebar-w, 240px)", minHeight: "100vh", padding: "20px 12px" }}
+      className="w-[240px] h-screen sticky top-0 flex flex-col bg-bg-light border-r border-text-tertiary flex-shrink-0 select-none overflow-hidden"
+      style={{ boxSizing: "border-box" }}
       aria-label="Navigasi utama"
     >
-      {/* ── Top section ──────────────────────── */}
-      <div className="flex flex-col gap-5">
-
-        {/* User Profile */}
-        <div className="flex flex-col gap-2 px-2" id="sidebar-user">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"
-              style={{ background: "linear-gradient(135deg, #7CDA24 0%, #3E9B4B 100%)" }}
-            >
-              <span className="text-sm font-bold text-white">{initial}</span>
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-semibold text-brand-deep-green truncate leading-tight">{displayName}</span>
-              <span className="text-2xs text-text-secondary truncate leading-tight">
-                {user?.email?.split("@")[0] || ""}
+      {/* ── Fixed User Profile Header (Height: 76px) ── */}
+      <div className="h-[76px] px-4 pt-3.5 pb-2.5 flex flex-col justify-center border-b border-text-tertiary/60 flex-shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-2xs"
+            style={{ background: "linear-gradient(135deg, #7CDA24 0%, #3E9B4B 100%)" }}
+          >
+            <span className="text-xs font-bold text-white leading-none">{initial}</span>
+          </div>
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="text-xs font-bold text-brand-deep-green truncate leading-tight">{displayName}</span>
+            <div className="mt-1 flex">
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-semibold leading-none"
+                style={{ backgroundColor: badgeStyle.bg, color: badgeStyle.text }}
+              >
+                <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: badgeStyle.text }} />
+                <span className="truncate">{roleLabel}</span>
               </span>
             </div>
           </div>
-          {/* Role badge */}
-          <div className="flex">
-            <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-semibold"
-              style={{ backgroundColor: badgeStyle.bg, color: badgeStyle.text }}
-            >
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: badgeStyle.text }} />
-              {roleLabel}
-            </span>
-          </div>
         </div>
+      </div>
 
-        {/* Divider */}
-        <div className="border-t border-text-tertiary" />
-
-        {/* Navigation */}
-        <div className="flex flex-col gap-1">
-          <p className="text-2xs font-semibold text-text-secondary uppercase tracking-wider px-2 mb-1">Menu</p>
+      {/* ── Scrollable Menu Section (Takes all available middle space) ── */}
+      <div className="flex-1 px-3 py-3 flex flex-col gap-3 overflow-y-auto">
+        {/* Navigation Section */}
+        <div className="flex flex-col gap-0.5">
+          <p className="text-3xs font-bold text-text-secondary uppercase tracking-wider px-2 mb-1">Menu</p>
           <nav className="flex flex-col gap-0.5" role="navigation">
             {navItems.map(({ href, label, icon: Icon, badge }) => {
               const isActive = pathname === href || pathname.startsWith(href + "/");
@@ -123,32 +115,32 @@ export function Sidebar() {
                   key={href}
                   href={href}
                   className={cn(
-                    "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 group relative",
+                    "flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150 relative h-9",
                     isActive
-                      ? "bg-brand-light-green text-brand-deep-green"
+                      ? "bg-brand-light-green text-brand-deep-green font-bold shadow-2xs"
                       : "text-text-primary hover:bg-brand-light-green/50 hover:text-brand-deep-green"
                   )}
                   aria-current={isActive ? "page" : undefined}
                 >
                   {isActive && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-brand-green rounded-r-full" />
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 bg-brand-green rounded-r-full" />
                   )}
                   <Icon
-                    size={18}
+                    size={16}
                     className={cn(
                       "flex-shrink-0 transition-colors",
-                      isActive ? "text-brand-green" : "text-text-secondary group-hover:text-brand-green"
+                      isActive ? "text-brand-green" : "text-text-secondary"
                     )}
                     aria-hidden="true"
                   />
                   <span className="flex-1 truncate">{label}</span>
                   {badge && (
-                    <span className="ml-auto px-1.5 py-0.5 rounded-full bg-brand-green text-white text-2xs font-bold leading-none">
+                    <span className="ml-auto px-1.5 py-0.5 rounded-full bg-brand-green text-white text-3xs font-bold leading-none">
                       {badge}
                     </span>
                   )}
                   {isActive && (
-                    <ChevronRight size={12} className="text-brand-green opacity-60 flex-shrink-0" />
+                    <ChevronRight size={12} className="text-brand-green opacity-60 flex-shrink-0 ml-auto" />
                   )}
                 </Link>
               );
@@ -156,11 +148,11 @@ export function Sidebar() {
           </nav>
         </div>
 
-        {/* Recently Opened (UserRecentItems) */}
+        {/* Recently Opened Items */}
         {recentItems.length > 0 && (
-          <div className="flex flex-col gap-1 mt-1">
-            <p className="text-2xs font-semibold text-text-secondary uppercase tracking-wider px-2 mb-0.5 flex items-center gap-1.5">
-              <Clock size={11} className="text-brand-green" />
+          <div className="flex flex-col gap-1 pt-2 border-t border-text-tertiary/40">
+            <p className="text-3xs font-bold text-text-secondary uppercase tracking-wider px-2 flex items-center gap-1.5 mb-0.5">
+              <Clock size={10} className="text-brand-green" />
               <span>Recently Opened</span>
             </p>
             <div className="flex flex-col gap-0.5">
@@ -168,9 +160,9 @@ export function Sidebar() {
                 <Link
                   key={item.id}
                   href={item.target_url || "/dashboard"}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-text-primary hover:bg-brand-light-green/40 hover:text-brand-deep-green transition-colors group"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-3xs font-medium text-text-primary hover:bg-brand-light-green/40 hover:text-brand-deep-green transition-colors h-7"
                 >
-                  <FileText size={13} className="text-text-secondary group-hover:text-brand-green flex-shrink-0" />
+                  <FileText size={12} className="text-text-secondary flex-shrink-0" />
                   <span className="truncate flex-1">{item.title}</span>
                 </Link>
               ))}
@@ -179,33 +171,35 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* ── Bottom section ────────────────────── */}
-      <div className="flex flex-col gap-3 px-1">
+      {/* ── Fixed Footer Section (Logout & Brand Mark) ── */}
+      <div className="px-3 pb-3 pt-2 border-t border-text-tertiary/60 flex flex-col gap-2 flex-shrink-0 bg-bg-light">
         <button
           onClick={() => logout()}
-          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-red-600 hover:bg-red-50 transition-all w-full"
+          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-text-secondary hover:text-red-600 hover:bg-red-50 transition-all w-full h-8"
           id="sidebar-logout-btn"
           aria-label="Logout"
         >
-          <LogOut size={17} aria-hidden="true" className="flex-shrink-0" />
+          <LogOut size={15} aria-hidden="true" className="flex-shrink-0" />
           <span>Keluar</span>
         </button>
 
-        {/* Brand mark */}
-        <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg border border-text-tertiary bg-bg-lighter">
+        {/* Brand Mark */}
+        <div className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl border border-text-tertiary bg-bg-lighter">
           <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 shadow-2xs"
             style={{ background: "linear-gradient(180deg, #7CDA24 0%, #3E9B4B 100%)" }}
             aria-hidden="true"
           >
-            <span className="text-white font-bold text-xs">M+</span>
+            <span className="text-white font-black text-2xs">M+</span>
           </div>
-          <div className="flex flex-col">
-            <span className="text-xs font-semibold text-brand-deep-green leading-tight">Marka+ ERP</span>
-            <span className="text-2xs text-text-secondary leading-tight">v1.0 · Production</span>
+          <div className="flex flex-col min-w-0">
+            <span className="text-2xs font-bold text-brand-deep-green leading-tight">Marka+ ERP</span>
+            <span className="text-3xs text-text-secondary leading-tight">v1.0 · Stable</span>
           </div>
         </div>
       </div>
     </aside>
   );
 }
+
+export default Sidebar;

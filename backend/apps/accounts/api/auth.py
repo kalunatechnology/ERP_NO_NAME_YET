@@ -362,3 +362,75 @@ class ChangePasswordView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+# =============================================================================
+# SIGNUP / REGISTRATION
+# =============================================================================
+
+
+class SignupSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, required=True)
+    email = serializers.EmailField(max_length=255, required=True)
+    phone = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    password = serializers.CharField(max_length=128, required=False, allow_blank=True, default="Marka123!")
+
+    def create(self, validated_data):
+        from django.db.models import Q
+        from apps.accounts.models import User
+
+        name = validated_data.get("name", "").strip()
+        email = validated_data.get("email", "").strip().lower()
+        phone = validated_data.get("phone", "").strip()
+        password = validated_data.get("password") or "Marka123!"
+
+        username = email.split("@")[0]
+        # Check if user already exists
+        user = User.objects.filter(Q(email__iexact=email) | Q(username__iexact=username)).first()
+        if not user:
+            user = User(
+                email=email,
+                username=username,
+                full_name=name or username.title(),
+                is_active=True,
+                status="ACTIVE",
+            )
+            user.set_password(password)
+            user.save()
+        else:
+            if name and not user.full_name:
+                user.full_name = name
+                user.save(update_fields=["full_name"])
+
+        return user
+
+
+class SignupView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Mendaftar akun pengguna baru",
+        description="Menerima name, email, phone dan password untuk membuat akun baru dan mengembalikan JWT token.",
+        request=SignupSerializer,
+        responses={201: TokenResponseSerializer},
+    )
+    def post(self, request):
+        serializer = SignupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        refresh = RefreshToken.for_user(user)
+        refresh["email"] = user.email
+        refresh["full_name"] = user.full_name
+
+        return Response(
+            {
+                "message": "Akun berhasil didaftarkan!",
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "token": str(refresh.access_token),
+                "user": UserSerializer(user, context={"request": request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )

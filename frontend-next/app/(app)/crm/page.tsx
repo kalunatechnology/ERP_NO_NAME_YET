@@ -1,3 +1,10 @@
-import type { Metadata } from "next";
-export const metadata: Metadata = { title: "CRM & Sales" };
-export { default } from "./CrmClient";
+import CrmClient from "./CrmClient";
+
+export const metadata = {
+  title: "CRM & Sales Workspace | Marka+ ERP",
+  description: "Commercial, Estimating, Quotations, and Customer Service",
+};
+
+export default function CrmPage() {
+  return <CrmClient />;
+}

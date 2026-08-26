@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Plus, RefreshCw, CheckCircle2, DollarSign, TrendingUp, Users,
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
@@ -1200,12 +1202,30 @@ function TabEngagement({ data }: { data: CRMData }) {
    MAIN CRM CLIENT
 ══════════════════════════════════════════════════ */
 export default function CrmClient() {
+  const { user, userRole, isAdmin, isLoading: authLoading } = useAuth();
+  const router = useRouter();
+
   const [activeTab, setActiveTab] = useState("dashboard");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [crmData, setCrmData] = useState<CRMData | null>(null);
   const [crmDash, setCrmDash] = useState<CRMDashboard>({});
   const [isNewOppOpen, setIsNewOppOpen] = useState(false);
+
+  // RBAC Access Control Check
+  const isAllowed = !authLoading && Boolean(
+    isAdmin ||
+    (user as any)?.is_superuser ||
+    userRole === "executive" ||
+    userRole === "crm" ||
+    userRole === "pm"
+  );
+
+  useEffect(() => {
+    if (!authLoading && !isAllowed && user) {
+      router.replace("/error/403");
+    }
+  }, [authLoading, isAllowed, user, router]);
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -1223,17 +1243,27 @@ export default function CrmClient() {
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    if (isAllowed) {
+      loadData();
+    }
+  }, [loadData, isAllowed]);
 
   /* Track recently opened CRM */
   useEffect(() => {
-    feedApi.trackRecentItem({
-      item_type: "ORDER",
-      object_id: `crm-${activeTab}`,
-      title: `CRM — ${CRM_TABS.find(t => t.id === activeTab)?.label || "Dashboard"}`,
-      target_url: `/crm`,
-    }).catch(() => {});
-  }, [activeTab]);
+    if (isAllowed) {
+      feedApi.trackRecentItem({
+        item_type: "ORDER",
+        object_id: `crm-${activeTab}`,
+        title: `CRM — ${CRM_TABS.find(t => t.id === activeTab)?.label || "Dashboard"}`,
+        target_url: `/crm`,
+      }).catch(() => {});
+    }
+  }, [activeTab, isAllowed]);
+
+  if (authLoading || !isAllowed) {
+    return null;
+  }
 
   const handleOpportunityCreated = (newOpp: any) => {
     setCrmData(prev => {

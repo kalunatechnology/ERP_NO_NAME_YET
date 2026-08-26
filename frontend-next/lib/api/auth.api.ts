@@ -257,6 +257,20 @@ export async function changePassword(currentPassword: string, newPassword: strin
   return data;
 }
 
+/* ── Signup / Register User ──────────────── */
+export async function registerUser(payload: { name: string; email: string; phone?: string; password?: string }) {
+  const { data } = await api.post("/api/v1/auth/signup/", payload);
+  if (data?.access) {
+    localStorage.setItem("erp.access", data.access);
+    if (data.refresh) localStorage.setItem("erp.refresh", data.refresh);
+    if (data.user) localStorage.setItem("erp.user", JSON.stringify(data.user));
+    if (typeof document !== "undefined") {
+      document.cookie = `access_token=${data.access}; path=/; max-age=86400; SameSite=Lax`;
+    }
+  }
+  return data;
+}
+
 /* ── Helper: normalize DRF paginated response ── */
 export function normalizeList<T>(response: unknown): { rows: T[]; count: number } {
   if (Array.isArray(response)) return { rows: response as T[], count: (response as T[]).length };

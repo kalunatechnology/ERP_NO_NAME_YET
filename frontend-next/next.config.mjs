@@ -6,6 +6,15 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  webpack: (config, { dev }) => {
+    if (dev) {
+      // Fix Windows ENOENT .pack.gz_ file locking in Next.js dev mode
+      config.cache = {
+        type: "memory",
+      };
+    }
+    return config;
+  },
   async rewrites() {
     return [
       {

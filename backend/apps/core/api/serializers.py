@@ -129,8 +129,27 @@ class UserMiniSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'full_name', 'email', 'avatar_url', 'is_active']
 
     def get_full_name(self, obj):
-        full = f"{obj.first_name} {obj.last_name}".strip()
-        return full or obj.username
+        if not obj:
+            return ""
+        # 1. Cek jika model memiliki method get_full_name bawaan
+        if hasattr(obj, 'get_full_name') and callable(obj.get_full_name):
+            val = obj.get_full_name()
+            if val:
+                return val
+
+        # 2. Cek field name langsung (Custom User model)
+        if hasattr(obj, 'name') and obj.name:
+            return obj.name
+
+        # 3. Fallback jika ada first_name / last_name
+        first = getattr(obj, 'first_name', '')
+        last = getattr(obj, 'last_name', '')
+        full = f"{first} {last}".strip()
+        if full:
+            return full
+
+        # 4. Fallback ke username atau email
+        return getattr(obj, 'username', getattr(obj, 'email', str(obj)))
 
     def get_avatar_url(self, obj):
         return getattr(obj, 'avatar_url', '') or ''
