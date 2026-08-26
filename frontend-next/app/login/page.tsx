@@ -52,14 +52,37 @@ function LoginFormContent() {
   const [showDevPanel, setShowDevPanel] = useState(true);
   const [filterCat, setFilterCat] = useState("all");
   const [submitting, setSubmitting] = useState(false);
-  const [welcomeName, setWelcomeName] = useState("Sutanto");
+  const [welcomeName, setWelcomeName] = useState("Pengguna");
+  const [isLocalHostEnv, setIsLocalHostEnv] = useState<boolean>(false);
+
+  // Deteksi lingkungan hostname: localhost, 127.0.0.1, atau IP Server numerik
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname;
+      const isLocalhost =
+        hostname === "localhost" ||
+        hostname === "0.0.0.0" ||
+        hostname.endsWith(".local") ||
+        hostname.endsWith(".test") ||
+        hostname.endsWith(".internal");
+      const isIpv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+      const isIpv6 = hostname === "[::1]" || hostname === "::1";
+
+      const localDetected = isLocalhost || isIpv4 || isIpv6;
+      setIsLocalHostEnv(localDetected);
+
+      if (localDetected) {
+        setWelcomeName("Sutanto");
+      }
+    }
+  }, []);
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<AuthFormData>({
     defaultValues: {
-      name: "Sutanto",
-      email: "admin@arsalynk.id",
-      phone: "81234567890",
-      password: "DummyPass123!",
+      name: "",
+      email: "",
+      phone: "",
+      password: "",
     }
   });
 
@@ -82,8 +105,13 @@ function LoginFormContent() {
   const onSubmit = async (data: AuthFormData) => {
     setSubmitting(true);
     try {
-      const emailToUse = data.email || "admin@arsalynk.id";
-      const pwToUse = data.password || "DummyPass123!";
+      const emailToUse = data.email;
+      const pwToUse = data.password;
+      if (!emailToUse || !pwToUse) {
+        toast.error("Silakan masukkan email dan password");
+        setSubmitting(false);
+        return;
+      }
       await login(emailToUse, pwToUse);
       toast.success(`Selamat datang kembali, ${welcomeName}!`);
       router.push("/dashboard");
@@ -200,7 +228,7 @@ function LoginFormContent() {
                   <input
                     type="text"
                     {...register("name")}
-                    placeholder="Sutanto"
+                    placeholder="Nama Lengkap"
                     className="w-full h-[45px] px-4 rounded-[12px] bg-[#F5F5F5] border border-[#C7C7C7] text-sm text-neutral-800 focus:bg-white focus:outline-none focus:border-[#5A861F] transition-all"
                   />
                 </div>
@@ -213,7 +241,7 @@ function LoginFormContent() {
                   <input
                     type="email"
                     {...register("email", { required: "Email wajib diisi" })}
-                    placeholder="admin@arsalynk.id"
+                    placeholder="nama@perusahaan.com"
                     className="w-full h-[45px] px-4 rounded-[12px] bg-[#F5F5F5] border border-[#C7C7C7] text-sm text-neutral-800 focus:bg-white focus:outline-none focus:border-[#5A861F] transition-all"
                   />
                   {errors.email && (
@@ -221,11 +249,11 @@ function LoginFormContent() {
                   )}
                 </div>
 
-                {/* Field: Password / Phone */}
+                {/* Field: Password */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-semibold text-[#275433]">
-                      {showPw ? "Password" : "Password"}
+                      Password
                     </label>
                     <button
                       type="button"
@@ -233,67 +261,65 @@ function LoginFormContent() {
                       className="text-2xs text-[#5A861F] font-semibold hover:underline flex items-center gap-1"
                     >
                       {showPw ? <EyeOff size={12} /> : <Eye size={12} />}
-                      <span>{showPw ? "Mode Phone" : "Tampilkan Sandi"}</span>
+                      <span>{showPw ? "Sembunyikan Sandi" : "Tampilkan Sandi"}</span>
                     </button>
                   </div>
 
-                <div className="relative">
-                  <div className="relative flex items-center h-[45px] rounded-[12px] bg-[#F5F5F5] border border-[#C7C7C7] overflow-hidden focus-within:bg-white focus-within:border-[#5A861F] transition-all">
-                    <input
-                      type={showPw ? "text" : "password"}
-                      {...register("password")}
-                      placeholder="Masukkan password"
-                      className="w-full h-full px-3 pr-12 bg-transparent text-sm text-neutral-800 focus:outline-none"
-                    />
+                  <div className="relative">
+                    <div className="relative flex items-center h-[45px] rounded-[12px] bg-[#F5F5F5] border border-[#C7C7C7] overflow-hidden focus-within:bg-white focus-within:border-[#5A861F] transition-all">
+                      <input
+                        type={showPw ? "text" : "password"}
+                        {...register("password", { required: "Password wajib diisi" })}
+                        placeholder="Masukkan password"
+                        className="w-full h-full px-3 pr-12 bg-transparent text-sm text-neutral-800 focus:outline-none"
+                      />
 
-                    <button
-                      type="button"
-                      onClick={() => setShowPw(!showPw)}
-                      className="absolute right-0 h-full px-4 flex items-center justify-center text-[#637566] hover:text-[#5A861F] transition-colors"
-                      aria-label={showPw ? "Sembunyikan password" : "Tampilkan password"}
-                    >
-                      {showPw ? (
-                        // Icon eye off
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="w-5 h-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 012.293-3.95m3.165-2.36A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.676 3.043M15 12a3 3 0 11-5.197-2.064M3 3l18 18"
-                          />
-                        </svg>
-                      ) : (
-                        // Icon eye
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="w-5 h-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                          />
-                        </svg>
-                      )}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowPw(!showPw)}
+                        className="absolute right-0 h-full px-4 flex items-center justify-center text-[#637566] hover:text-[#5A861F] transition-colors"
+                        aria-label={showPw ? "Sembunyikan password" : "Tampilkan password"}
+                      >
+                        {showPw ? (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="w-5 h-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 012.293-3.95m3.165-2.36A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.676 3.043M15 12a3 3 0 11-5.197-2.064M3 3l18 18"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="w-5 h-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                </div>
                 </div>
 
                 {/* Submit CTA */}
@@ -339,84 +365,93 @@ function LoginFormContent() {
 
         </div>
 
-        {/* ── PRESET DEMO ACCOUNTS PANEL (Full list with Categories & 1-Click login) ── */}
-        <div className="w-full bg-white border border-[#C7C7C7] rounded-[20px] p-6 shadow-sm flex flex-col gap-4">
-          <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-gray-100">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#F0FEE0] flex items-center justify-center text-[#5A861F]">
-                <Server size={18} />
+        {/* ── PRESET DEMO ACCOUNTS PANEL (Only visible when accessed via localhost, 127.0.0.1, or local IP server) ── */}
+        {isLocalHostEnv && (
+          <div className="w-full bg-white border border-[#C7C7C7] rounded-[20px] p-6 shadow-sm flex flex-col gap-4">
+            <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#F0FEE0] flex items-center justify-center text-[#5A861F]">
+                  <Server size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-[#275433]">1-Click Quick Preset Accounts</h3>
+                    <span className="text-3xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full uppercase">
+                      Dev / Localhost Only
+                    </span>
+                  </div>
+                  <p className="text-2xs text-gray-500">
+                    Panel ini hanya aktif di localhost/IP pengujian. Pada domain live produksi, panel ini otomatis tersembunyi.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-[#275433]">1-Click Quick Preset Accounts</h3>
-                <p className="text-2xs text-gray-500">Pilih akun demonstrasi untuk login otomatis tanpa perlu mengetik kredensial.</p>
-              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDevPanel(!showDevPanel)}
+                className="text-xs font-semibold text-[#5A861F] hover:text-[#436e24] flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F0FEE0] transition-colors"
+              >
+                <span>{showDevPanel ? "Sembunyikan Panel" : "Tampilkan Panel"}</span>
+                {showDevPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowDevPanel(!showDevPanel)}
-              className="text-xs font-semibold text-[#5A861F] hover:text-[#436e24] flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F0FEE0] transition-colors"
-            >
-              <span>{showDevPanel ? "Sembunyikan Panel" : "Tampilkan Panel"}</span>
-              {showDevPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-          </div>
-
-          {showDevPanel && (
-            <>
-              {/* Category Filter Tabs */}
-              <div className="flex gap-1.5 overflow-x-auto pb-1">
-                {CATEGORIES.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setFilterCat(c.id)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all",
-                      filterCat === c.id
-                        ? "bg-[#5A861F] text-white shadow-xs"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    )}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Grid of Preset Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-                {filteredUsers.map((u) => (
-                  <div
-                    key={u.email}
-                    className="border border-gray-200 hover:border-[#5A861F] rounded-xl p-3.5 bg-[#FAFAFA] hover:bg-[#F0FEE0]/40 transition-all flex flex-col justify-between gap-3 group shadow-2xs"
-                  >
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-xs text-neutral-800 truncate group-hover:text-[#275433]">
-                          {u.label}
-                        </span>
-                        <span className="text-3xs bg-white border border-gray-200 text-neutral-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex-shrink-0">
-                          {u.role}
-                        </span>
-                      </div>
-                      <p className="text-2xs text-gray-500 truncate font-mono">{u.email}</p>
-                      <p className="text-3xs text-gray-400 mt-1 line-clamp-1">{u.desc}</p>
-                    </div>
-
+            {showDevPanel && (
+              <>
+                {/* Category Filter Tabs */}
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {CATEGORIES.map((c) => (
                     <button
+                      key={c.id}
                       type="button"
-                      onClick={() => quickFillAndLogin(u)}
-                      className="w-full h-[32px] rounded-lg bg-white border border-[#C7C7C7] group-hover:bg-[#5A861F] group-hover:text-white group-hover:border-[#5A861F] text-xs font-bold text-[#275433] transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-98"
+                      onClick={() => setFilterCat(c.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all",
+                        filterCat === c.id
+                          ? "bg-[#5A861F] text-white shadow-xs"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      )}
                     >
-                      <Sparkles size={12} />
-                      <span>Masuk sebagai {u.name.split(" ")[0]}</span>
+                      {c.label}
                     </button>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+                  ))}
+                </div>
+
+                {/* Grid of Preset Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                  {filteredUsers.map((u) => (
+                    <div
+                      key={u.email}
+                      className="border border-gray-200 hover:border-[#5A861F] rounded-xl p-3.5 bg-[#FAFAFA] hover:bg-[#F0FEE0]/40 transition-all flex flex-col justify-between gap-3 group shadow-2xs"
+                    >
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-xs text-neutral-800 truncate group-hover:text-[#275433]">
+                            {u.label}
+                          </span>
+                          <span className="text-3xs bg-white border border-gray-200 text-neutral-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex-shrink-0">
+                            {u.role}
+                          </span>
+                        </div>
+                        <p className="text-2xs text-gray-500 truncate font-mono">{u.email}</p>
+                        <p className="text-3xs text-gray-400 mt-1 line-clamp-1">{u.desc}</p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => quickFillAndLogin(u)}
+                        className="w-full h-[32px] rounded-lg bg-white border border-[#C7C7C7] group-hover:bg-[#5A861F] group-hover:text-white group-hover:border-[#5A861F] text-xs font-bold text-[#275433] transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-98"
+                      >
+                        <Sparkles size={12} />
+                        <span>Masuk sebagai {u.name.split(" ")[0]}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
       </div>
     </div>

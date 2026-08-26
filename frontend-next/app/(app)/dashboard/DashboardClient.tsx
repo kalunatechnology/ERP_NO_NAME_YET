@@ -98,7 +98,7 @@ function ProgressBar({ value, color = "#16A34A", height = 6 }: { value: number; 
 function LoadingDashboard() {
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="card rounded-xl p-4 animate-pulse">
             <div className="h-3 bg-gray-200 rounded w-2/3 mb-2" />
@@ -316,7 +316,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
             </Link>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="p-3.5 rounded-xl bg-[#FAFAFA] border border-gray-100 text-center flex flex-col justify-center">
               <span className="text-2xl font-bold text-[#0E341F]">{todayTasks.length}</span>
               <span className="text-xs text-[#637566] mt-1 font-medium">Total Task Hari Ini</span>
@@ -326,7 +326,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
               <span className="text-xs text-[#275433] mt-1 font-semibold">Selesai</span>
             </div>
             <div className={cn(
-              "p-3.5 rounded-xl text-center flex flex-col justify-center border",
+              "p-3.5 rounded-xl text-center flex flex-col justify-center border col-span-2 sm:col-span-1",
               overdueTasks.length > 0 ? "bg-red-50/70 border-red-200 text-red-700" : "bg-[#FAFAFA] border-gray-100"
             )}>
               <span className={cn("text-2xl font-bold", overdueTasks.length > 0 ? "text-red-600" : "text-[#0E341F]")}>
@@ -396,15 +396,15 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
               <Link href="/projects" className="btn-primary">+ Tambah Proyek</Link>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="table-scroll-wrapper">
+              <table className="w-full text-sm min-w-[520px]">
                 <thead>
                   <tr className="border-b border-text-tertiary bg-bg-lighter">
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Nama Proyek</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Progress</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Status</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Deadline</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Task</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Nama Proyek</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Progress</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Status</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Deadline</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Task</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -569,16 +569,16 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
           {recentTransactions.length === 0 ? (
             <div className="py-10 text-center text-sm text-text-secondary">Belum ada transaksi.</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="table-scroll-wrapper">
+              <table className="w-full text-sm min-w-[540px]">
                 <thead>
                   <tr className="border-b border-text-tertiary bg-bg-lighter">
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Keterangan</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Proyek</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Tipe</th>
-                    <th className="text-right text-xs font-semibold text-text-secondary px-4 py-3">Jumlah</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Status</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Tanggal</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Keterangan</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Proyek</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Tipe</th>
+                    <th className="text-right text-xs font-semibold text-text-secondary px-3 py-2.5">Jumlah</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Status</th>
+                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Tanggal</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -761,7 +761,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
       </div>
 
       {/* ── Secondary KPI Row ─────────────── */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="card rounded-xl p-4 text-center">
           <div className="text-xl font-bold text-green-600">{completed}</div>
           <div className="text-xs text-text-secondary mt-0.5">Selesai</div>

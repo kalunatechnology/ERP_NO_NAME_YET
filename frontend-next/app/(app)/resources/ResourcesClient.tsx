@@ -167,8 +167,8 @@ export default function ResourcesClient() {
             Belum ada record data pada endpoint {selectedRes.endpoint}.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full data-table text-xs">
+          <div className="table-scroll-wrapper">
+            <table className="w-full data-table text-xs min-w-[650px]">
               <thead>
                 <tr>
                   {columns.map(c => (

@@ -419,28 +419,30 @@ export default function FinanceClient() {
       {activeTab === "profit" && (
         <div className="card rounded-2xl p-5 flex flex-col gap-4">
           <h3 className="text-sm font-semibold text-text-primary">Analisis Profitabilitas & Margin Proyek (EVM)</h3>
-          <table className="w-full data-table">
-            <thead>
-              <tr>
-                <th>Nama Proyek</th>
-                <th>Nilai Kontrak (Revenue)</th>
-                <th>Biaya Riil (Actual Cost)</th>
-                <th>Laba Kotor (Gross Margin)</th>
-                <th>Margin (%)</th>
-                <th>Status EVM</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong>Implementasi Smart Automation Line</strong></td>
-                <td>{formatMoney(150000000)}</td>
-                <td className="text-red-600 font-semibold">{formatMoney(totalCost || 12000000)}</td>
-                <td className="text-emerald-700 font-bold">{formatMoney(150000000 - (totalCost || 12000000))}</td>
-                <td><span className="font-bold text-brand-deep-green">92%</span></td>
-                <td><span className="badge badge-success">✓ Sangat Sehat (CPI &gt; 1.1)</span></td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="table-scroll-wrapper">
+            <table className="w-full data-table min-w-[560px]">
+              <thead>
+                <tr>
+                  <th>Nama Proyek</th>
+                  <th>Nilai Kontrak (Revenue)</th>
+                  <th>Biaya Riil (Actual Cost)</th>
+                  <th>Laba Kotor (Gross Margin)</th>
+                  <th>Margin (%)</th>
+                  <th>Status EVM</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Implementasi Smart Automation Line</strong></td>
+                  <td>{formatMoney(150000000)}</td>
+                  <td className="text-red-600 font-semibold">{formatMoney(totalCost || 12000000)}</td>
+                  <td className="text-emerald-700 font-bold">{formatMoney(150000000 - (totalCost || 12000000))}</td>
+                  <td><span className="font-bold text-brand-deep-green">92%</span></td>
+                  <td><span className="badge badge-success">✓ Sangat Sehat (CPI &gt; 1.1)</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -456,18 +458,19 @@ export default function FinanceClient() {
               <Plus size={14} /> Catat Biaya
             </button>
           </div>
-          <table className="w-full data-table">
-            <thead>
-              <tr>
-                <th>Deskripsi Pengeluaran</th>
-                <th>Kategori</th>
-                <th>Jumlah Biaya</th>
-                <th>Status Akuntansi</th>
-                <th>Aksi Posting</th>
-              </tr>
-            </thead>
-            <tbody>
-              {costEntries.map(c => (
+          <div className="table-scroll-wrapper">
+            <table className="w-full data-table min-w-[560px]">
+              <thead>
+                <tr>
+                  <th>Deskripsi Pengeluaran</th>
+                  <th>Kategori</th>
+                  <th>Jumlah Biaya</th>
+                  <th>Status Akuntansi</th>
+                  <th>Aksi Posting</th>
+                </tr>
+              </thead>
+              <tbody>
+                {costEntries.map(c => (
                 <tr key={c.id}>
                   <td><strong>{c.description || "Pengeluaran"}</strong></td>
                   <td><span className="badge badge-neutral">{c.category || "OPERATIONAL"}</span></td>
@@ -490,6 +493,7 @@ export default function FinanceClient() {
               {!costEntries.length && <tr><td colSpan={5} className="text-center py-6 text-xs text-text-secondary">Belum ada cost entry.</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -515,8 +519,9 @@ export default function FinanceClient() {
             </button>
           </div>
 
-          <table className="w-full data-table text-xs">
-            <thead>
+          <div className="table-scroll-wrapper">
+            <table className="w-full data-table text-xs min-w-[580px]">
+              <thead>
               <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
                 <th className="py-2.5 px-3">Nama Vendor / Supplier</th>
                 <th className="py-2.5 px-3">Nomor Faktur</th>
@@ -590,6 +595,7 @@ export default function FinanceClient() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -605,8 +611,9 @@ export default function FinanceClient() {
               <Plus size={14} /> Buat Proposal
             </button>
           </div>
-          <table className="w-full data-table">
-            <thead>
+          <div className="table-scroll-wrapper">
+            <table className="w-full data-table min-w-[560px]">
+              <thead>
               <tr>
                 <th>Deskripsi Termin</th>
                 <th>Bobot Capaian</th>
@@ -639,6 +646,7 @@ export default function FinanceClient() {
               {!proposals.length && <tr><td colSpan={5} className="text-center py-6 text-xs text-text-secondary">Belum ada proposal billing.</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -687,8 +695,8 @@ export default function FinanceClient() {
           {/* Tabel Riwayat Uang Masuk */}
           <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
             <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Riwayat Penerimaan Pembayaran Klien</h4>
-            <div className="overflow-x-auto border border-text-tertiary/50 rounded-xl">
-              <table className="w-full data-table text-xs text-left">
+            <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
+              <table className="w-full data-table text-xs text-left min-w-[580px]">
                 <thead>
                   <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b">
                     <th className="py-3 px-4 font-bold">No. Bukti / Tanggal</th>
@@ -773,8 +781,8 @@ export default function FinanceClient() {
           {/* Mutasi Kas & Bank (Inflow vs Outflow) */}
           <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
             <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Buku Mutasi Arus Kas Riil (Inflows & Disbursements)</h4>
-            <div className="overflow-x-auto border border-text-tertiary/50 rounded-xl">
-              <table className="w-full data-table text-xs text-left">
+            <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
+              <table className="w-full data-table text-xs text-left min-w-[600px]">
                 <thead>
                   <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b">
                     <th className="py-3 px-4 font-bold">Tanggal</th>
@@ -1469,8 +1477,8 @@ function TabFundingProyek({
         </div>
       </div>
 
-      <div className="overflow-x-auto border border-text-tertiary/50 rounded-xl">
-        <table className="w-full data-table text-xs text-left">
+      <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
+        <table className="w-full data-table text-xs text-left min-w-[580px]">
           <thead>
             <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b">
               <th className="py-3 px-4 font-bold">Keperluan / Tujuan</th>

@@ -6,11 +6,16 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderKanban, CheckSquare,
   DollarSign, Users, BarChart3, TrendingUp, Building2,
-  LogOut, ChevronRight, Clock, FileText
+  LogOut, ChevronRight, Clock, FileText, X
 } from "lucide-react";
 import { useAuth, UserRoleType, getRoleLabel, getRoleBadgeStyle } from "@/contexts/AuthContext";
 import { feedApi, UserRecentItemDto } from "@/lib/api/feed.api";
 import { cn } from "@/lib/utils";
+
+interface SidebarProps {
+  isMobile?: boolean;
+  onClose?: () => void;
+}
 
 interface NavItem {
   href: string;
@@ -55,7 +60,7 @@ const NAV_BY_ROLE: Record<UserRoleType, NavItem[]> = {
   ],
 };
 
-export function Sidebar() {
+export function Sidebar({ isMobile = false, onClose }: SidebarProps = {}) {
   const pathname = usePathname();
   const { user, userRole, logout } = useAuth();
   const [recentItems, setRecentItems] = useState<UserRecentItemDto[]>([]);
@@ -74,12 +79,24 @@ export function Sidebar() {
 
   return (
     <aside
-      className="w-[230px] h-screen sticky top-0 flex flex-col bg-bg-light border-r border-[#E5E9E2] flex-shrink-0 select-none overflow-hidden"
-      style={{ boxSizing: "border-box" }}
+      className={cn(
+        "w-[230px] flex flex-col bg-bg-light border-r border-[#E5E9E2] flex-shrink-0 select-none overflow-hidden",
+        isMobile ? "h-screen" : "h-screen sticky top-0"
+      )}
       aria-label="Navigasi utama"
     >
       {/* ── Fixed User Profile Header (Compact 68px) ── */}
-      <div className="h-[68px] px-3.5 pt-2.5 pb-2 flex flex-col justify-center border-b border-[#E5E9E2] flex-shrink-0 bg-white">
+      <div className="h-[68px] px-3.5 pt-2.5 pb-2 flex flex-col justify-center border-b border-[#E5E9E2] flex-shrink-0 bg-white relative">
+        {/* Mobile close button */}
+        {isMobile && onClose && (
+          <button
+            onClick={onClose}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-brand-light-green transition-colors"
+            aria-label="Tutup menu"
+          >
+            <X size={16} />
+          </button>
+        )}
         <div className="flex items-center gap-2.5">
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shadow-2xs"

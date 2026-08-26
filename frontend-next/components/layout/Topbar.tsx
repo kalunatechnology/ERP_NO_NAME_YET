@@ -115,30 +115,31 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
       className="flex items-center justify-between bg-bg-lighter border-b border-text-tertiary flex-shrink-0 px-6 gap-6 z-30 relative"
       style={{ height: "var(--topbar-h, 68px)" }}
     >
-      {/* Left: Menu + Breadcrumb */}
-      <div className="flex items-center gap-6">
+      {/* Left: Hamburger (mobile) + Breadcrumb */}
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+        {/* Hamburger: always visible, activates mobile sidebar below lg */}
         <button
           onClick={onMenuToggle}
-          className="p-1 rounded text-text-secondary hover:text-text-primary transition-colors"
+          className="flex-shrink-0 p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-brand-light-green transition-colors lg:hidden"
           id="topbar-menu-btn"
-          aria-label="Toggle menu"
+          aria-label="Buka menu"
         >
-          <Menu size={24} aria-hidden="true" />
+          <Menu size={20} aria-hidden="true" />
         </button>
 
-        <nav aria-label="Breadcrumb">
-          <ol className="flex items-center gap-3">
-            <li>
-              <span className="text-lg text-text-secondary">Contents</span>
+        <nav aria-label="Breadcrumb" className="min-w-0">
+          <ol className="flex items-center gap-1.5 sm:gap-2">
+            <li className="hidden sm:block flex-shrink-0">
+              <span className="text-sm text-text-secondary">Contents</span>
             </li>
             {crumbs.map((crumb, i) => (
-              <li key={crumb.href} className="flex items-center gap-3">
-                <span className="text-lg text-text-secondary" aria-hidden="true">/</span>
+              <li key={crumb.href} className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <span className="hidden sm:block text-sm text-text-secondary" aria-hidden="true">/</span>
                 <span
                   className={cn(
-                    "text-lg",
+                    "text-sm truncate max-w-[80px] sm:max-w-[140px] lg:max-w-none",
                     i === crumbs.length - 1
-                      ? "text-brand-deep-green font-normal"
+                      ? "text-brand-deep-green font-medium"
                       : "text-text-secondary"
                   )}
                   aria-current={i === crumbs.length - 1 ? "page" : undefined}
@@ -218,13 +219,13 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
         <button
           type="button"
           onClick={() => setIsCommandPaletteOpen(true)}
-          className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-text-tertiary/70 hover:bg-text-tertiary hover:border-brand-green/40 border border-transparent transition-all text-xs text-text-secondary cursor-pointer shadow-2xs"
+          className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-text-tertiary/70 hover:bg-text-tertiary hover:border-brand-green/40 border border-transparent transition-all text-xs text-text-secondary cursor-pointer shadow-2xs"
           title="Pencarian Cepat & Navigasi (Ctrl+K)"
         >
           <Search size={14} className="text-text-secondary flex-shrink-0" aria-hidden="true" />
-          <span className="hidden sm:inline">Cari data, proyek, menu…</span>
-          <span className="inline sm:hidden">Cari…</span>
-          <kbd className="px-1.5 py-0.5 text-3xs text-text-secondary bg-white rounded-md border border-gray-200 font-mono shadow-2xs ml-1">
+          <span className="hidden md:inline whitespace-nowrap">Cari data, proyek, menu…</span>
+          <span className="hidden sm:inline md:hidden">Cari…</span>
+          <kbd className="hidden sm:inline-flex px-1.5 py-0.5 text-[9px] text-text-secondary bg-white rounded-md border border-gray-200 font-mono shadow-2xs ml-0.5">
             Ctrl+K
           </kbd>
         </button>
@@ -232,11 +233,11 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
         {/* Notification Bell */}
         <button
           onClick={() => toast("Semua notifikasi tersinkronisasi", { icon: "🔔" })}
-          className="p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/40 transition-colors relative"
+          className="flex-shrink-0 p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/40 transition-colors relative"
           aria-label="Notifikasi"
         >
-          <Bell size={20} aria-hidden="true" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full" aria-hidden="true" />
+          <Bell size={18} aria-hidden="true" />
+          <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-amber-500 rounded-full" aria-hidden="true" />
         </button>
 
         {/* Quick User Avatar & Persona Switcher */}

@@ -239,7 +239,7 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card rounded-xl p-4">
           <h3 className="text-sm font-bold text-text-primary mb-3">Pipeline Aktif</h3>
           {pipeline.length === 0 ? <EmptyState msg="Belum ada opportunity aktif." /> : (

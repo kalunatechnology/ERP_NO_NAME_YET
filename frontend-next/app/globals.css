@@ -7,7 +7,7 @@
 /* ── Base ────────────────────────────────────────── */
 @layer base {
   :root {
-    --sidebar-w: 240px;
+    --sidebar-w: 230px;
     --topbar-h: 64px;
     --right-panel-w: 260px;
   }
@@ -114,18 +114,45 @@
 
   /* Table */
   .data-table th {
-    @apply px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wide bg-gray-50;
+    @apply px-3 py-2.5 text-left text-xs font-semibold text-text-secondary uppercase tracking-wide bg-gray-50/80 whitespace-nowrap;
   }
   .data-table td {
-    @apply px-4 py-3 text-sm text-text-primary border-t border-text-tertiary;
+    @apply px-3 py-2.5 text-xs text-text-primary border-t border-text-tertiary whitespace-nowrap;
   }
   .data-table tr:hover td {
-    @apply bg-brand-light-green bg-opacity-40;
+    @apply bg-brand-light-green/30;
   }
 }
 
-/* ── Utilities ───────────────────────────────────── */
+/* ── Utilities ─────────────────────────────────── */
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Horizontal table scroll wrapper for responsive tables */
+  .table-scroll-wrapper {
+    @apply w-full overflow-x-auto -mx-0;
+    scrollbar-width: thin;
+    scrollbar-color: #E8E8E8 transparent;
+  }
+  .table-scroll-wrapper::-webkit-scrollbar {
+    height: 4px;
+  }
+  .table-scroll-wrapper::-webkit-scrollbar-thumb {
+    @apply bg-text-tertiary rounded-full;
+  }
+
+  /* Mobile slide-in animation for sidebar drawer */
+  .slide-in-left {
+    animation: slideInLeft 0.2s ease-out;
+  }
+  @keyframes slideInLeft {
+    from { transform: translateX(-100%); opacity: 0; }
+    to   { transform: translateX(0);     opacity: 1; }
+  }
+
+  /* Topbar right area compact on small screens */
+  .topbar-right-gap {
+    @apply gap-1.5 sm:gap-2 md:gap-3;
+  }
 }

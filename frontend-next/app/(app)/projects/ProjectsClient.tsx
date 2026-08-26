@@ -1366,8 +1366,8 @@ export default function ProjectsClient() {
                                             Belum ada aktivitas harian pada target ini. Klik <b>+ Daily Task Harian</b> untuk mencatat sesi kerja.
                                           </div>
                                         ) : (
-                                          <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                                            <table className="w-full data-table text-xs text-left">
+                                          <div className="table-scroll-wrapper border border-gray-100 rounded-xl">
+                                            <table className="w-full data-table text-xs text-left min-w-[620px]">
                                               <thead>
                                                 <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider">
                                                   <th className="py-2 px-3 font-bold">Tanggal & Waktu</th>
@@ -1611,8 +1611,8 @@ export default function ProjectsClient() {
                 Tidak ada aktivitas harian yang sesuai filter saat ini.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full data-table text-xs text-left">
+              <div className="table-scroll-wrapper">
+                <table className="w-full data-table text-xs text-left min-w-[640px]">
                   <thead>
                     <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider">
                       <th className="py-2.5 px-3.5 font-bold">Proyek & WBS Paket</th>

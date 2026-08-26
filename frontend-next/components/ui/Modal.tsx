@@ -51,7 +51,7 @@ export function Modal({
   }[effectiveMaxWidth];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
@@ -62,14 +62,14 @@ export function Modal({
       {/* Modal Card */}
       <div
         className={cn(
-          "relative w-full bg-white rounded-3xl shadow-2xl border border-text-tertiary overflow-hidden z-10 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "relative w-full bg-white rounded-3xl shadow-2xl border border-text-tertiary overflow-hidden z-10 flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
           maxWidthClasses
         )}
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-text-tertiary bg-gray-50/50">
+        <div className="flex items-start justify-between p-3.5 sm:p-5 border-b border-text-tertiary bg-gray-50/50">
           <div>
             <h3 className="text-base font-semibold text-text-primary">{title}</h3>
             {subtitle && <p className="text-xs text-text-secondary mt-0.5">{subtitle}</p>}

@@ -225,8 +225,8 @@ function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) 
           <h3 className="text-sm font-bold text-text-primary">Kinerja Finansial Seluruh Proyek</h3>
           <span className="text-xs text-text-secondary">{data.projects.length} Proyek</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="table-scroll-wrapper">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="border-b border-text-tertiary bg-bg-lighter">
                 <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">Kode & Nama Proyek</th>
@@ -284,8 +284,8 @@ function TabJournals({ data }: { data: ReturnType<typeof createDefaultData> }) {
       {journals.length === 0 ? (
         <div className="py-12 text-center text-sm text-text-secondary">Belum ada jurnal umum tercatat.</div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="table-scroll-wrapper">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="border-b border-text-tertiary bg-bg-lighter">
                 <th className="text-left text-xs font-semibold text-text-secondary px-4 py-3">No. Jurnal</th>

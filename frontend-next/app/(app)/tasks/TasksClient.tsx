@@ -419,7 +419,7 @@ export default function TasksClient() {
   ];
 
   const renderTable = (items: typeof filteredTasks) => (
-    <table className="w-full text-xs text-left">
+    <table className="w-full text-xs text-left min-w-[620px]">
       <thead>
         <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b border-gray-200">
           <th className="py-2.5 px-4 font-bold">Proyek & WBS</th>
@@ -471,7 +471,7 @@ export default function TasksClient() {
       </div>
 
       {/* ── KPI Summary Strip ──────────────── */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="card rounded-xl p-3 text-center">
           <div className="text-xl font-bold text-text-primary">{todayCount}</div>
           <div className="text-2xs text-text-secondary mt-0.5">Task Hari Ini</div>
@@ -582,7 +582,7 @@ export default function TasksClient() {
                 </button>
                 {/* Group Table */}
                 {!isCollapsed && (
-                  <div className="overflow-x-auto">
+                  <div className="table-scroll-wrapper">
                     {renderTable(items)}
                   </div>
                 )}
@@ -593,7 +593,7 @@ export default function TasksClient() {
       ) : (
         /* ── Flat List ── */
         <div className="card rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="table-scroll-wrapper">
             {renderTable(filteredTasks)}
           </div>
         </div>
