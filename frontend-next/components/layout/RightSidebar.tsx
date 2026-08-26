@@ -3,14 +3,10 @@
 import React, { useEffect, useState } from "react";
 import {
   FileText,
-  RotateCcw,
   ShieldCheck,
-  User,
-  UploadCloud,
   CheckCircle2,
   Bell,
-  Activity,
-  Users
+  UploadCloud,
 } from "lucide-react";
 import { feedApi, SidebarFeedResponse } from "@/lib/api/feed.api";
 
@@ -51,34 +47,36 @@ export function RightSidebar() {
   };
 
   return (
-    <aside className="hidden lg:flex h-screen w-80 shrink-0 flex-col overflow-y-auto border-l border-stone-200/80 bg-[#fbfdfa] p-6 text-[#2d4a0b]">
+    <aside className="hidden xl:flex h-screen w-72 shrink-0 flex-col overflow-y-auto border-l border-[#E5E9E2] bg-[#FDFDFD] p-4 text-[#0E341F] select-none no-scrollbar">
       {/* 1. Notifications Section */}
       <section>
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold tracking-tight text-[#2d4a0b]">Notifications</h3>
+        <div className="flex items-center justify-between pb-1">
+          <h3 className="text-xs font-extrabold tracking-tight text-[#0E341F] uppercase">
+            Notifications
+          </h3>
           {data?.notifications?.some((n) => !n.is_read) && (
-            <span className="h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-100" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[#5A861F] ring-2 ring-[#F0FEE0]" />
           )}
         </div>
-        <div className="mt-4 flex flex-col gap-3.5">
+        <div className="mt-2.5 flex flex-col gap-2.5">
           {isLoading ? (
-            <div className="space-y-2 animate-pulse">
-              <div className="h-9 bg-stone-100 rounded-lg" />
-              <div className="h-9 bg-stone-100 rounded-lg" />
+            <div className="space-y-1.5 animate-pulse">
+              <div className="h-7 bg-stone-100 rounded-lg" />
+              <div className="h-7 bg-stone-100 rounded-lg" />
             </div>
           ) : (
             data?.notifications?.map((item) => {
               const Icon = getNotificationIcon(item.category);
               return (
-                <div key={item.id} className="flex items-start gap-3 group cursor-pointer">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#edf6e8] text-[#558b2f]">
-                    <Icon className="h-4 w-4 stroke-[2]" />
+                <div key={item.id} className="flex items-start gap-2 group cursor-pointer">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#F0FEE0] text-[#275433]">
+                    <Icon className="h-3 w-3 stroke-[2]" />
                   </div>
-                  <div className="flex flex-col leading-tight">
-                    <span className="text-xs font-semibold text-stone-800 group-hover:text-[#4d7c0f]">
+                  <div className="flex flex-col leading-tight min-w-0">
+                    <span className="text-[11px] font-bold text-[#0E341F] group-hover:text-[#275433] truncate">
                       {item.title}
                     </span>
-                    <span className="text-[11px] text-stone-400">{item.formatted_time}</span>
+                    <span className="text-[10px] text-[#768779]">{item.formatted_time}</span>
                   </div>
                 </div>
               );
@@ -87,28 +85,30 @@ export function RightSidebar() {
         </div>
       </section>
 
-      <hr className="my-5 border-stone-200" />
+      <hr className="my-3.5 border-[#EEF2E8]" />
 
       {/* 2. Activities Section */}
       <section>
-        <h3 className="text-base font-bold tracking-tight text-[#2d4a0b]">Activities</h3>
-        <div className="mt-4 flex flex-col gap-3.5">
+        <h3 className="text-xs font-extrabold tracking-tight text-[#0E341F] uppercase pb-1">
+          Activities
+        </h3>
+        <div className="mt-2.5 flex flex-col gap-2.5">
           {isLoading ? (
-            <div className="space-y-2 animate-pulse">
-              <div className="h-9 bg-stone-100 rounded-lg" />
-              <div className="h-9 bg-stone-100 rounded-lg" />
+            <div className="space-y-1.5 animate-pulse">
+              <div className="h-7 bg-stone-100 rounded-lg" />
+              <div className="h-7 bg-stone-100 rounded-lg" />
             </div>
           ) : (
             data?.activities?.map((act) => (
-              <div key={act.id} className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#edf6e8] text-[#558b2f]">
-                  <UploadCloud className="h-4 w-4 stroke-[2]" />
+              <div key={act.id} className="flex items-start gap-2">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#F0FEE0] text-[#275433]">
+                  <UploadCloud className="h-3 w-3 stroke-[2]" />
                 </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="text-xs font-semibold text-stone-800">
-                    <strong className="font-semibold text-stone-900">{act.actor?.full_name || act.actor?.username || "Sistem"}</strong> {act.verb}
+                <div className="flex flex-col leading-tight min-w-0">
+                  <span className="text-[11px] text-[#0E341F]">
+                    <strong className="font-bold text-[#0E341F]">{act.actor?.full_name || act.actor?.username || "Sistem"}</strong> {act.verb}
                   </span>
-                  <span className="text-[11px] text-stone-400">{act.formatted_time}</span>
+                  <span className="text-[10px] text-[#768779]">{act.formatted_time}</span>
                 </div>
               </div>
             ))
@@ -116,34 +116,36 @@ export function RightSidebar() {
         </div>
       </section>
 
-      <hr className="my-5 border-stone-200" />
+      <hr className="my-3.5 border-[#EEF2E8]" />
 
       {/* 3. Contacts Section */}
       <section>
-        <h3 className="text-base font-bold tracking-tight text-[#2d4a0b]">Contacts</h3>
-        <div className="mt-4 flex flex-col gap-3">
+        <h3 className="text-xs font-extrabold tracking-tight text-[#0E341F] uppercase pb-1">
+          Contacts
+        </h3>
+        <div className="mt-2.5 flex flex-col gap-2">
           {isLoading ? (
-            <div className="space-y-2 animate-pulse">
-              <div className="h-8 bg-stone-100 rounded-full" />
-              <div className="h-8 bg-stone-100 rounded-full" />
+            <div className="space-y-1.5 animate-pulse">
+              <div className="h-7 bg-stone-100 rounded-full" />
+              <div className="h-7 bg-stone-100 rounded-full" />
             </div>
           ) : (
             data?.contacts?.map((contact) => (
-              <div key={contact.id} className="flex items-center gap-3">
+              <div key={contact.id} className="flex items-center gap-2">
                 {contact.avatar_url ? (
                   <img
                     src={contact.avatar_url}
                     alt={contact.full_name}
-                    className="h-8 w-8 rounded-full object-cover ring-1 ring-stone-200"
+                    className="h-6 w-6 rounded-full object-cover ring-1 ring-stone-200"
                   />
                 ) : (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-xs font-bold text-white">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#275433] text-[10px] font-bold text-white">
                     {(contact.full_name || contact.username || "U").slice(0, 2).toUpperCase()}
                   </div>
                 )}
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-stone-800">{contact.full_name || contact.username}</span>
-                  <span className="text-[10px] text-emerald-600">Active now</span>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[11px] font-bold text-[#0E341F] truncate">{contact.full_name || contact.username}</span>
+                  <span className="text-[9px] text-[#5A861F] font-semibold">Active now</span>
                 </div>
               </div>
             ))
@@ -153,3 +155,5 @@ export function RightSidebar() {
     </aside>
   );
 }
+
+export default RightSidebar;

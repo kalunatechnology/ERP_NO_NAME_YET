@@ -36,25 +36,27 @@ const config: Config = {
         },
       },
 
-      /* ── Typography ──────────────────────────────────── */
+      /* ── Typography (Strictly Aligned with Implementation Guideline) ─ */
       fontFamily: {
-        sans: ["Google Sans", "Roboto", "Inter", "sans-serif"],
+        sans: ["'Google Sans'", "Roboto", "Inter", "system-ui", "sans-serif"],
       },
       fontSize: {
-        "2xs": ["10px", { lineHeight: "13px" }],
-        xs:    ["12px", { lineHeight: "15px" }],
-        sm:    ["14px", { lineHeight: "18px" }],
-        base:  ["16px", { lineHeight: "20px" }],
-        lg:    ["20px", { lineHeight: "25px" }],
-        xl:    ["24px", { lineHeight: "30px" }],
-        "2xl": ["32px", { lineHeight: "40px" }],
-        "3xl": ["40px", { lineHeight: "50px" }],
+        "3xs": ["9px", { lineHeight: "12px" }],
+        "2xs": ["10px", { lineHeight: "14px" }],
+        xs:    ["12px", { lineHeight: "16px" }], // Caption (12px/16px)
+        sm:    ["13px", { lineHeight: "18px" }], // Sub-body
+        base:  ["14px", { lineHeight: "20px" }], // Body (14px/20px)
+        md:    ["15px", { lineHeight: "22px" }], // Body Medium
+        lg:    ["16px", { lineHeight: "24px" }], // H3 (16px/24px)
+        xl:    ["20px", { lineHeight: "28px" }], // H2 (20px/28px)
+        "2xl": ["24px", { lineHeight: "32px" }], // H1 (24px/32px)
+        "3xl": ["28px", { lineHeight: "36px" }], // Hero/Banner
       },
 
       /* ── Border Radius ───────────────────────────────── */
       borderRadius: {
-        sm:    "4px",
-        DEFAULT: "6px",
+        sm:    "8px",
+        DEFAULT: "8px",
         md:    "12px",
         lg:    "16px",
         xl:    "24px",
@@ -74,8 +76,9 @@ const config: Config = {
 
       /* ── Box Shadow ──────────────────────────────────── */
       boxShadow: {
+        "2xs":    "0 1px 2px rgba(0,0,0,0.03)",
         card:     "0 1px 3px rgba(0,0,0,0.04)",
-        "card-md":"0 4px 12px rgba(39,84,51,0.10)",
+        "card-md":"0 4px 12px rgba(39,84,51,0.08)",
         sidebar:  "2px 0 8px rgba(0,0,0,0.04)",
       },
 
