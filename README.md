@@ -5318,6 +5318,13 @@ Semua akun ini terhubung langsung ke **PT. Arsalynt Multi Integra** dan siap dig
 | 5 | **Jundy Isham Izzudin** | `jundy.isham@arsalynk.id` | `jundy.isham` | **Project Assignee / Field Engineer** (Eksekusi Task & Timesheet Lapangan) | `DummyPass123!` |
 | 6 | **M Noorman Perdana** | `noorman.perdana@arsalynk.id` | `noorman.perdana` | **Project Assignee / Field Engineer** (Eksekusi Task & Timesheet Lapangan) | `DummyPass123!` |
 
+USER LAIN untuk Arof dan Melika
+
+| Nama Pengguna | Email Login | Role & Hak Akses | Default Password |
+|:---|:---|:---|:---|
+| **Arof Fudding** | `arof.finance@arsalynk.id` | **Finance Controller & Accounting Lead**<br>*(Buku Besar GL, Perpajakan, Billing Invoice, Pembayaran AP)* | `DummyPass123!` |
+| **Melika Citra Tania** | `melika.ops@arsalynk.id` | **Operational & Site Supervisor**<br>*(Alokasi Material, Resource, Pengawasan Lapangan & Task)* | `DummyPass123!` |
+
 ---
 
 ### 2. **Daftar Ghost / Demo Users (Tetap Aktif & Bisa Login Kapan Saja)**
