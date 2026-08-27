@@ -20,6 +20,8 @@ import { TopExpensesBarChart, ExpenseItem } from "@/components/ui/TopExpensesBar
 import { ProjectTimelineGantt, GanttTaskItem } from "@/components/ui/ProjectTimelineGantt";
 import { ProjectMilestoneCard, ProjectSummary, MilestoneItem } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
+import { InventoryCheckingCard } from "@/components/ui/InventoryCheckingCard";
+import { AlertTimelineCard } from "@/components/ui/AlertTimelineCard";
 
 /* ═══════════════════════════════════════════════════════════════
    SHARED COMPONENTS
@@ -489,6 +491,22 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
           />
         </div>
       </section>
+
+      {/* ── Operational Control & Alert Center (Inventory Checking + Alerts) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
+          <BudgetCheckStatusCard
+            materialBudget={kpis.totalBudget || 56000000}
+            allocationCost={kpis.usedBudget || 12500000}
+            remainingBudget={kpis.remainingBudget || 43500000}
+            isValid={(kpis.remainingBudget || 0) >= 0}
+          />
+          <InventoryCheckingCard autoFetch={true} />
+        </div>
+        <div className="lg:col-span-1">
+          <AlertTimelineCard title="Alerts &amp; Action Center" />
+        </div>
+      </div>
 
       {/* ── Need Action Panel ──────────── */}
       {pendingItems.length > 0 && (

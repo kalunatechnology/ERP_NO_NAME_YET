@@ -12,14 +12,16 @@ interface TopbarProps {
 }
 
 const DEMO_PERSONAS = [
-  { email: "dummy.admin@example.com", name: "Dummy Administrator", role: "ROLE-ADMIN · Full Access (Bisa Ganti Company)", icon: "👑", company: "Semua Company" },
-  { email: "executive.demo@erp.local", name: "Executive Demo", role: "EXECUTIVE · Direksi Arsalynt", icon: "🏛️", company: "Arsalynt" },
-  { email: "dummy.manager@example.com", name: "Operational Manager", role: "ROLE-MANAGER · CRM & PM", icon: "👔", company: "Arsalynt" },
-  { email: "dummy.staff@example.com", name: "Operational Staff", role: "ROLE-STAFF · Support & Inquiry", icon: "🧑‍💼", company: "Arsalynt" },
-  { email: "project.manager.demo@erp.local", name: "Project Manager Demo", role: "PROJECT_MANAGEMENT · WBS", icon: "🏗️", company: "Arsalynt" },
-  { email: "assignee.demo@erp.local", name: "Project Assignee Demo", role: "PROJECT_ASSIGNEE · Timesheet", icon: "👷", company: "Arsalynt" },
-  { email: "finance.demo@erp.local", name: "Finance Demo", role: "ACCOUNTING_FINANCE · AR/AP", icon: "💼", company: "Arsalynt" },
-  { email: "finance.approver@example.com", name: "Finance Approver", role: "FINANCE · Approvals", icon: "✍️", company: "Arsalynt" },
+  { email: "admin@arsalynk.id", name: "Sutanto Admin", role: "Super Administrator · Full Multi-Tenant", icon: "👑", company: "Semua Company" },
+  { email: "director@arsalynk.id", name: "Bambang Director", role: "Direksi / Executive · P&L", icon: "🏛️", company: "PT. Arsalynt" },
+  { email: "pm@arsalynk.id", name: "Rina Sari PM", role: "Project Manager · WBS & Gantt", icon: "🏗️", company: "PT. Arsalynt" },
+  { email: "supervisor@arsalynk.id", name: "Ahmad Rizki", role: "Field Supervisor · Timesheet", icon: "👷", company: "PT. Arsalynt" },
+  { email: "manager@arsalynk.id", name: "Dewi Kurnia", role: "CRM & Sales Lead · Pipeline", icon: "👔", company: "PT. Arsalynt" },
+  { email: "sales@arsalynk.id", name: "Hendra Sales", role: "Sales Commercial · Quotation", icon: "🧑‍💼", company: "PT. Arsalynt" },
+  { email: "finance@arsalynk.id", name: "Budi Santoso", role: "Finance Controller · AR/AP & Kas", icon: "💼", company: "PT. Arsalynt" },
+  { email: "dummy.admin@example.com", name: "Dummy Administrator", role: "Administrator Demo", icon: "👑", company: "PT. Arsalynt" },
+  { email: "dummy.pm@example.com", name: "Dummy Project Manager", role: "PM Demo · Projects", icon: "🏗️", company: "PT. Arsalynt" },
+  { email: "dummy.finance@example.com", name: "Dummy Finance", role: "Finance Demo · Invoicing", icon: "💰", company: "PT. Arsalynt" },
 ];
 
 /* ── Breadcrumb builder ─────────────────────────── */
@@ -97,11 +99,11 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
     setSwitching(true);
     try {
       await login(email, "DummyPass123!");
-      toast.success(`Berhasil beralih ke: ${email}`, { icon: "⚡" });
+      toast.success(`Berhasil beralih ke akun: ${email}`, { icon: "⚡" });
       setIsUserMenuOpen(false);
-      window.location.reload();
+      window.location.href = "/dashboard";
     } catch {
-      toast.error("Gagal beralih akun");
+      toast.error("Gagal beralih akun. Silakan coba akun lainnya.");
     } finally {
       setSwitching(false);
     }
@@ -261,7 +263,7 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
             <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-text-tertiary shadow-card-lg py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
               <div className="px-3.5 py-2 border-b border-text-tertiary">
                 <span className="text-2xs font-extrabold text-brand-deep-green tracking-wider uppercase">
-                  Ganti Akun Cepat (8 User Siap Uji)
+                  Ganti Akun Cepat ({DEMO_PERSONAS.length} Akun Aktif)
                 </span>
                 <p className="text-2xs text-text-secondary mt-0.5">
                   Semua akun operasional otomatis masuk ke <b>PT. Arsalynt</b>, admin bebas memilih company.

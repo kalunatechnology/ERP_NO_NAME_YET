@@ -3,13 +3,15 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  RefreshCw, CheckCheck, Mail, Copy, Check, PanelRightClose
+  RefreshCw, CheckCheck, Mail, Copy, Check, PanelRightClose, Bell
 } from "lucide-react";
 import {
   fetchDynamicRightPanelData,
+  fetchRealAlertsList,
   feedApi,
   DynamicFeedItem,
-  DynamicContact
+  DynamicContact,
+  RealAlertItem
 } from "@/lib/api/feed.api";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
@@ -22,6 +24,7 @@ interface RightPanelProps {
 export function RightPanel({ onToggleCollapse }: RightPanelProps) {
   const router = useRouter();
   const [notifications, setNotifications] = useState<DynamicFeedItem[]>([]);
+  const [alerts, setAlerts] = useState<RealAlertItem[]>([]);
   const [activities, setActivities] = useState<DynamicFeedItem[]>([]);
   const [contacts, setContacts] = useState<DynamicContact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,8 +37,12 @@ export function RightPanel({ onToggleCollapse }: RightPanelProps) {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const data = await fetchDynamicRightPanelData();
+      const [data, realAlerts] = await Promise.all([
+        fetchDynamicRightPanelData(),
+        fetchRealAlertsList()
+      ]);
       setNotifications((data.notifications || []).slice(0, 3));
+      setAlerts(realAlerts.slice(0, 3));
       setActivities((data.activities || []).slice(0, 3));
       setContacts((data.contacts || []).slice(0, 4));
     } catch {
@@ -185,6 +192,80 @@ export function RightPanel({ onToggleCollapse }: RightPanelProps) {
               )}
             </div>
           )}
+        </section>
+
+        {/* Section Divider */}
+        <div className="w-full h-px bg-text-tertiary/40" aria-hidden="true" />
+
+        {/* ── Section: Alert Timeline (Under Notifications) ── */}
+        <section className="flex flex-col gap-2 w-full" aria-labelledby="rp-alerts-title">
+          <div className="flex items-center justify-between pb-1 border-b border-text-tertiary/40">
+            <h2
+              id="rp-alerts-title"
+              className="text-xs font-bold text-brand-deep-green uppercase tracking-wider flex items-center gap-1.5"
+            >
+              <Bell size={13} className="text-brand-green" />
+              Alert
+            </h2>
+            <span className="text-[9px] font-bold text-brand-deep-green bg-brand-light-green px-1.5 py-0.2 rounded-md">
+              REAL TIME
+            </span>
+          </div>
+
+          <div className="relative pl-3.5 flex flex-col gap-2 mt-0.5">
+            {/* Continuous Vertical Timeline Rail */}
+            <div className="absolute left-1 top-1 bottom-1 w-0.5 bg-gray-200 rounded-full overflow-hidden">
+              <div className="w-full bg-[#5A861F] h-1/3 rounded-full" />
+            </div>
+
+            {alerts.length === 0 ? (
+              <p className="text-3xs text-text-secondary py-1">Belum ada alert baru.</p>
+            ) : (
+              alerts.slice(0, 3).map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    if (item.href) {
+                      router.push(item.href);
+                      toast(`Membuka ${item.title}`, { icon: "🔔" });
+                    }
+                  }}
+                  className={cn(
+                    "p-2.5 rounded-xl transition-all flex flex-col gap-1 cursor-pointer group",
+                    item.isHighlighted
+                      ? "bg-[#F0FEE0] border border-[#BBDFA0] shadow-2xs"
+                      : "bg-white hover:bg-neutral-50 border border-gray-100"
+                  )}
+                >
+                  <div className="flex items-center justify-between text-xs gap-1">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span
+                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{
+                          backgroundColor:
+                            item.categoryColor || (item.isHighlighted ? "#22C55E" : "#9CA3AF"),
+                        }}
+                      />
+                      <span className="font-bold text-[#0E341F] text-[10px] truncate">
+                        {item.category}
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-[#637566] font-medium flex-shrink-0">
+                      {item.time}
+                    </span>
+                  </div>
+
+                  <h5 className="text-[11px] font-bold text-[#0E341F] leading-snug group-hover:text-[#275433] transition-colors truncate">
+                    {item.title}
+                  </h5>
+
+                  <p className="text-[10px] text-[#637566] leading-tight line-clamp-2">
+                    {item.snippet}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
         </section>
 
         {/* Section Divider */}
