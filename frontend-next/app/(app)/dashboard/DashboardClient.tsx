@@ -315,8 +315,8 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
         </div>
       </section>
 
-      {/* ── Visual Analytics Row 1: Gauges & Distribusi Portofolio ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
+      {/* ── Visual Analytics Row 1: Gauges & Distribusi Portofolio (2 Kolom) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
         <ProjectDistributionGauge
           scorePercent={healthScore}
           statusLabel={healthStatus}
@@ -324,8 +324,12 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
           cautiousCount={delayed}
           offTrackCount={0}
         />
-        <CompletionRateCard rates={industryRates} />
         <ProjectDonutSummaryCard data={statusCounts} />
+      </div>
+
+      {/* ── Visual Analytics Row 1.5: Completion Rate (Full Width di bawah 2 card) ── */}
+      <div className="w-full">
+        <CompletionRateCard rates={industryRates} />
       </div>
 
       {/* ── Visual Analytics Row 2: Tren Pendapatan & Biaya Bulanan (Run-Rate) ── */}
@@ -724,8 +728,8 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         </div>
       </section>
 
-      {/* ── Baris 1: Gauges & Distribusi Kesehatan Portofolio ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
+      {/* ── Baris 1: Gauges & Distribusi Kesehatan Portofolio (2 Kolom) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
         <ProjectDistributionGauge
           scorePercent={healthScore}
           statusLabel={healthStatus}
@@ -733,8 +737,12 @@ function ExecutiveDashboard({ projects, finData, loading }: {
           cautiousCount={delayed}
           offTrackCount={0}
         />
-        <CompletionRateCard rates={industryRates} />
         <ProjectDonutSummaryCard data={statusCounts} />
+      </div>
+
+      {/* ── Baris 1.5: Completion Rate by Project Cluster (Full Width di bawah 2 card) ── */}
+      <div className="w-full">
+        <CompletionRateCard rates={industryRates} />
       </div>
 
       {/* ── Baris 2: Tren Pendapatan & Biaya Bulanan (Monthly Stacked Run-Rate) ── */}

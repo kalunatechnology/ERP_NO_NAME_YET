@@ -38,7 +38,18 @@ export function CompletionRateCard({
       </div>
 
       {/* Progress Items */}
-      <div className="flex flex-col gap-3.5 py-3 my-auto">
+      <div
+        className={cn(
+          "py-3.5 my-auto",
+          displayRates.length === 0
+            ? "flex flex-col"
+            : displayRates.length >= 3
+            ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+            : displayRates.length === 2
+            ? "grid grid-cols-1 md:grid-cols-2 gap-4"
+            : "flex flex-col gap-3.5"
+        )}
+      >
         {displayRates.length === 0 ? (
           <div className="py-6 text-center text-xs text-slate-400">
             Belum ada data progres klaster (Proyek baru diinisiasi)
@@ -47,18 +58,24 @@ export function CompletionRateCard({
           displayRates.map((item) => {
             const val = Math.min(100, Math.max(0, item.percentage || 0));
             return (
-              <div key={item.id} className="flex flex-col gap-1.5 w-full">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-700 truncate pr-2" title={item.industry}>
+              <div
+                key={item.id}
+                className="flex flex-col justify-between gap-2 w-full bg-slate-50/70 p-3 rounded-xl border border-slate-200/60 transition-all hover:bg-slate-50"
+              >
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span
+                    className="font-semibold text-slate-800 text-xs sm:text-[13px] leading-snug line-clamp-1"
+                    title={item.industry}
+                  >
                     {item.industry}
                   </span>
-                  <span className="font-bold text-slate-800 bg-slate-100/70 border border-slate-200/60 px-2 py-0.5 rounded-md text-[11px] tabular-nums flex-shrink-0">
+                  <span className="font-bold text-slate-800 bg-white border border-slate-200/80 px-2 py-0.5 rounded-md text-[11px] tabular-nums flex-shrink-0 shadow-2xs">
                     {Math.round(val)}%
                   </span>
                 </div>
 
                 {/* Progress Bar Track */}
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div className="w-full h-2.5 bg-slate-200/60 rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-emerald-600 to-teal-500 shadow-2xs"
                     style={{ width: `${val}%` }}
