@@ -247,47 +247,108 @@ export class AccountsService {
     };
   }
 
-  static async signup(name: string, email: string, _phone?: string, password?: string) {
+  static async signup(
+    name: string,
+    email: string,
+    phone?: string,
+    password?: string,
+    roleCode: string = 'ROLE-STAFF',
+    companyCode: string = 'ARSALYNK'
+  ) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanUsername = cleanEmail.split('@')[0]!;
-    const pass = password || 'Marka123!';
+    const pass = password || 'DummyPass123!';
 
-    let user = await prisma.iam_user.findFirst({
+    if (pass.length < 6) {
+      throw new ValidationError('Password minimal harus 6 karakter.');
+    }
+
+    // Check if user already exists
+    const existing = await prisma.iam_user.findFirst({
       where: {
         OR: [{ email: cleanEmail }, { username: cleanUsername }],
       },
     });
 
-    if (!user) {
-      const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(pass, salt);
+    if (existing) {
+      throw new ValidationError('Email atau username sudah terdaftar. Silakan login.');
+    }
 
-      user = await prisma.iam_user.create({
+    // Get or fallback active tenant & company
+    const tenant =
+      (await prisma.core_tenant.findFirst({ where: { code: 'ARSALYNK' } })) ||
+      (await prisma.core_tenant.findFirst({ where: { status: 'ACTIVE' } }));
+
+    const company =
+      (await prisma.core_company.findFirst({ where: { company_code: companyCode } })) ||
+      (await prisma.core_company.findFirst({ where: { status: 'ACTIVE' } }));
+
+    const org = company
+      ? await prisma.core_organization.findFirst({ where: { company_id: company.id } })
+      : null;
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(pass, salt);
+
+    const user = await prisma.iam_user.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenant_id: tenant?.id ?? null,
+        email: cleanEmail,
+        username: cleanUsername,
+        full_name: name.trim() || cleanUsername.replace(/[._]/g, ' '),
+        password_hash: passwordHash,
+        is_active: true,
+        is_staff: false,
+        is_superuser: false,
+        status: 'ACTIVE',
+        date_joined: new Date(),
+      },
+    });
+
+    // Assign Role
+    let role = await prisma.iam_role.findFirst({ where: { role_code: roleCode } });
+    if (!role) {
+      role = await prisma.iam_role.findFirst({ where: { role_code: 'ROLE-STAFF' } });
+    }
+
+    if (role && company) {
+      await prisma.iam_user_role.create({
         data: {
           id: crypto.randomUUID(),
-          email: cleanEmail,
-          username: cleanUsername,
-          full_name: name || cleanUsername.replace(/[._]/g, ' '),
-          password_hash: passwordHash,
-          is_active: true,
-          is_staff: false,
-          is_superuser: false,
-          status: 'ACTIVE',
-          date_joined: new Date(),
+          user_id: user.id,
+          role_id: role.id,
+          company_id: company.id,
+          organization_id: org?.id ?? null,
         },
       });
     }
+
+    const userRoles = await prisma.iam_user_role.findMany({
+      where: { user_id: user.id },
+    });
+
+    const serializedRoles = [
+      {
+        id: role?.id || 'role-default',
+        role_id: role?.id || null,
+        role_code: role?.role_code || 'ROLE-STAFF',
+        role_name: role?.role_name || 'Operational Staff',
+        company_id: company?.id || null,
+        organization_id: org?.id || null,
+      },
+    ];
 
     const tokens = signTokenPair({
       userId: user.id,
       email: user.email,
       full_name: user.full_name ?? '',
       tenant_id: user.tenant_id,
-      roles: [],
+      roles: serializedRoles.map((r) => r.role_code),
     });
 
     return {
-      message: 'Akun berhasil didaftarkan!',
+      message: 'Akun berhasil didaftarkan! Selamat datang di Marka+ ERP.',
       access: tokens.access,
       refresh: tokens.refresh,
       token: tokens.access,
@@ -304,6 +365,7 @@ export class AccountsService {
         last_login: user.last_login_at,
         date_joined: user.date_joined,
       },
+      roles: serializedRoles,
     };
   }
 }

@@ -59,15 +59,21 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
 });
 
 // =============================================================================
-// BILLING DOCUMENT ACTIONS
+// BILLING DOCUMENT & TAX ACTIONS
 // =============================================================================
+
+financeRouter.get('/tax-summary', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await FinanceService.getTaxSummary(req.companyId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 
 financeRouter.post('/billing-documents/:id/post', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.fin_billing_document.update({
-      where: { id: req.params.id },
-      data: { status: 'POSTED', posting_date: new Date() },
-    });
+    const updated = await FinanceService.postBillingDocument(req.params.id, req.user?.id);
     res.json(updated);
   } catch (err) {
     next(err);

@@ -15,6 +15,7 @@ import { feedApi } from "@/lib/api/feed.api";
 import { InventoryCheckingCard } from "@/components/ui/InventoryCheckingCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
+import { ProjectTaxWorkspace } from "@/components/finance/ProjectTaxWorkspace";
 
 const FINANCE_TABS = [
   { id: "overview",     label: "Dashboard Ringkasan"       },
@@ -135,10 +136,18 @@ export default function FinanceClient() {
   const [selectedBillForMatch, setSelectedBillForMatch] = useState<any>(null);
   const [selectedBillForPay, setSelectedBillForPay] = useState<any>(null);
 
-  /* Forms */
   const [costForm, setCostForm] = useState({ project: 1, category: "MATERIAL", amount: 15000000, description: "" });
   const [fundingForm, setFundingForm] = useState({ project: 1, amount: 50000000, purpose: "Pengadaan Material Awal", source: "KAS_PERUSAHAAN" });
-  const [billingForm, setBillingForm] = useState({ project: 1, amount: 45000000, description: "Termin Progres 50%", milestone_percentage: 50 });
+  const [billingForm, setBillingForm] = useState({
+    project: 1,
+    amount: 45000000,
+    description: "Termin Progres 50%",
+    milestone_percentage: 50,
+    tax_scheme: "PROPORTIONAL" as "PROPORTIONAL" | "FULL_UPFRONT" | "FINAL_SETTLEMENT",
+    client_type: "NON_WAPU" as "NON_WAPU" | "WAPU",
+    pph_type: "PPh 23 (2%)",
+    pph_rate: 2.0,
+  });
   const [apForm, setAPForm] = useState({ supplier_name: "", invoice_number: "", amount: 25000000, due_date: "" });
   const [paymentForm, setPaymentForm] = useState({
     bank_account: "BCA Giro Operasional — 882-019-2810",
@@ -863,15 +872,18 @@ export default function FinanceClient() {
         </div>
       )}
 
-      {/* ── TAB 9 - 11: GL, TAX, ASSETS ─────────── */}
-      {["gl", "tax", "assets"].includes(activeTab) && (
+      {/* ── TAB 10: PERPAJAKAN PROYEK (TAX COMPLIANCE) ── */}
+      {activeTab === "tax" && <ProjectTaxWorkspace />}
+
+      {/* ── TAB 9 & 11: GL & ASSETS ─────────────── */}
+      {["gl", "assets"].includes(activeTab) && (
         <div className="card rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3">
           <Landmark size={40} className="text-brand-green opacity-40" />
           <h3 className="text-base font-semibold text-text-primary">
             Modul {FINANCE_TABS.find(t => t.id === activeTab)?.label}
           </h3>
           <p className="text-xs text-text-secondary max-w-md">
-            Modul ini terhubung otomatis dengan buku besar General Ledger dan sistem perpajakan.
+            Modul ini terhubung otomatis dengan buku besar General Ledger dan sistem aktiva tetap perusahaan.
           </p>
         </div>
       )}
@@ -1038,61 +1050,190 @@ export default function FinanceClient() {
         </form>
       </Modal>
 
-      {/* Modal: Proposal Billing */}
+      {/* Modal: Proposal Billing & Tax Scheme */}
       <Modal
         isOpen={isBillingModalOpen}
         onClose={() => setIsBillingModalOpen(false)}
-        title="Buat Proposal Billing Termin"
-        subtitle="Pengajuan termin invoice penagihan ke klien"
+        title="🧾 Buat Proposal Billing Termin & Skema Pajak"
+        subtitle="Pengajuan termin invoice penagihan ke klien beserta kalkulasi PPN & PPh Withholding"
+        size="md"
       >
         <form
           onSubmit={async (e) => {
             e.preventDefault();
             try {
-              await api.post("/api/v1/finance/billing-proposals/", billingForm);
-              toast.success("Proposal billing berhasil diajukan!");
+              const dpp = Number(billingForm.amount);
+              let ppn = 0;
+              if (billingForm.tax_scheme === "FULL_UPFRONT") {
+                ppn = (dpp * 11) / 100;
+              } else if (billingForm.tax_scheme === "PROPORTIONAL") {
+                ppn = (dpp * 11) / 100;
+              }
+              const pph = (dpp * billingForm.pph_rate) / 100;
+              const netCash = billingForm.client_type === "NON_WAPU" ? dpp + ppn - pph : dpp - pph;
+
+              await api.post("/api/v1/finance/billing-proposals/", {
+                ...billingForm,
+                dpp_amount: dpp,
+                ppn_amount: ppn,
+                pph_amount: pph,
+                total_amount: dpp + ppn,
+                net_cash_amount: netCash,
+              });
+              toast.success("Proposal billing & skema pajak berhasil diajukan!", { icon: "🧾" });
               setIsBillingModalOpen(false);
               await loadFinanceData(true);
             } catch {
               toast.error("Gagal membuat proposal billing");
             }
           }}
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-3.5 p-1 text-xs"
         >
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-text-primary block mb-1">Nilai Tagihan (Rp) *</label>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Nilai Tagihan DPP (Rp) *</label>
               <input
                 type="number"
                 required
+                min="100000"
                 value={billingForm.amount}
                 onChange={e => setBillingForm({ ...billingForm, amount: Number(e.target.value) })}
-                className="input"
+                className="input text-xs font-bold text-slate-800"
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-text-primary block mb-1">Bobot Persentase (%)</label>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Bobot Persentase (%)</label>
               <input
                 type="number"
+                min="1"
+                max="100"
                 value={billingForm.milestone_percentage}
                 onChange={e => setBillingForm({ ...billingForm, milestone_percentage: Number(e.target.value) })}
-                className="input"
+                className="input text-xs font-bold text-slate-800"
               />
             </div>
           </div>
+
           <div>
-            <label className="text-xs font-semibold text-text-primary block mb-1">Keterangan Termin</label>
+            <label className="text-xs font-bold text-slate-700 block mb-1">Keterangan Termin *</label>
             <input
               type="text"
               required
+              placeholder="Contoh: Uang Muka DP 30% Pengadaan Komponen"
               value={billingForm.description}
               onChange={e => setBillingForm({ ...billingForm, description: e.target.value })}
-              className="input"
+              className="input text-xs"
             />
           </div>
-          <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-2">
-            Buat Proposal Billing
-          </button>
+
+          {/* Tax Configuration Grid */}
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Skema Timing Pajak</label>
+              <select
+                value={billingForm.tax_scheme}
+                onChange={e => setBillingForm({ ...billingForm, tax_scheme: e.target.value as any })}
+                className="input text-xs font-semibold"
+              >
+                <option value="PROPORTIONAL">🔵 Proporsional per Termin</option>
+                <option value="FULL_UPFRONT">🟢 Pajak Penuh di Awal (DP 100% PPN)</option>
+                <option value="FINAL_SETTLEMENT">🟡 Pajak di Akhir / Pelunasan</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Tipe Pemungut Klien</label>
+              <select
+                value={billingForm.client_type}
+                onChange={e => setBillingForm({ ...billingForm, client_type: e.target.value as any })}
+                className="input text-xs font-semibold"
+              >
+                <option value="NON_WAPU">Non-WAPU (Swasta)</option>
+                <option value="WAPU">WAPU (BUMN / Pemerintah)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1">Potongan PPh (Withholding)</label>
+            <select
+              value={billingForm.pph_rate}
+              onChange={e => {
+                const rate = Number(e.target.value);
+                let label = "PPh 23 (2%)";
+                if (rate === 1.75) label = "PPh Final Konstruksi Kecil (1.75%)";
+                if (rate === 2.65) label = "PPh Final Konstruksi Menengah (2.65%)";
+                if (rate === 4.0) label = "PPh Final Konsultansi (4%)";
+                if (rate === 0) label = "Bebas Potongan";
+                setBillingForm({ ...billingForm, pph_rate: rate, pph_type: label });
+              }}
+              className="input text-xs font-semibold"
+            >
+              <option value={2.0}>PPh 23 Jasa Teknik &amp; Konsultansi (2%)</option>
+              <option value={2.65}>PPh Final Pelaksana Konstruksi Menengah/Besar (2.65%)</option>
+              <option value={1.75}>PPh Final Pelaksana Konstruksi Kualifikasi Kecil (1.75%)</option>
+              <option value={4.0}>PPh Final Jasa Konsultansi Konstruksi (4%)</option>
+              <option value={0}>Tanpa Potongan PPh (0%)</option>
+            </select>
+          </div>
+
+          {/* Live Cashflow Breakdown Summary */}
+          {(() => {
+            const dpp = Number(billingForm.amount) || 0;
+            const ppn = (dpp * 11) / 100;
+            const pph = (dpp * billingForm.pph_rate) / 100;
+            const gross = dpp + ppn;
+            const net = billingForm.client_type === "NON_WAPU" ? dpp + ppn - pph : dpp - pph;
+
+            return (
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-1.5 text-xs mt-1">
+                <span className="font-bold text-slate-800 text-[11px] uppercase tracking-wider">
+                  Rincian Nilai Tagihan &amp; Estimasi Kas Masuk
+                </span>
+                <div className="grid grid-cols-2 gap-1 text-[11px] pt-1 border-t border-slate-200/80">
+                  <span className="text-slate-500">DPP Termin:</span>
+                  <span className="font-bold text-slate-800 text-right">{formatMoney(dpp)}</span>
+
+                  <span className="text-slate-500">(+) PPN Ditagihkan (11%):</span>
+                  <span className="font-bold text-blue-700 text-right">+{formatMoney(ppn)}</span>
+
+                  <span className="text-slate-700 font-semibold">(=) Total Nilai Invoice:</span>
+                  <span className="font-bold text-slate-900 text-right">{formatMoney(gross)}</span>
+
+                  <span className="text-slate-500">(-) Potongan PPh ({billingForm.pph_rate}%):</span>
+                  <span className="font-bold text-purple-700 text-right">-{formatMoney(pph)}</span>
+
+                  {billingForm.client_type === "WAPU" && (
+                    <>
+                      <span className="text-amber-700">(-) PPN Dipungut Klien (WAPU):</span>
+                      <span className="font-bold text-amber-700 text-right">-{formatMoney(ppn)}</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="mt-1 p-2 rounded-lg bg-emerald-50 border border-emerald-200 flex justify-between items-center">
+                  <span className="font-bold text-emerald-900 text-[11px]">Estimasi Kas Masuk ke Bank:</span>
+                  <span className="font-black text-emerald-700 text-xs">{formatMoney(net)}</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsBillingModalOpen(false)}
+              className="btn-ghost py-1.5 px-3 text-xs cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="btn-primary py-2 px-4 text-xs bg-[#275433] hover:bg-[#1E4327] font-bold cursor-pointer"
+            >
+              Buat Proposal Billing
+            </button>
+          </div>
         </form>
       </Modal>
 

@@ -189,7 +189,14 @@ export async function updateUserProfile(payload: { full_name?: string; email?: s
 }
 
 /* ── Signup / Register User ──────────────── */
-export async function registerUser(payload: { name: string; email: string; phone?: string; password?: string }) {
+export async function registerUser(payload: {
+  name: string;
+  email: string;
+  phone?: string;
+  password?: string;
+  roleCode?: string;
+  companyCode?: string;
+}) {
   const { data } = await api.post("/api/v1/auth/signup/", payload);
   if (data?.access) {
     localStorage.setItem("erp.access", data.access);

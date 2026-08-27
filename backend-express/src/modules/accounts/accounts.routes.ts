@@ -47,8 +47,8 @@ authRouter.post('/token/verify', async (req: Request, res: Response, next: NextF
 // Signup / Register
 authRouter.post('/signup', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, email, phone, password } = req.body;
-    const result = await AccountsService.signup(name, email, phone, password);
+    const { name, email, phone, password, roleCode, companyCode } = req.body;
+    const result = await AccountsService.signup(name, email, phone, password, roleCode, companyCode);
     res.status(201).json(result);
   } catch (err) {
     next(err);
@@ -56,8 +56,17 @@ authRouter.post('/signup', async (req: Request, res: Response, next: NextFunctio
 });
 authRouter.post('/register', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, email, phone, password } = req.body;
-    const result = await AccountsService.signup(name, email, phone, password);
+    const { name, email, phone, password, roleCode, companyCode } = req.body;
+    const result = await AccountsService.signup(name, email, phone, password, roleCode, companyCode);
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+accountsRouter.post('/signup', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { name, email, phone, password, roleCode, companyCode } = req.body;
+    const result = await AccountsService.signup(name, email, phone, password, roleCode, companyCode);
     res.status(201).json(result);
   } catch (err) {
     next(err);

@@ -165,4 +165,150 @@ export class FinanceService {
       },
     });
   }
+
+  static async postBillingDocument(billingId: string, userId?: string) {
+    return prisma.$transaction(async (tx) => {
+      const doc = await tx.fin_billing_document.findUnique({
+        where: { id: billingId },
+      });
+      if (!doc) throw new NotFoundError('BillingDocument');
+
+      const subtotal = Number(doc.subtotal ?? 0);
+      const taxAmount = Number(doc.tax_amount ?? 0);
+      const totalAmount = Number(doc.total_amount ?? subtotal + taxAmount);
+
+      // 1. Update billing status
+      const updated = await tx.fin_billing_document.update({
+        where: { id: billingId },
+        data: {
+          status: 'POSTED',
+          posting_date: new Date(),
+          approved_by_id: userId ?? doc.approved_by_id,
+          approved_at: doc.approved_at ?? new Date(),
+        },
+      });
+
+      // 2. Create Tax Transaction if not yet exists
+      const existingTax = await tx.fin_tax_transaction.findFirst({
+        where: { billing_document_id: billingId },
+      });
+
+      if (!existingTax && taxAmount > 0) {
+        await tx.fin_tax_transaction.create({
+          data: {
+            id: crypto.randomUUID(),
+            company_id: doc.company_id,
+            billing_document_id: doc.id,
+            taxable_amount: subtotal,
+            tax_rate: 11,
+            tax_amount: taxAmount,
+            tax_direction: doc.billing_type === 'SUPPLIER_INVOICE' ? 'INPUT' : 'OUTPUT',
+            tax_date: new Date(),
+            status: 'CALCULATED',
+            validation_note: 'Auto-generated from posted billing document',
+            billing_code: `EFAKTUR-${doc.invoice_number}`,
+            payment_reference: '',
+            ntpn: '',
+          },
+        });
+      }
+
+      // 3. Post General Ledger Journal Entry
+      const coaMap = await this.ensureStandardCOA(doc.company_id);
+      const arAccount = coaMap.get('1103'); // Piutang Usaha (AR)
+      const revenueAccount = coaMap.get('4101'); // Pendapatan Proyek
+      const ppnLiability = coaMap.get('2103'); // Hutang PPN Keluaran
+      const journal = await this.ensureJournal(doc.company_id, 'GJ', 'General Journal');
+
+      if (arAccount && revenueAccount && journal) {
+        const entry = await tx.fin_journal_entry.create({
+          data: {
+            id: crypto.randomUUID(),
+            journal_id: journal.id,
+            entry_number: `JE-BILL-${doc.invoice_number}`,
+            posting_date: new Date(),
+            description: `Pengakuan Piutang & PPN Invoice ${doc.invoice_number}`,
+            source_document_id: doc.id,
+            status: 'POSTED',
+          },
+        });
+
+        // Debit: Piutang Usaha (AR)
+        await tx.fin_journal_line.create({
+          data: {
+            id: crypto.randomUUID(),
+            journal_entry_id: entry.id,
+            account_id: arAccount.id,
+            project_id: doc.project_id,
+            party_id: doc.party_id,
+            debit_base: totalAmount,
+            credit_base: 0,
+            transaction_amount: totalAmount,
+          },
+        });
+
+        // Kredit: Pendapatan Proyek (Revenue)
+        await tx.fin_journal_line.create({
+          data: {
+            id: crypto.randomUUID(),
+            journal_entry_id: entry.id,
+            account_id: revenueAccount.id,
+            project_id: doc.project_id,
+            party_id: doc.party_id,
+            debit_base: 0,
+            credit_base: subtotal,
+            transaction_amount: subtotal,
+          },
+        });
+
+        // Kredit: Hutang PPN Keluaran (jika ada)
+        if (taxAmount > 0 && ppnLiability) {
+          await tx.fin_journal_line.create({
+            data: {
+              id: crypto.randomUUID(),
+              journal_entry_id: entry.id,
+              account_id: ppnLiability.id,
+              project_id: doc.project_id,
+              party_id: doc.party_id,
+              debit_base: 0,
+              credit_base: taxAmount,
+              transaction_amount: taxAmount,
+            },
+          });
+        }
+      }
+
+      return updated;
+    });
+  }
+
+  static async getTaxSummary(companyId?: string | null) {
+    const taxTxs = await prisma.fin_tax_transaction.findMany({
+      where: companyId ? { company_id: companyId } : undefined,
+    });
+
+    let totalDpp = 0;
+    let totalPpnOutput = 0;
+    let totalPpnInput = 0;
+
+    for (const tx of taxTxs) {
+      const taxable = Number(tx.taxable_amount ?? 0);
+      const tax = Number(tx.tax_amount ?? 0);
+      totalDpp += taxable;
+      if (tx.tax_direction === 'INPUT') {
+        totalPpnInput += tax;
+      } else {
+        totalPpnOutput += tax;
+      }
+    }
+
+    return {
+      total_dpp: totalDpp,
+      total_ppn_output: totalPpnOutput,
+      total_ppn_input: totalPpnInput,
+      net_ppn_payable: totalPpnOutput - totalPpnInput,
+      transaction_count: taxTxs.length,
+      transactions: taxTxs,
+    };
+  }
 }

@@ -5296,15 +5296,53 @@ erDiagram
 
 Kesesuaian 100% di sini berarti setiap node fitur pada PNG sudah memiliki representasi berupa tabel transaksi, tabel konfigurasi, tabel snapshot, atau database view. Rumus KPI, aturan approval, serta batas informasi yang dibagikan tetap dikonfigurasi melalui data dan application service, bukan di-hardcode pada tabel.
 
-daftara akses user dummy :
-| Role | Email | Password |
+Ran command: `npx ts-node -e "import prisma from './src/config/database'; async function run() { const users = await prisma.iam_user.findMany({ include: { iam_user_role: { include: { iam_role: true } } } }); console.log(JSON.stringify(users.map(u => ({ id: u.id, name: u.full_name, email: u.email, username: u.username, is_super: u.is_superuser, is_active: u.is_active, roles: u.iam_user_role.map(ur => ur.iam_role?.role_name || ur.iam_role?.role_code) })), null, 2)); } run().finally(() => prisma.\$disconnect());"`
+Ran command: `npx ts-node -e "import prisma from './src/config/database'; async function run() { const users = await prisma.iam_user.findMany({ include: { iam_user_role: { include: { iam_role: true } } } }); console.log(JSON.stringify(users.map(u => ({ id: u.id, name: u.full_name, email: u.email, username: u.username, is_super: u.is_superuser, is_active: u.is_active, roles: u.iam_user_role.map(ur => ur.iam_role?.role_name || ur.iam_role?.role_code) })), null, 2)); } run();"`
+Ran command: `npx ts-node -e "import prisma from './src/config/database'; async function run() { const users = await prisma.iam_user.findMany(); const userRoles = await prisma.iam_user_role.findMany(); const roles = await prisma.iam_role.findMany(); const rMap = new Map(roles.map(r => [r.id, r.role_name || r.role_code])); const urMap = new Map(); for (const ur of userRoles) { const list = urMap.get(ur.user_id) || []; list.push(rMap.get(ur.role_id)); urMap.set(ur.user_id, list); } console.log(JSON.stringify(users.map(u => ({ id: u.id, name: u.full_name, email: u.email, username: u.username, is_super: u.is_superuser, is_active: u.is_active, roles: urMap.get(u.id) || [] })), null, 2)); } run();"`
+Ran command: `npx ts-node -e "import prisma from './src/config/database'; async function run() { const users = await prisma.iam_user.findMany(); const userRoles = await prisma.iam_user_role.findMany(); const roles = await prisma.iam_role.findMany(); const rMap = new Map(roles.map(r => [r.id, r.role_name || r.role_code])); const urMap = new Map<string, string[]>(); for (const ur of userRoles) { if (!ur.user_id || !ur.role_id) continue; const list = urMap.get(ur.user_id) || []; const rn = rMap.get(ur.role_id); if (rn) list.push(rn); urMap.set(ur.user_id, list); } console.log(JSON.stringify(users.map(u => ({ name: u.full_name, email: u.email, username: u.username, is_super: u.is_superuser, roles: urMap.get(u.id) || [] })), null, 2)); } run();"`
 
-|---|---|---|
+Berikut adalah **daftar lengkap seluruh data user** yang ada pada sistem database saat ini, terbagi menjadi **Daftar User Resmi Tim** dan **Daftar Ghost / Demo User** (yang tetap dapat Anda gunakan untuk login kapan saja).
 
-| Executive | `executive.demo@erp.local` | `DemoERP2026!` |
+---
 
-| Project Management | `project.manager.demo@erp.local` | `DemoERP2026!` |
+### 1. **Daftar 6 Pengguna Resmi Tim (Primary Users)**
 
-| Finance | `finance.demo@erp.local` | `DemoERP2026!` |
+Semua akun ini terhubung langsung ke **PT. Arsalynt Multi Integra** dan siap digunakan untuk operasional:
 
-| Project Assignee | `assignee.demo@erp.local` | `DemoERP2026!` |
+| No | Nama Lengkap | Email Login | Username | Role / Hak Akses | Default Password |
+|:---|:---|:---|:---|:---|:---|
+| 1 | **Rian Destianto** | `rian.destianto@arsalynk.id` | `rian.destianto` | **Eksekutif / Direksi & Super Admin** (P&L, Approval, Full Multi-Tenant) | `DummyPass123!` |
+| 2 | **Melika Citra Tania** | `melika.citra@arsalynk.id` | `melika.citra` | **Project Manager & Operational Manager** (WBS, Gantt, Kontrol Lapangan) | `DummyPass123!` |
+| 3 | **Arof Fudding** | `arof.fudding@arsalynk.id` | `arof.fudding` | **Project Manager & Finance** (WBS Project & General Ledger / Cashflow) | `DummyPass123!` |
+| 4 | **Laode Fahmi Hidayat** | `laode.fahmi@arsalynk.id` | `laode.fahmi` | **Project Assignee / Field Engineer** (Eksekusi Task & Timesheet Lapangan) | `DummyPass123!` |
+| 5 | **Jundy Isham Izzudin** | `jundy.isham@arsalynk.id` | `jundy.isham` | **Project Assignee / Field Engineer** (Eksekusi Task & Timesheet Lapangan) | `DummyPass123!` |
+| 6 | **M Noorman Perdana** | `noorman.perdana@arsalynk.id` | `noorman.perdana` | **Project Assignee / Field Engineer** (Eksekusi Task & Timesheet Lapangan) | `DummyPass123!` |
+
+---
+
+### 2. **Daftar Ghost / Demo Users (Tetap Aktif & Bisa Login Kapan Saja)**
+
+Akun-akun berikut telah dijadikan *ghost* (tidak akan muncul di kontak atau pilihan dropdown tim pada akun resmi, tetapi kredensial login-nya **100% aktif dan dapat Anda gunakan**):
+
+| Nama Akun Ghost | Email Login | Username | Role Akses Sistem | Password Login |
+|:---|:---|:---|:---|:---|
+| **Dummy Administrator** | `dummy.admin@example.com` | `dummy_admin` | Super Administrator (Full Access) | `DummyPass123!` |
+| **Dummy Project Manager** | `dummy.pm@example.com` | `dummy.pm` | Project Manager (WBS & Baseline) | `DummyPass123!` |
+| **Dummy Operational Manager** | `dummy.manager@example.com` | `dummy_manager` | Operational Manager / CRM Lead | `DummyPass123!` |
+| **Dummy Finance** | `dummy.finance@example.com` | `dummy.finance` | Finance & Accounting Lead | `DummyPass123!` |
+| **Dummy Operational Staff** | `dummy.staff@example.com` | `dummy_staff` | Sales Commercial & Support | `DummyPass123!` |
+| **Finance Approver** | `finance.approver@example.com` | `finance_approver` | Finance Approver (Maker-Checker) | `DummyPass123!` |
+| **System Admin (Legacy)** | `admin@arsalynk.id` | `admin` | Administrator | `DummyPass123!` |
+| **Director (Legacy)** | `director@arsalynk.id` | `director` | Direksi / Executive | `DummyPass123!` |
+| **PM (Legacy)** | `pm@arsalynk.id` | `pm` | Project Manager | `DummyPass123!` |
+| **Supervisor (Legacy)** | `supervisor@arsalynk.id` | `supervisor` | Field Supervisor | `DummyPass123!` |
+| **Finance (Legacy)** | `finance@arsalynk.id` | `finance` | Finance Officer | `DummyPass123!` |
+
+---
+
+### 3. **Cara Login Sebagai Ghost User Kapan Saja**
+
+1. Buka halaman login di `/login`.
+2. Masukkan **Email** atau **Username** dari salah satu Ghost User di atas (contoh: `dummy.admin@example.com` atau `dummy_admin`).
+3. Masukkan Password: `DummyPass123!`.
+4. Klik **Masuk** — Anda akan langsung masuk dengan role dan data simulasi dari ghost user tersebut.|
