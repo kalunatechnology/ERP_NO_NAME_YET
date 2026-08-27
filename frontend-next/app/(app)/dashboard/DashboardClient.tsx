@@ -125,10 +125,10 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
 
   if (loading) return <LoadingDashboard />;
 
-  const total     = projects.length;
-  const active    = projects.filter(p => ["ACTIVE", "IN_PROGRESS", "PLANNING", "STARTED"].includes((p.status || "").toUpperCase())).length;
+  const total = projects.length;
+  const active = projects.filter(p => ["ACTIVE", "IN_PROGRESS", "PLANNING", "STARTED"].includes((p.status || "").toUpperCase())).length;
   const completed = projects.filter(p => ["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase())).length;
-  const delayed   = projects.filter(p => {
+  const delayed = projects.filter(p => {
     const end = p.end_date || p.planned_end_date;
     return end && end < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
   }).length;
@@ -142,7 +142,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
       (mt.weekly_tasks || mt.weekly_plans || []).flatMap(wt => wt.daily_tasks || [])
     )
   );
-  const todayTasks  = allDailyTasks.filter(d => d.planned_date === today);
+  const todayTasks = allDailyTasks.filter(d => d.planned_date === today);
   const overdueTasks = allDailyTasks.filter(d => {
     const pd = d.planned_date;
     return pd && pd < today && !["COMPLETED", "DONE"].includes((d.status || "").toUpperCase());
@@ -160,7 +160,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
     startWeek: 1,
     endWeek: Math.min(8, 4 + idx),
     progress: Number(p.progress_percentage || p.progress || 0),
-    assignee: p.project_manager_name || "Melika Citra / Arof Fudding",
+    assignee: p.project_manager_name || "Melika / Arof",
     status: (p.status || "IN_PROGRESS") as any,
   }));
 
@@ -216,10 +216,10 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
       <section>
         <SectionHeader title="Overview Proyek Saya" actionLabel="Lihat semua" actionHref="/projects" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard label="Total Proyek"    value={total}        subLabel="semua status"       icon={FolderKanban}  iconBg="#EFF6FF" iconColor="#1D4ED8" />
-          <KpiCard label="Aktif Berjalan"  value={active}       subLabel="in progress"         icon={Activity}      iconBg="#F0FDF4" iconColor="#16A34A" trend={active > 0 ? { value: `${active} proyek aktif`, up: true } : null} />
-          <KpiCard label="Terlambat"       value={delayed}      subLabel="melewati deadline"   icon={AlertTriangle} iconBg="#FEF2F2" iconColor="#DC2626" trend={delayed > 0 ? { value: `${delayed} perlu perhatian`, up: false } : null} />
-          <KpiCard label="Rata-rata Progress" value={`${avgProgress}%`} subLabel="seluruh proyek" icon={Target}    iconBg="#FAF5FF" iconColor="#7E22CE" />
+          <KpiCard label="Total Proyek" value={total} subLabel="semua status" icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
+          <KpiCard label="Aktif Berjalan" value={active} subLabel="in progress" icon={Activity} iconBg="#F0FDF4" iconColor="#16A34A" trend={active > 0 ? { value: `${active} proyek aktif`, up: true } : null} />
+          <KpiCard label="Terlambat" value={delayed} subLabel="melewati deadline" icon={AlertTriangle} iconBg="#FEF2F2" iconColor="#DC2626" trend={delayed > 0 ? { value: `${delayed} perlu perhatian`, up: false } : null} />
+          <KpiCard label="Rata-rata Progress" value={`${avgProgress}%`} subLabel="seluruh proyek" icon={Target} iconBg="#FAF5FF" iconColor="#7E22CE" />
         </div>
       </section>
 
@@ -463,20 +463,20 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
         <SectionHeader title="Financial Overview" actionLabel="Detail keuangan" actionHref="/finance" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
-            label="Total Anggaran"    value={formatMoney(kpis.totalBudget)}
-            subLabel="budget proyek"  icon={DollarSign}  iconBg="#F0FDF4" iconColor="#16A34A"
+            label="Total Anggaran" value={formatMoney(kpis.totalBudget)}
+            subLabel="budget proyek" icon={DollarSign} iconBg="#F0FDF4" iconColor="#16A34A"
           />
           <KpiCard
-            label="Terpakai"          value={formatMoney(kpis.usedBudget)}
+            label="Terpakai" value={formatMoney(kpis.usedBudget)}
             subLabel={`${kpis.budgetUtilization}% utilisasi`} icon={TrendingUp} iconBg="#EFF6FF" iconColor="#1D4ED8"
           />
           <KpiCard
-            label="Sisa Anggaran"     value={formatMoney(kpis.remainingBudget)}
-            subLabel="tersedia"       icon={Layers}      iconBg="#FAF5FF" iconColor="#7E22CE"
+            label="Sisa Anggaran" value={formatMoney(kpis.remainingBudget)}
+            subLabel="tersedia" icon={Layers} iconBg="#FAF5FF" iconColor="#7E22CE"
           />
           <KpiCard
             label="Perlu Persetujuan" value={kpis.pendingRequests}
-            subLabel={formatMoney(kpis.pendingAmount)}   icon={Clock}    iconBg="#FEF2F2" iconColor="#DC2626"
+            subLabel={formatMoney(kpis.pendingAmount)} icon={Clock} iconBg="#FEF2F2" iconColor="#DC2626"
             trend={urgentCount > 0 ? { value: `${urgentCount} URGENT`, up: false } : null}
           />
         </div>
@@ -603,8 +603,8 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
                       <td className="px-4 py-2.5">
                         <span className={cn("px-2 py-0.5 rounded text-2xs font-medium",
                           t.type === "cost" ? "bg-blue-100 text-blue-700" :
-                          t.type === "funding" ? "bg-green-100 text-green-700" :
-                          "bg-purple-100 text-purple-700"
+                            t.type === "funding" ? "bg-green-100 text-green-700" :
+                              "bg-purple-100 text-purple-700"
                         )}>
                           {t.type === "cost" ? "Biaya" : t.type === "funding" ? "Funding" : "Billing"}
                         </span>
@@ -637,10 +637,10 @@ function ExecutiveDashboard({ projects, finData, loading }: {
 
   if (loading) return <LoadingDashboard />;
 
-  const total     = projects.length;
-  const active    = projects.filter(p => ["ACTIVE", "IN_PROGRESS", "PLANNING"].includes((p.status || "").toUpperCase())).length;
+  const total = projects.length;
+  const active = projects.filter(p => ["ACTIVE", "IN_PROGRESS", "PLANNING"].includes((p.status || "").toUpperCase())).length;
   const completed = projects.filter(p => ["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase())).length;
-  const delayed   = projects.filter(p => {
+  const delayed = projects.filter(p => {
     const end = p.end_date || p.planned_end_date;
     return end && end < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
   }).length;
@@ -714,13 +714,13 @@ function ExecutiveDashboard({ projects, finData, loading }: {
       <section>
         <SectionHeader title="Company Overview" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard label="Total Proyek"       value={total}               subLabel={`${active} aktif`}    icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
-          <KpiCard label="Overall Progress"   value={`${avgProgress}%`}   subLabel="rata-rata"            icon={Target}       iconBg="#F0FDF4" iconColor="#16A34A" />
-          <KpiCard label="Total Anggaran"     value={kpis ? formatMoney(kpis.totalBudget) : "-"}
-                   subLabel={kpis ? `${kpis.budgetUtilization}% digunakan` : ""}                          icon={DollarSign}   iconBg="#FAF5FF" iconColor="#7E22CE" />
-          <KpiCard label="Perlu Keputusan"    value={pendingCount}
-                   subLabel={urgentPending > 0 ? `${urgentPending} URGENT` : "pending approval"}          icon={ShieldAlert}  iconBg="#FEF2F2" iconColor="#DC2626"
-                   trend={urgentPending > 0 ? { value: `${urgentPending} butuh perhatian`, up: false } : null} />
+          <KpiCard label="Total Proyek" value={total} subLabel={`${active} aktif`} icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
+          <KpiCard label="Overall Progress" value={`${avgProgress}%`} subLabel="rata-rata" icon={Target} iconBg="#F0FDF4" iconColor="#16A34A" />
+          <KpiCard label="Total Anggaran" value={kpis ? formatMoney(kpis.totalBudget) : "-"}
+            subLabel={kpis ? `${kpis.budgetUtilization}% digunakan` : ""} icon={DollarSign} iconBg="#FAF5FF" iconColor="#7E22CE" />
+          <KpiCard label="Perlu Keputusan" value={pendingCount}
+            subLabel={urgentPending > 0 ? `${urgentPending} URGENT` : "pending approval"} icon={ShieldAlert} iconBg="#FEF2F2" iconColor="#DC2626"
+            trend={urgentPending > 0 ? { value: `${urgentPending} butuh perhatian`, up: false } : null} />
         </div>
       </section>
 
@@ -916,8 +916,8 @@ function CRMDashboard({ projects, loading }: { projects: Project[]; loading: boo
         <SectionHeader title="Ringkasan" />
         <div className="grid grid-cols-2 gap-3">
           <KpiCard label="Total Proyek" value={projects.length} subLabel="semua" icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
-          <KpiCard label="Proyek Aktif" value={projects.filter(p => ["ACTIVE","IN_PROGRESS"].includes((p.status||"").toUpperCase())).length}
-                   subLabel="berjalan" icon={Activity} iconBg="#F0FDF4" iconColor="#16A34A" />
+          <KpiCard label="Proyek Aktif" value={projects.filter(p => ["ACTIVE", "IN_PROGRESS"].includes((p.status || "").toUpperCase())).length}
+            subLabel="berjalan" icon={Activity} iconBg="#F0FDF4" iconColor="#16A34A" />
         </div>
       </section>
       <section>
@@ -968,11 +968,11 @@ export default function DashboardClient() {
 
   /* ── Role-specific title & subtitle ─── */
   const titles: Record<string, { title: string; subtitle: string }> = {
-    executive: { title: "Executive Dashboard",      subtitle: "Company-wide overview — semua proyek & keuangan" },
-    pm:        { title: "Project Manager Dashboard", subtitle: "Monitoring proyek & task operasional Anda" },
-    finance:   { title: "Finance Dashboard",         subtitle: "Monitoring keuangan, anggaran & approval" },
-    crm:       { title: "CRM & Sales Dashboard",     subtitle: "Monitoring pipeline, deal & aktivitas CRM" },
-    staff:     { title: "Dashboard",                  subtitle: "Ringkasan aktivitas Anda" },
+    executive: { title: "Executive Dashboard", subtitle: "Company-wide overview — semua proyek & keuangan" },
+    pm: { title: "Project Manager Dashboard", subtitle: "Monitoring proyek & task operasional Anda" },
+    finance: { title: "Finance Dashboard", subtitle: "Monitoring keuangan, anggaran & approval" },
+    crm: { title: "CRM & Sales Dashboard", subtitle: "Monitoring pipeline, deal & aktivitas CRM" },
+    staff: { title: "Dashboard", subtitle: "Ringkasan aktivitas Anda" },
   };
 
   const { title, subtitle } = titles[userRole] || titles.staff;
