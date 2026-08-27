@@ -45,17 +45,19 @@ function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
 }
 
 import { GlobalCommandPalette } from "./GlobalCommandPalette";
+import { UserProfileSettingsModal } from "@/components/ui/UserProfileSettingsModal";
+import { User, KeyRound } from "lucide-react";
 
 export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, login, logout, company, setCompany, companies, isAdmin } = useAuth();
+  const { user, logout, company, setCompany, companies, isAdmin } = useAuth();
   const crumbs = buildBreadcrumb(pathname);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-  const [switching, setSwitching] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -96,22 +98,9 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleQuickSwitchUser = async (email: string) => {
-    setSwitching(true);
-    try {
-      await login(email, "DummyPass123!");
-      toast.success(`Berhasil beralih ke akun: ${email}`, { icon: "⚡" });
-      setIsUserMenuOpen(false);
-      window.location.href = "/dashboard";
-    } catch {
-      toast.error("Gagal beralih akun. Silakan coba akun lainnya.");
-    } finally {
-      setSwitching(false);
-    }
-  };
-
   const initial = user?.full_name?.[0] ?? user?.email?.[0]?.toUpperCase() ?? "U";
   const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
+  const roleName = user?.roles?.[0]?.role_name || (user?.is_superuser ? "Executive / Super Admin" : "Team Member");
 
   return (
     <header
@@ -155,7 +144,7 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
         </nav>
       </div>
 
-      {/* Right: Company Context + Search + Quick Persona Switcher */}
+      {/* Right: Company Context + Search + User Profile Menu */}
       <div className="flex items-center gap-3">
 
         {/* Company Selector Box */}
@@ -244,72 +233,64 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
           <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-amber-500 rounded-full" aria-hidden="true" />
         </button>
 
-        {/* Quick User Avatar & Persona Switcher */}
+        {/* User Avatar & Profile Pop-up */}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="flex items-center gap-2 p-1 pl-2 pr-2.5 rounded-full bg-white border border-text-tertiary hover:border-brand-green transition-all shadow-sm"
+            className="flex items-center gap-2 p-1 pl-2 pr-2.5 rounded-full bg-white border border-text-tertiary hover:border-brand-green transition-all shadow-sm cursor-pointer"
           >
             <div className="w-7 h-7 rounded-full bg-brand-light-green flex items-center justify-center text-xs font-bold text-brand-deep-green">
               {initial}
             </div>
             <div className="hidden sm:flex flex-col text-left leading-tight">
               <span className="text-xs font-semibold text-text-primary truncate max-w-[110px]">{displayName}</span>
-              <span className="text-2xs text-text-secondary">Ganti Akun ⚡</span>
+              <span className="text-2xs text-text-secondary truncate max-w-[110px]">{roleName}</span>
             </div>
             <ChevronDown size={14} className="text-text-secondary" />
           </button>
 
-          {/* Quick Account Switcher Dropdown Menu */}
+          {/* User Profile Pop-up Menu */}
           {isUserMenuOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-text-tertiary shadow-card-lg py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
-              <div className="px-3.5 py-2 border-b border-text-tertiary">
-                <span className="text-2xs font-extrabold text-brand-deep-green tracking-wider uppercase">
-                  Ganti Akun Cepat ({DEMO_PERSONAS.length} Akun Aktif)
-                </span>
-                <p className="text-2xs text-text-secondary mt-0.5">
-                  Semua akun operasional otomatis masuk ke <b>PT. Arsalynt</b>, admin bebas memilih company.
-                </p>
+            <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl border border-slate-200 shadow-card-lg py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+              {/* User Header */}
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#F0FEE0] border border-[#BBDFA0] flex items-center justify-center text-sm font-bold text-[#275433]">
+                  {initial}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-bold text-slate-800 truncate">{displayName}</span>
+                  <span className="text-[11px] text-slate-500 truncate font-mono">{user?.email}</span>
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md mt-1 w-fit border border-emerald-100">
+                    {roleName}
+                  </span>
+                </div>
               </div>
 
-              <div className="max-h-64 overflow-y-auto divide-y divide-gray-50 p-1">
-                {DEMO_PERSONAS.map(p => {
-                  const isCurrent = user?.email === p.email;
-                  return (
-                    <button
-                      key={p.email}
-                      disabled={switching}
-                      onClick={() => handleQuickSwitchUser(p.email)}
-                      className={cn(
-                        "w-full flex items-center justify-between p-2.5 rounded-xl text-left hover:bg-brand-light-green/50 transition-colors",
-                        isCurrent && "bg-brand-light-green/80 font-bold"
-                      )}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-lg flex-shrink-0">{p.icon}</span>
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-text-primary truncate font-medium">{p.name}</span>
-                            <span className="text-2xs px-1 rounded bg-gray-100 text-gray-600">{p.company}</span>
-                          </div>
-                          <span className="text-2xs text-text-secondary truncate">{p.role}</span>
-                        </div>
-                      </div>
-                      {isCurrent && <Check size={14} className="text-brand-deep-green flex-shrink-0 ml-2" />}
-                    </button>
-                  );
-                })}
+              {/* Menu Actions */}
+              <div className="p-1.5 flex flex-col gap-0.5">
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    setIsSettingsModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-emerald-800 transition-colors text-left"
+                >
+                  <KeyRound size={15} className="text-slate-400" />
+                  <span>Ganti Password & Ubah Profil</span>
+                </button>
               </div>
 
-              <div className="p-2 pt-2 border-t border-text-tertiary">
+              {/* Log Out */}
+              <div className="p-1.5 pt-1 border-t border-slate-100">
                 <button
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     logout();
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors text-left"
                 >
-                  <LogOut size={14} /> Log Out Sesi
+                  <LogOut size={15} />
+                  <span>Log Out Sesi</span>
                 </button>
               </div>
             </div>
@@ -323,6 +304,13 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
       />
+
+      {/* User Profile Settings Modal (Ganti Password & Ubah Email) */}
+      <UserProfileSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+      />
     </header>
   );
 }
+

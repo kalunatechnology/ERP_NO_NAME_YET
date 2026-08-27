@@ -24,129 +24,51 @@ export interface UserProfile {
 export const DEMO_PROFILES: UserProfile[] = [
   {
     id: "e0000000-0000-0000-0000-000000000001",
-    email: "admin@arsalynk.id",
-    username: "admin.arsalynk",
-    full_name: "Arsalynk Administrator",
+    email: "rian.destianto@arsalynk.id",
+    username: "rian.destianto",
+    full_name: "Rian Destianto",
     is_superuser: true,
     is_staff: true,
-    roles: [{ role: "ADMIN", role_code: "ADMIN", role_name: "Super Administrator" }],
+    roles: [{ role: "EXECUTIVE", role_code: "ROLE-DIRECTOR", role_name: "Executive Director" }],
   },
   {
     id: "e0000000-0000-0000-0000-000000000002",
-    email: "dummy.admin@example.com",
-    username: "admin.dummy",
-    full_name: "Dummy Administrator",
-    is_superuser: true,
-    is_staff: true,
-    roles: [{ role: "ADMIN", role_code: "ADMIN", role_name: "Administrator" }],
+    email: "melika.citra@arsalynk.id",
+    username: "melika.citra",
+    full_name: "Melika Citra Tania",
+    roles: [{ role: "PROJECT_MANAGER", role_code: "ROLE-PM", role_name: "PM & Operational Manager" }],
   },
   {
     id: "e0000000-0000-0000-0000-000000000003",
-    email: "pm@arsalynk.id",
-    username: "pm.arsalynk",
-    full_name: "Budi Santoso",
-    roles: [{ role: "PROJECT_MANAGER", role_code: "PROJECT_MANAGER", role_name: "Project Manager" }],
+    email: "arof.fudding@arsalynk.id",
+    username: "arof.fudding",
+    full_name: "Arof Fudding",
+    roles: [
+      { role: "PROJECT_MANAGER", role_code: "ROLE-PM", role_name: "Project Manager" },
+      { role: "FINANCE", role_code: "ROLE-FINANCE", role_name: "Finance Controller" },
+    ],
   },
   {
     id: "e0000000-0000-0000-0000-000000000004",
-    email: "dummy.pm@example.com",
-    username: "pm.dummy",
-    full_name: "Budi Santoso",
-    roles: [{ role: "PROJECT_MANAGER", role_code: "PROJECT_MANAGER", role_name: "Project Manager" }],
+    email: "laode.fahmi@arsalynk.id",
+    username: "laode.fahmi",
+    full_name: "Laode Fahmi Hidayat",
+    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Project Assignee" }],
   },
   {
     id: "e0000000-0000-0000-0000-000000000005",
-    email: "project.manager.demo@erp.local",
-    username: "pm.demo",
-    full_name: "Budi Santoso",
-    roles: [{ role: "PROJECT_MANAGER", role_code: "PROJECT_MANAGER", role_name: "Project Manager" }],
+    email: "jundy.isham@arsalynk.id",
+    username: "jundy.isham",
+    full_name: "Jundy Isham Izzudin",
+    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Project Assignee" }],
   },
   {
     id: "e0000000-0000-0000-0000-000000000006",
-    email: "supervisor@arsalynk.id",
-    username: "supervisor.arsalynk",
-    full_name: "Ahmad Rizki",
-    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "PROJECT_ASSIGNEE", role_name: "Field Supervisor" }],
+    email: "noorman.perdana@arsalynk.id",
+    username: "noorman.perdana",
+    full_name: "M Noorman Perdana",
+    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Project Assignee" }],
   },
-  {
-    id: "e0000000-0000-0000-0000-000000000007",
-    email: "dummy.assignee@example.com",
-    username: "assignee.dummy",
-    full_name: "Ahmad Rizki",
-    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "PROJECT_ASSIGNEE", role_name: "Field Assignee" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000008",
-    email: "assignee.demo@erp.local",
-    username: "assignee.demo",
-    full_name: "Ahmad Rizki",
-    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "PROJECT_ASSIGNEE", role_name: "Field Assignee" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000009",
-    email: "manager@arsalynk.id",
-    username: "manager.arsalynk",
-    full_name: "Hendra Wijaya",
-    roles: [{ role: "CRM_MANAGER", role_code: "CRM_MANAGER", role_name: "CRM Manager" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000010",
-    email: "dummy.manager@example.com",
-    username: "manager.dummy",
-    full_name: "Hendra Wijaya",
-    roles: [{ role: "CRM_MANAGER", role_code: "CRM_MANAGER", role_name: "CRM Manager" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000011",
-    email: "sales@arsalynk.id",
-    username: "sales.arsalynk",
-    full_name: "Rina Sari",
-    roles: [{ role: "CRM_STAFF", role_code: "CRM_STAFF", role_name: "Commercial & Sales" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000012",
-    email: "dummy.staff@example.com",
-    username: "staff.dummy",
-    full_name: "Rina Sari",
-    roles: [{ role: "CRM_STAFF", role_code: "CRM_STAFF", role_name: "CRM Staff" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000013",
-    email: "finance@arsalynk.id",
-    username: "finance.arsalynk",
-    full_name: "Siti Rahma",
-    roles: [{ role: "ACCOUNTING_FINANCE", role_code: "ACCOUNTING_FINANCE", role_name: "Finance Controller" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000014",
-    email: "dummy.finance@example.com",
-    username: "finance.dummy",
-    full_name: "Siti Rahma",
-    roles: [{ role: "ACCOUNTING_FINANCE", role_code: "ACCOUNTING_FINANCE", role_name: "Finance Staff" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000015",
-    email: "finance.controller@erp.local",
-    username: "finance.controller",
-    full_name: "Siti Rahma",
-    roles: [{ role: "ACCOUNTING_FINANCE", role_code: "ACCOUNTING_FINANCE", role_name: "Finance Controller" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000016",
-    email: "director@arsalynk.id",
-    username: "director.arsalynk",
-    full_name: "Executive Director",
-    is_superuser: true,
-    roles: [{ role: "EXECUTIVE", role_code: "EXECUTIVE", role_name: "Executive Director" }],
-  },
-  {
-    id: "e0000000-0000-0000-0000-000000000017",
-    email: "executive.demo@erp.local",
-    username: "executive.demo",
-    full_name: "Executive Director",
-    is_superuser: true,
-    roles: [{ role: "EXECUTIVE", role_code: "EXECUTIVE", role_name: "Executive Director" }],
-  }
 ];
 
 /* ── Login ────────────────────────────────── */
@@ -254,6 +176,15 @@ export async function changePassword(currentPassword: string, newPassword: strin
     current_password: currentPassword,
     new_password: newPassword,
   });
+  return data;
+}
+
+/* ── Update Profile (Name & Email) ────────── */
+export async function updateUserProfile(payload: { full_name?: string; email?: string; phone?: string }) {
+  const { data } = await api.post("/api/v1/auth/update-profile/", payload);
+  if (data?.user) {
+    localStorage.setItem("erp.user", JSON.stringify(data.user));
+  }
   return data;
 }
 

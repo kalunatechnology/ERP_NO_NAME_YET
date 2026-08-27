@@ -339,10 +339,15 @@ export class ProjectsService {
       project_manager: project.project_manager_id,
       pm: project.project_manager_id,
       project_manager_name: project.manager_name ?? 'Project Manager',
-      pm_name: project.manager_name ?? 'Project Manager',
       members: membersData,
       members_detail: membersData,
-      available_users: allUsers,
+      available_users: allUsers.filter(
+        (u) =>
+          !u.email.includes('dummy') &&
+          !u.email.includes('demo') &&
+          !u.email.endsWith('@example.com') &&
+          !u.email.endsWith('@erp.local')
+      ),
       main_tasks: serializedMainTasks,
     };
   }

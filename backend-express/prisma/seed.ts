@@ -89,17 +89,16 @@ async function main() {
   }
 
   const demoUsers = [
-    { email: 'admin@arsalynk.id', username: 'admin', name: 'Sutanto Admin', isSuper: true, roleCode: 'ROLE-ADMIN' },
-    { email: 'director@arsalynk.id', username: 'director', name: 'Bambang Director', isSuper: false, roleCode: 'ROLE-DIRECTOR' },
-    { email: 'pm@arsalynk.id', username: 'pm', name: 'Rina Sari PM', isSuper: false, roleCode: 'ROLE-PM' },
-    { email: 'supervisor@arsalynk.id', username: 'supervisor', name: 'Ahmad Rizki Supervisor', isSuper: false, roleCode: 'ROLE-SUPERVISOR' },
-    { email: 'manager@arsalynk.id', username: 'manager', name: 'Dewi Kurnia CRM Lead', isSuper: false, roleCode: 'ROLE-CRM-LEAD' },
-    { email: 'sales@arsalynk.id', username: 'sales', name: 'Hendra Sales', isSuper: false, roleCode: 'ROLE-SALES' },
-    { email: 'finance@arsalynk.id', username: 'finance', name: 'Budi Santoso Finance', isSuper: false, roleCode: 'ROLE-FINANCE' },
-    { email: 'dummy.admin@example.com', username: 'dummy.admin', name: 'Dummy Administrator', isSuper: true, roleCode: 'ROLE-ADMIN' },
-    { email: 'dummy.pm@example.com', username: 'dummy.pm', name: 'Dummy Project Manager', isSuper: false, roleCode: 'ROLE-PM' },
-    { email: 'dummy.finance@example.com', username: 'dummy.finance', name: 'Dummy Finance', isSuper: false, roleCode: 'ROLE-FINANCE' },
-    { email: 'project.manager.demo@erp.local', username: 'project.manager.demo@erp.local', name: 'Demo Project Manager', isSuper: false, roleCode: 'ROLE-PM' },
+    { email: 'rian.destianto@arsalynk.id', username: 'rian.destianto', name: 'Rian Destianto', isSuper: true, roleCode: 'ROLE-DIRECTOR' },
+    { email: 'melika.citra@arsalynk.id', username: 'melika.citra', name: 'Melika Citra Tania', isSuper: false, roleCode: 'ROLE-PM' },
+    { email: 'arof.fudding@arsalynk.id', username: 'arof.fudding', name: 'Arof Fudding', isSuper: false, roleCode: 'ROLE-PM' },
+    { email: 'laode.fahmi@arsalynk.id', username: 'laode.fahmi', name: 'Laode Fahmi Hidayat', isSuper: false, roleCode: 'ROLE-SUPERVISOR' },
+    { email: 'jundy.isham@arsalynk.id', username: 'jundy.isham', name: 'Jundy Isham Izzudin', isSuper: false, roleCode: 'ROLE-SUPERVISOR' },
+    { email: 'noorman.perdana@arsalynk.id', username: 'noorman.perdana', name: 'M Noorman Perdana', isSuper: false, roleCode: 'ROLE-SUPERVISOR' },
+    { email: 'admin@arsalynk.id', username: 'admin', name: 'System Admin', isSuper: true, roleCode: 'ROLE-ADMIN' },
+    { email: 'dummy.admin@example.com', username: 'dummy.admin', name: 'Ghost Administrator', isSuper: false, roleCode: 'ROLE-ADMIN' },
+    { email: 'dummy.pm@example.com', username: 'dummy.pm', name: 'Ghost Project Manager', isSuper: false, roleCode: 'ROLE-PM' },
+    { email: 'dummy.finance@example.com', username: 'dummy.finance', name: 'Ghost Finance', isSuper: false, roleCode: 'ROLE-FINANCE' },
   ];
 
   const userMap = new Map<string, any>();

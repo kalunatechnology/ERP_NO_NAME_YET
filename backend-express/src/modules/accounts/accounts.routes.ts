@@ -90,6 +90,26 @@ authRouter.post('/change-password', authenticate, async (req: Request, res: Resp
   }
 });
 
+// Update Profile (Full Name, Email)
+authRouter.post('/update-profile', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { full_name, email, phone } = req.body;
+    const result = await AccountsService.updateProfile(req.user!.id, { full_name, email, phone });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+authRouter.patch('/profile', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { full_name, email, phone } = req.body;
+    const result = await AccountsService.updateProfile(req.user!.id, { full_name, email, phone });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // =============================================================================
 // ACCOUNTS ROUTES (/api/v1/accounts/*)
 // =============================================================================
@@ -128,6 +148,26 @@ accountsRouter.get('/auth/me', authenticate, async (req: Request, res: Response,
 accountsRouter.get('/me', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await AccountsService.getCurrentUser(req.user!.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+accountsRouter.post('/change-password', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { current_password, new_password } = req.body;
+    const result = await AccountsService.changePassword(req.user!.id, current_password, new_password);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+accountsRouter.post('/update-profile', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { full_name, email, phone } = req.body;
+    const result = await AccountsService.updateProfile(req.user!.id, { full_name, email, phone });
     res.json(result);
   } catch (err) {
     next(err);

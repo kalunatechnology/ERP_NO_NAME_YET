@@ -205,6 +205,48 @@ export class AccountsService {
     return { detail: 'Password berhasil diubah.' };
   }
 
+  static async updateProfile(userId: string, data: { full_name?: string; email?: string; phone?: string }) {
+    const user = await prisma.iam_user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundError('User');
+
+    const updateData: any = {};
+    if (data.full_name !== undefined && data.full_name.trim()) {
+      updateData.full_name = data.full_name.trim();
+    }
+    if (data.email !== undefined && data.email.trim()) {
+      const cleanEmail = data.email.trim().toLowerCase();
+      if (cleanEmail !== user.email?.toLowerCase()) {
+        const existing = await prisma.iam_user.findFirst({
+          where: { email: cleanEmail, id: { not: userId } },
+        });
+        if (existing) {
+          throw new ValidationError('Email sudah terdaftar oleh pengguna lain.');
+        }
+        updateData.email = cleanEmail;
+        updateData.username = cleanEmail.split('@')[0];
+      }
+    }
+
+    const updatedUser = await prisma.iam_user.update({
+      where: { id: userId },
+      data: updateData,
+    });
+
+    return {
+      message: 'Profil berhasil diperbarui.',
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        username: updatedUser.username,
+        full_name: updatedUser.full_name,
+        status: updatedUser.status,
+        is_staff: updatedUser.is_staff,
+        is_superuser: updatedUser.is_superuser,
+        is_active: updatedUser.is_active,
+      },
+    };
+  }
+
   static async signup(name: string, email: string, _phone?: string, password?: string) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanUsername = cleanEmail.split('@')[0]!;
@@ -265,3 +307,4 @@ export class AccountsService {
     };
   }
 }
+

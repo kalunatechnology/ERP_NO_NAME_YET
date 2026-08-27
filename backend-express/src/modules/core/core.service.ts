@@ -13,7 +13,16 @@ export class CoreService {
         take: 15,
       }),
       prisma.iam_user.findMany({
-        where: { is_active: true, id: { not: userId } },
+        where: {
+          is_active: true,
+          id: { not: userId },
+          NOT: [
+            { email: { contains: 'dummy' } },
+            { email: { contains: 'demo' } },
+            { email: { endsWith: '@example.com' } },
+            { email: { endsWith: '@erp.local' } },
+          ],
+        },
         select: {
           id: true,
           email: true,
@@ -21,7 +30,7 @@ export class CoreService {
           username: true,
           status: true,
         },
-        take: 15,
+        take: 20,
       }),
     ]);
 
