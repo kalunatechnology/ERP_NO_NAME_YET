@@ -85,7 +85,7 @@ export function AppShell({ children }: AppShellProps) {
     <div className="flex flex-row h-screen w-screen overflow-hidden bg-bg-lighter">
 
       {/* ── Desktop Sidebar (hidden below lg) ── */}
-      <div className="hidden lg:flex">
+      <div className="hidden lg:flex flex-shrink-0">
         <Sidebar />
       </div>
 
@@ -118,7 +118,7 @@ export function AppShell({ children }: AppShellProps) {
             id="main-content"
             role="main"
           >
-            <div className="p-4 sm:p-5 lg:p-6 w-full max-w-[1440px] mx-auto">
+            <div className="p-3.5 sm:p-5 lg:p-6 w-full max-w-[1600px] mx-auto">
               {children}
             </div>
           </main>
@@ -134,7 +134,7 @@ export function AppShell({ children }: AppShellProps) {
               <div className="w-full h-full flex flex-col items-center pt-3">
                 <button
                   onClick={toggleRightPanel}
-                  className="p-1.5 rounded-lg text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors"
+                  className="p-1.5 rounded-lg text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors cursor-pointer"
                   aria-label="Buka panel kanan"
                   title="Buka panel kanan"
                 >
@@ -148,5 +148,3 @@ export function AppShell({ children }: AppShellProps) {
     </div>
   );
 }
-
-export default AppShell;

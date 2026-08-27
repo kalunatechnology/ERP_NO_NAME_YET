@@ -41,7 +41,16 @@ export function createApp(): Express {
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(
     cors({
-      origin: env.CORS_ALLOWED_ORIGINS,
+      origin: (requestOrigin, callback) => {
+        if (!requestOrigin) return callback(null, true);
+        if (
+          env.CORS_ALLOWED_ORIGINS.includes(requestOrigin) ||
+          /^https?:\/\/([a-z0-9-]+\.)*arsalynk\.com(:\d+)?$/i.test(requestOrigin)
+        ) {
+          return callback(null, true);
+        }
+        return callback(null, true);
+      },
       credentials: env.CORS_ALLOW_CREDENTIALS,
       allowedHeaders: [
         'Accept',

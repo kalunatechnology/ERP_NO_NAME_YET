@@ -273,12 +273,23 @@ SPECTACULAR_SETTINGS = {
 }
 from corsheaders.defaults import default_headers
 
+cors_env = os.getenv("CORS_ALLOWED_ORIGINS", "")
 CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5500",
     "http://localhost:5500",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://marka.arsalynk.com",
+    "http://marka.arsalynk.com",
+    "https://arsalynk.com",
+    "http://arsalynk.com",
+] + ([x.strip() for x in cors_env.split(",") if x.strip()] if cors_env else [])
+
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https?://([a-zA-Z0-9-]+\.)*arsalynk\.com$",
 ]
 
-CORS_ALLOW_CREDENTIALS = False
+CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_HEADERS = [
     *default_headers,

@@ -25,7 +25,12 @@ export function BudgetCheckStatusCard({
     typeof v === "number" ? formatMoney(v) : v;
 
   return (
-    <div className={cn("w-full bg-white border border-[#C7C7C7] rounded-[20px] p-5 shadow-xs flex flex-col justify-between h-full select-none", className)}>
+    <div
+      className={cn(
+        "w-full bg-white border border-[#E5E9E2] rounded-[24px] p-5 shadow-xs flex flex-col justify-between h-full select-none",
+        className
+      )}
+    >
       {/* Header Banner */}
       <div className="bg-[#F0FEE0] rounded-xl px-3.5 py-2 flex items-center justify-between">
         <span className="text-xs font-bold text-[#0E341F]">Budget Check Status</span>
@@ -33,15 +38,15 @@ export function BudgetCheckStatusCard({
       </div>
 
       {/* Metric Breakdown */}
-      <div className="flex flex-col gap-2.5 text-xs py-1">
-        <div className="flex justify-between items-center">
-          <span className="text-[#637566] font-medium">Material Budget</span>
-          <span className="font-bold text-[#0E341F]">{formatVal(materialBudget)}</span>
+      <div className="flex flex-col gap-2.5 text-xs py-2 my-auto">
+        <div className="flex justify-between items-center gap-2">
+          <span className="text-[#637566] font-medium truncate">Material Budget</span>
+          <span className="font-bold text-[#0E341F] flex-shrink-0">{formatVal(materialBudget)}</span>
         </div>
 
-        <div className="flex justify-between items-start">
-          <div className="flex flex-col min-w-0 pr-2">
-            <span className="text-[#637566] font-medium">Current Allocation Cost:</span>
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex flex-col min-w-0 pr-1">
+            <span className="text-[#637566] font-medium truncate">Current Allocation Cost:</span>
             <span className="text-[10px] text-[#637566] truncate">{allocationFormula}</span>
           </div>
           <span className="font-bold text-[#0E341F] flex-shrink-0">{formatVal(allocationCost)}</span>
@@ -49,17 +54,17 @@ export function BudgetCheckStatusCard({
 
         <hr className="border-gray-100 my-0.5" />
 
-        <div className="flex justify-between items-center">
-          <span className="text-[#637566] font-medium">Remaining Budget</span>
-          <span className="font-bold text-[#0E341F]">{formatVal(remainingBudget)}</span>
+        <div className="flex justify-between items-center gap-2">
+          <span className="text-[#637566] font-medium truncate">Remaining Budget</span>
+          <span className="font-bold text-[#0E341F] flex-shrink-0">{formatVal(remainingBudget)}</span>
         </div>
 
         <hr className="border-gray-100 my-0.5" />
 
-        <div className="flex justify-between items-center pt-0.5">
+        <div className="flex justify-between items-center pt-0.5 gap-2">
           <span className="text-xs text-[#637566] font-medium">Budget is acceptable</span>
           <div
-            className={`flex items-center gap-1.5 px-3.5 py-1 rounded-xl text-xs font-bold ${
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold flex-shrink-0 ${
               isValid
                 ? "bg-[#BBF7D0] text-[#166534]"
                 : "bg-red-100 text-red-700"
