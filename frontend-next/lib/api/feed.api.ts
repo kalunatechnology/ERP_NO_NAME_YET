@@ -324,8 +324,13 @@ export async function fetchDynamicRightPanelData(): Promise<{
   const PASTEL_COLORS = ["#F0FEE0", "#E8F5E9", "#F3E5F5", "#E3F2FD", "#FFF9C4", "#FFECB3"];
   const contacts: DynamicContact[] = [];
 
-  if (users.length > 0) {
-    users.slice(0, 6).forEach((u, i) => {
+  const realUsers = users.filter((u: any) => {
+    const email = (u.email || "").toLowerCase();
+    return !email.includes("dummy") && !email.includes("demo") && !email.endsWith("@example.com") && !email.endsWith("@erp.local");
+  });
+
+  if (realUsers.length > 0) {
+    realUsers.slice(0, 6).forEach((u: any, i: number) => {
       const name = u.full_name || u.name || u.email?.split("@")[0] || `User #${u.id}`;
       const initials = name
         .split(" ")
@@ -334,7 +339,7 @@ export async function fetchDynamicRightPanelData(): Promise<{
         .slice(0, 2)
         .toUpperCase();
       
-      const role = u.role || (u.is_superuser ? "Admin System" : i % 2 === 0 ? "Project Member" : "Finance Staff");
+      const role = u.role || (u.is_superuser ? "Executive / Director" : i % 2 === 0 ? "Project Member" : "Finance Staff");
 
       contacts.push({
         id: u.id || i,
@@ -348,17 +353,19 @@ export async function fetchDynamicRightPanelData(): Promise<{
     });
   } else {
     contacts.push(
-      { id: "c1", name: "Rina Sari", role: "Project Manager", initials: "RS", color: "#F0FEE0", status: "online" },
-      { id: "c2", name: "Budi Santoso", role: "Finance Controller", initials: "BS", color: "#E8F5E9", status: "online" },
-      { id: "c3", name: "Dewi Kurnia", role: "CRM Sales Lead", initials: "DK", color: "#F3E5F5", status: "away" },
-      { id: "c4", name: "Ahmad Rizki", role: "Technical Lead", initials: "AR", color: "#E3F2FD", status: "offline" }
+      { id: "c1", name: "Rian Destianto", role: "Executive & Director", email: "rian.destianto@arsalynk.id", initials: "RD", color: "#F0FEE0", status: "online" },
+      { id: "c2", name: "Melika Citra Tania", role: "Project & Ops Manager", email: "melika.citra@arsalynk.id", initials: "MC", color: "#E8F5E9", status: "online" },
+      { id: "c3", name: "Arof Fudding", role: "PM & Finance Lead", email: "arof.fudding@arsalynk.id", initials: "AF", color: "#F3E5F5", status: "away" },
+      { id: "c4", name: "Laode Fahmi Hidayat", role: "Field Assignee", email: "laode.fahmi@arsalynk.id", initials: "LF", color: "#E3F2FD", status: "online" },
+      { id: "c5", name: "Jundy Isham Izzudin", role: "Field Assignee", email: "jundy.isham@arsalynk.id", initials: "JI", color: "#FFF9C4", status: "online" },
+      { id: "c6", name: "M Noorman Perdana", role: "Field Assignee", email: "noorman.perdana@arsalynk.id", initials: "MN", color: "#FFECB3", status: "online" }
     );
   }
 
   return {
     notifications: notifications.slice(0, 4),
     activities: activities.slice(0, 4),
-    contacts: contacts.slice(0, 5),
+    contacts: contacts.slice(0, 6),
   };
 }
 
