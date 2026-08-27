@@ -311,7 +311,7 @@ function LoginFormContent() {
                 <input
                   type="text"
                   {...register("name")}
-                  placeholder="Masukkan nama Anda (misal: Rian / Melika / Arof)"
+                  placeholder="Nama"
                   autoComplete="name"
                   className="w-full h-[42px] lg:h-[44px] rounded-[11px] bg-[#FDFDFD] border border-[#5A861F] focus:border-[#275433] px-3.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-hidden transition-all shadow-2xs"
                 />
@@ -325,7 +325,7 @@ function LoginFormContent() {
                 <input
                   type="text"
                   {...register("email", { required: "Email wajib diisi" })}
-                  placeholder="Masukkan email / username (misal: rian@arsalynk.com)"
+                  placeholder="Email"
                   autoComplete="username"
                   className="w-full h-[42px] lg:h-[44px] rounded-[11px] bg-white border border-[#5A861F] focus:border-[#275433] px-3.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-hidden transition-all shadow-2xs"
                 />
@@ -348,7 +348,7 @@ function LoginFormContent() {
                       required: "Password wajib diisi",
                     })}
                     autoComplete="current-password"
-                    placeholder="Masukkan kata sandi (misal: DummyPass123!)"
+                    placeholder="Password"
                     className="w-full h-[42px] lg:h-[44px] rounded-[11px] bg-white border border-[#5A861F] focus:border-[#275433] px-3.5 pr-10 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-hidden transition-all shadow-2xs"
                   />
                   <button
