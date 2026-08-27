@@ -46,9 +46,9 @@ export function ProjectDonutSummaryCard({
       </div>
 
       {/* Main Chart + Legend */}
-      <div className="grid grid-cols-1 sm:grid-cols-[110px_1fr] items-center gap-3 py-3 my-auto">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-2 my-auto">
         {/* SVG Donut */}
-        <div className="relative w-24 h-24 sm:w-26 sm:h-26 flex items-center justify-center mx-auto flex-shrink-0">
+        <div className="relative w-20 h-20 sm:w-22 sm:h-22 flex items-center justify-center mx-auto flex-shrink-0">
           <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
             {/* Background Circle */}
             <circle cx="18" cy="18" r="14" fill="transparent" stroke="#F1F5F9" strokeWidth="4.5" />
@@ -79,26 +79,26 @@ export function ProjectDonutSummaryCard({
 
           {/* Centered Total */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-xl font-black text-slate-800 leading-none tracking-tight">{total}</span>
-            <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider mt-0.5">Total</span>
+            <span className="text-lg font-black text-slate-800 leading-none tracking-tight">{total}</span>
+            <span className="text-[8px] text-slate-400 uppercase font-bold tracking-wider mt-0.5">Total</span>
           </div>
         </div>
 
         {/* Legend List */}
-        <div className="flex flex-col gap-1.5 w-full pl-0 sm:pl-2">
+        <div className="flex flex-col gap-1 w-full min-w-0 sm:pl-2">
           {chartData.map((item) => (
             <div
               key={item.label}
               className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg hover:bg-slate-50/80 transition-colors"
             >
-              <div className="flex items-center gap-2 min-w-0 pr-2">
+              <div className="flex items-center gap-1.5 min-w-0 pr-1">
                 <span
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-2xs"
+                  className="w-2 h-2 rounded-full flex-shrink-0 shadow-2xs"
                   style={{ backgroundColor: item.color }}
                 />
                 <span className="text-slate-700 font-medium whitespace-nowrap text-xs">{item.label}</span>
               </div>
-              <span className="font-bold text-slate-800 bg-slate-100/70 border border-slate-200/60 px-2 py-0.5 rounded-md text-[11px] tabular-nums flex-shrink-0">
+              <span className="font-bold text-slate-800 bg-slate-100/70 border border-slate-200/60 px-1.5 py-0.2 rounded text-[11px] tabular-nums flex-shrink-0">
                 {item.count}
               </span>
             </div>

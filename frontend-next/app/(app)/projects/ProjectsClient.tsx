@@ -401,31 +401,8 @@ export default function ProjectsClient() {
       }));
     }
 
-    // Proportional breakdown based on real project budget/costs if receipts are not yet recorded
-    const actualCost = Number(financialPerformance?.actual_cost || (selectedProject as any)?.actual_cost || 0);
-    const budget = Number(selectedProject?.budget_amount || (selectedProject as any)?.budget || 100000000);
-    const baseAmt = actualCost > 0 ? actualCost : budget;
-
-    const breakdown = [
-      { label: "Raw Materials & Komponen Utama", ratio: 0.45, cat: "Pengadaan Material" },
-      { label: "Direct Labor & Wages Lapangan", ratio: 0.25, cat: "Upah Tenaga Kerja" },
-      { label: "Engineering & Compliance Mutu", ratio: 0.15, cat: "Konsultan Teknis & QA" },
-      { label: "Warehouse & Rental Fasilitas", ratio: 0.10, cat: "Logistik & Sewa Alat" },
-      { label: "Power, Water & Operasional Utilitas", ratio: 0.05, cat: "Utilitas Proyek" },
-    ];
-
-    const maxVal = baseAmt * 0.45;
-    return breakdown.map((item, idx) => {
-      const val = Math.round(baseAmt * item.ratio);
-      return {
-        id: idx + 1,
-        label: item.label,
-        amountText: formatRupiah(val),
-        amountValue: val,
-        percentage: Math.round((val / maxVal) * 100),
-        category: item.cat,
-      };
-    });
+    // If no cost entries exist, return empty array (clean fresh-start state)
+    return [];
   }, [selectedProject, fundingRequestsList, financialPerformance]);
 
   /* 3. Real Milestones from Live Project Data */
