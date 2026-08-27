@@ -181,3 +181,103 @@ export async function loadFinanceDashboard(): Promise<FinanceDashboardData> {
     rawCostEntries, rawFundings, rawBillingProposals, rawProjects,
   };
 }
+
+export interface RealMonthlyStackedDataPoint {
+  month: string;
+  bottomValue: number;
+  topValue: number;
+  hasData?: boolean;
+  fullDate?: string;
+  notes?: string;
+}
+
+export interface RealMonthlyStackedResponse {
+  data: RealMonthlyStackedDataPoint[];
+  maxValue: number;
+}
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export async function fetchRealMonthlyStackedData(): Promise<RealMonthlyStackedResponse> {
+  try {
+    const [billsRes, proposalsRes, receiptsRes, costsRes] = await Promise.all([
+      api.get("/api/v1/finance/billing-documents/?page_size=200").catch(() => ({ data: [] })),
+      api.get("/api/v1/finance/billing-proposals/?page_size=200").catch(() => ({ data: [] })),
+      api.get("/api/v1/finance/customer-receipts/?page_size=200").catch(() => ({ data: [] })),
+      api.get("/api/v1/finance/project-cost-entries/?page_size=200").catch(() => ({ data: [] })),
+    ]);
+
+    const bills = normalizeList<any>(billsRes.data).rows;
+    const proposals = normalizeList<any>(proposalsRes.data).rows;
+    const receipts = normalizeList<any>(receiptsRes.data).rows;
+    const costs = normalizeList<any>(costsRes.data).rows;
+
+    // Monthly buckets in Millions (Juta Rupiah - Jt)
+    const monthlyBottom = new Array(12).fill(0);
+    const monthlyTop = new Array(12).fill(0);
+
+    // 1. Process Actual Realized Inflow & Payments
+    receipts.forEach((r: any) => {
+      const dt = new Date(r.payment_date || r.created_at || Date.now());
+      const m = dt.getMonth();
+      const amtJt = Number(r.amount || 0) / 1_000_000;
+      if (m >= 0 && m < 12) monthlyBottom[m] += amtJt;
+    });
+
+    bills.filter((b: any) => b.status === "PAID" || b.status === "POSTED").forEach((b: any) => {
+      const dt = new Date(b.issue_date || b.created_at || Date.now());
+      const m = dt.getMonth();
+      const amtJt = Number(b.amount || b.total_amount || 0) / 1_000_000;
+      if (m >= 0 && m < 12) monthlyBottom[m] += amtJt;
+    });
+
+    // 2. Process Projected & WIP Allocations
+    proposals.forEach((p: any) => {
+      const dt = new Date(p.created_at || Date.now());
+      const m = dt.getMonth();
+      const amtJt = Number(p.amount || p.total_amount || 0) / 1_000_000;
+      if (m >= 0 && m < 12) monthlyTop[m] += amtJt;
+    });
+
+    costs.forEach((c: any) => {
+      const dt = new Date(c.date || c.created_at || Date.now());
+      const m = dt.getMonth();
+      const amtJt = Number(c.amount || 0) / 1_000_000;
+      if (m >= 0 && m < 12) monthlyTop[m] += amtJt;
+    });
+
+    let highestTotal = 0;
+    const resultData: RealMonthlyStackedDataPoint[] = MONTH_NAMES.map((month, idx) => {
+      const bVal = monthlyBottom[idx] > 0 ? Math.round(monthlyBottom[idx]) : 0;
+      const tVal = monthlyTop[idx] > 0 ? Math.round(monthlyTop[idx]) : 0;
+      const total = bVal + tVal;
+      const hasData = total > 0;
+      if (total > highestTotal) highestTotal = total;
+
+      return {
+        month,
+        bottomValue: bVal,
+        topValue: tVal,
+        hasData,
+        notes: hasData
+          ? `Realisasi: Rp ${bVal.toLocaleString("id-ID")} Jt · WIP/Proyeksi: Rp ${tVal.toLocaleString("id-ID")} Jt`
+          : "Belum ada data transaksi tercatat",
+      };
+    });
+
+    const maxValue = Math.max(500, Math.ceil((highestTotal || 500) / 100) * 100);
+    return { data: resultData, maxValue };
+  } catch {
+    return {
+      data: MONTH_NAMES.map((month) => ({
+        month,
+        bottomValue: 0,
+        topValue: 0,
+        hasData: false,
+        notes: "Belum ada data transaksi tercatat",
+      })),
+      maxValue: 500,
+    };
+  }
+}
+

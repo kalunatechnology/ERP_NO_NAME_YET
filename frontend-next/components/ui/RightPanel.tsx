@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/feed.api";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
+import { useAuth } from "@/contexts/AuthContext";
 import toast from "react-hot-toast";
 
 interface RightPanelProps {
@@ -23,6 +24,7 @@ interface RightPanelProps {
 
 export function RightPanel({ onToggleCollapse }: RightPanelProps) {
   const router = useRouter();
+  const { userRole, isAdmin } = useAuth();
   const [notifications, setNotifications] = useState<DynamicFeedItem[]>([]);
   const [alerts, setAlerts] = useState<RealAlertItem[]>([]);
   const [activities, setActivities] = useState<DynamicFeedItem[]>([]);
@@ -33,13 +35,32 @@ export function RightPanel({ onToggleCollapse }: RightPanelProps) {
   const [selectedContact, setSelectedContact] = useState<DynamicContact | null>(null);
   const [copiedEmail, setCopiedEmail] = useState(false);
 
+  const checkCanAccess = (href?: string): boolean => {
+    if (!href) return true;
+    if (href.startsWith("/finance")) {
+      const canAccess = isAdmin || userRole === "finance" || userRole === "executive";
+      if (!canAccess) {
+        toast.error("Akses Ditolak: Notifikasi keuangan hanya dapat diakses oleh tim Finance & Direksi.", { icon: "🔒" });
+        return false;
+      }
+    }
+    if (href.startsWith("/crm")) {
+      const canAccess = isAdmin || userRole === "crm" || userRole === "executive" || userRole === "pm";
+      if (!canAccess) {
+        toast.error("Akses Ditolak: Modul CRM hanya untuk tim Commercial, PM & Direksi.", { icon: "🔒" });
+        return false;
+      }
+    }
+    return true;
+  };
+
   const loadFeed = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
       const [data, realAlerts] = await Promise.all([
         fetchDynamicRightPanelData(),
-        fetchRealAlertsList()
+        fetchRealAlertsList(userRole, isAdmin)
       ]);
       setNotifications((data.notifications || []).slice(0, 3));
       setAlerts(realAlerts.slice(0, 3));
@@ -51,7 +72,7 @@ export function RightPanel({ onToggleCollapse }: RightPanelProps) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [userRole, isAdmin]);
 
   useEffect(() => {
     loadFeed();
@@ -61,6 +82,7 @@ export function RightPanel({ onToggleCollapse }: RightPanelProps) {
 
   const handleItemClick = (item: DynamicFeedItem) => {
     if (item.href) {
+      if (!checkCanAccess(item.href)) return;
       router.push(item.href);
       toast(`Membuka ${item.label}`, { icon: "🔗" });
     }
@@ -226,6 +248,7 @@ export function RightPanel({ onToggleCollapse }: RightPanelProps) {
                   key={item.id}
                   onClick={() => {
                     if (item.href) {
+                      if (!checkCanAccess(item.href)) return;
                       router.push(item.href);
                       toast(`Membuka ${item.title}`, { icon: "🔔" });
                     }

@@ -21,7 +21,7 @@ import { ProjectTimelineGantt, GanttTaskItem } from "@/components/ui/ProjectTime
 import { ProjectMilestoneCard, ProjectSummary, MilestoneItem } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { InventoryCheckingCard } from "@/components/ui/InventoryCheckingCard";
-import { AlertTimelineCard } from "@/components/ui/AlertTimelineCard";
+import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
 
 /* ═══════════════════════════════════════════════════════════════
    SHARED COMPONENTS
@@ -349,7 +349,18 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
         <ProjectDonutSummaryCard data={statusCounts} />
       </div>
 
-      {/* ── Visual Analytics Row 2: Top 5 Expenses ── */}
+      {/* ── Visual Analytics Row 2: Tren Pendapatan & Biaya Bulanan (Run-Rate) ── */}
+      <div className="w-full">
+        <MonthlyStackedBarChart
+          title="Tren Arus Kas Pendapatan & Biaya Bulanan Proyek"
+          subtitle="Distribusi pendapatan termin vs realisasi alokasi WIP/biaya proyek per bulan fiskal"
+          primaryLabel="Realisasi Kas (Jt)"
+          secondaryLabel="Alokasi WIP / Biaya Proyek (Jt)"
+          autoFetch={true}
+        />
+      </div>
+
+      {/* ── Visual Analytics Row 3: Top 5 Expenses ── */}
       <div className="w-full">
         <TopExpensesBarChart expenses={topExpenses} />
       </div>
@@ -492,20 +503,26 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
         </div>
       </section>
 
-      {/* ── Operational Control & Alert Center (Inventory Checking + Alerts) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
-          <BudgetCheckStatusCard
-            materialBudget={kpis.totalBudget || 56000000}
-            allocationCost={kpis.usedBudget || 12500000}
-            remainingBudget={kpis.remainingBudget || 43500000}
-            isValid={(kpis.remainingBudget || 0) >= 0}
-          />
-          <InventoryCheckingCard autoFetch={true} />
-        </div>
-        <div className="lg:col-span-1">
-          <AlertTimelineCard title="Alerts &amp; Action Center" />
-        </div>
+      {/* ── Monthly Financial Run-Rate Chart ── */}
+      <div className="w-full">
+        <MonthlyStackedBarChart
+          title="Monthly Financial Run-Rate (Pendapatan vs Beban Proyek)"
+          subtitle="Arus kas pendapatan termin riil (Realized Revenue) vs alokasi biaya WIP/material per bulan fiskal"
+          primaryLabel="Realisasi Kas (Jt)"
+          secondaryLabel="Alokasi WIP / Biaya Proyek (Jt)"
+          autoFetch={true}
+        />
+      </div>
+
+      {/* ── Operational Control (Budget & Inventory Checking) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
+        <BudgetCheckStatusCard
+          materialBudget={kpis.totalBudget || 56000000}
+          allocationCost={kpis.usedBudget || 12500000}
+          remainingBudget={kpis.remainingBudget || 43500000}
+          isValid={(kpis.remainingBudget || 0) >= 0}
+        />
+        <InventoryCheckingCard autoFetch={true} />
       </div>
 
       {/* ── Need Action Panel ──────────── */}
@@ -763,7 +780,18 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         <ProjectDonutSummaryCard data={statusCounts} />
       </div>
 
-      {/* ── Baris 2: 5 Pengeluaran Biaya Terbesar ── */}
+      {/* ── Baris 2: Tren Pendapatan & Biaya Bulanan (Monthly Stacked Run-Rate) ── */}
+      <div className="w-full">
+        <MonthlyStackedBarChart
+          title="Monthly Financial Run-Rate (Pendapatan vs Beban Proyek)"
+          subtitle="Analisis arus kas termin (Realized Revenue) vs alokasi biaya WIP/material per bulan fiskal"
+          primaryLabel="Realisasi Kas (Jt)"
+          secondaryLabel="Alokasi WIP / Biaya Proyek (Jt)"
+          autoFetch={true}
+        />
+      </div>
+
+      {/* ── Baris 3: 5 Pengeluaran Biaya Terbesar ── */}
       <div className="w-full">
         <TopExpensesBarChart expenses={topExpenses} />
       </div>

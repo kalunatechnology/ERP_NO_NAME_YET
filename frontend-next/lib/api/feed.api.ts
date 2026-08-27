@@ -381,99 +381,35 @@ export interface RealInventoryCheckData {
   unit: string;
 }
 
-export async function fetchRealAlertsList(): Promise<RealAlertItem[]> {
+export async function fetchRealAlertsList(userRole?: string, isAdmin?: boolean): Promise<RealAlertItem[]> {
+  const isFinanceAuthorized = isAdmin || userRole === "finance" || userRole === "executive";
+  const isPm = userRole === "pm";
+  const isCrm = userRole === "crm";
+
   try {
-    const [billsRes, fundingsRes, movesRes, tasksRes] = await Promise.all([
-      api.get("/api/v1/finance/billing-documents/?page_size=10").catch(() => ({ data: [] })),
-      api.get("/api/v1/finance/project-fundings/?page_size=10").catch(() => ({ data: [] })),
+    const [billsRes, movesRes, tasksRes, dealsRes] = await Promise.all([
+      isFinanceAuthorized
+        ? api.get("/api/v1/finance/billing-documents/?page_size=10").catch(() => ({ data: [] }))
+        : Promise.resolve({ data: [] }),
       api.get("/api/v1/inventory/stock-moves/?page_size=10").catch(() => ({ data: [] })),
       api.get("/api/v1/projects/tasks/?page_size=10").catch(() => ({ data: [] })),
+      isCrm
+        ? api.get("/api/v1/crm/opportunities/?page_size=10").catch(() => ({ data: [] }))
+        : Promise.resolve({ data: [] }),
     ]);
 
     const bills = normalizeList<any>(billsRes.data).rows;
-    const fundings = normalizeList<any>(fundingsRes.data).rows;
     const moves = normalizeList<any>(movesRes.data).rows;
     const tasks = normalizeList<any>(tasksRes.data).rows;
+    const deals = normalizeList<any>(dealsRes.data).rows;
 
     const alerts: RealAlertItem[] = [];
 
-    // 1. High Priority Alert: Tax Period & Access Request
-    alerts.push({
-      id: "alert-tax-1",
-      category: "Tax Period",
-      time: "10.17 AM",
-      title: "Requesting Access",
-      snippet: "Hi, i would like to have the access of your report, so i can re-check it. Thank you",
-      isHighlighted: true,
-      categoryColor: "#22C55E",
-      href: "/finance",
-    });
-
-    // 2. Vendor Recurring Payments & Invoices
-    if (bills.length > 0) {
-      bills.slice(0, 2).forEach((b, idx) => {
-        alerts.push({
-          id: `alert-bill-${b.id || idx}`,
-          category: "Recurring Payment",
-          time: idx === 0 ? "10.15 AM" : "Yesterday",
-          title: `${b.supplier_name || b.vendor_name || (idx === 0 ? "PT. Angkasa" : "PT. Yuasa Prima")} sent an invoice`,
-          snippet: b.invoice_number
-            ? `Hello, I've finished the P1 Production report, invoice ${b.invoice_number} (${formatMoney(b.amount || 32500000)}) has been submitted.`
-            : "Hello, I've finished the P1 Production report, access the document i've attached.",
-          categoryColor: "#22C55E",
-          href: "/finance",
-        });
-      });
-    } else {
+    // ── ROLE 1: FINANCE / EXECUTIVE / ADMIN ────────────────────
+    if (isFinanceAuthorized) {
+      // 1. High Priority Alert: Tax Period & Access Request
       alerts.push({
-        id: "alert-bill-def-1",
-        category: "Recurring Payment",
-        time: "10.15 AM",
-        title: "PT. Angkasa sent an invoice",
-        snippet: "Hello, I've finished the P1 Production report, access the document i've at..",
-        categoryColor: "#22C55E",
-        href: "/finance",
-      });
-    }
-
-    // 3. Material Checking & Receiving Reports
-    alerts.push({
-      id: "alert-rep-1",
-      category: "Financial Report",
-      time: "Yesterday",
-      title: "Report on Material Checking",
-      snippet: "Good afternoon, i would like to deliver this report of Material Checking from our divi..",
-      categoryColor: "#9CA3AF",
-      href: "/reporting",
-    });
-
-    alerts.push({
-      id: "alert-rep-2",
-      category: "Financial Report",
-      time: "10.15 AM",
-      title: "Report on Material Receiving",
-      snippet: moves.length > 0 && moves[0].document_number
-        ? `We already have all the material for ${moves[0].document_number} on the dock, and i would like to handover the items to warehouse.`
-        : "We already have all the material on the dock, and i would like to handover the ne..",
-      categoryColor: "#9CA3AF",
-      href: "/resources",
-    });
-
-    alerts.push({
-      id: "alert-rep-3",
-      category: "Recurring Payment",
-      time: "10.15 AM",
-      title: "PT. Yuasa Prima sent an invoice",
-      snippet: "Faktur tagihan termin pengadaan material batch 2 telah dikirimkan ke finance..",
-      categoryColor: "#9CA3AF",
-      href: "/finance",
-    });
-
-    return alerts;
-  } catch {
-    return [
-      {
-        id: "al-1",
+        id: "alert-tax-1",
         category: "Tax Period",
         time: "10.17 AM",
         title: "Requesting Access",
@@ -481,44 +417,199 @@ export async function fetchRealAlertsList(): Promise<RealAlertItem[]> {
         isHighlighted: true,
         categoryColor: "#22C55E",
         href: "/finance",
-      },
-      {
-        id: "al-2",
-        category: "Recurring Payment",
-        time: "10.15 AM",
-        title: "PT. Angkasa sent an invoice",
-        snippet: "Hello, I've finished the P1 Production report, access the document i've at..",
-        categoryColor: "#22C55E",
-        href: "/finance",
-      },
-      {
-        id: "al-3",
-        category: "Financial Report",
-        time: "Yesterday",
-        title: "Report on Material Checking",
-        snippet: "Good afternoon, i would like to deliver this report of Material Checking from our divi..",
-        categoryColor: "#9CA3AF",
-        href: "/reporting",
-      },
-      {
-        id: "al-4",
+      });
+
+      // 2. Vendor Recurring Payments & Invoices
+      if (bills.length > 0) {
+        bills.slice(0, 2).forEach((b, idx) => {
+          alerts.push({
+            id: `alert-bill-${b.id || idx}`,
+            category: "Recurring Payment",
+            time: idx === 0 ? "10.15 AM" : "Yesterday",
+            title: `${b.supplier_name || b.vendor_name || (idx === 0 ? "PT. Angkasa" : "PT. Yuasa Prima")} sent an invoice`,
+            snippet: b.invoice_number
+              ? `Hello, I've finished the P1 Production report, invoice ${b.invoice_number} (${formatMoney(b.amount || 32500000)}) has been submitted.`
+              : "Hello, I've finished the P1 Production report, access the document i've attached.",
+            categoryColor: "#22C55E",
+            href: "/finance",
+          });
+        });
+      } else {
+        alerts.push({
+          id: "alert-bill-def-1",
+          category: "Recurring Payment",
+          time: "10.15 AM",
+          title: "PT. Angkasa sent an invoice",
+          snippet: "Hello, I've finished the P1 Production report, access the document i've at..",
+          categoryColor: "#22C55E",
+          href: "/finance",
+        });
+      }
+
+      // 3. Material Receiving Report
+      alerts.push({
+        id: "alert-rep-2",
         category: "Financial Report",
         time: "10.15 AM",
         title: "Report on Material Receiving",
-        snippet: "We already have all the material on the dock, and i would like to handover the ne..",
+        snippet: moves.length > 0 && moves[0].document_number
+          ? `We already have all the material for ${moves[0].document_number} on the dock, and i would like to handover the items to warehouse.`
+          : "We already have all the material on the dock, and i would like to handover the ne..",
         categoryColor: "#9CA3AF",
         href: "/resources",
-      },
-      {
-        id: "al-5",
-        category: "Recurring Payment",
+      });
+
+      return alerts;
+    }
+
+    // ── ROLE 2: PROJECT MANAGER / SUPERVISOR ───────────────────
+    if (isPm) {
+      alerts.push({
+        id: "alert-pm-1",
+        category: "Milestone Due",
         time: "10.15 AM",
-        title: "PT. Yuasa Prima sent an invoice",
-        snippet: "Faktur tagihan termin pengadaan material batch 2 telah dikirimkan ke finance..",
+        title: "Milestone Instalasi Batch 1",
+        snippet: "Milestone instalasi conveyor & kabel sensor line 1 dijadwalkan selesai minggu ini.",
+        isHighlighted: true,
+        categoryColor: "#22C55E",
+        href: "/projects",
+      });
+
+      alerts.push({
+        id: "alert-pm-2",
+        category: "Material Receiving",
+        time: "10.15 AM",
+        title: "Report on Material Receiving",
+        snippet: "Material pipa tembaga & panel listrik telah tiba di dermaga logistik WH1-CGK.",
+        categoryColor: "#22C55E",
+        href: "/resources",
+      });
+
+      alerts.push({
+        id: "alert-pm-3",
+        category: "Task Assignment",
+        time: "Yesterday",
+        title: tasks.length > 0 ? `Task: ${tasks[0].title || tasks[0].task_name}` : "Pemeriksaan Checklist QC Lapangan",
+        snippet: "Verifikasi checklist QC harian telah diserahkan oleh supervisor lapangan.",
         categoryColor: "#9CA3AF",
-        href: "/finance",
-      },
-    ];
+        href: "/tasks",
+      });
+
+      return alerts;
+    }
+
+    // ── ROLE 3: CRM & SALES ───────────────────────────────────
+    if (isCrm) {
+      alerts.push({
+        id: "alert-crm-1",
+        category: "Quotation Review",
+        time: "10.15 AM",
+        title: "Quotation Proposal Klien",
+        snippet: "Draft proposal penawaran komersial siap di-review untuk dikirimkan ke klien.",
+        isHighlighted: true,
+        categoryColor: "#22C55E",
+        href: "/crm",
+      });
+
+      alerts.push({
+        id: "alert-crm-2",
+        category: "Opportunity Stage",
+        time: "10.15 AM",
+        title: deals.length > 0 ? `Deal: ${deals[0].opportunity_name || deals[0].name}` : "Peluang Baru Hot Lead",
+        snippet: "Klien meminta klarifikasi teknis dan estimasi timeline implementasi.",
+        categoryColor: "#22C55E",
+        href: "/crm",
+      });
+
+      alerts.push({
+        id: "alert-crm-3",
+        category: "Client Follow-up",
+        time: "Yesterday",
+        title: "Jadwal Meeting Negosiasi",
+        snippet: "Konfirmasi pertemuan teknis finalisasi kontrak proyek automation.",
+        categoryColor: "#9CA3AF",
+        href: "/crm",
+      });
+
+      return alerts;
+    }
+
+    // ── ROLE 4: OPERATIONAL STAFF / ASSIGNEE ──────────────────
+    alerts.push({
+      id: "alert-staff-1",
+      category: "Daily Timesheet",
+      time: "10.15 AM",
+      title: "Pengisian Log Kerja Harian",
+      snippet: "Jangan lupa melengkapi timesheet harian dan bukti progres tugas lapangan.",
+      isHighlighted: true,
+      categoryColor: "#22C55E",
+      href: "/tasks",
+    });
+
+    alerts.push({
+      id: "alert-staff-2",
+      category: "Task Assignment",
+      time: "Yesterday",
+      title: tasks.length > 0 ? tasks[0].title || "Verifikasi Komponen" : "Tugas Baru Lapangan",
+      snippet: "Tugas telah dialokasikan oleh Project Manager untuk diselesaikan minggu ini.",
+      categoryColor: "#9CA3AF",
+      href: "/tasks",
+    });
+
+    return alerts;
+  } catch {
+    return isFinanceAuthorized
+      ? [
+          {
+            id: "al-1",
+            category: "Tax Period",
+            time: "10.17 AM",
+            title: "Requesting Access",
+            snippet: "Hi, i would like to have the access of your report, so i can re-check it. Thank you",
+            isHighlighted: true,
+            categoryColor: "#22C55E",
+            href: "/finance",
+          },
+          {
+            id: "al-2",
+            category: "Recurring Payment",
+            time: "10.15 AM",
+            title: "PT. Angkasa sent an invoice",
+            snippet: "Hello, I've finished the P1 Production report, access the document i've at..",
+            categoryColor: "#22C55E",
+            href: "/finance",
+          },
+          {
+            id: "al-3",
+            category: "Financial Report",
+            time: "10.15 AM",
+            title: "Report on Material Receiving",
+            snippet: "We already have all the material on the dock, and i would like to handover the ne..",
+            categoryColor: "#9CA3AF",
+            href: "/resources",
+          },
+        ]
+      : [
+          {
+            id: "al-op-1",
+            category: "Milestone Due",
+            time: "10.15 AM",
+            title: "Milestone Instalasi Batch 1",
+            snippet: "Milestone instalasi conveyor line 1 dijadwalkan selesai minggu ini.",
+            isHighlighted: true,
+            categoryColor: "#22C55E",
+            href: isCrm ? "/crm" : "/projects",
+          },
+          {
+            id: "al-op-2",
+            category: "Material Receiving",
+            time: "10.15 AM",
+            title: "Report on Material Receiving",
+            snippet: "Material pipa tembaga & panel listrik telah tiba di dermaga logistik.",
+            categoryColor: "#22C55E",
+            href: "/resources",
+          },
+        ];
   }
 }
 

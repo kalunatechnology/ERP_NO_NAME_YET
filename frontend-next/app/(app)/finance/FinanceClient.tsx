@@ -13,8 +13,8 @@ import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
 import { InventoryCheckingCard } from "@/components/ui/InventoryCheckingCard";
-import { AlertTimelineCard } from "@/components/ui/AlertTimelineCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
+import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
 
 const FINANCE_TABS = [
   { id: "overview",     label: "Dashboard Ringkasan"       },
@@ -382,61 +382,50 @@ export default function FinanceClient() {
             </div>
           </div>
 
-          {/* ── Live Control & Financial Monitoring (Inventory & Budget & Alerts) ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-            {/* Left 2 Columns: Budget & Inventory Checking + Recent Operations */}
-            <div className="lg:col-span-2 flex flex-col gap-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
-                <BudgetCheckStatusCard
-                  materialBudget={totalRevenue || 56000000}
-                  allocationCost={totalCost || 12500000}
-                  remainingBudget={Math.max(0, (totalRevenue || 56000000) - (totalCost || 12500000))}
-                  isValid={(totalRevenue || 56000000) >= (totalCost || 12500000)}
-                />
-                <InventoryCheckingCard autoFetch={true} />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="card rounded-2xl p-5 flex flex-col gap-3">
-                  <h3 className="text-sm font-semibold text-text-primary">Biaya Proyek Terkini (Cost Entries)</h3>
-                  <div className="divide-y divide-text-tertiary">
-                    {costEntries.slice(0, 4).map(c => (
-                      <div key={c.id} className="py-2.5 flex items-center justify-between text-xs">
-                        <div>
-                          <strong className="block text-text-primary">{c.description || "Pengeluaran Material"}</strong>
-                          <small className="text-text-secondary">Proyek #{c.project}</small>
-                        </div>
-                        <span className="font-semibold text-red-600">{formatMoney(c.amount)}</span>
-                      </div>
-                    ))}
-                    {!costEntries.length && <p className="text-xs text-text-secondary text-center py-4">Belum ada pengeluaran.</p>}
-                  </div>
-                </div>
-
-                <div className="card rounded-2xl p-5 flex flex-col gap-3">
-                  <h3 className="text-sm font-semibold text-text-primary">Billing Termin Klien (Proposals)</h3>
-                  <div className="divide-y divide-text-tertiary">
-                    {proposals.slice(0, 4).map(p => (
-                      <div key={p.id} className="py-2.5 flex items-center justify-between text-xs">
-                        <div>
-                          <strong className="block text-text-primary">{p.description || "Termin Progres"}</strong>
-                          <small className="text-text-secondary">Proyek #{p.project}</small>
-                        </div>
-                        <span className="font-semibold text-brand-deep-green">{formatMoney(p.amount)}</span>
-                      </div>
-                    ))}
-                    {!proposals.length && <p className="text-xs text-text-secondary text-center py-4">Belum ada proposal billing.</p>}
-                  </div>
-                </div>
-              </div>
+          {/* ── Live Control & Financial Monitoring (Inventory & Budget) ── */}
+          <div className="flex flex-col gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
+              <BudgetCheckStatusCard
+                materialBudget={totalRevenue || 56000000}
+                allocationCost={totalCost || 12500000}
+                remainingBudget={Math.max(0, (totalRevenue || 56000000) - (totalCost || 12500000))}
+                isValid={(totalRevenue || 56000000) >= (totalCost || 12500000)}
+              />
+              <InventoryCheckingCard autoFetch={true} />
             </div>
 
-            {/* Right 1 Column: Alert & Action Center */}
-            <div className="lg:col-span-1">
-              <AlertTimelineCard
-                title="Alert & Action Center"
-                onViewAll={() => setActiveTab("tax")}
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="card rounded-2xl p-5 flex flex-col gap-3">
+                <h3 className="text-sm font-semibold text-text-primary">Biaya Proyek Terkini (Cost Entries)</h3>
+                <div className="divide-y divide-text-tertiary">
+                  {costEntries.slice(0, 4).map(c => (
+                    <div key={c.id} className="py-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <strong className="block text-text-primary">{c.description || "Pengeluaran Material"}</strong>
+                        <small className="text-text-secondary">Proyek #{c.project}</small>
+                      </div>
+                      <span className="font-semibold text-red-600">{formatMoney(c.amount)}</span>
+                    </div>
+                  ))}
+                  {!costEntries.length && <p className="text-xs text-text-secondary text-center py-4">Belum ada pengeluaran.</p>}
+                </div>
+              </div>
+
+              <div className="card rounded-2xl p-5 flex flex-col gap-3">
+                <h3 className="text-sm font-semibold text-text-primary">Billing Termin Klien (Proposals)</h3>
+                <div className="divide-y divide-text-tertiary">
+                  {proposals.slice(0, 4).map(p => (
+                    <div key={p.id} className="py-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <strong className="block text-text-primary">{p.description || "Termin Progres"}</strong>
+                        <small className="text-text-secondary">Proyek #{p.project}</small>
+                      </div>
+                      <span className="font-semibold text-brand-deep-green">{formatMoney(p.amount)}</span>
+                    </div>
+                  ))}
+                  {!proposals.length && <p className="text-xs text-text-secondary text-center py-4">Belum ada proposal billing.</p>}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -444,31 +433,41 @@ export default function FinanceClient() {
 
       {/* ── TAB 2: LABA & PROFITABILITY (EVM) ──── */}
       {activeTab === "profit" && (
-        <div className="card rounded-2xl p-5 flex flex-col gap-4">
-          <h3 className="text-sm font-semibold text-text-primary">Analisis Profitabilitas & Margin Proyek (EVM)</h3>
-          <div className="table-scroll-wrapper">
-            <table className="w-full data-table min-w-[560px]">
-              <thead>
-                <tr>
-                  <th>Nama Proyek</th>
-                  <th>Nilai Kontrak (Revenue)</th>
-                  <th>Biaya Riil (Actual Cost)</th>
-                  <th>Laba Kotor (Gross Margin)</th>
-                  <th>Margin (%)</th>
-                  <th>Status EVM</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Implementasi Smart Automation Line</strong></td>
-                  <td>{formatMoney(150000000)}</td>
-                  <td className="text-red-600 font-semibold">{formatMoney(totalCost || 12000000)}</td>
-                  <td className="text-emerald-700 font-bold">{formatMoney(150000000 - (totalCost || 12000000))}</td>
-                  <td><span className="font-bold text-brand-deep-green">92%</span></td>
-                  <td><span className="badge badge-success">✓ Sangat Sehat (CPI &gt; 1.1)</span></td>
-                </tr>
-              </tbody>
-            </table>
+        <div className="flex flex-col gap-6">
+          <MonthlyStackedBarChart
+            title="Tren Pendapatan & Biaya Bulanan (Monthly Stacked Run-Rate)"
+            subtitle="Distribusi pendapatan termin (Realized) vs alokasi biaya WIP/material per bulan fiskal"
+            primaryLabel="Realisasi Kas (Jt)"
+            secondaryLabel="Alokasi WIP / Biaya Proyek (Jt)"
+            autoFetch={true}
+          />
+
+          <div className="card rounded-2xl p-5 flex flex-col gap-4">
+            <h3 className="text-sm font-semibold text-text-primary">Analisis Profitabilitas & Margin Proyek (EVM)</h3>
+            <div className="table-scroll-wrapper">
+              <table className="w-full data-table min-w-[560px]">
+                <thead>
+                  <tr>
+                    <th>Nama Proyek</th>
+                    <th>Nilai Kontrak (Revenue)</th>
+                    <th>Biaya Riil (Actual Cost)</th>
+                    <th>Laba Kotor (Gross Margin)</th>
+                    <th>Margin (%)</th>
+                    <th>Status EVM</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Implementasi Smart Automation Line</strong></td>
+                    <td>{formatMoney(150000000)}</td>
+                    <td className="text-red-600 font-semibold">{formatMoney(totalCost || 12000000)}</td>
+                    <td className="text-emerald-700 font-bold">{formatMoney(150000000 - (totalCost || 12000000))}</td>
+                    <td><span className="font-bold text-brand-deep-green">92%</span></td>
+                    <td><span className="badge badge-success">✓ Sangat Sehat (CPI &gt; 1.1)</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

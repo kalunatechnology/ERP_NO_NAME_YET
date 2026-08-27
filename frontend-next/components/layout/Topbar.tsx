@@ -9,6 +9,7 @@ import toast from "react-hot-toast";
 
 interface TopbarProps {
   onMenuToggle?: () => void;
+  onNotificationClick?: () => void;
 }
 
 const DEMO_PERSONAS = [
@@ -45,7 +46,7 @@ function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
 
 import { GlobalCommandPalette } from "./GlobalCommandPalette";
 
-export function Topbar({ onMenuToggle }: TopbarProps) {
+export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, login, logout, company, setCompany, companies, isAdmin } = useAuth();
@@ -234,9 +235,10 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
 
         {/* Notification Bell */}
         <button
-          onClick={() => toast("Semua notifikasi tersinkronisasi", { icon: "🔔" })}
-          className="flex-shrink-0 p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/40 transition-colors relative"
-          aria-label="Notifikasi"
+          onClick={onNotificationClick ? onNotificationClick : () => toast("Semua notifikasi & alert tersinkronisasi", { icon: "🔔" })}
+          className="flex-shrink-0 p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/40 transition-colors relative cursor-pointer"
+          aria-label="Buka Notifikasi & Alert"
+          title="Buka Notifikasi & Alert"
         >
           <Bell size={18} aria-hidden="true" />
           <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-amber-500 rounded-full" aria-hidden="true" />

@@ -14,7 +14,7 @@ interface AppShellProps {
 
 // Role permission mapping
 const RESTRICTED_ROUTES: Record<string, string[]> = {
-  "/crm":       ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "CRM_LEAD", "CRM_MANAGER"],
+  "/crm":       ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "CRM_LEAD", "CRM_MANAGER", "PM", "PROJECT_MANAGER", "ROLE_PROJECT_MANAGER", "ROLE-PM"],
   "/finance":   ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "FINANCE_LEAD", "FINANCE_MANAGER"],
   "/reporting": ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "PM", "FINANCE_LEAD"],
 };
@@ -108,7 +108,10 @@ export function AppShell({ children }: AppShellProps) {
       {/* ── Main Application Column ── */}
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-hidden">
         {/* Topbar */}
-        <Topbar onMenuToggle={openMobileSidebar} />
+        <Topbar
+          onMenuToggle={openMobileSidebar}
+          onNotificationClick={toggleRightPanel}
+        />
 
         {/* Workspace + Right Sidebar Row */}
         <div className="flex flex-row flex-1 overflow-hidden">
@@ -123,10 +126,10 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           </main>
 
-          {/* ── Right Panel (xl and up only) ── */}
+          {/* ── Right Panel (visible on lg and xl) ── */}
           <div
-            className="hidden xl:flex flex-shrink-0 flex-col border-l border-text-tertiary bg-bg-light transition-all duration-200 overflow-hidden relative h-full"
-            style={{ width: rightPanelOpen ? "260px" : "36px" }}
+            className="hidden lg:flex flex-shrink-0 flex-col border-l border-text-tertiary bg-bg-light transition-all duration-200 overflow-hidden relative h-full"
+            style={{ width: rightPanelOpen ? "280px" : "36px" }}
           >
             {rightPanelOpen ? (
               <RightPanel onToggleCollapse={toggleRightPanel} />
