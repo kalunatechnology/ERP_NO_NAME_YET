@@ -26,7 +26,8 @@ interface UserProfileSettingsModalProps {
 }
 
 export function UserProfileSettingsModal({ isOpen, onClose }: UserProfileSettingsModalProps) {
-  const { user } = useAuth();
+  const { user, company, companies } = useAuth();
+  const activeCompanyName = companies.find(c => String(c.id) === String(company))?.name || "PT Sinergi Muda Arsa";
 
   const [activeTab, setActiveTab] = useState<"security" | "profile">("security");
 
@@ -131,7 +132,7 @@ export function UserProfileSettingsModal({ isOpen, onClose }: UserProfileSetting
                 </span>
                 <span className="text-[11px] text-white/70 flex items-center gap-1">
                   <Building2 size={12} />
-                  PT. Arsalynt
+                  {activeCompanyName}
                 </span>
               </div>
             </div>

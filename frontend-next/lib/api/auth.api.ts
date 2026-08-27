@@ -162,8 +162,8 @@ export async function getCompanies() {
   } catch {
     return {
       rows: [
-        { id: "arsalyn", name: "PT. Arsalynt Automation (Default)", code: "ARSLN" },
-        { id: "kaluna", name: "Kaluna Technology Corp", code: "KLN" },
+        { id: "10000000-0000-0000-0000-000000000001", name: "PT Sinergi Muda Arsa", code: "SMA" },
+        { id: "00000000-0000-0000-0000-000000000010", name: "PT Coba Arsalynk (Ghost Company)", code: "GHOST-ARSALYNK" },
       ],
       count: 2
     };

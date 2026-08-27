@@ -14,15 +14,15 @@ interface TopbarProps {
 
 const DEMO_PERSONAS = [
   { email: "admin@arsalynk.id", name: "Sutanto Admin", role: "Super Administrator · Full Multi-Tenant", icon: "👑", company: "Semua Company" },
-  { email: "director@arsalynk.id", name: "Bambang Director", role: "Direksi / Executive · P&L", icon: "🏛️", company: "PT. Arsalynt" },
-  { email: "pm@arsalynk.id", name: "Rina Sari PM", role: "Project Manager · WBS & Gantt", icon: "🏗️", company: "PT. Arsalynt" },
-  { email: "supervisor@arsalynk.id", name: "Ahmad Rizki", role: "Field Supervisor · Timesheet", icon: "👷", company: "PT. Arsalynt" },
-  { email: "manager@arsalynk.id", name: "Dewi Kurnia", role: "CRM & Sales Lead · Pipeline", icon: "👔", company: "PT. Arsalynt" },
-  { email: "sales@arsalynk.id", name: "Hendra Sales", role: "Sales Commercial · Quotation", icon: "🧑‍💼", company: "PT. Arsalynt" },
-  { email: "finance@arsalynk.id", name: "Budi Santoso", role: "Finance Controller · AR/AP & Kas", icon: "💼", company: "PT. Arsalynt" },
-  { email: "dummy.admin@example.com", name: "Dummy Administrator", role: "Administrator Demo", icon: "👑", company: "PT. Arsalynt" },
-  { email: "dummy.pm@example.com", name: "Dummy Project Manager", role: "PM Demo · Projects", icon: "🏗️", company: "PT. Arsalynt" },
-  { email: "dummy.finance@example.com", name: "Dummy Finance", role: "Finance Demo · Invoicing", icon: "💰", company: "PT. Arsalynt" },
+  { email: "director@arsalynk.id", name: "Bambang Director", role: "Direksi / Executive · P&L", icon: "🏛️", company: "PT Sinergi Muda Arsa" },
+  { email: "pm@arsalynk.id", name: "Rina Sari PM", role: "Project Manager · WBS & Gantt", icon: "🏗️", company: "PT Sinergi Muda Arsa" },
+  { email: "supervisor@arsalynk.id", name: "Ahmad Rizki", role: "Field Supervisor · Timesheet", icon: "👷", company: "PT Sinergi Muda Arsa" },
+  { email: "manager@arsalynk.id", name: "Dewi Kurnia", role: "CRM & Sales Lead · Pipeline", icon: "👔", company: "PT Sinergi Muda Arsa" },
+  { email: "sales@arsalynk.id", name: "Hendra Sales", role: "Sales Commercial · Quotation", icon: "🧑‍💼", company: "PT Sinergi Muda Arsa" },
+  { email: "finance@arsalynk.id", name: "Budi Santoso", role: "Finance Controller · AR/AP & Kas", icon: "💼", company: "PT Sinergi Muda Arsa" },
+  { email: "dummy.admin@example.com", name: "Dummy Administrator", role: "Administrator Demo", icon: "👑", company: "PT Sinergi Muda Arsa" },
+  { email: "dummy.pm@example.com", name: "Dummy Project Manager", role: "PM Demo · Projects", icon: "🏗️", company: "PT Sinergi Muda Arsa" },
+  { email: "dummy.finance@example.com", name: "Dummy Finance", role: "Finance Demo · Invoicing", icon: "💰", company: "PT Sinergi Muda Arsa" },
 ];
 
 /* ── Breadcrumb builder ─────────────────────────── */

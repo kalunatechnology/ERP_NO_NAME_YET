@@ -9,9 +9,9 @@ import toast from "react-hot-toast";
 
 export interface AlertItem {
   id: string | number;
-  category: string; // e.g. "Tax Period", "Recurring Payment", "Financial Report"
-  time: string; // e.g. "10.17 AM", "Yesterday"
-  title: string; // e.g. "Requesting Access", "PT. Angkasa sent an invoice"
+  category: string; // e.g. "Otorisasi WBS", "Pembaruan Proyek", "Dokumen Keuangan"
+  time: string; // e.g. "10.17 AM", "Hari ini", "Kemarin"
+  title: string; // e.g. "Access Request: WBS Level 3", "Status Update: Deal Won"
   snippet: string; // Message snippet
   isHighlighted?: boolean; // Highlighted with green card background
   categoryColor?: string; // Dot color, default green or grey

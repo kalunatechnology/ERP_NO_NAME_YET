@@ -2,12 +2,20 @@ import prisma from '../../config/database';
 
 export class CoreService {
   static async getSidebarFeed(userId: string) {
-    const [notifications, activities, contacts] = await Promise.all([
-      prisma.core_app_notification.findMany({
-        where: { recipient_id: userId },
+    let notifications = await prisma.core_app_notification.findMany({
+      where: { recipient_id: userId },
+      orderBy: { created_at: 'desc' },
+      take: 10,
+    });
+
+    if (notifications.length === 0) {
+      notifications = await prisma.core_app_notification.findMany({
         orderBy: { created_at: 'desc' },
         take: 10,
-      }),
+      });
+    }
+
+    const [activities, contacts] = await Promise.all([
       prisma.core_activity_feed.findMany({
         orderBy: { created_at: 'desc' },
         take: 15,
