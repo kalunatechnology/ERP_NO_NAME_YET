@@ -130,8 +130,21 @@ function LoginFormContent() {
   const [submitting, setSubmitting] = useState(false);
   const [showGhostPanel, setShowGhostPanel] = useState(false);
   const [filterCat, setFilterCat] = useState("all");
-  const [welcomeName, setWelcomeName] = useState("Sutanto");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [isLocalDev, setIsLocalDev] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname;
+      const isLocal =
+        hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        /^192\.168\./.test(hostname) ||
+        /^10\./.test(hostname) ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname);
+      setIsLocalDev(isLocal);
+    }
+  }, []);
 
   const {
     register,
@@ -163,7 +176,7 @@ function LoginFormContent() {
     setSubmitting(true);
     try {
       await login(ident, data.password);
-      toast.success(`Selamat datang kembali, ${welcomeName}!`);
+      toast.success(data.name?.trim() ? `Selamat datang kembali, ${data.name.trim()}!` : "Berhasil masuk ke Marka+");
       router.push("/dashboard");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Email atau password salah";
@@ -173,11 +186,10 @@ function LoginFormContent() {
     }
   };
 
-  const quickGhostLogin = (user: (typeof GHOST_DEMO_USERS)[0]) => {
+  const quickGhostLogin = (user: typeof GHOST_DEMO_USERS[0]) => {
     setValue("name", user.name);
     setValue("email", user.email);
     setValue("password", user.password);
-    setWelcomeName(user.name);
     handleSubmit(onSubmit)();
   };
 
@@ -404,122 +416,124 @@ function LoginFormContent() {
         </div>
       </div>
 
-      {/* ── PANEL TESTING DUMMY GHOST (COLLAPSIBLE) ── */}
-      <div className="w-full max-w-[1334px] mt-3 flex flex-col items-center">
-        <button
-          type="button"
-          onClick={() => setShowGhostPanel(!showGhostPanel)}
-          className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white border border-slate-300 shadow-2xs transition-all cursor-pointer"
-        >
-          <Ghost size={14} className="text-[#5A861F]" />
-          <span>
-            {showGhostPanel
-              ? "Sembunyikan Akun Dummy Ghost"
-              : "Localhost Testing: 10 Akun Lengkap Dummy Ghost (PT Coba Arsalynk)"}
-          </span>
-          {showGhostPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
+      {/* ── PANEL TESTING DUMMY GHOST (HANYA MUNCUL DI LOCALHOST / IP DEV, OTOMATIS HILANG DI DOMAIN RESMI PRODUCTION) ── */}
+      {isLocalDev && (
+        <div className="w-full max-w-[1334px] mt-3 flex flex-col items-center">
+          <button
+            type="button"
+            onClick={() => setShowGhostPanel(!showGhostPanel)}
+            className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white border border-slate-300 shadow-2xs transition-all cursor-pointer"
+          >
+            <Ghost size={14} className="text-[#5A861F]" />
+            <span>
+              {showGhostPanel
+                ? "Sembunyikan Akun Dummy Ghost"
+                : "Localhost Testing: 10 Akun Lengkap Dummy Ghost (PT Coba Arsalynk)"}
+            </span>
+            {showGhostPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
 
-        {showGhostPanel && (
-          <div className="w-full bg-white border border-[#5A861F]/30 rounded-2xl p-4 mt-2 shadow-sm flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-150">
-            {/* Filter Category Tabs */}
-            <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-100">
-              {GHOST_CATEGORIES.map((c) => (
-                <button
-                  key={c.cat}
-                  type="button"
-                  onClick={() => setFilterCat(c.cat)}
-                  className={cn(
-                    "px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
-                    filterCat === c.cat
-                      ? "bg-[#5A861F] text-white shadow-xs"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                  )}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Grid Ghost Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
-              {filteredGhostUsers.map((u) => {
-                const emailKey = `email-${u.email}`;
-                const pwKey = `pw-${u.email}`;
-
-                return (
-                  <div
-                    key={u.email}
-                    className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 flex flex-col justify-between gap-2 transition-all shadow-2xs"
+          {showGhostPanel && (
+            <div className="w-full bg-white border border-[#5A861F]/30 rounded-2xl p-4 mt-2 shadow-sm flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-150">
+              {/* Filter Category Tabs */}
+              <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-100">
+                {GHOST_CATEGORIES.map((c) => (
+                  <button
+                    key={c.cat}
+                    type="button"
+                    onClick={() => setFilterCat(c.cat)}
+                    className={cn(
+                      "px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
+                      filterCat === c.cat
+                        ? "bg-[#5A861F] text-white shadow-xs"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    )}
                   >
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <span
-                          className="text-[11px] font-bold text-slate-900 truncate"
-                          title={u.label}
-                        >
-                          {u.label}
-                        </span>
-                        <span className="text-[8px] font-bold text-[#275433] bg-[#5A861F]/15 px-1 py-0.5 rounded flex-shrink-0">
-                          {u.role}
-                        </span>
-                      </div>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
 
-                      <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-xs">
-                        <span className="font-mono text-[10px] text-slate-700 truncate">
-                          {u.email}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(u.email, emailKey, "Email")}
-                          className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
-                        >
-                          {copiedKey === emailKey ? (
-                            <Check size={10} className="text-green-600" />
-                          ) : (
-                            <Copy size={10} />
-                          )}
-                        </button>
-                      </div>
+              {/* Grid Ghost Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                {filteredGhostUsers.map((u) => {
+                  const emailKey = `email-${u.email}`;
+                  const pwKey = `pw-${u.email}`;
 
-                      <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-xs">
-                        <span className="font-mono text-[10px] text-slate-700 truncate">
-                          {u.password}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleCopy(u.password, pwKey, "Password")
-                          }
-                          className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
-                        >
-                          {copiedKey === pwKey ? (
-                            <Check size={10} className="text-green-600" />
-                          ) : (
-                            <Copy size={10} />
-                          )}
-                        </button>
-                      </div>
-
-                      <span className="text-[9px] font-mono text-slate-500">
-                        Tel: +62 {u.phone}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => quickGhostLogin(u)}
-                      className="w-full py-1 rounded-lg bg-[#5A861F] hover:bg-[#486D16] text-white font-bold text-[11px] transition-colors flex items-center justify-center gap-1 cursor-pointer active:scale-98 shadow-xs"
+                  return (
+                    <div
+                      key={u.email}
+                      className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 flex flex-col justify-between gap-2 transition-all shadow-2xs"
                     >
-                      ⚡ Masuk ({u.name.split(" ")[1] || u.name})
-                    </button>
-                  </div>
-                );
-              })}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span
+                            className="text-[11px] font-bold text-slate-900 truncate"
+                            title={u.label}
+                          >
+                            {u.label}
+                          </span>
+                          <span className="text-[8px] font-bold text-[#275433] bg-[#5A861F]/15 px-1 py-0.5 rounded flex-shrink-0">
+                            {u.role}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-xs">
+                          <span className="font-mono text-[10px] text-slate-700 truncate">
+                            {u.email}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(u.email, emailKey, "Email")}
+                            className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                          >
+                            {copiedKey === emailKey ? (
+                              <Check size={10} className="text-green-600" />
+                            ) : (
+                              <Copy size={10} />
+                            )}
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-xs">
+                          <span className="font-mono text-[10px] text-slate-700 truncate">
+                            {u.password}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCopy(u.password, pwKey, "Password")
+                            }
+                            className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                          >
+                            {copiedKey === pwKey ? (
+                              <Check size={10} className="text-green-600" />
+                            ) : (
+                              <Copy size={10} />
+                            )}
+                          </button>
+                        </div>
+
+                        <span className="text-[9px] font-mono text-slate-500">
+                          Tel: +62 {u.phone}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => quickGhostLogin(u)}
+                        className="w-full py-1 rounded-lg bg-[#5A861F] hover:bg-[#486D16] text-white font-bold text-[11px] transition-colors flex items-center justify-center gap-1 cursor-pointer active:scale-98 shadow-xs"
+                      >
+                        ⚡ Masuk ({u.name.split(" ")[1] || u.name})
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
