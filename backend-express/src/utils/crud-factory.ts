@@ -151,14 +151,19 @@ export function createCrudRouter(options: CrudOptions): Router {
       const { page, pageSize, skip } = parsePagination(req);
       const where: Record<string, any> = {};
 
-      // Multi-tenant isolation filter
-      if (req.user && !req.user.is_superuser) {
-        if (req.user.tenant_id) {
-          where.OR = [
-            { tenant_id: req.user.tenant_id },
-            { tenant_id: null },
-          ];
-        }
+      // Multi-tenant & Company isolation filters
+      const andConditions: any[] = [];
+
+      if (req.user?.tenant_id) {
+        andConditions.push({
+          tenant_id: req.user.tenant_id,
+        });
+      }
+
+      if (req.companyId && req.companyId !== 'all') {
+        andConditions.push({
+          company_id: req.companyId,
+        });
       }
 
       // Query param filters with FK alias mapping
@@ -182,9 +187,15 @@ export function createCrudRouter(options: CrudOptions): Router {
       // Search filter
       const search = req.query['search'] as string | undefined;
       if (search && options.searchFields?.length) {
-        where.OR = options.searchFields.map((field) => ({
-          [field]: { contains: search, mode: 'insensitive' },
-        }));
+        andConditions.push({
+          OR: options.searchFields.map((field) => ({
+            [field]: { contains: search, mode: 'insensitive' },
+          })),
+        });
+      }
+
+      if (andConditions.length > 0) {
+        where.AND = andConditions;
       }
 
       // Ordering filter

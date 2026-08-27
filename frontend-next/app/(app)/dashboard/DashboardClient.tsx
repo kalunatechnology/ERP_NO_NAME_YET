@@ -15,7 +15,7 @@ import { formatMoney, formatDate, getStatusColor, cn } from "@/lib/utils";
 
 import { ProjectDistributionGauge } from "@/components/ui/ProjectDistributionGauge";
 import { CompletionRateCard, RateItem } from "@/components/ui/CompletionRateCard";
-import { ProjectDonutSummaryCard } from "@/components/ui/ProjectDonutSummaryCard";
+import { ProjectDonutSummaryCard, ProjectStatusCount } from "@/components/ui/ProjectDonutSummaryCard";
 import { TopExpensesBarChart, ExpenseItem } from "@/components/ui/TopExpensesBarChart";
 import { ProjectTimelineGantt, GanttTaskItem } from "@/components/ui/ProjectTimelineGantt";
 import { ProjectMilestoneCard, ProjectSummary, MilestoneItem } from "@/components/ui/ProjectMilestoneCard";
@@ -150,28 +150,22 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
   const completedToday = todayTasks.filter(d => ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase())).length;
 
   // Budget calculations from real PM projects
-  const totalBudget = projects.reduce((acc, p) => acc + Number(p.budget_amount || (p as any).budget || 0), 0) || 56000000;
-  const totalAllocated = totalBudget * 0.35;
+  const totalBudget = projects.reduce((acc, p) => acc + Number(p.budget_amount || (p as any).budget || 0), 0);
+  const totalAllocated = 0; // Proyek baru diinisiasi, belum ada realisasi beban
 
-  // Derive Real Timeline Tasks for PM
-  const timelineTasks: GanttTaskItem[] = projects.slice(0, 6).map((p, idx) => ({
+  // Derive Real Timeline Tasks for PM from actual DB projects
+  const timelineTasks: GanttTaskItem[] = projects.map((p, idx) => ({
     id: p.id,
     name: p.project_name || p.name || `Proyek #${idx + 1}`,
-    startWeek: Math.min(8, (idx % 4) + 1),
-    endWeek: Math.min(8, (idx % 4) + 3),
-    progress: Number(p.progress_percentage || p.progress || (idx === 0 ? 100 : idx === 1 ? 88 : idx === 2 ? 47 : 0)),
-    assignee: p.project_manager_name || "Project Manager",
+    startWeek: 1,
+    endWeek: Math.min(8, 4 + idx),
+    progress: Number(p.progress_percentage || p.progress || 0),
+    assignee: p.project_manager_name || "Melika Citra / Arof Fudding",
     status: (p.status || "IN_PROGRESS") as any,
   }));
 
-  // Derive Real Top Expenses for PM
-  const topExpenses: ExpenseItem[] = [
-    { id: 1, label: "Raw Materials & Procurement", amountText: formatMoney(totalBudget * 0.45), percentage: 88, category: "Material" },
-    { id: 2, label: "Direct Labor & Field Wages", amountText: formatMoney(totalBudget * 0.25), percentage: 65, category: "Tenaga Kerja" },
-    { id: 3, label: "Engineering & QA Compliance", amountText: formatMoney(totalBudget * 0.15), percentage: 46, category: "Konsultan" },
-    { id: 4, label: "Warehouse & Equipment Rent", amountText: formatMoney(totalBudget * 0.10), percentage: 34, category: "Sewa Alat" },
-    { id: 5, label: "Power & Utilities", amountText: formatMoney(totalBudget * 0.05), percentage: 20, category: "Utilitas" },
-  ];
+  // Clean empty state for expenses (fresh company setup)
+  const topExpenses: ExpenseItem[] = [];
 
   // Derive Real Projects & Milestones for PM
   const projectSummaries: ProjectSummary[] = projects.slice(0, 8).map(p => ({
@@ -182,60 +176,39 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
   }));
 
   const projectMilestones: Record<string, MilestoneItem[]> = {};
-  projects.forEach((p, pIdx) => {
+  projects.forEach((p) => {
     const ms = p.milestones || [];
-    projectMilestones[String(p.id)] = ms.length > 0
-      ? ms.map((m, idx) => ({
-          id: m.id || idx + 1,
-          stepNumber: idx + 1,
-          title: m.name || `Milestone Gate ${idx + 1}`,
-          points: [
-            `Target Selesai: ${m.target_date || "Sesuai Jadwal"}`,
-            `Status Verifikasi: ${m.status || (m.is_passed ? "COMPLETED" : "PENDING")}`,
-          ],
-          isActive: m.is_passed || idx === 0,
-          status: m.is_passed ? "COMPLETED" : "PENDING",
-        }))
-      : [
-          {
-            id: 1,
-            stepNumber: 1,
-            title: `Site Assessment & Kickoff (${p.project_code || "PRJ"})`,
-            points: ["Verifikasi kelayakan PO deal & alokasi anggaran.", "Perizinan teknis lapangan."],
-            isActive: true,
-            status: "ACTIVE",
-          },
-          {
-            id: 2,
-            stepNumber: 2,
-            title: "Pengadaan Material & Fabrikasi",
-            points: [`Alokasi budget: ${formatMoney(p.budget_amount || 0)}`, "Distribusi WBS mingguan."],
-            isActive: false,
-            status: "PENDING",
-          },
-          {
-            id: 3,
-            stepNumber: 3,
-            title: "Testing, QA & Handover BAST",
-            points: ["Inspeksi standar mutu akhir.", "Serah terima berita acara."],
-            isActive: false,
-            status: "PENDING",
-          },
-        ];
+    projectMilestones[String(p.id)] = ms.map((m, idx) => ({
+      id: m.id || idx + 1,
+      stepNumber: idx + 1,
+      title: m.name || `Milestone Gate ${idx + 1}`,
+      points: [
+        `Target Selesai: ${m.target_date || "Sesuai Jadwal"}`,
+        `Status Verifikasi: ${m.status || (m.is_passed ? "COMPLETED" : "PENDING")}`,
+      ],
+      isActive: m.is_passed || idx === 0,
+      status: m.is_passed ? "COMPLETED" : "PENDING",
+    }));
   });
 
-  const statusCounts = [
-    { label: "Completed", count: completed, color: "#3B82F6" },
-    { label: "In Progress", count: active, color: "#38BDF8" },
-    { label: "Not Started", count: Math.max(0, total - completed - active), color: "#063248" },
+  const notStarted = Math.max(0, total - active - completed - delayed);
+  const statusCounts: ProjectStatusCount[] = [
+    { label: "Completed", count: completed, color: "#10B981" },
+    { label: "In Progress", count: active, color: "#0EA5E9" },
+    { label: "Not Started", count: notStarted, color: "#64748B" },
     { label: "Delayed", count: delayed, color: "#EF4444" },
   ];
 
-  const industryRates: RateItem[] = [
-    { id: 1, industry: "Manufacturing", percentage: 89 },
-    { id: 2, industry: "Plumbing Service", percentage: 76 },
-    { id: 3, industry: "Engineering Processing", percentage: 57 },
-  ];
+  // Industry Rates directly from real active projects of PT Sinergi Muda Arsa
+  const industryRates: RateItem[] = projects.map((p, idx) => ({
+    id: p.id || idx + 1,
+    industry: p.project_name || p.name || `Proyek #${idx + 1}`,
+    percentage: Number(p.progress_percentage || p.progress || 0),
+  }));
+
+  const healthScore = total === 0 ? 100 : delayed === 0 ? 100 : Math.max(0, Math.round(((total - delayed) / total) * 100));
+  const healthStatus = delayed === 0 ? "On Track" : "Caution";
+  const onTrackCount = Math.max(0, active - delayed);
 
   return (
     <div className="flex flex-col gap-6 pb-8">
@@ -344,7 +317,13 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
 
       {/* ── Visual Analytics Row 1: Gauges & Distribusi Portofolio ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
-        <ProjectDistributionGauge scorePercent={avgProgress > 0 ? avgProgress : 78} statusLabel={delayed === 0 ? "On Track" : "Cautious"} onTrackCount={active} cautiousCount={delayed} offTrackCount={1} />
+        <ProjectDistributionGauge
+          scorePercent={healthScore}
+          statusLabel={healthStatus}
+          onTrackCount={onTrackCount}
+          cautiousCount={delayed}
+          offTrackCount={0}
+        />
         <CompletionRateCard rates={industryRates} />
         <ProjectDonutSummaryCard data={statusCounts} />
       </div>
@@ -674,24 +653,18 @@ function ExecutiveDashboard({ projects, finData, loading }: {
   const urgentPending = (finData?.pendingItems || []).filter(i => i.urgency === "urgent").length;
 
   // Derive Real Timeline Tasks
-  const timelineTasks: GanttTaskItem[] = projects.slice(0, 6).map((p, idx) => ({
+  const timelineTasks: GanttTaskItem[] = projects.map((p, idx) => ({
     id: p.id,
     name: p.project_name || p.name || `Proyek #${idx + 1}`,
-    startWeek: Math.min(8, (idx % 4) + 1),
-    endWeek: Math.min(8, (idx % 4) + 3),
-    progress: Number(p.progress_percentage || p.progress || (idx === 0 ? 100 : idx === 1 ? 88 : idx === 2 ? 47 : 0)),
-    assignee: p.project_manager_name || "Project Manager",
+    startWeek: 1,
+    endWeek: Math.min(8, 4 + idx),
+    progress: Number(p.progress_percentage || p.progress || 0),
+    assignee: p.project_manager_name || "Melika Citra / Arof Fudding",
     status: (p.status || "IN_PROGRESS") as any,
   }));
 
-  // Derive Real Top Expenses
-  const topExpenses: ExpenseItem[] = [
-    { id: 1, label: "Raw Materials & Procurement", amountText: formatMoney(Number(kpis?.totalBudget || 5000000000) * 0.45), percentage: 88, category: "Material" },
-    { id: 2, label: "Direct Labor & Field Wages", amountText: formatMoney(Number(kpis?.totalBudget || 5000000000) * 0.25), percentage: 65, category: "Tenaga Kerja" },
-    { id: 3, label: "Engineering & QA Compliance", amountText: formatMoney(Number(kpis?.totalBudget || 5000000000) * 0.15), percentage: 46, category: "Konsultan" },
-    { id: 4, label: "Warehouse & Equipment Rent", amountText: formatMoney(Number(kpis?.totalBudget || 5000000000) * 0.10), percentage: 34, category: "Sewa Alat" },
-    { id: 5, label: "Power & Utilities", amountText: formatMoney(Number(kpis?.totalBudget || 5000000000) * 0.05), percentage: 20, category: "Utilitas" },
-  ];
+  // Clean empty state for expenses
+  const topExpenses: ExpenseItem[] = [];
 
   // Derive Real Projects & Milestones
   const projectSummaries: ProjectSummary[] = projects.slice(0, 8).map(p => ({
@@ -702,60 +675,38 @@ function ExecutiveDashboard({ projects, finData, loading }: {
   }));
 
   const projectMilestones: Record<string, MilestoneItem[]> = {};
-  projects.forEach((p, pIdx) => {
+  projects.forEach((p) => {
     const ms = p.milestones || [];
-    projectMilestones[String(p.id)] = ms.length > 0
-      ? ms.map((m, idx) => ({
-          id: m.id || idx + 1,
-          stepNumber: idx + 1,
-          title: m.name || `Milestone Gate ${idx + 1}`,
-          points: [
-            `Target Selesai: ${m.target_date || "Sesuai Jadwal"}`,
-            `Status Verifikasi: ${m.status || (m.is_passed ? "COMPLETED" : "PENDING")}`,
-          ],
-          isActive: m.is_passed || idx === 0,
-          status: m.is_passed ? "COMPLETED" : "PENDING",
-        }))
-      : [
-          {
-            id: 1,
-            stepNumber: 1,
-            title: `Site Assessment & Kickoff (${p.project_code || "PRJ"})`,
-            points: ["Verifikasi kelayakan PO deal & alokasi anggaran.", "Perizinan teknis lapangan."],
-            isActive: true,
-            status: "ACTIVE",
-          },
-          {
-            id: 2,
-            stepNumber: 2,
-            title: "Pengadaan Material & Fabrikasi",
-            points: [`Alokasi budget: ${formatMoney(p.budget_amount || 0)}`, "Distribusi WBS mingguan."],
-            isActive: false,
-            status: "PENDING",
-          },
-          {
-            id: 3,
-            stepNumber: 3,
-            title: "Testing, QA & Handover BAST",
-            points: ["Inspeksi standar mutu akhir.", "Serah terima berita acara."],
-            isActive: false,
-            status: "PENDING",
-          },
-        ];
+    projectMilestones[String(p.id)] = ms.map((m, idx) => ({
+      id: m.id || idx + 1,
+      stepNumber: idx + 1,
+      title: m.name || `Milestone Gate ${idx + 1}`,
+      points: [
+        `Target Selesai: ${m.target_date || "Sesuai Jadwal"}`,
+        `Status Verifikasi: ${m.status || (m.is_passed ? "COMPLETED" : "PENDING")}`,
+      ],
+      isActive: m.is_passed || idx === 0,
+      status: m.is_passed ? "COMPLETED" : "PENDING",
+    }));
   });
 
-  const statusCounts = [
-    { label: "Completed", count: completed, color: "#3B82F6" },
-    { label: "In Progress", count: active, color: "#38BDF8" },
-    { label: "Not Started", count: Math.max(0, total - completed - active), color: "#063248" },
+  const notStarted = Math.max(0, total - active - completed - delayed);
+  const statusCounts: ProjectStatusCount[] = [
+    { label: "Completed", count: completed, color: "#10B981" },
+    { label: "In Progress", count: active, color: "#0EA5E9" },
+    { label: "Not Started", count: notStarted, color: "#64748B" },
     { label: "Delayed", count: delayed, color: "#EF4444" },
   ];
 
-  const industryRates: RateItem[] = [
-    { id: 1, industry: "Manufacturing", percentage: 89 },
-    { id: 2, industry: "Plumbing Service", percentage: 76 },
-    { id: 3, industry: "Engineering Processing", percentage: 57 },
-  ];
+  const industryRates: RateItem[] = projects.map((p, idx) => ({
+    id: p.id || idx + 1,
+    industry: p.project_name || p.name || `Proyek #${idx + 1}`,
+    percentage: Number(p.progress_percentage || p.progress || 0),
+  }));
+
+  const healthScore = total === 0 ? 100 : delayed === 0 ? 100 : Math.max(0, Math.round(((total - delayed) / total) * 100));
+  const healthStatus = delayed === 0 ? "On Track" : "Caution";
+  const onTrackCount = Math.max(0, active - delayed);
 
   return (
     <div className="flex flex-col gap-6 pb-8">
@@ -775,7 +726,13 @@ function ExecutiveDashboard({ projects, finData, loading }: {
 
       {/* ── Baris 1: Gauges & Distribusi Kesehatan Portofolio ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
-        <ProjectDistributionGauge scorePercent={avgProgress > 0 ? avgProgress : 78} statusLabel={delayed === 0 ? "On Track" : "Cautious"} onTrackCount={active} cautiousCount={delayed} offTrackCount={1} />
+        <ProjectDistributionGauge
+          scorePercent={healthScore}
+          statusLabel={healthStatus}
+          onTrackCount={onTrackCount}
+          cautiousCount={delayed}
+          offTrackCount={0}
+        />
         <CompletionRateCard rates={industryRates} />
         <ProjectDonutSummaryCard data={statusCounts} />
       </div>

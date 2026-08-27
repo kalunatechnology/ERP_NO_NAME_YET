@@ -260,16 +260,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const isAdmin = checkIsAdmin(user);
         const userRole = detectRole(user);
 
-        // Cari UUID company default yang valid
-        const primaryCompany = companiesList[0]?.id ? String(companiesList[0].id) : null;
-        const storedCompany = localStorage.getItem("erp.company");
+        const userEmail = (user?.email || "").toLowerCase();
+        const isGhostUser =
+          userEmail.endsWith("@arsalynk.id") ||
+          userEmail.includes("dummy") ||
+          userEmail.includes("demo") ||
+          userEmail.endsWith("@example.com") ||
+          (user as any)?.tenant_id === "00000000-0000-0000-0000-000000000099";
 
-        let activeCompany: string | null = null;
-        if (storedCompany && (UUID_REGEX.test(storedCompany.trim()) || storedCompany === "all")) {
-          activeCompany = storedCompany.trim();
-        } else {
-          activeCompany = primaryCompany;
-        }
+        const ghostComp = companiesList.find(c =>
+          String(c.code).toUpperCase().includes("GHOST") ||
+          String(c.name).toLowerCase().includes("ghost") ||
+          String(c.name).toLowerCase().includes("coba")
+        );
+        const smaComp = companiesList.find(c =>
+          String(c.code).toUpperCase() === "SMA" ||
+          String(c.name).toLowerCase().includes("sinergi") ||
+          String(c.name).toLowerCase().includes("arsa")
+        );
+
+        const targetComp = isGhostUser ? (ghostComp || companiesList[1] || companiesList[0]) : (smaComp || companiesList[0]);
+        const activeCompany = targetComp?.id ? String(targetComp.id) : null;
 
         if (activeCompany) {
           localStorage.setItem("erp.company", activeCompany);
@@ -293,6 +304,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     dispatch({ type: "LOADING" });
     try {
+      // Clear previous user's company cache
+      localStorage.removeItem("erp.company");
+      localStorage.removeItem("active_company_id");
+
       await loginUser(email, password);
       
       const savedToken = localStorage.getItem("erp.access") || localStorage.getItem("access_token");
@@ -316,15 +331,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isAdmin = checkIsAdmin(user);
       const userRole = detectRole(user);
 
-      const primaryCompany = companiesList[0]?.id ? String(companiesList[0].id) : null;
-      const storedCompany = localStorage.getItem("erp.company");
+      const userEmail = (user?.email || "").toLowerCase();
+      const isGhostUser =
+        userEmail.endsWith("@arsalynk.id") ||
+        userEmail.includes("dummy") ||
+        userEmail.includes("demo") ||
+        userEmail.endsWith("@example.com") ||
+        (user as any)?.tenant_id === "00000000-0000-0000-0000-000000000099";
 
-      let activeCompany: string | null = null;
-      if (storedCompany && (UUID_REGEX.test(storedCompany.trim()) || storedCompany === "all")) {
-        activeCompany = storedCompany.trim();
-      } else {
-        activeCompany = primaryCompany;
-      }
+      const ghostComp = companiesList.find(c =>
+        String(c.code).toUpperCase().includes("GHOST") ||
+        String(c.name).toLowerCase().includes("ghost") ||
+        String(c.name).toLowerCase().includes("coba")
+      );
+      const smaComp = companiesList.find(c =>
+        String(c.code).toUpperCase() === "SMA" ||
+        String(c.name).toLowerCase().includes("sinergi") ||
+        String(c.name).toLowerCase().includes("arsa")
+      );
+
+      const targetComp = isGhostUser ? (ghostComp || companiesList[1] || companiesList[0]) : (smaComp || companiesList[0]);
+      const activeCompany = targetComp?.id ? String(targetComp.id) : null;
 
       if (activeCompany) {
         localStorage.setItem("erp.company", activeCompany);

@@ -148,64 +148,78 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
       <div className="flex items-center gap-3">
 
         {/* Company Selector Box */}
-        {isAdmin ? (
-          /* Admin can pick any company */
-          <div className="relative hidden md:block" ref={compRef}>
-            <button
-              onClick={() => setIsCompanyDropdownOpen(!isCompanyDropdownOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-brand-green/40 hover:border-brand-green text-xs shadow-sm transition-all"
-            >
-              <Building2 size={13} className="text-brand-green" />
-              <span className="text-text-secondary font-medium">Company:</span>
-              <strong className="text-brand-deep-green">{company || "Arsalynt"}</strong>
-              <span className="badge text-2xs bg-brand-light-green text-brand-deep-green font-bold">Admin Pick</span>
-              <ChevronDown size={12} className="text-text-secondary" />
-            </button>
+        {(() => {
+          const userEmail = (user?.email || "").toLowerCase();
+          const isGhostUser =
+            userEmail.endsWith("@arsalynk.id") ||
+            userEmail.includes("dummy") ||
+            userEmail.includes("demo") ||
+            userEmail.endsWith("@example.com") ||
+            (user as any)?.tenant_id === "00000000-0000-0000-0000-000000000099";
 
-            {isCompanyDropdownOpen && (
-              <div className="absolute left-0 mt-2 w-64 bg-white rounded-2xl border border-text-tertiary shadow-card-lg p-2 z-50 animate-in fade-in zoom-in-95">
-                <div className="px-2 py-1 text-2xs font-bold text-text-secondary uppercase">Pilih Context Company</div>
-                <div className="flex flex-col gap-1 mt-1">
-                  {companies.map(c => (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        setCompany(String(c.id));
-                        setIsCompanyDropdownOpen(false);
-                        toast.success(`Company aktif: ${c.name}`);
-                      }}
-                      className={cn(
-                        "w-full text-left p-2 rounded-xl text-xs flex items-center justify-between hover:bg-brand-light-green/40",
-                        company === String(c.id) && "bg-brand-light-green font-bold text-brand-deep-green"
-                      )}
-                    >
-                      <span>{c.name}</span>
-                      {company === String(c.id) && <Check size={13} className="text-brand-deep-green" />}
-                    </button>
-                  ))}
-                  <div className="pt-2 border-t border-text-tertiary">
-                    <label className="text-2xs text-text-secondary px-2 block mb-1">Custom X-Company-ID:</label>
-                    <input
-                      type="text"
-                      placeholder="arsalyn"
-                      value={company || ""}
-                      onChange={e => setCompany(e.target.value || null)}
-                      className="input py-1 text-xs"
-                    />
+          const activeCompanyName =
+            companies.find((c) => String(c.id) === String(company))?.name ||
+            (isGhostUser ? "PT Coba Arsalynk (Ghost)" : "PT Sinergi Muda Arsa");
+
+          return isAdmin ? (
+            /* Admin can pick any company */
+            <div className="relative hidden md:block" ref={compRef}>
+              <button
+                onClick={() => setIsCompanyDropdownOpen(!isCompanyDropdownOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-brand-green/40 hover:border-brand-green text-xs shadow-sm transition-all"
+              >
+                <Building2 size={13} className="text-brand-green" />
+                <span className="text-text-secondary font-medium">Company:</span>
+                <strong className="text-brand-deep-green truncate max-w-[180px]">{activeCompanyName}</strong>
+                <span className="badge text-2xs bg-brand-light-green text-brand-deep-green font-bold">Admin Pick</span>
+                <ChevronDown size={12} className="text-text-secondary" />
+              </button>
+
+              {isCompanyDropdownOpen && (
+                <div className="absolute left-0 mt-2 w-64 bg-white rounded-2xl border border-text-tertiary shadow-card-lg p-2 z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-2 py-1 text-2xs font-bold text-text-secondary uppercase">Pilih Context Company</div>
+                  <div className="flex flex-col gap-1 mt-1">
+                    {companies.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          setCompany(String(c.id));
+                          setIsCompanyDropdownOpen(false);
+                          toast.success(`Company aktif: ${c.name}`);
+                        }}
+                        className={cn(
+                          "w-full text-left p-2 rounded-xl text-xs flex items-center justify-between hover:bg-brand-light-green/40",
+                          company === String(c.id) && "bg-brand-light-green font-bold text-brand-deep-green"
+                        )}
+                      >
+                        <span className="truncate">{c.name}</span>
+                        {company === String(c.id) && <Check size={13} className="text-brand-deep-green" />}
+                      </button>
+                    ))}
+                    <div className="pt-2 border-t border-text-tertiary">
+                      <label className="text-2xs text-text-secondary px-2 block mb-1">Custom X-Company-ID:</label>
+                      <input
+                        type="text"
+                        placeholder="arsalyn"
+                        value={company || ""}
+                        onChange={e => setCompany(e.target.value || null)}
+                        className="input py-1 text-xs"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Non-admin is automatically locked to PT Sinergi Muda Arsa */
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-light-green/60 border border-brand-green/30 text-xs" title="Akun Anda terikat resmi ke PT Sinergi Muda Arsa">
-            <Building2 size={13} className="text-brand-deep-green" />
-            <span className="text-text-secondary font-medium">Company:</span>
-            <strong className="text-brand-deep-green font-semibold">PT Sinergi Muda Arsa</strong>
-            <Lock size={11} className="text-brand-green" />
-          </div>
-        )}
+              )}
+            </div>
+          ) : (
+            /* Non-admin dynamically bound to their company */
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-light-green/60 border border-brand-green/30 text-xs" title={`Akun Anda terikat resmi ke ${activeCompanyName}`}>
+              <Building2 size={13} className="text-brand-deep-green" />
+              <span className="text-text-secondary font-medium">Company:</span>
+              <strong className="text-brand-deep-green font-semibold truncate max-w-[200px]">{activeCompanyName}</strong>
+              <Lock size={11} className="text-brand-green" />
+            </div>
+          );
+        })()}
 
         {/* Search Input / Command Palette Trigger */}
         <button
