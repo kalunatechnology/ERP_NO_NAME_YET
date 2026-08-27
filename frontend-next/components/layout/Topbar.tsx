@@ -198,11 +198,11 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
             )}
           </div>
         ) : (
-          /* Non-admin is automatically locked to Arsalynt */
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-light-green/60 border border-brand-green/30 text-xs" title="Akun Anda terikat otomatis ke PT. Arsalynt">
+          /* Non-admin is automatically locked to PT Sinergi Muda Arsa */
+          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-light-green/60 border border-brand-green/30 text-xs" title="Akun Anda terikat resmi ke PT Sinergi Muda Arsa">
             <Building2 size={13} className="text-brand-deep-green" />
             <span className="text-text-secondary font-medium">Company:</span>
-            <strong className="text-brand-deep-green font-semibold">PT. Arsalynt</strong>
+            <strong className="text-brand-deep-green font-semibold">PT Sinergi Muda Arsa</strong>
             <Lock size={11} className="text-brand-green" />
           </div>
         )}
@@ -222,15 +222,16 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
           </kbd>
         </button>
 
-        {/* Notification Bell */}
+        {/* Notification Bell / Mobile Right Drawer Trigger */}
         <button
+          type="button"
           onClick={onNotificationClick ? onNotificationClick : () => toast("Semua notifikasi & alert tersinkronisasi", { icon: "🔔" })}
-          className="flex-shrink-0 p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/40 transition-colors relative cursor-pointer"
-          aria-label="Buka Notifikasi & Alert"
-          title="Buka Notifikasi & Alert"
+          className="flex-shrink-0 p-2 sm:p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/60 active:scale-95 transition-all relative cursor-pointer flex items-center justify-center"
+          aria-label="Buka Notifikasi & Feed Tim"
+          title="Buka Notifikasi & Feed Tim"
         >
-          <Bell size={18} aria-hidden="true" />
-          <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-amber-500 rounded-full" aria-hidden="true" />
+          <Bell size={19} aria-hidden="true" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-500 rounded-full ring-2 ring-white" aria-hidden="true" />
         </button>
 
         {/* User Avatar & Profile Pop-up */}

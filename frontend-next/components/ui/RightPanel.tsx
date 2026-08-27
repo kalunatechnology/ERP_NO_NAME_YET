@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  RefreshCw, CheckCheck, Mail, Copy, Check, PanelRightClose, Bell
+  RefreshCw, CheckCheck, Mail, Copy, Check, PanelRightClose, Bell, X, Users, Activity
 } from "lucide-react";
 import {
   fetchDynamicRightPanelData,
@@ -20,9 +20,11 @@ import toast from "react-hot-toast";
 
 interface RightPanelProps {
   onToggleCollapse?: () => void;
+  isMobile?: boolean;
+  onClose?: () => void;
 }
 
-export function RightPanel({ onToggleCollapse }: RightPanelProps) {
+export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: RightPanelProps) {
   const router = useRouter();
   const { userRole, isAdmin } = useAuth();
   const [notifications, setNotifications] = useState<DynamicFeedItem[]>([]);
@@ -112,10 +114,36 @@ export function RightPanel({ onToggleCollapse }: RightPanelProps) {
   return (
     <>
       <aside
-        className="w-full h-full flex flex-col bg-bg-light select-none overflow-y-auto p-4 gap-4"
+        className={cn(
+          "w-full h-full flex flex-col bg-bg-light select-none overflow-y-auto p-4 gap-4",
+          isMobile && "max-w-[340px] sm:max-w-[380px] w-screen shadow-2xl bg-white"
+        )}
         role="complementary"
         aria-label="Panel informasi real-time"
       >
+        {/* ── Mobile Top Header (only if isMobile) ───── */}
+        {isMobile && (
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                <Bell size={16} />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 leading-tight">Panel Notifikasi &amp; Feed</h2>
+                <p className="text-[11px] text-slate-500">Aktivitas &amp; Alert Tim PT Sinergi Muda Arsa</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+              title="Tutup Panel"
+              aria-label="Tutup Panel"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
+
         {/* ── Section 1: Notifications ───────────────── */}
         <section className="flex flex-col gap-2.5 w-full" aria-labelledby="rp-notifications-title">
           <div className="flex items-center justify-between pb-1.5 border-b border-text-tertiary/40">
@@ -129,31 +157,31 @@ export function RightPanel({ onToggleCollapse }: RightPanelProps) {
               <button
                 onClick={handleMarkAllRead}
                 disabled={markingRead || notifications.length === 0}
-                className="text-text-secondary hover:text-brand-green p-1 rounded-md transition-colors disabled:opacity-30"
+                className="text-text-secondary hover:text-brand-green p-1.5 rounded-md transition-colors disabled:opacity-30 cursor-pointer"
                 title="Tandai semua telah dibaca"
                 aria-label="Tandai semua notifikasi telah dibaca"
               >
-                <CheckCheck size={14} />
+                <CheckCheck size={15} />
               </button>
               <button
                 onClick={() => loadFeed(true)}
                 className={cn(
-                  "text-text-secondary hover:text-brand-deep-green p-1 rounded-md transition-colors",
+                  "text-text-secondary hover:text-brand-deep-green p-1.5 rounded-md transition-colors cursor-pointer",
                   refreshing && "animate-spin"
                 )}
                 title="Sinkronkan notifikasi live"
                 aria-label="Segarkan notifikasi"
               >
-                <RefreshCw size={13} />
+                <RefreshCw size={14} />
               </button>
-              {onToggleCollapse && (
+              {!isMobile && onToggleCollapse && (
                 <button
                   onClick={onToggleCollapse}
-                  className="text-text-secondary hover:text-brand-green p-1 rounded-md transition-colors ml-1"
+                  className="text-text-secondary hover:text-brand-green p-1.5 rounded-md transition-colors ml-1 cursor-pointer"
                   title="Tutup panel kanan"
                   aria-label="Tutup panel kanan"
                 >
-                  <PanelRightClose size={14} />
+                  <PanelRightClose size={15} />
                 </button>
               )}
             </div>

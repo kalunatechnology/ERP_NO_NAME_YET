@@ -24,10 +24,12 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Right panel state (desktop only ≥ xl)
+  // Right panel state (desktop only ≥ lg)
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
-  // Mobile sidebar state
+  // Mobile left sidebar state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  // Mobile right panel (notifications/feed) state
+  const [mobileRightPanelOpen, setMobileRightPanelOpen] = useState(false);
 
   /* Restore persisted right-panel collapse state */
   useEffect(() => {
@@ -35,25 +37,32 @@ export function AppShell({ children }: AppShellProps) {
     if (stored === "false") setRightPanelOpen(false);
   }, []);
 
-  /* Close mobile sidebar on route change */
+  /* Close mobile drawers on route change */
   useEffect(() => {
     setMobileSidebarOpen(false);
+    setMobileRightPanelOpen(false);
   }, [pathname]);
 
-  /* Prevent body scroll when mobile menu is open */
+  /* Prevent body scroll when either mobile menu/drawer is open */
   useEffect(() => {
-    document.body.style.overflow = mobileSidebarOpen ? "hidden" : "";
+    document.body.style.overflow = (mobileSidebarOpen || mobileRightPanelOpen) ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [mobileSidebarOpen]);
+  }, [mobileSidebarOpen, mobileRightPanelOpen]);
 
   const toggleRightPanel = useCallback(() => {
-    const next = !rightPanelOpen;
-    setRightPanelOpen(next);
-    localStorage.setItem("erp.rightPanel", String(next));
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setMobileRightPanelOpen(prev => !prev);
+    } else {
+      const next = !rightPanelOpen;
+      setRightPanelOpen(next);
+      localStorage.setItem("erp.rightPanel", String(next));
+    }
   }, [rightPanelOpen]);
 
-  const openMobileSidebar  = useCallback(() => setMobileSidebarOpen(true),  []);
-  const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
+  const openMobileSidebar   = useCallback(() => setMobileSidebarOpen(true),  []);
+  const closeMobileSidebar  = useCallback(() => setMobileSidebarOpen(false), []);
+  const openMobileRight     = useCallback(() => setMobileRightPanelOpen(true), []);
+  const closeMobileRight    = useCallback(() => setMobileRightPanelOpen(false), []);
 
   /* ── Access control ──────────────────────────────────── */
   const isSuperUser = Boolean((user as any)?.is_superuser) || isAdmin || userRole === "executive";
@@ -89,18 +98,34 @@ export function AppShell({ children }: AppShellProps) {
         <Sidebar />
       </div>
 
-      {/* ── Mobile Sidebar Overlay (shown below lg) ── */}
+      {/* ── Mobile Left Sidebar Overlay (shown below lg) ── */}
       {mobileSidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
             onClick={closeMobileSidebar}
             aria-hidden="true"
           />
           {/* Drawer */}
-          <div className="relative z-10 flex animate-in slide-in-from-left-4 duration-200">
+          <div className="relative z-10 flex animate-in slide-in-from-left-full duration-200 shadow-2xl">
             <Sidebar onClose={closeMobileSidebar} isMobile />
+          </div>
+        </div>
+      )}
+
+      {/* ── Mobile Right Sidebar / Notifications Drawer (shown below lg) ── */}
+      {mobileRightPanelOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+            onClick={closeMobileRight}
+            aria-hidden="true"
+          />
+          {/* Drawer */}
+          <div className="relative z-10 flex h-full shadow-2xl animate-in slide-in-from-right-full duration-200">
+            <RightPanel isMobile onClose={closeMobileRight} />
           </div>
         </div>
       )}
@@ -138,8 +163,8 @@ export function AppShell({ children }: AppShellProps) {
                 <button
                   onClick={toggleRightPanel}
                   className="p-1.5 rounded-lg text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors cursor-pointer"
-                  aria-label="Buka panel kanan"
                   title="Buka panel kanan"
+                  aria-label="Buka panel kanan"
                 >
                   <PanelRightOpen size={16} />
                 </button>

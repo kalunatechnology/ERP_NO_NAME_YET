@@ -5303,49 +5303,43 @@ Ran command: `npx ts-node -e "import prisma from './src/config/database'; async 
 
 Berikut adalah **daftar lengkap seluruh data user** yang ada pada sistem database saat ini, terbagi menjadi **Daftar User Resmi Tim** dan **Daftar Ghost / Demo User** (yang tetap dapat Anda gunakan untuk login kapan saja).
 
----
-
-### 1. **Daftar 6 Pengguna Resmi Tim (Primary Users)**
-
-Semua akun ini terhubung langsung ke **PT. Arsalynt Multi Integra** dan siap digunakan untuk operasional:
-
-| No | Nama Lengkap | Email Login | Username | Role / Hak Akses | Default Password |
-|:---|:---|:---|:---|:---|:---|
-| 1 | **Rian Destianto** | `rian.destianto@arsalynk.id` | `rian.destianto` | **Eksekutif / Direksi & Super Admin** (P&L, Approval, Full Multi-Tenant) | `DummyPass123!` |
-| 2 | **Melika Citra Tania** | `melika.citra@arsalynk.id` | `melika.citra` | **Project Manager & Operational Manager** (WBS, Gantt, Kontrol Lapangan) | `DummyPass123!` |
-| 3 | **Arof Fudding** | `arof.fudding@arsalynk.id` | `arof.fudding` | **Project Manager & Finance** (WBS Project & General Ledger / Cashflow) | `DummyPass123!` |
-| 4 | **Laode Fahmi Hidayat** | `laode.fahmi@arsalynk.id` | `laode.fahmi` | **Project Assignee / Field Engineer** (Eksekusi Task & Timesheet Lapangan) | `DummyPass123!` |
-| 5 | **Jundy Isham Izzudin** | `jundy.isham@arsalynk.id` | `jundy.isham` | **Project Assignee / Field Engineer** (Eksekusi Task & Timesheet Lapangan) | `DummyPass123!` |
-| 6 | **M Noorman Perdana** | `noorman.perdana@arsalynk.id` | `noorman.perdana` | **Project Assignee / Field Engineer** (Eksekusi Task & Timesheet Lapangan) | `DummyPass123!` |
-
-USER LAIN untuk Arof dan Melika
-
-| Nama Pengguna | Email Login | Role & Hak Akses | Default Password |
-|:---|:---|:---|:---|
-| **Arof Fudding** | `arof.finance@arsalynk.id` | **Finance Controller & Accounting Lead**<br>*(Buku Besar GL, Perpajakan, Billing Invoice, Pembayaran AP)* | `DummyPass123!` |
-| **Melika Citra Tania** | `melika.ops@arsalynk.id` | **Operational & Site Supervisor**<br>*(Alokasi Material, Resource, Pengawasan Lapangan & Task)* | `DummyPass123!` |
+Berikut adalah daftar resmi seluruh akun pengguna tim **PT Sinergi Muda Arsa** yang telah aktif, terhubung ke database PostgreSQL Supabase, dan siap digunakan:
 
 ---
 
-### 2. **Daftar Ghost / Demo Users (Tetap Aktif & Bisa Login Kapan Saja)**
+### 🏢 **1. Daftar Pengguna Resmi Tim (PT Sinergi Muda Arsa)**
 
-Akun-akun berikut telah dijadikan *ghost* (tidak akan muncul di kontak atau pilihan dropdown tim pada akun resmi, tetapi kredensial login-nya **100% aktif dan dapat Anda gunakan**):
+*Semua akun menggunakan nama pertama dan domain resmi `.com` dengan password seragam `DummyPass123!`*:
 
-| Nama Akun Ghost | Email Login | Username | Role Akses Sistem | Password Login |
-|:---|:---|:---|:---|:---|
-| **Dummy Administrator** | `dummy.admin@example.com` | `dummy_admin` | Super Administrator (Full Access) | `DummyPass123!` |
-| **Dummy Project Manager** | `dummy.pm@example.com` | `dummy.pm` | Project Manager (WBS & Baseline) | `DummyPass123!` |
-| **Dummy Operational Manager** | `dummy.manager@example.com` | `dummy_manager` | Operational Manager / CRM Lead | `DummyPass123!` |
-| **Dummy Finance** | `dummy.finance@example.com` | `dummy.finance` | Finance & Accounting Lead | `DummyPass123!` |
-| **Dummy Operational Staff** | `dummy.staff@example.com` | `dummy_staff` | Sales Commercial & Support | `DummyPass123!` |
-| **Finance Approver** | `finance.approver@example.com` | `finance_approver` | Finance Approver (Maker-Checker) | `DummyPass123!` |
-| **System Admin (Legacy)** | `admin@arsalynk.id` | `admin` | Administrator | `DummyPass123!` |
-| **Director (Legacy)** | `director@arsalynk.id` | `director` | Direksi / Executive | `DummyPass123!` |
-| **PM (Legacy)** | `pm@arsalynk.id` | `pm` | Project Manager | `DummyPass123!` |
-| **Supervisor (Legacy)** | `supervisor@arsalynk.id` | `supervisor` | Field Supervisor | `DummyPass123!` |
-| **Finance (Legacy)** | `finance@arsalynk.id` | `finance` | Finance Officer | `DummyPass123!` |
+| No | Nama Pengguna | Email Login | Username Login | Peran & Hak Akses (Role) | Default Password |
+|:---:|:---|:---|:---|:---|:---:|
+| 1 | **Rian** | `rian@arsalynk.com` | `rian` | **Director & Super Admin**<br>*(Approval Eksekutif, IAM, & Akses Penuh Sistem)* | `DummyPass123!` |
+| 2 | **Melika** | `melika@arsalynk.com` | `melika` | **Lead Project Manager**<br>*(Kontrol 5-Level WBS, Gantt Chart, Kurva S, & Seluruh Proyek)* | `DummyPass123!` |
+| 3 | **Melika (Ops)** | `melika.ops@arsalynk.com` | `melika.ops` | **Operational Lead & Supervisor**<br>*(Master 5 Divisi, Studio Arsa, & Manajemen Aset Lapangan)* | `DummyPass123!` |
+| 4 | **Arof** | `arof@arsalynk.com` | `arof` | **Lead Project Manager & Riset**<br>*(Kontrol Seluruh Proyek & Lead Riset BRIDA Semarang)* | `DummyPass123!` |
+| 5 | **Arof (Finance)** | `arof.finance@arsalynk.com` | `arof.finance` | **Finance Lead & Tax Controller**<br>*(Buku Besar GL, NPWP, Rekening Bank, e-Faktur, & Plafon KMK)* | `DummyPass123!` |
+| 6 | **Laode** | `laode@arsalynk.com` | `laode` | **Field Specialist / Engineer**<br>*(Eksekusi Task Harian & Timesheet Lapangan)* | `DummyPass123!` |
+| 7 | **Jundy** | `jundy@arsalynk.com` | `jundy` | **Field Specialist / Creative Media**<br>*(Produksi Konten Video & Creative Hub)* | `DummyPass123!` |
+| 8 | **Noorman** | `noorman@arsalynk.com` | `noorman` | **Field Specialist / Survey Specialist**<br>*(Survey Lapangan & Dokumentasi Teknis)* | `DummyPass123!` |
 
 ---
+
+### 👻 **2. Daftar Akun Dummy Ghost (Khusus Uji Coba Localhost - PT Coba Arsalynk)**
+
+*Akun dummy terisolasi untuk simulasi alur sistem tanpa mengotori data asli*:
+
+| No | Label Akun Dummy | Email Login | No. Telepon | Modul Uji Coba | Password |
+|:---:|:---|:---|:---:|:---|:---:|
+| 1 | **Ghost Admin System** | `admin.director@arsalynk.id` | `+62 81234567890` | Administrator & IAM | `DummyPass123!` |
+| 2 | **Ghost Executive Director** | `director@arsalynk.id` | `+62 81234567891` | Executive Approval & Override | `DummyPass123!` |
+| 3 | **Ghost Lead PM** | `pm.lead@arsalynk.id` | `+62 81234567892` | WBS & Kurva S Proyek Prototype | `DummyPass123!` |
+| 4 | **Ghost Field Supervisor** | `supervisor@arsalynk.id` | `+62 81234567893` | Supervisi Task Lapangan | `DummyPass123!` |
+| 5 | **Ghost CRM Lead** | `crm.lead@arsalynk.id` | `+62 81234567894` | Pipeline Inquiry & Estimasi RAB | `DummyPass123!` |
+| 6 | **Ghost Sales Staff** | `sales@arsalynk.id` | `+62 81234567895` | Sales Quotation & Sales Order | `DummyPass123!` |
+| 7 | **Ghost Finance Controller** | `finance.lead@arsalynk.id` | `+62 81234567896` | Billing Termin & e-Faktur Pajak | `DummyPass123!` |
+| 8 | **Ghost AP/AR Specialist** | `dummy.finance@example.com` | `+62 81234567897` | 3-Way Match Vendor Bill & Piutang | `DummyPass123!` |
+| 9 | **Ghost Cost Estimator** | `estimator@arsalynk.id` | `+62 81234567898` | Perhitungan Cost Baseline | `DummyPass123!` |
+| 10 | **Ghost Technical Staff** | `staff.dev@arsalynk.id` | `+62 81234567899` | Daily Task & Timesheet Demo | `DummyPass123!` |
 
 ### 3. **Cara Login Sebagai Ghost User Kapan Saja**
 

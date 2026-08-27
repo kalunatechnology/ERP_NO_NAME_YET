@@ -16,19 +16,21 @@ import { InventoryCheckingCard } from "@/components/ui/InventoryCheckingCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
 import { ProjectTaxWorkspace } from "@/components/finance/ProjectTaxWorkspace";
+import { CompanyMasterWorkspace } from "@/components/finance/CompanyMasterWorkspace";
 
 const FINANCE_TABS = [
-  { id: "overview",     label: "Dashboard Ringkasan"       },
-  { id: "profit",       label: "📊 Laba & Revenue Proyek"  },
-  { id: "costing",      label: "Costing & WIP"             },
-  { id: "fundings",     label: "Funding Proyek"            },
-  { id: "ap",           label: "Tagihan Vendor (AP)"       },
-  { id: "billing",      label: "Billing Termin"            },
-  { id: "ar",           label: "Piutang & Kredit (AR)"     },
-  { id: "cashbank",     label: "Kas & Bank (Disbursement)" },
-  { id: "gl",           label: "Buku Besar (GL)"           },
-  { id: "tax",          label: "Perpajakan"                },
-  { id: "assets",       label: "Aset Tetap"                },
+  { id: "overview",       label: "Dashboard Ringkasan"       },
+  { id: "company_master", label: "🏢 Master Perusahaan & Bank" },
+  { id: "profit",         label: "📊 Laba & Revenue Proyek"  },
+  { id: "costing",        label: "Costing & WIP"             },
+  { id: "fundings",       label: "Funding Proyek"            },
+  { id: "ap",             label: "Tagihan Vendor (AP)"       },
+  { id: "billing",        label: "Billing Termin"            },
+  { id: "ar",             label: "Piutang & Kredit (AR)"     },
+  { id: "cashbank",       label: "Kas & Bank (Disbursement)" },
+  { id: "gl",             label: "Buku Besar (GL)"           },
+  { id: "tax",            label: "Perpajakan"                },
+  { id: "assets",         label: "Aset Tetap"                },
 ];
 
 const DEFAULT_VENDOR_BILLS = [
@@ -871,6 +873,9 @@ export default function FinanceClient() {
           </div>
         </div>
       )}
+
+      {/* ── TAB: MASTER PERUSAHAAN & BANK ─────────── */}
+      {activeTab === "company_master" && <CompanyMasterWorkspace />}
 
       {/* ── TAB 10: PERPAJAKAN PROYEK (TAX COMPLIANCE) ── */}
       {activeTab === "tax" && <ProjectTaxWorkspace />}
