@@ -59,31 +59,35 @@ export function detectRole(user: any): UserRoleType {
   // Executive / Admin first (highest privilege)
   if (
     user.is_superuser ||
-    roles.some(r => ["ADMIN", "EXECUTIVE", "DIRECTOR", "ROLE-ADMIN", "SUPERADMIN", "SUPER_ADMIN"].includes(r)) ||
+    roles.some(r => ["ADMIN", "EXECUTIVE", "DIRECTOR", "ROLE-ADMIN", "ROLE-DIRECTOR", "SUPERADMIN", "SUPER_ADMIN"].includes(r)) ||
     username.includes("admin") ||
     email.includes("admin") || email.includes("exec") || email.includes("director") ||
     (email.includes("arsalynk") && (email.includes("admin") || email.includes("director")))
   ) return "executive";
 
-  // Project Manager
+  // Project Manager — diperluas untuk menangani format pm.lead, lead.pm, dll.
   if (
     roles.some(r => [
       "PROJECT_MANAGER", "PM", "PROJECT_MANAGEMENT", "SUPERVISOR",
-      "QUALITY_CONTROL", "WAREHOUSE", "ROLE-PM", "ROLE_PROJECT_MANAGER"
+      "QUALITY_CONTROL", "WAREHOUSE", "ROLE-PM", "ROLE_PROJECT_MANAGER",
+      "ROLE-SUPERVISOR", "ROLE-ESTIMATOR", "PROJECT_ASSIGNEE",
     ].includes(r)) ||
-    username.includes("pm") ||
-    username.includes("project") ||
-    email.includes("pm@") || email.includes("pm.") || email.includes("project") ||
-    email.includes("supervisor") || email.includes("qc") || email.includes("warehouse")
+    username.startsWith("pm") || username.includes(".pm") || username.includes("pm.") ||
+    username.includes("project") || username.includes("supervisor") ||
+    username.includes("estimator") || username.includes("qc") ||
+    email.startsWith("pm") || email.includes("pm@") || email.includes(".pm@") ||
+    email.includes("pm.") || email.includes("project") ||
+    email.includes("supervisor") || email.includes("estimator") ||
+    email.includes("qc") || email.includes("warehouse")
   ) return "pm";
 
   // Finance
   if (
     roles.some(r => [
       "ACCOUNTING_FINANCE", "FINANCE", "FINANCE_APPROVER",
-      "ACCOUNTING", "ROLE-FINANCE"
+      "ACCOUNTING", "ROLE-FINANCE", "ROLE-APAR",
     ].includes(r)) ||
-    username.includes("finance") ||
+    username.includes("finance") || username.includes("accounting") ||
     email.includes("finance") || email.includes("accounting") || email.includes("keuangan")
   ) return "finance";
 
@@ -91,11 +95,11 @@ export function detectRole(user: any): UserRoleType {
   if (
     roles.some(r => [
       "CRM_MANAGER", "CRM_STAFF", "CRM", "SALES", "MANAGER",
-      "ROLE-MANAGER", "ROLE-STAFF", "ROLE-CRM"
+      "ROLE-MANAGER", "ROLE-CRM", "ROLE-SALES",
     ].includes(r)) ||
     username.includes("crm") || username.includes("sales") ||
     email.includes("crm") || email.includes("sales") || email.includes("manager") ||
-    email.includes("staff") || email.includes("commercial")
+    email.includes("commercial")
   ) return "crm";
 
   return "staff";

@@ -23,6 +23,17 @@ export class AccountsService {
       const fullName = cleanUsername.replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
       const isSuper = cleanId.includes('admin') || cleanId.includes('exec') || cleanId.includes('director');
 
+      // Deteksi role yang tepat dari email/identifier
+      const autoRoleCode = isSuper
+        ? 'ROLE-ADMIN'
+        : cleanId.includes('pm') || cleanId.includes('project') || cleanId.includes('supervisor') || cleanId.includes('estimator')
+        ? 'ROLE-PM'
+        : cleanId.includes('finance') || cleanId.includes('accounting') || cleanId.includes('apar')
+        ? 'ROLE-FINANCE'
+        : cleanId.includes('crm') || cleanId.includes('sales') || cleanId.includes('commercial')
+        ? 'ROLE-CRM'
+        : 'ROLE-STAFF';
+
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash(pass, salt);
 
@@ -40,6 +51,25 @@ export class AccountsService {
           date_joined: new Date(),
         },
       });
+
+      // Auto-assign role setelah user dibuat
+      const autoRole =
+        (await prisma.iam_role.findFirst({ where: { role_code: autoRoleCode } })) ??
+        (await prisma.iam_role.findFirst({ where: { role_code: 'ROLE-STAFF' } }));
+      const autoCompany = await prisma.core_company.findFirst({ where: { status: 'ACTIVE' } });
+
+      if (autoRole && autoCompany) {
+        const autoOrg = await prisma.core_organization.findFirst({ where: { company_id: autoCompany.id } });
+        await prisma.iam_user_role.create({
+          data: {
+            id: crypto.randomUUID(),
+            user_id: user.id,
+            role_id: autoRole.id,
+            company_id: autoCompany.id,
+            organization_id: autoOrg?.id ?? null,
+          },
+        });
+      }
     }
 
     let passwordMatches = false;
@@ -76,9 +106,43 @@ export class AccountsService {
       throw new UnauthorizedError('Akun tidak aktif.');
     }
 
-    const userRoles = await prisma.iam_user_role.findMany({
+    let userRoles = await prisma.iam_user_role.findMany({
       where: { user_id: user.id },
     });
+
+    // Jika user tidak punya role sama sekali, auto-assign berdasarkan email
+    if (userRoles.length === 0) {
+      const id = user.email?.toLowerCase() || cleanId;
+      const fixRoleCode =
+        id.includes('admin') || id.includes('exec') || id.includes('director')
+          ? 'ROLE-ADMIN'
+          : id.includes('pm') || id.includes('project') || id.includes('supervisor') || id.includes('estimator')
+          ? 'ROLE-PM'
+          : id.includes('finance') || id.includes('accounting') || id.includes('apar')
+          ? 'ROLE-FINANCE'
+          : id.includes('crm') || id.includes('sales') || id.includes('commercial')
+          ? 'ROLE-CRM'
+          : 'ROLE-STAFF';
+
+      const fixRole =
+        (await prisma.iam_role.findFirst({ where: { role_code: fixRoleCode } })) ??
+        (await prisma.iam_role.findFirst({ where: { role_code: 'ROLE-STAFF' } }));
+      const fixCompany = await prisma.core_company.findFirst({ where: { status: 'ACTIVE' } });
+
+      if (fixRole && fixCompany) {
+        const fixOrg = await prisma.core_organization.findFirst({ where: { company_id: fixCompany.id } });
+        const newUserRole = await prisma.iam_user_role.create({
+          data: {
+            id: crypto.randomUUID(),
+            user_id: user.id,
+            role_id: fixRole.id,
+            company_id: fixCompany.id,
+            organization_id: fixOrg?.id ?? null,
+          },
+        });
+        userRoles = [newUserRole];
+      }
+    }
 
     const roleIds = userRoles.map((ur) => ur.role_id).filter((id): id is string => Boolean(id));
     const roles = await prisma.iam_role.findMany({

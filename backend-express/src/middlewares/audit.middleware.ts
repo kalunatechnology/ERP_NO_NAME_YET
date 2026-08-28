@@ -21,24 +21,43 @@ export function auditLog(req: Request, res: Response, next: NextFunction): void 
   next();
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function toValidUuidOrNull(val: unknown): string | null {
+  if (typeof val === 'string' && UUID_REGEX.test(val.trim())) {
+    return val.trim();
+  }
+  return null;
+}
+
 async function writeAuditEvent(req: Request, statusCode: number): Promise<void> {
   if (!req.user) return;
 
   try {
+    const userId = toValidUuidOrNull(req.user.id);
+    const companyId = toValidUuidOrNull(req.companyId);
+    const tenantId = toValidUuidOrNull(req.tenantId ?? (req.user as any)?.tenant_id);
+
+    // Extract optional entity ID from route params if it's a valid UUID
+    const paramId = req.params?.id;
+    const entityId = toValidUuidOrNull(paramId);
+
     await prisma.core_audit_event.create({
       data: {
         id: crypto.randomUUID(),
-        user_id: req.user.id,
-        company_id: req.companyId ?? null,
+        tenant_id: tenantId,
+        user_id: userId,
+        company_id: companyId,
         event_type: `${req.method}_${statusCode}`,
         entity_name: req.originalUrl.slice(0, 100),
-        entity_id: 'SYSTEM',
-        before_data: '{}',
-        after_data: '{}',
+        entity_id: entityId,
+        before_data: {},
+        after_data: {},
         occurred_at: new Date(),
       },
     });
   } catch {
-    // Ignore audit trail persistence errors
+    // Ignore audit trail persistence errors silently
   }
 }
+

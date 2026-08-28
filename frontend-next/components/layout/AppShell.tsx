@@ -144,7 +144,7 @@ export function AppShell({ children }: AppShellProps) {
             id="main-content"
             role="main"
           >
-            <div className="p-3.5 sm:p-5 lg:p-6 w-full max-w-[1600px] mx-auto">
+            <div className="p-3.5 sm:p-5 lg:p-6 w-full max-w-[1600px] mx-auto animate-in fade-in-50 duration-500">
               {!hasAccess ? (
                 <AccessDeniedState
                   title="Akses Dibatasi"

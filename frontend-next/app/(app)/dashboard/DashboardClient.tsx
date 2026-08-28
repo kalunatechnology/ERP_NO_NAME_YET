@@ -39,26 +39,47 @@ interface KpiCardProps {
   onClick?: () => void;
 }
 
-function KpiCard({ label, value, subLabel, icon: Icon, iconBg = "#F0FDF4", iconColor = "#16A34A", trend, onClick }: KpiCardProps) {
+function KpiCard({
+  label,
+  value,
+  subLabel,
+  icon: Icon,
+  iconBg = "#EAF8D6",
+  iconColor = "#275433",
+  trend,
+  onClick,
+}: KpiCardProps) {
   return (
     <div
-      className={cn("card flex flex-col gap-3 p-4 rounded-xl min-w-0", onClick && "cursor-pointer hover:shadow-card-md transition-shadow")}
+      className={cn(
+        "flex flex-col justify-between gap-3 p-4 sm:p-5 rounded-[18px] min-w-0 bg-[#F0FEE0] border border-[#D5E2D7] transition-all duration-150 select-none shadow-xs",
+        onClick && "cursor-pointer hover:shadow-card-md hover:border-[#5A861F]/50 hover:-translate-y-0.5"
+      )}
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-          <span className="text-xs font-medium text-text-secondary truncate">{label}</span>
-          <span className="text-2xl font-bold text-text-primary tracking-tight leading-tight">{value}</span>
-          {subLabel && <span className="text-xs text-text-secondary">{subLabel}</span>}
+          <span className="text-xs font-semibold text-[#637566] tracking-tight truncate">{label}</span>
+          <span className="text-2xl sm:text-[26px] font-extrabold text-[#0E341F] tracking-tight leading-tight mt-0.5">{value}</span>
+          {subLabel && <span className="text-2xs text-[#768779] font-medium mt-0.5">{subLabel}</span>}
         </div>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: iconBg }}>
-          <Icon size={18} style={{ color: iconColor }} />
+        <div
+          className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-2xs"
+          style={{ background: iconBg }}
+        >
+          <Icon size={20} style={{ color: iconColor }} strokeWidth={2.2} />
         </div>
       </div>
       {trend && (
-        <div className="flex items-center gap-1">
-          {trend.up ? <ChevronUp size={12} className="text-green-600" /> : <ChevronDown size={12} className="text-red-500" />}
-          <span className={cn("text-2xs font-medium", trend.up ? "text-green-600" : "text-red-500")}>{trend.value}</span>
+        <div className="flex items-center gap-1.5 pt-1 border-t border-[#D5E2D7]/60">
+          <div className={cn(
+            "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-bold",
+            trend.up ? "bg-[#D1F2B8] text-[#1E5C22]" : "bg-[#FEE2E2] text-[#991B1B]"
+          )}>
+            {trend.up ? <ChevronUp size={12} strokeWidth={2.5} /> : <ChevronDown size={12} strokeWidth={2.5} />}
+            <span>{trend.value}</span>
+          </div>
+          <span className="text-3xs text-[#768779] font-medium">vs periode lalu</span>
         </div>
       )}
     </div>
@@ -67,12 +88,12 @@ function KpiCard({ label, value, subLabel, icon: Icon, iconBg = "#F0FDF4", iconC
 
 function SectionHeader({ title, actionLabel, actionHref }: { title: string; actionLabel?: string; actionHref?: string }) {
   return (
-    <div className="flex items-center justify-between mb-3">
-      <h2 className="text-sm font-bold text-text-primary">{title}</h2>
+    <div className="flex items-center justify-between mb-3.5">
+      <h2 className="text-sm sm:text-base font-extrabold text-[#0E341F] tracking-tight">{title}</h2>
       {actionLabel && actionHref && (
-        <Link href={actionHref} className="flex items-center gap-1 text-xs font-medium text-brand-green hover:text-brand-deep-green transition-colors">
-          {actionLabel}
-          <ArrowRight size={12} />
+        <Link href={actionHref} className="flex items-center gap-1 text-xs font-bold text-[#5A861F] hover:text-[#275433] transition-colors">
+          <span>{actionLabel}</span>
+          <ArrowRight size={13} strokeWidth={2.2} />
         </Link>
       )}
     </div>
@@ -81,15 +102,15 @@ function SectionHeader({ title, actionLabel, actionHref }: { title: string; acti
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span className={cn("inline-flex px-2 py-0.5 rounded-full text-2xs font-semibold", getStatusColor(status))}>
+    <span className={cn("inline-flex px-2.5 py-0.5 rounded-full text-2xs font-bold tracking-tight", getStatusColor(status))}>
       {status}
     </span>
   );
 }
 
-function ProgressBar({ value, color = "#16A34A", height = 6 }: { value: number; color?: string; height?: number }) {
+function ProgressBar({ value, color = "#5A861F", height = 7 }: { value: number; color?: string; height?: number }) {
   return (
-    <div className="w-full bg-gray-100 rounded-full overflow-hidden" style={{ height }}>
+    <div className="w-full bg-[#E5E9E2] rounded-full overflow-hidden p-0.5 shadow-2xs" style={{ height }}>
       <div
         className="h-full rounded-full transition-all duration-500"
         style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }}
