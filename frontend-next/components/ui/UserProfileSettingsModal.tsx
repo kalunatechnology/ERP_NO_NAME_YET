@@ -6,10 +6,8 @@ import {
   Mail,
   Lock,
   Building2,
-  ShieldCheck,
   KeyRound,
   CheckCircle2,
-  AlertCircle,
   Loader2,
   Eye,
   EyeOff,
@@ -19,6 +17,7 @@ import { Modal } from "@/components/ui/Modal";
 import api from "@/lib/api/axios";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+
 
 interface UserProfileSettingsModalProps {
   isOpen: boolean;

@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DistributionProps {
@@ -21,20 +20,31 @@ export function ProjectDistributionGauge({
   offTrackCount = 0,
   className,
 }: DistributionProps) {
-  const radius = 65;
-  const circumference = Math.PI * radius;
+  // ── Gauge math ──────────────────────────────────────────
+  // Semicircle arc: center (75, 78), radius 60
+  // Arc goes from (15, 78) → top → (135, 78)
+  const r = 60;
+  const cx = 75;
+  const cy = 78;
+  const arcPath = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
+  const pathLength = Math.PI * r; // exact semicircle arc length ≈ 188.5
+
   const validScore = Math.min(100, Math.max(0, scorePercent));
-  const strokeDashoffset = circumference - (validScore / 100) * circumference;
+  const strokeDashoffset = pathLength - (validScore / 100) * pathLength;
 
-  // Dynamic status styling
-  const isGood = validScore >= 70 || (statusLabel.toLowerCase().includes("track") && !statusLabel.toLowerCase().includes("off"));
-  const isCautious = (validScore >= 40 && validScore < 70) || statusLabel.toLowerCase().includes("cautious");
+  // ── Status badge style ────────────────────────────────
+  const isGood =
+    validScore >= 70 ||
+    (statusLabel.toLowerCase().includes("track") &&
+      !statusLabel.toLowerCase().includes("off"));
+  const isCautious =
+    (validScore >= 40 && validScore < 70) ||
+    statusLabel.toLowerCase().includes("cautious") ||
+    statusLabel.toLowerCase().includes("caution");
 
-  const badgeStyle = isGood
-    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-    : isCautious
-    ? "bg-amber-50 text-amber-700 border-amber-200"
-    : "bg-rose-50 text-rose-700 border-rose-200";
+  const badgeFill = isGood ? "#F0FDE4" : isCautious ? "#FFFBEB" : "#FEF2F2";
+  const badgeStroke = isGood ? "#86EFAC" : isCautious ? "#FCD34D" : "#FCA5A5";
+  const badgeText = isGood ? "#166534" : isCautious ? "#92400E" : "#991B1B";
 
   return (
     <div
@@ -56,82 +66,119 @@ export function ProjectDistributionGauge({
 
       {/* Main Content Area */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-2 my-auto">
-        {/* Semi-Donut Gauge */}
-        <div className="flex flex-col items-center justify-center relative flex-shrink-0 mx-auto">
-          <svg width="125" height="70" viewBox="0 0 150 90" className="overflow-visible">
-            {/* Background Track */}
-            <path
-              d="M 12 80 A 63 63 0 0 1 138 80"
-              fill="none"
-              stroke="#F1F5F9"
-              strokeWidth="12"
-              strokeLinecap="round"
-            />
-            {/* Progress Arc */}
-            <path
-              d="M 12 80 A 63 63 0 0 1 138 80"
-              fill="none"
-              stroke="url(#healthGaugeGrad)"
-              strokeWidth="12"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={strokeDashoffset}
-              className="transition-all duration-700 ease-out"
-            />
+
+        {/* ── Gauge SVG ── */}
+        {/*
+          viewBox "0 14 150 72" reveals the arc from its top (y≈18) down
+          to just below the arc base (y≈86), i.e. a 72-unit tall window.
+          The score text sits at (cx=75, y≈68) — comfortably inside the arc.
+        */}
+        <div className="flex-shrink-0 mx-auto w-full max-w-[150px]">
+          <svg
+            viewBox="0 14 150 72"
+            className="w-full"
+            aria-label={`Portfolio health: ${Math.round(validScore)}%`}
+          >
             <defs>
-              <linearGradient id="healthGaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="#EF4444" />
                 <stop offset="35%" stopColor="#F59E0B" />
                 <stop offset="70%" stopColor="#10B981" />
                 <stop offset="100%" stopColor="#059669" />
               </linearGradient>
             </defs>
-          </svg>
 
-          {/* Centered Percentage */}
-          <div className="absolute top-3 flex flex-col items-center">
-            <span className="text-xl font-black text-text-primary tracking-tight">
+            {/* Background track */}
+            <path
+              d={arcPath}
+              fill="none"
+              stroke="#F1F5F9"
+              strokeWidth="13"
+              strokeLinecap="round"
+            />
+
+            {/* Progress arc */}
+            <path
+              d={arcPath}
+              fill="none"
+              stroke="url(#gaugeGrad)"
+              strokeWidth="13"
+              strokeLinecap="round"
+              strokeDasharray={pathLength}
+              strokeDashoffset={strokeDashoffset}
+              style={{ transition: "stroke-dashoffset 0.7s cubic-bezier(0.16,1,0.3,1)" }}
+            />
+
+            {/* Percentage — anchored at arc geometric center */}
+            <text
+              x={cx}
+              y={cy - 10}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{
+                fontSize: "22px",
+                fontWeight: 900,
+                fill: "#111827",
+                letterSpacing: "-0.03em",
+                fontFamily: "inherit",
+              }}
+            >
               {Math.round(validScore)}%
-            </span>
-          </div>
+            </text>
 
-          {/* Dynamic Status Badge */}
-          <span className={cn("mt-0.5 px-2.5 py-0.5 rounded-full text-3xs font-bold border shadow-2xs whitespace-nowrap", badgeStyle)}>
-            {statusLabel}
-          </span>
+            {/* Status badge — sits just below the percentage, inside arc base */}
+            <g transform={`translate(${cx}, ${cy + 7})`}>
+              <rect
+                x="-26"
+                y="-8"
+                width="52"
+                height="16"
+                rx="8"
+                fill={badgeFill}
+                stroke={badgeStroke}
+                strokeWidth="1"
+              />
+              <text
+                textAnchor="middle"
+                dominantBaseline="middle"
+                style={{
+                  fontSize: "8.5px",
+                  fontWeight: 700,
+                  fill: badgeText,
+                  fontFamily: "inherit",
+                }}
+              >
+                {statusLabel}
+              </text>
+            </g>
+          </svg>
         </div>
 
         {/* Legend */}
         <div className="flex flex-col gap-1 w-full min-w-0 sm:pl-2">
-          <div className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg hover:bg-bg-light transition-colors">
-            <div className="flex items-center gap-1.5 min-w-0 pr-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
-              <span className="font-medium text-text-primary text-xs whitespace-nowrap">On-track</span>
+          {[
+            { color: "#10B981", label: "On-track", count: onTrackCount },
+            { color: "#F59E0B", label: "Caution", count: cautiousCount },
+            { color: "#EF4444", label: "Off-track", count: offTrackCount },
+          ].map(({ color, label, count }) => (
+            <div
+              key={label}
+              className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg hover:bg-bg-light transition-colors"
+            >
+              <div className="flex items-center gap-1.5 min-w-0 pr-1">
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="font-medium text-text-primary text-xs whitespace-nowrap">
+                  {label}
+                </span>
+              </div>
+              <span className="font-bold text-text-primary bg-bg-light border border-text-tertiary px-1.5 py-0.5 rounded text-2xs tabular-nums flex-shrink-0">
+                {count}
+              </span>
             </div>
-            <span className="font-bold text-text-primary bg-bg-light border border-text-tertiary px-1.5 py-0.2 rounded text-2xs tabular-nums flex-shrink-0">
-              {onTrackCount}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg hover:bg-bg-light transition-colors">
-            <div className="flex items-center gap-1.5 min-w-0 pr-1">
-              <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
-              <span className="font-medium text-text-primary text-xs whitespace-nowrap">Caution</span>
-            </div>
-            <span className="font-bold text-text-primary bg-bg-light border border-text-tertiary px-1.5 py-0.2 rounded text-2xs tabular-nums flex-shrink-0">
-              {cautiousCount}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg hover:bg-bg-light transition-colors">
-            <div className="flex items-center gap-1.5 min-w-0 pr-1">
-              <span className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0" />
-              <span className="font-medium text-text-primary text-xs whitespace-nowrap">Off-track</span>
-            </div>
-            <span className="font-bold text-text-primary bg-bg-light border border-text-tertiary px-1.5 py-0.2 rounded text-2xs tabular-nums flex-shrink-0">
-              {offTrackCount}
-            </span>
-          </div>
+          ))}
         </div>
       </div>
 
