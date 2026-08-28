@@ -189,9 +189,19 @@ export class ProjectsService {
         orderBy: { created_at: 'asc' },
       }),
       prisma.iam_user.findMany({
-        where: { is_active: true },
+        where: {
+          is_active: true,
+          ...(project.company_id
+            ? {
+                iam_user_role: {
+                  some: {
+                    company_id: project.company_id,
+                  },
+                },
+              }
+            : {}),
+        },
         select: { id: true, username: true, full_name: true, email: true },
-        take: 100,
       }),
     ]);
 
@@ -269,34 +279,32 @@ export class ProjectsService {
     const weeklyByMain = new Map<string, any[]>();
     for (const w of weeklyTasks) {
       const list = weeklyByMain.get(w.main_task_id) ?? [];
-      const assigneeUser = w.assignee_id ? userMap.get(w.assignee_id) : undefined;
-      const wDailies = dailyByWeekly.get(w.id) ?? [];
+      const dList = dailyByWeekly.get(w.id) ?? [];
+      const assignUser = w.assignee_id ? userMap.get(w.assignee_id) : undefined;
       list.push({
         ...w,
         main_task: w.main_task_id,
-        main_task_id: w.main_task_id,
-        assignee: w.assignee_id,
-        assignee_name: assigneeUser?.full_name ?? assigneeUser?.username ?? 'Assignee Tim',
-        assignee_username: assigneeUser?.username ?? '',
+        project: project.id,
         target_description: w.target_description ?? '',
-        target_output: w.target_description ?? '',
         progress: Number(w.progress ?? 0),
-        daily_tasks: wDailies,
+        assignee_name: assignUser?.full_name ?? assignUser?.username ?? 'Assignee',
+        assignee_username: assignUser?.username ?? '',
+        daily_tasks: dList,
       });
       weeklyByMain.set(w.main_task_id, list);
     }
 
-    // Group assignments by main_task_id
+    // Group task assignments by main_task_id
     const assignsByMain = new Map<string, any[]>();
     for (const a of assignments) {
       const list = assignsByMain.get(a.main_task_id) ?? [];
       const u = a.assignee_id ? userMap.get(a.assignee_id) : undefined;
       list.push({
-        ...a,
-        main_task: a.main_task_id,
-        assignee: a.assignee_id,
-        assignee_name: u?.full_name ?? u?.username ?? 'Team Member',
-        assignee_username: u?.username ?? '',
+        id: a.id,
+        user: a.assignee_id,
+        user_id: a.assignee_id,
+        role: 'ASSIGNEE',
+        assigned_role: 'ASSIGNEE',
         user_name: u?.full_name ?? u?.username ?? 'Team Member',
       });
       assignsByMain.set(a.main_task_id, list);
@@ -341,13 +349,7 @@ export class ProjectsService {
       project_manager_name: project.manager_name ?? 'Project Manager',
       members: membersData,
       members_detail: membersData,
-      available_users: allUsers.filter(
-        (u) =>
-          !u.email.includes('dummy') &&
-          !u.email.includes('demo') &&
-          !u.email.endsWith('@example.com') &&
-          !u.email.endsWith('@erp.local')
-      ),
+      available_users: allUsers,
       main_tasks: serializedMainTasks,
     };
   }

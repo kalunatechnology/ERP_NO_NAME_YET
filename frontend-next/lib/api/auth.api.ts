@@ -224,63 +224,23 @@ export async function loginUser(email: string, password: string): Promise<LoginP
     if (access) {
       localStorage.setItem("erp.access", access);
       localStorage.setItem("erp.refresh", refresh);
-      const user = payload.user || DEMO_PROFILES.find(p => p.email.toLowerCase() === cleanEmail);
-      if (user) {
-        localStorage.setItem("erp.user", JSON.stringify(user));
+      const rawUser = payload.user || payload;
+      const userObj = rawUser?.user ? { ...rawUser.user, roles: rawUser.roles || [] } : rawUser;
+      if (userObj) {
+        localStorage.setItem("erp.user", JSON.stringify(userObj));
       }
-      return { access, refresh, user };
+      return { access, refresh, user: userObj };
     }
-  } catch (err) {
-    console.warn("Backend auth token returned error, verifying demo account fallback...", err);
+
+    throw new Error("Respon otentikasi tidak valid dari server.");
+  } catch (err: any) {
+    const errorMsg =
+      err.response?.data?.detail ||
+      err.response?.data?.message ||
+      err.message ||
+      "Email atau password tidak valid.";
+    throw new Error(errorMsg);
   }
-
-  // 1. Check in DEMO_PROFILES
-  let demo = DEMO_PROFILES.find(
-    p => p.email.toLowerCase() === cleanEmail ||
-         (p.username && p.username.toLowerCase() === cleanEmail)
-  );
-
-  // 2. Dynamic generation for any dummy / test / persona account / arsalynk team
-  if (!demo && (
-    cleanEmail.includes("arsalynk.com") ||
-    cleanEmail.includes("arsalynk.id") ||
-    cleanEmail.includes("arsalynk") ||
-    cleanEmail.includes("dummy") ||
-    cleanEmail.includes("ghost") ||
-    cleanEmail.includes("demo") ||
-    cleanEmail.includes("example.com") ||
-    cleanEmail.includes("test")
-  )) {
-    const isFinance = cleanEmail.includes("finance") || cleanEmail.includes("accounting") || cleanEmail.includes("apar");
-    const isPm = cleanEmail.includes("pm") || cleanEmail.includes("supervisor") || cleanEmail.includes("estimator") || cleanEmail.includes("project");
-    const isCrm = cleanEmail.includes("crm") || cleanEmail.includes("sales") || cleanEmail.includes("commercial");
-    const isExec = cleanEmail.includes("admin") || cleanEmail.includes("director") || cleanEmail.includes("exec");
-
-    const roleName = isExec ? "EXECUTIVE" : isFinance ? "FINANCE" : isPm ? "PROJECT_MANAGER" : isCrm ? "CRM" : "PROJECT_ASSIGNEE";
-    const roleCode = isExec ? "ROLE-DIRECTOR" : isFinance ? "ROLE-FINANCE" : isPm ? "ROLE-PM" : isCrm ? "ROLE-CRM" : "ROLE-STAFF";
-
-    const nameParts = cleanEmail.split("@")[0].split(/[._-]/).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
-
-    demo = {
-      id: "e0000000-0000-0000-0000-" + Math.floor(100000000000 + Math.random() * 900000000000),
-      email: cleanEmail,
-      username: cleanEmail.split("@")[0],
-      full_name: nameParts || "Demo User",
-      roles: [{ role: roleName, role_code: roleCode, role_name: roleName }],
-      is_staff: true,
-      is_superuser: isExec,
-    };
-  }
-
-  if (demo) {
-    const demoToken = "demo-jwt-" + btoa(unescape(encodeURIComponent(JSON.stringify(demo))));
-    localStorage.setItem("erp.access", demoToken);
-    localStorage.setItem("erp.refresh", "demo-refresh-token");
-    localStorage.setItem("erp.user", JSON.stringify(demo));
-    return { access: demoToken, refresh: "demo-refresh-token", user: demo };
-  }
-
-  throw new Error("Email atau password tidak ditemukan.");
 }
 
 /* ── Get current user profile ─────────────── */
@@ -295,10 +255,19 @@ export async function getMyProfile(): Promise<UserProfile> {
 
   try {
     const res = await api.get<any>("/api/v1/auth/me/");
-    const user = res.data?.data || res.data;
-    if (user) {
-      localStorage.setItem("erp.user", JSON.stringify(user));
-      return user;
+    const raw = res.data?.data || res.data;
+    if (raw) {
+      const userObj: UserProfile = raw.user
+        ? {
+            ...raw.user,
+            roles: raw.roles || raw.user.roles || [],
+          }
+        : raw;
+
+      if (userObj && (userObj.full_name || userObj.email)) {
+        localStorage.setItem("erp.user", JSON.stringify(userObj));
+        return userObj;
+      }
     }
   } catch {
     const storedUser = localStorage.getItem("erp.user");
@@ -309,6 +278,7 @@ export async function getMyProfile(): Promise<UserProfile> {
 
   return DEMO_PROFILES[0];
 }
+
 
 /* ── Logout ───────────────────────────────── */
 export async function logoutUser(): Promise<void> {

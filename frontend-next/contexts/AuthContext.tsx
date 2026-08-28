@@ -35,18 +35,11 @@ export type UserRoleType = "executive" | "pm" | "finance" | "crm" | "staff";
  * Priority: executive > pm > finance > crm > staff
  */
 export function detectRole(user: any): UserRoleType {
-  if (!user) return "staff";
-
-  const email = (user.email || "").toLowerCase();
-  const username = (user.username || "").toLowerCase();
-  const rawRole = (user.role || "").toUpperCase();
-
   const roles: string[] = [];
   if (Array.isArray(user.roles)) {
     user.roles.forEach((r: any) => {
-      if (typeof r === "string") {
-        roles.push(r.toUpperCase());
-      } else if (r && typeof r === "object") {
+      if (typeof r === "string") roles.push(r.toUpperCase());
+      else if (r && typeof r === "object") {
         if (r.role) roles.push(String(r.role).toUpperCase());
         if (r.role_code) roles.push(String(r.role_code).toUpperCase());
         if (r.name) roles.push(String(r.name).toUpperCase());
@@ -54,52 +47,36 @@ export function detectRole(user: any): UserRoleType {
       }
     });
   }
-  if (rawRole) roles.push(rawRole);
 
-  // Executive / Admin first (highest privilege)
+  // 1. Executive / Admin (is_superuser atau role ROLE-ADMIN / ROLE-DIRECTOR)
   if (
     user.is_superuser ||
-    roles.some(r => ["ADMIN", "EXECUTIVE", "DIRECTOR", "ROLE-ADMIN", "ROLE-DIRECTOR", "SUPERADMIN", "SUPER_ADMIN"].includes(r)) ||
-    username.includes("admin") ||
-    email.includes("admin") || email.includes("exec") || email.includes("director") ||
-    (email.includes("arsalynk") && (email.includes("admin") || email.includes("director")))
+    roles.some(r => ["ADMIN", "EXECUTIVE", "DIRECTOR", "ROLE-ADMIN", "ROLE-DIRECTOR", "SUPERADMIN", "SUPER_ADMIN"].includes(r))
   ) return "executive";
 
-  // Project Manager — diperluas untuk menangani format pm.lead, lead.pm, dll.
+  // 2. Project Manager & Supervisor
   if (
     roles.some(r => [
       "PROJECT_MANAGER", "PM", "PROJECT_MANAGEMENT", "SUPERVISOR",
       "QUALITY_CONTROL", "WAREHOUSE", "ROLE-PM", "ROLE_PROJECT_MANAGER",
       "ROLE-SUPERVISOR", "ROLE-ESTIMATOR", "PROJECT_ASSIGNEE",
-    ].includes(r)) ||
-    username.startsWith("pm") || username.includes(".pm") || username.includes("pm.") ||
-    username.includes("project") || username.includes("supervisor") ||
-    username.includes("estimator") || username.includes("qc") ||
-    email.startsWith("pm") || email.includes("pm@") || email.includes(".pm@") ||
-    email.includes("pm.") || email.includes("project") ||
-    email.includes("supervisor") || email.includes("estimator") ||
-    email.includes("qc") || email.includes("warehouse")
+    ].includes(r))
   ) return "pm";
 
-  // Finance
+  // 3. Finance Controller & AP/AR
   if (
     roles.some(r => [
       "ACCOUNTING_FINANCE", "FINANCE", "FINANCE_APPROVER",
       "ACCOUNTING", "ROLE-FINANCE", "ROLE-APAR",
-    ].includes(r)) ||
-    username.includes("finance") || username.includes("accounting") ||
-    email.includes("finance") || email.includes("accounting") || email.includes("keuangan")
+    ].includes(r))
   ) return "finance";
 
-  // CRM / Sales / Manager
+  // 4. CRM & Sales
   if (
     roles.some(r => [
       "CRM_MANAGER", "CRM_STAFF", "CRM", "SALES", "MANAGER",
-      "ROLE-MANAGER", "ROLE-CRM", "ROLE-SALES",
-    ].includes(r)) ||
-    username.includes("crm") || username.includes("sales") ||
-    email.includes("crm") || email.includes("sales") || email.includes("manager") ||
-    email.includes("commercial")
+      "ROLE-MANAGER", "ROLE-CRM", "ROLE-SALES", "ROLE-CRM-LEAD",
+    ].includes(r))
   ) return "crm";
 
   return "staff";
@@ -155,22 +132,19 @@ type AuthAction =
 
 function checkIsAdmin(user: any): boolean {
   if (!user) return false;
-  if (user.is_superuser || user.is_staff) return true;
+  if (user.is_superuser) return true;
   const roles: string[] = [];
   if (Array.isArray(user.roles)) {
     user.roles.forEach((r: any) => {
       if (typeof r === "string") roles.push(r.toUpperCase());
       else if (r && typeof r === "object") {
         if (r.role) roles.push(String(r.role).toUpperCase());
+        if (r.role_code) roles.push(String(r.role_code).toUpperCase());
         if (r.name) roles.push(String(r.name).toUpperCase());
       }
     });
   }
-  if (roles.some(r => ["ADMIN", "ROLE-ADMIN", "SUPERADMIN", "SUPER_ADMIN", "EXECUTIVE", "DIRECTOR"].includes(r))) return true;
-  const email = (user.email || "").toLowerCase();
-  const username = (user.username || "").toLowerCase();
-  if (email.includes("admin") || email.includes("exec") || email.includes("director") || username.includes("admin")) return true;
-  return false;
+  return roles.some(r => ["ADMIN", "ROLE-ADMIN", "SUPERADMIN", "SUPER_ADMIN", "EXECUTIVE", "DIRECTOR", "ROLE-DIRECTOR"].includes(r));
 }
 
 function authReducer(state: AuthState, action: AuthAction): AuthState {
@@ -264,34 +238,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const isAdmin = checkIsAdmin(user);
         const userRole = detectRole(user);
 
-        const userEmail = (user?.email || "").toLowerCase();
-        const isGhostUser =
-          userEmail.endsWith("@arsalynk.id") ||
-          userEmail.includes("dummy") ||
-          userEmail.includes("demo") ||
-          userEmail.endsWith("@example.com") ||
-          (user as any)?.tenant_id === "00000000-0000-0000-0000-000000000099";
-
-        const ghostComp = companiesList.find(c =>
-          String(c.code).toUpperCase().includes("GHOST") ||
-          String(c.name).toLowerCase().includes("ghost") ||
-          String(c.name).toLowerCase().includes("coba")
-        );
-        const smaComp = companiesList.find(c =>
-          String(c.code).toUpperCase() === "SMA" ||
-          String(c.name).toLowerCase().includes("sinergi") ||
-          String(c.name).toLowerCase().includes("arsa")
-        );
-
-        const targetComp = isGhostUser ? (ghostComp || companiesList[1] || companiesList[0]) : (smaComp || companiesList[0]);
-        const activeCompany = targetComp?.id ? String(targetComp.id) : null;
+        // Langsung ambil dari relasi foreign key user_role yang dikirim backend
+        const activeCompany = (user as any)?.company_id || user?.roles?.[0]?.company_id || (companiesList[0]?.id ? String(companiesList[0].id) : null);
 
         if (activeCompany) {
-          localStorage.setItem("erp.company", activeCompany);
-          localStorage.setItem("active_company_id", activeCompany);
+          localStorage.setItem("erp.company", String(activeCompany));
+          localStorage.setItem("active_company_id", String(activeCompany));
         }
 
-        dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany, companies: companiesList, isAdmin, userRole });
+        dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: companiesList, isAdmin, userRole });
       })
       .catch(() => {
         localStorage.removeItem("erp.access");
@@ -335,34 +290,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isAdmin = checkIsAdmin(user);
       const userRole = detectRole(user);
 
-      const userEmail = (user?.email || "").toLowerCase();
-      const isGhostUser =
-        userEmail.endsWith("@arsalynk.id") ||
-        userEmail.includes("dummy") ||
-        userEmail.includes("demo") ||
-        userEmail.endsWith("@example.com") ||
-        (user as any)?.tenant_id === "00000000-0000-0000-0000-000000000099";
-
-      const ghostComp = companiesList.find(c =>
-        String(c.code).toUpperCase().includes("GHOST") ||
-        String(c.name).toLowerCase().includes("ghost") ||
-        String(c.name).toLowerCase().includes("coba")
-      );
-      const smaComp = companiesList.find(c =>
-        String(c.code).toUpperCase() === "SMA" ||
-        String(c.name).toLowerCase().includes("sinergi") ||
-        String(c.name).toLowerCase().includes("arsa")
-      );
-
-      const targetComp = isGhostUser ? (ghostComp || companiesList[1] || companiesList[0]) : (smaComp || companiesList[0]);
-      const activeCompany = targetComp?.id ? String(targetComp.id) : null;
+      // Langsung ambil dari relasi foreign key user_role yang dikirim backend
+      const activeCompany = (user as any)?.company_id || user?.roles?.[0]?.company_id || (companiesList[0]?.id ? String(companiesList[0].id) : null);
 
       if (activeCompany) {
-        localStorage.setItem("erp.company", activeCompany);
-        localStorage.setItem("active_company_id", activeCompany);
+        localStorage.setItem("erp.company", String(activeCompany));
+        localStorage.setItem("active_company_id", String(activeCompany));
       }
 
-      dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany, companies: companiesList, isAdmin, userRole });
+      dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: companiesList, isAdmin, userRole });
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || "Gagal masuk sistem";
       dispatch({ type: "ERROR", message: msg });

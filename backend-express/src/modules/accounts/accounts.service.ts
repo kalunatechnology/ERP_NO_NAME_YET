@@ -18,58 +18,11 @@ export class AccountsService {
     });
 
     if (!user) {
-      const cleanEmail = cleanId.includes('@') ? cleanId : `${cleanId}@example.com`;
-      const cleanUsername = cleanId.split('@')[0]!;
-      const fullName = cleanUsername.replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-      const isSuper = cleanId.includes('admin') || cleanId.includes('exec') || cleanId.includes('director');
+      throw new UnauthorizedError('Email atau password tidak valid.');
+    }
 
-      // Deteksi role yang tepat dari email/identifier
-      const autoRoleCode = isSuper
-        ? 'ROLE-ADMIN'
-        : cleanId.includes('pm') || cleanId.includes('project') || cleanId.includes('supervisor') || cleanId.includes('estimator')
-        ? 'ROLE-PM'
-        : cleanId.includes('finance') || cleanId.includes('accounting') || cleanId.includes('apar')
-        ? 'ROLE-FINANCE'
-        : cleanId.includes('crm') || cleanId.includes('sales') || cleanId.includes('commercial')
-        ? 'ROLE-CRM'
-        : 'ROLE-STAFF';
-
-      const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(pass, salt);
-
-      user = await prisma.iam_user.create({
-        data: {
-          id: crypto.randomUUID(),
-          email: cleanEmail,
-          username: cleanUsername,
-          full_name: fullName,
-          password_hash: passwordHash,
-          is_active: true,
-          is_staff: isSuper,
-          is_superuser: isSuper,
-          status: 'ACTIVE',
-          date_joined: new Date(),
-        },
-      });
-
-      // Auto-assign role setelah user dibuat
-      const autoRole =
-        (await prisma.iam_role.findFirst({ where: { role_code: autoRoleCode } })) ??
-        (await prisma.iam_role.findFirst({ where: { role_code: 'ROLE-STAFF' } }));
-      const autoCompany = await prisma.core_company.findFirst({ where: { status: 'ACTIVE' } });
-
-      if (autoRole && autoCompany) {
-        const autoOrg = await prisma.core_organization.findFirst({ where: { company_id: autoCompany.id } });
-        await prisma.iam_user_role.create({
-          data: {
-            id: crypto.randomUUID(),
-            user_id: user.id,
-            role_id: autoRole.id,
-            company_id: autoCompany.id,
-            organization_id: autoOrg?.id ?? null,
-          },
-        });
-      }
+    if (!user.is_active) {
+      throw new UnauthorizedError('Akun pengguna tidak aktif.');
     }
 
     let passwordMatches = false;
@@ -102,78 +55,61 @@ export class AccountsService {
       throw new UnauthorizedError('Email atau password tidak valid.');
     }
 
-    if (!user.is_active) {
-      throw new UnauthorizedError('Akun tidak aktif.');
-    }
-
-    let userRoles = await prisma.iam_user_role.findMany({
+    const userRoles = await prisma.iam_user_role.findMany({
       where: { user_id: user.id },
     });
 
-    // Jika user tidak punya role sama sekali, auto-assign berdasarkan email
-    if (userRoles.length === 0) {
-      const id = user.email?.toLowerCase() || cleanId;
-      const fixRoleCode =
-        id.includes('admin') || id.includes('exec') || id.includes('director')
-          ? 'ROLE-ADMIN'
-          : id.includes('pm') || id.includes('project') || id.includes('supervisor') || id.includes('estimator')
-          ? 'ROLE-PM'
-          : id.includes('finance') || id.includes('accounting') || id.includes('apar')
-          ? 'ROLE-FINANCE'
-          : id.includes('crm') || id.includes('sales') || id.includes('commercial')
-          ? 'ROLE-CRM'
-          : 'ROLE-STAFF';
-
-      const fixRole =
-        (await prisma.iam_role.findFirst({ where: { role_code: fixRoleCode } })) ??
-        (await prisma.iam_role.findFirst({ where: { role_code: 'ROLE-STAFF' } }));
-      const fixCompany = await prisma.core_company.findFirst({ where: { status: 'ACTIVE' } });
-
-      if (fixRole && fixCompany) {
-        const fixOrg = await prisma.core_organization.findFirst({ where: { company_id: fixCompany.id } });
-        const newUserRole = await prisma.iam_user_role.create({
-          data: {
-            id: crypto.randomUUID(),
-            user_id: user.id,
-            role_id: fixRole.id,
-            company_id: fixCompany.id,
-            organization_id: fixOrg?.id ?? null,
-          },
-        });
-        userRoles = [newUserRole];
-      }
-    }
 
     const roleIds = userRoles.map((ur) => ur.role_id).filter((id): id is string => Boolean(id));
-    const roles = await prisma.iam_role.findMany({
+    const rolesList = await prisma.iam_role.findMany({
       where: { id: { in: roleIds } },
     });
-    const roleCodes = roles.map((r) => r.role_code).filter((c): c is string => Boolean(c));
+    const rolesMap = new Map(rolesList.map((r) => [r.id, r]));
+
+    const serializedRoles = userRoles.map((ur) => {
+      const role = ur.role_id ? rolesMap.get(ur.role_id) : undefined;
+      return {
+        id: ur.id,
+        role_id: ur.role_id,
+        role_code: role?.role_code ?? null,
+        role_name: role?.role_name ?? null,
+        company_id: ur.company_id,
+        organization_id: ur.organization_id,
+      };
+    });
+
+    const roleCodes = serializedRoles.map((r) => r.role_code).filter((c): c is string => Boolean(c));
+    const primaryCompanyId = userRoles[0]?.company_id ?? null;
 
     const tokens = signTokenPair({
       userId: user.id,
       email: user.email,
       full_name: user.full_name ?? '',
       tenant_id: user.tenant_id,
+      company_id: primaryCompanyId,
       roles: roleCodes,
     });
+
+    const userPayload = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      full_name: user.full_name,
+      status: user.status,
+      is_staff: user.is_staff,
+      is_superuser: user.is_superuser,
+      is_active: user.is_active,
+      tenant_id: user.tenant_id,
+      company_id: primaryCompanyId,
+      roles: serializedRoles,
+      last_login: user.last_login_at,
+      date_joined: user.date_joined,
+    };
 
     return {
       refresh: tokens.refresh,
       access: tokens.access,
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        full_name: user.full_name,
-        status: user.status,
-        is_staff: user.is_staff,
-        is_superuser: user.is_superuser,
-        is_active: user.is_active,
-        tenant_id: user.tenant_id,
-        last_login: user.last_login_at,
-        date_joined: user.date_joined,
-      },
+      user: userPayload,
     };
   }
 
@@ -195,6 +131,7 @@ export class AccountsService {
       email: user.email,
       full_name: user.full_name ?? '',
       tenant_id: user.tenant_id,
+      company_id: payload.company_id ?? null,
       roles: payload.roles,
     });
 
@@ -232,20 +169,27 @@ export class AccountsService {
       };
     });
 
+    const primaryCompanyId = userRoles[0]?.company_id ?? null;
+
+    const userPayload = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      full_name: user.full_name,
+      status: user.status,
+      is_staff: user.is_staff,
+      is_superuser: user.is_superuser,
+      is_active: user.is_active,
+      tenant_id: user.tenant_id,
+      company_id: primaryCompanyId,
+      roles: serializedRoles,
+      last_login: user.last_login_at,
+      date_joined: user.date_joined,
+    };
+
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        full_name: user.full_name,
-        status: user.status,
-        is_staff: user.is_staff,
-        is_superuser: user.is_superuser,
-        is_active: user.is_active,
-        tenant_id: user.tenant_id,
-        last_login: user.last_login_at,
-        date_joined: user.date_joined,
-      },
+      ...userPayload,
+      user: userPayload,
       roles: serializedRoles,
     };
   }

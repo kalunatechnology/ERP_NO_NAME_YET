@@ -149,17 +149,8 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
 
         {/* Company Selector Box */}
         {(() => {
-          const userEmail = (user?.email || "").toLowerCase();
-          const isGhostUser =
-            userEmail.endsWith("@arsalynk.id") ||
-            userEmail.includes("dummy") ||
-            userEmail.includes("demo") ||
-            userEmail.endsWith("@example.com") ||
-            (user as any)?.tenant_id === "00000000-0000-0000-0000-000000000099";
-
           const activeCompanyName =
-            companies.find((c) => String(c.id) === String(company))?.name ||
-            (isGhostUser ? "PT Coba Arsalynk (Ghost)" : "PT Sinergi Muda Arsa");
+            companies.find((c) => String(c.id) === String(company))?.name || "PT Sinergi Muda Arsa";
 
           return isAdmin ? (
             /* Admin can pick any company */

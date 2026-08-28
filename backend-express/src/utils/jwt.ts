@@ -13,6 +13,7 @@ export interface JwtPayload {
   email: string;
   full_name: string;
   tenant_id: string | null;
+  company_id?: string | null;
   roles: string[];
   iat?: number;
   exp?: number;
