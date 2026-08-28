@@ -70,6 +70,17 @@ const ANIM_STYLES = `
   }
 `;
 
+const OFFICIAL_SMA_USERS = [
+  { role: "SUPER ADMIN", label: "👑 Rian (Director & Super Admin)", name: "Rian", email: "rian@arsalynk.com", phone: "81234567801", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-DIRECTOR" },
+  { role: "LEAD PM", label: "🏗️ Melika (Lead Project Manager)", name: "Melika", email: "melika@arsalynk.com", phone: "81234567802", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-PM" },
+  { role: "OPERATIONS", label: "⚙️ Melika (Operational Lead & Ops)", name: "Melika Ops", email: "melika.ops@arsalynk.com", phone: "81234567803", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
+  { role: "PM & RISET", label: "📐 Arof (Lead PM & Riset)", name: "Arof", email: "arof@arsalynk.com", phone: "81234567804", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-PM" },
+  { role: "FINANCE LEAD", label: "💼 Arof (Finance Lead & Tax)", name: "Arof Finance", email: "arof.finance@arsalynk.com", phone: "81234567805", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-FINANCE" },
+  { role: "ENGINEER", label: "👷 Laode (Field Specialist / Engineer)", name: "Laode", email: "laode@arsalynk.com", phone: "81234567806", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
+  { role: "CREATIVE MEDIA", label: "🎬 Jundy (Creative Media Specialist)", name: "Jundy", email: "jundy@arsalynk.com", phone: "81234567807", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
+  { role: "SURVEYOR", label: "📍 Noorman (Survey Specialist)", name: "Noorman", email: "noorman@arsalynk.com", phone: "81234567808", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
+];
+
 const GHOST_DEMO_USERS = [
   { role: "GHOST ADMIN", label: "👑 Ghost Admin System", name: "Ghost Admin", email: "admin.director@arsalynk.id", phone: "81234567890", password: "DummyPass123!", cat: "exec" },
   { role: "GHOST EXECUTIVE", label: "🏛️ Ghost Executive Director", name: "Ghost Director", email: "director@arsalynk.id", phone: "81234567891", password: "DummyPass123!", cat: "exec" },
@@ -83,8 +94,11 @@ const GHOST_DEMO_USERS = [
   { role: "GHOST STAFF", label: "🧑‍💻 Ghost Technical & Dev Staff", name: "Ghost Staff", email: "staff.dev@arsalynk.id", phone: "81234567899", password: "DummyPass123!", cat: "exec" },
 ];
 
+const ALL_LOGIN_ACCOUNTS = [...OFFICIAL_SMA_USERS, ...GHOST_DEMO_USERS];
+
 const GHOST_CATEGORIES = [
-  { cat: "all", label: "Semua (10)" },
+  { cat: "sma", label: "🌟 PT Sinergi Muda Arsa (8 Akun Resmi)" },
+  { cat: "all_ghost", label: "👻 Semua Dummy Ghost (10)" },
   { cat: "exec", label: "Executive & Admin" },
   { cat: "pm", label: "Project & Estimator" },
   { cat: "fin", label: "Finance & AP/AR" },
@@ -92,6 +106,7 @@ const GHOST_CATEGORIES = [
 ];
 
 const CAT_COLOR: Record<string, string> = {
+  sma: "#275433",
   exec: "#7C3AED",
   pm: "#0EA5E9",
   fin: "#F59E0B",
@@ -110,7 +125,7 @@ function LoginFormContent() {
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showGhostPanel, setShowGhostPanel] = useState(false);
-  const [filterCat, setFilterCat] = useState("all");
+  const [filterCat, setFilterCat] = useState("sma");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isLocalDev, setIsLocalDev] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -174,7 +189,7 @@ function LoginFormContent() {
     }
   };
 
-  const quickGhostLogin = (user: typeof GHOST_DEMO_USERS[0]) => {
+  const quickGhostLogin = (user: typeof ALL_LOGIN_ACCOUNTS[0]) => {
     setValue("name", user.name);
     setValue("email", user.email);
     setValue("password", user.password);
@@ -188,10 +203,13 @@ function LoginFormContent() {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const filteredGhostUsers =
-    filterCat === "all"
+  const filteredLoginUsers =
+    filterCat === "sma"
+      ? OFFICIAL_SMA_USERS
+      : filterCat === "all_ghost"
       ? GHOST_DEMO_USERS
-      : GHOST_DEMO_USERS.filter((u) => u.cat === filterCat);
+      : ALL_LOGIN_ACCOUNTS.filter((u) => u.cat === filterCat);
+
 
   return (
     <>
@@ -431,21 +449,21 @@ function LoginFormContent() {
           </div>
         </div>
 
-        {/* ── PANEL TESTING DUMMY GHOST (HANYA MUNCUL DI LOCALHOST) ── */}
+        {/* ── PANEL TESTING & QUICK LOGIN (8 AKUN RESMI PT SINERGI MUDA ARSA & GHOST) ── */}
         {isLocalDev && (
           <div className="w-full max-w-[1334px] mt-3 flex flex-col items-center">
             <button
               type="button"
               onClick={() => setShowGhostPanel(!showGhostPanel)}
-              className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white border border-slate-300 shadow-2xs transition-all cursor-pointer"
+              className="text-xs font-bold text-[#275433] hover:text-[#0E341F] flex items-center gap-2 px-5 py-2 rounded-full bg-[#F0FEE0] border border-[#D5ECC2] shadow-2xs transition-all cursor-pointer hover:bg-[#EAF8D6]"
             >
-              <Ghost size={14} className="text-[#5A861F]" />
+              <Ghost size={15} className="text-[#5A861F]" />
               <span>
                 {showGhostPanel
-                  ? "Sembunyikan Akun Dummy Ghost"
-                  : "Localhost Testing: 10 Akun Lengkap Dummy Ghost (PT Coba Arsalynk)"}
+                  ? "Tutup Panel Akses Cepat"
+                  : "Akses Cepat Pengujian: 8 Akun Resmi PT Sinergi Muda Arsa (@arsalynk.com) & Akun Ghost"}
               </span>
-              {showGhostPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {showGhostPanel ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
             </button>
 
             {showGhostPanel && (
@@ -469,9 +487,9 @@ function LoginFormContent() {
                   ))}
                 </div>
 
-                {/* Grid Ghost Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
-                  {filteredGhostUsers.map((u) => {
+                {/* Grid Login Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                  {filteredLoginUsers.map((u) => {
                     const emailKey = `email-${u.email}`;
                     const pwKey = `pw-${u.email}`;
                     const color = CAT_COLOR[u.cat] || "#5A861F";
@@ -479,43 +497,44 @@ function LoginFormContent() {
                     return (
                       <div
                         key={u.email}
-                        className="mk-ghost-card p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 flex flex-col justify-between gap-2 shadow-2xs"
+                        className="mk-ghost-card p-3 rounded-2xl border border-[#E5E9E2] bg-[#F8FBF5] hover:bg-[#F0FEE0]/30 flex flex-col justify-between gap-2 shadow-2xs"
                       >
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
                             <span
-                              className="text-[11px] font-bold text-slate-900 truncate"
+                              className="text-[12px] font-extrabold text-[#0E341F] truncate"
                               title={u.label}
                             >
                               {u.label}
                             </span>
                             <span
-                              className="text-[8px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+                              className="text-[8px] font-extrabold px-2 py-0.5 rounded-full flex-shrink-0"
                               style={{ backgroundColor: `${color}18`, color }}
                             >
-                              {u.cat.toUpperCase()}
+                              {u.role}
                             </span>
                           </div>
 
-                          <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-xs">
-                            <span className="font-mono text-[10px] text-slate-700 truncate">
+                          <div className="flex items-center justify-between bg-white border border-[#E5E9E2] rounded-xl px-2.5 py-1 text-xs">
+                            <span className="font-mono text-[11px] font-bold text-slate-800 truncate">
                               {u.email}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleCopy(u.email, emailKey, "Email")}
                               className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                              title="Salin email"
                             >
                               {copiedKey === emailKey ? (
-                                <Check size={10} className="text-green-600" />
+                                <Check size={12} className="text-green-600" />
                               ) : (
-                                <Copy size={10} />
+                                <Copy size={12} />
                               )}
                             </button>
                           </div>
 
-                          <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-xs">
-                            <span className="font-mono text-[10px] text-slate-700 truncate">
+                          <div className="flex items-center justify-between bg-white border border-[#E5E9E2] rounded-xl px-2.5 py-1 text-xs">
+                            <span className="font-mono text-[11px] text-slate-600 truncate">
                               {u.password}
                             </span>
                             <button
@@ -524,16 +543,17 @@ function LoginFormContent() {
                                 handleCopy(u.password, pwKey, "Password")
                               }
                               className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                              title="Salin password"
                             >
                               {copiedKey === pwKey ? (
-                                <Check size={10} className="text-green-600" />
+                                <Check size={12} className="text-green-600" />
                               ) : (
-                                <Copy size={10} />
+                                <Copy size={12} />
                               )}
                             </button>
                           </div>
 
-                          <span className="text-[9px] font-mono text-slate-500">
+                          <span className="text-[9px] font-mono text-slate-500 pl-0.5">
                             Tel: +62 {u.phone}
                           </span>
                         </div>
@@ -541,10 +561,10 @@ function LoginFormContent() {
                         <button
                           type="button"
                           onClick={() => quickGhostLogin(u)}
-                          className="w-full py-1.5 rounded-lg text-white font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer active:scale-98 shadow-xs"
+                          className="w-full py-2 rounded-xl text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-98 shadow-xs hover:brightness-105 transition-all"
                           style={{ background: `linear-gradient(120deg, ${color}dd, ${color})` }}
                         >
-                          ⚡ Masuk ({u.name.split(" ")[1] || u.name})
+                          ⚡ Masuk sebagai {u.name.split(" ")[0] || u.name}
                         </button>
                       </div>
                     );
@@ -552,7 +572,7 @@ function LoginFormContent() {
                 </div>
 
                 <p className="text-center text-[10px] text-slate-400 pt-1 border-t border-slate-100">
-                  Panel ini hanya muncul di localhost/IP lokal — tersembunyi otomatis di production
+                  PT Sinergi Muda Arsa Official Workspace &bull; Localhost Testing Environment
                 </p>
               </div>
             )}

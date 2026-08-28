@@ -11,32 +11,62 @@ async function main() {
   const passwordHash = await bcrypt.hash(DUMMY_PASSWORD, salt);
 
   // ===========================================================================
-  // 1. CORE MULTI-TENANT & COMPANIES
+  // 1. CORE MULTI-TENANT & COMPANIES (PT SINERGI MUDA ARSA & GHOST)
   // ===========================================================================
-  console.log('  -> [1/7] Seeding Tenants & Companies...');
-  let tenant = await prisma.core_tenant.findFirst({ where: { code: 'ARSALYNK' } });
-  if (!tenant) {
-    tenant = await prisma.core_tenant.create({
+  console.log('  -> [1/7] Seeding Tenants & Companies (PT Sinergi Muda Arsa)...');
+  
+  // 1.1 Tenant Resmi: PT Sinergi Muda Arsa
+  let tenantSMA = await prisma.core_tenant.findFirst({ where: { code: 'SINERGI_MUDA_ARSA' } });
+  if (!tenantSMA) {
+    tenantSMA = await prisma.core_tenant.create({
       data: {
         id: '00000000-0000-0000-0000-000000000001',
-        code: 'ARSALYNK',
-        name: 'PT. Arsalynk Technology',
+        code: 'SINERGI_MUDA_ARSA',
+        name: 'PT Sinergi Muda Arsa',
         status: 'ACTIVE',
       },
     });
   }
 
-  let company = await prisma.core_company.findFirst({ where: { company_code: 'ARSALYNK' } });
-  if (!company) {
-    company = await prisma.core_company.create({
+  let compSMA = await prisma.core_company.findFirst({ where: { company_code: 'SMA' } });
+  if (!compSMA) {
+    compSMA = await prisma.core_company.create({
       data: {
-        id: '00000000-0000-0000-0000-000000000010',
-        tenant_id: tenant.id,
-        company_code: 'ARSALYNK',
-        legal_name: 'PT. Arsalynk Technology Indonesia',
-        tax_number: '01.234.567.8-001.000',
+        id: '10000000-0000-0000-0000-000000000001',
+        tenant_id: tenantSMA.id,
+        company_code: 'SMA',
+        legal_name: 'PT Sinergi Muda Arsa',
+        tax_number: '03.881.992.1-512.000',
         fiscal_year_start: new Date('2026-01-01'),
         status: 'ACTIVE',
+      },
+    });
+  }
+
+  // 1.2 Tenant Testing: Ghost Company Workspace (PT Coba Arsalynk)
+  let tenantGhost = await prisma.core_tenant.findFirst({ where: { code: 'GHOST_TENANT' } });
+  if (!tenantGhost) {
+    tenantGhost = await prisma.core_tenant.create({
+      data: {
+        id: '00000000-0000-0000-0000-000000000099',
+        code: 'GHOST_TENANT',
+        name: 'Ghost Company Workspace',
+        status: 'GHOST',
+      },
+    });
+  }
+
+  let compGhost = await prisma.core_company.findFirst({ where: { company_code: 'GHOST-ARSALYNK' } });
+  if (!compGhost) {
+    compGhost = await prisma.core_company.create({
+      data: {
+        id: '10000000-0000-0000-0000-000000000099',
+        tenant_id: tenantGhost.id,
+        company_code: 'GHOST-ARSALYNK',
+        legal_name: 'PT Coba Arsalynk (Ghost Company)',
+        tax_number: '00.000.000.0-000.000',
+        fiscal_year_start: new Date('2026-01-01'),
+        status: 'GHOST',
       },
     });
   }
@@ -46,20 +76,24 @@ async function main() {
     orgHQ = await prisma.core_organization.create({
       data: {
         id: '00000000-0000-0000-0000-000000000100',
-        tenant_id: tenant.id,
-        company_id: company.id,
+        tenant_id: tenantSMA.id,
+        company_id: compSMA.id,
         organization_code: 'ORG-HQ',
-        organization_name: 'Headquarter Division',
+        organization_name: 'Kantor Pusat PT Sinergi Muda Arsa',
         organization_type: 'DIVISION',
         status: 'ACTIVE',
       },
     });
   }
 
+  // Fallback aliases
+  const tenant = tenantSMA;
+  const company = compSMA;
+
   // ===========================================================================
   // 2. IAM ROLES & DOMAIN USER PROFILES
   // ===========================================================================
-  console.log('  -> [2/7] Seeding Roles & Standard Demo Users (DummyPass123!)...');
+  console.log('  -> [2/7] Seeding Roles & Official Team (DummyPass123!)...');
   const rolesData = [
     { code: 'ROLE-ADMIN', name: 'System Administrator', desc: 'Full System Access' },
     { code: 'ROLE-DIRECTOR', name: 'Executive Director', desc: 'Executive Oversight & Approval' },
@@ -78,7 +112,7 @@ async function main() {
       role = await prisma.iam_role.create({
         data: {
           id: crypto.randomUUID(),
-          tenant_id: tenant.id,
+          tenant_id: tenantSMA.id,
           role_code: r.code,
           role_name: r.name,
           description: r.desc,
@@ -88,21 +122,32 @@ async function main() {
     roleMap.set(r.code, role);
   }
 
-  const demoUsers = [
-    { email: 'rian.destianto@arsalynk.id', username: 'rian.destianto', name: 'Rian Destianto', isSuper: true, roleCode: 'ROLE-DIRECTOR' },
-    { email: 'melika.citra@arsalynk.id', username: 'melika.citra', name: 'Melika Citra Tania', isSuper: false, roleCode: 'ROLE-PM' },
-    { email: 'arof.fudding@arsalynk.id', username: 'arof.fudding', name: 'Arof Fudding', isSuper: false, roleCode: 'ROLE-PM' },
-    { email: 'laode.fahmi@arsalynk.id', username: 'laode.fahmi', name: 'Laode Fahmi Hidayat', isSuper: false, roleCode: 'ROLE-SUPERVISOR' },
-    { email: 'jundy.isham@arsalynk.id', username: 'jundy.isham', name: 'Jundy Isham Izzudin', isSuper: false, roleCode: 'ROLE-SUPERVISOR' },
-    { email: 'noorman.perdana@arsalynk.id', username: 'noorman.perdana', name: 'M Noorman Perdana', isSuper: false, roleCode: 'ROLE-SUPERVISOR' },
-    { email: 'admin@arsalynk.id', username: 'admin', name: 'System Admin', isSuper: true, roleCode: 'ROLE-ADMIN' },
-    { email: 'dummy.admin@example.com', username: 'dummy.admin', name: 'Ghost Administrator', isSuper: false, roleCode: 'ROLE-ADMIN' },
-    { email: 'dummy.pm@example.com', username: 'dummy.pm', name: 'Ghost Project Manager', isSuper: false, roleCode: 'ROLE-PM' },
-    { email: 'dummy.finance@example.com', username: 'dummy.finance', name: 'Ghost Finance', isSuper: false, roleCode: 'ROLE-FINANCE' },
+  // 8 Official Team Members of PT Sinergi Muda Arsa (@arsalynk.com)
+  const officialUsers = [
+    { email: 'rian@arsalynk.com', username: 'rian', name: 'Rian Destianto', isSuper: true, roleCode: 'ROLE-DIRECTOR', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'melika@arsalynk.com', username: 'melika', name: 'Melika Citra Tania', isSuper: false, roleCode: 'ROLE-PM', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'melika.ops@arsalynk.com', username: 'melika.ops', name: 'Melika (Ops & Supervisor)', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'arof@arsalynk.com', username: 'arof', name: 'Arof Fudding', isSuper: false, roleCode: 'ROLE-PM', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'arof.finance@arsalynk.com', username: 'arof.finance', name: 'Arof (Finance & Tax)', isSuper: false, roleCode: 'ROLE-FINANCE', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'laode@arsalynk.com', username: 'laode', name: 'Laode Fahmi Hidayat', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'jundy@arsalynk.com', username: 'jundy', name: 'Jundy Isham Izzudin', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'noorman@arsalynk.com', username: 'noorman', name: 'M Noorman Perdana', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
+    
+    // Ghost Testing Users (PT Coba Arsalynk)
+    { email: 'admin.director@arsalynk.id', username: 'admin.director', name: 'Ghost Admin System', isSuper: true, roleCode: 'ROLE-ADMIN', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'director@arsalynk.id', username: 'director', name: 'Ghost Executive Director', isSuper: true, roleCode: 'ROLE-DIRECTOR', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'pm.lead@arsalynk.id', username: 'pm.lead', name: 'Ghost Lead Project Manager', isSuper: false, roleCode: 'ROLE-PM', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'supervisor@arsalynk.id', username: 'supervisor', name: 'Ghost Field Supervisor', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'crm.lead@arsalynk.id', username: 'crm.lead', name: 'Ghost CRM & Commercial Lead', isSuper: false, roleCode: 'ROLE-CRM-LEAD', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'sales@arsalynk.id', username: 'sales', name: 'Ghost Commercial & Sales Staff', isSuper: false, roleCode: 'ROLE-SALES', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'finance.lead@arsalynk.id', username: 'finance.lead', name: 'Ghost Finance Controller', isSuper: false, roleCode: 'ROLE-FINANCE', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'dummy.finance@example.com', username: 'dummy.finance', name: 'Ghost AP & AR Specialist', isSuper: false, roleCode: 'ROLE-FINANCE', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'estimator@arsalynk.id', username: 'estimator', name: 'Ghost Cost Estimator', isSuper: false, roleCode: 'ROLE-PM', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'staff.dev@arsalynk.id', username: 'staff.dev', name: 'Ghost Technical & Dev Staff', isSuper: false, roleCode: 'ROLE-STAFF', tenantId: tenantGhost.id, companyId: compGhost.id },
   ];
 
   const userMap = new Map<string, any>();
-  for (const u of demoUsers) {
+  for (const u of officialUsers) {
     const existing = await prisma.iam_user.findFirst({
       where: { OR: [{ email: u.email }, { username: u.username }] },
     });
@@ -112,6 +157,9 @@ async function main() {
       user = await prisma.iam_user.update({
         where: { id: existing.id },
         data: {
+          tenant_id: u.tenantId,
+          email: u.email,
+          username: u.username,
           password_hash: passwordHash,
           full_name: u.name,
           is_active: true,
@@ -124,7 +172,7 @@ async function main() {
       user = await prisma.iam_user.create({
         data: {
           id: crypto.randomUUID(),
-          tenant_id: tenant.id,
+          tenant_id: u.tenantId,
           email: u.email,
           username: u.username,
           full_name: u.name,
@@ -150,9 +198,14 @@ async function main() {
             id: crypto.randomUUID(),
             user_id: user.id,
             role_id: role.id,
-            company_id: company.id,
+            company_id: u.companyId,
             organization_id: orgHQ.id,
           },
+        });
+      } else {
+        await prisma.iam_user_role.update({
+          where: { id: existingUR.id },
+          data: { company_id: u.companyId },
         });
       }
     }

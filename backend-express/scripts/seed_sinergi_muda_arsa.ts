@@ -6,12 +6,12 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('=== MIGRATING & SEEDING PT SINERGI MUDA ARSA ===');
 
-  // 1. Ensure Tenant & Primary Company for PT Sinergi Muda Arsa
-  let tenant = await prisma.core_tenant.findFirst({ where: { code: 'SINERGI_MUDA_ARSA' } });
-  if (!tenant) {
-    tenant = await prisma.core_tenant.create({
+  // 1. Ensure Tenant & Primary Companies
+  let tenantSMA = await prisma.core_tenant.findFirst({ where: { code: 'SINERGI_MUDA_ARSA' } });
+  if (!tenantSMA) {
+    tenantSMA = await prisma.core_tenant.create({
       data: {
-        id: crypto.randomUUID(),
+        id: '00000000-0000-0000-0000-000000000001',
         code: 'SINERGI_MUDA_ARSA',
         name: 'PT Sinergi Muda Arsa',
         status: 'ACTIVE',
@@ -19,22 +19,13 @@ async function main() {
     });
   }
 
-  // Rename or ensure ghost company for PT Coba Arsalynk
-  await prisma.core_company.updateMany({
-    where: { company_code: { in: ['ARSA-001', 'ARSALYNK'] } },
-    data: {
-      legal_name: 'PT Coba Arsalynk (Demo/Ghost)',
-      status: 'INACTIVE',
-    },
-  });
-
-  // Ensure active company PT Sinergi Muda Arsa
+  // Ensure active company PT Sinergi Muda Arsa (SMA)
   let companySMA = await prisma.core_company.findFirst({ where: { company_code: 'SMA' } });
   if (!companySMA) {
     companySMA = await prisma.core_company.create({
       data: {
         id: '10000000-0000-0000-0000-000000000001',
-        tenant_id: tenant.id,
+        tenant_id: tenantSMA.id,
         company_code: 'SMA',
         legal_name: 'PT Sinergi Muda Arsa',
         tax_number: '03.881.992.1-512.000',
@@ -52,6 +43,30 @@ async function main() {
     });
   }
 
+  // Ensure active company PT Arsalynk Technology Indonesia (ARSALYNK)
+  let companyArsalynk = await prisma.core_company.findFirst({ where: { company_code: 'ARSALYNK' } });
+  if (!companyArsalynk) {
+    companyArsalynk = await prisma.core_company.create({
+      data: {
+        id: '10000000-0000-0000-0000-000000000010',
+        tenant_id: tenantSMA.id,
+        company_code: 'ARSALYNK',
+        legal_name: 'PT Arsalynk Technology Indonesia',
+        tax_number: '01.234.567.8-001.000',
+        fiscal_year_start: new Date('2026-01-01'),
+        status: 'ACTIVE',
+      },
+    });
+  } else {
+    companyArsalynk = await prisma.core_company.update({
+      where: { id: companyArsalynk.id },
+      data: {
+        legal_name: 'PT Arsalynk Technology Indonesia',
+        status: 'ACTIVE',
+      },
+    });
+  }
+
   // Ensure Organization HQ for SMA
   let orgSMA = await prisma.core_organization.findFirst({
     where: { organization_code: 'ORG-SMA-HQ' },
@@ -60,7 +75,7 @@ async function main() {
     orgSMA = await prisma.core_organization.create({
       data: {
         id: crypto.randomUUID(),
-        tenant_id: tenant.id,
+        tenant_id: tenantSMA.id,
         company_id: companySMA.id,
         organization_code: 'ORG-SMA-HQ',
         organization_name: 'Kantor Pusat PT Sinergi Muda Arsa',
@@ -72,14 +87,14 @@ async function main() {
 
   // 2. Link all team users to PT Sinergi Muda Arsa
   const teamEmails = [
-    'rian.destianto@arsalynk.id',
-    'melika.citra@arsalynk.id',
-    'melika.ops@arsalynk.id',
-    'arof.fudding@arsalynk.id',
-    'arof.finance@arsalynk.id',
-    'laode.fahmi@arsalynk.id',
-    'jundy.isham@arsalynk.id',
-    'noorman.perdana@arsalynk.id',
+    'rian@arsalynk.com',
+    'melika@arsalynk.com',
+    'melika.ops@arsalynk.com',
+    'arof@arsalynk.com',
+    'arof.finance@arsalynk.com',
+    'laode@arsalynk.com',
+    'jundy@arsalynk.com',
+    'noorman@arsalynk.com',
   ];
 
   const teamUsers = await prisma.iam_user.findMany({
@@ -89,7 +104,7 @@ async function main() {
   for (const u of teamUsers) {
     await prisma.iam_user.update({
       where: { id: u.id },
-      data: { tenant_id: tenant.id },
+      data: { tenant_id: tenantSMA.id, status: 'ACTIVE', is_active: true },
     });
     await prisma.iam_user_role.updateMany({
       where: { user_id: u.id },
@@ -100,25 +115,20 @@ async function main() {
     });
   }
 
-  // 3. Mark old prototype projects as Archived/Demo
+  // Ensure all projects are ACTIVE and visible
   await prisma.project_project.updateMany({
-    where: {
-      NOT: {
-        project_code: { in: ['PRJ-SMA-2026-001', 'PRJ-SMA-2026-002', 'PRJ-SMA-2026-003'] },
-      },
-    },
     data: {
-      status: 'ARCHIVED',
-      lifecycle_status: 'CLOSED',
+      status: 'STARTED',
+      lifecycle_status: 'STARTED',
     },
   });
 
   // Fetch PM and Field Assignees
-  const melika = teamUsers.find((u) => u.email === 'melika.citra@arsalynk.id') ?? teamUsers[0];
-  const arof = teamUsers.find((u) => u.email === 'arof.fudding@arsalynk.id') ?? teamUsers[0];
-  const laode = teamUsers.find((u) => u.email === 'laode.fahmi@arsalynk.id') ?? teamUsers[0];
-  const jundy = teamUsers.find((u) => u.email === 'jundy.isham@arsalynk.id') ?? teamUsers[0];
-  const noorman = teamUsers.find((u) => u.email === 'noorman.perdana@arsalynk.id') ?? teamUsers[0];
+  const melika = teamUsers.find((u) => u.email === 'melika@arsalynk.com') ?? teamUsers[0];
+  const arof = teamUsers.find((u) => u.email === 'arof@arsalynk.com') ?? teamUsers[0];
+  const laode = teamUsers.find((u) => u.email === 'laode@arsalynk.com') ?? teamUsers[0];
+  const jundy = teamUsers.find((u) => u.email === 'jundy@arsalynk.com') ?? teamUsers[0];
+  const noorman = teamUsers.find((u) => u.email === 'noorman@arsalynk.com') ?? teamUsers[0];
 
   // 4. Create the 3 Official Real Projects for PT Sinergi Muda Arsa
   const projectsData = [
@@ -277,7 +287,7 @@ async function main() {
       proj = await prisma.project_project.create({
         data: {
           id: crypto.randomUUID(),
-          tenant_id: tenant.id,
+          tenant_id: tenantSMA.id,
           company_id: companySMA.id,
           project_code: pd.code,
           project_name: pd.name,
