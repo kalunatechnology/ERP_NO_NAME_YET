@@ -313,7 +313,7 @@ function LoginFormContent() {
                   {...register("name")}
                   placeholder="Nama"
                   autoComplete="name"
-                  className="w-full h-[42px] lg:h-[44px] rounded-[11px] bg-[#FDFDFD] border border-[#5A861F] focus:border-[#275433] px-3.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-hidden transition-all shadow-2xs"
+                  className="w-full h-[42px] lg:h-[44px] rounded-[11px] bg-[#FDFDFD] border border-[#5A861F] focus:border-[#275433] px-3.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none transition-all shadow-2xs"
                 />
               </div>
 
@@ -327,7 +327,7 @@ function LoginFormContent() {
                   {...register("email", { required: "Email wajib diisi" })}
                   placeholder="Email"
                   autoComplete="username"
-                  className="w-full h-[42px] lg:h-[44px] rounded-[11px] bg-white border border-[#5A861F] focus:border-[#275433] px-3.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-hidden transition-all shadow-2xs"
+                  className="w-full h-[42px] lg:h-[44px] rounded-[11px] bg-white border border-[#5A861F] focus:border-[#275433] px-3.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none transition-all shadow-2xs"
                 />
                 {errors.email && (
                   <span className="text-[11px] text-red-500">
@@ -349,7 +349,7 @@ function LoginFormContent() {
                     })}
                     autoComplete="current-password"
                     placeholder="Password"
-                    className="w-full h-[42px] lg:h-[44px] rounded-[11px] bg-white border border-[#5A861F] focus:border-[#275433] px-3.5 pr-10 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-hidden transition-all shadow-2xs"
+                    className="w-full h-[42px] lg:h-[44px] rounded-[11px] bg-white border border-[#5A861F] focus:border-[#275433] px-3.5 pr-10 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none transition-all shadow-2xs"
                   />
                   <button
                     type="button"

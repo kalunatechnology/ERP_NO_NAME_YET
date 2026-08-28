@@ -243,7 +243,7 @@ export default function SignUpPage() {
                     placeholder="Contoh: Rian Destianto"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full h-10 pl-10 pr-3.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:outline-hidden focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all"
+                    className="w-full h-10 pl-10 pr-3.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all"
                   />
                 </div>
               </div>
@@ -261,7 +261,7 @@ export default function SignUpPage() {
                       placeholder="nama@arsalynk.id"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full h-10 pl-10 pr-3.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:outline-hidden focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all"
+                      className="w-full h-10 pl-10 pr-3.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all"
                     />
                   </div>
                 </div>
@@ -277,7 +277,7 @@ export default function SignUpPage() {
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full h-full px-3 text-xs bg-transparent text-slate-800 focus:outline-hidden"
+                      className="w-full h-full px-3 text-xs bg-transparent text-slate-800 focus:outline-none"
                       placeholder="81234567890"
                     />
                   </div>
@@ -341,7 +341,7 @@ export default function SignUpPage() {
                       placeholder="Minimal 6 karakter"
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full h-10 pl-10 pr-10 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:outline-hidden focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all"
+                      className="w-full h-10 pl-10 pr-10 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all"
                     />
                     <button
                       type="button"
@@ -366,7 +366,7 @@ export default function SignUpPage() {
                       value={formData.confirmPassword}
                       onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                       className={cn(
-                        "w-full h-10 pl-10 pr-10 text-xs rounded-xl bg-slate-50 border text-slate-800 focus:bg-white focus:outline-hidden transition-all",
+                        "w-full h-10 pl-10 pr-10 text-xs rounded-xl bg-slate-50 border text-slate-800 focus:bg-white focus:outline-none transition-all",
                         formData.confirmPassword && formData.password !== formData.confirmPassword
                           ? "border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-500"
                           : "border-slate-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"

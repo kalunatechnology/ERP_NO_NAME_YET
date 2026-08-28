@@ -183,7 +183,7 @@ accountsRouter.post('/update-profile', authenticate, async (req: Request, res: R
   }
 });
 
-// REST ViewSets
+// REST ViewSets under /accounts
 accountsRouter.use('/users', createCrudRouter({ modelName: 'iam_user', searchFields: ['email', 'username', 'full_name'] }));
 accountsRouter.use('/roles', createCrudRouter({ modelName: 'iam_role', searchFields: ['role_code', 'role_name'] }));
 accountsRouter.use('/permissions', createCrudRouter({ modelName: 'iam_permission', searchFields: ['permission_code', 'module_code', 'resource_name'] }));
@@ -196,3 +196,18 @@ accountsRouter.use('/field-permissions', createCrudRouter({ modelName: 'iam_fiel
 accountsRouter.use('/information-share-rules', createCrudRouter({ modelName: 'iam_information_share_rule' }));
 accountsRouter.use('/approval-limits', createCrudRouter({ modelName: 'iam_approval_limit' }));
 accountsRouter.use('/user-project-accesses', createCrudRouter({ modelName: 'iam_user_project_access' }));
+
+// REST ViewSets under /auth (e.g. /api/v1/auth/users/)
+authRouter.use('/users', createCrudRouter({ modelName: 'iam_user', searchFields: ['email', 'username', 'full_name'] }));
+authRouter.use('/roles', createCrudRouter({ modelName: 'iam_role', searchFields: ['role_code', 'role_name'] }));
+authRouter.use('/permissions', createCrudRouter({ modelName: 'iam_permission', searchFields: ['permission_code', 'module_code', 'resource_name'] }));
+authRouter.use('/user-roles', createCrudRouter({ modelName: 'iam_user_role' }));
+authRouter.use('/role-permissions', createCrudRouter({ modelName: 'iam_role_permission' }));
+authRouter.use('/role-hierarchies', createCrudRouter({ modelName: 'iam_role_hierarchy' }));
+authRouter.use('/data-scope-policies', createCrudRouter({ modelName: 'iam_data_scope_policy', searchFields: ['policy_code', 'module_code'] }));
+authRouter.use('/role-data-scopes', createCrudRouter({ modelName: 'iam_role_data_scope' }));
+authRouter.use('/field-permissions', createCrudRouter({ modelName: 'iam_field_permission', searchFields: ['module_code', 'field_name'] }));
+authRouter.use('/information-share-rules', createCrudRouter({ modelName: 'iam_information_share_rule' }));
+authRouter.use('/approval-limits', createCrudRouter({ modelName: 'iam_approval_limit' }));
+authRouter.use('/user-project-accesses', createCrudRouter({ modelName: 'iam_user_project_access' }));
+

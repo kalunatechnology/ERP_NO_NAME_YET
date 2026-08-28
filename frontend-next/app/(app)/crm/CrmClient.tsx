@@ -24,6 +24,7 @@ import {
 } from "@/lib/api/crm.api";
 import api from "@/lib/api/axios";
 import { feedApi } from "@/lib/api/feed.api";
+import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
 
 /* ── Tabs Configuration ──────────────────────────── */
 const CRM_TABS = [
@@ -414,9 +415,9 @@ function TabDeals({
   };
 
   return (
-    <div className="grid grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
       {/* Opportunities (col span 3) */}
-      <div className="col-span-3 card rounded-xl p-4">
+      <div className="lg:col-span-3 card rounded-xl p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
             <h3 className="text-sm font-bold text-text-primary">Deal Pipeline & Closed Won</h3>
@@ -538,7 +539,7 @@ function TabDeals({
       </div>
 
       {/* Credit Management (col span 2) */}
-      <div className="col-span-2 card rounded-xl p-4">
+      <div className="lg:col-span-2 card rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-text-primary">Credit Management</h3>
           <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-2xs font-bold">{(data.parties||[]).length} Customer</span>
@@ -713,9 +714,9 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
   };
 
   return (
-    <div className="grid grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
       {/* Cost Estimates */}
-      <div className="col-span-3 card rounded-xl p-4">
+      <div className="lg:col-span-3 card rounded-xl p-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold">Cost Estimating (HPP & Margin)</h3>
           <div className="flex items-center gap-2">
@@ -748,7 +749,7 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
       </div>
 
       {/* Quotations */}
-      <div className="col-span-2 card rounded-xl p-4">
+      <div className="lg:col-span-2 card rounded-xl p-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold">Sales Quotations</h3>
           <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-2xs font-bold">{(data.quotations||[]).length} Dok</span>
@@ -832,8 +833,8 @@ function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefr
   };
 
   return (
-    <div className="grid grid-cols-5 gap-4">
-      <div className="col-span-3 card rounded-xl p-4">
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div className="lg:col-span-3 card rounded-xl p-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold">Tiket Support & Klaim Garansi</h3>
           <div className="flex items-center gap-2">
@@ -872,7 +873,7 @@ function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefr
         )}
       </div>
 
-      <div className="col-span-2 card rounded-xl p-4">
+      <div className="lg:col-span-2 card rounded-xl p-4">
         <h3 className="text-sm font-bold mb-3">Riwayat Solusi & Garansi</h3>
         {(data.resolutions||[]).length === 0 ? <EmptyState msg="Belum ada resolusi tercatat." /> : (
           <div className="flex flex-col gap-2">
@@ -1111,7 +1112,7 @@ function TabAccounts({ data }: { data: CRMData }) {
     <div className="card rounded-xl p-4">
       <h3 className="text-sm font-bold mb-4">Master Rekanan (Customers & Partners)</h3>
       {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada rekanan terdaftar." /> : (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(data.parties||[]).map(p => (
             <div key={p.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 hover:bg-bg-lighter">
               <div>
@@ -1135,7 +1136,7 @@ function TabAccounts({ data }: { data: CRMData }) {
 ══════════════════════════════════════════════════ */
 function TabContracts({ data }: { data: CRMData }) {
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div className="card rounded-xl p-4">
         <h3 className="text-sm font-bold mb-3">Sales Orders</h3>
         {(data.orders||[]).length === 0 ? <EmptyState msg="Belum ada sales order." /> : (
@@ -1180,7 +1181,7 @@ function TabEngagement({ data }: { data: CRMData }) {
     <div className="card rounded-xl p-4">
       <h3 className="text-sm font-bold mb-4">Customer Feedback & Review</h3>
       {(data.feedback||[]).length === 0 ? <EmptyState msg="Belum ada feedback customer." /> : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(data.feedback||[]).map(f => (
             <div key={f.id} className="p-3 rounded-xl border border-text-tertiary/60">
               <div className="flex items-center gap-1 mb-1">
@@ -1221,12 +1222,6 @@ export default function CrmClient() {
     userRole === "pm"
   );
 
-  useEffect(() => {
-    if (!authLoading && !isAllowed && user) {
-      router.replace("/error/403");
-    }
-  }, [authLoading, isAllowed, user, router]);
-
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -1261,7 +1256,20 @@ export default function CrmClient() {
     }
   }, [activeTab, isAllowed]);
 
-  if (authLoading || !isAllowed) {
+  // Render inline Access Denied if user role has no permission
+  if (!authLoading && !isAllowed) {
+    return (
+      <AccessDeniedState
+        title="Akses Modul CRM Dibatasi"
+        description="Akun Anda tidak memiliki izin untuk mengelola modul CRM & Commercial. Hubungi tim administrator jika Anda memerlukan akses."
+        backHref="/dashboard"
+        backLabel="Kembali ke Dashboard"
+        section="CRM & Commercial"
+      />
+    );
+  }
+
+  if (authLoading) {
     return null;
   }
 

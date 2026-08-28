@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction, Router } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../config/database';
 import { paginateArray, parsePagination, sendDeleteSuccess } from './response';
 import { NotFoundError } from './errors';
@@ -15,6 +16,26 @@ export interface CrudOptions {
   afterUpdate?: (req: Request, record: any, before: any) => Promise<void> | void;
   afterDelete?: (req: Request, record: any) => Promise<void> | void;
   transform?: (record: any) => any;
+}
+
+// Cache model fields from Prisma DMMF
+const MODEL_FIELDS_CACHE = new Map<string, Set<string>>();
+
+export function getModelFields(modelName: string): Set<string> {
+  const key = String(modelName).toLowerCase();
+  if (MODEL_FIELDS_CACHE.has(key)) {
+    return MODEL_FIELDS_CACHE.get(key)!;
+  }
+  const model = Prisma.dmmf?.datamodel?.models?.find(
+    (m) => m.name.toLowerCase() === key
+  );
+  const fields = new Set<string>(model?.fields?.map((f) => f.name) || []);
+  MODEL_FIELDS_CACHE.set(key, fields);
+  return fields;
+}
+
+export function hasModelField(modelName: string, fieldName: string): boolean {
+  return getModelFields(modelName).has(fieldName);
 }
 
 /**
@@ -60,9 +81,10 @@ export function normalizeRecord(record: any, modelName?: string): any {
 export function createCrudRouter(options: CrudOptions): Router {
   const router = Router();
   const delegate = (prisma as any)[options.modelName];
+  const modelNameStr = String(options.modelName);
 
   const format = (rec: any) => {
-    let out = normalizeRecord(rec, String(options.modelName));
+    let out = normalizeRecord(rec, modelNameStr);
     if (options.transform) out = options.transform(out);
     return out;
   };
@@ -70,8 +92,8 @@ export function createCrudRouter(options: CrudOptions): Router {
   // 1. Metadata endpoint
   router.get('/metadata', (req: Request, res: Response) => {
     res.json({
-      model: String(options.modelName),
-      table: String(options.modelName),
+      model: modelNameStr,
+      table: modelNameStr,
       searchFields: options.searchFields ?? [],
     });
   });
@@ -83,12 +105,17 @@ export function createCrudRouter(options: CrudOptions): Router {
         res.status(400).json({ detail: 'Payload harus berupa list.' });
         return;
       }
+      const validFields = getModelFields(modelNameStr);
       const created = await prisma.$transaction(async (tx: any) => {
         const results = [];
         for (const item of req.body) {
           const payload = { ...item };
-          if (req.user?.tenant_id && !payload.tenant_id) payload.tenant_id = req.user.tenant_id;
-          if (req.companyId && !payload.company_id) payload.company_id = req.companyId;
+          if (req.user?.tenant_id && !payload.tenant_id && validFields.has('tenant_id')) {
+            payload.tenant_id = req.user.tenant_id;
+          }
+          if (req.companyId && !payload.company_id && validFields.has('company_id')) {
+            payload.company_id = req.companyId;
+          }
           const rec = await tx[options.modelName].create({ data: payload });
           results.push(format(rec));
         }
@@ -150,17 +177,18 @@ export function createCrudRouter(options: CrudOptions): Router {
     try {
       const { page, pageSize, skip } = parsePagination(req);
       const where: Record<string, any> = {};
+      const validFields = getModelFields(modelNameStr);
 
-      // Multi-tenant & Company isolation filters
+      // Multi-tenant & Company isolation filters (only if model supports them)
       const andConditions: any[] = [];
 
-      if (req.user?.tenant_id) {
+      if (req.user?.tenant_id && validFields.has('tenant_id')) {
         andConditions.push({
           tenant_id: req.user.tenant_id,
         });
       }
 
-      if (req.companyId && req.companyId !== 'all') {
+      if (req.companyId && req.companyId !== 'all' && validFields.has('company_id')) {
         andConditions.push({
           company_id: req.companyId,
         });
@@ -176,22 +204,34 @@ export function createCrudRouter(options: CrudOptions): Router {
           else if (key === 'weekly_task') resolvedKey = 'weekly_task_id';
           else if (key === 'owner') resolvedKey = 'owner_id';
           else if (key === 'assignee') resolvedKey = 'assignee_id';
+          else if (key === 'customer') resolvedKey = 'customer_party_id';
+          else if (key === 'vendor') resolvedKey = 'vendor_party_id';
+          else if (key === 'product') resolvedKey = 'product_id';
+          else if (key === 'warehouse') resolvedKey = 'warehouse_id';
 
-          if (val === 'true') where[resolvedKey] = true;
-          else if (val === 'false') where[resolvedKey] = false;
-          else if (val === 'null') where[resolvedKey] = null;
-          else where[resolvedKey] = val;
+          // Only include filter if field exists on model (or if cache is empty fallback)
+          if (validFields.size === 0 || validFields.has(resolvedKey)) {
+            if (val === 'true') where[resolvedKey] = true;
+            else if (val === 'false') where[resolvedKey] = false;
+            else if (val === 'null') where[resolvedKey] = null;
+            else where[resolvedKey] = val;
+          }
         }
       }
 
       // Search filter
       const search = req.query['search'] as string | undefined;
       if (search && options.searchFields?.length) {
-        andConditions.push({
-          OR: options.searchFields.map((field) => ({
-            [field]: { contains: search, mode: 'insensitive' },
-          })),
-        });
+        const applicableSearchFields = options.searchFields.filter(
+          (f) => validFields.size === 0 || validFields.has(f)
+        );
+        if (applicableSearchFields.length > 0) {
+          andConditions.push({
+            OR: applicableSearchFields.map((field) => ({
+              [field]: { contains: search, mode: 'insensitive' },
+            })),
+          });
+        }
       }
 
       if (andConditions.length > 0) {
@@ -204,10 +244,14 @@ export function createCrudRouter(options: CrudOptions): Router {
       if (ordering) {
         const isDesc = ordering.startsWith('-');
         const field = isDesc ? ordering.slice(1) : ordering;
-        orderBy[field] = isDesc ? 'desc' : 'asc';
-      } else if (options.defaultSort) {
+        if (validFields.size === 0 || validFields.has(field)) {
+          orderBy[field] = isDesc ? 'desc' : 'asc';
+        } else if (validFields.has('id')) {
+          orderBy['id'] = 'desc';
+        }
+      } else if (options.defaultSort && (validFields.size === 0 || validFields.has(options.defaultSort.field))) {
         orderBy[options.defaultSort.field] = options.defaultSort.order;
-      } else {
+      } else if (validFields.size === 0 || validFields.has('id')) {
         orderBy['id'] = 'desc';
       }
 
@@ -215,8 +259,10 @@ export function createCrudRouter(options: CrudOptions): Router {
         where,
         skip,
         take: pageSize,
-        orderBy,
       };
+      if (Object.keys(orderBy).length > 0) {
+        queryArgs.orderBy = orderBy;
+      }
       if (options.include) queryArgs.include = options.include;
 
       const [totalCount, items] = await Promise.all([
@@ -235,13 +281,15 @@ export function createCrudRouter(options: CrudOptions): Router {
   router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       let data = { ...req.body };
-      if (req.user?.tenant_id && !data.tenant_id) {
+      const validFields = getModelFields(modelNameStr);
+
+      if (req.user?.tenant_id && !data.tenant_id && validFields.has('tenant_id')) {
         data.tenant_id = req.user.tenant_id;
       }
-      if (req.companyId && !data.company_id) {
+      if (req.companyId && !data.company_id && validFields.has('company_id')) {
         data.company_id = req.companyId;
       }
-      if (req.user?.id && !data.created_by_id) {
+      if (req.user?.id && !data.created_by_id && validFields.has('created_by_id')) {
         data.created_by_id = req.user.id;
       }
 
@@ -269,7 +317,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       if (options.include) queryArgs.include = options.include;
 
       const record = await delegate.findUnique(queryArgs);
-      if (!record) throw new NotFoundError(String(options.modelName));
+      if (!record) throw new NotFoundError(modelNameStr);
       res.json(format(record));
     } catch (err) {
       next(err);
@@ -281,10 +329,11 @@ export function createCrudRouter(options: CrudOptions): Router {
     try {
       const { id } = req.params;
       const existing = await delegate.findUnique({ where: { id } });
-      if (!existing) throw new NotFoundError(String(options.modelName));
+      if (!existing) throw new NotFoundError(modelNameStr);
 
       let data = { ...req.body };
-      if (req.user?.id && !data.updated_by_id) {
+      const validFields = getModelFields(modelNameStr);
+      if (req.user?.id && !data.updated_by_id && validFields.has('updated_by_id')) {
         data.updated_by_id = req.user.id;
       }
       if (options.beforeUpdate) {
@@ -311,10 +360,11 @@ export function createCrudRouter(options: CrudOptions): Router {
     try {
       const { id } = req.params;
       const existing = await delegate.findUnique({ where: { id } });
-      if (!existing) throw new NotFoundError(String(options.modelName));
+      if (!existing) throw new NotFoundError(modelNameStr);
 
       let data = { ...req.body };
-      if (req.user?.id && !data.updated_by_id) {
+      const validFields = getModelFields(modelNameStr);
+      if (req.user?.id && !data.updated_by_id && validFields.has('updated_by_id')) {
         data.updated_by_id = req.user.id;
       }
       if (options.beforeUpdate) {
@@ -341,7 +391,7 @@ export function createCrudRouter(options: CrudOptions): Router {
     try {
       const { id } = req.params;
       const existing = await delegate.findUnique({ where: { id } });
-      if (!existing) throw new NotFoundError(String(options.modelName));
+      if (!existing) throw new NotFoundError(modelNameStr);
 
       await delegate.delete({ where: { id } });
 
@@ -357,3 +407,5 @@ export function createCrudRouter(options: CrudOptions): Router {
 
   return router;
 }
+
+export default createCrudRouter;

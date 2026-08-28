@@ -11,6 +11,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { loadAllProjects, Project } from "@/lib/api/project.api";
 import { loadFinanceDashboard, FinanceDashboardData } from "@/lib/api/finance.api";
+import { loadCRMData, CRMData, CRMDashboard as CRMDashType } from "@/lib/api/crm.api";
 import { formatMoney, formatDate, getStatusColor, cn } from "@/lib/utils";
 
 import { ProjectDistributionGauge } from "@/components/ui/ProjectDistributionGauge";
@@ -500,10 +501,10 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
       {/* ── Operational Control (Budget & Inventory Checking) ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
         <BudgetCheckStatusCard
-          materialBudget={kpis.totalBudget || 56000000}
-          allocationCost={kpis.usedBudget || 12500000}
-          remainingBudget={kpis.remainingBudget || 43500000}
-          isValid={(kpis.remainingBudget || 0) >= 0}
+          materialBudget={kpis.totalBudget ?? 56000000}
+          allocationCost={kpis.usedBudget ?? 12500000}
+          remainingBudget={kpis.totalBudget != null ? Math.max(0, kpis.totalBudget - (kpis.usedBudget ?? 0)) : 43500000}
+          isValid={(kpis.totalBudget ?? 0) >= (kpis.usedBudget ?? 0)}
         />
         <InventoryCheckingCard autoFetch={true} />
       </div>
@@ -913,29 +914,287 @@ function ExecutiveDashboard({ projects, finData, loading }: {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CRM / STAFF DASHBOARD (basic)
+   CRM DASHBOARD
 ═══════════════════════════════════════════════════════════════ */
 
-function CRMDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
+function CRMDashboard({
+  projects,
+  crmData,
+  crmDash,
+  loading
+}: {
+  projects: Project[];
+  crmData: CRMData | null;
+  crmDash: CRMDashType;
+  loading: boolean;
+}) {
   if (loading) return <LoadingDashboard />;
+
+  const opps = crmData?.opportunities || [];
+  const activeOpps = opps.filter(o => !["CANCELLED", "CANCEL", "BATAL"].includes((o.status || "").toUpperCase()));
+  const totalPipeline = activeOpps.reduce((acc, o) => acc + Number(o.expected_amount || 0), 0);
+  const winRate = Number(crmDash?.win_rate_percent || 0).toFixed(1);
+  const inquiries = crmData?.inquiries || [];
+  const tickets = crmData?.cases || [];
+
   return (
     <div className="flex flex-col gap-6 pb-8">
+      {/* ── KPI Row ── */}
       <section>
-        <SectionHeader title="Ringkasan" />
-        <div className="grid grid-cols-2 gap-3">
-          <KpiCard label="Total Proyek" value={projects.length} subLabel="semua" icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
-          <KpiCard label="Proyek Aktif" value={projects.filter(p => ["ACTIVE", "IN_PROGRESS"].includes((p.status || "").toUpperCase())).length}
-            subLabel="berjalan" icon={Activity} iconBg="#F0FDF4" iconColor="#16A34A" />
+        <SectionHeader title="Pipeline & Commercial Overview" actionLabel="Kelola CRM" actionHref="/crm" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard
+            label="Total Pipeline Deal"
+            value={formatMoney(totalPipeline || crmDash?.weighted_project_value || 0)}
+            subLabel={`${activeOpps.length} deal aktif`}
+            icon={DollarSign}
+            iconBg="#F0FDF4"
+            iconColor="#16A34A"
+          />
+          <KpiCard
+            label="Win Rate"
+            value={`${winRate}%`}
+            subLabel="peluang konversi"
+            icon={TrendingUp}
+            iconBg="#EFF6FF"
+            iconColor="#1D4ED8"
+          />
+          <KpiCard
+            label="Inquiry Masuk"
+            value={inquiries.length}
+            subLabel="prospek calon klien"
+            icon={Building2}
+            iconBg="#FAF5FF"
+            iconColor="#7E22CE"
+          />
+          <KpiCard
+            label="Kasus Support & Garansi"
+            value={tickets.length}
+            subLabel="layanan purnajual"
+            icon={ShieldAlert}
+            iconBg="#FEF2F2"
+            iconColor="#DC2626"
+          />
         </div>
       </section>
+
+      {/* ── Active Opportunities Table & Actions ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2 card rounded-xl p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-text-primary">Opportunity & Pipeline Penjualan Aktif</h3>
+            <Link href="/crm" className="text-xs font-semibold text-brand-green hover:underline">
+              Buka CRM &rarr;
+            </Link>
+          </div>
+          {activeOpps.length === 0 ? (
+            <div className="py-8 text-center text-xs text-text-secondary">
+              Belum ada opportunity aktif. Buka modul CRM untuk menambahkan prospek baru.
+            </div>
+          ) : (
+            <div className="table-scroll-wrapper">
+              <table className="w-full text-xs min-w-[500px]">
+                <thead>
+                  <tr className="border-b border-text-tertiary bg-gray-50/80 text-text-secondary font-semibold">
+                    <th className="py-2 px-3 text-left">Nama Opportunity</th>
+                    <th className="py-2 px-3 text-left">Tahap Pipeline</th>
+                    <th className="py-2 px-3 text-right">Nilai Estimasi</th>
+                    <th className="py-2 px-3 text-right">Probabilitas</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {activeOpps.slice(0, 6).map(o => (
+                    <tr key={o.id} className="hover:bg-brand-light-green/20">
+                      <td className="py-2 px-3 font-medium text-text-primary">
+                        <Link href="/crm" className="hover:underline text-brand-deep-green">
+                          {o.opportunity_name || `Opportunity #${o.id}`}
+                        </Link>
+                      </td>
+                      <td className="py-2 px-3">
+                        <StatusBadge status={o.pipeline_stage || o.status || "OPEN"} />
+                      </td>
+                      <td className="py-2 px-3 text-right font-bold text-text-primary">
+                        {formatMoney(o.expected_amount)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-brand-green font-bold">
+                        {o.probability_percent || 50}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ── Quick CRM Links & Projects ── */}
+        <div className="card rounded-xl p-4 flex flex-col gap-3 justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-text-primary mb-1">Aksi Cepat Commercial</h3>
+            <p className="text-2xs text-text-secondary mb-3">Pintasan ke modul negosiasi & penawaran</p>
+            <div className="flex flex-col gap-2">
+              <Link
+                href="/crm"
+                className="flex items-center justify-between p-2.5 rounded-xl border border-text-tertiary/60 hover:bg-brand-light-green/30 transition-colors text-xs font-semibold text-brand-deep-green"
+              >
+                <span>➕ Buat Opportunity / Deal</span>
+                <ArrowRight size={13} />
+              </Link>
+              <Link
+                href="/crm"
+                className="flex items-center justify-between p-2.5 rounded-xl border border-text-tertiary/60 hover:bg-brand-light-green/30 transition-colors text-xs font-semibold text-brand-deep-green"
+              >
+                <span>📐 Kalkulasi Estimasi HPP & Quotation</span>
+                <ArrowRight size={13} />
+              </Link>
+              <Link
+                href="/projects"
+                className="flex items-center justify-between p-2.5 rounded-xl border border-text-tertiary/60 hover:bg-brand-light-green/30 transition-colors text-xs font-semibold text-brand-deep-green"
+              >
+                <span>📁 Lihat Daftar Proyek Terkait ({projects.length})</span>
+                <ArrowRight size={13} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STAFF DASHBOARD
+═══════════════════════════════════════════════════════════════ */
+
+function StaffDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
+  const today = new Date().toISOString().split("T")[0];
+
+  if (loading) return <LoadingDashboard />;
+
+  const allDailyTasks = projects.flatMap(p =>
+    (p.main_tasks || []).flatMap(mt =>
+      (mt.weekly_tasks || mt.weekly_plans || []).flatMap(wt =>
+        (wt.daily_tasks || []).map(d => ({
+          ...d,
+          projectName: p.project_name || p.name || `Proyek #${p.id}`,
+          projectCode: p.project_code || p.code || "PRJ",
+        }))
+      )
+    )
+  );
+
+  const todayTasks = allDailyTasks.filter(d => d.planned_date === today);
+  const completedToday = todayTasks.filter(d => ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase())).length;
+  const overdueTasks = allDailyTasks.filter(d => {
+    const pd = d.planned_date;
+    return pd && pd < today && !["COMPLETED", "DONE"].includes((d.status || "").toUpperCase());
+  });
+  const activeProjects = projects.filter(p => ["ACTIVE", "IN_PROGRESS", "STARTED"].includes((p.status || "").toUpperCase()));
+
+  return (
+    <div className="flex flex-col gap-6 pb-8">
+      {/* ── KPI Row ── */}
       <section>
-        <SectionHeader title="Proyek Terkait" actionLabel="Kelola CRM" actionHref="/crm" />
-        <div className="card rounded-xl p-4 text-center">
-          <Building2 size={40} className="mx-auto text-text-secondary opacity-30 mb-2" />
-          <p className="text-sm text-text-secondary mb-3">Akses modul CRM & Sales lengkap</p>
-          <Link href="/crm" className="btn-primary">Buka CRM & Sales</Link>
+        <SectionHeader title="Workspace Harian Saya" actionLabel="Kelola semua task" actionHref="/tasks" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard
+            label="Tugas Hari Ini"
+            value={todayTasks.length}
+            subLabel="sesi kerja terjadwal"
+            icon={CheckSquare}
+            iconBg="#EFF6FF"
+            iconColor="#1D4ED8"
+          />
+          <KpiCard
+            label="Selesai Hari Ini"
+            value={completedToday}
+            subLabel={`${todayTasks.length > 0 ? Math.round((completedToday / todayTasks.length) * 100) : 0}% tuntas`}
+            icon={CheckCircle2}
+            iconBg="#F0FDF4"
+            iconColor="#16A34A"
+          />
+          <KpiCard
+            label="Perlu Perhatian"
+            value={overdueTasks.length}
+            subLabel="tugas carry-over"
+            icon={AlertTriangle}
+            iconBg="#FEF2F2"
+            iconColor="#DC2626"
+            trend={overdueTasks.length > 0 ? { value: `${overdueTasks.length} terlambat`, up: false } : null}
+          />
+          <KpiCard
+            label="Proyek Aktif"
+            value={activeProjects.length}
+            subLabel="sedang berjalan"
+            icon={FolderKanban}
+            iconBg="#FAF5FF"
+            iconColor="#7E22CE"
+          />
         </div>
       </section>
+
+      {/* ── Today's Tasks List ── */}
+      <div className="card rounded-xl p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-text-primary">Daftar Aktivitas Terjadwal Hari Ini</h3>
+          <Link href="/tasks" className="text-xs font-semibold text-brand-green hover:underline">
+            Buka Task Manager &rarr;
+          </Link>
+        </div>
+        {todayTasks.length === 0 ? (
+          <div className="py-8 text-center text-xs text-text-secondary flex flex-col items-center gap-2">
+            <CheckCircle2 size={28} className="opacity-30 text-brand-green" />
+            <span>Tidak ada tugas terjadwal khusus hari ini. Periksa daftar tugas di Task Manager.</span>
+            <Link href="/tasks" className="btn-primary mt-2 text-xs py-1.5 px-3">Buka Semua Task</Link>
+          </div>
+        ) : (
+          <div className="table-scroll-wrapper">
+            <table className="w-full text-xs min-w-[500px]">
+              <thead>
+                <tr className="border-b border-text-tertiary bg-gray-50/80 text-text-secondary font-semibold">
+                  <th className="py-2 px-3 text-left">Proyek</th>
+                  <th className="py-2 px-3 text-left">Aktivitas / Sesi Kerja</th>
+                  <th className="py-2 px-3 text-left">Waktu</th>
+                  <th className="py-2 px-3 text-left">Status</th>
+                  <th className="py-2 px-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {todayTasks.slice(0, 8).map(d => {
+                  const isDone = ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase());
+                  return (
+                    <tr key={d.id} className={cn("hover:bg-brand-light-green/20", isDone && "bg-emerald-50/30")}>
+                      <td className="py-2 px-3">
+                        <span className="font-semibold text-brand-deep-green block">{d.projectCode}</span>
+                        <span className="text-2xs text-text-secondary truncate max-w-32 block">{d.projectName}</span>
+                      </td>
+                      <td className="py-2 px-3">
+                        <span className={cn("font-medium block", isDone && "line-through text-text-secondary")}>
+                          {d.title || d.activity_input || "Aktivitas"}
+                        </span>
+                        {d.output_result && (
+                          <span className="text-2xs text-emerald-800 block">Output: {d.output_result}</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-text-secondary whitespace-nowrap">
+                        {d.time_slot || "Hari ini"}
+                      </td>
+                      <td className="py-2 px-3">
+                        <StatusBadge status={d.status || "PENDING"} />
+                      </td>
+                      <td className="py-2 px-3 text-right whitespace-nowrap">
+                        <Link href="/tasks" className="btn-ghost text-xs py-1 px-2 text-brand-green">
+                          Kelola &rarr;
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -948,6 +1207,8 @@ export default function DashboardClient() {
   const { userRole, user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [finData, setFinData] = useState<FinanceDashboardData | null>(null);
+  const [crmData, setCrmData] = useState<CRMData | null>(null);
+  const [crmDash, setCrmDash] = useState<CRMDashType>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -963,6 +1224,13 @@ export default function DashboardClient() {
       if (userRole === "finance" || userRole === "executive") {
         const fin = await loadFinanceDashboard().catch(() => null);
         setFinData(fin);
+      }
+
+      // Load CRM data for crm & executive roles
+      if (userRole === "crm" || userRole === "executive") {
+        const crm = await loadCRMData().catch(() => ({ data: null, dashboard: {} }));
+        setCrmData(crm.data);
+        setCrmDash(crm.dashboard || {});
       }
     } finally {
       setLoading(false);
@@ -980,7 +1248,7 @@ export default function DashboardClient() {
     pm: { title: "Project Manager Dashboard", subtitle: "Monitoring proyek & task operasional Anda" },
     finance: { title: "Finance Dashboard", subtitle: "Monitoring keuangan, anggaran & approval" },
     crm: { title: "CRM & Sales Dashboard", subtitle: "Monitoring pipeline, deal & aktivitas CRM" },
-    staff: { title: "Dashboard", subtitle: "Ringkasan aktivitas Anda" },
+    staff: { title: "Personal Workspace", subtitle: "Ringkasan tugas & jadwal harian Anda" },
   };
 
   const { title, subtitle } = titles[userRole] || titles.staff;
@@ -1017,8 +1285,16 @@ export default function DashboardClient() {
       {userRole === "finance" && (
         <FinanceDashboard finData={finData} loading={loading} />
       )}
-      {(userRole === "crm" || userRole === "staff") && (
-        <CRMDashboard projects={projects} loading={loading} />
+      {userRole === "crm" && (
+        <CRMDashboard
+          projects={projects}
+          crmData={crmData}
+          crmDash={crmDash}
+          loading={loading}
+        />
+      )}
+      {userRole === "staff" && (
+        <StaffDashboard projects={projects} loading={loading} />
       )}
     </div>
   );

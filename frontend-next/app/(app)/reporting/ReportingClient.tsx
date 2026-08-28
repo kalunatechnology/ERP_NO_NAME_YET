@@ -424,20 +424,20 @@ export default function ReportingClient() {
   return (
     <div className="flex flex-col gap-5">
       {/* ── Header ─────────────────────────── */}
-      <div className="card rounded-2xl p-5 flex items-center justify-between flex-wrap gap-4" style={{ background: "linear-gradient(135deg, #fcfaff, #f3edff)", border: "1px solid #a488f2" }}>
+      <div className="card rounded-2xl p-5 flex items-center justify-between flex-wrap gap-4 border border-text-tertiary bg-white">
         <div>
-          <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Executive Intelligence</div>
+          <div className="text-2xs font-bold text-brand-green uppercase tracking-wider mb-1">Executive & Financial Intelligence</div>
           <h1 className="text-xl font-bold text-text-primary">Pelaporan Laba/Rugi Proyek & Observabilitas Finansial</h1>
           <p className="text-xs text-text-secondary mt-0.5">Visibilitas real-time: Revenue, Biaya Aktual (Labor/Material), Gross Margin, dan General Ledger.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => handleExport("pdf")} className="btn-outline text-xs gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50">
+          <button onClick={() => handleExport("pdf")} className="btn-outline text-xs gap-1.5 border-brand-green/40 text-brand-deep-green hover:bg-brand-light-green">
             <FileText size={13} /> Cetak / PDF
           </button>
-          <button onClick={() => handleExport("csv")} className="btn-ghost text-xs gap-1.5">
+          <button onClick={() => handleExport("csv")} className="btn-ghost text-xs gap-1.5 text-text-secondary hover:text-text-primary">
             <Download size={13} /> Export CSV
           </button>
-          <button onClick={() => loadData(true)} disabled={refreshing} className="btn-ghost text-xs gap-1.5">
+          <button onClick={() => loadData(true)} disabled={refreshing} className="btn-ghost text-xs gap-1.5 text-text-secondary hover:text-text-primary">
             <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
             {refreshing ? "Memuat..." : "Segarkan"}
           </button>

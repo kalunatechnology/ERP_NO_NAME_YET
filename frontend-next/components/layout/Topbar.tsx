@@ -266,16 +266,16 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
 
           {/* User Profile Pop-up Menu */}
           {isUserMenuOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl border border-slate-200 shadow-card-lg py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl border border-text-tertiary shadow-card-lg py-2 z-50 animate-in fade-in zoom-in-95 duration-150 ease-out">
               {/* User Header */}
-              <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#F0FEE0] border border-[#BBDFA0] flex items-center justify-center text-sm font-bold text-[#275433]">
+              <div className="px-4 py-3 border-b border-text-tertiary/60 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-brand-light-green border border-brand-green/30 flex items-center justify-center text-sm font-bold text-brand-deep-green">
                   {initial}
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-bold text-slate-800 truncate">{displayName}</span>
-                  <span className="text-[11px] text-slate-500 truncate font-mono">{user?.email}</span>
-                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md mt-1 w-fit border border-emerald-100">
+                  <span className="text-xs font-bold text-text-primary truncate">{displayName}</span>
+                  <span className="text-2xs text-text-secondary truncate font-mono">{user?.email}</span>
+                  <span className="badge badge-success text-3xs mt-1 w-fit">
                     {roleName}
                   </span>
                 </div>
@@ -288,21 +288,21 @@ export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
                     setIsUserMenuOpen(false);
                     setIsSettingsModalOpen(true);
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-emerald-800 transition-colors text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-text-primary hover:bg-bg-light hover:text-brand-deep-green transition-colors text-left cursor-pointer active:scale-[0.99]"
                 >
-                  <KeyRound size={15} className="text-slate-400" />
+                  <KeyRound size={15} className="text-text-secondary" />
                   <span>Ganti Password & Ubah Profil</span>
                 </button>
               </div>
 
               {/* Log Out */}
-              <div className="p-1.5 pt-1 border-t border-slate-100">
+              <div className="p-1.5 pt-1 border-t border-text-tertiary/60">
                 <button
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     logout();
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors text-left cursor-pointer active:scale-[0.99]"
                 >
                   <LogOut size={15} />
                   <span>Log Out Sesi</span>

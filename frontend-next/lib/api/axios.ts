@@ -137,13 +137,8 @@ api.interceptors.response.use(
       }
     }
 
-    if (
-      status === 403 &&
-      typeof window !== "undefined" &&
-      !window.location.pathname.includes("/error/")
-    ) {
-      window.location.href = "/error/403";
-    }
+    // 403 — do NOT redirect globally; let the calling component handle it inline
+    // with a graceful AccessDenied state so the user stays on the current page.
 
     return Promise.reject(error);
   }

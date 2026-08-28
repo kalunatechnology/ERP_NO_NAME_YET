@@ -427,8 +427,11 @@ export async function fetchRealAlertsList(userRole?: string, isAdmin?: boolean):
     }
 
     // 2. Add real active project alerts if needed
-    if (alerts.length < 3 && projects.length > 0) {
-      projects.slice(0, 3 - alerts.length).forEach((p: any) => {
+    // Exclude ghost/archived/test projects from dashboard alerts
+    const EXCLUDED_STATUSES = ["GHOST_ARCHIVED", "GHOST_DRAFT", "GHOST_SUSPENDED", "ARCHIVED", "CANCELLED"];
+    const activeProjects = projects.filter((p: any) => !EXCLUDED_STATUSES.includes(p.status));
+    if (alerts.length < 3 && activeProjects.length > 0) {
+      activeProjects.slice(0, 3 - alerts.length).forEach((p: any) => {
         const clientText = p.customer_name || p.client_name ? ` (${p.customer_name || p.client_name})` : "";
         alerts.push({
           id: `prj-alert-${p.id}`,
@@ -527,23 +530,73 @@ export async function fetchRealInventoryCheckingData(): Promise<RealInventoryChe
 
     if (balances.length > 0) {
       const topBal = balances[0];
-      const prod = products.find((p: any) => p.id === topBal.product || p.product_code === topBal.product_code);
-      return {
-        itemName: prod?.name || topBal.product_name || topBal.product_code || 'Joint Copper Pipe 3"',
-        warehouseCode: topBal.warehouse_code || topBal.warehouse || "WH1-CGK",
-        stockAvailable: Number(topBal.quantity_on_hand || topBal.available_qty || 2500),
-        stockNeeded: Number(topBal.allocated_qty || topBal.reserved_quantity || 1000),
-        unit: prod?.uom || topBal.uom || "units",
-      };
+
+      // Try to match product by id — API returns product as UUID string in `product` field
+      const productId = topBal.product_id || topBal.product;
+      const prod = products.find(
+        (p: any) =>
+          p.id === productId ||
+          p.id === topBal.product_code ||
+          p.product_code === topBal.product_code
+      );
+
+      // Resolve item name: prefer DB product name → stock balance product name → product code → first product in list → fallback
+      const itemName =
+        prod?.product_name ||
+        prod?.name ||
+        topBal.product_name ||
+        topBal.product_code ||
+        products[0]?.product_name ||
+        products[0]?.name ||
+        'Joint Copper Pipe 3"';
+
+      // Resolve warehouse: prefer warehouse_code → warehouse_location_id (abbreviated) → fallback
+      const warehouseRaw =
+        topBal.warehouse_code ||
+        topBal.warehouse_name ||
+        topBal.warehouse ||
+        topBal.warehouse_location_id;
+      const warehouseCode = warehouseRaw
+        ? String(warehouseRaw).length > 12
+          ? `WH-${String(warehouseRaw).slice(0, 6).toUpperCase()}`
+          : String(warehouseRaw).toUpperCase()
+        : "WH1-CGK";
+
+      // Resolve quantities — API uses available_quantity / reserved_quantity / on_hand_quantity
+      const stockAvailable = Number(
+        topBal.available_quantity ??
+        topBal.available_qty ??
+        topBal.quantity_on_hand ??
+        topBal.on_hand_quantity ??
+        0
+      );
+      const stockNeeded = Number(
+        topBal.reserved_quantity ??
+        topBal.allocated_qty ??
+        topBal.needed_quantity ??
+        0
+      );
+
+      // Only return DB data if we have meaningful values
+      if (itemName && (stockAvailable > 0 || stockNeeded > 0)) {
+        return {
+          itemName,
+          warehouseCode,
+          stockAvailable,
+          stockNeeded,
+          unit: prod?.base_uom || prod?.uom || topBal.uom || "units",
+        };
+      }
     }
 
+    // If stock balances are empty but we have products — show first product with zeroed stock
     if (products.length > 0) {
       const p = products[0];
       return {
-        itemName: p.name || 'Joint Copper Pipe 3"',
+        itemName: p.product_name || p.name || 'Joint Copper Pipe 3"',
         warehouseCode: "WH1-CGK",
-        stockAvailable: 2500,
-        stockNeeded: 1000,
+        stockAvailable: 0,
+        stockNeeded: 0,
         unit: p.uom || "units",
       };
     }

@@ -6,18 +6,20 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { RightPanel } from "@/components/ui/RightPanel";
+import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
 import { PanelRightOpen } from "lucide-react";
 
 interface AppShellProps {
   children: ReactNode;
 }
 
-// Role permission mapping
+// Role permission mapping — include ALL role code variants from detectRole() and backend
 const RESTRICTED_ROUTES: Record<string, string[]> = {
-  "/crm":       ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "CRM_LEAD", "CRM_MANAGER", "PM", "PROJECT_MANAGER", "ROLE_PROJECT_MANAGER", "ROLE-PM"],
-  "/finance":   ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "FINANCE_LEAD", "FINANCE_MANAGER"],
-  "/reporting": ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "PM", "FINANCE_LEAD"],
+  "/crm":       ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "CRM_LEAD", "CRM_MANAGER", "CRM_STAFF", "CRM", "SALES", "MANAGER", "PM", "PROJECT_MANAGER", "ROLE_PROJECT_MANAGER", "ROLE-PM", "ROLE-MANAGER", "ROLE-STAFF", "ROLE-CRM", "crm", "pm", "executive"],
+  "/finance":   ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "FINANCE_LEAD", "FINANCE_MANAGER", "FINANCE_APPROVER", "FINANCE_STAFF", "FINANCE", "ACCOUNTING", "ACCOUNTING_FINANCE", "AP_AR", "AP", "AR", "ROLE-FINANCE", "ROLE-APAR", "finance", "executive"],
+  "/reporting": ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "PM", "PROJECT_MANAGER", "FINANCE_LEAD", "FINANCE", "ACCOUNTING_FINANCE", "ROLE-FINANCE", "ROLE-PM", "finance", "pm", "executive"],
 };
+
 
 export function AppShell({ children }: AppShellProps) {
   const { user, userRole, isAdmin, isLoading, isAuthenticated } = useAuth();
@@ -81,14 +83,10 @@ export function AppShell({ children }: AppShellProps) {
     requiredRoles.some((role) => userRolesList.includes(role.toUpperCase()));
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated && !hasAccess) router.replace("/error/403");
-  }, [isLoading, isAuthenticated, hasAccess, router]);
-
-  useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace("/login");
   }, [isAuthenticated, isLoading, router]);
 
-  if (isLoading || !isAuthenticated || !hasAccess) return null;
+  if (isLoading || !isAuthenticated) return null;
 
   return (
     <div className="flex flex-row h-screen w-screen overflow-hidden bg-bg-lighter">
@@ -147,7 +145,17 @@ export function AppShell({ children }: AppShellProps) {
             role="main"
           >
             <div className="p-3.5 sm:p-5 lg:p-6 w-full max-w-[1600px] mx-auto">
-              {children}
+              {!hasAccess ? (
+                <AccessDeniedState
+                  title="Akses Dibatasi"
+                  description="Akun Anda saat ini tidak memiliki izin yang cukup untuk mengakses modul ini. Silakan hubungi administrator atau beralih ke modul yang sesuai."
+                  backHref="/dashboard"
+                  backLabel="Kembali ke Dashboard"
+                  section={pathname.replace("/", "").toUpperCase()}
+                />
+              ) : (
+                children
+              )}
             </div>
           </main>
 

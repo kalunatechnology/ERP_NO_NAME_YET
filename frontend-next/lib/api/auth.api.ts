@@ -69,6 +69,81 @@ export const DEMO_PROFILES: UserProfile[] = [
     full_name: "M Noorman Perdana",
     roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Project Assignee" }],
   },
+  /* ── 10 Ghost Demo Personas ── */
+  {
+    id: "e0000000-0000-0000-0000-000000000010",
+    email: "admin.director@arsalynk.id",
+    username: "admin.director",
+    full_name: "Ghost Admin System",
+    is_superuser: true,
+    is_staff: true,
+    roles: [{ role: "EXECUTIVE", role_code: "ROLE-ADMIN", role_name: "Ghost Admin System" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000011",
+    email: "director@arsalynk.id",
+    username: "director",
+    full_name: "Ghost Executive Director",
+    is_superuser: true,
+    is_staff: true,
+    roles: [{ role: "EXECUTIVE", role_code: "ROLE-DIRECTOR", role_name: "Ghost Executive Director" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000012",
+    email: "pm.lead@arsalynk.id",
+    username: "pm.lead",
+    full_name: "Ghost Lead Project Manager",
+    roles: [{ role: "PROJECT_MANAGER", role_code: "ROLE-PM", role_name: "Ghost Lead Project Manager" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000013",
+    email: "supervisor@arsalynk.id",
+    username: "supervisor",
+    full_name: "Ghost Field Supervisor",
+    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Ghost Field Supervisor" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000014",
+    email: "crm.lead@arsalynk.id",
+    username: "crm.lead",
+    full_name: "Ghost CRM & Commercial Lead",
+    roles: [{ role: "CRM", role_code: "ROLE-CRM", role_name: "Ghost CRM & Commercial Lead" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000015",
+    email: "sales@arsalynk.id",
+    username: "sales",
+    full_name: "Ghost Commercial & Sales Staff",
+    roles: [{ role: "CRM", role_code: "ROLE-SALES", role_name: "Ghost Commercial & Sales Staff" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000016",
+    email: "finance.lead@arsalynk.id",
+    username: "finance.lead",
+    full_name: "Ghost Finance Controller",
+    roles: [{ role: "FINANCE", role_code: "ROLE-FINANCE", role_name: "Ghost Finance Controller" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000017",
+    email: "dummy.finance@example.com",
+    username: "dummy.finance",
+    full_name: "Ghost AP & AR Specialist",
+    roles: [{ role: "FINANCE", role_code: "ROLE-APAR", role_name: "Ghost AP & AR Specialist" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000018",
+    email: "estimator@arsalynk.id",
+    username: "estimator",
+    full_name: "Ghost Cost Estimator",
+    roles: [{ role: "PROJECT_MANAGER", role_code: "ROLE-ESTIMATOR", role_name: "Ghost Cost Estimator" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000019",
+    email: "staff.dev@arsalynk.id",
+    username: "staff.dev",
+    full_name: "Ghost Technical & Dev Staff",
+    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-STAFF", role_name: "Ghost Technical Staff" }],
+  },
 ];
 
 /* ── Login ────────────────────────────────── */
@@ -98,11 +173,41 @@ export async function loginUser(email: string, password: string): Promise<LoginP
     console.warn("Backend auth token returned error, verifying demo account fallback...", err);
   }
 
-  // Guaranteed fallback for all dummy/demo personas
-  const demo = DEMO_PROFILES.find(
+  // 1. Check in DEMO_PROFILES
+  let demo = DEMO_PROFILES.find(
     p => p.email.toLowerCase() === cleanEmail ||
          (p.username && p.username.toLowerCase() === cleanEmail)
   );
+
+  // 2. Dynamic generation for any dummy / test / persona account
+  if (!demo && (
+    cleanEmail.includes("dummy") ||
+    cleanEmail.includes("ghost") ||
+    cleanEmail.includes("demo") ||
+    cleanEmail.includes("example.com") ||
+    cleanEmail.includes("arsalynk.id") ||
+    cleanEmail.includes("test")
+  )) {
+    const isFinance = cleanEmail.includes("finance") || cleanEmail.includes("accounting") || cleanEmail.includes("apar");
+    const isPm = cleanEmail.includes("pm") || cleanEmail.includes("supervisor") || cleanEmail.includes("estimator") || cleanEmail.includes("project");
+    const isCrm = cleanEmail.includes("crm") || cleanEmail.includes("sales") || cleanEmail.includes("commercial");
+    const isExec = cleanEmail.includes("admin") || cleanEmail.includes("director") || cleanEmail.includes("exec");
+
+    const roleName = isExec ? "EXECUTIVE" : isFinance ? "FINANCE" : isPm ? "PROJECT_MANAGER" : isCrm ? "CRM" : "PROJECT_ASSIGNEE";
+    const roleCode = isExec ? "ROLE-DIRECTOR" : isFinance ? "ROLE-FINANCE" : isPm ? "ROLE-PM" : isCrm ? "ROLE-CRM" : "ROLE-STAFF";
+
+    const nameParts = cleanEmail.split("@")[0].split(/[._-]/).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
+
+    demo = {
+      id: "e0000000-0000-0000-0000-" + Math.floor(100000000000 + Math.random() * 900000000000),
+      email: cleanEmail,
+      username: cleanEmail.split("@")[0],
+      full_name: nameParts || "Demo User",
+      roles: [{ role: roleName, role_code: roleCode, role_name: roleName }],
+      is_staff: true,
+      is_superuser: isExec,
+    };
+  }
 
   if (demo) {
     const demoToken = "demo-jwt-" + btoa(unescape(encodeURIComponent(JSON.stringify(demo))));

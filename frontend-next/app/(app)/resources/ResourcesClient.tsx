@@ -27,7 +27,7 @@ const RESOURCES = [
   { id: "opportunities", name: "Opportunities",          endpoint: "/api/v1/crm/opportunities/",               category: "CRM" },
   { id: "estimates",     name: "Cost Estimates",         endpoint: "/api/v1/crm/cost-estimates/",              category: "CRM" },
   { id: "quotations",    name: "Sales Quotations",       endpoint: "/api/v1/sales/quotations/",                category: "CRM" },
-  { id: "orders",        name: "Sales Orders",           endpoint: "/api/v1/sales/orders/?page_size=50",       category: "CRM" },
+  { id: "orders",        name: "Sales Orders",           endpoint: "/api/v1/sales/orders/",                    category: "CRM" },
   { id: "tickets",       name: "Service Cases",          endpoint: "/api/v1/service/cases/",                   category: "CRM" },
   { id: "credit",        name: "Credit Snapshots",       endpoint: "/api/v1/crm/credit-status-snapshots/",     category: "CRM" },
   /* ── Master Data ─────── */

@@ -123,19 +123,19 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
       >
         {/* ── Mobile Top Header (only if isMobile) ───── */}
         {isMobile && (
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center justify-between pb-3 border-b border-text-tertiary">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl bg-brand-light-green text-brand-deep-green flex items-center justify-center">
                 <Bell size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-900 leading-tight">Panel Notifikasi &amp; Feed</h2>
-                <p className="text-[11px] text-slate-500">Aktivitas &amp; Alert Tim PT Sinergi Muda Arsa</p>
+                <h2 className="text-sm font-bold text-text-primary leading-tight">Panel Notifikasi &amp; Feed</h2>
+                <p className="text-2xs text-text-secondary">Aktivitas &amp; Alert Tim PT Sinergi Muda Arsa</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+              className="p-1.5 rounded-xl bg-bg-light hover:bg-bg-lighter text-text-secondary hover:text-text-primary transition-colors cursor-pointer active:scale-95"
               title="Tutup Panel"
               aria-label="Tutup Panel"
             >

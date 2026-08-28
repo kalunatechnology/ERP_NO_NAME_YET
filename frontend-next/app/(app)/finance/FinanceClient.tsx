@@ -17,6 +17,7 @@ import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
 import { ProjectTaxWorkspace } from "@/components/finance/ProjectTaxWorkspace";
 import { CompanyMasterWorkspace } from "@/components/finance/CompanyMasterWorkspace";
+import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 
 const FINANCE_TABS = [
   { id: "overview",       label: "Dashboard Ringkasan"       },
@@ -108,6 +109,14 @@ export default function FinanceClient() {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Tracks which tabs received a 403 response — shows inline AccessDeniedState instead of redirecting
+  const [tabErrors, setTabErrors] = useState<Record<string, 403 | null>>({});
+
+  const markTabForbidden = (tab: string) =>
+    setTabErrors(prev => ({ ...prev, [tab]: 403 }));
+
+  const clearTabError = (tab: string) =>
+    setTabErrors(prev => ({ ...prev, [tab]: null }));
 
   /* Track recently opened finance */
   useEffect(() => {
@@ -174,11 +183,21 @@ export default function FinanceClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
+      // Fetch each endpoint independently so one 403 doesn't block the rest
+      const safeGet = async (url: string, tabHint?: string) => {
+        try {
+          return await api.get(url);
+        } catch (err: unknown) {
+          if (isForbiddenError(err) && tabHint) markTabForbidden(tabHint);
+          return { data: [] };
+        }
+      };
+
       const [costRes, fundRes, propRes, apRes] = await Promise.all([
-        api.get("/api/v1/finance/project-cost-entries/?page_size=50").catch(() => ({ data: [] })),
-        api.get("/api/v1/finance/project-fundings/?page_size=50").catch(() => ({ data: [] })),
-        api.get("/api/v1/finance/billing-proposals/?page_size=50").catch(() => ({ data: [] })),
-        api.get("/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50").catch(() => ({ data: [] })),
+        safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
+        safeGet("/api/v1/finance/project-fundings/?page_size=50", "fundings"),
+        safeGet("/api/v1/finance/billing-proposals/?page_size=50", "billing"),
+        safeGet("/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50", "ap"),
       ]);
 
       setCostEntries(normalizeList(costRes.data).rows);
@@ -397,10 +416,10 @@ export default function FinanceClient() {
           <div className="flex flex-col gap-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
               <BudgetCheckStatusCard
-                materialBudget={totalRevenue || 56000000}
-                allocationCost={totalCost || 12500000}
-                remainingBudget={Math.max(0, (totalRevenue || 56000000) - (totalCost || 12500000))}
-                isValid={(totalRevenue || 56000000) >= (totalCost || 12500000)}
+                materialBudget={totalRevenue ?? 56000000}
+                allocationCost={totalCost ?? 12500000}
+                remainingBudget={totalRevenue != null ? Math.max(0, (totalRevenue ?? 0) - (totalCost ?? 0)) : 43500000}
+                isValid={(totalRevenue ?? 0) >= (totalCost ?? 0)}
               />
               <InventoryCheckingCard autoFetch={true} />
             </div>
@@ -485,6 +504,11 @@ export default function FinanceClient() {
 
       {/* ── TAB 3: COSTING & WIP ───────────────── */}
       {activeTab === "costing" && (
+        tabErrors["costing"] ? (
+          <div className="card rounded-2xl overflow-hidden">
+            <AccessDeniedState compact section="Costing & WIP" />
+          </div>
+        ) : (
         <div className="card rounded-2xl p-5 flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <div>
@@ -532,19 +556,31 @@ export default function FinanceClient() {
           </table>
           </div>
         </div>
+        )
       )}
 
       {/* ── TAB 4: FUNDING PROYEK ──────────────── */}
       {activeTab === "fundings" && (
-        <TabFundingProyek
-          fundings={fundings}
-          onRefresh={() => loadFinanceData(true)}
-          onRequestModalOpen={() => setIsFundingModalOpen(true)}
-        />
+        tabErrors["fundings"] ? (
+          <div className="card rounded-2xl overflow-hidden">
+            <AccessDeniedState compact section="Funding Proyek" />
+          </div>
+        ) : (
+          <TabFundingProyek
+            fundings={fundings}
+            onRefresh={() => loadFinanceData(true)}
+            onRequestModalOpen={() => setIsFundingModalOpen(true)}
+          />
+        )
       )}
 
       {/* ── TAB 5: AP & 3-WAY MATCH ────────────── */}
       {activeTab === "ap" && (
+        tabErrors["ap"] ? (
+          <div className="card rounded-2xl overflow-hidden">
+            <AccessDeniedState compact section="Tagihan Vendor (AP)" />
+          </div>
+        ) : (
         <div className="card rounded-2xl p-5 flex flex-col gap-4">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <div>
@@ -634,10 +670,16 @@ export default function FinanceClient() {
           </table>
           </div>
         </div>
+        )
       )}
 
       {/* ── TAB 6: BILLING TERMIN ──────────────── */}
       {activeTab === "billing" && (
+        tabErrors["billing"] ? (
+          <div className="card rounded-2xl overflow-hidden">
+            <AccessDeniedState compact section="Billing Termin" />
+          </div>
+        ) : (
         <div className="card rounded-2xl p-5 flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <div>
@@ -685,6 +727,7 @@ export default function FinanceClient() {
           </table>
           </div>
         </div>
+        )
       )}
 
       {/* ── TAB 7: PIUTANG & UANG MASUK (AR) ───── */}
@@ -875,22 +918,44 @@ export default function FinanceClient() {
       )}
 
       {/* ── TAB: MASTER PERUSAHAAN & BANK ─────────── */}
-      {activeTab === "company_master" && <CompanyMasterWorkspace />}
+      {activeTab === "company_master" && (
+        tabErrors["company_master"] ? (
+          <div className="card rounded-2xl overflow-hidden">
+            <AccessDeniedState compact section="Master Perusahaan & Bank" />
+          </div>
+        ) : (
+          <CompanyMasterWorkspace />
+        )
+      )}
 
       {/* ── TAB 10: PERPAJAKAN PROYEK (TAX COMPLIANCE) ── */}
-      {activeTab === "tax" && <ProjectTaxWorkspace />}
+      {activeTab === "tax" && (
+        tabErrors["tax"] ? (
+          <div className="card rounded-2xl overflow-hidden">
+            <AccessDeniedState compact section="Perpajakan" />
+          </div>
+        ) : (
+          <ProjectTaxWorkspace />
+        )
+      )}
 
       {/* ── TAB 9 & 11: GL & ASSETS ─────────────── */}
       {["gl", "assets"].includes(activeTab) && (
-        <div className="card rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3">
-          <Landmark size={40} className="text-brand-green opacity-40" />
-          <h3 className="text-base font-semibold text-text-primary">
-            Modul {FINANCE_TABS.find(t => t.id === activeTab)?.label}
-          </h3>
-          <p className="text-xs text-text-secondary max-w-md">
-            Modul ini terhubung otomatis dengan buku besar General Ledger dan sistem aktiva tetap perusahaan.
-          </p>
-        </div>
+        tabErrors[activeTab] ? (
+          <div className="card rounded-2xl overflow-hidden">
+            <AccessDeniedState compact section={FINANCE_TABS.find(t => t.id === activeTab)?.label} />
+          </div>
+        ) : (
+          <div className="card rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3">
+            <Landmark size={40} className="text-brand-green opacity-40" />
+            <h3 className="text-base font-semibold text-text-primary">
+              Modul {FINANCE_TABS.find(t => t.id === activeTab)?.label}
+            </h3>
+            <p className="text-xs text-text-secondary max-w-md">
+              Modul ini terhubung otomatis dengan buku besar General Ledger dan sistem aktiva tetap perusahaan.
+            </p>
+          </div>
+        )
       )}
 
       {/* ── MODALS ───────────────────────────────── */}
