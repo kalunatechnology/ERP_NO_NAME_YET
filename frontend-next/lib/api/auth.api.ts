@@ -22,6 +22,67 @@ export interface UserProfile {
 }
 
 export const DEMO_PROFILES: UserProfile[] = [
+  /* ── 8 Akun Resmi PT Sinergi Muda Arsa (@arsalynk.com) ── */
+  {
+    id: "e0000000-0000-0000-0000-000000000001",
+    email: "rian@arsalynk.com",
+    username: "rian",
+    full_name: "Rian Destianto",
+    is_superuser: true,
+    is_staff: true,
+    roles: [{ role: "EXECUTIVE", role_code: "ROLE-DIRECTOR", role_name: "Director & Super Admin", company_id: "10000000-0000-0000-0000-000000000001" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000002",
+    email: "melika@arsalynk.com",
+    username: "melika",
+    full_name: "Melika Citra Tania",
+    roles: [{ role: "PROJECT_MANAGER", role_code: "ROLE-PM", role_name: "Lead Project Manager", company_id: "10000000-0000-0000-0000-000000000001" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000003",
+    email: "melika.ops@arsalynk.com",
+    username: "melika.ops",
+    full_name: "Melika (Ops & Supervisor)",
+    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Operational Lead & Supervisor", company_id: "10000000-0000-0000-0000-000000000001" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000004",
+    email: "arof@arsalynk.com",
+    username: "arof",
+    full_name: "Arof Fudding",
+    roles: [{ role: "PROJECT_MANAGER", role_code: "ROLE-PM", role_name: "Lead Project Manager & Riset", company_id: "10000000-0000-0000-0000-000000000001" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000005",
+    email: "arof.finance@arsalynk.com",
+    username: "arof.finance",
+    full_name: "Arof (Finance & Tax)",
+    roles: [{ role: "FINANCE", role_code: "ROLE-FINANCE", role_name: "Finance Lead & Tax Controller", company_id: "10000000-0000-0000-0000-000000000001" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000006",
+    email: "laode@arsalynk.com",
+    username: "laode",
+    full_name: "Laode Fahmi Hidayat",
+    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Field Specialist / Engineer", company_id: "10000000-0000-0000-0000-000000000001" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000007",
+    email: "jundy@arsalynk.com",
+    username: "jundy",
+    full_name: "Jundy Isham Izzudin",
+    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Field Specialist / Creative Media", company_id: "10000000-0000-0000-0000-000000000001" }],
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000008",
+    email: "noorman@arsalynk.com",
+    username: "noorman",
+    full_name: "M Noorman Perdana",
+    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Field Specialist / Survey Specialist", company_id: "10000000-0000-0000-0000-000000000001" }],
+  },
+
+  /* ── Legacy Aliases ── */
   {
     id: "e0000000-0000-0000-0000-000000000001",
     email: "rian.destianto@arsalynk.id",
@@ -179,13 +240,15 @@ export async function loginUser(email: string, password: string): Promise<LoginP
          (p.username && p.username.toLowerCase() === cleanEmail)
   );
 
-  // 2. Dynamic generation for any dummy / test / persona account
+  // 2. Dynamic generation for any dummy / test / persona account / arsalynk team
   if (!demo && (
+    cleanEmail.includes("arsalynk.com") ||
+    cleanEmail.includes("arsalynk.id") ||
+    cleanEmail.includes("arsalynk") ||
     cleanEmail.includes("dummy") ||
     cleanEmail.includes("ghost") ||
     cleanEmail.includes("demo") ||
     cleanEmail.includes("example.com") ||
-    cleanEmail.includes("arsalynk.id") ||
     cleanEmail.includes("test")
   )) {
     const isFinance = cleanEmail.includes("finance") || cleanEmail.includes("accounting") || cleanEmail.includes("apar");
