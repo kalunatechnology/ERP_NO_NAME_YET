@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --exit-child src/server.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
+    "postinstall": "prisma generate",
     "start": "node server.js",
     "seed": "ts-node prisma/seed.ts",
     "prisma:generate": "prisma generate",
