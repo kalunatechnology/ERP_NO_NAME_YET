@@ -28,11 +28,11 @@ function removeAuthCookie() {
 }
 
 /* ── Role Type ───────────────────────────────── */
-export type UserRoleType = "executive" | "pm" | "finance" | "crm" | "staff";
+export type UserRoleType = "executive" | "pm" | "om" | "finance" | "crm" | "staff";
 
 /**
  * Detects user's primary role from their profile (roles array + email pattern fallback).
- * Priority: executive > pm > finance > crm > staff
+ * Priority: executive > om > pm > finance > crm > staff
  */
 export function detectRole(user: any): UserRoleType {
   const roles: string[] = [];
@@ -54,16 +54,25 @@ export function detectRole(user: any): UserRoleType {
     roles.some(r => ["ADMIN", "EXECUTIVE", "DIRECTOR", "ROLE-ADMIN", "ROLE-DIRECTOR", "SUPERADMIN", "SUPER_ADMIN"].includes(r))
   ) return "executive";
 
-  // 2. Project Manager & Supervisor
+  // 2. Operational Manager (OM / Supervisor Operasional)
   if (
     roles.some(r => [
-      "PROJECT_MANAGER", "PM", "PROJECT_MANAGEMENT", "SUPERVISOR",
+      "OPERATIONS_MANAGER", "OM", "OPERATIONAL_MANAGER", "OPS_MANAGER",
+      "ROLE-OM", "ROLE-SUPERVISOR", "SUPERVISOR", "FIELD_SUPERVISOR",
+      "ROLE_OPERATIONS_MANAGER"
+    ].includes(r))
+  ) return "om";
+
+  // 3. Project Manager (PM)
+  if (
+    roles.some(r => [
+      "PROJECT_MANAGER", "PM", "PROJECT_MANAGEMENT",
       "QUALITY_CONTROL", "WAREHOUSE", "ROLE-PM", "ROLE_PROJECT_MANAGER",
-      "ROLE-SUPERVISOR", "ROLE-ESTIMATOR", "PROJECT_ASSIGNEE",
+      "ROLE-ESTIMATOR", "PROJECT_ASSIGNEE",
     ].includes(r))
   ) return "pm";
 
-  // 3. Finance Controller & AP/AR
+  // 4. Finance Controller & AP/AR
   if (
     roles.some(r => [
       "ACCOUNTING_FINANCE", "FINANCE", "FINANCE_APPROVER",
@@ -71,11 +80,11 @@ export function detectRole(user: any): UserRoleType {
     ].includes(r))
   ) return "finance";
 
-  // 4. CRM & Sales
+  // 5. CRM & Sales
   if (
     roles.some(r => [
-      "CRM_MANAGER", "CRM_STAFF", "CRM", "SALES", "MANAGER",
-      "ROLE-MANAGER", "ROLE-CRM", "ROLE-SALES", "ROLE-CRM-LEAD",
+      "CRM_MANAGER", "CRM_STAFF", "CRM", "SALES",
+      "ROLE-CRM", "ROLE-SALES", "ROLE-CRM-LEAD",
     ].includes(r))
   ) return "crm";
 
@@ -86,6 +95,7 @@ export function detectRole(user: any): UserRoleType {
 export function getRoleLabel(role: UserRoleType): string {
   switch (role) {
     case "executive": return "Executive / Director";
+    case "om":        return "Operational Manager";
     case "pm":        return "Project Manager";
     case "finance":   return "Finance Controller";
     case "crm":       return "CRM & Sales";
@@ -97,6 +107,7 @@ export function getRoleLabel(role: UserRoleType): string {
 export function getRoleBadgeStyle(role: UserRoleType): { bg: string; text: string } {
   switch (role) {
     case "executive": return { bg: "#F0FDF4", text: "#15803D" };
+    case "om":        return { bg: "#FEF3C7", text: "#92400E" };
     case "pm":        return { bg: "#EFF6FF", text: "#1D4ED8" };
     case "finance":   return { bg: "#FFF7ED", text: "#C2410C" };
     case "crm":       return { bg: "#FAF5FF", text: "#7E22CE" };

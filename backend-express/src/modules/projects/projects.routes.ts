@@ -7,6 +7,123 @@ import { NotFoundError } from '../../utils/errors';
 export const projectsRouter = Router();
 
 // =============================================================================
+// 0. CUSTOMERS / CLIENTS LIST (Strict Company & Tenant Isolated)
+// =============================================================================
+
+projectsRouter.get('/customers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = req.companyId;
+    const tenantId = req.user?.tenant_id;
+
+    // 1. Get from existing projects in database (Strict Company & Tenant Scoped)
+    const projectCustomers = await prisma.project_project.findMany({
+      where: {
+        ...(companyId ? { company_id: companyId } : {}),
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+      },
+      select: { customer_name: true },
+      distinct: ['customer_name'],
+    });
+
+    // 2. Get from master_party (Strict Tenant Scoped)
+    const parties = await prisma.master_party.findMany({
+      where: {
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+        party_type: 'CUSTOMER',
+        status: 'ACTIVE',
+      },
+      select: { display_name: true, legal_name: true },
+    });
+
+    // 3. Get from CRM inquiries (Strict Company & Tenant Scoped)
+    const crmCustomers = await prisma.crm_customer_inquiry.findMany({
+      where: {
+        ...(companyId ? { company_id: companyId } : {}),
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+      },
+      select: { customer_name: true },
+      distinct: ['customer_name'],
+    });
+
+    const set = new Set<string>();
+    projectCustomers.forEach(p => { if (p.customer_name?.trim()) set.add(p.customer_name.trim()); });
+    parties.forEach(p => {
+      if (p.display_name?.trim()) set.add(p.display_name.trim());
+      if (p.legal_name?.trim()) set.add(p.legal_name.trim());
+    });
+    crmCustomers.forEach(c => { if (c.customer_name?.trim()) set.add(c.customer_name.trim()); });
+
+    const results = Array.from(set).filter(Boolean).map(name => ({
+      name,
+      label: name,
+      value: name,
+    }));
+
+    res.json(results);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Endpoint untuk mendaftarkan klien / customer baru langsung ke database (Tenant & Company Scoped)
+projectsRouter.post('/customers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { name, legal_name, tax_number } = req.body;
+    const clientName = (name || legal_name || '').trim();
+    if (!clientName) {
+      res.status(400).json({ message: 'Nama klien / customer wajib diisi.' });
+      return;
+    }
+
+    const tenantId = req.user?.tenant_id ?? '24b709e5-ae7a-4ded-be06-c0e9f5998f9d';
+
+    const existing = await prisma.master_party.findFirst({
+      where: {
+        tenant_id: tenantId,
+        OR: [
+          { display_name: { equals: clientName, mode: 'insensitive' } },
+          { legal_name: { equals: clientName, mode: 'insensitive' } },
+        ],
+      },
+    });
+
+    if (existing) {
+      res.status(200).json({
+        id: existing.id,
+        name: existing.display_name,
+        label: existing.display_name,
+        value: existing.display_name,
+      });
+      return;
+    }
+
+    const partyId = crypto.randomUUID();
+    const cleanCode = clientName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
+    const newParty = await prisma.master_party.create({
+      data: {
+        id: partyId,
+        tenant_id: tenantId,
+        party_code: `CUST-${cleanCode || Date.now().toString().slice(-4)}`,
+        party_type: 'CUSTOMER',
+        legal_name: clientName,
+        display_name: clientName,
+        tax_number: tax_number || '',
+        status: 'ACTIVE',
+      },
+    });
+
+    res.status(201).json({
+      id: newParty.id,
+      name: newParty.display_name,
+      label: newParty.display_name,
+      value: newParty.display_name,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
 // 1. WBS 5-LEVEL HIERARCHY ENDPOINT
 // =============================================================================
 
@@ -393,30 +510,24 @@ projectsRouter.post('/task-transfers/:id/cancel', async (req: Request, res: Resp
 projectsRouter.use('/main-tasks', createCrudRouter({
   modelName: 'project_main_task',
   searchFields: ['name', 'description'],
-  beforeCreate: async (req) => {
-    if (req.body.project && !req.body.project_id) {
-      req.body.project_id = req.body.project;
-    }
-    if (req.body.title && !req.body.name) {
-      req.body.name = req.body.title;
-    }
-    if (!req.body.created_by_id && req.user?.id) {
-      req.body.created_by_id = req.user.id;
-    }
-    if (req.body.weight === undefined) req.body.weight = 10;
-    if (req.body.progress === undefined) req.body.progress = 0;
-    if (!req.body.status) req.body.status = 'PLANNED';
-    if (!req.body.priority) req.body.priority = 'MEDIUM';
-    if (req.body.is_progress_overridden === undefined) req.body.is_progress_overridden = false;
-    if (req.body.override_reason === undefined) req.body.override_reason = '';
+  beforeCreate: async (req, data) => {
+    if (data.project && !data.project_id) data.project_id = data.project;
+    if (req.body.project && !data.project_id) data.project_id = req.body.project;
+    if (data.title && !data.name) data.name = data.title;
+    if (!data.name) data.name = 'Main Task';
+    if (!data.created_by_id && req.user?.id) data.created_by_id = req.user.id;
+    if (data.weight === undefined) data.weight = 10;
+    if (data.progress === undefined) data.progress = 0;
+    if (!data.status) data.status = 'PLANNED';
+    if (!data.priority) data.priority = 'MEDIUM';
+    if (data.is_progress_overridden === undefined) data.is_progress_overridden = false;
+    if (data.override_reason === undefined) data.override_reason = '';
+    return data;
   },
-  beforeUpdate: async (req) => {
-    if (req.body.project && !req.body.project_id) {
-      req.body.project_id = req.body.project;
-    }
-    if (req.body.title && !req.body.name) {
-      req.body.name = req.body.title;
-    }
+  beforeUpdate: async (req, data) => {
+    if (data.project && !data.project_id) data.project_id = data.project;
+    if (data.title && !data.name) data.name = data.title;
+    return data;
   },
   afterCreate: async (_req, rec) => {
     await ProjectsService.recalculateTaskTree({ mainTaskId: rec.id });
@@ -430,30 +541,23 @@ projectsRouter.use('/main-tasks', createCrudRouter({
 projectsRouter.use('/weekly-tasks', createCrudRouter({
   modelName: 'project_weekly_task',
   searchFields: ['target_description'],
-  beforeCreate: async (req) => {
-    if (req.body.main_task && !req.body.main_task_id) {
-      req.body.main_task_id = req.body.main_task;
-    }
-    if (req.body.assignee && !req.body.assignee_id) {
-      req.body.assignee_id = req.body.assignee;
-    }
-    if (!req.body.target_description && req.body.target_output) {
-      req.body.target_description = req.body.target_output;
-    }
-    if (req.body.target_description === undefined) req.body.target_description = '';
-    if (req.body.progress === undefined) req.body.progress = 0;
-    if (!req.body.status) req.body.status = 'PLANNED';
-    if (req.body.week_number === undefined) req.body.week_number = 1;
-    if (req.body.is_progress_overridden === undefined) req.body.is_progress_overridden = false;
-    if (req.body.override_reason === undefined) req.body.override_reason = '';
+  beforeCreate: async (req, data) => {
+    if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
+    if (req.body.main_task && !data.main_task_id) data.main_task_id = req.body.main_task;
+    if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
+    if (!data.target_description && data.target_output) data.target_description = data.target_output;
+    if (data.target_description === undefined) data.target_description = '';
+    if (data.progress === undefined) data.progress = 0;
+    if (!data.status) data.status = 'PLANNED';
+    if (data.week_number === undefined) data.week_number = 1;
+    if (data.is_progress_overridden === undefined) data.is_progress_overridden = false;
+    if (data.override_reason === undefined) data.override_reason = '';
+    return data;
   },
-  beforeUpdate: async (req) => {
-    if (req.body.main_task && !req.body.main_task_id) {
-      req.body.main_task_id = req.body.main_task;
-    }
-    if (req.body.assignee && !req.body.assignee_id) {
-      req.body.assignee_id = req.body.assignee;
-    }
+  beforeUpdate: async (req, data) => {
+    if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
+    if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
+    return data;
   },
   afterCreate: async (_req, rec) => {
     await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id });
@@ -467,59 +571,48 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
 projectsRouter.use('/daily-tasks', createCrudRouter({
   modelName: 'project_daily_task',
   searchFields: ['title', 'description', 'notes'],
-  beforeCreate: async (req) => {
-    if (req.body.weekly_task && !req.body.weekly_task_id) {
-      req.body.weekly_task_id = req.body.weekly_task;
-    }
-    if (req.body.owner && !req.body.owner_id) {
-      req.body.owner_id = req.body.owner;
-    }
-    if (!req.body.owner_id && req.user?.id) {
-      req.body.owner_id = req.user.id;
-    }
-    if (!req.body.title && req.body.activity_input) {
-      req.body.title = req.body.activity_input;
-    }
-    if (req.body.title === undefined) req.body.title = 'Aktivitas Harian';
-    if (req.body.description === undefined) req.body.description = '';
-    if (req.body.time_slot === undefined) req.body.time_slot = '09.00 - 12.00';
-    if (req.body.output_result === undefined) req.body.output_result = '';
-    if (req.body.notes === undefined) req.body.notes = '';
-    if (req.body.is_blocked === undefined) req.body.is_blocked = false;
-    if (req.body.block_reason === undefined) req.body.block_reason = '';
+  beforeCreate: async (req, data) => {
+    if (data.weekly_task && !data.weekly_task_id) data.weekly_task_id = data.weekly_task;
+    if (req.body.weekly_task && !data.weekly_task_id) data.weekly_task_id = req.body.weekly_task;
+    if (data.owner && !data.owner_id) data.owner_id = data.owner;
+    if (!data.owner_id && req.user?.id) data.owner_id = req.user.id;
+    if (!data.title && data.activity_input) data.title = data.activity_input;
+    if (data.title === undefined) data.title = 'Aktivitas Harian';
+    if (data.description === undefined) data.description = '';
+    if (data.time_slot === undefined) data.time_slot = '09.00 - 12.00';
+    if (data.output_result === undefined) data.output_result = '';
+    if (data.notes === undefined) data.notes = '';
+    if (data.is_blocked === undefined) data.is_blocked = false;
+    if (data.block_reason === undefined) data.block_reason = '';
 
     // Normalize status
-    const st = String(req.body.status ?? '').toUpperCase();
+    const st = String(data.status ?? '').toUpperCase();
     if (['DONE', 'COMPLETED', 'SELESAI'].includes(st)) {
-      req.body.status = 'COMPLETED';
-      if (req.body.progress === undefined) req.body.progress = 100;
+      data.status = 'COMPLETED';
+      if (data.progress === undefined) data.progress = 100;
     } else if (['ON_PROGRESS', 'PENDING', 'IN PROGRESS', 'ON-PROGRESS'].includes(st)) {
-      req.body.status = 'IN_PROGRESS';
+      data.status = 'IN_PROGRESS';
     } else if (['NOT_STARTED', 'NOT DONE', 'BELUM'].includes(st)) {
-      req.body.status = 'NOT_STARTED';
-      if (req.body.progress === undefined) req.body.progress = 0;
-    } else if (!req.body.status) {
-      req.body.status = 'IN_PROGRESS';
+      data.status = 'NOT_STARTED';
+      if (data.progress === undefined) data.progress = 0;
+    } else if (!data.status) {
+      data.status = 'IN_PROGRESS';
     }
-    if (req.body.progress === undefined) req.body.progress = 0;
+    if (data.progress === undefined) data.progress = 0;
+    return data;
   },
-  beforeUpdate: async (req) => {
-    if (req.body.weekly_task && !req.body.weekly_task_id) {
-      req.body.weekly_task_id = req.body.weekly_task;
-    }
-    if (req.body.owner && !req.body.owner_id) {
-      req.body.owner_id = req.body.owner;
-    }
-    if (req.body.activity_input && !req.body.title) {
-      req.body.title = req.body.activity_input;
-    }
-    const st = String(req.body.status ?? '').toUpperCase();
+  beforeUpdate: async (req, data) => {
+    if (data.weekly_task && !data.weekly_task_id) data.weekly_task_id = data.weekly_task;
+    if (data.owner && !data.owner_id) data.owner_id = data.owner;
+    if (data.activity_input && !data.title) data.title = data.activity_input;
+    const st = String(data.status ?? '').toUpperCase();
     if (['DONE', 'COMPLETED', 'SELESAI'].includes(st)) {
-      req.body.status = 'COMPLETED';
-      if (req.body.progress === undefined) req.body.progress = 100;
+      data.status = 'COMPLETED';
+      if (data.progress === undefined) data.progress = 100;
     } else if (['ON_PROGRESS', 'PENDING', 'IN PROGRESS', 'ON-PROGRESS'].includes(st)) {
-      req.body.status = 'IN_PROGRESS';
+      data.status = 'IN_PROGRESS';
     }
+    return data;
   },
   afterCreate: async (_req, rec) => {
     await ProjectsService.recalculateTaskTree({ dailyTaskId: rec.id });
@@ -532,33 +625,29 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
 // Task Assignments with alias mapping
 projectsRouter.use('/task-assignments', createCrudRouter({
   modelName: 'project_task_assignment',
-  beforeCreate: async (req) => {
-    if (req.body.main_task && !req.body.main_task_id) {
-      req.body.main_task_id = req.body.main_task;
-    }
-    if (req.body.assignee && !req.body.assignee_id) {
-      req.body.assignee_id = req.body.assignee;
-    }
-    if (!req.body.assigned_at) req.body.assigned_at = new Date();
+  beforeCreate: async (req, data) => {
+    if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
+    if (req.body.main_task && !data.main_task_id) data.main_task_id = req.body.main_task;
+    if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
+    if (req.body.assignee && !data.assignee_id) data.assignee_id = req.body.assignee;
+    if (!data.assigned_at) data.assigned_at = new Date();
+    return data;
   },
 }));
 
 // Task Transfers
 projectsRouter.use('/task-transfers', createCrudRouter({
   modelName: 'project_task_transfer_request',
-  beforeCreate: async (req) => {
-    if (req.body.daily_task && !req.body.daily_task_id) {
-      req.body.daily_task_id = req.body.daily_task;
-    }
-    if (req.body.target_user && !req.body.target_user_id) {
-      req.body.target_user_id = req.body.target_user;
-    }
-    if (!req.body.requested_by_id && req.user?.id) {
-      req.body.requested_by_id = req.user.id;
-    }
-    if (req.body.reason === undefined) req.body.reason = '';
-    if (req.body.review_note === undefined) req.body.review_note = '';
-    if (!req.body.status) req.body.status = 'PENDING';
+  beforeCreate: async (req, data) => {
+    if (data.daily_task && !data.daily_task_id) data.daily_task_id = data.daily_task;
+    if (req.body.daily_task && !data.daily_task_id) data.daily_task_id = req.body.daily_task;
+    if (data.target_user && !data.target_user_id) data.target_user_id = data.target_user;
+    if (req.body.target_user && !data.target_user_id) data.target_user_id = req.body.target_user;
+    if (!data.requested_by_id && req.user?.id) data.requested_by_id = req.user.id;
+    if (data.reason === undefined) data.reason = '';
+    if (data.review_note === undefined) data.review_note = '';
+    if (!data.status) data.status = 'PENDING';
+    return data;
   },
 }));
 
@@ -566,7 +655,91 @@ projectsRouter.use('/task-transfers', createCrudRouter({
 // 8. OTHER DOMAIN CRUD VIEWSETS
 // =============================================================================
 
-projectsRouter.use('/projects', createCrudRouter({ modelName: 'project_project', searchFields: ['project_name', 'project_code', 'status'] }));
+projectsRouter.use('/projects', createCrudRouter({
+  modelName: 'project_project',
+  searchFields: ['project_name', 'project_code', 'status', 'customer_name'],
+  beforeCreate: async (req, data) => {
+    // 1. Alias mappings
+    if (!data.project_name && data.name) data.project_name = data.name;
+    if (!data.project_name) data.project_name = 'Untitled Project';
+
+    if (!data.project_code && data.code) data.project_code = data.code;
+    if (!data.project_code) data.project_code = `PRJ-${Date.now().toString().slice(-4)}`;
+
+    // 2. Default required schema fields
+    if (data.customer_name === undefined || data.customer_name === null || data.customer_name === '') {
+      data.customer_name = data.client_name || data.customer || 'PT Sinergi Muda Arsa';
+    } else {
+      // Auto-register to database master_party if it's a new client (Strict Tenant Scoped)
+      const clientName = String(data.customer_name).trim();
+      const tenantId = req.user?.tenant_id ?? '24b709e5-ae7a-4ded-be06-c0e9f5998f9d';
+      const existing = await prisma.master_party.findFirst({
+        where: {
+          tenant_id: tenantId,
+          OR: [
+            { display_name: { equals: clientName, mode: 'insensitive' } },
+            { legal_name: { equals: clientName, mode: 'insensitive' } },
+          ],
+        },
+      });
+
+      if (!existing && clientName) {
+        const cleanCode = clientName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
+        await prisma.master_party.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: tenantId,
+            party_code: `CUST-${cleanCode || Date.now().toString().slice(-4)}`,
+            party_type: 'CUSTOMER',
+            legal_name: clientName,
+            display_name: clientName,
+            tax_number: '',
+            status: 'ACTIVE',
+          },
+        });
+      }
+    }
+    if (data.manager_name === undefined || data.manager_name === null || data.manager_name === '') {
+      data.manager_name = data.pm_name || data.project_manager_name || (req.user as any)?.full_name || 'Melika (Lead PM)';
+    }
+    if (data.description === undefined || data.description === null) {
+      data.description = '';
+    }
+    if (!data.status) {
+      data.status = 'IN_PROGRESS';
+    }
+    if (!data.lifecycle_status) {
+      data.lifecycle_status = 'ACTIVE';
+    }
+    if (!data.health_status) {
+      data.health_status = 'ON_TRACK';
+    }
+    if (!data.source_type) {
+      data.source_type = 'INTERNAL';
+    }
+
+    // 3. Date formatting
+    if (data.planned_start_date && typeof data.planned_start_date === 'string') {
+      data.planned_start_date = new Date(data.planned_start_date);
+    }
+    if (data.planned_end_date && typeof data.planned_end_date === 'string') {
+      data.planned_end_date = new Date(data.planned_end_date);
+    }
+
+    return data;
+  },
+  beforeUpdate: async (req, data) => {
+    if (data.name && !data.project_name) data.project_name = data.name;
+    if (data.code && !data.project_code) data.project_code = data.code;
+    if (data.planned_start_date && typeof data.planned_start_date === 'string') {
+      data.planned_start_date = new Date(data.planned_start_date);
+    }
+    if (data.planned_end_date && typeof data.planned_end_date === 'string') {
+      data.planned_end_date = new Date(data.planned_end_date);
+    }
+    return data;
+  },
+}));
 projectsRouter.use('/control-items', createCrudRouter({ modelName: 'project_control_item' }));
 projectsRouter.use('/expenses', createCrudRouter({ modelName: 'project_expense', searchFields: ['description'] }));
 projectsRouter.use('/lifecycle-events', createCrudRouter({ modelName: 'project_lifecycle_event' }));

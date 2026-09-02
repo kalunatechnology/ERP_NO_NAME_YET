@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 interface SidebarProps {
   isMobile?: boolean;
   onClose?: () => void;
+  onChatbotOpen?: () => void;
 }
 
 interface NavItem {
@@ -24,43 +25,55 @@ interface NavItem {
   badge?: string;
 }
 
-/* ── Role-specific nav configs ─────────────────────── */
+/* ── Role-specific nav configs (Strict Role-Based Page Flow) ─── */
 const NAV_BY_ROLE: Record<UserRoleType, NavItem[]> = {
+  // 1. Executive (Direksi)
   executive: [
-    { href: "/dashboard",  label: "Executive Overview", icon: LayoutDashboard },
-    { href: "/projects",   label: "All Projects",       icon: FolderKanban    },
+    { href: "/dashboard",  label: "Executive Dashboard", icon: LayoutDashboard },
+    { href: "/projects",   label: "All Project",         icon: FolderKanban    },
     { href: "/finance",    label: "Finance",            icon: DollarSign      },
-    { href: "/crm",        label: "CRM & Sales",        icon: Building2       },
-    { href: "/reporting",  label: "Performance",        icon: TrendingUp      },
-    { href: "/resources",  label: "Data Explorer",      icon: BarChart3       },
+    { href: "/crm",        label: "CRM",                icon: Building2       },
+    { href: "/reporting",  label: "Performance",         icon: TrendingUp      },
+    { href: "/resources",  label: "Data Explorer",       icon: BarChart3       },
   ],
+  // 2. Project Manager (PM)
   pm: [
-    { href: "/dashboard",  label: "Dashboard",          icon: LayoutDashboard },
-    { href: "/projects",   label: "Projects",           icon: FolderKanban    },
-    { href: "/tasks",      label: "Daily Tasks",        icon: CheckSquare     },
-    { href: "/crm",        label: "CRM",                icon: Users           },
-    { href: "/reporting",  label: "Reports",            icon: BarChart3       },
+    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
+    { href: "/projects",   label: "Projects",    icon: FolderKanban    },
+    { href: "/tasks",      label: "Daily Tasks", icon: CheckSquare     },
+    { href: "/crm",        label: "CRM",         icon: Users           },
+    { href: "/reporting",  label: "Reports",     icon: BarChart3       },
   ],
-  finance: [
-    { href: "/dashboard",  label: "Dashboard",          icon: LayoutDashboard },
-    { href: "/finance",    label: "Finance",            icon: DollarSign      },
-    { href: "/projects",   label: "Projects",           icon: FolderKanban    },
-    { href: "/reporting",  label: "Reports",            icon: BarChart3       },
+  // 3. Operational Manager (OM) - Focused on Technical & Ops, No CRM
+  om: [
+    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
+    { href: "/projects",   label: "Projects",    icon: FolderKanban    },
+    { href: "/tasks",      label: "Daily Tasks", icon: CheckSquare     },
+    { href: "/reporting",  label: "Reports",     icon: BarChart3       },
   ],
-  crm: [
-    { href: "/dashboard",  label: "Dashboard",          icon: LayoutDashboard },
-    { href: "/crm",        label: "CRM & Sales",        icon: Building2       },
-    { href: "/projects",   label: "Projects",           icon: FolderKanban    },
-    { href: "/reporting",  label: "Reports",            icon: BarChart3       },
-  ],
+  // 4. Staff - Lean execution flow
   staff: [
-    { href: "/dashboard",  label: "Dashboard",          icon: LayoutDashboard },
-    { href: "/projects",   label: "Projects",           icon: FolderKanban    },
-    { href: "/tasks",      label: "Tasks",              icon: CheckSquare     },
+    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
+    { href: "/tasks",      label: "Daily Tasks", icon: CheckSquare     },
+    { href: "/reporting",  label: "Report",      icon: FileText        },
+  ],
+  // 5. Finance Controller
+  finance: [
+    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
+    { href: "/finance",    label: "Finance",     icon: DollarSign      },
+    { href: "/projects",   label: "Projects",    icon: FolderKanban    },
+    { href: "/reporting",  label: "Reports",     icon: BarChart3       },
+  ],
+  // 6. CRM & Sales Lead
+  crm: [
+    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
+    { href: "/crm",        label: "CRM & Sales", icon: Building2       },
+    { href: "/projects",   label: "Projects",    icon: FolderKanban    },
+    { href: "/reporting",  label: "Reports",     icon: BarChart3       },
   ],
 };
 
-export function Sidebar({ isMobile = false, onClose }: SidebarProps = {}) {
+export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarProps = {}) {
   const pathname = usePathname();
   const { user, userRole, logout } = useAuth();
   const [recentItems, setRecentItems] = useState<UserRecentItemDto[]>([]);
@@ -80,10 +93,9 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps = {}) {
   return (
     <aside
       className={cn(
-        "w-[230px] flex flex-col bg-bg-light border-r border-[#E5E9E2] flex-shrink-0 select-none overflow-hidden",
-        isMobile ? "h-screen" : "h-screen sticky top-0"
+        "flex flex-col bg-white border-r border-[#E5E9E2] flex-shrink-0 z-40 select-none",
+        isMobile ? "w-68 h-full shadow-2xl" : "w-68 h-screen"
       )}
-      aria-label="Navigasi utama"
     >
       {/* ── Fixed User Profile Header (Compact 68px) ── */}
       <div className="h-[68px] px-3.5 pt-2.5 pb-2 flex flex-col justify-center border-b border-[#E5E9E2] flex-shrink-0 bg-white relative">
@@ -190,31 +202,60 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps = {}) {
         )}
       </div>
 
-      {/* ── Fixed Footer Section ── */}
-      <div className="px-2.5 pb-2.5 pt-2 border-t border-[#E5E9E2] flex flex-col gap-1.5 flex-shrink-0 bg-white">
+      {/* ── Fixed Footer Section matching Screenshot Design ── */}
+      <div className="px-3 pb-3 pt-2 border-t border-[#E5E9E2] flex flex-col gap-2.5 flex-shrink-0 bg-white">
+        {/* Chat with MarBot button */}
         <button
-          onClick={() => logout()}
-          className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#768779] hover:text-red-600 hover:bg-red-50 transition-all w-full h-7"
-          id="sidebar-logout-btn"
-          aria-label="Logout"
+          type="button"
+          onClick={onChatbotOpen}
+          className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#EDFBD8] hover:bg-[#E2F7C3] border border-[#D7F2AB] text-[#244E1C] font-semibold text-xs transition-all shadow-2xs cursor-pointer active:scale-98"
+          id="sidebar-marbot-btn"
+          title="Chat with MarBot"
         >
-          <LogOut size={13} aria-hidden="true" className="flex-shrink-0" />
-          <span>Keluar</span>
+          <div className="w-5 h-5 rounded-full bg-[#587C29] flex items-center justify-center text-white flex-shrink-0 shadow-2xs">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="12" y1="2" x2="12" y2="22" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+              <line x1="4.93" y1="19.07" x2="19.07" y2="4.93" />
+            </svg>
+          </div>
+          <span className="font-bold tracking-tight">Chat with MarBot</span>
         </button>
 
-        {/* Brand Mark */}
-        <div className="flex items-center gap-2 px-2 py-1 rounded-lg border border-[#E5E9E2] bg-[#FDFDFD]">
-          <div
-            className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 shadow-2xs"
-            style={{ background: "linear-gradient(180deg, #7CDA24 0%, #3E9B4B 100%)" }}
-            aria-hidden="true"
-          >
-            <span className="text-white font-black text-[9px]">M+</span>
+        {/* Log Out button */}
+        <button
+          type="button"
+          onClick={() => logout()}
+          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#597F22] hover:bg-[#4D6F1D] text-white font-semibold text-xs transition-all shadow-2xs w-full cursor-pointer active:scale-98"
+          id="sidebar-logout-btn"
+          aria-label="Log Out"
+        >
+          <span className="font-bold">Log Out</span>
+          <LogOut size={13} aria-hidden="true" className="flex-shrink-0 rotate-180" />
+        </button>
+
+        {/* Brand Mark: Marka+ by Kaluna® 2026 */}
+        <div className="flex flex-col items-center justify-center pt-1">
+          <div className="flex items-center gap-1.5 text-black">
+            <div className="w-5 h-5 rounded-md bg-[#0088FF] flex items-center justify-center text-white font-black text-xs shadow-2xs">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="7" y1="17" x2="17" y2="7" />
+                <polyline points="7 7 17 7 17 17" />
+              </svg>
+            </div>
+            <span className="font-extrabold text-sm tracking-tight text-[#0F172A]">Marka+</span>
           </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-[10px] font-extrabold text-[#275433] leading-tight">Marka+ ERP</span>
-            <span className="text-[8px] text-[#768779] leading-tight">v1.0 · Pro</span>
-          </div>
+          <span className="text-[10px] text-[#8C9B90] mt-0.5 font-medium">By Kaluna® 2026</span>
         </div>
       </div>
     </aside>

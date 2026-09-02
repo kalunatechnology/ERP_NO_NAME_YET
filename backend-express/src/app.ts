@@ -14,6 +14,7 @@ import { notFound } from './middlewares/not-found.middleware';
 // Domain Routers
 import { authRouter, accountsRouter } from './modules/accounts/accounts.routes';
 import { coreRouter, feedShortcutRouter } from './modules/core/core.routes';
+import { requestRouter } from './modules/core/request.routes';
 import { masterDataRouter } from './modules/master_data/master_data.routes';
 import { crmRouter } from './modules/crm/crm.routes';
 import { salesRouter } from './modules/sales/sales.routes';
@@ -100,6 +101,7 @@ export function createApp(): Express {
 
   // ERP Domain Modules
   apiV1.use('/core', coreRouter);
+  apiV1.use('/requests', requestRouter);
   apiV1.use('/master-data', masterDataRouter);
   apiV1.use('/crm', crmRouter);
   apiV1.use('/sales', salesRouter);

@@ -7,6 +7,7 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { RightPanel } from "@/components/ui/RightPanel";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
+import { ChatbotDrawer } from "@/components/chatbot/ChatbotDrawer";
 import { PanelRightOpen } from "lucide-react";
 
 interface AppShellProps {
@@ -32,6 +33,8 @@ export function AppShell({ children }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Mobile right panel (notifications/feed) state
   const [mobileRightPanelOpen, setMobileRightPanelOpen] = useState(false);
+  // AI Chatbot drawer state
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
 
   /* Restore persisted right-panel collapse state */
   useEffect(() => {
@@ -93,7 +96,7 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* ── Desktop Sidebar (hidden below lg) ── */}
       <div className="hidden lg:flex flex-shrink-0">
-        <Sidebar />
+        <Sidebar onChatbotOpen={() => setIsChatbotOpen(true)} />
       </div>
 
       {/* ── Mobile Left Sidebar Overlay (shown below lg) ── */}
@@ -107,7 +110,14 @@ export function AppShell({ children }: AppShellProps) {
           />
           {/* Drawer */}
           <div className="relative z-10 flex animate-in slide-in-from-left-full duration-200 shadow-2xl">
-            <Sidebar onClose={closeMobileSidebar} isMobile />
+            <Sidebar
+              onClose={closeMobileSidebar}
+              isMobile
+              onChatbotOpen={() => {
+                closeMobileSidebar();
+                setIsChatbotOpen(true);
+              }}
+            />
           </div>
         </div>
       )}
@@ -134,6 +144,7 @@ export function AppShell({ children }: AppShellProps) {
         <Topbar
           onMenuToggle={openMobileSidebar}
           onNotificationClick={toggleRightPanel}
+          onAiChatToggle={() => setIsChatbotOpen((prev) => !prev)}
         />
 
         {/* Workspace + Right Sidebar Row */}
@@ -181,6 +192,18 @@ export function AppShell({ children }: AppShellProps) {
           </div>
         </div>
       </div>
+
+      {/* ── Slide-over Adaptive AI Chatbot Drawer ── */}
+      <ChatbotDrawer
+        isOpen={isChatbotOpen}
+        onClose={() => setIsChatbotOpen(false)}
+        currentUser={{
+          id: user?.id ? String(user.id) : undefined,
+          username: (user as any)?.username,
+          email: user?.email,
+          companyName: (user as any)?.company?.name || "PT Sinergi Muda Arsa",
+        }}
+      />
     </div>
   );
 }

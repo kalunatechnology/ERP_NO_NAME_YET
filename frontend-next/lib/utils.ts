@@ -10,12 +10,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/* ── Format Rupiah ─────────────────────────── */
+/* ── Format Rupiah (Full / Short) ──────────── */
 export function formatMoney(value: number | string | null | undefined): string {
   const num = Number(value || 0);
   if (num >= 1_000_000_000) return `Rp ${(num / 1_000_000_000).toFixed(1)}M`;
   if (num >= 1_000_000) return `Rp ${(num / 1_000_000).toFixed(1)}jt`;
   if (num >= 1_000) return `Rp ${(num / 1_000).toFixed(0)}rb`;
+  return `Rp ${num.toLocaleString("id-ID")}`;
+}
+
+export function formatRupiah(value: number | string | null | undefined): string {
+  const num = Number(value || 0);
   return `Rp ${num.toLocaleString("id-ID")}`;
 }
 
@@ -25,9 +30,10 @@ export function formatNumber(value: number | string | null | undefined): string 
 }
 
 /* ── Format Date ───────────────────────────── */
-export function formatDate(value: string | null | undefined): string {
+export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "-";
-  return new Date(value).toLocaleDateString("id-ID", {
+  const d = typeof value === "string" ? new Date(value) : value;
+  return d.toLocaleDateString("id-ID", {
     day: "numeric", month: "short", year: "numeric",
   });
 }

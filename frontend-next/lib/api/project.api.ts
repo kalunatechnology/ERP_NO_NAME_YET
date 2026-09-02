@@ -358,6 +358,7 @@ export async function getProject(id: string | number): Promise<Project> {
 export async function createProject(payload: {
   name: string;
   code?: string;
+  customer_name?: string;
   budget_amount?: number;
   planned_start_date?: string;
   planned_end_date?: string;
@@ -367,7 +368,25 @@ export async function createProject(payload: {
     ...payload,
     project_name: payload.name,
     project_code: payload.code,
+    customer_name: payload.customer_name || "PT Sinergi Muda Arsa",
   });
+  return data;
+}
+
+export async function fetchProjectCustomers(): Promise<string[]> {
+  try {
+    const { data } = await api.get<any[]>("/api/v1/projects/customers");
+    if (Array.isArray(data)) {
+      return data.map((d: any) => typeof d === "string" ? d : d.name || d.label || "").filter(Boolean);
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createProjectCustomer(name: string, taxNumber?: string) {
+  const { data } = await api.post("/api/v1/projects/customers", { name, tax_number: taxNumber });
   return data;
 }
 

@@ -23,6 +23,11 @@ import { ProjectMilestoneCard, ProjectSummary, MilestoneItem } from "@/component
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { InventoryCheckingCard } from "@/components/ui/InventoryCheckingCard";
 import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
+import { NewCardRequestModal } from "@/components/requests/NewCardRequestModal";
+import { RequestSuccessModal } from "@/components/requests/RequestSuccessModal";
+import { RequestReviewModal } from "@/components/requests/RequestReviewModal";
+import { RequestCardFeed } from "@/components/requests/RequestCardFeed";
+import { Sparkles, Plus } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════
    SHARED COMPONENTS
@@ -1233,6 +1238,13 @@ export default function DashboardClient() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Marka+ Request Card & Ticketing States
+  const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [successRequestData, setSuccessRequestData] = useState<any>(null);
+  const [selectedReviewRequest, setSelectedReviewRequest] = useState<any>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -1278,22 +1290,31 @@ export default function DashboardClient() {
   return (
     <div className="flex flex-col gap-5">
       {/* ── Page Header ─────────────────── */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-brand-deep-green">{title}</h1>
           <p className="text-xs text-text-secondary mt-0.5">
             Selamat datang, <span className="font-medium">{displayName}</span> · {subtitle}
           </p>
         </div>
-        <button
-          onClick={() => loadData(true)}
-          disabled={refreshing}
-          className="btn-ghost gap-1.5 text-xs flex-shrink-0"
-          aria-label="Refresh data"
-        >
-          <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
-          {refreshing ? "Memuat..." : "Refresh"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsNewRequestModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[14px] bg-[#275433] hover:bg-[#1E3A2B] text-white text-xs font-extrabold shadow-sm hover:shadow-md transition-all select-none"
+          >
+            <Sparkles size={14} className="text-[#EAF8D6]" />
+            <span>Request Card</span>
+          </button>
+          <button
+            onClick={() => loadData(true)}
+            disabled={refreshing}
+            className="btn-ghost gap-1.5 text-xs flex-shrink-0"
+            aria-label="Refresh data"
+          >
+            <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
+            {refreshing ? "Memuat..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {/* ── Role-Based Dashboard Content ── */}
@@ -1317,6 +1338,42 @@ export default function DashboardClient() {
       {userRole === "staff" && (
         <StaffDashboard projects={projects} loading={loading} />
       )}
+
+      {/* ── Marka+ Active Request Cards Feed ── */}
+      <section className="mt-2 pt-5 border-t border-[#D5E2D7]">
+        <RequestCardFeed
+          onRequestClick={(req) => setSelectedReviewRequest(req)}
+          onOpenNewModal={() => setIsNewRequestModalOpen(true)}
+          refreshTrigger={refreshTrigger}
+        />
+      </section>
+
+      {/* ── Marka+ Interactive Modals ── */}
+      <NewCardRequestModal
+        isOpen={isNewRequestModalOpen}
+        onClose={() => setIsNewRequestModalOpen(false)}
+        onSuccess={(data) => {
+          setIsNewRequestModalOpen(false);
+          setSuccessRequestData(data);
+          setIsSuccessModalOpen(true);
+          setRefreshTrigger(prev => prev + 1);
+        }}
+      />
+
+      <RequestSuccessModal
+        isOpen={isSuccessModalOpen}
+        onClose={() => setIsSuccessModalOpen(false)}
+        requestData={successRequestData}
+      />
+
+      <RequestReviewModal
+        isOpen={!!selectedReviewRequest}
+        onClose={() => setSelectedReviewRequest(null)}
+        request={selectedReviewRequest}
+        onActionComplete={() => {
+          setRefreshTrigger(prev => prev + 1);
+        }}
+      />
     </div>
   );
 }

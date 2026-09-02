@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import {
   DollarSign, TrendingUp, CreditCard, ArrowUpRight, ArrowDownRight,
   FileCheck, Plus, RefreshCw, Layers, CheckCircle2, XCircle,
-  Building, Landmark, ShieldCheck, Scale, Zap, Trash2, ArrowRight
+  Building, Landmark, ShieldCheck, Scale, Zap, Trash2, ArrowRight,
+  BookOpen, BarChart3, Activity, Banknote, ArrowLeftRight, TrendingDown,
+  AlertTriangle, CheckSquare, Clock, Eye
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import api from "@/lib/api/axios";
@@ -18,20 +20,33 @@ import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
 import { ProjectTaxWorkspace } from "@/components/finance/ProjectTaxWorkspace";
 import { CompanyMasterWorkspace } from "@/components/finance/CompanyMasterWorkspace";
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
+import { useAuth } from "@/contexts/AuthContext";
+import dynamic from "next/dynamic";
+
+const FixedAssetsWorkspace          = dynamic(() => import("@/components/finance/FixedAssetsWorkspace"),          { ssr: false });
+const PeriodClosingWorkspace        = dynamic(() => import("@/components/finance/PeriodClosingWorkspace"),        { ssr: false });
+const AuditTrailWorkspace           = dynamic(() => import("@/components/finance/AuditTrailWorkspace"),           { ssr: false });
+const ExecutiveAuditReportWorkspace = dynamic(() => import("@/components/finance/ExecutiveAuditReportWorkspace").then(m => m.ExecutiveAuditReportWorkspace), { ssr: false });
+const DocumentPrintModal            = dynamic(() => import("@/components/finance/DocumentPrintModal").then(m => m.DocumentPrintModal), { ssr: false });
 
 const FINANCE_TABS = [
-  { id: "overview",       label: "Dashboard Ringkasan"       },
-  { id: "company_master", label: "🏢 Master Perusahaan & Bank" },
-  { id: "profit",         label: "📊 Laba & Revenue Proyek"  },
-  { id: "costing",        label: "Costing & WIP"             },
-  { id: "fundings",       label: "Funding Proyek"            },
-  { id: "ap",             label: "Tagihan Vendor (AP)"       },
-  { id: "billing",        label: "Billing Termin"            },
-  { id: "ar",             label: "Piutang & Kredit (AR)"     },
-  { id: "cashbank",       label: "Kas & Bank (Disbursement)" },
-  { id: "gl",             label: "Buku Besar (GL)"           },
-  { id: "tax",            label: "Perpajakan"                },
-  { id: "assets",         label: "Aset Tetap"                },
+  { id: "overview",         label: "📊 Dashboard"                  },
+  { id: "executive_report", label: "👑 Executive Audit Report"     },
+  { id: "company_master",   label: "🏢 Master Perusahaan"          },
+  { id: "profit",           label: "📈 Profitabilitas"             },
+  { id: "costing",          label: "⚙️ Costing & WIP"              },
+  { id: "fundings",         label: "💰 Funding Proyek"             },
+  { id: "ap",               label: "📋 Tagihan Vendor (AP)"        },
+  { id: "billing",          label: "🧾 Billing Termin"             },
+  { id: "ar",               label: "🔄 Piutang (AR)"               },
+  { id: "cashbank",         label: "🏦 Kas & Bank"                 },
+  { id: "gl",               label: "📒 Buku Besar & Trial Balance"  },
+  { id: "lapkeu",           label: "📑 Laporan Keuangan"           },
+  { id: "banking_hub",      label: "🔗 Banking Hub & Rekonsiliasi" },
+  { id: "tax",              label: "🧮 Perpajakan"                 },
+  { id: "assets",           label: "🏗️ Aset Tetap"                 },
+  { id: "period_closing",   label: "📅 Tutup Buku"                 },
+  { id: "audit_trail",      label: "🛡️ Audit Trail"                },
 ];
 
 const DEFAULT_VENDOR_BILLS = [
@@ -106,7 +121,8 @@ export const DEFAULT_CUSTOMER_RECEIPTS = [
 ];
 
 export default function FinanceClient() {
-  const [activeTab, setActiveTab] = useState("overview");
+  const { userRole } = useAuth();
+  const [activeTab, setActiveTab] = useState(userRole === "executive" ? "executive_report" : "overview");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   // Tracks which tabs received a 403 response — shows inline AccessDeniedState instead of redirecting
@@ -134,6 +150,19 @@ export default function FinanceClient() {
   const [proposals, setProposals] = useState<any[]>([]);
   const [vendorBills, setVendorBills] = useState<any[]>(DEFAULT_VENDOR_BILLS);
   const [customerReceipts, setCustomerReceipts] = useState<any[]>(DEFAULT_CUSTOMER_RECEIPTS);
+
+  /* Accounting / GL states */
+  const [trialBalance, setTrialBalance] = useState<any>(null);
+  const [profitLoss, setProfitLoss] = useState<any>(null);
+  const [balanceSheet, setBalanceSheet] = useState<any>(null);
+  const [journalEntries, setJournalEntries] = useState<any[]>([]);
+  const [bankStatements, setBankStatements] = useState<any[]>([]);
+  const [bankReconciliations, setBankReconciliations] = useState<any[]>([]);
+  const [glActiveTab, setGlActiveTab] = useState<"trial" | "entries">("trial");
+  const [lapkeuActiveTab, setLapkeuActiveTab] = useState<"pl" | "bs">("pl");
+  const [isReversalModalOpen, setIsReversalModalOpen] = useState(false);
+  const [selectedJournalEntry, setSelectedJournalEntry] = useState<any>(null);
+  const [reversalReason, setReversalReason] = useState("");
 
   /* Modals */
   const [isCostModalOpen, setIsCostModalOpen] = useState(false);
@@ -193,11 +222,16 @@ export default function FinanceClient() {
         }
       };
 
-      const [costRes, fundRes, propRes, apRes] = await Promise.all([
+      const [costRes, fundRes, propRes, apRes, tbRes, jeRes, plRes, bsRes, stmtRes] = await Promise.all([
         safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
         safeGet("/api/v1/finance/project-fundings/?page_size=50", "fundings"),
         safeGet("/api/v1/finance/billing-proposals/?page_size=50", "billing"),
         safeGet("/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50", "ap"),
+        safeGet("/api/v1/finance/trial-balance", "gl"),
+        safeGet("/api/v1/finance/journal-entries/?page_size=30&ordering=-posting_date", "gl"),
+        safeGet("/api/v1/finance/profit-and-loss", "lapkeu"),
+        safeGet("/api/v1/finance/balance-sheet", "lapkeu"),
+        safeGet("/api/v1/finance/bank-statements/?page_size=20", "banking_hub"),
       ]);
 
       setCostEntries(normalizeList(costRes.data).rows);
@@ -210,11 +244,40 @@ export default function FinanceClient() {
       } else {
         setVendorBills(prev => (prev.length > 0 ? prev : DEFAULT_VENDOR_BILLS));
       }
+
+      // Accounting data
+      if (tbRes.data?.data) setTrialBalance(tbRes.data.data);
+      else if (tbRes.data?.accounts) setTrialBalance(tbRes.data);
+
+      const jeList = normalizeList(jeRes.data).rows;
+      if (jeList.length > 0) setJournalEntries(jeList);
+
+      if (plRes.data?.data) setProfitLoss(plRes.data.data);
+      else if (plRes.data?.revenues) setProfitLoss(plRes.data);
+
+      if (bsRes.data?.data) setBalanceSheet(bsRes.data.data);
+      else if (bsRes.data?.assets) setBalanceSheet(bsRes.data);
+
+      const stmtList = normalizeList(stmtRes.data).rows;
+      if (stmtList.length > 0) setBankStatements(stmtList);
     } catch {
       toast.error("Gagal memuat data keuangan");
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const handleReverseEntry = async () => {
+    if (!selectedJournalEntry || !reversalReason.trim()) return;
+    try {
+      await api.post(`/api/v1/finance/journal-entries/${selectedJournalEntry.id}/reverse`, { reason: reversalReason });
+      toast.success("✓ Jurnal berhasil di-reverse (Storno)!");
+      setIsReversalModalOpen(false);
+      setReversalReason("");
+      await loadFinanceData(true);
+    } catch {
+      toast.error("Gagal melakukan reversal jurnal");
     }
   };
 
@@ -358,15 +421,23 @@ export default function FinanceClient() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-            <Plus size={14} /> Catat Biaya
-          </button>
-          <button onClick={() => setIsFundingModalOpen(true)} className="btn-outline py-1.5 px-3 text-xs gap-1.5">
-            <Plus size={14} /> Request Dana
-          </button>
-          <button onClick={() => setIsBillingModalOpen(true)} className="btn-outline py-1.5 px-3 text-xs gap-1.5">
-            <Plus size={14} /> Proposal Billing
-          </button>
+          {userRole !== "executive" ? (
+            <>
+              <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                <Plus size={14} /> Catat Biaya
+              </button>
+              <button onClick={() => setIsFundingModalOpen(true)} className="btn-outline py-1.5 px-3 text-xs gap-1.5">
+                <Plus size={14} /> Request Dana
+              </button>
+              <button onClick={() => setIsBillingModalOpen(true)} className="btn-outline py-1.5 px-3 text-xs gap-1.5">
+                <Plus size={14} /> Proposal Billing
+              </button>
+            </>
+          ) : (
+            <span className="px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold flex items-center gap-1.5">
+              👑 Mode Eksekutif (Preview & Audit Report)
+            </span>
+          )}
           <button
             onClick={() => loadFinanceData(true)}
             className={cn("btn-ghost py-1.5 px-3 text-xs gap-1.5", refreshing && "animate-spin")}
@@ -376,6 +447,20 @@ export default function FinanceClient() {
           </button>
         </div>
       </div>
+
+      {userRole === "executive" && (
+        <div className="p-3.5 rounded-2xl bg-[#FAF5FF] border border-[#E9D5FF] text-xs text-[#581C87] flex items-center justify-between flex-wrap gap-2 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span className="text-base">👑</span>
+            <span>
+              <b>Executive Viewport Active:</b> Anda memiliki akses penuh membaca seluruh metrik keuangan, arus kas, dan audit trail satu lembar.
+            </span>
+          </div>
+          <span className="text-2xs font-extrabold px-2.5 py-0.5 rounded-full bg-[#F3E8FF] text-[#6B21A8]">
+            READ ONLY / PREVIEW
+          </span>
+        </div>
+      )}
 
       {/* 11 Subtabs navigation */}
       <div className="flex border-b border-text-tertiary overflow-x-auto no-scrollbar gap-1">
@@ -939,23 +1024,469 @@ export default function FinanceClient() {
         )
       )}
 
-      {/* ── TAB 9 & 11: GL & ASSETS ─────────────── */}
-      {["gl", "assets"].includes(activeTab) && (
-        tabErrors[activeTab] ? (
+      {/* ── TAB: BUKU BESAR & TRIAL BALANCE ─────── */}
+      {activeTab === "gl" && (
+        tabErrors["gl"] ? (
           <div className="card rounded-2xl overflow-hidden">
-            <AccessDeniedState compact section={FINANCE_TABS.find(t => t.id === activeTab)?.label} />
+            <AccessDeniedState compact section="Buku Besar (GL)" />
           </div>
         ) : (
-          <div className="card rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3">
-            <Landmark size={40} className="text-brand-green opacity-40" />
-            <h3 className="text-base font-semibold text-text-primary">
-              Modul {FINANCE_TABS.find(t => t.id === activeTab)?.label}
-            </h3>
-            <p className="text-xs text-text-secondary max-w-md">
-              Modul ini terhubung otomatis dengan buku besar General Ledger dan sistem aktiva tetap perusahaan.
-            </p>
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                  <BookOpen size={16} className="text-brand-green" /> Buku Besar & Trial Balance (General Ledger)
+                </h3>
+                <p className="text-xs text-text-secondary">Saldo dihitung secara real-time dari akumulasi jurnal yang telah diposting (POSTED).</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setGlActiveTab("trial")} className={cn("tab-btn text-xs", glActiveTab === "trial" && "active")}>Trial Balance</button>
+                <button onClick={() => setGlActiveTab("entries")} className={cn("tab-btn text-xs", glActiveTab === "entries" && "active")}>Jurnal Umum</button>
+              </div>
+            </div>
+
+            {glActiveTab === "trial" && (
+              <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                {/* Summary Banner */}
+                {trialBalance && (
+                  <div className={cn(
+                    "flex items-center gap-3 px-5 py-3 text-xs font-semibold border-b",
+                    trialBalance.is_balanced
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                      : "bg-red-50 border-red-200 text-red-800"
+                  )}>
+                    {trialBalance.is_balanced
+                      ? <><CheckCircle2 size={15} /> Trial Balance SEIMBANG — Total Debit = Total Kredit ({formatMoney(trialBalance.total_debit)})</>
+                      : <><AlertTriangle size={15} /> TIDAK SEIMBANG! Debit: {formatMoney(trialBalance.total_debit)} ≠ Kredit: {formatMoney(trialBalance.total_credit)}</>}
+                  </div>
+                )}
+                <div className="table-scroll-wrapper">
+                  <table className="w-full data-table text-xs min-w-[700px]">
+                    <thead>
+                      <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
+                        <th className="py-3 px-4 text-left">Kode Akun</th>
+                        <th className="py-3 px-4 text-left">Nama Akun</th>
+                        <th className="py-3 px-4 text-left">Tipe</th>
+                        <th className="py-3 px-4 text-right">Total Debit</th>
+                        <th className="py-3 px-4 text-right">Total Kredit</th>
+                        <th className="py-3 px-4 text-right">Saldo Bersih</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {trialBalance?.accounts?.map((acc: any) => (
+                        <tr key={acc.account_id} className="hover:bg-gray-50/50">
+                          <td className="py-2.5 px-4 font-mono font-bold text-brand-deep-green">{acc.account_code}</td>
+                          <td className="py-2.5 px-4 font-medium text-text-primary">{acc.account_name}</td>
+                          <td className="py-2.5 px-4">
+                            <span className={cn("badge text-2xs",
+                              acc.account_type === "ASSET" ? "badge-neutral" :
+                              acc.account_type === "REVENUE" ? "badge-success" :
+                              acc.account_type === "EXPENSE" ? "bg-red-100 text-red-700" :
+                              acc.account_type === "LIABILITY" ? "bg-orange-100 text-orange-700" :
+                              "bg-purple-100 text-purple-700"
+                            )}>{acc.account_type}</span>
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono">{acc.total_debit > 0 ? formatMoney(acc.total_debit) : "-"}</td>
+                          <td className="py-2.5 px-4 text-right font-mono">{acc.total_credit > 0 ? formatMoney(acc.total_credit) : "-"}</td>
+                          <td className={cn("py-2.5 px-4 text-right font-bold font-mono",
+                            acc.net_balance >= 0 ? "text-brand-deep-green" : "text-red-600"
+                          )}>{formatMoney(acc.net_balance)}</td>
+                        </tr>
+                      ))}
+                      {!trialBalance?.accounts?.length && (
+                        <tr><td colSpan={6} className="text-center py-10 text-xs text-text-secondary">
+                          <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
+                          Belum ada data jurnal yang diposting.
+                        </td></tr>
+                      )}
+                    </tbody>
+                    {trialBalance?.accounts?.length > 0 && (
+                      <tfoot className="bg-gray-100 border-t-2 border-text-tertiary">
+                        <tr>
+                          <td colSpan={3} className="py-3 px-4 text-xs font-black text-text-primary uppercase">GRAND TOTAL</td>
+                          <td className="py-3 px-4 text-right font-black font-mono text-brand-deep-green">{formatMoney(trialBalance.total_debit)}</td>
+                          <td className="py-3 px-4 text-right font-black font-mono text-red-700">{formatMoney(trialBalance.total_credit)}</td>
+                          <td className="py-3 px-4 text-right font-black font-mono">{formatMoney(trialBalance.total_debit - trialBalance.total_credit)}</td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {glActiveTab === "entries" && (
+              <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-text-primary">Daftar Jurnal Umum (Journal Entries)</h4>
+                  <span className="text-2xs text-text-secondary">{journalEntries.length} jurnal terakhir</span>
+                </div>
+                <div className="table-scroll-wrapper">
+                  <table className="w-full data-table text-xs min-w-[720px]">
+                    <thead>
+                      <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
+                        <th className="py-3 px-4 text-left">No. Jurnal</th>
+                        <th className="py-3 px-4 text-left">Tanggal Posting</th>
+                        <th className="py-3 px-4 text-left">Keterangan</th>
+                        <th className="py-3 px-4 text-center">Status</th>
+                        <th className="py-3 px-4 text-center">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {journalEntries.map((je: any) => (
+                        <tr key={je.id} className="hover:bg-gray-50/50">
+                          <td className="py-2.5 px-4 font-mono font-bold text-brand-deep-green text-2xs">{je.entry_number || je.id?.slice(0,8)}</td>
+                          <td className="py-2.5 px-4 font-mono text-2xs text-text-secondary">{je.posting_date ? new Date(je.posting_date).toLocaleDateString("id-ID") : "-"}</td>
+                          <td className="py-2.5 px-4 text-text-primary max-w-xs truncate">{je.description || "Jurnal Umum"}</td>
+                          <td className="py-2.5 px-4 text-center">
+                            <span className={cn("badge text-2xs",
+                              je.status === "POSTED" ? "badge-success" :
+                              je.status === "REVERSED" ? "bg-orange-100 text-orange-700" :
+                              je.status === "DRAFT" ? "badge-neutral" : "badge-neutral"
+                            )}>{je.status}</span>
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            {je.status === "POSTED" && !je.is_reversed && (
+                              <button
+                                onClick={() => { setSelectedJournalEntry(je); setIsReversalModalOpen(true); }}
+                                className="btn-ghost text-2xs text-orange-600 hover:text-orange-800 py-1 px-2 gap-1"
+                              >
+                                <ArrowLeftRight size={11} /> Storno
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {!journalEntries.length && (
+                        <tr><td colSpan={5} className="text-center py-10 text-xs text-text-secondary">
+                          <Activity size={32} className="mx-auto mb-2 opacity-30" />
+                          Belum ada jurnal entry.
+                        </td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )
+      )}
+
+      {/* ── TAB: LAPORAN KEUANGAN ────────────────── */}
+      {activeTab === "lapkeu" && (
+        tabErrors["lapkeu"] ? (
+          <div className="card rounded-2xl overflow-hidden">
+            <AccessDeniedState compact section="Laporan Keuangan" />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                  <BarChart3 size={16} className="text-brand-green" /> Laporan Keuangan Real-Time
+                </h3>
+                <p className="text-xs text-text-secondary">Digenerate secara otomatis dari General Ledger. Selalu sinkron dengan data transaksi terkini.</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setLapkeuActiveTab("pl")} className={cn("tab-btn text-xs", lapkeuActiveTab === "pl" && "active")}>Laba Rugi (P&L)</button>
+                <button onClick={() => setLapkeuActiveTab("bs")} className={cn("tab-btn text-xs", lapkeuActiveTab === "bs" && "active")}>Neraca (Balance Sheet)</button>
+              </div>
+            </div>
+
+            {lapkeuActiveTab === "pl" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* KPI Summary */}
+                <div className="lg:col-span-3 grid grid-cols-3 gap-3">
+                  <div className={cn("card rounded-2xl p-4 border-l-4", profitLoss?.is_profit ? "border-emerald-500" : "border-red-500")}>
+                    <span className="text-xs text-text-secondary">Total Pendapatan</span>
+                    <p className="text-xl font-black text-brand-deep-green">{formatMoney(profitLoss?.total_revenue ?? 0)}</p>
+                  </div>
+                  <div className="card rounded-2xl p-4 border-l-4 border-red-400">
+                    <span className="text-xs text-text-secondary">Total Beban</span>
+                    <p className="text-xl font-black text-red-600">{formatMoney(profitLoss?.total_expense ?? 0)}</p>
+                  </div>
+                  <div className={cn("card rounded-2xl p-4 border-l-4", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "border-brand-green" : "border-red-600")}>
+                    <span className="text-xs text-text-secondary">Laba / Rugi Bersih</span>
+                    <p className={cn("text-xl font-black", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "text-brand-deep-green" : "text-red-700")}>
+                      {formatMoney(profitLoss?.net_profit_loss ?? 0)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Revenue Table */}
+                <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                  <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-200">
+                    <h4 className="text-xs font-bold text-emerald-800 flex items-center gap-1.5"><TrendingUp size={13} /> Pendapatan (Revenue)</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {profitLoss?.revenues?.map((r: any, i: number) => (
+                      <div key={i} className="px-4 py-3 flex justify-between items-center text-xs">
+                        <div>
+                          <span className="font-mono text-brand-deep-green text-2xs">{r.account_code}</span>
+                          <p className="font-medium text-text-primary">{r.account_name}</p>
+                        </div>
+                        <span className="font-bold text-emerald-700">{formatMoney(r.amount)}</span>
+                      </div>
+                    ))}
+                    {!profitLoss?.revenues?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data pendapatan.</p>}
+                  </div>
+                  {profitLoss?.total_revenue > 0 && (
+                    <div className="px-4 py-2.5 bg-emerald-50 border-t flex justify-between text-xs font-black text-emerald-800">
+                      <span>TOTAL PENDAPATAN</span>
+                      <span>{formatMoney(profitLoss.total_revenue)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Expense Table */}
+                <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                  <div className="px-4 py-3 bg-red-50 border-b border-red-200">
+                    <h4 className="text-xs font-bold text-red-800 flex items-center gap-1.5"><TrendingDown size={13} /> Beban (Expenses)</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {profitLoss?.expenses?.map((e: any, i: number) => (
+                      <div key={i} className="px-4 py-3 flex justify-between items-center text-xs">
+                        <div>
+                          <span className="font-mono text-red-600 text-2xs">{e.account_code}</span>
+                          <p className="font-medium text-text-primary">{e.account_name}</p>
+                        </div>
+                        <span className="font-bold text-red-700">{formatMoney(e.amount)}</span>
+                      </div>
+                    ))}
+                    {!profitLoss?.expenses?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data beban.</p>}
+                  </div>
+                  {profitLoss?.total_expense > 0 && (
+                    <div className="px-4 py-2.5 bg-red-50 border-t flex justify-between text-xs font-black text-red-800">
+                      <span>TOTAL BEBAN</span>
+                      <span>{formatMoney(profitLoss.total_expense)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Net P&L Summary */}
+                <div className="card rounded-2xl p-5 border border-text-tertiary flex flex-col gap-4">
+                  <h4 className="text-xs font-bold text-text-primary">Ringkasan Laba Rugi</h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-text-secondary">Pendapatan Kotor</span>
+                      <span className="font-bold text-emerald-700">{formatMoney(profitLoss?.total_revenue ?? 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-text-secondary">HPP / COGS</span>
+                      <span className="font-bold text-red-700">{formatMoney(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
+                    </div>
+                    <hr className="border-text-tertiary" />
+                    <div className="flex justify-between text-xs">
+                      <span className="font-semibold text-text-primary">Laba Kotor</span>
+                      <span className="font-bold text-brand-deep-green">{formatMoney(Number(profitLoss?.total_revenue ?? 0) - Number(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0))}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-text-secondary">Beban Operasional</span>
+                      <span className="font-bold text-orange-700">{formatMoney(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('6')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
+                    </div>
+                    <hr className="border-text-tertiary" />
+                    <div className="flex justify-between text-sm">
+                      <span className="font-black text-text-primary">Laba / Rugi Bersih</span>
+                      <span className={cn("font-black", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "text-brand-deep-green" : "text-red-700")}>
+                        {formatMoney(profitLoss?.net_profit_loss ?? 0)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-2xs text-text-secondary border-t pt-2">
+                    Generated: {profitLoss?.generated_at ? new Date(profitLoss.generated_at).toLocaleString("id-ID") : "-"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {lapkeuActiveTab === "bs" && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Assets */}
+                <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                  <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
+                    <h4 className="text-xs font-bold text-blue-800 flex items-center gap-1.5"><Building size={13} /> ASET (Assets)</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {balanceSheet?.assets?.map((a: any, i: number) => (
+                      <div key={i} className="px-4 py-3 flex justify-between text-xs">
+                        <span className="text-text-primary">{a.account_code} — {a.account_name}</span>
+                        <span className="font-bold text-blue-700">{formatMoney(a.amount)}</span>
+                      </div>
+                    ))}
+                    {!balanceSheet?.assets?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data aset.</p>}
+                  </div>
+                  <div className="px-4 py-2.5 bg-blue-50 border-t flex justify-between text-xs font-black text-blue-800">
+                    <span>TOTAL ASET</span>
+                    <span>{formatMoney(balanceSheet?.total_assets ?? 0)}</span>
+                  </div>
+                </div>
+
+                {/* Liabilities + Equity */}
+                <div className="flex flex-col gap-4">
+                  <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                    <div className="px-4 py-3 bg-orange-50 border-b border-orange-200">
+                      <h4 className="text-xs font-bold text-orange-800 flex items-center gap-1.5"><Layers size={13} /> KEWAJIBAN (Liabilities)</h4>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {balanceSheet?.liabilities?.map((l: any, i: number) => (
+                        <div key={i} className="px-4 py-3 flex justify-between text-xs">
+                          <span className="text-text-primary">{l.account_code} — {l.account_name}</span>
+                          <span className="font-bold text-orange-700">{formatMoney(l.amount)}</span>
+                        </div>
+                      ))}
+                      {!balanceSheet?.liabilities?.length && <p className="text-xs text-center py-4 text-text-secondary">Belum ada kewajiban.</p>}
+                    </div>
+                    <div className="px-4 py-2.5 bg-orange-50 border-t flex justify-between text-xs font-black text-orange-800">
+                      <span>TOTAL KEWAJIBAN</span>
+                      <span>{formatMoney(balanceSheet?.total_liabilities ?? 0)}</span>
+                    </div>
+                  </div>
+                  <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+                    <div className="px-4 py-3 bg-purple-50 border-b border-purple-200">
+                      <h4 className="text-xs font-bold text-purple-800 flex items-center gap-1.5"><ShieldCheck size={13} /> EKUITAS (Equity)</h4>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {balanceSheet?.equity?.map((e: any, i: number) => (
+                        <div key={i} className="px-4 py-3 flex justify-between text-xs">
+                          <span className="text-text-primary">{e.account_code} — {e.account_name}</span>
+                          <span className="font-bold text-purple-700">{formatMoney(e.amount)}</span>
+                        </div>
+                      ))}
+                      {!balanceSheet?.equity?.length && <p className="text-xs text-center py-4 text-text-secondary">Belum ada data ekuitas.</p>}
+                    </div>
+                    <div className="px-4 py-2.5 bg-purple-50 border-t flex justify-between text-xs font-black text-purple-800">
+                      <span>TOTAL EKUITAS</span>
+                      <span>{formatMoney(balanceSheet?.total_equity ?? 0)}</span>
+                    </div>
+                  </div>
+                  {/* Balance Check */}
+                  <div className={cn(
+                    "card rounded-xl p-4 flex items-center gap-3 text-xs font-semibold border",
+                    balanceSheet?.is_balanced ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-red-50 border-red-300 text-red-800"
+                  )}>
+                    {balanceSheet?.is_balanced
+                      ? <><CheckCircle2 size={15} /> Neraca SEIMBANG: Total Aset = Total Kewajiban + Ekuitas</>
+                      : <><AlertTriangle size={15} /> Neraca TIDAK SEIMBANG! Periksa jurnal.</>}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      )}
+
+      {/* ── TAB: BANKING HUB & REKONSILIASI ─────── */}
+      {activeTab === "banking_hub" && (
+        tabErrors["banking_hub"] ? (
+          <div className="card rounded-2xl overflow-hidden">
+            <AccessDeniedState compact section="Banking Hub" />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                  <Banknote size={16} className="text-brand-green" /> Banking Hub & Rekonsiliasi Bank
+                </h3>
+                <p className="text-xs text-text-secondary">Impor mutasi rekening bank dan cocokkan dengan transaksi di buku besar secara otomatis.</p>
+              </div>
+            </div>
+
+            {/* Ringkasan Saldo Real-Time */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              {BANK_ACCOUNTS.map((b) => (
+                <div key={b.id} className="card p-4 rounded-2xl border border-text-tertiary bg-white flex flex-col justify-between shadow-xs">
+                  <div className="flex items-center justify-between text-2xs font-bold text-text-secondary uppercase">
+                    <span>{b.type.replace(/_/g, " ")}</span>
+                    <Landmark size={14} className="text-brand-green" />
+                  </div>
+                  <strong className="text-xs font-bold text-text-primary block mt-1">{b.bank}</strong>
+                  <span className="text-2xs text-text-secondary font-mono mt-0.5">{b.number}</span>
+                  <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex justify-between items-baseline">
+                    <span className="text-2xs text-text-secondary">Saldo Buku:</span>
+                    <strong className="text-sm font-black text-brand-deep-green">{formatMoney(b.balance)}</strong>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Rekonsiliasi Status */}
+            <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
+              <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
+                <h4 className="text-xs font-bold text-text-primary">Status Rekonsiliasi Bank</h4>
+                <span className="text-2xs text-text-secondary">
+                  {bankStatements.length} statement | {bankReconciliations.filter((r: any) => r.status === "MATCHED").length} matched
+                </span>
+              </div>
+              {bankStatements.length === 0 ? (
+                <div className="py-12 flex flex-col items-center gap-3 text-center">
+                  <ArrowLeftRight size={36} className="text-brand-green opacity-30" />
+                  <p className="text-xs text-text-secondary">Belum ada mutasi rekening yang diimpor.</p>
+                  <p className="text-2xs text-text-secondary">Gunakan API <code className="font-mono bg-gray-100 px-1 rounded">POST /api/v1/finance/bank-accounts/:id/import-statement</code> untuk mengimpor mutasi.</p>
+                </div>
+              ) : (
+                <div className="table-scroll-wrapper">
+                  <table className="w-full data-table text-xs min-w-[640px]">
+                    <thead>
+                      <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
+                        <th className="py-3 px-4 text-left">Tanggal</th>
+                        <th className="py-3 px-4 text-left">Referensi</th>
+                        <th className="py-3 px-4 text-left">Keterangan</th>
+                        <th className="py-3 px-4 text-right">Debit</th>
+                        <th className="py-3 px-4 text-right">Kredit</th>
+                        <th className="py-3 px-4 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {bankStatements.map((stmt: any) => (
+                        <tr key={stmt.id} className="hover:bg-gray-50/50">
+                          <td className="py-2.5 px-4 font-mono text-2xs">{stmt.transaction_date ? new Date(stmt.transaction_date).toLocaleDateString("id-ID") : "-"}</td>
+                          <td className="py-2.5 px-4 font-mono text-2xs text-brand-deep-green">{stmt.reference_number || "-"}</td>
+                          <td className="py-2.5 px-4 text-text-primary">{stmt.description}</td>
+                          <td className="py-2.5 px-4 text-right text-emerald-700 font-bold">{stmt.debit_amount > 0 ? formatMoney(stmt.debit_amount) : "-"}</td>
+                          <td className="py-2.5 px-4 text-right text-red-600 font-bold">{stmt.credit_amount > 0 ? formatMoney(stmt.credit_amount) : "-"}</td>
+                          <td className="py-2.5 px-4 text-center">
+                            <span className={cn("badge text-2xs",
+                              stmt.status === "MATCHED" ? "badge-success" : "badge-neutral"
+                            )}>{stmt.status || "UNRECONCILED"}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      )}
+
+      {/* ── TAB: ASET TETAP ──────────────────────── */}
+      {activeTab === "assets" && (
+        <div className="card rounded-2xl p-6">
+          <FixedAssetsWorkspace />
+        </div>
+      )}
+
+      {/* ── TAB: TUTUP BUKU ──────────────────────── */}
+      {activeTab === "period_closing" && (
+        <div className="card rounded-2xl p-6">
+          <PeriodClosingWorkspace />
+        </div>
+      )}
+
+      {/* ── TAB: AUDIT TRAIL ─────────────────────── */}
+      {activeTab === "audit_trail" && (
+        <div className="card rounded-2xl p-6">
+          <AuditTrailWorkspace />
+        </div>
+      )}
+
+      {/* ── TAB: EXECUTIVE AUDIT REPORT ───────────── */}
+      {activeTab === "executive_report" && (
+        <div className="card rounded-2xl p-6">
+          <ExecutiveAuditReportWorkspace />
+        </div>
       )}
 
       {/* ── MODALS ───────────────────────────────── */}
@@ -1617,6 +2148,45 @@ export default function FinanceClient() {
         </form>
       </Modal>
 
+      {/* Modal: Reversal / Storno Jurnal */}
+      {isReversalModalOpen && (
+        <Modal
+          isOpen={isReversalModalOpen}
+          onClose={() => { setIsReversalModalOpen(false); setReversalReason(""); }}
+          title="↩️ Reversal Jurnal (Storno)"
+          subtitle={`Jurnal: ${selectedJournalEntry?.entry_number || "-"}`}
+        >
+          <div className="flex flex-col gap-4">
+            <div className="p-3 rounded-xl bg-orange-50 border border-orange-200 text-xs text-orange-800 flex gap-2">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <div>
+                <strong>Peringatan:</strong> Reversal akan menerbitkan jurnal pembalik baru (REV-{selectedJournalEntry?.entry_number}). Jurnal asli <strong>tidak dihapus</strong> (immutable audit trail).
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-text-primary block mb-1">Alasan Reversal / Storno *</label>
+              <textarea
+                rows={3}
+                className="w-full border border-text-tertiary rounded-lg p-2 text-xs focus:outline-none focus:border-orange-400"
+                placeholder="Contoh: Kesalahan input nominal, double posting, atau koreksi kode akun..."
+                value={reversalReason}
+                onChange={e => setReversalReason(e.target.value)}
+              />
+              <span className="text-2xs text-text-secondary">Minimal 5 karakter.</span>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button onClick={() => { setIsReversalModalOpen(false); setReversalReason(""); }} className="btn-ghost text-xs">Batal</button>
+              <button
+                onClick={handleReverseEntry}
+                disabled={reversalReason.trim().length < 5}
+                className="btn-primary text-xs py-2 px-4 font-bold bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-40"
+              >
+                ↩️ Konfirmasi Storno Jurnal
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

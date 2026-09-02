@@ -10,6 +10,7 @@ import toast from "react-hot-toast";
 interface TopbarProps {
   onMenuToggle?: () => void;
   onNotificationClick?: () => void;
+  onAiChatToggle?: () => void;
 }
 
 const DEMO_PERSONAS = [
@@ -46,9 +47,9 @@ function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
 
 import { GlobalCommandPalette } from "./GlobalCommandPalette";
 import { UserProfileSettingsModal } from "@/components/ui/UserProfileSettingsModal";
-import { User, KeyRound } from "lucide-react";
+import { User, KeyRound, Sparkles } from "lucide-react";
 
-export function Topbar({ onMenuToggle, onNotificationClick }: TopbarProps) {
+export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout, company, setCompany, companies, isAdmin } = useAuth();

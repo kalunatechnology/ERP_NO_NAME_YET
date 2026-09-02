@@ -22,7 +22,8 @@ import {
   createMilestone,
   assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers,
   fetchProjectFinancialPerformance, updateProjectFinancials,
-  fetchProjectFundingRequests, submitProjectFundingRequest
+  fetchProjectFundingRequests, submitProjectFundingRequest,
+  fetchProjectCustomers
 } from "@/lib/api/project.api";
 import { useAuth, detectRole } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -111,7 +112,7 @@ export default function ProjectsClient() {
 
   /* Form states */
   const [newProjForm, setNewProjForm] = useState({
-    name: "", code: "", budget_amount: 100000000, description: "",
+    name: "", code: "", customer_name: "", budget_amount: 100000000, description: "",
     planned_start_date: new Date().toISOString().split("T")[0],
     planned_end_date: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0]
   });
@@ -182,16 +183,22 @@ export default function ProjectsClient() {
     return false;
   }, [user, userRole, isAdmin, selectedProject]);
 
+  const [customerOptions, setCustomerOptions] = useState<string[]>([]);
+
   const fetchProjects = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const [data, transferList, uList] = await Promise.all([
+      const [data, transferList, uList, custList] = await Promise.all([
         loadAllProjects(),
         getTransferRequests().catch(() => []),
-        fetchCompanyUsers().catch(() => [])
+        fetchCompanyUsers().catch(() => []),
+        fetchProjectCustomers().catch(() => [])
       ]);
       setProjects(data);
+      if (custList && custList.length > 0) {
+        setCustomerOptions(custList);
+      }
 
       const targetId = selectedId && data.some(p => String(p.id) === String(selectedId))
         ? selectedId
@@ -687,6 +694,7 @@ export default function ProjectsClient() {
       const res = await createProject({
         name: newProjForm.name.trim(),
         code: newProjForm.code.trim() || `PRJ-${Date.now().toString().slice(-4)}`,
+        customer_name: newProjForm.customer_name.trim() || "PT Sinergi Muda Arsa",
         budget_amount: Number(newProjForm.budget_amount) || 0,
         planned_start_date: newProjForm.planned_start_date,
         planned_end_date: newProjForm.planned_end_date,
@@ -695,7 +703,7 @@ export default function ProjectsClient() {
       toast.success(`Proyek "${newProjForm.name}" berhasil dibuat!`, { icon: "🚀" });
       setIsCreateProjOpen(false);
       setNewProjForm({
-        name: "", code: "", budget_amount: 100000000, description: "",
+        name: "", code: "", customer_name: "", budget_amount: 100000000, description: "",
         planned_start_date: new Date().toISOString().split("T")[0],
         planned_end_date: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0]
       });
@@ -2428,14 +2436,37 @@ export default function ProjectsClient() {
               />
             </div>
             <div>
-              <label className="text-xs font-bold text-text-secondary block mb-1">Total Anggaran (Rp)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-text-secondary">Klien / Customer</label>
+                {newProjForm.customer_name.trim() && !customerOptions.includes(newProjForm.customer_name.trim()) && (
+                  <span className="text-3xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+                    + Klien Baru (Otomatis Disimpan)
+                  </span>
+                )}
+              </div>
               <input
-                type="number"
-                value={newProjForm.budget_amount}
-                onChange={e => setNewProjForm({ ...newProjForm, budget_amount: Number(e.target.value) })}
+                type="text"
+                list="client-suggestions"
+                placeholder="Pilih dari database atau ketik klien baru..."
+                value={newProjForm.customer_name}
+                onChange={e => setNewProjForm({ ...newProjForm, customer_name: e.target.value })}
                 className="input text-xs"
               />
+              <datalist id="client-suggestions">
+                {customerOptions.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
             </div>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-text-secondary block mb-1">Total Anggaran (Rp)</label>
+            <input
+              type="number"
+              value={newProjForm.budget_amount}
+              onChange={e => setNewProjForm({ ...newProjForm, budget_amount: Number(e.target.value) })}
+              className="input text-xs"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
