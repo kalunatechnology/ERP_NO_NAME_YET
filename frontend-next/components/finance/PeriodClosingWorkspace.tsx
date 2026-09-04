@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/finance/PeriodClosingWorkspace.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -8,6 +15,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 // =============================================================================
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? '';
+const mutationHeaders = () => ({
+  'Content-Type': 'application/json',
+  'Idempotency-Key': crypto.randomUUID(),
+});
 
 interface FiscalPeriod {
   id: string;
@@ -97,16 +108,17 @@ export default function PeriodClosingWorkspace() {
     setClosingPeriodId(periodId);
     setClosingLoading(true);
     try {
-      const res = await fetch(`${API}/api/v1/finance/fiscal-periods/${periodId}/close`, {
+      const res = await fetch(`${API}/api/v1/finance/period-closings/request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: mutationHeaders(),
+        body: JSON.stringify({ closing_type: 'MONTHLY', fiscal_period_id: periodId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message ?? 'Gagal');
-      showToast(`✅ Periode #${json.data?.period_number} berhasil ditutup. Snapshot disimpan.`, 'success');
+      showToast('Permintaan tutup periode tercatat dan menunggu persetujuan Finance.', 'success');
       loadData();
     } catch (err: any) {
-      showToast(`❌ ${err.message ?? 'Gagal menutup periode.'}`, 'error');
+      showToast(err.message ?? 'Gagal menutup periode.', 'error');
     } finally {
       setClosingLoading(false);
       setClosingPeriodId(null);
@@ -117,13 +129,13 @@ export default function PeriodClosingWorkspace() {
     try {
       const res = await fetch(`${API}/api/v1/finance/fiscal-periods/${periodId}/reopen`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: mutationHeaders(),
       });
       if (!res.ok) throw new Error('Gagal');
-      showToast('✅ Periode berhasil dibuka kembali.', 'success');
+      showToast('Periode berhasil dibuka kembali.', 'success');
       loadData();
     } catch {
-      showToast('❌ Gagal membuka kembali periode.', 'error');
+      showToast('Gagal membuka kembali periode.', 'error');
     }
   };
 
@@ -132,18 +144,17 @@ export default function PeriodClosingWorkspace() {
     setYearEndLoading(true);
     setYearEndResult(null);
     try {
-      const res = await fetch(`${API}/api/v1/finance/fiscal-years/${selectedYearId}/year-end-closing`, {
+      const res = await fetch(`${API}/api/v1/finance/period-closings/request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_id: null }),
+        headers: mutationHeaders(),
+        body: JSON.stringify({ closing_type: 'YEAR_END', fiscal_year_id: selectedYearId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message ?? 'Gagal');
-      setYearEndResult(json.data);
-      showToast(`✅ Tutup buku tahunan ${json.data?.fiscal_year_name} berhasil!`, 'success');
+      showToast('Permintaan tutup buku tahunan tercatat dan menunggu persetujuan Finance.', 'success');
       loadData();
     } catch (err: any) {
-      showToast(`❌ ${err.message ?? 'Gagal menutup buku tahunan.'}`, 'error');
+      showToast(err.message ?? 'Gagal menutup buku tahunan.', 'error');
     } finally {
       setYearEndLoading(false);
     }
@@ -155,17 +166,17 @@ export default function PeriodClosingWorkspace() {
     try {
       const res = await fetch(`${API}/api/v1/finance/fiscal-years/${rollbackYearId}/reopen-year-end`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: mutationHeaders(),
         body: JSON.stringify({ reason: rollbackReason }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message ?? 'Gagal');
-      showToast(`✅ Rollback tutup buku tahunan berhasil. Jurnal Storno diterbitkan.`, 'success');
+      showToast('Rollback tutup buku tahunan berhasil. Jurnal Storno diterbitkan.', 'success');
       setRollbackYearId(null);
       setRollbackReason('');
       loadData();
     } catch (err: any) {
-      showToast(`❌ ${err.message ?? 'Gagal rollback tutup buku.'}`, 'error');
+      showToast(err.message ?? 'Gagal rollback tutup buku.', 'error');
     } finally {
       setRollbackLoading(false);
     }
@@ -187,7 +198,7 @@ export default function PeriodClosingWorkspace() {
 
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-text-primary">📅 Tutup Buku & Manajemen Periode</h2>
+        <h2 className="page-title">Tutup Buku & Manajemen Periode</h2>
         <p className="text-xs text-text-secondary mt-0.5">
           Period Guard · Checklist Validator · Year-End Closing · Storno Rollback
         </p>
@@ -211,7 +222,7 @@ export default function PeriodClosingWorkspace() {
 
       {/* Fiscal Periods Table */}
       <div>
-        <h3 className="text-sm font-bold text-text-primary mb-3">📋 Status Periode Fiskal</h3>
+        <h3 className="section-title mb-3">Status Periode Fiskal</h3>
         {loading ? (
           <div className="text-center py-8 text-text-secondary text-sm animate-pulse">Memuat...</div>
         ) : periods.length === 0 ? (
@@ -246,7 +257,7 @@ export default function PeriodClosingWorkspace() {
                             disabled={closingLoading && closingPeriodId === p.id}
                             className="px-2 py-1 text-xs rounded-md bg-gray-500/20 text-gray-300 hover:bg-gray-500/30 transition-colors disabled:opacity-50"
                           >
-                            {closingLoading && closingPeriodId === p.id ? '⏳...' : '🔒 Tutup Buku'}
+                            {closingLoading && closingPeriodId === p.id ? 'Memproses…' : 'Ajukan Penutupan'}
                           </button>
                         )}
                         {p.status === 'CLOSED' && (
@@ -254,7 +265,7 @@ export default function PeriodClosingWorkspace() {
                             onClick={() => reopenPeriod(p.id)}
                             className="px-2 py-1 text-xs rounded-md bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors"
                           >
-                            🔓 Buka Kembali
+                            Buka kembali
                           </button>
                         )}
                       </div>
@@ -269,7 +280,7 @@ export default function PeriodClosingWorkspace() {
 
       {/* Year-End Closing Section */}
       <div className="bg-white/5 rounded-2xl border border-white/10 p-6">
-        <h3 className="text-sm font-bold text-text-primary mb-1">📆 Tutup Buku Tahunan (Year-End Closing)</h3>
+        <h3 className="section-title mb-1">Tutup Buku Tahunan</h3>
         <p className="text-xs text-text-secondary mb-4">
           Zero-out akun nominal (4xxx, 5xxx, 6xxx) → selisih laba/rugi masuk ke <span className="font-mono text-brand-green">3200 Laba Ditahan</span>
         </p>
@@ -290,14 +301,14 @@ export default function PeriodClosingWorkspace() {
             disabled={!selectedYearId || yearEndLoading}
             className="px-4 py-2 text-sm font-semibold rounded-lg bg-brand-deep-green text-white hover:bg-brand-green transition-colors disabled:opacity-50"
           >
-            {yearEndLoading ? '⏳ Memproses Year-End...' : '⚡ Eksekusi Tutup Buku Tahunan'}
+            {yearEndLoading ? 'Memproses…' : 'Ajukan Tutup Buku Tahunan'}
           </button>
         </div>
 
         {/* Year-End Result */}
         {yearEndResult && (
           <div className="mt-4 p-4 rounded-xl border border-white/10 bg-white/5">
-            <p className="text-xs font-bold text-text-primary mb-2">✅ Hasil Tutup Buku: {yearEndResult.fiscal_year_name}</p>
+            <p className="text-xs font-bold text-text-primary mb-2">Hasil Tutup Buku: {yearEndResult.fiscal_year_name}</p>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <p className="text-xs text-text-secondary">Total Pendapatan</p>
@@ -325,7 +336,7 @@ export default function PeriodClosingWorkspace() {
       {/* Year-End Rollback Section */}
       {closedYears.length > 0 && (
         <div className="bg-red-500/5 rounded-2xl border border-red-500/20 p-6">
-          <h3 className="text-sm font-bold text-red-400 mb-1">↩️ Rollback Tutup Buku Tahunan (Storno)</h3>
+          <h3 className="text-sm font-bold text-red-600 mb-1">Rollback Tutup Buku Tahunan (Storno)</h3>
           <p className="text-xs text-text-secondary mb-4">
             Hanya Superadmin / Direktur. Menerbitkan jurnal pembalik atas jurnal penutup tahunan.
             Riwayat data historis tetap tersimpan (Immutable Audit Trail).
@@ -356,7 +367,7 @@ export default function PeriodClosingWorkspace() {
                 disabled={rollbackLoading || rollbackReason.trim().length < 10}
                 className="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
               >
-                {rollbackLoading ? '⏳ Memproses Storno...' : '↩️ Konfirmasi Rollback via Storno'}
+                {rollbackLoading ? 'Memproses Storno...' : 'Konfirmasi Rollback via Storno'}
               </button>
             </div>
           )}

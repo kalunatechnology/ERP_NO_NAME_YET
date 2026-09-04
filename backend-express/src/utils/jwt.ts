@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines shared utility contracts and their integration boundary for the backend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * JWT Utilities
  *
  * Compatible with SimpleJWT claims structure:

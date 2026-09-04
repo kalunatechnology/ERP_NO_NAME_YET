@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/projects/projects.service.ts
+ *
+ * Purpose: Implements domain service responsibilities for the projects domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import prisma from '../../config/database';
 import { NotFoundError } from '../../utils/errors';
 
@@ -58,7 +66,30 @@ export class ProjectsService {
         const dt = await tx.project_daily_task.findUnique({
           where: { id: params.dailyTaskId },
         });
-        if (dt?.weekly_task_id) weeklyId = dt.weekly_task_id;
+        if (dt?.weekly_task_id) {
+          weeklyId = dt.weekly_task_id;
+
+          // Daily progress is a derived value. A linked checklist is authoritative;
+          // tasks without checklist items fall back to a binary status-derived value.
+          const checklist = await tx.project_control_item.findMany({
+            where: { daily_task_id: dt.id },
+            select: { status: true },
+          });
+          const completedStates = new Set(['DONE', 'COMPLETED', 'CHECKED', 'APPROVED']);
+          const calculatedProgress = checklist.length > 0
+            ? Math.round((checklist.filter((item) => completedStates.has(item.status.toUpperCase())).length / checklist.length) * 10000) / 100
+            : completedStates.has(dt.status.toUpperCase()) ? 100 : 0;
+          const calculatedStatus = dt.status === 'BLOCKED'
+            ? 'BLOCKED'
+            : checklist.length === 0
+              ? dt.status
+              : calculatedProgress >= 100 ? 'COMPLETED' : calculatedProgress > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
+
+          await tx.project_daily_task.update({
+            where: { id: dt.id },
+            data: { progress: calculatedProgress, status: calculatedStatus, updated_at: new Date() },
+          });
+        }
       }
 
       if (weeklyId) {
@@ -430,6 +461,14 @@ export class ProjectsService {
     };
   }
 
+/**
+ * advanceStage implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `project_project`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async advanceStage(projectId: string, targetStage?: string) {
     const STAGE_ORDER = ['DRAFT', 'VERIFIED', 'RESERVED', 'STARTED', 'COMPLETED'];
     const project = await prisma.project_project.findUnique({ where: { id: projectId } });
@@ -447,6 +486,14 @@ export class ProjectsService {
     });
   }
 
+/**
+ * updateDailyTaskProgress implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async updateDailyTaskProgress(dailyTaskId: string, data: any, user: any) {
     return prisma.$transaction(async (tx) => {
       const task = await tx.project_daily_task.findUnique({
@@ -460,17 +507,30 @@ export class ProjectsService {
       const mainTask = weekly ? await tx.project_main_task.findUnique({ where: { id: weekly.main_task_id } }) : null;
       const projectId = mainTask?.project_id;
 
-      let progress = data.progress !== undefined ? Number(data.progress) : task.progress;
       let status = data.status ?? task.status;
 
       if (data.status === 'COMPLETED' || data.status === 'DONE') {
         status = 'COMPLETED';
-        if (data.progress === undefined) progress = 100;
       } else if (data.status === 'NOT_STARTED') {
         status = 'NOT_STARTED';
-        if (data.progress === undefined) progress = 0;
-      } else if (Number(progress) >= 100 && !data.status) {
-        status = 'COMPLETED';
+      }
+
+      const checklist = await tx.project_control_item.findMany({
+        where: { daily_task_id: dailyTaskId },
+        select: { status: true },
+      });
+      const completedStates = new Set(['DONE', 'COMPLETED', 'CHECKED', 'APPROVED']);
+      const completedChecklistCount = checklist.filter((item) => completedStates.has(item.status.toUpperCase())).length;
+      const progress = checklist.length > 0
+        ? Math.round((completedChecklistCount / checklist.length) * 10000) / 100
+        : completedStates.has(String(status).toUpperCase()) ? 100 : 0;
+
+      // Once a checklist exists, its completion state is authoritative for both
+      // percentage and status. BLOCKED remains an explicit operational override.
+      if (checklist.length > 0 && status !== 'BLOCKED') {
+        status = completedChecklistCount === checklist.length
+          ? 'COMPLETED'
+          : completedChecklistCount > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
       }
 
       let isBlocked = task.is_blocked;
@@ -482,7 +542,7 @@ export class ProjectsService {
           status = 'BLOCKED';
           blockReason = data.block_reason ?? '';
         } else {
-          if (status === 'BLOCKED') status = Number(progress) > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
+          if (status === 'BLOCKED') status = progress > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
           blockReason = '';
         }
       }
@@ -523,6 +583,14 @@ export class ProjectsService {
     });
   }
 
+/**
+ * reportBlocked implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async reportBlocked(dailyTaskId: string, reason: string, user: any) {
     return prisma.$transaction(async (tx) => {
       const task = await tx.project_daily_task.findUnique({ where: { id: dailyTaskId } });
@@ -562,6 +630,14 @@ export class ProjectsService {
     });
   }
 
+/**
+ * requestTaskTransfer implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `project_daily_task`, `project_weekly_task`, `project_main_task`, `project_task_transfer_request`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async requestTaskTransfer(dailyTaskId: string, targetUserId: string, reason: string, requester: any) {
     const task = await prisma.project_daily_task.findUnique({ where: { id: dailyTaskId } });
     if (!task) throw new NotFoundError('DailyTask');
@@ -601,6 +677,14 @@ export class ProjectsService {
     return transferReq;
   }
 
+/**
+ * directReassign implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async directReassign(dailyTaskId: string, targetUserId: string, reason: string, pmUser: any) {
     return prisma.$transaction(async (tx) => {
       const task = await tx.project_daily_task.findUnique({ where: { id: dailyTaskId } });
@@ -638,6 +722,14 @@ export class ProjectsService {
     });
   }
 
+/**
+ * processTransferApproval implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async processTransferApproval(transferId: string, approved: boolean, pmUser: any, reviewNote = '') {
     return prisma.$transaction(async (tx) => {
       const transfer = await tx.project_task_transfer_request.findUnique({
@@ -710,6 +802,14 @@ export class ProjectsService {
     });
   }
 
+/**
+ * overrideProgress implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async overrideProgress(entityType: 'MAIN' | 'WEEKLY', entityId: string, progress: number, reason: string, pmUser: any) {
     return prisma.$transaction(async (tx) => {
       if (entityType === 'MAIN') {

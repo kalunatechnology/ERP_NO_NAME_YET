@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/implementation/implementation.routes.ts
+ *
+ * Purpose: Implements Express API routing responsibilities for the implementation domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Router } from 'express';
 import { createCrudRouter } from '../../utils/crud-factory';
 

@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/procurement/procurement.routes.ts
+ *
+ * Purpose: Implements Express API routing responsibilities for the procurement domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
@@ -5,6 +13,14 @@ import { createCrudRouter } from '../../utils/crud-factory';
 export const procurementRouter = Router();
 
 // Custom action: convert-to-rfq
+/**
+ * POST route handler: `/purchase-requisitions/:id/convert-to-rfq`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `proc_rfq` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 procurementRouter.post('/purchase-requisitions/:id/convert-to-rfq', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const rfq = await prisma.proc_rfq.create({
@@ -21,6 +37,14 @@ procurementRouter.post('/purchase-requisitions/:id/convert-to-rfq', async (req: 
 });
 
 // Custom action: three-way-match
+/**
+ * POST route handler: `/purchase-orders/:id/three-way-match`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `proc_three_way_match` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 procurementRouter.post('/purchase-orders/:id/three-way-match', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const match = await prisma.proc_three_way_match.create({

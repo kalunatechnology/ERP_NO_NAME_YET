@@ -1,3 +1,11 @@
+/**
+ * File: frontend-next/components/ui/RightPanel.tsx
+ *
+ * Purpose: Implements React UI component responsibilities in the frontend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -24,6 +32,13 @@ interface RightPanelProps {
   onClose?: () => void;
 }
 
+/**
+ * RightPanel coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: RightPanelProps) {
   const router = useRouter();
   const { userRole, isAdmin } = useAuth();
@@ -37,19 +52,26 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
   const [selectedContact, setSelectedContact] = useState<DynamicContact | null>(null);
   const [copiedEmail, setCopiedEmail] = useState(false);
 
+/**
+ * checkCanAccess coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const checkCanAccess = (href?: string): boolean => {
     if (!href) return true;
     if (href.startsWith("/finance")) {
       const canAccess = isAdmin || userRole === "finance" || userRole === "executive";
       if (!canAccess) {
-        toast.error("Akses Ditolak: Notifikasi keuangan hanya dapat diakses oleh tim Finance & Direksi.", { icon: "🔒" });
+        toast.error("Akses ditolak. Notifikasi keuangan hanya tersedia untuk Finance dan Direksi.");
         return false;
       }
     }
     if (href.startsWith("/crm")) {
       const canAccess = isAdmin || userRole === "crm" || userRole === "executive" || userRole === "pm";
       if (!canAccess) {
-        toast.error("Akses Ditolak: Modul CRM hanya untuk tim Commercial, PM & Direksi.", { icon: "🔒" });
+        toast.error("Akses ditolak. Modul CRM hanya tersedia untuk Commercial, PM, dan Direksi.");
         return false;
       }
     }
@@ -67,7 +89,9 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
       setNotifications((data.notifications || []).slice(0, 3));
       setAlerts(realAlerts.slice(0, 3));
       setActivities((data.activities || []).slice(0, 3));
-      setContacts((data.contacts || []).slice(0, 4));
+      // Contacts are already company-scoped by the backend. Keep every member
+      // returned so a valid colleague is never hidden merely by list position.
+      setContacts(data.contacts || []);
     } catch {
       // ignore silently on background poll
     } finally {
@@ -82,14 +106,28 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
     return () => clearInterval(timer);
   }, [loadFeed]);
 
+/**
+ * handleItemClick coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleItemClick = (item: DynamicFeedItem) => {
     if (item.href) {
       if (!checkCanAccess(item.href)) return;
       router.push(item.href);
-      toast(`Membuka ${item.label}`, { icon: "🔗" });
+      toast(`Membuka ${item.label}`);
     }
   };
 
+/**
+ * handleMarkAllRead coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleMarkAllRead = async () => {
     setMarkingRead(true);
     try {
@@ -103,6 +141,13 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
     }
   };
 
+/**
+ * copyContactEmail coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const copyContactEmail = (email?: string) => {
     if (!email) return;
     navigator.clipboard.writeText(email);
@@ -278,7 +323,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                     if (item.href) {
                       if (!checkCanAccess(item.href)) return;
                       router.push(item.href);
-                      toast(`Membuka ${item.title}`, { icon: "🔔" });
+                      toast(`Membuka ${item.title}`);
                     }
                   }}
                   className={cn(
@@ -405,7 +450,9 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
           </div>
 
           <div className="flex flex-col gap-1.5 w-full">
-            {contacts.slice(0, 4).map((contact) => (
+            {contacts.length === 0 ? (
+              <p className="text-3xs text-text-secondary py-1">Belum ada anggota tim aktif.</p>
+            ) : contacts.map((contact) => (
               <div
                 key={contact.id}
                 onClick={() => setSelectedContact(contact)}

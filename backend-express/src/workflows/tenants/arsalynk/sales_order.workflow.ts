@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/workflows/tenants/arsalynk/sales_order.workflow.ts
+ *
+ * Purpose: Implements workflow and state transition responsibilities in the backend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 import {
   BaseWorkflow,
   TransitionContext,
@@ -5,6 +13,7 @@ import {
   WorkflowDocument,
   WorkflowValidationError,
 } from '../../engine';
+import { RoleCode } from '../../../types/roles';
 
 export class ArsalynkSalesOrderWorkflow extends BaseWorkflow {
   readonly TENANT_CODE = 'arsalynk';
@@ -116,17 +125,14 @@ export class ArsalynkSalesOrderWorkflow extends BaseWorkflow {
   ): TransitionInfo[] {
     const transitions = this.TRANSITIONS[currentStatus as keyof typeof this.TRANSITIONS] ?? [];
     const roles = this.getUserRoles(context);
-    const isSuper = this.isSuperuser(context);
 
     return transitions.filter((t) => {
-      if (t.action === 'supervisor_approve' && !roles.includes('SUPERVISOR') && !isSuper) {
+      if (t.action === 'supervisor_approve' && !roles.includes(RoleCode.SUPERVISOR)) {
         return false;
       }
       if (
         t.action === 'director_approve' &&
-        !roles.includes('DIRECTOR') &&
-        !roles.includes('EXECUTIVE') &&
-        !isSuper
+        !roles.includes(RoleCode.DIRECTOR)
       ) {
         return false;
       }
@@ -148,7 +154,7 @@ export class ArsalynkSalesOrderWorkflow extends BaseWorkflow {
 
     if (toStatus === 'PENDING_DIRECTOR_APPROVAL') {
       const roles = this.getUserRoles(context);
-      if (!roles.includes('SUPERVISOR') && !this.isSuperuser(context)) {
+      if (!roles.includes(RoleCode.SUPERVISOR)) {
         throw new WorkflowValidationError('Only a Supervisor can approve at this stage.', {
           role_required: 'SUPERVISOR',
         });
@@ -158,9 +164,7 @@ export class ArsalynkSalesOrderWorkflow extends BaseWorkflow {
     if (toStatus === 'QUALITY_CONTROL') {
       const roles = this.getUserRoles(context);
       if (
-        !roles.includes('DIRECTOR') &&
-        !roles.includes('EXECUTIVE') &&
-        !this.isSuperuser(context)
+        !roles.includes(RoleCode.DIRECTOR)
       ) {
         throw new WorkflowValidationError('Only a Director or Executive can approve at this stage.', {
           role_required: 'DIRECTOR',

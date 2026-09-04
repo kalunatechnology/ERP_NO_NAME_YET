@@ -1,7 +1,22 @@
+/**
+ * File: backend-express/scripts/sync_company_isolation.ts
+ *
+ * Purpose: Implements database administration script responsibilities for the platform domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+/**
+ * main executes one step of this explicit database administration script.
+ *
+ * Database operations: Reads or mutates Prisma model(s) `core_tenant`, `core_company`, `iam_user`.
+ * Operational contract: It runs only when this script is invoked; it is not part of the normal HTTP request lifecycle.
+ * Failure behavior: Rejects/throws to the script entry point so the process can report failure and perform its configured cleanup/disconnect.
+ */
 async function main() {
   console.log('=== STRICT COMPANY & TENANT ISOLATION SYNC ===');
 
@@ -155,6 +170,13 @@ async function main() {
   console.log('=== STRICT COMPANY ISOLATION COMPLETE ===');
 }
 
+/**
+ * main executes one step of this explicit database administration script.
+ *
+ * Database operations: Uses the database/client operations visible in the implementation.
+ * Operational contract: It runs only when this script is invoked; it is not part of the normal HTTP request lifecycle.
+ * Failure behavior: Rejects/throws to the script entry point so the process can report failure and perform its configured cleanup/disconnect.
+ */
 main()
   .catch((e) => {
     console.error(e);

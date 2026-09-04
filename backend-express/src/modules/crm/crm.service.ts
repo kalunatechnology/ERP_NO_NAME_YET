@@ -1,7 +1,23 @@
+/**
+ * File: backend-express/src/modules/crm/crm.service.ts
+ *
+ * Purpose: Implements domain service responsibilities for the crm domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import prisma from '../../config/database';
 import { NotFoundError, ValidationError } from '../../utils/errors';
 
 export class CRMService {
+/**
+ * qualifyInquiry implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async qualifyInquiry(inquiryId: string, userId: string) {
     return prisma.$transaction(async (tx) => {
       const inquiry = await tx.crm_customer_inquiry.findUnique({
@@ -60,6 +76,14 @@ export class CRMService {
     });
   }
 
+/**
+ * calculateEstimate implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async calculateEstimate(estimateId: string, userId: string) {
     return prisma.$transaction(async (tx) => {
       const estimate = await tx.crm_cost_estimate.findUnique({
@@ -152,6 +176,14 @@ export class CRMService {
     });
   }
 
+/**
+ * createQuotationFromEstimate implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async createQuotationFromEstimate(estimateId: string, userId: string) {
     return prisma.$transaction(async (tx) => {
       let estimate = await tx.crm_cost_estimate.findUnique({
@@ -280,6 +312,14 @@ export class CRMService {
     });
   }
 
+/**
+ * calculateCreditSnapshot implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `master_customer_profile`, `fin_billing_document`, `crm_credit_status_snapshot`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async calculateCreditSnapshot(customerPartyId: string, companyId?: string | null) {
     const profile = await prisma.master_customer_profile.findFirst({
       where: { party_id: customerPartyId },
@@ -326,6 +366,14 @@ export class CRMService {
     });
   }
 
+/**
+ * processDealWon implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async processDealWon(opportunityId: string, user: any, explicitCompanyId?: string | null) {
     return prisma.$transaction(async (tx) => {
       const opportunity = await tx.crm_opportunity.findUnique({
@@ -469,6 +517,14 @@ export class CRMService {
     });
   }
 
+/**
+ * executiveOverride implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async executiveOverride(opportunityId: string, user: any, companyId?: string | null) {
     return prisma.$transaction(async (tx) => {
       const opportunity = await tx.crm_opportunity.findUnique({

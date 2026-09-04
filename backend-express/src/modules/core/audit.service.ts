@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/core/audit.service.ts
+ *
+ * Purpose: Implements domain service responsibilities for the core domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import prisma from '../../config/database';
 
 // =============================================================================
@@ -24,6 +32,14 @@ export class AuditService {
   // logDeltaEvent: Hanya menyimpan field yang benar-benar berubah (changed keys)
   // ---------------------------------------------------------------------------
 
+/**
+ * logDeltaEvent implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `core_audit_event`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async logDeltaEvent(params: AuditEventParams): Promise<void> {
     const { entity, entityId, action, before, after, userId, description, companyId, tenantId } = params;
 
@@ -74,6 +90,13 @@ export class AuditService {
   // getAuditTrail: Ambil riwayat audit untuk satu entity dengan filter
   // ---------------------------------------------------------------------------
 
+/**
+ * getAuditTrail implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `core_audit_event`; transaction scope is exactly the coded scope.
+ */
   static async getAuditTrail(params: {
     entity?:     string;
     entityId?:   string;

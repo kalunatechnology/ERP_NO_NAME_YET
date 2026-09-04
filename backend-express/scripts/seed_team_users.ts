@@ -1,9 +1,39 @@
+/**
+ * File: backend-express/scripts/seed_team_users.ts
+ *
+ * Purpose: Implements database administration script responsibilities for the platform domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
+/**
+ * Legacy safety guard.
+ *
+ * This script predates the canonical Prisma seed and contains a conflicting
+ * tenant/user catalog. Running it can reassign identities by globally unique
+ * email, including the dedicated Super Admin account. Keep the historical
+ * implementation below for migration reference, but do not execute it.
+ *
+ * Use `npm run seed` from backend-express instead; prisma/seed.ts is the
+ * sole supported source of demo users, company membership, and role mapping.
+ */
+if (process.argv[1]?.replace(/\\/g, '/').endsWith('/scripts/seed_team_users.ts')) {
+  throw new Error('Deprecated seed script. Run "npm run seed" to use the canonical least-privilege demo-user catalog.');
+}
+
+/**
+ * main executes one step of this explicit database administration script.
+ *
+ * Database operations: Reads or mutates Prisma model(s) `core_tenant`, `core_company`, `core_organization`, `iam_role`.
+ * Operational contract: It runs only when this script is invoked; it is not part of the normal HTTP request lifecycle.
+ * Failure behavior: Rejects/throws to the script entry point so the process can report failure and perform its configured cleanup/disconnect.
+ */
 async function main() {
   console.log('=== SEEDING 6 REAL TEAM USERS ===');
 
@@ -51,8 +81,10 @@ async function main() {
 
   // 2. Ensure Roles exist
   const rolesData = [
-    { code: 'ROLE-ADMIN', name: 'System Administrator', desc: 'Full System Access' },
+    { code: 'ROLE-SUPER-ADMIN', name: 'Super Administrator', desc: 'Company governance, module enablement, and global read access' },
+    { code: 'ROLE-COMPANY-ADMIN', name: 'Company Administrator', desc: 'User and access administration within one company' },
     { code: 'ROLE-DIRECTOR', name: 'Executive Director', desc: 'Executive Oversight & Approval' },
+    { code: 'ROLE-OM', name: 'Operational Manager', desc: 'Operational delivery, project oversight, and periodic reporting' },
     { code: 'ROLE-PM', name: 'Project Manager', desc: 'Project & Task Management' },
     { code: 'ROLE-SUPERVISOR', name: 'Field Supervisor', desc: 'Site Operations & Task Verification' },
     { code: 'ROLE-FINANCE', name: 'Finance Controller', desc: 'General Ledger, Billing, & Payments' },
@@ -86,9 +118,17 @@ async function main() {
       name: 'Rian Destianto',
       email: 'rian.destianto@arsalynk.id',
       username: 'rian.destianto',
+      isSuper: false,
+      roles: ['ROLE-COMPANY-ADMIN'],
+      desc: 'Company Administrator',
+    },
+    {
+      name: 'System Super Administrator',
+      email: 'dummy.admin@example.com',
+      username: 'dummy.admin',
       isSuper: true,
-      roles: ['ROLE-DIRECTOR', 'ROLE-ADMIN'],
-      desc: 'Eksekutif / Direksi & Administrator',
+      roles: ['ROLE-SUPER-ADMIN'],
+      desc: 'Global Super Administrator',
     },
     {
       name: 'Melika Citra Tania',
@@ -185,8 +225,8 @@ async function main() {
               id: crypto.randomUUID(),
               user_id: user.id,
               role_id: role.id,
-              company_id: company.id,
-              organization_id: orgHQ.id,
+              company_id: rCode === 'ROLE-SUPER-ADMIN' ? null : company.id,
+              organization_id: rCode === 'ROLE-SUPER-ADMIN' ? null : orgHQ.id,
             },
           });
         }
@@ -197,6 +237,13 @@ async function main() {
   console.log('=== SEEDING COMPLETED SUCCESSFULLY ===');
 }
 
+/**
+ * main executes one step of this explicit database administration script.
+ *
+ * Database operations: Uses the database/client operations visible in the implementation.
+ * Operational contract: It runs only when this script is invoked; it is not part of the normal HTTP request lifecycle.
+ * Failure behavior: Rejects/throws to the script entry point so the process can report failure and perform its configured cleanup/disconnect.
+ */
 main()
   .catch((e) => {
     console.error('Seeding error:', e);

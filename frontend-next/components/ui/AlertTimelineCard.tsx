@@ -1,3 +1,11 @@
+/**
+ * File: frontend-next/components/ui/AlertTimelineCard.tsx
+ *
+ * Purpose: Implements React UI component responsibilities in the frontend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -19,6 +27,13 @@ export interface AlertItem {
   onClick?: () => void;
 }
 
+/**
+ * AlertTimelineCard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function AlertTimelineCard({
   title = "Alert",
   alerts: controlledAlerts,
@@ -36,6 +51,13 @@ export function AlertTimelineCard({
   const [liveAlerts, setLiveAlerts] = useState<AlertItem[]>(controlledAlerts || []);
   const [loading, setLoading] = useState(false);
 
+/**
+ * loadAlerts coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const loadAlerts = async () => {
     if (!autoFetch && controlledAlerts) {
       setLiveAlerts(controlledAlerts);
@@ -60,6 +82,13 @@ export function AlertTimelineCard({
     }
   }, [controlledAlerts]);
 
+/**
+ * handleItemClick coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleItemClick = (item: AlertItem) => {
     if (item.onClick) {
       item.onClick();
@@ -67,7 +96,7 @@ export function AlertTimelineCard({
     }
     if (item.href) {
       router.push(item.href);
-      toast(`Membuka ${item.title}`, { icon: "🔔" });
+      toast(`Membuka ${item.title}`);
     }
   };
 

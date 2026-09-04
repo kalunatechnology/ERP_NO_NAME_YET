@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/utils/response.ts
+ *
+ * Purpose: Implements shared utility responsibilities in the backend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 import { Request, Response } from 'express';
 import { env } from '../config/env';
 
@@ -25,6 +33,14 @@ export function paginateArray<T>(
   const base = `${req.protocol}://${req.get('host')}${req.path}`;
   const totalPages = Math.ceil(totalCount / pageSize);
 
+/**
+ * buildUrl implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
   const buildUrl = (p: number) => {
     const params = new URLSearchParams(req.query as Record<string, string>);
     params.set('page', String(p));

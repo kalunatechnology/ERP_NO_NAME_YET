@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/ui/IncomingReports.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState } from "react";
@@ -39,6 +46,13 @@ const MOCK_REPORTS = [
   },
 ];
 
+/**
+ * IncomingReports coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function IncomingReports() {
   const [active, setActive] = useState(MOCK_REPORTS[0]);
 

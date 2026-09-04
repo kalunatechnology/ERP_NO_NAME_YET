@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/finance/CompanyMasterWorkspace.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -227,7 +234,7 @@ export function CompanyMasterWorkspace() {
     setSavingCompany(true);
     try {
       await api.patch(`/api/v1/core/companies/${companyData.id}/`, companyData).catch(() => null);
-      toast.success("Data master legalitas & entitas perusahaan berhasil disimpan!", { icon: "🏢" });
+      toast.success("Data legalitas perusahaan berhasil disimpan.");
     } catch {
       toast.error("Gagal menyimpan data perusahaan");
     } finally {
@@ -242,7 +249,7 @@ export function CompanyMasterWorkspace() {
         company_id: companyData.id,
         ...bankForm,
       }).catch(() => null);
-      toast.success("Rekening bank resmi perusahaan berhasil ditambahkan!", { icon: "🏦" });
+      toast.success("Rekening bank perusahaan berhasil ditambahkan.");
       setIsBankModalOpen(false);
       setBankAccounts(prev => [...prev, { id: "bank-" + Date.now(), ...bankForm }]);
     } catch {
@@ -259,7 +266,7 @@ export function CompanyMasterWorkspace() {
         ...creditForm,
         available_amount: avail,
       }).catch(() => null);
-      toast.success("Fasilitas kredit bank berhasil dicatat!", { icon: "💳" });
+      toast.success("Fasilitas kredit bank berhasil dicatat.");
       setIsCreditModalOpen(false);
       setCreditFacilities(prev => [...prev, { id: "cf-" + Date.now(), ...creditForm, available_amount: avail }]);
     } catch {
@@ -277,7 +284,7 @@ export function CompanyMasterWorkspace() {
         organization_type: orgForm.type,
         status: orgForm.status,
       }).catch(() => null);
-      toast.success("Unit divisi organisasi berhasil ditambahkan!", { icon: "🏢" });
+      toast.success("Unit organisasi berhasil ditambahkan.");
       setIsOrgModalOpen(false);
       setOrgUnits(prev => [...prev, { id: "org-" + Date.now(), ...orgForm }]);
     } catch {
@@ -741,7 +748,7 @@ export function CompanyMasterWorkspace() {
       <Modal
         isOpen={isBankModalOpen}
         onClose={() => setIsBankModalOpen(false)}
-        title="🏦 Tambah Rekening Bank Resmi"
+        title="Tambah Rekening Bank Resmi"
         subtitle="Daftarkan akun perbankan transaksi baru atas nama entitas perusahaan"
       >
         <form onSubmit={handleCreateBankAccount} className="flex flex-col gap-4 text-xs">
@@ -803,7 +810,7 @@ export function CompanyMasterWorkspace() {
       <Modal
         isOpen={isCreditModalOpen}
         onClose={() => setIsCreditModalOpen(false)}
-        title="💳 Tambah Fasilitas Kredit Bank"
+        title="Tambah Fasilitas Kredit Bank"
         subtitle="Catat batas plafon modal kerja (KMK) atau bank garansi proyek"
       >
         <form onSubmit={handleCreateCreditFacility} className="flex flex-col gap-4 text-xs">
@@ -865,7 +872,7 @@ export function CompanyMasterWorkspace() {
       <Modal
         isOpen={isOrgModalOpen}
         onClose={() => setIsOrgModalOpen(false)}
-        title="🏢 Tambah Unit Divisi Organisasi"
+        title="Tambah Unit Divisi Organisasi"
         subtitle="Definisikan departemen atau divisi pelaksana baru"
       >
         <form onSubmit={handleCreateOrgUnit} className="flex flex-col gap-4 text-xs">

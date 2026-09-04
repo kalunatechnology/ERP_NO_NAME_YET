@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/manufacturing/manufacturing.routes.ts
+ *
+ * Purpose: Implements Express API routing responsibilities for the manufacturing domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
@@ -5,6 +13,14 @@ import { createCrudRouter } from '../../utils/crud-factory';
 export const manufacturingRouter = Router();
 
 // Custom actions on production orders
+/**
+ * POST route handler: `/production-orders/:id/release`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `mfg_production_order` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 manufacturingRouter.post('/production-orders/:id/release', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.mfg_production_order.update({
@@ -17,6 +33,14 @@ manufacturingRouter.post('/production-orders/:id/release', async (req: Request, 
   }
 });
 
+/**
+ * POST route handler: `/production-orders/:id/issue-materials`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `mfg_production_order` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 manufacturingRouter.post('/production-orders/:id/issue-materials', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.mfg_production_order.update({
@@ -29,6 +53,14 @@ manufacturingRouter.post('/production-orders/:id/issue-materials', async (req: R
   }
 });
 
+/**
+ * POST route handler: `/work-orders/:id/start`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `mfg_work_order` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 manufacturingRouter.post('/work-orders/:id/start', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.mfg_work_order.update({
@@ -41,6 +73,14 @@ manufacturingRouter.post('/work-orders/:id/start', async (req: Request, res: Res
   }
 });
 
+/**
+ * POST route handler: `/work-orders/:id/complete`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `mfg_work_order` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 manufacturingRouter.post('/work-orders/:id/complete', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.mfg_work_order.update({

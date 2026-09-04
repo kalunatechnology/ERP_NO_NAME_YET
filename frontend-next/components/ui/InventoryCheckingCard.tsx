@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/ui/InventoryCheckingCard.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -15,6 +22,13 @@ export interface InventoryCheckProps {
   autoFetch?: boolean;
 }
 
+/**
+ * InventoryCheckingCard implements the local UI interaction represented by its typed signature.
+ *
+ * @param input - The declared props/event/value arguments; caller identity and company state come only from imported context/API helpers.
+ * @returns The rendered React value, synchronous result, or Promise declared by the implementation.
+ * Side effects: updates the local React/browser state or invokes callbacks visible below.
+ */
 export function InventoryCheckingCard({
   itemName: controlledItemName,
   warehouseCode: controlledWarehouseCode,
@@ -33,6 +47,13 @@ export function InventoryCheckingCard({
   });
   const [loading, setLoading] = useState(false);
 
+/**
+ * loadData implements the local UI interaction represented by its typed signature.
+ *
+ * @param input - The declared props/event/value arguments; caller identity and company state come only from imported context/API helpers.
+ * @returns The rendered React value, synchronous result, or Promise declared by the implementation.
+ * Side effects: updates the local React/browser state or invokes callbacks visible below.
+ */
   const loadData = async () => {
     if (!autoFetch && controlledItemName) return;
     setLoading(true);

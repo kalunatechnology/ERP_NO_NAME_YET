@@ -1,3 +1,10 @@
+/**
+ * File: backend-express/src/workflows/tenants/default/sales_order.workflow.ts
+ *
+ * Purpose: Defines workflow/state transition responsibilities for the backend application.
+ * Responsibility: Owns the executable contracts declared here and their framework/import integration boundary.
+ * Dependencies and side effects: Function comments identify HTTP, persistence, browser-state, and security effects where present.
+ */
 import {
   BaseWorkflow,
   TransitionContext,

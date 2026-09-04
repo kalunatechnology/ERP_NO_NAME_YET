@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines frontend API adapter contracts and their integration boundary for the frontend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * Finance Dashboard API
  * Consolidated data fetching for Finance and Executive dashboards
  */
@@ -49,12 +51,21 @@ export interface FinanceDashboardData {
   rawProjects: any[];
 }
 
-export async function loadFinanceDashboard(): Promise<FinanceDashboardData> {
+/**
+ * loadFinanceDashboard adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/finance/project-cost-entries/?page_size=200`, `/api/v1/finance/project-fundings/?page_size=200`, `/api/v1/finance/billing-proposals/?page_size=200`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
+export async function loadFinanceDashboard(enabledModules?: string[]): Promise<FinanceDashboardData> {
+  const canReadProjects = !enabledModules || enabledModules.some((code) => code.toUpperCase() === "PROJECTS");
   const [costRes, fundRes, propRes, projRes] = await Promise.all([
-    api.get("/api/v1/finance/project-cost-entries/?page_size=200").catch(() => ({ data: [] })),
-    api.get("/api/v1/finance/project-fundings/?page_size=200").catch(() => ({ data: [] })),
-    api.get("/api/v1/finance/billing-proposals/?page_size=200").catch(() => ({ data: [] })),
-    api.get("/api/v1/projects/projects/?page_size=100").catch(() => ({ data: [] })),
+    api.get("/api/v1/finance/project-cost-entries/?page_size=200"),
+    api.get("/api/v1/finance/project-fundings/?page_size=200"),
+    api.get("/api/v1/finance/billing-proposals/?page_size=200"),
+    canReadProjects ? api.get("/api/v1/projects/projects/?page_size=100") : Promise.resolve({ data: [] }),
   ]);
 
   const rawCostEntries     = normalizeList<any>(costRes.data).rows;
@@ -198,14 +209,21 @@ export interface RealMonthlyStackedResponse {
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/**
+ * fetchRealMonthlyStackedData adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/finance/billing-documents/?page_size=200`, `/api/v1/finance/billing-proposals/?page_size=200`, `/api/v1/finance/customer-receipts/?page_size=200`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function fetchRealMonthlyStackedData(): Promise<RealMonthlyStackedResponse> {
-  try {
-    const [billsRes, proposalsRes, receiptsRes, costsRes] = await Promise.all([
-      api.get("/api/v1/finance/billing-documents/?page_size=200").catch(() => ({ data: [] })),
-      api.get("/api/v1/finance/billing-proposals/?page_size=200").catch(() => ({ data: [] })),
-      api.get("/api/v1/finance/customer-receipts/?page_size=200").catch(() => ({ data: [] })),
-      api.get("/api/v1/finance/project-cost-entries/?page_size=200").catch(() => ({ data: [] })),
-    ]);
+  const [billsRes, proposalsRes, receiptsRes, costsRes] = await Promise.all([
+    api.get("/api/v1/finance/billing-documents/?page_size=200"),
+    api.get("/api/v1/finance/billing-proposals/?page_size=200"),
+    api.get("/api/v1/finance/customer-receipts/?page_size=200"),
+    api.get("/api/v1/finance/project-cost-entries/?page_size=200"),
+  ]);
 
     const bills = normalizeList<any>(billsRes.data).rows;
     const proposals = normalizeList<any>(proposalsRes.data).rows;
@@ -265,19 +283,6 @@ export async function fetchRealMonthlyStackedData(): Promise<RealMonthlyStackedR
       };
     });
 
-    const maxValue = Math.max(500, Math.ceil((highestTotal || 500) / 100) * 100);
-    return { data: resultData, maxValue };
-  } catch {
-    return {
-      data: MONTH_NAMES.map((month) => ({
-        month,
-        bottomValue: 0,
-        topValue: 0,
-        hasData: false,
-        notes: "Belum ada data transaksi tercatat",
-      })),
-      maxValue: 500,
-    };
-  }
+  const maxValue = Math.max(500, Math.ceil((highestTotal || 500) / 100) * 100);
+  return { data: resultData, maxValue };
 }
-

@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/finance/finance.routes.ts
+ *
+ * Purpose: Implements Express API routing responsibilities for the finance domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { FinanceService } from './finance.service';
@@ -7,13 +15,112 @@ import { createCrudRouter } from '../../utils/crud-factory';
 import { enforceSoD, requireFinanceRole, requireSuperadmin } from '../../middleware/sod.middleware';
 import { DocumentFSM } from '../../utils/fsm';
 import { sendSuccess, sendError } from '../../utils/response';
+import { RoleCode } from '../../types/roles';
+import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 
 export const financeRouter = Router();
+
+/**
+ * financeUserCount implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `iam_role`, `iam_user_role`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
+async function financeUserCount(companyId: string) {
+  const financeRoles = await prisma.iam_role.findMany({ where: { role_code: RoleCode.FINANCE }, select: { id: true } });
+  return prisma.iam_user_role.count({
+    where: { company_id: companyId, role_id: { in: financeRoles.map((role) => role.id) } },
+  });
+}
+
+/**
+ * POST route handler: `/period-closings/request`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_period_closing` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
+financeRouter.post('/period-closings/request', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.companyId) throw new ForbiddenError('Company aktif wajib dipilih.');
+    const closingType = String(req.body.closing_type ?? 'MONTHLY').toUpperCase();
+    const documentId = req.body.document_id ?? req.body.fiscal_year_id ?? null;
+    const fiscalPeriodId = req.body.fiscal_period_id ?? null;
+    if (closingType === 'MONTHLY' && !fiscalPeriodId) throw new ValidationError('fiscal_period_id wajib diisi.');
+    if (closingType === 'YEAR_END' && !documentId) throw new ValidationError('fiscal_year_id wajib diisi.');
+    const record = await prisma.fin_period_closing.create({ data: {
+      tenant_id: req.user?.tenant_id, company_id: req.companyId, created_by_id: req.user?.id,
+      requested_by: req.user?.id, fiscal_period_id: fiscalPeriodId, document_id: documentId,
+      closing_type: closingType, status: 'PENDING_APPROVAL', started_at: new Date(),
+    } });
+    sendSuccess(res.status(201), record);
+  } catch (err) { next(err); }
+});
+
+/**
+ * POST route handler: `/period-closings/:id/approve`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_period_closing` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
+financeRouter.post('/period-closings/:id/approve', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try {
+    const record = await prisma.fin_period_closing.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
+    if (!record) throw new NotFoundError('Period closing');
+    if (record.status !== 'PENDING_APPROVAL') throw new ValidationError(`Closing berstatus ${record.status}.`);
+    if (record.requested_by === req.user?.id) throw new ForbiddenError('Requester tidak boleh menyetujui closing yang sama.');
+    const updated = await prisma.fin_period_closing.update({ where: { id: record.id }, data: {
+      status: 'APPROVED', approved_by: req.user?.id, approved_at: new Date(),
+    } });
+    sendSuccess(res, updated);
+  } catch (err) { next(err); }
+});
+
+/**
+ * POST route handler: `/period-closings/:id/execute`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_period_closing` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
+financeRouter.post('/period-closings/:id/execute', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try {
+    if (!req.companyId) throw new ForbiddenError('Company aktif wajib dipilih.');
+    const record = await prisma.fin_period_closing.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
+    if (!record) throw new NotFoundError('Period closing');
+    if (record.status !== 'APPROVED' || !record.approved_by) throw new ValidationError('Closing belum disetujui Finance.');
+    const count = await financeUserCount(req.companyId);
+    if (count >= 2 && (record.approved_by === req.user?.id || record.requested_by === req.user?.id)) {
+      throw new ForbiddenError('Company dengan dua atau lebih user Finance wajib memisahkan requester, approver, dan executor.');
+    }
+    const result = record.closing_type === 'YEAR_END'
+      ? await PeriodClosingService.executeYearEndClosing(record.document_id!, req.companyId, req.user?.id ?? 'system')
+      : await PeriodClosingService.closeFiscalPeriod(record.fiscal_period_id!, req.user?.id ?? 'system');
+    await prisma.fin_period_closing.update({ where: { id: record.id }, data: {
+      status: 'COMPLETED', executed_by: req.user?.id, completed_at: new Date(),
+    } });
+    sendSuccess(res, { closing_request_id: record.id, ...result });
+  } catch (err) { next(err); }
+});
 
 // =============================================================================
 // CHART OF ACCOUNTS
 // =============================================================================
 
+/**
+ * POST route handler: `/accounts/setup-standard`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/accounts/setup-standard', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const map = await FinanceService.ensureStandardCOA(req.companyId);
@@ -27,6 +134,14 @@ financeRouter.post('/accounts/setup-standard', async (req: Request, res: Respons
 // COMPUTED BALANCE ENGINE
 // =============================================================================
 
+/**
+ * GET route handler: `/accounts/:id/balance`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.get('/accounts/:id/balance', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await FinanceService.getAccountBalance(req.params.id, req.companyId);
@@ -36,6 +151,14 @@ financeRouter.get('/accounts/:id/balance', async (req: Request, res: Response, n
   }
 });
 
+/**
+ * GET route handler: `/bank-accounts/:id/balance`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.get('/bank-accounts/:id/balance', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await FinanceService.getBankAccountBalance(req.params.id);
@@ -49,6 +172,14 @@ financeRouter.get('/bank-accounts/:id/balance', async (req: Request, res: Respon
 // JOURNAL ACTIONS
 // =============================================================================
 
+/**
+ * POST route handler: `/journal-entries/:id/post`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/journal-entries/:id/post', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await FinanceService.postJournalEntry(req.params.id);
@@ -59,9 +190,16 @@ financeRouter.post('/journal-entries/:id/post', async (req: Request, res: Respon
 });
 
 // REVERSAL / STORNO — membutuhkan SoD: penyetuju ≠ pembuat
+/**
+ * POST `/journal-entries/:id/reverse` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/journal-entries/:id/reverse',
-  requireFinanceRole(['FINANCE_MANAGER', 'DIRECTOR']),
+  requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   enforceSoD({
     getCreatorId: async (req) => {
       const entry = await prisma.fin_journal_entry.findUnique({ where: { id: req.params.id } });
@@ -91,6 +229,14 @@ financeRouter.post(
 // TRIAL BALANCE & FINANCIAL REPORTS
 // =============================================================================
 
+/**
+ * GET route handler: `/trial-balance`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.get('/trial-balance', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await FinanceService.getTrialBalance(req.companyId);
@@ -100,6 +246,14 @@ financeRouter.get('/trial-balance', async (req: Request, res: Response, next: Ne
   }
 });
 
+/**
+ * GET route handler: `/profit-and-loss`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.get('/profit-and-loss', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
@@ -111,6 +265,14 @@ financeRouter.get('/profit-and-loss', async (req: Request, res: Response, next: 
   }
 });
 
+/**
+ * GET route handler: `/balance-sheet`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.get('/balance-sheet', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const asOfDate = req.query.as_of_date ? new Date(req.query.as_of_date as string) : undefined;
@@ -125,9 +287,16 @@ financeRouter.get('/balance-sheet', async (req: Request, res: Response, next: Ne
 // INTERNAL FUND TRANSFER (Via Cash in Transit 1140)
 // =============================================================================
 
+/**
+ * POST `/bank-accounts/internal-transfer` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/bank-accounts/internal-transfer',
-  requireFinanceRole(['FINANCE_STAFF', 'FINANCE_MANAGER']),
+  requireFinanceRole([RoleCode.FINANCE]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { from_bank_account_id, to_bank_account_id, amount, description, reference_number } = req.body;
@@ -157,6 +326,14 @@ financeRouter.post(
 // BANKING: Statement Import & Reconciliation
 // =============================================================================
 
+/**
+ * POST route handler: `/bank-accounts/:id/import-statement`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/bank-accounts/:id/import-statement', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { statement_date, lines } = req.body;
@@ -174,9 +351,16 @@ financeRouter.post('/bank-accounts/:id/import-statement', async (req: Request, r
   }
 });
 
+/**
+ * POST `/bank-statement-lines/:id/reconcile` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/bank-statement-lines/:id/reconcile',
-  requireFinanceRole(['FINANCE_STAFF', 'FINANCE_MANAGER']),
+  requireFinanceRole([RoleCode.FINANCE]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { payment_id, journal_line_id, matched_amount, match_type } = req.body;
@@ -202,6 +386,14 @@ financeRouter.post(
 // TAX SUMMARY
 // =============================================================================
 
+/**
+ * GET route handler: `/tax-summary`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.get('/tax-summary', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await FinanceService.getTaxSummary(req.companyId);
@@ -215,6 +407,14 @@ financeRouter.get('/tax-summary', async (req: Request, res: Response, next: Next
 // PROJECT FUNDING (SoD + FSM Protected)
 // =============================================================================
 
+/**
+ * POST route handler: `/project-fundings/:id/decide`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/project-fundings/:id/decide', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const decision = req.body.decision ?? (req.body.action === 'approve' ? 'APPROVED' : 'REJECTED');
@@ -230,6 +430,14 @@ financeRouter.post('/project-fundings/:id/decide', async (req: Request, res: Res
   }
 });
 
+/**
+ * POST route handler: `/project-fundings/:id/draw`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_project_funding` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const funding = await prisma.fin_project_funding.findUnique({ where: { id: req.params.id } });
@@ -252,6 +460,14 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
 // BILLING DOCUMENT ACTIONS (FSM + SoD Protected)
 // =============================================================================
 
+/**
+ * POST route handler: `/billing-documents/:id/post`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/billing-documents/:id/post', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await FinanceService.postBillingDocument(req.params.id, req.user?.id);
@@ -261,9 +477,16 @@ financeRouter.post('/billing-documents/:id/post', async (req: Request, res: Resp
   }
 });
 
+/**
+ * POST `/billing-documents/:id/verify` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/billing-documents/:id/verify',
-  requireFinanceRole(['FINANCE_STAFF', 'FINANCE_MANAGER']),
+  requireFinanceRole([RoleCode.FINANCE]),
   enforceSoD({
     getCreatorId: async (req) => {
       const doc = await prisma.fin_billing_document.findUnique({ where: { id: req.params.id } });
@@ -290,9 +513,16 @@ financeRouter.post(
   },
 );
 
+/**
+ * POST `/billing-documents/:id/approve` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/billing-documents/:id/approve',
-  requireFinanceRole(['FINANCE_MANAGER', 'DIRECTOR']),
+  requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   enforceSoD({
     getCreatorId: async (req) => {
       const doc = await prisma.fin_billing_document.findUnique({ where: { id: req.params.id } });
@@ -319,6 +549,14 @@ financeRouter.post(
   },
 );
 
+/**
+ * POST route handler: `/billing-documents/:id/reject`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_billing_document` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/billing-documents/:id/reject', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const doc = await prisma.fin_billing_document.findUnique({ where: { id: req.params.id } });
@@ -341,6 +579,14 @@ financeRouter.post('/billing-documents/:id/reject', async (req: Request, res: Re
 // PAYMENT ACTIONS (FSM Protected)
 // =============================================================================
 
+/**
+ * POST route handler: `/payments/:id/submit`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_payment` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/payments/:id/submit', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const payment = await prisma.fin_payment.findUnique({ where: { id: req.params.id } });
@@ -356,9 +602,16 @@ financeRouter.post('/payments/:id/submit', async (req: Request, res: Response, n
   }
 });
 
+/**
+ * POST `/payments/:id/approve` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/payments/:id/approve',
-  requireFinanceRole(['FINANCE_MANAGER', 'DIRECTOR']),
+  requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   enforceSoD({
     getCreatorId: async (req) => {
       const payment = await prisma.fin_payment.findUnique({ where: { id: req.params.id } });
@@ -382,6 +635,14 @@ financeRouter.post(
   },
 );
 
+/**
+ * POST route handler: `/payments/:id/execute`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_payment` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/payments/:id/execute', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const payment = await prisma.fin_payment.findUnique({ where: { id: req.params.id } });
@@ -405,6 +666,14 @@ financeRouter.post('/payments/:id/execute', async (req: Request, res: Response, 
 // =============================================================================
 
 // Status semua periode fiskal
+/**
+ * GET route handler: `/fiscal-periods/status`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_fiscal_period` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.get('/fiscal-periods/status', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const periods = await prisma.fin_fiscal_period.findMany({
@@ -416,24 +685,34 @@ financeRouter.get('/fiscal-periods/status', async (req: Request, res: Response, 
 });
 
 // Tutup buku bulanan
+/**
+ * POST `/fiscal-periods/:id/close` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/fiscal-periods/:id/close',
-  requireFinanceRole(['FINANCE_MANAGER', 'DIRECTOR']),
+  requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await PeriodClosingService.closeFiscalPeriod(
-        req.params.id,
-        req.user?.id ?? 'system',
-      );
-      sendSuccess(res, result);
+      throw new ValidationError('Gunakan workflow period-closings: request, approve, lalu execute.');
     } catch (err) { next(err); }
   },
 );
 
 // Buka kembali periode bulanan (Finance Manager)
+/**
+ * POST `/fiscal-periods/:id/reopen` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/fiscal-periods/:id/reopen',
-  requireFinanceRole(['FINANCE_MANAGER', 'DIRECTOR']),
+  requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const updated = await prisma.fin_fiscal_period.update({
@@ -446,26 +725,41 @@ financeRouter.post(
 );
 
 // Tutup buku tahunan (Year-End Closing)
+/**
+ * POST `/fiscal-years/:id/year-end-closing` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/fiscal-years/:id/year-end-closing',
-  requireFinanceRole(['FINANCE_MANAGER', 'DIRECTOR']),
+  requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.body.company_id ?? req.companyId ?? '';
-      if (!companyId) return sendError(res, 'company_id wajib diisi untuk year-end closing.', 400);
-      const result = await PeriodClosingService.executeYearEndClosing(
-        req.params.id,
-        companyId,
-        req.user?.id ?? 'system',
-      );
-      sendSuccess(res, result);
+      throw new ValidationError('Gunakan workflow period-closings: request, approve, lalu execute.');
     } catch (err) { next(err); }
   },
 );
 
 // Rollback tutup buku tahunan via Storno (Superadmin/Direktur only)
+/**
+ * POST `/fiscal-years/:id/reopen-year-end` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
 financeRouter.post(
   '/fiscal-years/:id/reopen-year-end',
+/**
+ * requireSuperadmin implements a named method within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   requireSuperadmin(),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -487,8 +781,16 @@ financeRouter.post(
 // WIP CAPITALIZATION (Fase 3)
 // =============================================================================
 
+/**
+ * POST route handler: `/projects/:id/capitalize-wip`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/projects/:id/capitalize-wip',
-  requireFinanceRole(['FINANCE_STAFF', 'FINANCE_MANAGER', 'DIRECTOR']),
+  requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { amount, description } = req.body;
@@ -509,6 +811,14 @@ financeRouter.post('/projects/:id/capitalize-wip',
 // NTPN — TAX PAYMENT REFERENCE (Fase 3)
 // =============================================================================
 
+/**
+ * POST route handler: `/tax-transactions/:id/record-ntpn`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/tax-transactions/:id/record-ntpn', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { ntpn, payment_reference, paid_at } = req.body;
@@ -526,6 +836,14 @@ financeRouter.post('/tax-transactions/:id/record-ntpn', async (req: Request, res
 // AUDIT TRAIL & EXECUTIVE REPORT (Fase 4)
 // =============================================================================
 
+/**
+ * GET route handler: `/audit-trail`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.get('/audit-trail', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await AuditService.getAuditTrail({
@@ -543,6 +861,14 @@ financeRouter.get('/audit-trail', async (req: Request, res: Response, next: Next
   } catch (err) { next(err); }
 });
 
+/**
+ * GET route handler: `/executive-audit-report`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.get('/executive-audit-report', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const year = req.query.year ? Number(req.query.year) : undefined;
@@ -552,6 +878,14 @@ financeRouter.get('/executive-audit-report', async (req: Request, res: Response,
 });
 
 // Import Statement CSV (KlikBCA / Mandiri / Standar)
+/**
+ * POST route handler: `/bank-accounts/:id/import-csv`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 financeRouter.post('/bank-accounts/:id/import-csv', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { csv_content } = req.body;

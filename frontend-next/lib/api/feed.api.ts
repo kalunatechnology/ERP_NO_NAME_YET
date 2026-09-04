@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines frontend API adapter contracts and their integration boundary for the frontend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * Live Feed & Observability API
  * Dynamically aggregates real-time notifications, audit activity stream,
  * recently opened items, and company team member contacts.
@@ -37,6 +39,8 @@ export interface ContactItem {
   email: string;
   avatar_url?: string;
   is_active: boolean;
+  role_code?: string | null;
+  role_name?: string | null;
 }
 
 export interface UserRecentItemDto {
@@ -76,6 +80,14 @@ export interface DynamicContact {
   avatar_url?: string;
 }
 
+/**
+ * timeAgo adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/sidebar-feed/mark-read/`, `/api/v1/core/sidebar-feed/mark-read/`, `/api/v1/recent-items/track/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 function timeAgo(dateString?: string | Date): string {
   if (!dateString) return "Baru saja";
   const now = new Date();
@@ -132,6 +144,14 @@ export const feedApi = {
   }
 };
 
+/**
+ * fetchDynamicRightPanelData adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function fetchDynamicRightPanelData(): Promise<{
   notifications: DynamicFeedItem[];
   activities: DynamicFeedItem[];
@@ -140,7 +160,17 @@ export async function fetchDynamicRightPanelData(): Promise<{
   // First attempt: fetch from backend dedicated feed engine
   try {
     const feed = await feedApi.getSidebarFeed();
-    if (feed && (feed.notifications?.length || feed.activities?.length || feed.contacts?.length)) {
+    // An empty feed is a valid company-scoped result. Falling back merely because
+    // it is empty could reintroduce identities from an unrelated company.
+    if (feed) {
+/**
+ * notifications adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
       const notifications: DynamicFeedItem[] = (feed.notifications || []).map((n) => ({
         id: n.id,
         label: n.title,
@@ -151,6 +181,14 @@ export async function fetchDynamicRightPanelData(): Promise<{
         href: n.target_url || "/dashboard",
       }));
 
+/**
+ * activities adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
       const activities: DynamicFeedItem[] = (feed.activities || []).map((a) => {
         const actorName = a.actor?.full_name || a.actor?.username || "Sistem";
         const verbMap: Record<string, string> = {
@@ -173,6 +211,14 @@ export async function fetchDynamicRightPanelData(): Promise<{
       });
 
       const PASTEL_COLORS = ["#F0FEE0", "#E8F5E9", "#F3E5F5", "#E3F2FD", "#FFF9C4", "#FFECB3"];
+/**
+ * contacts adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/tasks/?page_size=30`, `/api/v1/projects/projects/?page_size=20`, `/api/v1/finance/project-cost-entries/?page_size=20`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
       const contacts: DynamicContact[] = (feed.contacts || []).map((c, i) => {
         const name = c.full_name || c.username || `User #${c.id}`;
         const initials = name
@@ -184,7 +230,7 @@ export async function fetchDynamicRightPanelData(): Promise<{
         return {
           id: c.id,
           name,
-          role: "Team Member",
+          role: c.role_name || c.role_code || "Team Member",
           email: c.email,
           initials,
           color: PASTEL_COLORS[i % PASTEL_COLORS.length],
@@ -201,7 +247,7 @@ export async function fetchDynamicRightPanelData(): Promise<{
 
   // Fallback: Aggregate from modular endpoints
   const [
-    tasksRes, projectsRes, costsRes, proposalsRes, fundingsRes, dealsRes, usersRes
+    tasksRes, projectsRes, costsRes, proposalsRes, fundingsRes, dealsRes
   ] = await Promise.all([
     api.get("/api/v1/projects/tasks/?page_size=30").catch(() => ({ data: [] })),
     api.get("/api/v1/projects/projects/?page_size=20").catch(() => ({ data: [] })),
@@ -209,7 +255,6 @@ export async function fetchDynamicRightPanelData(): Promise<{
     api.get("/api/v1/finance/billing-proposals/?page_size=20").catch(() => ({ data: [] })),
     api.get("/api/v1/finance/project-fundings/?page_size=20").catch(() => ({ data: [] })),
     api.get("/api/v1/crm/opportunities/?page_size=20").catch(() => ({ data: [] })),
-    api.get("/api/v1/iam/users/?page_size=20").catch(() => ({ data: [] })),
   ]);
 
   const tasks     = normalizeList<any>(tasksRes.data).rows;
@@ -218,17 +263,48 @@ export async function fetchDynamicRightPanelData(): Promise<{
   const proposals = normalizeList<any>(proposalsRes.data).rows;
   const fundings  = normalizeList<any>(fundingsRes.data).rows;
   const deals     = normalizeList<any>(dealsRes.data).rows;
-  const users     = normalizeList<any>(usersRes.data).rows;
 
+/**
+ * getTaskLabel adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
   function getTaskLabel(t: any): string {
     return t.title || t.task_name || t.name || t.description || `Task #${t.id || "01"}`;
   }
+/**
+ * getDealLabel adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
   function getDealLabel(d: any): string {
     return d.opportunity_name || d.name || d.title || d.deal_name || (d.customer_name ? `Deal ${d.customer_name}` : `Deal #${String(d.id || "01").slice(0, 6)}`);
   }
+/**
+ * getProjectLabel adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
   function getProjectLabel(p: any): string {
     return p.project_name || p.name || p.title || p.code || `Proyek #${p.id || "01"}`;
   }
+/**
+ * getCostLabel adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
   function getCostLabel(c: any): string {
     return c.description || (c.category ? `Biaya ${c.category}` : `Pengeluaran #${c.id || "01"}`);
   }
@@ -324,29 +400,8 @@ export async function fetchDynamicRightPanelData(): Promise<{
   const PASTEL_COLORS = ["#F0FEE0", "#E8F5E9", "#F3E5F5", "#E3F2FD", "#FFF9C4", "#FFECB3"];
   const contacts: DynamicContact[] = [];
 
-  if (users && users.length > 0) {
-    users.slice(0, 6).forEach((u: any, i: number) => {
-      const name = u.full_name || u.name || u.email?.split("@")[0] || `User #${u.id}`;
-      const initials = name
-        .split(" ")
-        .map((w: string) => w[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase();
-      
-      const role = u.role || (u.is_superuser ? "Executive / Director" : i % 2 === 0 ? "Project Member" : "Finance Staff");
-
-      contacts.push({
-        id: u.id || i,
-        name,
-        role,
-        email: u.email,
-        initials,
-        color: PASTEL_COLORS[i % PASTEL_COLORS.length],
-        status: i % 3 === 0 ? "online" : i % 3 === 1 ? "away" : "offline",
-      });
-    });
-  }
+  // Contacts are intentionally never reconstructed from a generic user list.
+  // Only the dedicated backend feed may return company-scoped identities.
 
   return {
     notifications: notifications.slice(0, 4),
@@ -374,6 +429,14 @@ export interface RealInventoryCheckData {
   unit: string;
 }
 
+/**
+ * fetchRealAlertsList adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/core/sidebar-feed`, `/api/v1/projects/projects/?page_size=10`, `/api/v1/finance/project-cost-entries/?page_size=10`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function fetchRealAlertsList(userRole?: string, isAdmin?: boolean): Promise<RealAlertItem[]> {
   try {
     const [feedRes, projectsRes, costRes, oppsRes] = await Promise.all([
@@ -504,6 +567,14 @@ export async function fetchRealAlertsList(userRole?: string, isAdmin?: boolean):
   ];
 }
 
+/**
+ * fetchRealInventoryCheckingData adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/inventory/stock-balances/?page_size=5`, `/api/v1/master-data/products/?page_size=5`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function fetchRealInventoryCheckingData(): Promise<RealInventoryCheckData> {
   try {
     const [balancesRes, productsRes] = await Promise.all([

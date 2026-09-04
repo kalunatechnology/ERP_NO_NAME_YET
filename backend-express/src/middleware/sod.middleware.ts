@@ -1,6 +1,15 @@
+/**
+ * File: backend-express/src/middleware/sod.middleware.ts
+ *
+ * Purpose: Implements request middleware responsibilities for the platform domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
 import { ForbiddenError } from '../utils/errors';
+import { isCompanyAdmin, isSuperAdmin, RoleCode } from '../types/roles';
 
 // =============================================================================
 // SEGREGATION OF DUTIES (SoD) MIDDLEWARE — Enterprise Edition
@@ -26,6 +35,13 @@ const DEFAULT_SOD_THRESHOLD_AMOUNT = Number(process.env.SOD_THRESHOLD_AMOUNT ?? 
 // Helper: Cek apakah ada Delegation of Authority (DoA) yang aktif
 // ---------------------------------------------------------------------------
 
+/**
+ * findActiveDelegation implements a request-bound security or governance step.
+ *
+ * Input/output: Reads the Express request/response context, attaches only the identity/scope metadata declared in the implementation, then either calls `next` or rejects the request.
+ * Security intent: The check runs before protected business handlers so unauthenticated, cross-company, unauthorized, or invalid requests cannot reach persistence mutations.
+ * Data/side effects: Queries or records Prisma model(s) `core_workflow_approval`.
+ */
 async function findActiveDelegation(delegatorUserId: string, delegateUserId: string): Promise<boolean> {
   // Cek apakah ada workflow approval yang dilakukan oleh delegate atas nama delegator
   try {
@@ -45,6 +61,13 @@ async function findActiveDelegation(delegatorUserId: string, delegateUserId: str
 // enforceSoD: Maker-Checker dengan Threshold & Delegation of Authority
 // ---------------------------------------------------------------------------
 
+/**
+ * enforceSoD implements a request-bound security or governance step.
+ *
+ * Input/output: Reads the Express request/response context, attaches only the identity/scope metadata declared in the implementation, then either calls `next` or rejects the request.
+ * Security intent: The check runs before protected business handlers so unauthenticated, cross-company, unauthorized, or invalid requests cannot reach persistence mutations.
+ * Data/side effects: May mutate request metadata or the response, as shown in the implementation.
+ */
 export function enforceSoD(options: {
   getCreatorId:     (req: Request) => Promise<string | null | undefined>;
   getAmountValue?:  (req: Request) => Promise<number | null>;
@@ -114,14 +137,21 @@ export function enforceSoD(options: {
 // requireFinanceRole: Role-Based Access Control untuk aksi keuangan
 // ---------------------------------------------------------------------------
 
+/**
+ * requireFinanceRole implements a request-bound security or governance step.
+ *
+ * Input/output: Reads the Express request/response context, attaches only the identity/scope metadata declared in the implementation, then either calls `next` or rejects the request.
+ * Security intent: The check runs before protected business handlers so unauthenticated, cross-company, unauthorized, or invalid requests cannot reach persistence mutations.
+ * Data/side effects: May mutate request metadata or the response, as shown in the implementation.
+ */
 export function requireFinanceRole(roles: string[]) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const userRole = (req.user as any)?.role;
-    if (!userRole || !roles.includes(userRole)) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const userRoles = req.user?.roles ?? [];
+    if (!userRoles.some((role) => roles.includes(role))) {
       return next(
         new ForbiddenError(
           `Aksi ini membutuhkan salah satu dari role berikut: ${roles.join(', ')}. ` +
-          `Role Anda saat ini: ${userRole ?? 'tidak terdeteksi'}.`,
+          `Role Anda saat ini: ${userRoles.join(', ') || 'tidak terdeteksi'}.`,
         ),
       );
     }
@@ -133,20 +163,23 @@ export function requireFinanceRole(roles: string[]) {
 // requireCompanyAdmin: Otorisasi untuk Admin Perusahaan (Company Admin)
 // ---------------------------------------------------------------------------
 
+/**
+ * requireCompanyAdmin implements a request-bound security or governance step.
+ *
+ * Input/output: Reads the Express request/response context, attaches only the identity/scope metadata declared in the implementation, then either calls `next` or rejects the request.
+ * Security intent: The check runs before protected business handlers so unauthenticated, cross-company, unauthorized, or invalid requests cannot reach persistence mutations.
+ * Data/side effects: May mutate request metadata or the response, as shown in the implementation.
+ */
 export function requireCompanyAdmin() {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const user = req.user as any;
-    const userRoles: string[] = user?.roles || [user?.role].filter(Boolean);
-    const isSuper = user?.is_superuser;
-    const isStaff = user?.is_staff;
-
-    if (
-      isSuper ||
-      isStaff ||
-      userRoles.includes('SUPERADMIN') ||
-      userRoles.includes('COMPANY_ADMIN') ||
-      userRoles.includes('DIRECTOR')
-    ) {
+/**
+ * return implements a request-bound security or governance step.
+ *
+ * Input/output: Reads the Express request/response context, attaches only the identity/scope metadata declared in the implementation, then either calls `next` or rejects the request.
+ * Security intent: The check runs before protected business handlers so unauthenticated, cross-company, unauthorized, or invalid requests cannot reach persistence mutations.
+ * Data/side effects: May mutate request metadata or the response, as shown in the implementation.
+ */
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (isCompanyAdmin(req.user?.roles ?? [])) {
       return next();
     }
 
@@ -162,17 +195,23 @@ export function requireCompanyAdmin() {
 // requireSuperadmin: Otorisasi khusus untuk aksi kritis (Year-End Reopen, dll)
 // ---------------------------------------------------------------------------
 
+/**
+ * requireSuperadmin implements a request-bound security or governance step.
+ *
+ * Input/output: Reads the Express request/response context, attaches only the identity/scope metadata declared in the implementation, then either calls `next` or rejects the request.
+ * Security intent: The check runs before protected business handlers so unauthenticated, cross-company, unauthorized, or invalid requests cannot reach persistence mutations.
+ * Data/side effects: May mutate request metadata or the response, as shown in the implementation.
+ */
 export function requireSuperadmin() {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const userRole = (req.user as any)?.role;
-    const isSuper = (req.user as any)?.is_superuser;
-    if (isSuper || ['SUPERADMIN', 'DIRECTOR'].includes(userRole)) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const roles = req.user?.roles ?? [];
+    if (isSuperAdmin(roles) || roles.includes(RoleCode.DIRECTOR)) {
       return next();
     }
     return next(
       new ForbiddenError(
-        `Aksi ini hanya dapat dilakukan oleh SUPERADMIN atau DIRECTOR. ` +
-        `Role Anda: ${userRole ?? 'tidak terdeteksi'}.`,
+        `Aksi ini hanya dapat dilakukan oleh ${RoleCode.SUPER_ADMIN} atau ${RoleCode.DIRECTOR}. ` +
+        `Role Anda: ${roles.join(', ') || 'tidak terdeteksi'}.`,
       ),
     );
   };

@@ -12,6 +12,13 @@ import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
 
 /* ── Status helpers ─────────────────────────────── */
+/**
+ * StatusBadge coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function StatusBadge({ status, progress }: { status: string; progress?: number }) {
   return (
     <span className={cn("inline-flex px-2 py-0.5 rounded-full text-2xs font-semibold", getStatusColor(status))}>
@@ -21,6 +28,13 @@ function StatusBadge({ status, progress }: { status: string; progress?: number }
 }
 
 /* ── Quick Edit Overlay ─────────────────────────── */
+/**
+ * QuickEdit coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function QuickEdit({
   task, onSave, onClose,
 }: {
@@ -34,6 +48,13 @@ function QuickEdit({
   const [status, setStatus] = useState(task.status || "ON_PROGRESS");
   const [saving, setSaving] = useState(false);
 
+/**
+ * handleSave coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -126,6 +147,13 @@ function QuickEdit({
 }
 
 /* ── Task Row ───────────────────────────────────── */
+/**
+ * TaskRow coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TaskRow({
   projectName, projectCode, mainTaskName, weekNumber, task,
   onToggle, onEdit, isAllowed = true,
@@ -159,7 +187,7 @@ function TaskRow({
       <td className="py-2.5 px-4 align-top whitespace-nowrap">
         <div className={cn("text-xs font-medium", isOverdue ? "text-red-600 font-bold" : "text-text-primary")}>
           {task.planned_date || "-"}
-          {isOverdue && <span className="ml-1">⚠️</span>}
+          {isOverdue && <AlertTriangle size={12} className="ml-1 text-amber-600" />}
         </div>
         <div className="text-2xs text-text-secondary">{task.time_slot || "-"}</div>
       </td>
@@ -175,7 +203,7 @@ function TaskRow({
               !isAllowed && "cursor-not-allowed opacity-40 bg-gray-100",
               isAllowed && isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
             )}
-            title={!isAllowed ? "🔒 Hanya PIC / Owner atau PM yang dapat mengubah status" : (isDone ? "Buka kembali" : "Tandai selesai")}
+            title={!isAllowed ? "Hanya PIC, Owner, atau PM yang dapat mengubah status" : (isDone ? "Buka kembali" : "Tandai selesai")}
           >
             {isDone && <Check size={11} strokeWidth={3} />}
           </button>
@@ -214,7 +242,7 @@ function TaskRow({
           </button>
         ) : (
           <span className="text-3xs text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded" title="Hanya PIC / Owner atau PM yang dapat mengedit">
-            🔒 Read Only
+            Read only
           </span>
         )}
       </td>
@@ -225,6 +253,13 @@ function TaskRow({
 /* ══════════════════════════════════════════════════
    MAIN TASKS CLIENT
 ══════════════════════════════════════════════════ */
+/**
+ * TasksClient coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export default function TasksClient() {
   const { user, userRole, isAdmin } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -252,7 +287,21 @@ export default function TasksClient() {
     if ((user as any).is_superuser || (user as any).is_staff) return true;
     const role = detectRole(user);
     if (role === "pm" || role === "executive") return true;
+/**
+ * email coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const email = (user.email || "").toLowerCase();
+/**
+ * username coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const username = (user.username || "").toLowerCase();
     return username.includes("pm") || username.includes("project") || username.includes("admin") || email.includes("pm") || email.includes("project") || email.includes("admin");
   }, [user, userRole, isAdmin]);
@@ -261,7 +310,7 @@ export default function TasksClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const projs = await loadAllProjects();
+      const projs = await loadAllProjects(user?.enabled_modules || []);
       setProjects(projs);
     } catch {
       toast.error("Gagal memuat data task");
@@ -269,7 +318,7 @@ export default function TasksClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user?.enabled_modules]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
@@ -360,6 +409,13 @@ export default function TasksClient() {
     );
   }, []);
 
+/**
+ * handleToggle coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleToggle = async (task: DailyTask) => {
     const isDone = ["COMPLETED","DONE"].includes(task.status || "");
     const nextStatus = isDone ? "ON_PROGRESS" : "COMPLETED";
@@ -369,7 +425,7 @@ export default function TasksClient() {
 
     // 1. Optimistic Update Local UI Immediately (60fps)
     updateLocalDailyTask(task.id, { status: nextStatus, progress: nextProg });
-    toast.success(isDone ? "Task dibuka kembali" : "Task selesai ✅", { icon: isDone ? "🔄" : "✅" });
+    toast.success(isDone ? "Task dibuka kembali." : "Task selesai.");
 
     // 2. Sync to Backend in Background
     try {
@@ -381,6 +437,13 @@ export default function TasksClient() {
     }
   };
 
+/**
+ * handleSaveEdit coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleSaveEdit = async (id: string | number, patch: Partial<DailyTask>) => {
     // 1. Optimistic Update Local UI Immediately
     updateLocalDailyTask(id, patch);
@@ -410,14 +473,21 @@ export default function TasksClient() {
   ).length;
 
   const FILTERS = [
-    { id: "TODAY",     label: `⚡ Hari Ini (${todayCount})` },
-    { id: "OVERDUE",   label: `⚠️ Terlambat (${overdueCount})` },
+    { id: "TODAY",     label: `Hari Ini (${todayCount})` },
+    { id: "OVERDUE",   label: `Terlambat (${overdueCount})` },
     { id: "ACTIVE",    label: `Berjalan (${activeCount})` },
     { id: "COMPLETED", label: "Selesai" },
     { id: "BLOCKED",   label: `Terkendala${blockedCount > 0 ? ` (${blockedCount})` : ""}` },
     { id: "ALL",       label: `Semua (${allTasks.length})` },
   ];
 
+/**
+ * renderTable coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const renderTable = (items: typeof filteredTasks) => (
     <table className="w-full text-xs text-left min-w-[620px]">
       <thead>
@@ -550,7 +620,7 @@ export default function TasksClient() {
           <p className="text-sm text-text-secondary">Tidak ada task yang sesuai filter ini.</p>
           {overdueCount > 0 && (
             <button onClick={() => setActiveFilter("OVERDUE")} className="text-xs text-red-600 hover:underline font-medium">
-              ⚠️ Ada {overdueCount} task terlambat — lihat sekarang
+              Ada {overdueCount} task terlambat — lihat sekarang
             </button>
           )}
         </div>

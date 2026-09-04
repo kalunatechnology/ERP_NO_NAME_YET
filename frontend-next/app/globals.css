@@ -45,10 +45,8 @@
 
   /* KPI Card */
   .kpi-card {
-    @apply flex flex-col gap-2.5 p-4 rounded-xl bg-brand-light-green
-           border border-text-tertiary shadow-card
-           transition-all duration-200 ease-out
-           hover:shadow-card-md hover:-translate-y-0.5;
+    @apply flex flex-col gap-2.5 p-4 rounded-lg bg-white
+           border border-text-tertiary shadow-2xs;
   }
 
   /* Button variants with tactile micro-interactions */
@@ -114,7 +112,7 @@
     @apply bg-white border border-text-tertiary rounded-lg shadow-card transition-shadow duration-200;
   }
   .card-hover {
-    @apply hover:shadow-card-md hover:border-brand-green/30 transition-all duration-200 ease-out;
+    @apply hover:border-brand-green/30 transition-colors duration-150 ease-out;
   }
 
   /* Section title */
@@ -124,7 +122,7 @@
 
   /* Tab button */
   .tab-btn {
-    @apply px-4 py-2.5 text-sm font-medium text-text-secondary
+    @apply inline-flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-text-secondary
            border-b-2 border-transparent whitespace-nowrap
            transition-all duration-150 ease-out cursor-pointer
            active:scale-[0.99] select-none;
@@ -153,6 +151,22 @@
   }
   .data-table tr:hover td {
     @apply bg-brand-light-green/30;
+  }
+
+  .page-header {
+    @apply flex items-start justify-between gap-4 flex-wrap border-b border-text-tertiary pb-4;
+  }
+  .page-title {
+    @apply text-xl font-semibold tracking-tight text-text-primary;
+  }
+  .page-description {
+    @apply mt-1 text-xs text-text-secondary;
+  }
+  .section-panel {
+    @apply rounded-lg border border-text-tertiary bg-white shadow-2xs;
+  }
+  .section-header {
+    @apply flex items-center justify-between gap-3 border-b border-text-tertiary px-4 py-3;
   }
 }
 

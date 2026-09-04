@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines workflow/state transition contracts and their integration boundary for the backend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * Workflow Engine — Base Types & Abstract Class.
  *
  * TypeScript port of backend/apps/workflows/base.py
@@ -125,10 +127,26 @@ export abstract class BaseWorkflow {
     };
   }
 
+/**
+ * isSuperuser implements this file's named method contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
   protected isSuperuser(context: TransitionContext): boolean {
     return context.user.is_superuser;
   }
 
+/**
+ * getUserRoles implements this file's named method contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
   protected getUserRoles(context: TransitionContext): string[] {
     return context.user.roles.map((r) => r.toUpperCase());
   }

@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/app/login/page.tsx
+ *
+ * Purpose: Defines the Next App Router entry and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
@@ -71,9 +78,9 @@ const ANIM_STYLES = `
 `;
 
 const OFFICIAL_SMA_USERS = [
-  { role: "SUPER ADMIN", label: "👑 Rian (Director & Super Admin)", name: "Rian", email: "rian@arsalynk.com", phone: "81234567801", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-DIRECTOR" },
-  { role: "LEAD PM", label: "🏗️ Melika (Lead Project Manager)", name: "Melika", email: "melika@arsalynk.com", phone: "81234567802", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-PM" },
-  { role: "OPERATIONS", label: "⚙️ Melika (Operational Lead & Ops)", name: "Melika Ops", email: "melika.ops@arsalynk.com", phone: "81234567803", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
+  { role: "COMPANY ADMIN", label: "Rian (Company Admin)", name: "Rian", email: "rian@arsalynk.com", phone: "81234567801", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-COMPANY-ADMIN" },
+  { role: "LEAD PM", label: "Melika (Lead Project Manager)", name: "Melika", email: "melika@arsalynk.com", phone: "81234567802", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-PM" },
+  { role: "OPERATIONS", label: "Melika (Operational Lead & Ops)", name: "Melika Ops", email: "melika.ops@arsalynk.com", phone: "81234567803", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
   { role: "PM & RISET", label: "📐 Arof (Lead PM & Riset)", name: "Arof", email: "arof@arsalynk.com", phone: "81234567804", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-PM" },
   { role: "FINANCE LEAD", label: "💼 Arof (Finance Lead & Tax)", name: "Arof Finance", email: "arof.finance@arsalynk.com", phone: "81234567805", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-FINANCE" },
   { role: "ENGINEER", label: "👷 Laode (Field Specialist / Engineer)", name: "Laode", email: "laode@arsalynk.com", phone: "81234567806", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
@@ -82,14 +89,15 @@ const OFFICIAL_SMA_USERS = [
 ];
 
 const GHOST_DEMO_USERS = [
-  { role: "GHOST ADMIN", label: "👑 Ghost Admin System", name: "Ghost Admin", email: "admin.director@arsalynk.id", phone: "81234567890", password: "DummyPass123!", cat: "exec" },
-  { role: "GHOST EXECUTIVE", label: "🏛️ Ghost Executive Director", name: "Ghost Director", email: "director@arsalynk.id", phone: "81234567891", password: "DummyPass123!", cat: "exec" },
-  { role: "GHOST PM", label: "🏗️ Ghost Lead Project Manager", name: "Ghost PM", email: "pm.lead@arsalynk.id", phone: "81234567892", password: "DummyPass123!", cat: "pm" },
+  { role: "SUPER ADMIN", label: "System Super Admin", name: "System Admin", email: "dummy.admin@example.com", phone: "81234567889", password: "DummyPass123!", cat: "exec" },
+  { role: "GHOST ADMIN", label: "Ghost Admin System", name: "Ghost Admin", email: "admin.director@arsalynk.id", phone: "81234567890", password: "DummyPass123!", cat: "exec" },
+  { role: "GHOST EXECUTIVE", label: "Ghost Executive Director", name: "Ghost Director", email: "director@arsalynk.id", phone: "81234567891", password: "DummyPass123!", cat: "exec" },
+  { role: "GHOST PM", label: "Ghost Lead Project Manager", name: "Ghost PM", email: "pm.lead@arsalynk.id", phone: "81234567892", password: "DummyPass123!", cat: "pm" },
   { role: "GHOST SUPERVISOR", label: "👷 Ghost Field Supervisor", name: "Ghost Supervisor", email: "supervisor@arsalynk.id", phone: "81234567893", password: "DummyPass123!", cat: "pm" },
   { role: "GHOST CRM", label: "👔 Ghost CRM & Commercial Lead", name: "Ghost CRM", email: "crm.lead@arsalynk.id", phone: "81234567894", password: "DummyPass123!", cat: "crm" },
   { role: "GHOST SALES", label: "🧑‍💼 Ghost Commercial & Sales Staff", name: "Ghost Sales", email: "sales@arsalynk.id", phone: "81234567895", password: "DummyPass123!", cat: "crm" },
   { role: "GHOST FINANCE", label: "💼 Ghost Finance Controller", name: "Ghost Finance", email: "finance.lead@arsalynk.id", phone: "81234567896", password: "DummyPass123!", cat: "fin" },
-  { role: "GHOST AP/AR", label: "💰 Ghost AP & AR Specialist", name: "Ghost Accounting", email: "dummy.finance@example.com", phone: "81234567897", password: "DummyPass123!", cat: "fin" },
+  { role: "GHOST AP/AR", label: "Ghost AP & AR Specialist", name: "Ghost Accounting", email: "dummy.finance@example.com", phone: "81234567897", password: "DummyPass123!", cat: "fin" },
   { role: "GHOST ESTIMATOR", label: "📐 Ghost Cost Estimator", name: "Ghost Estimator", email: "estimator@arsalynk.id", phone: "81234567898", password: "DummyPass123!", cat: "pm" },
   { role: "GHOST STAFF", label: "🧑‍💻 Ghost Technical & Dev Staff", name: "Ghost Staff", email: "staff.dev@arsalynk.id", phone: "81234567899", password: "DummyPass123!", cat: "exec" },
 ];
@@ -119,6 +127,13 @@ interface LoginForm {
   password: string;
 }
 
+/**
+ * LoginFormContent coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function LoginFormContent() {
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const router = useRouter();
@@ -165,6 +180,13 @@ function LoginFormContent() {
     }
   }, [isAuthenticated, authLoading, router, isTransitioning]);
 
+/**
+ * onSubmit coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const onSubmit = async (data: LoginForm) => {
     const ident = data.email?.trim();
     if (!ident || !data.password) {
@@ -189,6 +211,13 @@ function LoginFormContent() {
     }
   };
 
+/**
+ * quickGhostLogin coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const quickGhostLogin = (user: typeof ALL_LOGIN_ACCOUNTS[0]) => {
     setValue("name", user.name);
     setValue("email", user.email);
@@ -196,6 +225,13 @@ function LoginFormContent() {
     handleSubmit(onSubmit)();
   };
 
+/**
+ * handleCopy coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleCopy = (text: string, key: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
@@ -564,7 +600,7 @@ function LoginFormContent() {
                           className="w-full py-2 rounded-xl text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-98 shadow-xs hover:brightness-105 transition-all"
                           style={{ background: `linear-gradient(120deg, ${color}dd, ${color})` }}
                         >
-                          ⚡ Masuk sebagai {u.name.split(" ")[0] || u.name}
+                          Masuk sebagai {u.name.split(" ")[0] || u.name}
                         </button>
                       </div>
                     );
@@ -583,6 +619,13 @@ function LoginFormContent() {
   );
 }
 
+/**
+ * LoginPage coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export default function LoginPage() {
   return (
     <Suspense

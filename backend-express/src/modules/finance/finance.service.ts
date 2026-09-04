@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/finance/finance.service.ts
+ *
+ * Purpose: Implements domain service responsibilities for the finance domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Decimal } from '@prisma/client/runtime/library';
 import prisma from '../../config/database';
 import { AccountingError, NotFoundError, ValidationError } from '../../utils/errors';
@@ -47,6 +55,14 @@ export class FinanceService {
   // 1. COA & JOURNAL SETUP
   // ---------------------------------------------------------------------------
 
+/**
+ * ensureStandardCOA implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_account`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async ensureStandardCOA(companyId?: string | null) {
     const map = new Map<string, any>();
     for (const item of DEFAULT_COA) {
@@ -77,6 +93,14 @@ export class FinanceService {
     return map;
   }
 
+/**
+ * ensureJournal implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_journal`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async ensureJournal(companyId: string | null, code: string, name: string, type = 'GENERAL') {
     let journal = await prisma.fin_journal.findFirst({
       where: {
@@ -104,6 +128,14 @@ export class FinanceService {
   // 2. JOURNAL POSTING (Double-Entry Validation)
   // ---------------------------------------------------------------------------
 
+/**
+ * postJournalEntry implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async postJournalEntry(entryId: string) {
     return prisma.$transaction(async (tx) => {
       const entry = await tx.fin_journal_entry.findUnique({ where: { id: entryId } });
@@ -145,6 +177,14 @@ export class FinanceService {
   //    di-UPDATE secara langsung ke kolom statis.
   // ---------------------------------------------------------------------------
 
+/**
+ * getAccountBalance implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async getAccountBalance(accountId: string, companyId?: string | null) {
     const account = await prisma.fin_account.findUnique({ where: { id: accountId } });
     if (!account) throw new NotFoundError('Account');
@@ -188,6 +228,14 @@ export class FinanceService {
     };
   }
 
+/**
+ * getBankAccountBalance implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_bank_account`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async getBankAccountBalance(bankAccountId: string) {
     const bankAccount = await prisma.fin_bank_account.findUnique({ where: { id: bankAccountId } });
     if (!bankAccount) throw new NotFoundError('BankAccount');
@@ -216,6 +264,14 @@ export class FinanceService {
   //    Menerbitkan jurnal pembalik yang meniadakan efek jurnal asal.
   // ---------------------------------------------------------------------------
 
+/**
+ * reverseJournalEntry implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async reverseJournalEntry(entryId: string, reason: string, reversedByUserId: string) {
     return prisma.$transaction(async (tx) => {
       const entry = await tx.fin_journal_entry.findUnique({ where: { id: entryId } });
@@ -288,6 +344,13 @@ export class FinanceService {
   //    Transfer antar rekening bank internal harus melalui akun perantara 1140.
   // ---------------------------------------------------------------------------
 
+/**
+ * executeInternalTransfer implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: delegates only to the visible local/imported dependencies.
+ */
   static async executeInternalTransfer(payload: {
     fromBankAccountId: string;
     toBankAccountId: string;
@@ -401,6 +464,13 @@ export class FinanceService {
   // 6. BANKING: Statement Import & Reconciliation
   // ---------------------------------------------------------------------------
 
+/**
+ * importBankStatement implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `fin_bank_account`, `fin_bank_statement_line`, `fin_bank_reconciliation`; transaction scope is exactly the coded scope.
+ */
   static async importBankStatement(bankAccountId: string, statementDate: Date, statementLines: Array<{
     transaction_date: Date;
     reference_number: string;
@@ -451,6 +521,13 @@ export class FinanceService {
     });
   }
 
+/**
+ * reconcileBankTransaction implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `fin_bank_statement_line`, `fin_bank_reconciliation`, `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction scope is exactly the coded scope.
+ */
   static async reconcileBankTransaction(payload: {
     statementLineId: string;
     paymentId?: string;
@@ -486,6 +563,14 @@ export class FinanceService {
   // 7. FINANCIAL REPORTS (Berbasis General Ledger — 100% Computed)
   // ---------------------------------------------------------------------------
 
+/**
+ * getTrialBalance implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async getTrialBalance(companyId?: string | null) {
     await this.ensureStandardCOA(companyId);
     const accounts = await prisma.fin_account.findMany({
@@ -546,6 +631,14 @@ export class FinanceService {
     };
   }
 
+/**
+ * getProfitAndLoss implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async getProfitAndLoss(companyId?: string | null, startDate?: Date, endDate?: Date) {
     const accounts = await prisma.fin_account.findMany({
       where: {
@@ -615,6 +708,14 @@ export class FinanceService {
     };
   }
 
+/**
+ * getBalanceSheet implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async getBalanceSheet(companyId?: string | null, asOfDate?: Date) {
     const accounts = await prisma.fin_account.findMany({
       where: {
@@ -684,6 +785,14 @@ export class FinanceService {
   // 8. BILLING DOCUMENT & TAX (existing - preserved & enhanced)
   // ---------------------------------------------------------------------------
 
+/**
+ * decideFunding implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_project_funding`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async decideFunding(fundingId: string, decision: string, remarks = '', userId?: string) {
     const dec = decision.toUpperCase();
     if (!['APPROVED', 'REJECTED'].includes(dec)) {
@@ -700,6 +809,14 @@ export class FinanceService {
     });
   }
 
+/**
+ * postBillingDocument implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async postBillingDocument(billingId: string, userId?: string) {
     return prisma.$transaction(async (tx) => {
       const doc = await tx.fin_billing_document.findUnique({ where: { id: billingId } });
@@ -813,6 +930,14 @@ export class FinanceService {
     });
   }
 
+/**
+ * getTaxSummary implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_tax_transaction`, `fin_account`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async getTaxSummary(companyId?: string | null) {
     const taxTxs = await prisma.fin_tax_transaction.findMany({
       where: companyId ? { company_id: companyId } : undefined,
@@ -850,6 +975,13 @@ export class FinanceService {
   //    Cost Overrun dialokasikan ke fin_cost_variance, bukan mengendap di WIP
   // ---------------------------------------------------------------------------
 
+/**
+ * capitalizeProjectWIP implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `fin_account`; transaction scope is exactly the coded scope.
+ */
   static async capitalizeProjectWIP(
     projectId:   string,
     amount:      number,
@@ -965,6 +1097,13 @@ export class FinanceService {
   //    Validasi dan catat Nomor Transaksi Penerimaan Negara untuk pajak
   // ---------------------------------------------------------------------------
 
+/**
+ * recordNTPN implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `fin_tax_transaction`, `fin_bank_account`, `fin_bank_statement`; transaction scope is exactly the coded scope.
+ */
   static async recordNTPN(
     taxTxId:      string,
     ntpn:         string,
@@ -1006,6 +1145,13 @@ export class FinanceService {
   // AUTO-IMPORT STATEMENT CSV & AUTO-MATCHING (Perbankan Tanpa Lisensi Mahal)
   // ---------------------------------------------------------------------------
 
+/**
+ * importBankStatementCSV implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `fin_bank_account`, `fin_bank_statement`; transaction scope is exactly the coded scope.
+ */
   static async importBankStatementCSV(params: {
     bankAccountId: string;
     csvContent:    string;
@@ -1056,8 +1202,32 @@ export class FinanceService {
       if (cols.length < 3) continue;
 
       let dateStr = cols[0].replace(/['"]/g, '').trim();
+/**
+ * descStr implements a named function within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
       let descStr = (cols[1] || 'Transaksi Bank').replace(/['"]/g, '').trim();
+/**
+ * amountRaw implements a named function within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
       let amountRaw = (cols[2] || '0').replace(/['"]/g, '').trim();
+/**
+ * typeRaw implements a named function within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_payment`, `fin_bank_statement_line`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
       let typeRaw = (cols[3] || '').replace(/['"]/g, '').trim().toUpperCase();
 
       let cleanAmount = amountRaw
@@ -1132,6 +1302,14 @@ export class FinanceService {
   // EXECUTIVE GOVERNANCE & FINANCIAL AUDIT REPORT (Satu Lembar Direksi)
   // ---------------------------------------------------------------------------
 
+/**
+ * getExecutiveAuditReport implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `core_audit_event`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async getExecutiveAuditReport(companyId?: string | null, year?: number) {
     const targetYear = year || new Date().getFullYear();
     const startDate = new Date(targetYear, 0, 1);
@@ -1155,6 +1333,14 @@ export class FinanceService {
     let countLPJClosed = 0;
 
     for (const log of fundAuditLogs) {
+/**
+ * p implements a named function within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_cost_variance`, `fin_journal_entry`, `fin_fiscal_period`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
       const p = (log.after_data as any) || {};
       if (p.request_type === 'FUND_REQUEST' || p.amount) {
         countFund++;

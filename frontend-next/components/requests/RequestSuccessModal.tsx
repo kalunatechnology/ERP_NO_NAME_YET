@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/requests/RequestSuccessModal.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { Check } from "lucide-react";
@@ -12,6 +19,13 @@ interface RequestSuccessModalProps {
   } | null;
 }
 
+/**
+ * RequestSuccessModal owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
 export function RequestSuccessModal({ isOpen, onClose, requestData }: RequestSuccessModalProps) {
   if (!isOpen) return null;
 

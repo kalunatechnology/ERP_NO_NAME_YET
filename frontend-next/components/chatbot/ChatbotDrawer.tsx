@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/chatbot/ChatbotDrawer.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -48,6 +55,13 @@ const QUICK_ACTIONS = [
 ];
 
 // MarBot Snowflake / Star Icon
+/**
+ * MarBotIcon coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function MarBotIcon({ size = 32, className = "" }: { size?: number; className?: string }) {
   return (
     <div
@@ -77,6 +91,13 @@ function MarBotIcon({ size = 32, className = "" }: { size?: number; className?: 
   );
 }
 
+/**
+ * ChatbotDrawer coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerProps) {
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -118,6 +139,13 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
   }, [isOpen]);
 
   // Stop Generation
+/**
+ * handleStopStreaming coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleStopStreaming = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -130,6 +158,13 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
   };
 
   // Send Message
+/**
+ * handleSendMessage coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || inputMessage).trim();
     if (!query || isStreaming) return;
@@ -243,6 +278,13 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
     }
   };
 
+/**
+ * handleKeyDown coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();

@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/ui/ProjectMilestoneCard.tsx
+ *
+ * Purpose: Defines React UI component responsibilities for the frontend application.
+ * Responsibility: Owns the executable contracts declared here and their framework/import integration boundary.
+ * Dependencies and side effects: Function comments identify HTTP, persistence, browser-state, and security effects where present.
+ */
 "use client";
 
 import React from "react";
@@ -28,6 +35,13 @@ interface ProjectMilestoneCardProps {
   className?: string;
 }
 
+/**
+ * ProjectMilestoneCard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function ProjectMilestoneCard({
   projects = [],
   selectedProjectId: controlledSelectedId,
@@ -45,6 +59,13 @@ export function ProjectMilestoneCard({
     ? milestones
     : milestones[String(activeId)] || milestones[Number(activeId)] || [];
 
+/**
+ * handleSelect coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleSelect = (id: string | number) => {
     setInternalSelectedId(id);
     onSelectProject?.(id);

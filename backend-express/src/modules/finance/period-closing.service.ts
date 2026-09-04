@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/finance/period-closing.service.ts
+ *
+ * Purpose: Implements domain service responsibilities for the finance domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import prisma from '../../config/database';
 import { Decimal } from '@prisma/client/runtime/library';
 import { AccountingError, NotFoundError, ValidationError } from '../../utils/errors';
@@ -23,9 +31,18 @@ export class PeriodClosingService {
   //    Dipanggil dari DALAM core service method, bukan hanya HTTP router.
   // ---------------------------------------------------------------------------
 
+/**
+ * assertPeriodOpen implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_fiscal_period`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async assertPeriodOpen(postingDate: Date, companyId?: string | null): Promise<void> {
     const period = await prisma.fin_fiscal_period.findFirst({
       where: {
+        ...(companyId ? { company_id: companyId } : {}),
         start_date: { lte: postingDate },
         end_date:   { gte: postingDate },
       },
@@ -46,6 +63,14 @@ export class PeriodClosingService {
   //    Validasi checklist -> Generate Snapshot -> Tutup periode
   // ---------------------------------------------------------------------------
 
+/**
+ * closeFiscalPeriod implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_fiscal_period`, `fin_journal_entry`, `fin_journal_line`, `fin_account`, `fin_financial_snapshot`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async closeFiscalPeriod(periodId: string, closedByUserId: string) {
     const period = await prisma.fin_fiscal_period.findUnique({ where: { id: periodId } });
     if (!period) throw new NotFoundError('FiscalPeriod');
@@ -54,6 +79,7 @@ export class PeriodClosingService {
     // Checklist: tidak ada jurnal DRAFT di periode ini
     const draftJournals = await prisma.fin_journal_entry.count({
       where: {
+        ...(period.company_id ? { company_id: period.company_id } : {}),
         status: 'DRAFT',
         posting_date: {
           gte: period.start_date ?? undefined,
@@ -70,6 +96,7 @@ export class PeriodClosingService {
     // Generate Period Financial Snapshot (ringkasan P&L periode)
     const postedIds = await prisma.fin_journal_entry.findMany({
       where: {
+        ...(period.company_id ? { company_id: period.company_id } : {}),
         status:       'POSTED',
         posting_date: {
           gte: period.start_date ?? undefined,
@@ -84,7 +111,10 @@ export class PeriodClosingService {
     });
 
     // Hitung revenue vs expense untuk periode ini
-    const accounts = await prisma.fin_account.findMany({ select: { id: true, account_type: true, normal_balance: true } });
+    const accounts = await prisma.fin_account.findMany({
+      where: period.company_id ? { company_id: period.company_id } : undefined,
+      select: { id: true, account_type: true, normal_balance: true },
+    });
     const accTypeMap = new Map(accounts.map(a => [a.id, a]));
 
     let revenuePeriod = 0;
@@ -104,6 +134,8 @@ export class PeriodClosingService {
       data: {
         id:                  crypto.randomUUID(),
         fiscal_period_id:    periodId,
+        tenant_id:           period.tenant_id,
+        company_id:          period.company_id,
         snapshot_at:         new Date(),
         revenue_amount:      new Decimal(revenuePeriod),
         expense_amount:      new Decimal(expensePeriod),
@@ -149,9 +181,18 @@ export class PeriodClosingService {
   //    Zero-out akun nominal (4xxx, 5xxx, 6xxx) → Laba Ditahan 3200
   // ---------------------------------------------------------------------------
 
+/**
+ * executeYearEndClosing implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_fiscal_year`, `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async executeYearEndClosing(fiscalYearId: string, companyId: string, closedByUserId: string) {
     const fiscalYear = await prisma.fin_fiscal_year.findUnique({ where: { id: fiscalYearId } });
     if (!fiscalYear) throw new NotFoundError('FiscalYear');
+    if (fiscalYear.company_id && fiscalYear.company_id !== companyId) throw new ValidationError('Tahun fiskal berada di luar company aktif.');
     if (fiscalYear.status === 'CLOSED') throw new ValidationError('Tahun fiskal sudah pernah ditutup.');
 
     // Ambil akun nominal (Revenue 4xxx & Expense 5xxx/6xxx)
@@ -167,6 +208,7 @@ export class PeriodClosingService {
 
     const postedIds = await prisma.fin_journal_entry.findMany({
       where: {
+        company_id: companyId,
         status:       'POSTED',
         posting_date: { gte: yearStart, lte: yearEnd },
       },
@@ -229,6 +271,8 @@ export class PeriodClosingService {
           status:            'POSTED',
           posting_date:      yearEnd,
           source_document_id: fiscalYearId,
+          company_id:         companyId,
+          tenant_id:          fiscalYear.tenant_id,
         },
       });
 
@@ -268,7 +312,7 @@ export class PeriodClosingService {
 
       // Tutup semua periode & tahun fiskal
       await tx.fin_fiscal_period.updateMany({
-        where: { fiscal_year_id: fiscalYearId },
+        where: { fiscal_year_id: fiscalYearId, company_id: companyId },
         data:  { status: 'CLOSED' },
       });
       await tx.fin_fiscal_year.update({
@@ -307,6 +351,14 @@ export class PeriodClosingService {
   // 4. YEAR-END REOPEN (Rollback via Storno — Superadmin/Direktur Only)
   // ---------------------------------------------------------------------------
 
+/**
+ * reopenFiscalYear implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_fiscal_year`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async reopenFiscalYear(fiscalYearId: string, reason: string, reopenedByUserId: string) {
     if (!reason || reason.trim().length < 10) {
       throw new ValidationError('Alasan pembukaan kembali buku tahunan wajib diisi minimal 10 karakter.');

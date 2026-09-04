@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/finance/FixedAssetsWorkspace.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -151,7 +158,7 @@ export default function FixedAssetsWorkspace() {
       if (json.data?.skipped) {
         showToast(`⏭ ${json.data.reason}`, 'error');
       } else {
-        showToast(`✅ Penyusutan berhasil diposting. Jurnal: ${json.data?.journal_entry_id?.slice(0, 8)}...`, 'success');
+        showToast(`Penyusutan berhasil diposting. Jurnal: ${json.data?.journal_entry_id?.slice(0, 8)}...`, 'success');
         loadAssets();
       }
     } catch {
@@ -173,7 +180,7 @@ export default function FixedAssetsWorkspace() {
       });
       const json = await res.json();
       setBatchResult(json.data);
-      showToast(`✅ Batch selesai: ${json.data?.processed} diproses, ${json.data?.skipped} di-skip.`, 'success');
+      showToast(`Batch selesai: ${json.data?.processed} diproses, ${json.data?.skipped} dilewati.`, 'success');
       loadAssets();
     } catch {
       showToast('Gagal menjalankan batch penyusutan.', 'error');
@@ -193,7 +200,7 @@ export default function FixedAssetsWorkspace() {
       });
       const json = await res.json();
       const gl = json.data?.is_gain ? 'Laba' : 'Rugi';
-      showToast(`✅ Aset berhasil dilepas. ${gl}: ${formatRp(Math.abs(json.data?.gain_or_loss ?? 0))}`, 'success');
+      showToast(`Aset berhasil dilepas. ${gl}: ${formatRp(Math.abs(json.data?.gain_or_loss ?? 0))}`, 'success');
       setDisposeAssetId(null);
       setDisposeProceeds('');
       loadAssets();
@@ -237,7 +244,7 @@ export default function FixedAssetsWorkspace() {
             disabled={batchLoading}
             className="px-4 py-2 text-sm font-semibold rounded-lg bg-brand-deep-green text-white hover:bg-brand-green transition-colors disabled:opacity-50"
           >
-            {batchLoading ? '⏳ Processing...' : '⚡ Batch Susut Semua Aset'}
+            {batchLoading ? 'Memproses...' : 'Proses Penyusutan Massal'}
           </button>
         </div>
       </div>
@@ -245,9 +252,9 @@ export default function FixedAssetsWorkspace() {
       {/* Tabs */}
       <div className="flex gap-2 border-b border-white/10">
         {[
-          { id: 'register', label: '📋 Daftar Aset' },
-          { id: 'schedule', label: '📅 Jadwal Penyusutan' },
-          { id: 'batch',    label: '⚡ Hasil Batch' },
+          { id: 'register', label: 'Daftar Aset' },
+          { id: 'schedule', label: 'Jadwal Penyusutan' },
+          { id: 'batch',    label: 'Hasil Batch' },
         ].map(t => (
           <button
             key={t.id}
@@ -302,7 +309,7 @@ export default function FixedAssetsWorkspace() {
                             onClick={() => loadSchedule(asset.id)}
                             className="px-2 py-1 text-xs rounded-md bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
                           >
-                            📅 Jadwal
+                            Jadwal
                           </button>
                           {asset.status === 'ACTIVE' && (
                             <>
@@ -311,7 +318,7 @@ export default function FixedAssetsWorkspace() {
                                 disabled={singleDepLoading && singleDepAsset === asset.id}
                                 className="px-2 py-1 text-xs rounded-md bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
                               >
-                                {singleDepLoading && singleDepAsset === asset.id ? '⏳' : '⚡ Susut'}
+                                {singleDepLoading && singleDepAsset === asset.id ? 'Memproses' : 'Susutkan'}
                               </button>
                               <button
                                 onClick={() => { setDisposeAssetId(asset.id); }}
@@ -337,7 +344,7 @@ export default function FixedAssetsWorkspace() {
         <div>
           {!scheduleAsset ? (
             <div className="text-center py-12 text-text-secondary text-sm">
-              Pilih aset dari tab "Daftar Aset" dan klik tombol 📅 Jadwal
+              Pilih aset dari tab Daftar Aset, lalu buka jadwal penyusutannya.
             </div>
           ) : scheduleLoading ? (
             <div className="text-center py-12 text-text-secondary text-sm animate-pulse">Memuat jadwal penyusutan...</div>
@@ -395,7 +402,7 @@ export default function FixedAssetsWorkspace() {
         <div>
           {!batchResult ? (
             <div className="text-center py-12 text-text-secondary text-sm">
-              Klik "⚡ Batch Susut Semua Aset" untuk melihat hasil pemrosesan batch.
+              Jalankan proses penyusutan massal untuk melihat hasil batch.
             </div>
           ) : (
             <>
@@ -477,7 +484,7 @@ export default function FixedAssetsWorkspace() {
               </button>
               <button onClick={runDispose} disabled={disposeLoading || !disposeProceeds}
                 className="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50">
-                {disposeLoading ? '⏳ Memproses...' : '🗑 Konfirmasi Pelepasan'}
+                {disposeLoading ? 'Memproses...' : 'Konfirmasi Pelepasan'}
               </button>
             </div>
           </div>

@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines application infrastructure contracts and their integration boundary for the frontend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * AuthContext — Global JWT Auth State & Multitenant Company Scoping
  * Provides: user, company, companies, isAdmin, userRole, isAuthenticated, login, logout, setCompany
  */
@@ -8,7 +10,7 @@ import React, {
   createContext, useContext, useEffect, useReducer, useCallback, ReactNode,
 } from "react";
 import {
-  loginUser, logoutUser, getMyProfile, getCompanies, UserProfile,
+  changeActiveRole, loginUser, logoutUser, getMyProfile, getCompanies, UserProfile,
 } from "@/lib/api/auth.api";
 
 /* ── UUID Regex Helper ───────────────────────── */
@@ -21,6 +23,13 @@ function setAuthCookie(token: string) {
   }
 }
 
+/**
+ * removeAuthCookie coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function removeAuthCookie() {
   if (typeof document !== "undefined") {
     document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
@@ -28,65 +37,67 @@ function removeAuthCookie() {
 }
 
 /* ── Role Type ───────────────────────────────── */
-export type UserRoleType = "executive" | "pm" | "om" | "finance" | "crm" | "staff";
+export type UserRoleType = "super_admin" | "company_admin" | "executive" | "pm" | "om" | "finance" | "crm" | "staff";
+
+/** Converts legacy Prisma enum names and current API role codes to one UI contract. */
+function normalizeRoleCode(value: unknown): string {
+  const normalized = String(value || "").trim().toUpperCase();
+  const aliases: Record<string, string> = {
+    SUPER_ADMIN: "ROLE-SUPER-ADMIN",
+    COMPANY_ADMIN: "ROLE-COMPANY-ADMIN",
+    DIRECTOR: "ROLE-DIRECTOR",
+    OPERATIONAL_MANAGER: "ROLE-OM",
+    PROJECT_MANAGER: "ROLE-PM",
+    SUPERVISOR: "ROLE-SUPERVISOR",
+    CRM_LEAD: "ROLE-CRM-LEAD",
+    SALES: "ROLE-SALES",
+    FINANCE: "ROLE-FINANCE",
+    STAFF: "ROLE-STAFF",
+  };
+  return aliases[normalized] || normalized;
+}
+
+/**
+ * extractRoleCodes coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
+function extractRoleCodes(user: any): string[] {
+  if (!Array.isArray(user?.roles)) return [];
+  const rawCodes = user.roles.flatMap((role: any) => {
+    if (typeof role === "string") return [normalizeRoleCode(role)];
+    if (role && typeof role === "object") {
+      return [role.role_code, role.code, role.role]
+        .filter(Boolean)
+        .map(normalizeRoleCode);
+    }
+    return [];
+  });
+  return Array.from(new Set<string>(rawCodes));
+}
 
 /**
  * Detects user's primary role from their profile (roles array + email pattern fallback).
  * Priority: executive > om > pm > finance > crm > staff
  */
 export function detectRole(user: any): UserRoleType {
-  const roles: string[] = [];
-  if (Array.isArray(user.roles)) {
-    user.roles.forEach((r: any) => {
-      if (typeof r === "string") roles.push(r.toUpperCase());
-      else if (r && typeof r === "object") {
-        if (r.role) roles.push(String(r.role).toUpperCase());
-        if (r.role_code) roles.push(String(r.role_code).toUpperCase());
-        if (r.name) roles.push(String(r.name).toUpperCase());
-        if (r.code) roles.push(String(r.code).toUpperCase());
-      }
-    });
-  }
+  const roles = extractRoleCodes(user);
+  if (roles.includes("ROLE-SUPER-ADMIN")) return "super_admin";
+  if (roles.includes("ROLE-COMPANY-ADMIN") && !user?.active_role_code) return "company_admin";
 
-  // 1. Executive / Admin (is_superuser atau role ROLE-ADMIN / ROLE-DIRECTOR)
-  if (
-    user.is_superuser ||
-    roles.some(r => ["ADMIN", "EXECUTIVE", "DIRECTOR", "ROLE-ADMIN", "ROLE-DIRECTOR", "SUPERADMIN", "SUPER_ADMIN"].includes(r))
-  ) return "executive";
-
-  // 2. Operational Manager (OM / Supervisor Operasional)
-  if (
-    roles.some(r => [
-      "OPERATIONS_MANAGER", "OM", "OPERATIONAL_MANAGER", "OPS_MANAGER",
-      "ROLE-OM", "ROLE-SUPERVISOR", "SUPERVISOR", "FIELD_SUPERVISOR",
-      "ROLE_OPERATIONS_MANAGER"
-    ].includes(r))
-  ) return "om";
-
-  // 3. Project Manager (PM)
-  if (
-    roles.some(r => [
-      "PROJECT_MANAGER", "PM", "PROJECT_MANAGEMENT",
-      "QUALITY_CONTROL", "WAREHOUSE", "ROLE-PM", "ROLE_PROJECT_MANAGER",
-      "ROLE-ESTIMATOR", "PROJECT_ASSIGNEE",
-    ].includes(r))
-  ) return "pm";
-
-  // 4. Finance Controller & AP/AR
-  if (
-    roles.some(r => [
-      "ACCOUNTING_FINANCE", "FINANCE", "FINANCE_APPROVER",
-      "ACCOUNTING", "ROLE-FINANCE", "ROLE-APAR",
-    ].includes(r))
-  ) return "finance";
-
-  // 5. CRM & Sales
-  if (
-    roles.some(r => [
-      "CRM_MANAGER", "CRM_STAFF", "CRM", "SALES",
-      "ROLE-CRM", "ROLE-SALES", "ROLE-CRM-LEAD",
-    ].includes(r))
-  ) return "crm";
+  const selected = normalizeRoleCode(user?.active_role_code);
+  const orderedRoles = selected && roles.includes(selected)
+    ? [selected, ...roles.filter((role) => role !== selected)]
+    : roles;
+  const role = orderedRoles[0];
+  if (role === "ROLE-COMPANY-ADMIN") return "company_admin";
+  if (role === "ROLE-DIRECTOR") return "executive";
+  if (role === "ROLE-OM") return "om";
+  if (role === "ROLE-PM") return "pm";
+  if (role === "ROLE-FINANCE") return "finance";
+  if (["ROLE-CRM-LEAD", "ROLE-SALES"].includes(role)) return "crm";
 
   return "staff";
 }
@@ -94,6 +105,8 @@ export function detectRole(user: any): UserRoleType {
 /** Human-readable role label for display */
 export function getRoleLabel(role: UserRoleType): string {
   switch (role) {
+    case "super_admin": return "Super Administrator";
+    case "company_admin": return "Company Administrator";
     case "executive": return "Executive / Director";
     case "om":        return "Operational Manager";
     case "pm":        return "Project Manager";
@@ -106,6 +119,8 @@ export function getRoleLabel(role: UserRoleType): string {
 /** Role badge color */
 export function getRoleBadgeStyle(role: UserRoleType): { bg: string; text: string } {
   switch (role) {
+    case "super_admin": return { bg: "#FDF2F8", text: "#9D174D" };
+    case "company_admin": return { bg: "#ECFDF5", text: "#047857" };
     case "executive": return { bg: "#F0FDF4", text: "#15803D" };
     case "om":        return { bg: "#FEF3C7", text: "#92400E" };
     case "pm":        return { bg: "#EFF6FF", text: "#1D4ED8" };
@@ -141,23 +156,26 @@ type AuthAction =
   | { type: "SET_COMPANY"; company: string | null }
   | { type: "CLEAR_ERROR" };
 
+/**
+ * checkIsAdmin coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function checkIsAdmin(user: any): boolean {
   if (!user) return false;
-  if (user.is_superuser) return true;
-  const roles: string[] = [];
-  if (Array.isArray(user.roles)) {
-    user.roles.forEach((r: any) => {
-      if (typeof r === "string") roles.push(r.toUpperCase());
-      else if (r && typeof r === "object") {
-        if (r.role) roles.push(String(r.role).toUpperCase());
-        if (r.role_code) roles.push(String(r.role_code).toUpperCase());
-        if (r.name) roles.push(String(r.name).toUpperCase());
-      }
-    });
-  }
-  return roles.some(r => ["ADMIN", "ROLE-ADMIN", "SUPERADMIN", "SUPER_ADMIN", "EXECUTIVE", "DIRECTOR", "ROLE-DIRECTOR"].includes(r));
+  const roles = extractRoleCodes(user);
+  return roles.includes("ROLE-SUPER-ADMIN") || roles.includes("ROLE-COMPANY-ADMIN");
 }
 
+/**
+ * authReducer coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function authReducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case "LOADING":
@@ -192,12 +210,21 @@ export interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   setCompany: (id: string | null) => void;
+  refreshProfile: () => Promise<void>;
+  setActiveRole: (roleCode: string) => Promise<void>;
   clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /* ── Provider ───────────────────────────────── */
+/**
+ * AuthProvider coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(authReducer, {
     user: null,
@@ -220,6 +247,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     dispatch({ type: "SET_COMPANY", company: id });
   }, []);
+
+  const refreshProfile = useCallback(async () => {
+    const user = await getMyProfile();
+    const activeCompany = user.company_id || user.roles?.[0]?.company_id || state.company;
+    dispatch({
+      type: "LOGIN_SUCCESS",
+      user,
+      company: activeCompany ? String(activeCompany) : null,
+      companies: state.companies,
+      isAdmin: checkIsAdmin(user),
+      userRole: detectRole(user),
+    });
+  }, [state.companies, state.company]);
+
+  const setActiveRole = useCallback(async (roleCode: string) => {
+    const user = await changeActiveRole(roleCode);
+    const activeCompany = user.company_id || user.roles?.[0]?.company_id || state.company;
+    dispatch({
+      type: "LOGIN_SUCCESS",
+      user,
+      company: activeCompany ? String(activeCompany) : null,
+      companies: state.companies,
+      isAdmin: checkIsAdmin(user),
+      userRole: detectRole(user),
+    });
+  }, [state.companies, state.company]);
 
   /* Check existing token on mount */
   useEffect(() => {
@@ -250,7 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userRole = detectRole(user);
 
         // Langsung ambil dari relasi foreign key user_role yang dikirim backend
-        const activeCompany = (user as any)?.company_id || user?.roles?.[0]?.company_id || (companiesList[0]?.id ? String(companiesList[0].id) : null);
+        const activeCompany = user.company_id || user?.roles?.[0]?.company_id || null;
 
         if (activeCompany) {
           localStorage.setItem("erp.company", String(activeCompany));
@@ -269,6 +322,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "LOGOUT" });
       });
   }, []);
+
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+/**
+ * handleFocus coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
+    const handleFocus = () => { void refreshProfile(); };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [refreshProfile, state.isAuthenticated]);
 
   /* Login */
   const login = useCallback(async (email: string, password: string) => {
@@ -302,7 +369,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userRole = detectRole(user);
 
       // Langsung ambil dari relasi foreign key user_role yang dikirim backend
-      const activeCompany = (user as any)?.company_id || user?.roles?.[0]?.company_id || (companiesList[0]?.id ? String(companiesList[0].id) : null);
+      const activeCompany = user.company_id || user?.roles?.[0]?.company_id || null;
 
       if (activeCompany) {
         localStorage.setItem("erp.company", String(activeCompany));
@@ -342,6 +409,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         setCompany,
+        refreshProfile,
+        setActiveRole,
         clearError,
       }}
     >
@@ -350,6 +419,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * useAuth coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");

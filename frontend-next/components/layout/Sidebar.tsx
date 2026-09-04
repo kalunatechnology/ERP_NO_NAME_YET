@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/layout/Sidebar.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -27,12 +34,22 @@ interface NavItem {
 
 /* ── Role-specific nav configs (Strict Role-Based Page Flow) ─── */
 const NAV_BY_ROLE: Record<UserRoleType, NavItem[]> = {
+  super_admin: [
+    { href: "/dashboard", label: "Governance Dashboard", icon: LayoutDashboard },
+    { href: "/resources", label: "Company & Access", icon: Building2 },
+    { href: "/reporting", label: "Global Reports", icon: BarChart3 },
+  ],
+  company_admin: [
+    { href: "/dashboard", label: "Company Dashboard", icon: LayoutDashboard },
+    { href: "/resources", label: "User & Access", icon: Building2 },
+    { href: "/reporting", label: "Reports", icon: BarChart3 },
+  ],
   // 1. Executive (Direksi)
   executive: [
     { href: "/dashboard",  label: "Executive Dashboard", icon: LayoutDashboard },
     { href: "/projects",   label: "All Project",         icon: FolderKanban    },
-    { href: "/finance",    label: "Finance",            icon: DollarSign      },
-    { href: "/crm",        label: "CRM",                icon: Building2       },
+    { href: "/finance",    label: "Finance Preview",    icon: DollarSign      },
+    { href: "/crm",        label: "CRM Preview",        icon: Building2       },
     { href: "/reporting",  label: "Performance",         icon: TrendingUp      },
     { href: "/resources",  label: "Data Explorer",       icon: BarChart3       },
   ],
@@ -54,6 +71,7 @@ const NAV_BY_ROLE: Record<UserRoleType, NavItem[]> = {
   // 4. Staff - Lean execution flow
   staff: [
     { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
+    { href: "/projects",   label: "Project Overview", icon: FolderKanban },
     { href: "/tasks",      label: "Daily Tasks", icon: CheckSquare     },
     { href: "/reporting",  label: "Report",      icon: FileText        },
   ],
@@ -61,14 +79,12 @@ const NAV_BY_ROLE: Record<UserRoleType, NavItem[]> = {
   finance: [
     { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
     { href: "/finance",    label: "Finance",     icon: DollarSign      },
-    { href: "/projects",   label: "Projects",    icon: FolderKanban    },
     { href: "/reporting",  label: "Reports",     icon: BarChart3       },
   ],
   // 6. CRM & Sales Lead
   crm: [
     { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
     { href: "/crm",        label: "CRM & Sales", icon: Building2       },
-    { href: "/projects",   label: "Projects",    icon: FolderKanban    },
     { href: "/reporting",  label: "Reports",     icon: BarChart3       },
   ],
 };
@@ -82,7 +98,18 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
   const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
   const roleLabel = getRoleLabel(userRole);
   const badgeStyle = getRoleBadgeStyle(userRole);
-  const navItems = NAV_BY_ROLE[userRole] ?? NAV_BY_ROLE.staff;
+  const enabledModules = new Set((user?.enabled_modules ?? []).map((module) => module.toUpperCase()));
+  const moduleByPath: Record<string, string> = {
+    "/projects": "PROJECTS",
+    "/tasks": "PROJECTS",
+    "/crm": "CRM",
+    "/finance": "FINANCE",
+    "/resources": userRole === "executive" ? "ANALYTICS" : "",
+  };
+  const navItems = (NAV_BY_ROLE[userRole] ?? NAV_BY_ROLE.staff).filter((item) => {
+    const moduleCode = moduleByPath[item.href];
+    return !moduleCode || userRole === "super_admin" || enabledModules.has(moduleCode);
+  });
 
   useEffect(() => {
     feedApi.getRecentItems().then((items) => {

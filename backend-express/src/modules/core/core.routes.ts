@@ -1,21 +1,46 @@
+/**
+ * File: backend-express/src/modules/core/core.routes.ts
+ *
+ * Purpose: Implements Express API routing responsibilities for the core domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Router, Request, Response, NextFunction } from 'express';
 import { CoreService } from './core.service';
 import { authenticate } from '../../middlewares/auth.middleware';
 import { createCrudRouter } from '../../utils/crud-factory';
+import { requireAdminForWrite, requireSuperAdminForWrite, requireSuperuser } from '../../middlewares/rbac.middleware';
 
 export const coreRouter = Router();
 export const feedShortcutRouter = Router();
 
 // Sidebar Feed endpoints
+/**
+ * GET route handler: `/sidebar-feed`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 coreRouter.get('/sidebar-feed', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CoreService.getSidebarFeed(req.user!.id);
+    const result = await CoreService.getSidebarFeed(req.user!.id, req.companyId ?? null);
     res.json(result);
   } catch (err) {
     next(err);
   }
 });
 
+/**
+ * POST route handler: `/sidebar-feed/mark-read`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 coreRouter.post('/sidebar-feed/mark-read', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await CoreService.markNotificationsRead(req.user!.id);
@@ -26,6 +51,14 @@ coreRouter.post('/sidebar-feed/mark-read', authenticate, async (req: Request, re
 });
 
 // Recent Items endpoints
+/**
+ * GET route handler: `/recent-items`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 coreRouter.get('/recent-items', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await CoreService.getRecentItems(req.user!.id);
@@ -35,6 +68,14 @@ coreRouter.get('/recent-items', authenticate, async (req: Request, res: Response
   }
 });
 
+/**
+ * POST route handler: `/recent-items/track`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 coreRouter.post('/recent-items/track', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await CoreService.trackRecentItem(req.user!.id, req.body);
@@ -44,6 +85,14 @@ coreRouter.post('/recent-items/track', authenticate, async (req: Request, res: R
   }
 });
 
+/**
+ * POST route handler: `/track-recent`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 coreRouter.post('/track-recent', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await CoreService.trackRecentItem(req.user!.id, req.body);
@@ -54,14 +103,30 @@ coreRouter.post('/track-recent', authenticate, async (req: Request, res: Respons
 });
 
 // Top-level direct shortcuts
+/**
+ * GET route handler: `/sidebar-feed`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 feedShortcutRouter.get('/sidebar-feed', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CoreService.getSidebarFeed(req.user!.id);
+    const result = await CoreService.getSidebarFeed(req.user!.id, req.companyId ?? null);
     res.json(result);
   } catch (err) {
     next(err);
   }
 });
+/**
+ * POST route handler: `/sidebar-feed/mark-read`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 feedShortcutRouter.post('/sidebar-feed/mark-read', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await CoreService.markNotificationsRead(req.user!.id);
@@ -70,6 +135,14 @@ feedShortcutRouter.post('/sidebar-feed/mark-read', authenticate, async (req: Req
     next(err);
   }
 });
+/**
+ * GET route handler: `/recent-items`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 feedShortcutRouter.get('/recent-items', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await CoreService.getRecentItems(req.user!.id);
@@ -78,6 +151,14 @@ feedShortcutRouter.get('/recent-items', authenticate, async (req: Request, res: 
     next(err);
   }
 });
+/**
+ * POST route handler: `/recent-items/track`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 feedShortcutRouter.post('/recent-items/track', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await CoreService.trackRecentItem(req.user!.id, req.body);
@@ -87,10 +168,94 @@ feedShortcutRouter.post('/recent-items/track', authenticate, async (req: Request
   }
 });
 
+// Company Module Entitlement Endpoints
+/**
+ * GET route handler: `/company-modules/my-modules`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
+coreRouter.get('/company-modules/my-modules', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.companyId) {
+      res.json({ results: CoreService.ALL_MODULE_CODES.map((code) => ({ module_code: code, enabled: false })) });
+      return;
+    }
+    const modules = await CoreService.getCompanyModules(req.companyId);
+    res.json({ results: modules });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET route handler: `/companies/:id/modules`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
+coreRouter.get('/companies/:id/modules', authenticate, requireSuperuser, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const modules = await CoreService.getCompanyModules(req.params.id);
+    res.json({ results: modules });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * handleSetCompanyModule implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
+const handleSetCompanyModule = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await CoreService.setCompanyModuleAccess(
+      req.params.id,
+      req.params.moduleCode,
+      {
+        enabled: req.body.enabled,
+        allow_read: req.body.allow_read,
+        allow_write: req.body.allow_write,
+        enabledById: req.user?.id,
+      },
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PATCH route handler: `/companies/:id/modules/:moduleCode`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
+coreRouter.patch('/companies/:id/modules/:moduleCode', authenticate, requireSuperAdminForWrite, handleSetCompanyModule);
+/**
+ * PUT route handler: `/companies/:id/modules/:moduleCode`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
+coreRouter.put('/companies/:id/modules/:moduleCode', authenticate, requireSuperAdminForWrite, handleSetCompanyModule);
+
 // REST ViewSets
-coreRouter.use('/companies', createCrudRouter({ modelName: 'core_company', searchFields: ['company_code', 'legal_name'] }));
-coreRouter.use('/tenants', createCrudRouter({ modelName: 'core_tenant', searchFields: ['code', 'name'] }));
-coreRouter.use('/organizations', createCrudRouter({ modelName: 'core_organization', searchFields: ['organization_code', 'organization_name'] }));
+coreRouter.use('/companies', requireSuperAdminForWrite, createCrudRouter({ modelName: 'core_company', searchFields: ['company_code', 'legal_name'] }));
+coreRouter.use('/tenants', requireSuperAdminForWrite, createCrudRouter({ modelName: 'core_tenant', searchFields: ['code', 'name'] }));
+coreRouter.use('/organizations', requireAdminForWrite, createCrudRouter({ modelName: 'core_organization', searchFields: ['organization_code', 'organization_name'] }));
 coreRouter.use('/documents', createCrudRouter({ modelName: 'core_business_document', searchFields: ['document_number', 'document_type'] }));
 coreRouter.use('/document-links', createCrudRouter({ modelName: 'core_document_link' }));
 coreRouter.use('/workflow-instances', createCrudRouter({ modelName: 'core_workflow_instance' }));

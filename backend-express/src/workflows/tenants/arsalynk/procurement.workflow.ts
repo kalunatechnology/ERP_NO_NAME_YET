@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/workflows/tenants/arsalynk/procurement.workflow.ts
+ *
+ * Purpose: Implements workflow and state transition responsibilities in the backend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 import {
   BaseWorkflow,
   TransitionContext,
@@ -5,6 +13,7 @@ import {
   WorkflowDocument,
   WorkflowValidationError,
 } from '../../engine';
+import { RoleCode } from '../../../types/roles';
 
 export class ArsalynkProcurementWorkflow extends BaseWorkflow {
   readonly TENANT_CODE = 'arsalynk';
@@ -99,20 +108,17 @@ export class ArsalynkProcurementWorkflow extends BaseWorkflow {
   ): TransitionInfo[] {
     const transitions = this.TRANSITIONS[currentStatus as keyof typeof this.TRANSITIONS] ?? [];
     const roles = this.getUserRoles(context);
-    const isSuper = this.isSuperuser(context);
 
     return transitions.filter((t) => {
-      if (t.action.includes('supervisor') && !roles.includes('SUPERVISOR') && !isSuper) {
+      if (t.action.includes('supervisor') && !roles.includes(RoleCode.SUPERVISOR)) {
         return false;
       }
-      if (t.action.includes('manager') && !roles.includes('MANAGER') && !isSuper) {
+      if (t.action.includes('manager') && !roles.includes(RoleCode.PROJECT_MANAGER)) {
         return false;
       }
       if (
         t.action.includes('director') &&
-        !roles.includes('DIRECTOR') &&
-        !roles.includes('EXECUTIVE') &&
-        !isSuper
+        !roles.includes(RoleCode.DIRECTOR)
       ) {
         return false;
       }

@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/app/(app)/projects/ProjectsClient.tsx
+ *
+ * Purpose: Defines the Next App Router entry and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -36,6 +43,13 @@ import { TopExpensesBarChart } from "@/components/ui/TopExpensesBarChart";
 import { ProjectMilestoneCard } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 
+/**
+ * formatRupiah coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function formatRupiah(val?: number): string {
   if (!val && val !== 0) return "Rp 0";
   if (val >= 1_000_000_000) return `Rp ${(val / 1_000_000_000).toFixed(1)}M`;
@@ -51,6 +65,47 @@ const LIFECYCLE_STEPS = [
   { key: "CLOSED", label: "STEP 5", title: "CLOSED", desc: "Serah Terima" },
 ];
 
+const CATEGORY_LABEL_STYLES: Record<string, string> = {
+  INTERNAL: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  EXTERNAL: "border-blue-200 bg-blue-50 text-blue-700",
+  OPERATIONAL: "border-lime-200 bg-lime-50 text-lime-800",
+  MATERIAL: "border-amber-200 bg-amber-50 text-amber-800",
+  LABOR: "border-violet-200 bg-violet-50 text-violet-700",
+  SUBCON: "border-indigo-200 bg-indigo-50 text-indigo-700",
+  OVERHEAD: "border-slate-200 bg-slate-100 text-slate-700",
+  EQUIPMENT: "border-orange-200 bg-orange-50 text-orange-700",
+  TRAVEL: "border-cyan-200 bg-cyan-50 text-cyan-700",
+  CREATIVE: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+  VIDEOGRAPHY: "border-green-200 bg-green-50 text-green-700",
+  RESEARCH: "border-teal-200 bg-teal-50 text-teal-700",
+};
+
+/**
+ * Renders a stable semantic color for a business category.
+ * Known categories have explicit colors; unknown labels use a deterministic
+ * palette selection so the same category never changes color between renders.
+ */
+function CategoryLabel({ label }: { label?: string | null }) {
+  if (!label) return null;
+  const normalized = label.trim().replace(/[\s-]+/g, "_").toUpperCase();
+  const fallbackStyles = [
+    "border-rose-200 bg-rose-50 text-rose-700",
+    "border-sky-200 bg-sky-50 text-sky-700",
+    "border-purple-200 bg-purple-50 text-purple-700",
+    "border-yellow-200 bg-yellow-50 text-yellow-800",
+  ];
+  const hash = Array.from(normalized).reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  const style = CATEGORY_LABEL_STYLES[normalized] ?? fallbackStyles[hash % fallbackStyles.length];
+  return <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-3xs font-bold uppercase tracking-wide", style)}>{label.replace(/_/g, " ")}</span>;
+}
+
+/**
+ * ProjectsClient coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export default function ProjectsClient() {
   const { user, userRole, isAdmin } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -137,8 +192,12 @@ export default function ProjectsClient() {
     block_reason: ""
   });
   const [transferReason, setTransferReason] = useState("");
+  const [checklistItems, setChecklistItems] = useState<any[]>([]);
+  const [newChecklistTitle, setNewChecklistTitle] = useState("");
+  const [newChecklistDate, setNewChecklistDate] = useState("");
 
-  const [costForm, setCostForm] = useState({ category: "MATERIAL", amount: 5000000, description: "" });
+  const [costForm, setCostForm] = useState({ division_id: "", category: "MATERIAL", amount: 5000000, description: "" });
+  const [divisionOptions, setDivisionOptions] = useState<any[]>([]);
   const [fundingForm, setFundingForm] = useState({ amount: 25000000, purpose: "Operasional Awal", source: "KAS_PERUSAHAAN" });
   const [billingForm, setBillingForm] = useState({ amount: 35000000, description: "Termin 1 (Uang Muka 30%)", milestone_percentage: 30 });
   const [milestoneForm, setMilestoneForm] = useState({ name: "", target_date: "" });
@@ -151,6 +210,39 @@ export default function ProjectsClient() {
   const [transfers, setTransfers] = useState<TaskTransfer[]>([]);
 
   const selectedProject = projects.find(p => String(p.id) === String(selectedId)) || projects[0] || null;
+  const completedChecklistCount = checklistItems.filter((item) => ['DONE', 'COMPLETED', 'CHECKED', 'APPROVED'].includes(String(item.status).toUpperCase())).length;
+  const checklistProgress = checklistItems.length > 0 ? Math.round((completedChecklistCount / checklistItems.length) * 100) : 0;
+
+  useEffect(() => {
+    if (!isEditDailyOpen || !activeDailyTask) return;
+    api.get(`/api/v1/projects/control-items/?daily_task_id=${activeDailyTask.id}&page_size=100`)
+      .then((response) => setChecklistItems(response.data?.results ?? response.data?.data ?? []))
+      .catch(() => setChecklistItems([]));
+  }, [activeDailyTask, isEditDailyOpen]);
+
+  const addChecklistItem = async () => {
+    if (!activeDailyTask || !selectedProject || !newChecklistTitle.trim()) return;
+    await api.post('/api/v1/projects/control-items/', {
+      project_id: selectedProject.id,
+      daily_task_id: activeDailyTask.id,
+      item_type: 'TASK_CHECKLIST',
+      title: newChecklistTitle.trim(),
+      status: 'PENDING',
+      target_date: newChecklistDate || undefined,
+    });
+    setNewChecklistTitle('');
+    setNewChecklistDate('');
+    const response = await api.get(`/api/v1/projects/control-items/?daily_task_id=${activeDailyTask.id}&page_size=100`);
+    setChecklistItems(response.data?.results ?? response.data?.data ?? []);
+    await fetchProjects(true);
+  };
+
+  const toggleChecklistItem = async (item: any) => {
+    const nextStatus = ['DONE', 'COMPLETED', 'CHECKED', 'APPROVED'].includes(String(item.status).toUpperCase()) ? 'PENDING' : 'COMPLETED';
+    await api.patch(`/api/v1/projects/control-items/${item.id}/`, { status: nextStatus });
+    setChecklistItems((items) => items.map((current) => current.id === item.id ? { ...current, status: nextStatus } : current));
+    await fetchProjects(true);
+  };
 
   /* Track recently opened project */
   useEffect(() => {
@@ -171,10 +263,31 @@ export default function ProjectsClient() {
     if ((user as any).is_superuser || (user as any).is_staff) return true;
     const role = detectRole(user);
     if (role === "pm" || role === "executive") return true;
+/**
+ * email coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const email = (user.email || "").toLowerCase();
+/**
+ * username coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const username = (user.username || "").toLowerCase();
     if (username.includes("pm") || username.includes("project") || username.includes("admin")) return true;
     if (email.includes("pm") || email.includes("project") || email.includes("admin")) return true;
+/**
+ * userRoles coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const userRoles = (user.roles || []).map((r: any) => typeof r === "string" ? r : (r.role_code || r.role || r.name || r.code || ""));
     if (userRoles.some((r: string) => r.toUpperCase().includes("PROJECT_MANAGER") || r.toUpperCase().includes("PM") || r.toUpperCase().includes("ADMIN") || r.toUpperCase().includes("SUPERVISOR"))) {
       return true;
@@ -189,11 +302,12 @@ export default function ProjectsClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const [data, transferList, uList, custList] = await Promise.all([
-        loadAllProjects(),
+      const [data, transferList, uList, custList, divisions] = await Promise.all([
+        loadAllProjects(user?.enabled_modules || []),
         getTransferRequests().catch(() => []),
         fetchCompanyUsers().catch(() => []),
-        fetchProjectCustomers().catch(() => [])
+        fetchProjectCustomers().catch(() => []),
+        api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? []).catch(() => [])
       ]);
       setProjects(data);
       if (custList && custList.length > 0) {
@@ -217,6 +331,7 @@ export default function ProjectsClient() {
 
       setTransfers(transferList);
       setCompanyUsers(uList);
+      setDivisionOptions(Array.isArray(divisions) ? divisions : []);
     } catch {
       toast.error("Gagal menyinkronkan data proyek");
     } finally {
@@ -225,17 +340,38 @@ export default function ProjectsClient() {
     }
   }, [selectedId]);
 
+/**
+ * openAssignModal coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const openAssignModal = (main: MainTask) => {
     if (!isPM) {
       toast.error("Akses Ditolak: Hanya Project Manager yang memiliki wewenang menugaskan anggota tim!");
       return;
     }
     setActiveMainTask(main);
+/**
+ * currentAssigned coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const currentAssigned = (main.assignments || []).map(a => a.assignee || a.assignee_id || a.id);
     setSelectedAssigneeIds(currentAssigned);
     setIsAssignModalOpen(true);
   };
 
+/**
+ * handleAssignMember coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleAssignMember = async () => {
     if (!isPM) {
       toast.error("Akses Ditolak: Hanya Project Manager yang berhak mendelegasikan Main Task!");
@@ -247,7 +383,7 @@ export default function ProjectsClient() {
         main_task: activeMainTask.id,
         user_ids: selectedAssigneeIds,
       });
-      toast.success("Penugasan anggota tim berhasil disimpan!", { icon: "👥" });
+      toast.success("Penugasan anggota tim berhasil disimpan.");
       setIsAssignModalOpen(false);
       fetchProjects(true);
     } catch {
@@ -280,6 +416,13 @@ export default function ProjectsClient() {
     }
   }, [selectedProject]);
 
+/**
+ * handleUpdateFinancialTargets coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleUpdateFinancialTargets = async () => {
     if (!selectedProject) return;
     try {
@@ -294,7 +437,7 @@ export default function ProjectsClient() {
         });
       });
 
-      toast.success("Target finansial & anggaran proyek berhasil diperbarui!", { icon: "💰" });
+      toast.success("Target finansial dan anggaran proyek berhasil diperbarui.");
       setIsEditFinancialsOpen(false);
       fetchProjects(true);
     } catch {
@@ -302,6 +445,13 @@ export default function ProjectsClient() {
     }
   };
 
+/**
+ * handleCreateFundingRequest coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleCreateFundingRequest = async () => {
     if (!selectedProject) return;
     try {
@@ -321,7 +471,7 @@ export default function ProjectsClient() {
         });
       });
 
-      toast.success(`Permintaan dana kas sebesar ${formatRupiah(fundingRequestForm.amount)} berhasil diajukan ke Finance!`, { icon: "📑" });
+      toast.success(`Permintaan dana ${formatRupiah(fundingRequestForm.amount)} berhasil diajukan ke Finance.`);
       setIsFundingRequestOpen(false);
       fetchProjects(true);
     } catch {
@@ -347,6 +497,13 @@ export default function ProjectsClient() {
     if (!mainTasks || mainTasks.length === 0) return [];
     return mainTasks.map((mt: any, idx: number) => {
       const weeklyTasks = mt.weekly_tasks || mt.weekly_plans || [];
+/**
+ * startWeek coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
       let startWeek = (idx % 6) + 1;
       let endWeek = Math.min(8, startWeek + 2);
 
@@ -376,6 +533,13 @@ export default function ProjectsClient() {
 
   /* 2. Real Top 5 Expenses from Live Cost Entries, Funding Requests & Financials */
   const realTopExpenses = useMemo(() => {
+/**
+ * rawCostEntries coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const rawCostEntries = (selectedProject as any)?.cost_entries || [];
     const costMap: Record<string, number> = {};
 
@@ -530,6 +694,13 @@ export default function ProjectsClient() {
     });
   }, [allPersonalTasks, personalFilter, personalSearch]);
 
+/**
+ * handleAddMainTask coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleAddMainTask = async () => {
     if (!selectedProject || !mainTaskForm.title.trim()) return;
     try {
@@ -549,6 +720,13 @@ export default function ProjectsClient() {
     }
   };
 
+/**
+ * handleAddWeeklyPlan coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleAddWeeklyPlan = async () => {
     if (!selectedProject || !activeMainTask || !weeklyForm.target_description.trim()) return;
     try {
@@ -561,7 +739,7 @@ export default function ProjectsClient() {
         end_date: weeklyForm.end_date || undefined,
         assignee_name: weeklyForm.assignee_name
       });
-      toast.success(`Target Minggu #${weeklyForm.week_number} berhasil dibuat!`, { icon: "📅" });
+      toast.success(`Target minggu #${weeklyForm.week_number} berhasil dibuat.`);
       setWeeklyForm({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_name: "Assignee Tim" });
       setIsCreateWeeklyOpen(false);
       fetchProjects(true);
@@ -570,6 +748,13 @@ export default function ProjectsClient() {
     }
   };
 
+/**
+ * handleAddDailyTask coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleAddDailyTask = async () => {
     if (!activeWeeklyTask || !dailyForm.title.trim()) {
       toast.error("Mohon isi judul task / aktivitas");
@@ -586,7 +771,7 @@ export default function ProjectsClient() {
         notes: dailyForm.notes.trim(),
         status: dailyForm.status
       });
-      toast.success("Aktivitas harian berhasil dicatat!", { icon: "📋" });
+      toast.success("Aktivitas harian berhasil dicatat.");
       setDailyForm({
         title: "",
         time_slot: "09.00 - 12.00",
@@ -602,18 +787,24 @@ export default function ProjectsClient() {
     }
   };
 
+/**
+ * handleSaveEditDaily coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleSaveEditDaily = async () => {
     if (!activeDailyTask) return;
     try {
       await updateDailyTask(activeDailyTask.id, {
         status: editDailyForm.status,
-        progress: editDailyForm.progress,
         output_result: editDailyForm.output_result,
         notes: editDailyForm.notes,
         is_blocked: editDailyForm.is_blocked,
         block_reason: editDailyForm.block_reason
       });
-      toast.success("Aktivitas harian & progres berhasil diperbarui!", { icon: "✅" });
+      toast.success("Aktivitas harian dan progres berhasil diperbarui.");
       setIsEditDailyOpen(false);
       fetchProjects(true);
     } catch {
@@ -621,6 +812,13 @@ export default function ProjectsClient() {
     }
   };
 
+/**
+ * handleQuickToggleDaily coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleQuickToggleDaily = async (daily: DailyTask, isAllowed = true) => {
     if (!isAllowed && !isPM) {
       toast.error("Akses Ditolak: Anda tidak memiliki wewenang pada task ini!");
@@ -646,12 +844,11 @@ export default function ProjectsClient() {
         }))
       }))
     );
-    toast.success(isDone ? "Status task dikembalikan ke aktif" : "Selamat! Task diselesaikan 100%", { icon: "✅" });
+    toast.success(isDone ? "Status task dikembalikan ke aktif." : "Task telah diselesaikan.");
 
     try {
       await updateDailyTask(daily.id, {
-        status: nextStatus,
-        progress: nextProg
+        status: nextStatus
       });
     } catch {
       setProjects(prevProjects =>
@@ -672,6 +869,13 @@ export default function ProjectsClient() {
     }
   };
 
+/**
+ * handleSendTransfer coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleSendTransfer = async () => {
     if (!activeDailyTask || !transferReason.trim()) return;
     try {
@@ -679,7 +883,7 @@ export default function ProjectsClient() {
         daily_task_id: activeDailyTask.id,
         reason: transferReason.trim()
       });
-      toast.success("Permohonan alih tugas berhasil diajukan ke PM!", { icon: "🔄" });
+      toast.success("Permohonan alih tugas berhasil diajukan ke PM.");
       setIsTransferModalOpen(false);
       setTransferReason("");
       fetchProjects(true);
@@ -688,6 +892,13 @@ export default function ProjectsClient() {
     }
   };
 
+/**
+ * handleCreateProject coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleCreateProject = async () => {
     if (!newProjForm.name.trim()) return;
     try {
@@ -700,7 +911,7 @@ export default function ProjectsClient() {
         planned_end_date: newProjForm.planned_end_date,
         description: newProjForm.description.trim()
       });
-      toast.success(`Proyek "${newProjForm.name}" berhasil dibuat!`, { icon: "🚀" });
+      toast.success(`Proyek "${newProjForm.name}" berhasil dibuat.`);
       setIsCreateProjOpen(false);
       setNewProjForm({
         name: "", code: "", customer_name: "", budget_amount: 100000000, description: "",
@@ -714,25 +925,39 @@ export default function ProjectsClient() {
     }
   };
 
+/**
+ * handleDeleteProject coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleDeleteProject = async () => {
     if (!selectedProject) return;
     if (!confirm(`Hapus proyek "${selectedProject.project_name}" beserta seluruh paket kerja WBS?`)) return;
     try {
       await deleteProject(selectedProject.id);
-      toast.success("Proyek berhasil dihapus", { icon: "🗑️" });
+      toast.success("Proyek berhasil dihapus.");
       fetchProjects(true);
     } catch {
       toast.error("Gagal menghapus proyek");
     }
   };
 
+/**
+ * handleRecalculateHealth coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleRecalculateHealth = async () => {
     if (!selectedProject) return;
     try {
       const res = await recalculateProjectHealth(selectedProject.id);
       setHealthData(res);
       setIsHealthModalOpen(true);
-      toast.success("Kesehatan EVM proyek berhasil dihitung!", { icon: "⚡" });
+      toast.success("Kesehatan EVM proyek berhasil dihitung.");
       fetchProjects(true);
     } catch {
       setHealthData({
@@ -747,6 +972,13 @@ export default function ProjectsClient() {
     }
   };
 
+/**
+ * handleAdvanceLifecycle coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleAdvanceLifecycle = async () => {
     if (!selectedProject) return;
     const stages = ["DRAFT", "VERIFIED", "RESERVED", "STARTED", "COMPLETED"];
@@ -762,7 +994,7 @@ export default function ProjectsClient() {
         });
       });
 
-      toast.success(`Lifecycle proyek berhasil dimajukan ke: ${nextStage}!`, { icon: "⚡" });
+      toast.success(`Lifecycle proyek dimajukan ke ${nextStage}.`);
       setIsLifecycleModalOpen(false);
       fetchProjects(true);
     } catch (e: any) {
@@ -872,8 +1104,9 @@ export default function ProjectsClient() {
                 <span className="text-2xs font-bold px-2 py-0.5 rounded bg-brand-light-green text-brand-deep-green">
                   {selectedProject.status}
                 </span>
+                <CategoryLabel label={(selectedProject as any).source_type} />
                 <span className="text-2xs text-white/80 flex items-center gap-1">
-                  👑 PM: <b>{selectedProject.pm_name || "Project Manager Assigned"}</b>
+                  PM: <b>{selectedProject.pm_name || "Project Manager Assigned"}</b>
                 </span>
               </div>
 
@@ -885,8 +1118,8 @@ export default function ProjectsClient() {
               </p>
 
               <div className="flex items-center gap-4 text-2xs text-white/70 mt-1">
-                <span>📅 Mulai: <b>{selectedProject.planned_start_date || "-"}</b></span>
-                <span>🎯 Target Selesai: <b>{selectedProject.planned_end_date || "-"}</b></span>
+                <span>Mulai: <b>{selectedProject.planned_start_date || "-"}</b></span>
+                <span>Target selesai: <b>{selectedProject.planned_end_date || "-"}</b></span>
               </div>
             </div>
 
@@ -906,7 +1139,7 @@ export default function ProjectsClient() {
                 </button>
               ) : (
                 <span className="mt-2 text-3xs font-medium text-white/80 bg-white/10 px-2.5 py-1 rounded-lg">
-                  🔒 Wewenang PM
+                  Wewenang PM
                 </span>
               )}
             </div>
@@ -1060,7 +1293,7 @@ export default function ProjectsClient() {
               </button>
             ) : (
               <span className="text-3xs text-text-secondary bg-gray-100 border border-gray-200 px-2 py-1 rounded-md">
-                🔒 Wewenang PM (Main Task)
+                Wewenang PM · Main Task
               </span>
             )}
           </div>
@@ -1122,7 +1355,7 @@ export default function ProjectsClient() {
 
                           {main.assignments && main.assignments.length > 0 && (
                             <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                              <span className="text-3xs font-bold text-text-secondary uppercase">👥 Tim Ter-assign:</span>
+                              <span className="text-3xs font-bold text-text-secondary uppercase">Tim yang ditugaskan:</span>
                               {main.assignments.map(a => (
                                 <span key={a.id} className="badge bg-indigo-50 text-indigo-800 border border-indigo-200 text-2xs flex items-center gap-1 font-semibold">
                                   <span>{a.assignee_name || a.user_name}</span>
@@ -1160,11 +1393,18 @@ export default function ProjectsClient() {
                             className="text-3xs font-medium text-text-secondary bg-white border border-gray-200 px-2 py-1 rounded-lg"
                             title="Hanya Project Manager yang memiliki wewenang menugaskan anggota tim"
                           >
-                            🔒 Wewenang PM
+                            Wewenang PM
                           </span>
                         )}
 
                         {(() => {
+/**
+ * isAssigned coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
                           const isAssigned = (main.assignments || []).some(
                             (a: any) =>
                               String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
@@ -1200,7 +1440,7 @@ export default function ProjectsClient() {
                               className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-2 py-1 rounded-lg"
                               title="Hanya pengguna yang di-assign pada Main Task ini atau PM yang dapat membuat target mingguan"
                             >
-                              🔒 Hanya Assignee / PM
+                              Hanya assignee atau PM
                             </span>
                           );
                         })()}
@@ -1271,7 +1511,7 @@ export default function ProjectsClient() {
                                         (PIC: <b>{weekly.assignee_name || "Assignee"}</b>)
                                       </span>
                                       {weekly.start_date && (
-                                        <span className="text-2xs text-text-secondary">📅 {weekly.start_date} s/d {weekly.end_date || "-"}</span>
+                                        <span className="text-2xs text-text-secondary">{weekly.start_date} s/d {weekly.end_date || "-"}</span>
                                       )}
                                     </div>
 
@@ -1282,6 +1522,13 @@ export default function ProjectsClient() {
 
                                       {(() => {
                                         const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
+/**
+ * isMainAssigned coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
                                         const isMainAssigned = (main.assignments || []).some(
                                           (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
                                         );
@@ -1314,7 +1561,7 @@ export default function ProjectsClient() {
                                             className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-2 py-0.5 rounded"
                                             title="Hanya PIC Weekly Task, tim ter-assign, atau PM yang dapat membuat Daily Task"
                                           >
-                                            🔒 Hanya PIC / PM
+                                            Hanya PIC atau PM
                                           </span>
                                         );
                                       })()}
@@ -1369,6 +1616,13 @@ export default function ProjectsClient() {
                                                   const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
                                                   const isDailyOwner = String(daily.owner_id || (daily as any).owner || "") === String(user?.id);
                                                   const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
+/**
+ * isMainAssigned coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
                                                   const isMainAssigned = (main.assignments || []).some(
                                                     (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
                                                   );
@@ -1392,7 +1646,7 @@ export default function ProjectsClient() {
                                                               !canManageDaily && "cursor-not-allowed opacity-40 bg-gray-100",
                                                               canManageDaily && isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
                                                             )}
-                                                            title={!canManageDaily ? "🔒 Hanya PIC / Assignee yang dapat mengubah status" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
+                                                            title={!canManageDaily ? "Hanya PIC atau assignee yang dapat mengubah status" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
                                                           >
                                                             {isDone && <Check size={11} strokeWidth={3} />}
                                                           </button>
@@ -1416,7 +1670,7 @@ export default function ProjectsClient() {
                                                         </span>
                                                       </td>
                                                       <td className="py-2 px-3 align-top max-w-[160px] text-2xs">
-                                                        {isBlocked && <div className="text-red-600 font-bold">⚠️ {daily.block_reason || "Terkendala"}</div>}
+                                                        {isBlocked && <div className="text-red-600 font-bold">{daily.block_reason || "Terkendala"}</div>}
                                                         <div>{daily.notes || <span className="text-text-secondary italic">-</span>}</div>
                                                       </td>
                                                       <td className="py-2 px-3 align-top text-right whitespace-nowrap">
@@ -1442,7 +1696,7 @@ export default function ProjectsClient() {
                                                             </button>
                                                           ) : (
                                                             <span className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded" title="Hanya PIC/Assignee yang dapat mengupdate task">
-                                                              🔒 Read Only
+                                                              Read only
                                                             </span>
                                                           )}
 
@@ -1536,13 +1790,13 @@ export default function ProjectsClient() {
                     }}
                     className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-red-600 hover:bg-red-700"
                   >
-                    ⏹️ Hentikan Stopwatch
+                    Hentikan stopwatch
                   </button>
                 ) : (
                   <button
                     onClick={() => {
                       setTimerDailyId("active");
-                      toast("Stopwatch aktif!", { icon: "⏱️" });
+                      toast("Stopwatch aktif.");
                     }}
                     className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green"
                   >
@@ -1571,7 +1825,7 @@ export default function ProjectsClient() {
                 { id: "ALL", label: `Semua (${allPersonalTasks.length})` },
                 { id: "ACTIVE", label: "Aktif / Berjalan" },
                 { id: "COMPLETED", label: "Selesai" },
-                { id: "BLOCKED", label: "Terkendala ⚠️" },
+                { id: "BLOCKED", label: "Terkendala" },
               ].map(f => (
                 <button
                   key={f.id}
@@ -1913,7 +2167,7 @@ export default function ProjectsClient() {
                     <div key={f.id} className="py-2.5 flex justify-between items-start text-xs">
                       <div>
                         <span className="font-bold text-text-primary block">{f.description || f.purpose || "Permintaan Anggaran"}</span>
-                        <span className="text-2xs text-text-secondary">{f.expense_type || f.category || "OPERATIONAL"} &bull; {f.expense_date || "-"}</span>
+                        <div className="mt-1 flex items-center gap-2"><CategoryLabel label={f.expense_type || f.category || "OPERATIONAL"} /><span className="text-2xs text-text-secondary">{f.expense_date || "-"}</span></div>
                       </div>
                       <div className="text-right">
                         <strong className="text-emerald-700 block">{formatRupiah(Number(f.amount))}</strong>
@@ -1945,7 +2199,7 @@ export default function ProjectsClient() {
                     <div key={c.id} className="py-2.5 flex justify-between items-center text-xs">
                       <div>
                         <span className="font-bold text-text-primary block">{c.description || c.category}</span>
-                        <span className="text-2xs text-text-secondary">{c.category}</span>
+                        <div className="mt-1"><CategoryLabel label={c.category} /></div>
                       </div>
                       <strong className="text-brand-deep-green">{formatRupiah(Number(c.amount))}</strong>
                     </div>
@@ -1990,9 +2244,16 @@ export default function ProjectsClient() {
         onClose={() => setIsCreateMainTaskOpen(false)}
         title="Buat Main Task / Paket Kerja Utama"
         subtitle={`Struktur WBS Level 1 — Proyek: ${selectedProject?.project_name}`}
-        size="md"
+        size="lg"
       >
         <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-xs font-bold text-text-secondary block mb-1">Divisi Pemilik Biaya</label>
+            <select value={costForm.division_id} onChange={e => setCostForm({ ...costForm, division_id: e.target.value })} className="input text-xs">
+              <option value="">Belum ditentukan</option>
+              {divisionOptions.map((division) => <option key={division.id} value={division.id}>{division.organization_name ?? division.name}</option>)}
+            </select>
+          </div>
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Judul Paket Kerja Utama (Main Task) *</label>
             <input
@@ -2141,7 +2402,7 @@ export default function ProjectsClient() {
                 {activeMainTask?.assignments && activeMainTask.assignments.length > 0 ? (
                   activeMainTask.assignments.map(a => (
                     <option key={a.id} value={a.assignee_name || a.user_name}>
-                      👤 {a.assignee_name || a.user_name} (Assignee Terpilih)
+                      {a.assignee_name || a.user_name} (assignee terpilih)
                     </option>
                   ))
                 ) : null}
@@ -2297,12 +2558,12 @@ export default function ProjectsClient() {
       <Modal
         isOpen={isEditDailyOpen}
         onClose={() => setIsEditDailyOpen(false)}
-        title={`Update Aktivitas: ${activeDailyTask?.title || activeDailyTask?.activity_input}`}
-        subtitle="Daily Task Execution Update"
-        size="md"
+        title="Task Details"
+        subtitle={`${activeDailyTask?.title || activeDailyTask?.activity_input || "Daily Task"} · ${selectedProject?.project_name || "Project"}`}
+        maxWidth="4xl"
       >
-        <div className="flex flex-col gap-3">
-          <div>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,.75fr)]">
+          <div className="lg:col-start-2 lg:row-start-1">
             <label className="text-xs font-bold text-text-primary block mb-1">Output (Hasil yang Didapat / Deliverable)</label>
             <textarea
               rows={2}
@@ -2313,39 +2574,66 @@ export default function ProjectsClient() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Status Pekerjaan</label>
-              <select
-                value={editDailyForm.status}
-                onChange={e => {
-                  const s = e.target.value as any;
-                  const newProg = s === "COMPLETED" ? 100 : s === "NOT_STARTED" ? 0 : editDailyForm.progress;
-                  setEditDailyForm({ ...editDailyForm, status: s, progress: newProg });
-                }}
-                className="input text-xs"
-              >
-                <option value="NOT_STARTED">Not done yet (Belum Dimulai)</option>
-                <option value="ON_PROGRESS">On Progress (Sedang Berjalan)</option>
-                <option value="COMPLETED">Selesai (Completed 100%)</option>
-                <option value="BLOCKED">Terkendala (Blocked)</option>
-                <option value="REVIEW">In Review</option>
-              </select>
+          <section className="rounded-xl border border-[#d7ddd5] bg-white p-5 lg:col-start-1 lg:row-span-4 lg:row-start-1">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-[#435247]">Progress Achievement</div>
+                <p className="mt-0.5 text-2xs text-text-secondary">Dikompilasi otomatis dari checklist capaian.</p>
+              </div>
+              <div className="text-sm font-semibold text-[#435247] tabular-nums">{checklistProgress}%</div>
             </div>
-            <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Progres Capaian (%) — {editDailyForm.progress}%</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={editDailyForm.progress}
-                onChange={e => setEditDailyForm({ ...editDailyForm, progress: Number(e.target.value) })}
-                className="input text-xs"
-              />
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#effbdd]" role="progressbar" aria-valuenow={checklistProgress} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full rounded-full bg-[#5f8f35] transition-all duration-300" style={{ width: `${checklistProgress}%` }} />
             </div>
+
+            <div className="mt-4 space-y-1">
+              {checklistItems.map((item) => {
+                const done = ['DONE', 'COMPLETED', 'CHECKED', 'APPROVED'].includes(String(item.status).toUpperCase());
+                return <button type="button" key={item.id} onClick={() => toggleChecklistItem(item)} className="group flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left hover:bg-[#f8fbf4]">
+                  <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border', done ? 'border-[#789d50] bg-[#789d50] text-white' : 'border-[#789d50] bg-white')}>
+                    {done && <Check size={11} strokeWidth={3} />}
+                  </span>
+                  <span className={cn('min-w-0 flex-1 text-xs', done ? 'text-[#667068]' : 'text-[#435247]')}>{item.title}</span>
+                  {item.target_date && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#efffde] px-3 py-1 text-2xs font-medium text-[#54752f]">
+                    {new Date(item.target_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}<Clock size={11} />
+                  </span>}
+                </button>;
+              })}
+              {checklistItems.length === 0 && <div className="rounded-lg border border-dashed border-[#cdd9c5] py-5 text-center text-xs text-text-secondary">Belum ada checklist capaian.</div>}
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-2 border-t border-[#e5e9e3] pt-4 sm:grid-cols-[1fr_150px_auto]">
+              <input value={newChecklistTitle} onChange={(event) => setNewChecklistTitle(event.target.value)} placeholder="Nama capaian baru" className="input text-xs" />
+              <input type="date" value={newChecklistDate} onChange={(event) => setNewChecklistDate(event.target.value)} className="input text-xs" aria-label="Tanggal target checklist" />
+              <button type="button" onClick={addChecklistItem} disabled={!newChecklistTitle.trim()} className="btn-primary px-4 text-xs disabled:cursor-not-allowed disabled:opacity-50">Tambah</button>
+            </div>
+          </section>
+
+          <div className="rounded-xl border border-[#d7ddd5] bg-[#fafcf8] p-4 lg:col-start-2">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-[#435247]">Status Pekerjaan</div>
+                <p className="mt-1 text-2xs text-text-secondary">
+                  {checklistItems.length > 0 ? "Status normal mengikuti checklist secara otomatis." : "Status menjadi selesai saat task ditandai selesai."}
+                </p>
+              </div>
+              <span className={cn(
+                "shrink-0 rounded-full px-3 py-1 text-2xs font-semibold",
+                editDailyForm.status === "BLOCKED" ? "bg-red-100 text-red-700" : checklistProgress >= 100 ? "bg-[#dff5d2] text-[#416d28]" : "bg-[#efffde] text-[#54752f]"
+              )}>
+                {editDailyForm.status === "BLOCKED" ? "Blocked" : checklistProgress >= 100 ? "Completed" : checklistProgress > 0 ? "In Progress" : "Not Started"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditDailyForm({ ...editDailyForm, status: editDailyForm.status === "BLOCKED" ? "ON_PROGRESS" : "BLOCKED", is_blocked: editDailyForm.status !== "BLOCKED", block_reason: editDailyForm.status === "BLOCKED" ? "" : editDailyForm.block_reason })}
+              className={cn("mt-3 text-2xs font-semibold", editDailyForm.status === "BLOCKED" ? "text-brand-deep-green" : "text-red-600")}
+            >
+              {editDailyForm.status === "BLOCKED" ? "Tandai kendala selesai" : "Laporkan task terkendala"}
+            </button>
           </div>
 
-          <div>
+          <div className="lg:col-start-2">
             <label className="text-xs font-bold text-text-primary block mb-1">Catatan Tambahan</label>
             <input
               type="text"
@@ -2357,7 +2645,7 @@ export default function ProjectsClient() {
           </div>
 
           {editDailyForm.status === "BLOCKED" && (
-            <div className="p-3 bg-red-50 rounded-xl border border-red-200">
+            <div className="p-3 bg-red-50 rounded-xl border border-red-200 lg:col-start-2">
               <label className="text-xs font-bold text-red-700 block mb-1">Kendala yang Dihadapi (Block Reason) *</label>
               <input
                 type="text"
@@ -2369,7 +2657,7 @@ export default function ProjectsClient() {
             </div>
           )}
 
-          <div className="flex justify-end gap-2 mt-2">
+          <div className="flex justify-end gap-2 border-t border-[#e5e9e3] pt-4 lg:col-span-2">
             <button onClick={() => setIsEditDailyOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
             <button onClick={handleSaveEditDaily} className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 font-bold">
               Simpan Perubahan Aktivitas
@@ -2647,6 +2935,7 @@ export default function ProjectsClient() {
                 if (!selectedProject) return;
                 await createProjectCostEntry({
                   project: selectedProject.id,
+                  division_id: costForm.division_id || undefined,
                   category: costForm.category,
                   amount: Number(costForm.amount),
                   description: costForm.description

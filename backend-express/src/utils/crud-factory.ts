@@ -1,8 +1,20 @@
+/**
+ * File: backend-express/src/utils/crud-factory.ts
+ *
+ * Purpose: Implements shared utility responsibilities in the backend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 import { Request, Response, NextFunction, Router } from 'express';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database';
 import { paginateArray, parsePagination, sendDeleteSuccess } from './response';
-import { NotFoundError } from './errors';
+import { ConflictError, ForbiddenError, NotFoundError } from './errors';
+import {
+  applyAndValidateWriteScope,
+  buildResourceScope,
+} from '../modules/accounts/resource-scope.service';
 
 export interface CrudOptions {
   modelName: keyof typeof prisma;
@@ -12,6 +24,7 @@ export interface CrudOptions {
   include?: Record<string, unknown>;
   beforeCreate?: (req: Request, data: any) => Promise<any> | any;
   beforeUpdate?: (req: Request, data: any, existing: any) => Promise<any> | any;
+  beforeDelete?: (req: Request, existing: any) => Promise<void> | void;
   afterCreate?: (req: Request, record: any) => Promise<void> | void;
   afterUpdate?: (req: Request, record: any, before: any) => Promise<void> | void;
   afterDelete?: (req: Request, record: any) => Promise<void> | void;
@@ -21,6 +34,14 @@ export interface CrudOptions {
 // Cache model fields from Prisma DMMF
 const MODEL_FIELDS_CACHE = new Map<string, Set<string>>();
 
+/**
+ * getModelFields implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 export function getModelFields(modelName: string): Set<string> {
   const key = String(modelName).toLowerCase();
   if (MODEL_FIELDS_CACHE.has(key)) {
@@ -34,6 +55,14 @@ export function getModelFields(modelName: string): Set<string> {
   return fields;
 }
 
+/**
+ * hasModelField implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 export function hasModelField(modelName: string, fieldName: string): boolean {
   return getModelFields(modelName).has(fieldName);
 }
@@ -107,9 +136,11 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
               if (fn === 'created_by_id' && req?.user?.id && UUID_REGEX.test(req.user.id)) {
                 result[field.name] = req.user.id;
               } else if (fn === 'company_id') {
-                result[field.name] = req?.companyId && UUID_REGEX.test(req.companyId) ? req.companyId : '10000000-0000-0000-0000-000000000001';
+                if (req?.companyId && UUID_REGEX.test(req.companyId)) result[field.name] = req.companyId;
+                else delete result[field.name];
               } else if (fn === 'tenant_id') {
-                result[field.name] = req?.user?.tenant_id && UUID_REGEX.test(req.user.tenant_id) ? req.user.tenant_id : '24b709e5-ae7a-4ded-be06-c0e9f5998f9d';
+                if (req?.user?.tenant_id && UUID_REGEX.test(req.user.tenant_id)) result[field.name] = req.user.tenant_id;
+                else delete result[field.name];
               }
             } else {
               result[field.name] = null;
@@ -126,9 +157,9 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
           // Skip _id fields from generic string defaults!
           if (fn.endsWith('_id') || fn === 'id') {
             if (fn === 'tenant_id') {
-              result[field.name] = req?.user?.tenant_id ?? '24b709e5-ae7a-4ded-be06-c0e9f5998f9d';
+              if (req?.user?.tenant_id && UUID_REGEX.test(req.user.tenant_id)) result[field.name] = req.user.tenant_id;
             } else if (fn === 'company_id') {
-              result[field.name] = req?.companyId ?? '10000000-0000-0000-0000-000000000001';
+              if (req?.companyId && UUID_REGEX.test(req.companyId)) result[field.name] = req.companyId;
             } else if (fn === 'created_by_id' && req?.user?.id && UUID_REGEX.test(req.user.id)) {
               result[field.name] = req.user.id;
             }
@@ -249,18 +280,96 @@ export function normalizeRecord(record: any, modelName?: string): any {
   return result;
 }
 
+/**
+ * createCrudRouter implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 export function createCrudRouter(options: CrudOptions): Router {
   const router = Router();
+/**
+ * delegate implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
   const delegate = (prisma as any)[options.modelName];
   const modelNameStr = String(options.modelName);
 
+/**
+ * assertFinancialRecordMutable implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
+  const assertFinancialRecordMutable = (existing: any) => {
+    if (!modelNameStr.startsWith('fin_')) return;
+    const terminal = new Set(['POSTED', 'PAID', 'CLOSED', 'LOCKED', 'EXECUTED', 'REVERSED']);
+    const state = String(existing?.status ?? existing?.payment_status ?? existing?.approval_status ?? '').toUpperCase();
+    if (terminal.has(state)) {
+      throw new ConflictError(
+        `Record keuangan berstatus ${state} bersifat immutable. Gunakan workflow reversal/storno resmi.`,
+      );
+    }
+  };
+
+/**
+ * format implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
   const format = (rec: any) => {
     let out = normalizeRecord(rec, modelNameStr);
     if (options.transform) out = options.transform(out);
     return out;
   };
 
+/**
+ * scopedWhere implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
+  const scopedWhere = async (req: Request, where: Record<string, unknown> = {}) => {
+    const scope = await buildResourceScope(req, modelNameStr, getModelFields(modelNameStr));
+    if (Object.keys(scope).length === 0) return where;
+    if (Object.keys(where).length === 0) return scope;
+    return { AND: [where, scope] };
+  };
+
+/**
+ * cleanData implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
+  const cleanData = (data: Record<string, unknown>, validFields: ReadonlySet<string>) => {
+    if (validFields.size === 0) return data;
+    return Object.fromEntries(Object.entries(data).filter(([key]) => validFields.has(key)));
+  };
+
   // 1. Metadata endpoint
+/**
+ * GET `/metadata` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.get('/metadata', (req: Request, res: Response) => {
     res.json({
       model: modelNameStr,
@@ -270,6 +379,13 @@ export function createCrudRouter(options: CrudOptions): Router {
   });
 
   // 2. Bulk Create
+/**
+ * POST `/bulk-create` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.post('/bulk-create', async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!Array.isArray(req.body)) {
@@ -280,13 +396,14 @@ export function createCrudRouter(options: CrudOptions): Router {
       const created = await prisma.$transaction(async (tx: any) => {
         const results = [];
         for (const item of req.body) {
-          const payload = { ...item };
-          if (req.user?.tenant_id && !payload.tenant_id && validFields.has('tenant_id')) {
-            payload.tenant_id = req.user.tenant_id;
+          let payload = { ...item };
+          if (options.beforeCreate) {
+            const hookResult = await options.beforeCreate(req, payload);
+            if (hookResult && typeof hookResult === 'object') payload = hookResult;
           }
-          if (req.companyId && !payload.company_id && validFields.has('company_id')) {
-            payload.company_id = req.companyId;
-          }
+          payload = autoFillRequiredFields(modelNameStr, payload, req);
+          payload = await applyAndValidateWriteScope(req, modelNameStr, validFields, payload);
+          payload = cleanData(payload, validFields);
           const rec = await tx[options.modelName].create({ data: payload });
           results.push(format(rec));
         }
@@ -299,6 +416,13 @@ export function createCrudRouter(options: CrudOptions): Router {
   });
 
   // 3. Bulk Update
+/**
+ * PATCH `/bulk-update` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.patch('/bulk-update', async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!Array.isArray(req.body)) {
@@ -311,10 +435,28 @@ export function createCrudRouter(options: CrudOptions): Router {
           if (!item.id) {
             throw new Error('Setiap item wajib memiliki id.');
           }
-          const { id, ...data } = item;
+          const { id, ...itemData } = item;
+          const existing = await tx[options.modelName].findFirst({
+            where: await scopedWhere(req, { id }),
+          });
+          if (!existing) throw new ForbiddenError('Data tidak ditemukan dalam scope company user.');
+          assertFinancialRecordMutable(existing);
+          let data = { ...itemData };
+          if (options.beforeUpdate) {
+            const hookResult = await options.beforeUpdate(req, data, existing);
+            if (hookResult && typeof hookResult === 'object') data = hookResult;
+          }
+          let scopedData = await applyAndValidateWriteScope(
+            req,
+            modelNameStr,
+            getModelFields(modelNameStr),
+            { ...existing, ...data },
+          );
+          delete (scopedData as any).id;
+          scopedData = cleanData(scopedData, getModelFields(modelNameStr));
           const rec = await tx[options.modelName].update({
             where: { id },
-            data,
+            data: scopedData,
           });
           results.push(format(rec));
         }
@@ -327,6 +469,13 @@ export function createCrudRouter(options: CrudOptions): Router {
   });
 
   // 4. Bulk Delete
+/**
+ * POST `/bulk-delete` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.post('/bulk-delete', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
@@ -334,9 +483,19 @@ export function createCrudRouter(options: CrudOptions): Router {
         res.status(400).json({ detail: 'ids wajib diisi.' });
         return;
       }
-      const result = await delegate.deleteMany({
-        where: { id: { in: ids } },
-      });
+      const where = await scopedWhere(req, { id: { in: ids } });
+      const allowed = await delegate.count({ where });
+      if (allowed !== new Set(ids).size) {
+        throw new ForbiddenError('Satu atau lebih data berada di luar scope company user.');
+      }
+      if (options.beforeDelete) {
+        const existingRecords = await delegate.findMany({ where });
+        for (const existing of existingRecords) {
+          assertFinancialRecordMutable(existing);
+          await options.beforeDelete(req, existing);
+        }
+      }
+      const result = await delegate.deleteMany({ where });
       res.json({ deleted: result.count });
     } catch (err) {
       next(err);
@@ -344,26 +503,21 @@ export function createCrudRouter(options: CrudOptions): Router {
   });
 
   // 5. List with DRF pagination envelope
+/**
+ * GET `/` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { page, pageSize, skip } = parsePagination(req);
-      const where: Record<string, any> = {};
+      let where: Record<string, any> = {};
       const validFields = getModelFields(modelNameStr);
 
-      // Multi-tenant & Company isolation filters (only if model supports them)
+      // Multi-tenant & Company isolation filters
       const andConditions: any[] = [];
-
-      if (req.user?.tenant_id && validFields.has('tenant_id')) {
-        andConditions.push({
-          tenant_id: req.user.tenant_id,
-        });
-      }
-
-      if (req.companyId && req.companyId !== 'all' && validFields.has('company_id')) {
-        andConditions.push({
-          company_id: req.companyId,
-        });
-      }
 
       // Query param filters with FK alias mapping
       for (const [key, val] of Object.entries(req.query)) {
@@ -408,6 +562,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       if (andConditions.length > 0) {
         where.AND = andConditions;
       }
+      where = await scopedWhere(req, where);
 
       // Ordering filter
       const ordering = req.query['ordering'] as string | undefined;
@@ -449,17 +604,18 @@ export function createCrudRouter(options: CrudOptions): Router {
   });
 
   // 6. Create
+/**
+ * POST `/` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       let data = { ...req.body };
       const validFields = getModelFields(modelNameStr);
 
-      if (req.user?.tenant_id && !data.tenant_id && validFields.has('tenant_id')) {
-        data.tenant_id = req.user.tenant_id;
-      }
-      if (req.companyId && !data.company_id && validFields.has('company_id')) {
-        data.company_id = req.companyId;
-      }
       if (req.user?.id && !data.created_by_id && validFields.has('created_by_id')) {
         data.created_by_id = req.user.id;
       }
@@ -475,6 +631,7 @@ export function createCrudRouter(options: CrudOptions): Router {
 
       // Re-run auto-fill after custom beforeCreate hook
       data = autoFillRequiredFields(modelNameStr, data, req);
+      data = await applyAndValidateWriteScope(req, modelNameStr, validFields, data);
 
       if (validFields.size > 0) {
         const cleanedData: any = {};
@@ -499,13 +656,20 @@ export function createCrudRouter(options: CrudOptions): Router {
   });
 
   // 7. Retrieve
+/**
+ * GET `/:id` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const queryArgs: any = { where: { id } };
+      const queryArgs: any = { where: await scopedWhere(req, { id }) };
       if (options.include) queryArgs.include = options.include;
 
-      const record = await delegate.findUnique(queryArgs);
+      const record = await delegate.findFirst(queryArgs);
       if (!record) throw new NotFoundError(modelNameStr);
       res.json(format(record));
     } catch (err) {
@@ -514,11 +678,19 @@ export function createCrudRouter(options: CrudOptions): Router {
   });
 
   // 8. Update (PUT)
+/**
+ * PUT `/:id` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const existing = await delegate.findUnique({ where: { id } });
+      const existing = await delegate.findFirst({ where: await scopedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
+      assertFinancialRecordMutable(existing);
 
       let data = { ...req.body };
       const validFields = getModelFields(modelNameStr);
@@ -533,6 +705,8 @@ export function createCrudRouter(options: CrudOptions): Router {
           data = { ...data, ...req.body };
         }
       }
+      data = await applyAndValidateWriteScope(req, modelNameStr, validFields, { ...existing, ...data });
+      delete data.id;
 
       // Auto convert any date strings
       const model = Prisma.dmmf?.datamodel?.models?.find(
@@ -572,11 +746,19 @@ export function createCrudRouter(options: CrudOptions): Router {
   });
 
   // 9. Partial Update (PATCH)
+/**
+ * PATCH `/:id` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const existing = await delegate.findUnique({ where: { id } });
+      const existing = await delegate.findFirst({ where: await scopedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
+      assertFinancialRecordMutable(existing);
 
       let data = { ...req.body };
       const validFields = getModelFields(modelNameStr);
@@ -591,6 +773,8 @@ export function createCrudRouter(options: CrudOptions): Router {
           data = { ...data, ...req.body };
         }
       }
+      data = await applyAndValidateWriteScope(req, modelNameStr, validFields, { ...existing, ...data });
+      delete data.id;
 
       // Auto convert any date strings
       const model = Prisma.dmmf?.datamodel?.models?.find(
@@ -630,11 +814,23 @@ export function createCrudRouter(options: CrudOptions): Router {
   });
 
   // 10. Delete
+/**
+ * DELETE `/:id` handler registered on this router.
+ *
+ * Authentication/authorization: inherits the global authenticated tenant, module entitlement, RBAC, idempotency, and audit pipeline plus middleware supplied in this call.
+ * Request/response: consumes the parameters/body referenced by the callback, preserves its current status/payload contract, and forwards unexpected errors through `next` where provided.
+ * Persistence and state changes are limited to the Prisma/service operations visible in this handler; financial terminal-state and SoD rules remain authoritative.
+ */
   router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const existing = await delegate.findUnique({ where: { id } });
+      const existing = await delegate.findFirst({ where: await scopedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
+      assertFinancialRecordMutable(existing);
+
+      if (options.beforeDelete) {
+        await options.beforeDelete(req, existing);
+      }
 
       await delegate.delete({ where: { id } });
 

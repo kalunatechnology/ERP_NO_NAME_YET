@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/app/(app)/crm/CrmClient.tsx
+ *
+ * Purpose: Defines the Next App Router entry and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -30,15 +37,22 @@ import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
 const CRM_TABS = [
   { id: "dashboard",   label: "Dashboard",            icon: BarChart3     },
   { id: "deals",       label: "Deals & Credit",       icon: TrendingUp    },
-  { id: "estimate",    label: "Estimating & Quoting", icon: Calculator    },
-  { id: "tickets",     label: "Support & Garansi",    icon: PhoneCall     },
+  { id: "estimate",    label: "Estimating & Quoting", icon: Calculator, module: "SALES" },
+  { id: "tickets",     label: "Support & Garansi",    icon: PhoneCall, module: "SERVICE" },
   { id: "incoming",    label: "Incoming Inquiry",     icon: FileText      },
   { id: "accounts",    label: "Accounts",             icon: Building2     },
-  { id: "contracts",   label: "Contracts & Orders",   icon: FileCheck     },
+  { id: "contracts",   label: "Contracts & Orders",   icon: FileCheck, module: "SALES" },
   { id: "engagement",  label: "Engagement",           icon: MessageSquare },
 ];
 
 /* ── Shared Helpers ──────────────────────────────── */
+/**
+ * StatusBadge coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function StatusBadge({ status }: { status: string }) {
   return (
     <span className={cn("inline-flex px-2 py-0.5 rounded-full text-2xs font-semibold", getStatusColor(status))}>
@@ -47,6 +61,13 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * EmptyState coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function EmptyState({ msg }: { msg: string }) {
   return (
     <div className="py-10 text-center text-sm text-text-secondary flex flex-col items-center gap-2">
@@ -63,8 +84,22 @@ interface ActionBtnProps {
   icon?: React.ElementType;
   small?: boolean;
 }
+/**
+ * ActionBtn coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function ActionBtn({ onClick, label, variant = "primary", icon: Icon, small }: ActionBtnProps) {
   const [busy, setBusy] = useState(false);
+/**
+ * handle coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handle = async () => {
     if (busy) return;
     setBusy(true);
@@ -90,6 +125,13 @@ function ActionBtn({ onClick, label, variant = "primary", icon: Icon, small }: A
 }
 
 /* ── KPI Card ─────────────────────────────────────── */
+/**
+ * KpiCard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function KpiCard({ label, value, icon: Icon, iconBg = "#F0FDF4", iconColor = "#16A34A" }: {
   label: string; value: string | number;
   icon: React.ElementType; iconBg?: string; iconColor?: string;
@@ -108,6 +150,13 @@ function KpiCard({ label, value, icon: Icon, iconBg = "#F0FDF4", iconColor = "#1
 }
 
 /* ── Shared Quick Add Party Modal ─────────────────── */
+/**
+ * QuickAddPartyModal coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function QuickAddPartyModal({
   isOpen,
   onClose,
@@ -120,6 +169,13 @@ function QuickAddPartyModal({
   const [partyForm, setPartyForm] = useState({ legal_name: "", display_name: "", email: "", party_code: "" });
   const [isPartySubmitting, setIsPartySubmitting] = useState(false);
 
+/**
+ * handleQuickAdd coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleQuickAdd = async () => {
     if (!partyForm.display_name.trim() && !partyForm.legal_name.trim()) {
       toast.error("Nama pelanggan wajib diisi.");
@@ -192,9 +248,37 @@ function QuickAddPartyModal({
 /* ══════════════════════════════════════════════════
    TAB: DASHBOARD
 ══════════════════════════════════════════════════ */
+/**
+ * TabDashboard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
+/**
+ * activeTickets coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const activeTickets = (data.cases || []).filter(c => !["RESOLVED","CLOSED"].includes(c.status?.toUpperCase() || "")).length;
+/**
+ * pendingApprovals coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const pendingApprovals = (data.approvals || []).filter(a => a.decision === "PENDING").length;
+/**
+ * pipeline coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const pipeline = (data.opportunities || []).filter(o => 
     !["WON","LOST","CANCELLED","CANCEL","BATAL"].includes(o.status?.toUpperCase() || "") &&
     !["LOST","CANCELLED","CANCEL","BATAL"].includes(o.pipeline_stage?.toUpperCase() || "")
@@ -287,6 +371,13 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
 /* ══════════════════════════════════════════════════
    TAB: DEALS & CREDIT
 ══════════════════════════════════════════════════ */
+/**
+ * TabDeals coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabDeals({
   data, approvals, isNewOppOpen, setIsNewOppOpen, onRefresh,
   onOpportunityCreated, onOpportunityDeleted, onPartyCreated
@@ -311,7 +402,21 @@ function TabDeals({
 
   const allOpps = data.opportunities || [];
   const activeOpps = allOpps.filter(o => {
+/**
+ * st coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const st = (o.status || "").toUpperCase();
+/**
+ * ps coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const ps = (o.pipeline_stage || "").toUpperCase();
     return !["CANCELLED", "CANCEL", "BATAL"].includes(st) && !["CANCELLED", "CANCEL", "BATAL"].includes(ps);
   });
@@ -326,6 +431,13 @@ function TabDeals({
     ? cancelledOpps 
     : allOpps;
 
+/**
+ * handleDealWon coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleDealWon = async (opp: any) => {
     try {
       const res = await processDealWon(opp.id);
@@ -337,6 +449,13 @@ function TabDeals({
     }
   };
 
+/**
+ * handleExecOverride coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleExecOverride = async (opp: any) => {
     try {
       await executiveOverrideCredit(opp.id);
@@ -347,6 +466,13 @@ function TabDeals({
     }
   };
 
+/**
+ * handleDelete coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleDelete = async (id: string | number) => {
     if (!confirm("Apakah Anda yakin ingin menghapus/membatalkan opportunity ini?")) return;
     try { 
@@ -362,6 +488,12 @@ function TabDeals({
     }
   };
 
+  /**
+   * Creates an opportunity from the modal form.
+   *
+   * Validation requires an opportunity name before the CRM API is called.
+   * On success the modal is closed and the parent dataset is refreshed; API failures are surfaced through the existing toast flow.
+   */
   const handleCreate = async () => {
     if (!form.opportunity_name.trim()) { 
       toast.error("Nama opportunity wajib diisi."); 
@@ -376,7 +508,8 @@ function TabDeals({
       const res = await createOpportunity(payload);
       toast.success("Opportunity berhasil dibuat!");
       
-      const createdData = res?.data || res || { ...payload, id: Date.now(), status: payload.pipeline_stage };
+      const createdData = res?.data || res;
+      if (!createdData?.id) throw new Error("Backend tidak mengembalikan UUID opportunity.");
       if (onOpportunityCreated) {
         onOpportunityCreated(createdData);
       }
@@ -391,6 +524,13 @@ function TabDeals({
     }
   };
 
+/**
+ * handleCreditRecalc coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleCreditRecalc = async (partyId: string | number) => {
     try { 
       await calculateCreditSnapshot(partyId); 
@@ -402,6 +542,13 @@ function TabDeals({
     }
   };
 
+/**
+ * handleCreditLimit coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleCreditLimit = async (partyId: string | number, currentLimit: number) => {
     const newLimit = prompt(`Credit limit baru untuk customer ini (saat ini: ${formatMoney(currentLimit)}):`, String(currentLimit));
     if (!newLimit) return;
@@ -442,7 +589,7 @@ function TabDeals({
                 : "text-text-secondary hover:text-text-primary"
             )}
           >
-            <span>⚡ Aktif</span>
+            <span>Aktif</span>
             <span className="px-1.5 py-0.2 rounded-full text-2xs bg-brand-light-green text-brand-deep-green font-bold">
               {activeOpps.length}
             </span>
@@ -457,7 +604,7 @@ function TabDeals({
                 : "text-text-secondary hover:text-text-primary"
             )}
           >
-            <span>🗑️ Dibatalkan / Arsip</span>
+            <span>Dibatalkan / Arsip</span>
             {cancelledOpps.length > 0 && (
               <span className="px-1.5 py-0.2 rounded-full text-2xs bg-red-100 text-red-700 font-bold">
                 {cancelledOpps.length}
@@ -491,6 +638,13 @@ function TabDeals({
         ) : (
           <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto pr-1">
             {displayedOpps.map(o => {
+/**
+ * cust coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
               const cust = (data.parties||[]).find(p => String(p.id) === String(o.customer_party));
               const isWon = ["WON","CLOSED_WON"].includes((o.status||"").toUpperCase());
               const isCancelled = ["CANCELLED","CANCEL","BATAL"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL"].includes((o.pipeline_stage||"").toUpperCase());
@@ -518,10 +672,10 @@ function TabDeals({
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {!isCancelled && (
-                      <ActionBtn onClick={() => handleDealWon(o)} label="⚡ Deal Won" small />
+                      <ActionBtn onClick={() => handleDealWon(o)} label="Deal Won" small />
                     )}
                     {isWon && !isCancelled && (
-                      <ActionBtn onClick={() => handleExecOverride(o)} label="👑 Override" variant="ghost" small />
+                      <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small />
                     )}
                     <button 
                       onClick={() => handleDelete(o.id)} 
@@ -548,6 +702,13 @@ function TabDeals({
         {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada customer terdaftar." /> : (
           <div className="flex flex-col gap-2 max-h-[520px] overflow-y-auto">
             {(data.parties||[]).map(p => {
+/**
+ * snap coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
               const snap = (data.credit||[]).find(c => String(c.customer_party) === String(p.id));
               const limit = snap?.credit_limit || 0;
               const outstanding = snap?.outstanding_receivable || 0;
@@ -568,8 +729,8 @@ function TabDeals({
                     <span>Overdue: <b className={overdue > 0 ? "text-red-600" : ""}>{formatMoney(overdue)}</b></span>
                   </div>
                   <div className="flex gap-1.5">
-                    <ActionBtn onClick={() => handleCreditLimit(p.id, limit)} label="💳 Atur Limit" small variant="ghost" />
-                    <ActionBtn onClick={() => handleCreditRecalc(p.id)} label="🔄" small variant="ghost" />
+                    <ActionBtn onClick={() => handleCreditLimit(p.id, limit)} label="Atur Limit" small variant="ghost" />
+                    <ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" />
                   </div>
                 </div>
               );
@@ -692,10 +853,22 @@ function TabDeals({
 /* ══════════════════════════════════════════════════
    TAB: ESTIMATE & QUOTING
 ══════════════════════════════════════════════════ */
+/**
+ * TabEstimate coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals: any[]; onRefresh: () => void }) {
   const [isEstModal, setIsEstModal] = useState(false);
   const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: 100000000, overhead_cost: 30000000, markup_percent: 30, description: "" });
 
+  /**
+   * Creates a cost estimate and preserves a null opportunity relationship when none is selected.
+   *
+   * The CRM API owns persistence; this handler owns submission feedback, modal lifecycle, and parent refresh.
+   */
   const handleCreate = async () => {
     try {
       await createCostEstimate({ ...estForm, opportunity: estForm.opportunity || null });
@@ -703,7 +876,21 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
     } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal buat estimate"); }
   };
 
+/**
+ * getQuotActions coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const getQuotActions = (q: any) => {
+/**
+ * s coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
     const s = (q.status || "").toUpperCase();
     if (s === "DRAFT") return <ActionBtn onClick={async () => { await submitQuotationApproval(q.id); toast.success("Submitted!"); onRefresh(); }} label="Minta Approval" small />;
     if (s === "PENDING_APPROVAL") return <ActionBtn onClick={async () => { await approveQuotation(q.id, approvals); toast.success("Disetujui!"); onRefresh(); }} label="Setujui" small />;
@@ -736,7 +923,7 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
                   <StatusBadge status={e.status || "DRAFT"} />
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <ActionBtn onClick={async () => { await calculateCostEstimate(e.id); toast.success("HPP dihitung!"); onRefresh(); }} label="⚡ Hitung HPP" small variant="ghost" />
+                  <ActionBtn onClick={async () => { await calculateCostEstimate(e.id); toast.success("HPP dihitung."); onRefresh(); }} label="Hitung HPP" small variant="ghost" />
                   <ActionBtn onClick={async () => { await createQuotationFromEstimate(e.id); toast.success("Quotation dibuat!"); onRefresh(); }} label="📄 Buat Quotation" small />
                   <button onClick={async () => { if(!confirm("Hapus?")) return; await deleteCostEstimate(e.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors">
                     <Trash2 size={13} />
@@ -819,11 +1006,23 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
 /* ══════════════════════════════════════════════════
    TAB: SUPPORT TICKETS
 ══════════════════════════════════════════════════ */
+/**
+ * TabTickets coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", case_type: "WARRANTY_CLAIM", description: "" });
 
+  /**
+   * Creates a support ticket after enforcing the required subject.
+   *
+   * The optional customer relationship is normalized to null for the backend contract. Success closes the modal and refreshes CRM state.
+   */
   const handleCreate = async () => {
     if (!form.subject.trim()) { toast.error("Subject wajib diisi."); return; }
     try {
@@ -846,6 +1045,13 @@ function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefr
           <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto">
             {(data.cases||[]).map(c => {
               const resolved = ["RESOLVED","CLOSED"].includes((c.status||"").toUpperCase());
+/**
+ * cust coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
               const cust = (data.parties||[]).find(p => String(p.id) === String(c.customer_party));
               return (
                 <div key={c.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 gap-3">
@@ -858,7 +1064,7 @@ function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefr
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {!resolved ? (
-                      <ActionBtn onClick={async () => { await checkTicketWarrantyStatus(c.id); toast.success("Status dicek!"); onRefresh(); }} label="🔍 Check Status" small variant="ghost" />
+                      <ActionBtn onClick={async () => { await checkTicketWarrantyStatus(c.id); toast.success("Status diperbarui."); onRefresh(); }} label="Periksa status" small variant="ghost" />
                     ) : (
                       <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-2xs font-semibold">RESOLVED</span>
                     )}
@@ -958,12 +1164,24 @@ function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefr
 /* ══════════════════════════════════════════════════
    TAB: INCOMING INQUIRY
 ══════════════════════════════════════════════════ */
+/**
+ * TabIncoming coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_party: "", description: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  /**
+   * Creates a customer inquiry from the validated intake form.
+   *
+   * Subject and customer name are mandatory business identifiers. The submission guard prevents duplicate clicks while the API request is active.
+   */
   const handleCreate = async () => {
     if (!form.subject.trim() || !form.customer_name.trim()) { 
       toast.error("Subject & nama customer wajib diisi."); 
@@ -1003,7 +1221,21 @@ function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRef
       {(data.inquiries||[]).length === 0 ? <EmptyState msg="Belum ada incoming inquiry." /> : (
         <div className="flex flex-col gap-2">
           {(data.inquiries||[]).map(x => {
+/**
+ * isQual coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
             const isQual = (x.status||"").toUpperCase() === "QUALIFIED";
+/**
+ * reqs coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
             const reqs = (data.requirements||[]).filter(r => String(r.inquiry) === String(x.id));
             return (
               <div key={x.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 gap-3">
@@ -1016,7 +1248,7 @@ function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRef
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   {!isQual ? (
-                    <ActionBtn onClick={async () => { await qualifyInquiry(x.id); toast.success("Qualify berhasil!"); onRefresh(); }} label="⚡ Qualify ke Opportunity" small />
+                    <ActionBtn onClick={async () => { await qualifyInquiry(x.id); toast.success("Inquiry berhasil dikualifikasi."); onRefresh(); }} label="Jadikan opportunity" small />
                   ) : (
                     <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-2xs font-semibold">QUALIFIED</span>
                   )}
@@ -1059,6 +1291,13 @@ function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRef
               value={form.customer_party}
               onChange={e => {
                 const selectedId = e.target.value;
+/**
+ * party coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
                 const party = (data.parties || []).find(p => String(p.id) === String(selectedId));
                 setForm(f => ({
                   ...f,
@@ -1107,6 +1346,13 @@ function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRef
 /* ══════════════════════════════════════════════════
    TAB: ACCOUNTS
 ══════════════════════════════════════════════════ */
+/**
+ * TabAccounts coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabAccounts({ data }: { data: CRMData }) {
   return (
     <div className="card rounded-xl p-4">
@@ -1134,6 +1380,13 @@ function TabAccounts({ data }: { data: CRMData }) {
 /* ══════════════════════════════════════════════════
    TAB: CONTRACTS & ORDERS
 ══════════════════════════════════════════════════ */
+/**
+ * TabContracts coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabContracts({ data }: { data: CRMData }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1176,6 +1429,13 @@ function TabContracts({ data }: { data: CRMData }) {
 /* ══════════════════════════════════════════════════
    TAB: ENGAGEMENT
 ══════════════════════════════════════════════════ */
+/**
+ * TabEngagement coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabEngagement({ data }: { data: CRMData }) {
   return (
     <div className="card rounded-xl p-4">
@@ -1202,6 +1462,13 @@ function TabEngagement({ data }: { data: CRMData }) {
 /* ══════════════════════════════════════════════════
    MAIN CRM CLIENT
 ══════════════════════════════════════════════════ */
+/**
+ * CrmClient coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export default function CrmClient() {
   const { user, userRole, isAdmin, isLoading: authLoading } = useAuth();
   const router = useRouter();
@@ -1211,32 +1478,40 @@ export default function CrmClient() {
   const [refreshing, setRefreshing] = useState(false);
   const [crmData, setCrmData] = useState<CRMData | null>(null);
   const [crmDash, setCrmDash] = useState<CRMDashboard>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isNewOppOpen, setIsNewOppOpen] = useState(false);
 
   // RBAC Access Control Check
+  const enabledModules = new Set((user?.enabled_modules || []).map((code) => code.toUpperCase()));
+  const isSuper = userRole === "super_admin";
   const isAllowed = !authLoading && Boolean(
+    isSuper ||
+    enabledModules.has("CRM") && (
     isAdmin ||
-    (user as any)?.is_superuser ||
     userRole === "executive" ||
     userRole === "crm" ||
-    userRole === "pm"
+    userRole === "pm")
   );
+  const visibleTabs = CRM_TABS.filter((tab) => !tab.module || isSuper || enabledModules.has(tab.module));
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
+    setLoadError(null);
     try {
-      const { data, dashboard } = await loadCRMData();
+      const { data, dashboard } = await loadCRMData(Array.from(enabledModules));
       setCrmData(data);
       setCrmDash(dashboard);
     } catch (e) {
       console.error("CRM load error:", e);
+      const error = e as any;
+      setLoadError(error?.response?.data?.error?.message || error?.response?.data?.detail || error?.message || "Gagal memuat data CRM");
       toast.error("Gagal memuat data CRM");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user?.enabled_modules]);
 
   useEffect(() => {
     if (isAllowed) {
@@ -1273,6 +1548,13 @@ export default function CrmClient() {
     return null;
   }
 
+/**
+ * handleOpportunityCreated coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleOpportunityCreated = (newOpp: any) => {
     setCrmData(prev => {
       if (!prev) return prev;
@@ -1283,6 +1565,13 @@ export default function CrmClient() {
     });
   };
 
+/**
+ * handleOpportunityDeleted coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleOpportunityDeleted = (id: string | number) => {
     setCrmData(prev => {
       if (!prev) return prev;
@@ -1293,6 +1582,13 @@ export default function CrmClient() {
     });
   };
 
+/**
+ * handlePartyCreated coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handlePartyCreated = (newParty: any) => {
     setCrmData(prev => {
       if (!prev) return prev;
@@ -1311,10 +1607,15 @@ export default function CrmClient() {
 
   return (
     <div className="flex flex-col gap-5">
+      {loadError && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
+          Data CRM tidak dapat dimuat lengkap: {loadError}
+        </div>
+      )}
       {/* ── Header ──────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-bold text-brand-deep-green">CRM Commercial & Service Workspace</h1>
+          <h1 className="page-title">CRM & Commercial</h1>
           <p className="text-xs text-text-secondary mt-0.5">
             Inquiry → Opportunity → Quotation → Order & Service
           </p>
@@ -1331,7 +1632,7 @@ export default function CrmClient() {
 
       {/* ── Tab Navigation ───────────────────── */}
       <div className="flex gap-1.5 p-1.5 bg-bg-lighter rounded-xl border border-text-tertiary/50 overflow-x-auto">
-        {CRM_TABS.map(({ id, label, icon: Icon }) => (
+        {visibleTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}

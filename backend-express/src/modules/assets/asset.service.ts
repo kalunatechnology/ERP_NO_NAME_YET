@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/assets/asset.service.ts
+ *
+ * Purpose: Implements domain service responsibilities for the assets domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Decimal } from '@prisma/client/runtime/library';
 import prisma from '../../config/database';
 import { AccountingError, NotFoundError, ValidationError } from '../../utils/errors';
@@ -25,11 +33,27 @@ export class AssetService {
   // HELPER: Resolve akun GL dari kategori aset atau fallback ke COA default
   // ---------------------------------------------------------------------------
 
+/**
+ * resolveAssetAccounts implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `asset_category`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   private static async resolveAssetAccounts(categoryId: string | null, companyId: string | null) {
     const category = categoryId
       ? await prisma.asset_category.findUnique({ where: { id: categoryId } })
       : null;
 
+/**
+ * findAccount implements a named function within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `fin_account`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
     const findAccount = async (accountId: string | null | undefined, fallbackCode: string) => {
       if (accountId) {
         const acc = await prisma.fin_account.findUnique({ where: { id: accountId } });
@@ -57,6 +81,14 @@ export class AssetService {
   //    Straight-Line Method + Idempotency Guard + Decimal Residual Adjustment
   // ---------------------------------------------------------------------------
 
+/**
+ * runMonthlyDepreciation implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `asset_asset`, `asset_book`, `asset_depreciation_line`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async runMonthlyDepreciation(assetId: string, periodDate: Date, userId: string) {
     const asset = await prisma.asset_asset.findUnique({ where: { id: assetId } });
     if (!asset) throw new NotFoundError('Asset');
@@ -245,6 +277,14 @@ export class AssetService {
   // 2. BATCH DEPRECIATION (Chunked 50 aset/batch — Anti-Timeout & Anti-Locking)
   // ---------------------------------------------------------------------------
 
+/**
+ * runBatchDepreciation implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `asset_asset`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async runBatchDepreciation(periodDate: Date, companyId: string, userId: string) {
     // Ambil semua aset aktif milik perusahaan
     const allActiveAssets = await prisma.asset_asset.findMany({
@@ -308,6 +348,14 @@ export class AssetService {
   //    Generate jadwal penyusutan lengkap sepanjang umur ekonomis aset.
   // ---------------------------------------------------------------------------
 
+/**
+ * getDepreciationSchedule implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `asset_asset`, `asset_book`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async getDepreciationSchedule(assetId: string) {
     const asset = await prisma.asset_asset.findUnique({ where: { id: assetId } });
     if (!asset) throw new NotFoundError('Asset');
@@ -383,6 +431,14 @@ export class AssetService {
   //    Pelepasan aset + auto-jurnal GL (Laba / Rugi Pelepasan Aset)
   // ---------------------------------------------------------------------------
 
+/**
+ * disposeAsset implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `asset_asset`, `asset_book`, `fin_account`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async disposeAsset(assetId: string, disposalDate: Date, proceedsAmount: number, userId: string) {
     const asset = await prisma.asset_asset.findUnique({ where: { id: assetId } });
     if (!asset) throw new NotFoundError('Asset');

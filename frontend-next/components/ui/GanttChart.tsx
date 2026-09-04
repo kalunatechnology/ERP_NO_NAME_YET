@@ -1,3 +1,11 @@
+/**
+ * File: frontend-next/components/ui/GanttChart.tsx
+ *
+ * Purpose: Implements React UI component responsibilities in the frontend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -26,10 +34,24 @@ const COLORS = {
 };
 const FONT = "'Google Sans', Roboto, sans-serif";
 
+/**
+ * GanttChart coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function GanttChart({ tasks, weeks }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef    = useRef<HTMLCanvasElement>(null);
 
+/**
+ * draw coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   function draw() {
     const container = containerRef.current;
     const canvas    = canvasRef.current;
@@ -168,6 +190,13 @@ export function GanttChart({ tasks, weeks }: GanttChartProps) {
   );
 }
 
+/**
+ * roundRect coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   if (w < 2 * r) r = w / 2;
   if (h < 2 * r) r = h / 2;

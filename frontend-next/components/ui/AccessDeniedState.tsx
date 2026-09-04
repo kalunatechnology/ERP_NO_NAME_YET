@@ -16,6 +16,13 @@ interface AccessDeniedStateProps {
   compact?: boolean;
 }
 
+/**
+ * AccessDeniedState coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function AccessDeniedState({
   title = "Akses Terbatas",
   description = "Anda tidak memiliki izin untuk mengakses bagian ini. Hubungi administrator sistem untuk mendapatkan hak akses yang diperlukan.",
@@ -113,6 +120,13 @@ export function AccessDeniedState({
   );
 }
 
+/**
+ * isForbiddenError coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function isForbiddenError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const e = err as any;

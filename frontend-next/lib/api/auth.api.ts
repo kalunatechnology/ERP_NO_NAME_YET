@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines frontend API adapter contracts and their integration boundary for the frontend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * Auth API
  * Ported dari uji_prototype/js/services/auth.service.js
  */
@@ -18,7 +20,10 @@ export interface UserProfile {
   full_name?: string;
   is_superuser?: boolean;
   is_staff?: boolean;
-  roles?: { role: string; role_code?: string; role_name?: string; company_id?: string | number }[];
+  company_id?: string | null;
+  active_role_code?: string | null;
+  enabled_modules?: string[];
+  roles?: { role?: string; role_code?: string; role_name?: string; company_id?: string | number | null }[];
 }
 
 export const DEMO_PROFILES: UserProfile[] = [
@@ -28,9 +33,10 @@ export const DEMO_PROFILES: UserProfile[] = [
     email: "rian@arsalynk.com",
     username: "rian",
     full_name: "Rian Destianto",
-    is_superuser: true,
+    is_superuser: false,
     is_staff: true,
-    roles: [{ role: "EXECUTIVE", role_code: "ROLE-DIRECTOR", role_name: "Director & Super Admin", company_id: "10000000-0000-0000-0000-000000000001" }],
+    company_id: "10000000-0000-0000-0000-000000000001",
+    roles: [{ role: "COMPANY_ADMIN", role_code: "ROLE-COMPANY-ADMIN", role_name: "Company Administrator", company_id: "10000000-0000-0000-0000-000000000001" }],
   },
   {
     id: "e0000000-0000-0000-0000-000000000002",
@@ -44,7 +50,7 @@ export const DEMO_PROFILES: UserProfile[] = [
     email: "melika.ops@arsalynk.com",
     username: "melika.ops",
     full_name: "Melika (Ops & Supervisor)",
-    roles: [{ role: "PROJECT_ASSIGNEE", role_code: "ROLE-SUPERVISOR", role_name: "Operational Lead & Supervisor", company_id: "10000000-0000-0000-0000-000000000001" }],
+    roles: [{ role: "OPERATIONAL_MANAGER", role_code: "ROLE-OM", role_name: "Operational Manager", company_id: "10000000-0000-0000-0000-000000000001" }],
   },
   {
     id: "e0000000-0000-0000-0000-000000000004",
@@ -208,6 +214,14 @@ export const DEMO_PROFILES: UserProfile[] = [
 ];
 
 /* ── Login ────────────────────────────────── */
+/**
+ * loginUser adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function loginUser(email: string, password: string): Promise<LoginPayload> {
   const cleanEmail = email.trim().toLowerCase();
 
@@ -244,43 +258,56 @@ export async function loginUser(email: string, password: string): Promise<LoginP
 }
 
 /* ── Get current user profile ─────────────── */
+/**
+ * getMyProfile adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function getMyProfile(): Promise<UserProfile> {
-  const access = localStorage.getItem("erp.access");
-  if (access && access.startsWith("demo-jwt-")) {
-    const storedUser = localStorage.getItem("erp.user");
-    if (storedUser) {
-      try { return JSON.parse(storedUser); } catch {}
-    }
-  }
-
-  try {
-    const res = await api.get<any>("/api/v1/auth/me/");
-    const raw = res.data?.data || res.data;
-    if (raw) {
-      const userObj: UserProfile = raw.user
-        ? {
-            ...raw.user,
-            roles: raw.roles || raw.user.roles || [],
-          }
-        : raw;
-
-      if (userObj && (userObj.full_name || userObj.email)) {
-        localStorage.setItem("erp.user", JSON.stringify(userObj));
-        return userObj;
+  const res = await api.get<any>("/api/v1/auth/me/");
+  const raw = res.data?.data || res.data;
+  const userObj: UserProfile | null = raw?.user
+    ? {
+        ...raw.user,
+        roles: raw.roles || raw.user.roles || [],
+        active_role_code: raw.active_role_code || raw.user.active_role_code || null,
+        enabled_modules: raw.enabled_modules || raw.user.enabled_modules || [],
       }
-    }
-  } catch {
-    const storedUser = localStorage.getItem("erp.user");
-    if (storedUser) {
-      try { return JSON.parse(storedUser); } catch {}
-    }
-  }
+    : raw;
 
-  return DEMO_PROFILES[0];
+  if (!userObj || (!userObj.full_name && !userObj.email)) {
+    throw new Error("Profil user tidak valid dari server.");
+  }
+  localStorage.setItem("erp.user", JSON.stringify(userObj));
+  return userObj;
+}
+
+/**
+ * changeActiveRole adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/auth/active-role/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
+export async function changeActiveRole(roleCode: string): Promise<UserProfile> {
+  await api.patch("/api/v1/auth/active-role/", { role_code: roleCode });
+  return getMyProfile();
 }
 
 
 /* ── Logout ───────────────────────────────── */
+/**
+ * logoutUser adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/auth/logout/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function logoutUser(): Promise<void> {
   const refresh = localStorage.getItem("erp.refresh");
   if (refresh && !refresh.startsWith("demo-")) {
@@ -293,22 +320,37 @@ export async function logoutUser(): Promise<void> {
 }
 
 /* ── Get companies list ───────────────────── */
+/**
+ * getCompanies adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/core/companies/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function getCompanies() {
-  try {
-    const { data } = await api.get("/api/v1/core/companies/");
-    return normalizeList(data);
-  } catch {
-    return {
-      rows: [
-        { id: "10000000-0000-0000-0000-000000000001", name: "PT Sinergi Muda Arsa", code: "SMA" },
-        { id: "00000000-0000-0000-0000-000000000010", name: "PT Coba Arsalynk (Ghost Company)", code: "GHOST-ARSALYNK" },
-      ],
-      count: 2
-    };
-  }
+  const { data } = await api.get("/api/v1/core/companies/");
+  const normalized = normalizeList<Record<string, unknown>>(data);
+  return {
+    count: normalized.count,
+    rows: normalized.rows.map((company) => ({
+      ...company,
+      id: String(company.id),
+      name: String(company.legal_name || company.name || "Company"),
+      code: String(company.company_code || company.code || ""),
+    })),
+  };
 }
 
 /* ── Change password ─────────────────────── */
+/**
+ * changePassword adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/auth/change-password/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function changePassword(currentPassword: string, newPassword: string) {
   const { data } = await api.post("/api/v1/auth/change-password/", {
     current_password: currentPassword,
@@ -318,6 +360,14 @@ export async function changePassword(currentPassword: string, newPassword: strin
 }
 
 /* ── Update Profile (Name & Email) ────────── */
+/**
+ * updateUserProfile adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/auth/update-profile/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function updateUserProfile(payload: { full_name?: string; email?: string; phone?: string }) {
   const { data } = await api.post("/api/v1/auth/update-profile/", payload);
   if (data?.user) {
@@ -327,6 +377,14 @@ export async function updateUserProfile(payload: { full_name?: string; email?: s
 }
 
 /* ── Signup / Register User ──────────────── */
+/**
+ * registerUser adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/auth/signup/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function registerUser(payload: {
   name: string;
   email: string;

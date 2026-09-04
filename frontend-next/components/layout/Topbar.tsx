@@ -1,8 +1,15 @@
+/**
+ * File: frontend-next/components/layout/Topbar.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useRef, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Bell, Menu, ChevronDown, Check, Building2, LogOut, ShieldCheck, Lock } from "lucide-react";
+import { Search, Bell, CalendarCheck, Menu, ChevronDown, Check, Building2, LogOut, ShieldCheck, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -12,19 +19,6 @@ interface TopbarProps {
   onNotificationClick?: () => void;
   onAiChatToggle?: () => void;
 }
-
-const DEMO_PERSONAS = [
-  { email: "admin@arsalynk.id", name: "Sutanto Admin", role: "Super Administrator · Full Multi-Tenant", icon: "👑", company: "Semua Company" },
-  { email: "director@arsalynk.id", name: "Bambang Director", role: "Direksi / Executive · P&L", icon: "🏛️", company: "PT Sinergi Muda Arsa" },
-  { email: "pm@arsalynk.id", name: "Rina Sari PM", role: "Project Manager · WBS & Gantt", icon: "🏗️", company: "PT Sinergi Muda Arsa" },
-  { email: "supervisor@arsalynk.id", name: "Ahmad Rizki", role: "Field Supervisor · Timesheet", icon: "👷", company: "PT Sinergi Muda Arsa" },
-  { email: "manager@arsalynk.id", name: "Dewi Kurnia", role: "CRM & Sales Lead · Pipeline", icon: "👔", company: "PT Sinergi Muda Arsa" },
-  { email: "sales@arsalynk.id", name: "Hendra Sales", role: "Sales Commercial · Quotation", icon: "🧑‍💼", company: "PT Sinergi Muda Arsa" },
-  { email: "finance@arsalynk.id", name: "Budi Santoso", role: "Finance Controller · AR/AP & Kas", icon: "💼", company: "PT Sinergi Muda Arsa" },
-  { email: "dummy.admin@example.com", name: "Dummy Administrator", role: "Administrator Demo", icon: "👑", company: "PT Sinergi Muda Arsa" },
-  { email: "dummy.pm@example.com", name: "Dummy Project Manager", role: "PM Demo · Projects", icon: "🏗️", company: "PT Sinergi Muda Arsa" },
-  { email: "dummy.finance@example.com", name: "Dummy Finance", role: "Finance Demo · Invoicing", icon: "💰", company: "PT Sinergi Muda Arsa" },
-];
 
 /* ── Breadcrumb builder ─────────────────────────── */
 function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
@@ -52,7 +46,7 @@ import { User, KeyRound, Sparkles } from "lucide-react";
 export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, company, setCompany, companies, isAdmin } = useAuth();
+  const { user, userRole, logout, company, setCompany, companies } = useAuth();
   const crumbs = buildBreadcrumb(pathname);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -101,7 +95,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
 
   const initial = user?.full_name?.[0] ?? user?.email?.[0]?.toUpperCase() ?? "U";
   const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
-  const roleName = user?.roles?.[0]?.role_name || (user?.is_superuser ? "Executive / Super Admin" : "Team Member");
+  const roleName = user?.roles?.find((role) => role.role_code === user.active_role_code)?.role_name || user?.roles?.[0]?.role_name || "Team Member";
 
   return (
     <header
@@ -151,10 +145,10 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
         {/* Company Selector Box */}
         {(() => {
           const activeCompanyName =
-            companies.find((c) => String(c.id) === String(company))?.name || "PT Sinergi Muda Arsa";
+            companies.find((c) => String(c.id) === String(company))?.name || (userRole === "super_admin" ? "Global" : "Company tidak tersedia");
 
-          return isAdmin ? (
-            /* Admin can pick any company */
+          return userRole === "super_admin" ? (
+            /* Only Super Admin can select a company context for global read/governance. */
             <div className="relative hidden md:block" ref={compRef}>
               <button
                 onClick={() => setIsCompanyDropdownOpen(!isCompanyDropdownOpen)}
@@ -188,16 +182,6 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
                         {company === String(c.id) && <Check size={13} className="text-brand-deep-green" />}
                       </button>
                     ))}
-                    <div className="pt-2 border-t border-text-tertiary">
-                      <label className="text-2xs text-text-secondary px-2 block mb-1">Custom X-Company-ID:</label>
-                      <input
-                        type="text"
-                        placeholder="arsalyn"
-                        value={company || ""}
-                        onChange={e => setCompany(e.target.value || null)}
-                        className="input py-1 text-xs"
-                      />
-                    </div>
                   </div>
                 </div>
               )}
@@ -228,10 +212,20 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
           </kbd>
         </button>
 
+        <button
+          type="button"
+          onClick={() => router.push('/reporting?tab=attendance')}
+          className="flex-shrink-0 p-2 sm:p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/60 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+          aria-label="Buka laporan kehadiran"
+          title="Laporan Kehadiran"
+        >
+          <CalendarCheck size={19} aria-hidden="true" />
+        </button>
+
         {/* Notification Bell / Mobile Right Drawer Trigger */}
         <button
           type="button"
-          onClick={onNotificationClick ? onNotificationClick : () => toast("Semua notifikasi & alert tersinkronisasi", { icon: "🔔" })}
+          onClick={onNotificationClick ? onNotificationClick : () => toast("Semua notifikasi dan alert tersinkronisasi.")}
           className="flex-shrink-0 p-2 sm:p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/60 active:scale-95 transition-all relative cursor-pointer flex items-center justify-center"
           aria-label="Buka Notifikasi & Feed Tim"
           title="Buka Notifikasi & Feed Tim"
@@ -320,4 +314,3 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
     </header>
   );
 }
-

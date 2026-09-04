@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/requests/RequestCardFeed.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -15,11 +22,25 @@ interface RequestCardFeedProps {
   refreshTrigger?: number;
 }
 
+/**
+ * RequestCardFeed owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
 export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger }: RequestCardFeedProps) {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("ALL");
 
+/**
+ * fetchRequests owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
   const fetchRequests = async () => {
     setLoading(true);
     try {
@@ -42,6 +63,13 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
     fetchRequests();
   }, [filterType, refreshTrigger]);
 
+/**
+ * getStatusBadge owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "COMPLETED":

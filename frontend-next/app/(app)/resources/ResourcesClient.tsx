@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/app/(app)/resources/ResourcesClient.tsx
+ *
+ * Purpose: Defines the Next App Router entry and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -9,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
+import { useAuth } from "@/contexts/AuthContext";
+import { AccessAdministration } from "@/components/administration/AccessAdministration";
 
 const RESOURCES = [
   /* ── Projects ────────── */
@@ -38,7 +47,15 @@ const RESOURCES = [
   { id: "companies",     name: "Companies",              endpoint: "/api/v1/core/companies/",                  category: "Core" },
 ];
 
+/**
+ * ResourcesClient coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export default function ResourcesClient() {
+  const { userRole } = useAuth();
   const searchParams = useSearchParams();
   const initialQuery = searchParams?.get("search") || "";
 
@@ -67,6 +84,13 @@ export default function ResourcesClient() {
     }
   }, [selectedRes?.id]);
 
+/**
+ * fetchRows coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const fetchRows = async (res = selectedRes) => {
     setLoading(true);
     try {
@@ -90,6 +114,10 @@ export default function ResourcesClient() {
   // Extract top columns
   const sample = rows[0] || {};
   const columns = Object.keys(sample).slice(0, 6);
+
+  if (userRole === "super_admin" || userRole === "company_admin") {
+    return <AccessAdministration />;
+  }
 
   return (
     <div className="flex flex-col gap-6">

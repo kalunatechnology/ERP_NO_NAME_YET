@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/app/(app)/dashboard/DashboardClient.tsx
+ *
+ * Purpose: Defines the Next App Router entry and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -44,6 +51,13 @@ interface KpiCardProps {
   onClick?: () => void;
 }
 
+/**
+ * KpiCard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function KpiCard({
   label,
   value,
@@ -91,6 +105,13 @@ function KpiCard({
   );
 }
 
+/**
+ * SectionHeader coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function SectionHeader({ title, actionLabel, actionHref }: { title: string; actionLabel?: string; actionHref?: string }) {
   return (
     <div className="flex items-center justify-between mb-3.5">
@@ -105,6 +126,13 @@ function SectionHeader({ title, actionLabel, actionHref }: { title: string; acti
   );
 }
 
+/**
+ * StatusBadge coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function StatusBadge({ status }: { status: string }) {
   return (
     <span className={cn("inline-flex px-2.5 py-0.5 rounded-full text-2xs font-bold tracking-tight", getStatusColor(status))}>
@@ -113,6 +141,13 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * ProgressBar coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function ProgressBar({ value, color = "#5A861F", height = 7 }: { value: number; color?: string; height?: number }) {
   return (
     <div className="w-full bg-[#E5E9E2] rounded-full overflow-hidden p-0.5 shadow-2xs" style={{ height }}>
@@ -124,6 +159,13 @@ function ProgressBar({ value, color = "#5A861F", height = 7 }: { value: number; 
   );
 }
 
+/**
+ * LoadingDashboard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function LoadingDashboard() {
   return (
     <div className="flex flex-col gap-6">
@@ -147,6 +189,13 @@ function LoadingDashboard() {
    PM DASHBOARD
 ═══════════════════════════════════════════════════════════════ */
 
+/**
+ * PMDashboard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function PMDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
   const today = new Date().toISOString().split("T")[0];
 
@@ -435,6 +484,13 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
                     const progress = p.progress_percentage || p.progress || 0;
                     const deadline = p.end_date || p.planned_end_date;
                     const isDelayed = deadline && deadline < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
+/**
+ * taskCount coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
                     const taskCount = (p.main_tasks || []).reduce((acc, mt) => acc + (mt.weekly_tasks || mt.weekly_plans || []).reduce((a2, wt) => a2 + (wt.daily_tasks || []).length, 0), 0);
                     return (
                       <tr key={p.id} className={cn("border-b border-text-tertiary/50 hover:bg-bg-lighter/50 transition-colors", i % 2 === 0 && "bg-white")}>
@@ -458,7 +514,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
                         <td className="px-4 py-3">
                           <span className={cn("text-xs", isDelayed ? "text-red-600 font-semibold" : "text-text-secondary")}>
                             {deadline ? formatDate(deadline) : "-"}
-                            {isDelayed && " ⚠️"}
+                            {isDelayed && " · Terlambat"}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -481,6 +537,13 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
    FINANCE DASHBOARD
 ═══════════════════════════════════════════════════════════════ */
 
+/**
+ * FinanceDashboard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData | null; loading: boolean }) {
   if (loading || !finData) return <LoadingDashboard />;
 
@@ -659,6 +722,13 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
    EXECUTIVE DASHBOARD
 ═══════════════════════════════════════════════════════════════ */
 
+/**
+ * ExecutiveDashboard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function ExecutiveDashboard({ projects, finData, loading }: {
   projects: Project[];
   finData: FinanceDashboardData | null;
@@ -681,6 +751,13 @@ function ExecutiveDashboard({ projects, finData, loading }: {
 
   const kpis = finData?.kpis;
   const pendingCount = kpis?.pendingRequests || 0;
+/**
+ * urgentPending coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const urgentPending = (finData?.pendingItems || []).filter(i => i.urgency === "urgent").length;
 
   // Derive Real Timeline Tasks
@@ -890,7 +967,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
                       <span className={cn("flex items-center gap-0.5", isDelayed && "text-red-600 font-medium")}>
                         <CalendarDays size={11} />
                         {deadline ? formatDate(deadline) : "Belum ada deadline"}
-                        {isDelayed && " ⚠️"}
+                        {isDelayed && " · Terlambat"}
                       </span>
                       {budget > 0 && (
                         <span>{finSum ? `${finSum.utilization}% budget` : formatMoney(budget)}</span>
@@ -943,6 +1020,13 @@ function ExecutiveDashboard({ projects, finData, loading }: {
    CRM DASHBOARD
 ═══════════════════════════════════════════════════════════════ */
 
+/**
+ * CRMDashboard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function CRMDashboard({
   projects,
   crmData,
@@ -1092,6 +1176,13 @@ function CRMDashboard({
    STAFF DASHBOARD
 ═══════════════════════════════════════════════════════════════ */
 
+/**
+ * StaffDashboard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function StaffDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
   const today = new Date().toISOString().split("T")[0];
 
@@ -1229,6 +1320,13 @@ function StaffDashboard({ projects, loading }: { projects: Project[]; loading: b
    MAIN DASHBOARD CLIENT — Role Router
 ═══════════════════════════════════════════════════════════════ */
 
+/**
+ * DashboardClient coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export default function DashboardClient() {
   const { userRole, user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1237,6 +1335,7 @@ export default function DashboardClient() {
   const [crmDash, setCrmDash] = useState<CRMDashType>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Marka+ Request Card & Ticketing States
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
@@ -1244,32 +1343,41 @@ export default function DashboardClient() {
   const [successRequestData, setSuccessRequestData] = useState<any>(null);
   const [selectedReviewRequest, setSelectedReviewRequest] = useState<any>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const enabledModules = new Set((user?.enabled_modules || []).map((module) => module.toUpperCase()));
+  const canUseProjects = userRole === "super_admin" || enabledModules.has("PROJECTS");
+  const canUseFinance = userRole === "super_admin" || enabledModules.has("FINANCE");
+  const canUseCrm = userRole === "super_admin" || enabledModules.has("CRM");
+  const canUseRequests = userRole === "super_admin" || enabledModules.has("REQUESTS");
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
+    setLoadError(null);
     try {
       // Load project data for all roles
-      const projectData = await loadAllProjects().catch(() => []);
+      const projectData = canUseProjects ? await loadAllProjects(user?.enabled_modules || []) : [];
       setProjects(projectData);
 
       // Load finance data for finance & executive roles
-      if (userRole === "finance" || userRole === "executive") {
-        const fin = await loadFinanceDashboard().catch(() => null);
+      if ((userRole === "finance" || userRole === "executive") && canUseFinance) {
+        const fin = await loadFinanceDashboard(user?.enabled_modules || []);
         setFinData(fin);
       }
 
       // Load CRM data for crm & executive roles
-      if (userRole === "crm" || userRole === "executive") {
-        const crm = await loadCRMData().catch(() => ({ data: null, dashboard: {} }));
+      if ((userRole === "crm" || userRole === "executive") && canUseCrm) {
+        const crm = await loadCRMData(user?.enabled_modules || []);
         setCrmData(crm.data);
         setCrmDash(crm.dashboard || {});
       }
+    } catch (error: any) {
+      const message = error?.response?.data?.error?.message || error?.response?.data?.detail || error?.message || "Gagal memuat dashboard";
+      setLoadError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [userRole]);
+  }, [userRole, user?.enabled_modules, canUseProjects, canUseFinance, canUseCrm]);
 
   useEffect(() => {
     loadData();
@@ -1277,7 +1385,10 @@ export default function DashboardClient() {
 
   /* ── Role-specific title & subtitle ─── */
   const titles: Record<string, { title: string; subtitle: string }> = {
+    super_admin: { title: "Governance Dashboard", subtitle: "Kelola company dan aktivasi modul tanpa mengubah data operasional" },
+    company_admin: { title: "Company Administration", subtitle: "Kelola user, role, dan operasional company Anda" },
     executive: { title: "Executive Dashboard", subtitle: "Company-wide overview — semua proyek & keuangan" },
+    om: { title: "Operational Manager Dashboard", subtitle: "Monitoring proyek, pelaksanaan, dan laporan operasional" },
     pm: { title: "Project Manager Dashboard", subtitle: "Monitoring proyek & task operasional Anda" },
     finance: { title: "Finance Dashboard", subtitle: "Monitoring keuangan, anggaran & approval" },
     crm: { title: "CRM & Sales Dashboard", subtitle: "Monitoring pipeline, deal & aktivitas CRM" },
@@ -1289,6 +1400,11 @@ export default function DashboardClient() {
 
   return (
     <div className="flex flex-col gap-5">
+      {loadError && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
+          Data dashboard tidak dapat dimuat lengkap: {loadError}
+        </div>
+      )}
       {/* ── Page Header ─────────────────── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -1298,13 +1414,13 @@ export default function DashboardClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          {canUseRequests && userRole !== "super_admin" && <button
             onClick={() => setIsNewRequestModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[14px] bg-[#275433] hover:bg-[#1E3A2B] text-white text-xs font-extrabold shadow-sm hover:shadow-md transition-all select-none"
           >
             <Sparkles size={14} className="text-[#EAF8D6]" />
             <span>Request Card</span>
-          </button>
+          </button>}
           <button
             onClick={() => loadData(true)}
             disabled={refreshing}
@@ -1321,7 +1437,14 @@ export default function DashboardClient() {
       {userRole === "executive" && (
         <ExecutiveDashboard projects={projects} finData={finData} loading={loading} />
       )}
-      {userRole === "pm" && (
+      {userRole === "super_admin" && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <KpiCard label="Akses Global" value="Read-only" subLabel="Data operasional lintas company" icon={ShieldAlert} />
+          <KpiCard label="Module Governance" value="Per Company" subLabel="Aktivasi read/write terpisah" icon={Layers} />
+          <KpiCard label="Kelola Company" value="Open" subLabel="Buka Company & Access" icon={Building2} onClick={() => window.location.assign('/resources')} />
+        </div>
+      )}
+      {(userRole === "pm" || userRole === "om" || userRole === "company_admin") && (
         <PMDashboard projects={projects} loading={loading} />
       )}
       {userRole === "finance" && (
@@ -1340,16 +1463,16 @@ export default function DashboardClient() {
       )}
 
       {/* ── Marka+ Active Request Cards Feed ── */}
-      <section className="mt-2 pt-5 border-t border-[#D5E2D7]">
+      {canUseRequests && userRole !== "super_admin" && <section className="mt-2 pt-5 border-t border-[#D5E2D7]">
         <RequestCardFeed
           onRequestClick={(req) => setSelectedReviewRequest(req)}
           onOpenNewModal={() => setIsNewRequestModalOpen(true)}
           refreshTrigger={refreshTrigger}
         />
-      </section>
+      </section>}
 
       {/* ── Marka+ Interactive Modals ── */}
-      <NewCardRequestModal
+      {canUseRequests && <NewCardRequestModal
         isOpen={isNewRequestModalOpen}
         onClose={() => setIsNewRequestModalOpen(false)}
         onSuccess={(data) => {
@@ -1358,22 +1481,22 @@ export default function DashboardClient() {
           setIsSuccessModalOpen(true);
           setRefreshTrigger(prev => prev + 1);
         }}
-      />
+      />}
 
-      <RequestSuccessModal
+      {canUseRequests && <RequestSuccessModal
         isOpen={isSuccessModalOpen}
         onClose={() => setIsSuccessModalOpen(false)}
         requestData={successRequestData}
-      />
+      />}
 
-      <RequestReviewModal
+      {canUseRequests && <RequestReviewModal
         isOpen={!!selectedReviewRequest}
         onClose={() => setSelectedReviewRequest(null)}
         request={selectedReviewRequest}
         onActionComplete={() => {
           setRefreshTrigger(prev => prev + 1);
         }}
-      />
+      />}
     </div>
   );
 }

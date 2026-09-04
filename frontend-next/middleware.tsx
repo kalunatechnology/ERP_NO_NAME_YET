@@ -1,5 +1,21 @@
+/**
+ * File: frontend-next/middleware.tsx
+ *
+ * Purpose: Implements application infrastructure responsibilities in the frontend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 import { NextResponse, type NextRequest } from 'next/server';
 
+/**
+ * middleware implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 

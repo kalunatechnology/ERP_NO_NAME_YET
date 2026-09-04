@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines frontend API adapter contracts and their integration boundary for the frontend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * Axios instance dengan JWT interceptor & Cookie Sync
  * Ported dari uji_prototype/js/core/http.js
  */
@@ -29,6 +31,10 @@ function syncCookie(token?: string) {
 /* ── Request Interceptor: tambah Authorization & Company header ── */
 api.interceptors.request.use(
   (config) => {
+    const method = String(config.method || 'get').toUpperCase();
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && config.headers && !config.headers["Idempotency-Key"]) {
+      config.headers["Idempotency-Key"] = crypto.randomUUID();
+    }
     if (typeof window !== "undefined") {
       const access =
         localStorage.getItem("erp.access") ||
@@ -58,6 +64,14 @@ api.interceptors.request.use(
 /* ── Response Interceptor: handle 401 → refresh token with Mutex Singleton ── */
 let refreshPromise: Promise<string | null> | null = null;
 
+/**
+ * refreshTokenOnce adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 function refreshTokenOnce(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
 

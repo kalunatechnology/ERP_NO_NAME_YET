@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines frontend API adapter contracts and their integration boundary for the frontend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * CRM & Sales API — Consolidated service matching uji_prototype/js/services/crm.service.js
  * All endpoints and workflow actions from the validated prototype
  */
@@ -61,44 +63,79 @@ const CRM_SOURCES: Record<keyof CRMData, string> = {
   parties:      "/api/v1/master-data/parties/?page_size=300",
 };
 
+const SOURCE_MODULE: Partial<Record<keyof CRMData, string>> = {
+  quotations: "SALES", contracts: "SALES", orders: "SALES",
+  cases: "SERVICE", resolutions: "SERVICE",
+};
+
 /* ── Data Loading ─────────────────────────────────── */
-export async function loadCRMData(): Promise<{ data: CRMData; dashboard: CRMDashboard }> {
+/**
+ * loadCRMData adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/commands/reporting/crm-sales-dashboard/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
+export async function loadCRMData(enabledModules?: readonly string[]): Promise<{ data: CRMData; dashboard: CRMDashboard }> {
+  const enabled = new Set((enabledModules || []).map((code) => code.toUpperCase()));
+  const sources = Object.entries(CRM_SOURCES).filter(([key]) => {
+    const moduleCode = SOURCE_MODULE[key as keyof CRMData];
+    return !moduleCode || enabled.size === 0 || enabled.has(moduleCode);
+  });
   const entries = await Promise.all(
-    Object.entries(CRM_SOURCES).map(async ([key, path]) => {
-      try {
-        const res = await api.get(path);
-        return [key, normalizeList<any>(res.data).rows];
-      } catch {
-        return [key, []];
-      }
+    sources.map(async ([key, path]) => {
+      const res = await api.get(path);
+      return [key, normalizeList<any>(res.data).rows];
     })
   );
 
-  let dashboard: CRMDashboard = {};
-  try {
-    const dashRes = await api.get("/api/v1/commands/reporting/crm-sales-dashboard/");
-    dashboard = dashRes.data?.data || dashRes.data || {};
-  } catch {
-    dashboard = {};
-  }
+  const dashRes = await api.get("/api/v1/commands/reporting/crm-sales-dashboard/");
+  const dashboard: CRMDashboard = dashRes.data?.data || dashRes.data || {};
+
+  const emptyData = Object.fromEntries(Object.keys(CRM_SOURCES).map((key) => [key, []]));
 
   return {
-    data: Object.fromEntries(entries) as CRMData,
+    data: { ...emptyData, ...Object.fromEntries(entries) } as CRMData,
     dashboard,
   };
 }
 
 /* ── Opportunity Actions ─────────────────────────── */
+/**
+ * processDealWon adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/opportunities/${id}/process-deal-won/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function processDealWon(id: string | number) {
   const { data } = await api.post(`/api/v1/crm/opportunities/${id}/process-deal-won/`, {});
   return data;
 }
 
+/**
+ * executiveOverrideCredit adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/opportunities/${id}/executive-override/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function executiveOverrideCredit(id: string | number) {
   const { data } = await api.post(`/api/v1/crm/opportunities/${id}/executive-override/`, {});
   return data;
 }
 
+/**
+ * createOpportunity adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/opportunities/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createOpportunity(payload: {
   opportunity_name: string;
   customer_party?: string | number | null;
@@ -119,33 +156,41 @@ export async function createOpportunity(payload: {
   return data;
 }
 
+/**
+ * deleteOpportunity adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/opportunities/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteOpportunity(id: string | number) {
-  try {
-    const res = await api.delete(`/api/v1/crm/opportunities/${id}/`);
-    return res.data;
-  } catch (error: any) {
-    // Fallback jika backend mengembalikan 500 karena Protected ForeignKey
-    if (error?.response?.status === 500) {
-      try {
-        const patchRes = await api.patch(`/api/v1/crm/opportunities/${id}/`, {
-          pipeline_stage: "LOST",
-          status: "CANCELLED",
-        });
-        return patchRes.data;
-      } catch (patchErr) {
-        throw new Error(error?.response?.data?.detail || "Opportunity memiliki relasi dokumen aktif.");
-      }
-    }
-    throw error;
-  }
+  const res = await api.delete(`/api/v1/crm/opportunities/${id}/`);
+  return res.data;
 }
 
 /* ── Customer Inquiry Actions ────────────────────── */
+/**
+ * qualifyInquiry adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/customer-inquiries/${id}/qualify/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function qualifyInquiry(id: string | number) {
   const { data } = await api.post(`/api/v1/crm/customer-inquiries/${id}/qualify/`, {});
   return data;
 }
 
+/**
+ * createCustomerInquiry adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/customer-inquiries/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createCustomerInquiry(payload: {
   subject: string;
   customer_name: string;
@@ -166,6 +211,14 @@ export async function createCustomerInquiry(payload: {
   return data;
 }
 
+/**
+ * createInquiryRequirement adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/inquiry-requirements/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createInquiryRequirement(payload: {
   inquiry: string | number;
   product?: string | number | null;
@@ -186,11 +239,27 @@ export async function createInquiryRequirement(payload: {
   return data;
 }
 
+/**
+ * deleteCustomerInquiry adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/customer-inquiries/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteCustomerInquiry(id: string | number) {
   await api.delete(`/api/v1/crm/customer-inquiries/${id}/`);
 }
 
 /* ── Cost Estimate Actions ───────────────────────── */
+/**
+ * createCostEstimate adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/cost-estimates/`, `/api/v1/crm/cost-estimate-lines/`, `/api/v1/crm/cost-estimate-lines/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createCostEstimate(payload: {
   opportunity?: string | number | null;
   inquiry?: string | number | null;
@@ -219,44 +288,82 @@ export async function createCostEstimate(payload: {
 
   // Auto-create lines
   if (data?.id) {
-    try {
-      await api.post("/api/v1/crm/cost-estimate-lines/", {
+    await api.post("/api/v1/crm/cost-estimate-lines/", {
         estimate: data.id, cost_element: "MATERIAL",
         description: payload.description || "Biaya Langsung Pengadaan / Produksi",
         quantity: 1, unit_cost: directCost, amount: directCost,
       });
-      if (overheadCost > 0) {
+    if (overheadCost > 0) {
         await api.post("/api/v1/crm/cost-estimate-lines/", {
           estimate: data.id, cost_element: "OVERHEAD",
           description: "Biaya Operasional & Overhead",
           quantity: 1, unit_cost: overheadCost, amount: overheadCost,
         });
-      }
-    } catch { /* ignore line provisioning errors */ }
+    }
   }
   return data;
 }
 
+/**
+ * calculateCostEstimate adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/cost-estimates/${id}/calculate/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function calculateCostEstimate(id: string | number) {
   const { data } = await api.post(`/api/v1/crm/cost-estimates/${id}/calculate/`, {});
   return data;
 }
 
+/**
+ * createQuotationFromEstimate adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/cost-estimates/${id}/create-quotation/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createQuotationFromEstimate(id: string | number) {
   const { data } = await api.post(`/api/v1/crm/cost-estimates/${id}/create-quotation/`, {});
   return data;
 }
 
+/**
+ * deleteCostEstimate adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/cost-estimates/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteCostEstimate(id: string | number) {
   await api.delete(`/api/v1/crm/cost-estimates/${id}/`);
 }
 
 /* ── Quotation Workflow ──────────────────────────── */
+/**
+ * submitQuotationApproval adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/sales/quotations/${id}/submit-approval/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function submitQuotationApproval(id: string | number) {
   const { data } = await api.post(`/api/v1/sales/quotations/${id}/submit-approval/`, {});
   return data;
 }
 
+/**
+ * approveQuotation adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/executive-approvals/?quotation=${quotationId}`, `/api/v1/crm/executive-approvals/${approvalId}/decide/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function approveQuotation(quotationId: string | number, approvalsData: any[] = []) {
   let approvalId: string | number | null = null;
   const localApproval = approvalsData.find(
@@ -281,6 +388,14 @@ export async function approveQuotation(quotationId: string | number, approvalsDa
   return data;
 }
 
+/**
+ * sendQuotation adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/sales/quotations/${id}/send/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function sendQuotation(id: string | number) {
   const { data } = await api.post(`/api/v1/sales/quotations/${id}/send/`, {
     channel: "EMAIL",
@@ -289,11 +404,27 @@ export async function sendQuotation(id: string | number) {
   return data;
 }
 
+/**
+ * acceptQuotation adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/sales/quotations/${id}/customer-decision/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function acceptQuotation(id: string | number) {
   const { data } = await api.post(`/api/v1/sales/quotations/${id}/customer-decision/`, { accepted: true });
   return data;
 }
 
+/**
+ * rejectQuotation adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/sales/quotations/${id}/customer-decision/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function rejectQuotation(id: string | number, reason = "Customer menolak penawaran harga") {
   const { data } = await api.post(`/api/v1/sales/quotations/${id}/customer-decision/`, {
     accepted: false, reason,
@@ -301,6 +432,14 @@ export async function rejectQuotation(id: string | number, reason = "Customer me
   return data;
 }
 
+/**
+ * convertQuotationToOrder adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/commands/sales/quotations/${id}/convert-to-order/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function convertQuotationToOrder(id: string | number) {
   const { data } = await api.post(`/api/v1/commands/sales/quotations/${id}/convert-to-order/`, {
     fulfillment_method: "PROJECT",
@@ -309,6 +448,14 @@ export async function convertQuotationToOrder(id: string | number) {
 }
 
 /* ── Support Tickets ─────────────────────────────── */
+/**
+ * createSupportTicket adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/service/cases/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createSupportTicket(payload: {
   subject: string;
   customer_party?: string | number | null;
@@ -327,16 +474,40 @@ export async function createSupportTicket(payload: {
   return data;
 }
 
+/**
+ * checkTicketWarrantyStatus adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/service/cases/${id}/check-status/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function checkTicketWarrantyStatus(id: string | number) {
   const { data } = await api.post(`/api/v1/service/cases/${id}/check-status/`, {});
   return data;
 }
 
+/**
+ * deleteSupportTicket adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/service/cases/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteSupportTicket(id: string | number) {
   await api.delete(`/api/v1/service/cases/${id}/`);
 }
 
 /* ── Credit Management ───────────────────────────── */
+/**
+ * updateCustomerCreditLimit adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/master-data/customer-profiles/set-credit-limit/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function updateCustomerCreditLimit(payload: {
   party_id: string | number;
   credit_limit: number;
@@ -352,6 +523,14 @@ export async function updateCustomerCreditLimit(payload: {
   return data;
 }
 
+/**
+ * calculateCreditSnapshot adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/credit-status-snapshots/calculate/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function calculateCreditSnapshot(customerPartyId: string | number) {
   const { data } = await api.post("/api/v1/crm/credit-status-snapshots/calculate/", {
     customer_party: customerPartyId,
@@ -359,6 +538,14 @@ export async function calculateCreditSnapshot(customerPartyId: string | number) 
   return data;
 }
 
+/**
+ * deleteInquiryRequirement adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/crm/inquiry-requirements/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteInquiryRequirement(id: string | number) {
   await api.delete(`/api/v1/crm/inquiry-requirements/${id}/`);
 }

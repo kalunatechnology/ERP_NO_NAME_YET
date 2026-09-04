@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines frontend API adapter contracts and their integration boundary for the frontend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * Project API — Full 5-Level WBS Hierarchy, Accounting, Gate, and Operational Services
  * Matching uji_prototype/js/services/project.service.js
  */
@@ -165,24 +167,42 @@ export interface TaskTransfer {
 }
 
 /* ── Load all PM data in parallel ────────────────── */
-export async function loadAllProjects(): Promise<Project[]> {
+/**
+ * loadAllProjects adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
+export async function loadAllProjects(enabledModules: string[] = []): Promise<Project[]> {
+  const canReadFinance = enabledModules.some((code) => code.toUpperCase() === "FINANCE");
+/**
+ * emptyResponse adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/?page_size=100`, `/api/v1/projects/main-tasks/?page_size=300`, `/api/v1/projects/task-assignments/?page_size=500`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
+  const emptyResponse = () => Promise.resolve({ data: [] });
   const [
     projectsRes, mainTasksRes, assignmentsRes, weeklyTasksRes, dailyTasksRes,
     tasksRes, milestonesRes, stagesRes,
     costEntriesRes, proposalsRes, fundingsRes, usersRes
   ] = await Promise.all([
-    api.get("/api/v1/projects/projects/?page_size=100").catch(() => ({ data: [] })),
-    api.get("/api/v1/projects/main-tasks/?page_size=300").catch(() => ({ data: [] })),
-    api.get("/api/v1/projects/task-assignments/?page_size=500").catch(() => ({ data: [] })),
-    api.get("/api/v1/projects/weekly-tasks/?page_size=500").catch(() => ({ data: [] })),
-    api.get("/api/v1/projects/daily-tasks/?page_size=1000").catch(() => ({ data: [] })),
-    api.get("/api/v1/projects/tasks/?page_size=500").catch(() => ({ data: [] })),
-    api.get("/api/v1/projects/milestones/?page_size=300").catch(() => ({ data: [] })),
-    api.get("/api/v1/projects/readiness-checks/?page_size=200").catch(() => ({ data: [] })),
-    api.get("/api/v1/finance/project-cost-entries/?page_size=300").catch(() => ({ data: [] })),
-    api.get("/api/v1/finance/billing-proposals/?page_size=200").catch(() => ({ data: [] })),
-    api.get("/api/v1/finance/project-fundings/?page_size=100").catch(() => ({ data: [] })),
-    api.get("/api/v1/auth/users/?page_size=200").catch(() => ({ data: [] })),
+    api.get("/api/v1/projects/projects/?page_size=100"),
+    api.get("/api/v1/projects/main-tasks/?page_size=300"),
+    api.get("/api/v1/projects/task-assignments/?page_size=500"),
+    api.get("/api/v1/projects/weekly-tasks/?page_size=500"),
+    api.get("/api/v1/projects/daily-tasks/?page_size=1000"),
+    api.get("/api/v1/projects/tasks/?page_size=500"),
+    api.get("/api/v1/projects/milestones/?page_size=300"),
+    api.get("/api/v1/projects/readiness-checks/?page_size=200"),
+    canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=300") : emptyResponse(),
+    canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=200") : emptyResponse(),
+    canReadFinance ? api.get("/api/v1/finance/project-fundings/?page_size=100") : emptyResponse(),
+    api.get("/api/v1/accounts/users/?page_size=200"),
   ]);
 
   const projects     = normalizeList<Project>(projectsRes.data).rows;
@@ -350,11 +370,27 @@ export async function loadAllProjects(): Promise<Project[]> {
 }
 
 /* ── Project CRUD ────────────────────────────────── */
+/**
+ * getProject adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function getProject(id: string | number): Promise<Project> {
   const { data } = await api.get<Project>(`/api/v1/projects/projects/${id}/`);
   return data;
 }
 
+/**
+ * createProject adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createProject(payload: {
   name: string;
   code?: string;
@@ -373,6 +409,14 @@ export async function createProject(payload: {
   return data;
 }
 
+/**
+ * fetchProjectCustomers adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function fetchProjectCustomers(): Promise<string[]> {
   try {
     const { data } = await api.get<any[]>("/api/v1/projects/customers");
@@ -385,31 +429,79 @@ export async function fetchProjectCustomers(): Promise<string[]> {
   }
 }
 
+/**
+ * createProjectCustomer adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/customers`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createProjectCustomer(name: string, taxNumber?: string) {
   const { data } = await api.post("/api/v1/projects/customers", { name, tax_number: taxNumber });
   return data;
 }
 
+/**
+ * updateProject adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function updateProject(id: string | number, payload: Partial<Project>) {
   const { data } = await api.patch(`/api/v1/projects/projects/${id}/`, payload);
   return data;
 }
 
+/**
+ * deleteProject adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteProject(id: string | number) {
   await api.delete(`/api/v1/projects/projects/${id}/`);
 }
 
+/**
+ * recalculateProjectHealth adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/${id}/recalculate_health/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function recalculateProjectHealth(id: number | string) {
   const { data } = await api.post(`/api/v1/projects/projects/${id}/recalculate_health/`);
   return data;
 }
 
+/**
+ * advancePMFlow adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/${projectId}/advance_stage/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function advancePMFlow(projectId: number | string, action: string = "advance") {
   const { data } = await api.post(`/api/v1/projects/projects/${projectId}/advance_stage/`, { action });
   return data;
 }
 
 /* ── Level 1: Main Task CRUD ─────────────────────── */
+/**
+ * createMainTask adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/main-tasks/`, `/api/v1/projects/tasks/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createMainTask(payload: {
   project: string | number;
   title: string;
@@ -443,6 +535,14 @@ export async function createMainTask(payload: {
   }
 }
 
+/**
+ * deleteMainTask adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/main-tasks/${id}/`, `/api/v1/projects/tasks/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteMainTask(id: string | number) {
   try {
     await api.delete(`/api/v1/projects/main-tasks/${id}/`);
@@ -452,6 +552,14 @@ export async function deleteMainTask(id: string | number) {
 }
 
 /* ── Level 2: Weekly Plan CRUD ───────────────────── */
+/**
+ * createWeeklyTask adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/weekly-tasks/`, `/api/v1/projects/tasks/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createWeeklyTask(payload: {
   main_task: string | number;
   project?: string | number;
@@ -487,6 +595,14 @@ export async function createWeeklyTask(payload: {
   }
 }
 
+/**
+ * deleteWeeklyTask adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/weekly-tasks/${id}/`, `/api/v1/projects/tasks/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteWeeklyTask(id: string | number) {
   try {
     await api.delete(`/api/v1/projects/weekly-tasks/${id}/`);
@@ -496,6 +612,14 @@ export async function deleteWeeklyTask(id: string | number) {
 }
 
 /* ── Level 3: Daily Task CRUD ────────────────────── */
+/**
+ * createDailyTask adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/daily-tasks/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createDailyTask(payload: {
   weekly_task: string | number;
   planned_date: string;
@@ -527,6 +651,14 @@ export async function createDailyTask(payload: {
   return data;
 }
 
+/**
+ * updateDailyTask adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/daily-tasks/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function updateDailyTask(id: string | number, payload: Partial<DailyTask>) {
   const normStatus = (payload.status === "ON_PROGRESS" || payload.status === "PENDING")
     ? "IN_PROGRESS"
@@ -542,11 +674,27 @@ export async function updateDailyTask(id: string | number, payload: Partial<Dail
   return data;
 }
 
+/**
+ * deleteDailyTask adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/daily-tasks/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteDailyTask(id: string | number) {
   await api.delete(`/api/v1/projects/daily-tasks/${id}/`);
 }
 
 /* ── Level 4: Task Transfer Requests ─────────────── */
+/**
+ * requestTaskTransfer adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/task-transfers/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function requestTaskTransfer(payload: {
   daily_task_id: string | number;
   reason: string;
@@ -555,24 +703,57 @@ export async function requestTaskTransfer(payload: {
   return data;
 }
 
+/**
+ * getTransferRequests adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/task-transfers/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function getTransferRequests(): Promise<TaskTransfer[]> {
   const { data } = await api.get("/api/v1/projects/task-transfers/");
   return normalizeList<TaskTransfer>(data).rows;
 }
 
+/**
+ * approveTransfer adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/task-transfers/${id}/approve/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function approveTransfer(id: string | number) {
   const { data } = await api.post(`/api/v1/projects/task-transfers/${id}/approve/`);
   return data;
 }
 
+/**
+ * rejectTransfer adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/task-transfers/${id}/reject/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function rejectTransfer(id: string | number) {
   const { data } = await api.post(`/api/v1/projects/task-transfers/${id}/reject/`);
   return data;
 }
 
 /* ── Financials: Cost Entries, Fundings, Billing ─── */
+/**
+ * createProjectCostEntry adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/finance/project-cost-entries/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createProjectCostEntry(payload: {
   project: string | number;
+  division_id?: string;
   category: string;
   amount: number;
   description?: string;
@@ -581,10 +762,26 @@ export async function createProjectCostEntry(payload: {
   return data;
 }
 
+/**
+ * deleteProjectCostEntry adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/finance/project-cost-entries/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteProjectCostEntry(id: string | number) {
   await api.delete(`/api/v1/finance/project-cost-entries/${id}/`);
 }
 
+/**
+ * createFundingRequest adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/finance/project-fundings/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createFundingRequest(payload: {
   project: string | number;
   amount: number;
@@ -595,10 +792,26 @@ export async function createFundingRequest(payload: {
   return data;
 }
 
+/**
+ * deleteFundingRequest adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/finance/project-fundings/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteFundingRequest(id: string | number) {
   await api.delete(`/api/v1/finance/project-fundings/${id}/`);
 }
 
+/**
+ * createBillingProposal adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/finance/billing-proposals/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createBillingProposal(payload: {
   project: string | number;
   amount: number;
@@ -609,15 +822,39 @@ export async function createBillingProposal(payload: {
   return data;
 }
 
+/**
+ * deleteBillingProposal adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/finance/billing-proposals/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function deleteBillingProposal(id: string | number) {
   await api.delete(`/api/v1/finance/billing-proposals/${id}/`);
 }
 
+/**
+ * fetchProjectFinancialPerformance adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/${projectId}/financial-performance/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function fetchProjectFinancialPerformance(projectId: string | number) {
   const { data } = await api.get(`/api/v1/projects/projects/${projectId}/financial-performance/`);
   return data;
 }
 
+/**
+ * updateProjectFinancials adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/${projectId}/update_financials/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function updateProjectFinancials(projectId: string | number, payload: {
   contract_amount?: number;
   budget_amount?: number;
@@ -627,11 +864,27 @@ export async function updateProjectFinancials(projectId: string | number, payloa
   return data;
 }
 
+/**
+ * fetchProjectFundingRequests adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/${projectId}/funding_requests/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function fetchProjectFundingRequests(projectId: string | number) {
   const { data } = await api.get(`/api/v1/projects/projects/${projectId}/funding_requests/`);
   return data;
 }
 
+/**
+ * submitProjectFundingRequest adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/projects/${projectId}/funding_requests/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function submitProjectFundingRequest(projectId: string | number, payload: {
   amount: number;
   category?: string;
@@ -641,6 +894,14 @@ export async function submitProjectFundingRequest(projectId: string | number, pa
   return data;
 }
 
+/**
+ * createMilestone adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/milestones/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function createMilestone(payload: {
   project: string | number;
   name: string;
@@ -660,6 +921,14 @@ export const DEFAULT_TEAM_MEMBERS = [
   { id: "e0000000-0000-0000-0000-000000000006", email: "dummy.executive@example.com", username: "exec.dummy", full_name: "Hendra Wijaya", role_in_project: "DIRECTOR / EXECUTIVE", department: "Executive Board" },
 ];
 
+/**
+ * assignMemberToMainTask adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/main-tasks/${payload.main_task}/assign_members/`, `/api/v1/projects/task-assignments/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function assignMemberToMainTask(payload: {
   main_task: string | number;
   user_ids: (string | number)[];
@@ -683,10 +952,26 @@ export async function assignMemberToMainTask(payload: {
   }
 }
 
+/**
+ * removeTaskAssignment adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/projects/task-assignments/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function removeTaskAssignment(id: string | number) {
   await api.delete(`/api/v1/projects/task-assignments/${id}/`).catch(() => {});
 }
 
+/**
+ * fetchCompanyUsers adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: calls `/api/v1/accounts/users/?page_size=200`, `/api/v1/projects/members/?page_size=200`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 export async function fetchCompanyUsers(): Promise<any[]> {
   try {
     const [accRes, projMembersRes] = await Promise.all([

@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/projects/projects.routes.ts
+ *
+ * Purpose: Implements Express API routing responsibilities for the projects domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { ProjectsService } from './projects.service';
@@ -10,6 +18,14 @@ export const projectsRouter = Router();
 // 0. CUSTOMERS / CLIENTS LIST (Strict Company & Tenant Isolated)
 // =============================================================================
 
+/**
+ * GET route handler: `/customers`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `project_project`, `master_party`, `crm_customer_inquiry` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/customers', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = req.companyId;
@@ -66,9 +82,25 @@ projectsRouter.get('/customers', async (req: Request, res: Response, next: NextF
 });
 
 // Endpoint untuk mendaftarkan klien / customer baru langsung ke database (Tenant & Company Scoped)
+/**
+ * POST route handler: `/customers`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/customers', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, legal_name, tax_number } = req.body;
+/**
+ * clientName implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `master_party`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
     const clientName = (name || legal_name || '').trim();
     if (!clientName) {
       res.status(400).json({ message: 'Nama klien / customer wajib diisi.' });
@@ -127,6 +159,14 @@ projectsRouter.post('/customers', async (req: Request, res: Response, next: Next
 // 1. WBS 5-LEVEL HIERARCHY ENDPOINT
 // =============================================================================
 
+/**
+ * handleHierarchy implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
 const handleHierarchy = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await ProjectsService.getProjectHierarchy(req.params.id);
@@ -136,13 +176,37 @@ const handleHierarchy = async (req: Request, res: Response, next: NextFunction) 
   }
 };
 
+/**
+ * GET route handler: `/projects/:id/hierarchy`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/projects/:id/hierarchy', handleHierarchy);
+/**
+ * GET route handler: `/:id/hierarchy`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/:id/hierarchy', handleHierarchy);
 
 // =============================================================================
 // 2. PROJECT CUSTOM ACTIONS & METRICS
 // =============================================================================
 
+/**
+ * POST route handler: `/projects/:id/recalculate_health`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/projects/:id/recalculate_health', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.calculateProjectEVM(req.params.id);
@@ -152,6 +216,14 @@ projectsRouter.post('/projects/:id/recalculate_health', async (req: Request, res
   }
 });
 
+/**
+ * GET route handler: `/projects/:id/health`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/projects/:id/health', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.calculateProjectEVM(req.params.id);
@@ -161,6 +233,14 @@ projectsRouter.get('/projects/:id/health', async (req: Request, res: Response, n
   }
 });
 
+/**
+ * GET route handler: `/projects/:id/evm-metrics`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/projects/:id/evm-metrics', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.calculateProjectEVM(req.params.id);
@@ -170,6 +250,14 @@ projectsRouter.get('/projects/:id/evm-metrics', async (req: Request, res: Respon
   }
 });
 
+/**
+ * GET route handler: `/projects/:id/evm`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/projects/:id/evm', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.calculateProjectEVM(req.params.id);
@@ -179,6 +267,14 @@ projectsRouter.get('/projects/:id/evm', async (req: Request, res: Response, next
   }
 });
 
+/**
+ * POST route handler: `/projects/:id/advance_stage`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/projects/:id/advance_stage', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.advanceStage(req.params.id, req.body.stage ?? req.body.target_status);
@@ -188,6 +284,14 @@ projectsRouter.post('/projects/:id/advance_stage', async (req: Request, res: Res
   }
 });
 
+/**
+ * POST route handler: `/projects/:id/advance-stage`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/projects/:id/advance-stage', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.advanceStage(req.params.id, req.body.stage ?? req.body.target_status);
@@ -197,6 +301,14 @@ projectsRouter.post('/projects/:id/advance-stage', async (req: Request, res: Res
   }
 });
 
+/**
+ * GET route handler: `/projects/:id/financial-performance`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/projects/:id/financial-performance', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.calculateProjectEVM(req.params.id);
@@ -206,6 +318,14 @@ projectsRouter.get('/projects/:id/financial-performance', async (req: Request, r
   }
 });
 
+/**
+ * GET route handler: `/projects/:id/funding_requests`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_project_funding` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/projects/:id/funding_requests', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const fundings = await prisma.fin_project_funding.findMany({
@@ -217,6 +337,14 @@ projectsRouter.get('/projects/:id/funding_requests', async (req: Request, res: R
   }
 });
 
+/**
+ * POST route handler: `/projects/:id/funding_requests`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `project_project`, `fin_project_funding` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/projects/:id/funding_requests', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const project = await prisma.project_project.findUnique({ where: { id: req.params.id } });
@@ -240,6 +368,14 @@ projectsRouter.post('/projects/:id/funding_requests', async (req: Request, res: 
   }
 });
 
+/**
+ * POST route handler: `/projects/:id/update_financials`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `project_project` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/projects/:id/update_financials', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { budget_amount, contract_amount, target_margin_percent } = req.body;
@@ -257,6 +393,14 @@ projectsRouter.post('/projects/:id/update_financials', async (req: Request, res:
   }
 });
 
+/**
+ * GET route handler: `/projects/:id/costs`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `fin_project_cost_entry`, `project_expense` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/projects/:id/costs', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const [entries, expenses] = await Promise.all([
@@ -269,6 +413,14 @@ projectsRouter.get('/projects/:id/costs', async (req: Request, res: Response, ne
   }
 });
 
+/**
+ * GET route handler: `/projects/:id/milestones`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `project_milestone` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.get('/projects/:id/milestones', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const milestones = await prisma.project_milestone.findMany({
@@ -284,6 +436,14 @@ projectsRouter.get('/projects/:id/milestones', async (req: Request, res: Respons
 // 3. MAIN TASK ACTIONS
 // =============================================================================
 
+/**
+ * handleAssignMembers implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `project_main_task`, `project_task_assignment`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
 const handleAssignMembers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const mainTaskId = req.params.id;
@@ -349,9 +509,33 @@ const handleAssignMembers = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+/**
+ * POST route handler: `/main-tasks/:id/assign_members`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/main-tasks/:id/assign_members', handleAssignMembers);
+/**
+ * POST route handler: `/main-tasks/:id/assign-members`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/main-tasks/:id/assign-members', handleAssignMembers);
 
+/**
+ * handleMainTaskOverrideProgress implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
 const handleMainTaskOverrideProgress = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await ProjectsService.overrideProgress(
@@ -367,13 +551,35 @@ const handleMainTaskOverrideProgress = async (req: Request, res: Response, next:
   }
 };
 
-projectsRouter.post('/main-tasks/:id/override_progress', handleMainTaskOverrideProgress);
-projectsRouter.post('/main-tasks/:id/override-progress', handleMainTaskOverrideProgress);
+/**
+ * POST route handler: `/main-tasks/:id/override_progress`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
+/**
+ * POST route handler: `/main-tasks/:id/override-progress`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 
 // =============================================================================
 // 4. WEEKLY TASK ACTIONS
 // =============================================================================
 
+/**
+ * handleWeeklyTaskOverrideProgress implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
 const handleWeeklyTaskOverrideProgress = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await ProjectsService.overrideProgress(
@@ -389,13 +595,35 @@ const handleWeeklyTaskOverrideProgress = async (req: Request, res: Response, nex
   }
 };
 
-projectsRouter.post('/weekly-tasks/:id/override_progress', handleWeeklyTaskOverrideProgress);
-projectsRouter.post('/weekly-tasks/:id/override-progress', handleWeeklyTaskOverrideProgress);
+/**
+ * POST route handler: `/weekly-tasks/:id/override_progress`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
+/**
+ * POST route handler: `/weekly-tasks/:id/override-progress`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 
 // =============================================================================
 // 5. DAILY TASK ACTIONS
 // =============================================================================
 
+/**
+ * handleUpdateDailyProgress implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
 const handleUpdateDailyProgress = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await ProjectsService.updateDailyTaskProgress(req.params.id, req.body, req.user);
@@ -405,11 +633,51 @@ const handleUpdateDailyProgress = async (req: Request, res: Response, next: Next
   }
 };
 
+/**
+ * PATCH route handler: `/daily-tasks/:id/update_progress`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.patch('/daily-tasks/:id/update_progress', handleUpdateDailyProgress);
+/**
+ * PATCH route handler: `/daily-tasks/:id/update-progress`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.patch('/daily-tasks/:id/update-progress', handleUpdateDailyProgress);
+/**
+ * POST route handler: `/daily-tasks/:id/update_progress`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/daily-tasks/:id/update_progress', handleUpdateDailyProgress);
+/**
+ * POST route handler: `/daily-tasks/:id/update-progress`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/daily-tasks/:id/update-progress', handleUpdateDailyProgress);
 
+/**
+ * handleReportBlocked implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
 const handleReportBlocked = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await ProjectsService.reportBlocked(req.params.id, req.body.reason ?? '', req.user);
@@ -419,9 +687,33 @@ const handleReportBlocked = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+/**
+ * POST route handler: `/daily-tasks/:id/report_blocked`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/daily-tasks/:id/report_blocked', handleReportBlocked);
+/**
+ * POST route handler: `/daily-tasks/:id/report-blocked`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/daily-tasks/:id/report-blocked', handleReportBlocked);
 
+/**
+ * handleRequestTransfer implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
 const handleRequestTransfer = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const targetUserId = req.body.target_user_id ?? req.body.target_user ?? req.body.to_user;
@@ -437,9 +729,33 @@ const handleRequestTransfer = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+/**
+ * POST route handler: `/daily-tasks/:id/request_transfer`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/daily-tasks/:id/request_transfer', handleRequestTransfer);
+/**
+ * POST route handler: `/daily-tasks/:id/request-transfer`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/daily-tasks/:id/request-transfer', handleRequestTransfer);
 
+/**
+ * handleDirectReassign implements a named function within this file's Express API routing boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
 const handleDirectReassign = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const targetUserId = req.body.target_user_id ?? req.body.target_user ?? req.body.to_user;
@@ -455,13 +771,37 @@ const handleDirectReassign = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+/**
+ * POST route handler: `/daily-tasks/:id/direct_reassign`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/daily-tasks/:id/direct_reassign', handleDirectReassign);
+/**
+ * POST route handler: `/daily-tasks/:id/direct-reassign`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/daily-tasks/:id/direct-reassign', handleDirectReassign);
 
 // =============================================================================
 // 6. TASK TRANSFER REQUEST ACTIONS
 // =============================================================================
 
+/**
+ * POST route handler: `/task-transfers/:id/approve`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/task-transfers/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.processTransferApproval(
@@ -476,6 +816,14 @@ projectsRouter.post('/task-transfers/:id/approve', async (req: Request, res: Res
   }
 });
 
+/**
+ * POST route handler: `/task-transfers/:id/reject`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/task-transfers/:id/reject', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.processTransferApproval(
@@ -490,6 +838,14 @@ projectsRouter.post('/task-transfers/:id/reject', async (req: Request, res: Resp
   }
 });
 
+/**
+ * POST route handler: `/task-transfers/:id/cancel`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `project_task_transfer_request` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 projectsRouter.post('/task-transfers/:id/cancel', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await prisma.project_task_transfer_request.update({
@@ -740,7 +1096,26 @@ projectsRouter.use('/projects', createCrudRouter({
     return data;
   },
 }));
-projectsRouter.use('/control-items', createCrudRouter({ modelName: 'project_control_item' }));
+projectsRouter.use('/control-items', createCrudRouter({
+  modelName: 'project_control_item',
+  beforeCreate: async (req, data) => {
+    if (req.body.daily_task && !data.daily_task_id) data.daily_task_id = req.body.daily_task;
+    if (data.daily_task_id && !data.item_type) data.item_type = 'TASK_CHECKLIST';
+    return data;
+  },
+  afterCreate: async (_req, record) => {
+    if (record.daily_task_id) await ProjectsService.recalculateTaskTree({ dailyTaskId: record.daily_task_id });
+  },
+  afterUpdate: async (_req, record, before) => {
+    const dailyTaskIds = new Set([record.daily_task_id, before.daily_task_id].filter(Boolean));
+    for (const dailyTaskId of dailyTaskIds) {
+      await ProjectsService.recalculateTaskTree({ dailyTaskId });
+    }
+  },
+  afterDelete: async (_req, record) => {
+    if (record.daily_task_id) await ProjectsService.recalculateTaskTree({ dailyTaskId: record.daily_task_id });
+  },
+}));
 projectsRouter.use('/expenses', createCrudRouter({ modelName: 'project_expense', searchFields: ['description'] }));
 projectsRouter.use('/lifecycle-events', createCrudRouter({ modelName: 'project_lifecycle_event' }));
 projectsRouter.use('/readiness-checks', createCrudRouter({ modelName: 'project_readiness_check' }));

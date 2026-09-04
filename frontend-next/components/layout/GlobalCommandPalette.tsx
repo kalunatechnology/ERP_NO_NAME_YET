@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/layout/GlobalCommandPalette.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
@@ -33,6 +40,13 @@ const COMMAND_ITEMS: CommandItem[] = [
   { id: "explorer", label: "OpenAPI Data Explorer",        desc: "Raw REST resources & inspector data",     path: "/resources",  category: "Navigasi", icon: Database },
 ];
 
+/**
+ * GlobalCommandPalette implements the local UI interaction represented by its typed signature.
+ *
+ * @param input - The declared props/event/value arguments; caller identity and company state come only from imported context/API helpers.
+ * @returns The rendered React value, synchronous result, or Promise declared by the implementation.
+ * Side effects: updates the local React/browser state or invokes callbacks visible below.
+ */
 export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -60,6 +74,13 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   // Handle keyboard shortcuts (ESC, Arrows, Enter)
   useEffect(() => {
+/**
+ * onKeyDown implements the local UI interaction represented by its typed signature.
+ *
+ * @param input - The declared props/event/value arguments; caller identity and company state come only from imported context/API helpers.
+ * @returns The rendered React value, synchronous result, or Promise declared by the implementation.
+ * Side effects: updates the local React/browser state or invokes callbacks visible below.
+ */
     const onKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
 

@@ -1,3 +1,11 @@
+/**
+ * File: frontend-next/services/chatbot.service.ts
+ *
+ * Purpose: Implements external service integration responsibilities in the frontend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 import {
   ChatMessage,
   Conversation,
@@ -12,6 +20,14 @@ export const DEFAULT_CALLER_CONFIG = {
   callerToken: 'cb_live_0080c942f880b04ad7f3fba231432c1de43aefb24b201bd7',
 };
 
+/**
+ * getBaseUrl adapts a frontend operation to its HTTP API contract.
+ *
+ * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
+ * @returns The typed payload or Promise produced after response normalization.
+ * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ */
 const getBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
     return process.env.NEXT_PUBLIC_CHATBOT_API_URL || 'http://localhost:5000';

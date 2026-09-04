@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/master_data/master_data.routes.ts
+ *
+ * Purpose: Implements Express API routing responsibilities for the master_data domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
@@ -5,6 +13,14 @@ import { createCrudRouter } from '../../utils/crud-factory';
 export const masterDataRouter = Router();
 
 // Custom action: set-credit-limit
+/**
+ * POST route handler: `/customer-profiles/set-credit-limit`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `master_customer_profile` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { party_id, customer_profile_id, credit_limit, payment_term_id, credit_hold } = req.body;

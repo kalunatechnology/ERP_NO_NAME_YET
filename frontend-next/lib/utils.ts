@@ -1,4 +1,6 @@
 /**
+ * Purpose: Defines application infrastructure contracts and their integration boundary for the frontend application.
+ * Responsibility: Documents and exposes only the behavior implemented in this file; function comments identify inputs, outputs, dependencies, and side effects.
  * cn() utility: menggabungkan clsx + tailwind-merge
  * Gunakan ini untuk class conditional di semua komponen
  */
@@ -6,6 +8,14 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+/**
+ * cn implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -19,17 +29,41 @@ export function formatMoney(value: number | string | null | undefined): string {
   return `Rp ${num.toLocaleString("id-ID")}`;
 }
 
+/**
+ * formatRupiah implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 export function formatRupiah(value: number | string | null | undefined): string {
   const num = Number(value || 0);
   return `Rp ${num.toLocaleString("id-ID")}`;
 }
 
 /* ── Format Number ─────────────────────────── */
+/**
+ * formatNumber implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 export function formatNumber(value: number | string | null | undefined): string {
   return Number(value || 0).toLocaleString("id-ID");
 }
 
 /* ── Format Date ───────────────────────────── */
+/**
+ * formatDate implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "-";
   const d = typeof value === "string" ? new Date(value) : value;
@@ -53,6 +87,14 @@ export const STATUS_COLORS: Record<string, string> = {
   APPROVED:    "bg-brand-light-green text-brand-green",
 };
 
+/**
+ * getStatusColor implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 export function getStatusColor(status: string): string {
   return STATUS_COLORS[status?.toUpperCase()] ?? "bg-gray-100 text-gray-600";
 }

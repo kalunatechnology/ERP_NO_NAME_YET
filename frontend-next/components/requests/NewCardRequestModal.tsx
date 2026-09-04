@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/requests/NewCardRequestModal.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -30,6 +37,13 @@ const BUDGET_CATEGORIES = [
   { id: "OTHER", label: "Kebutuhan Lain-lain" },
 ];
 
+/**
+ * NewCardRequestModal owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
 export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardRequestModalProps) {
   const [requestType, setRequestType] = useState<string>("Meeting Request");
   const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
@@ -59,6 +73,13 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Fetch team members from PostgreSQL via Axios
+/**
+ * fetchMembers owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
   const fetchMembers = async (searchQuery = "") => {
     setIsSearching(true);
     try {
@@ -91,10 +112,24 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
 
   const isFundRequest = requestType === "Fund Request";
 
+/**
+ * handleRemovePerson owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
   const handleRemovePerson = (id: string) => {
     setInvitedList(prev => prev.filter(p => p.id !== id));
   };
 
+/**
+ * handleAddPerson owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
   const handleAddPerson = (person: InvitedPerson) => {
     if (!invitedList.some(p => p.id === person.id)) {
       setInvitedList(prev => [...prev, person]);
@@ -103,6 +138,13 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     setIsSearchDropdownOpen(false);
   };
 
+/**
+ * handleAddCustomGuest owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
   const handleAddCustomGuest = () => {
     if (!inviteSearch.trim()) return;
     const cleanName = inviteSearch.trim();
@@ -115,6 +157,13 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     handleAddPerson(customUser);
   };
 
+/**
+ * handleFileUpload owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -124,16 +173,37 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     }
   };
 
+/**
+ * handleRemoveFile owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
   const handleRemoveFile = () => {
     setAttachedFileName(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+/**
+ * formatRupiahInput owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
   const formatRupiahInput = (val: string) => {
     const numbersOnly = val.replace(/\D/g, "");
     return numbersOnly ? Number(numbersOnly).toLocaleString("id-ID") : "";
   };
 
+/**
+ * handleSubmit owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
+ */
   const handleSubmit = async (isDraft = false) => {
     if (!requestDetails.trim()) {
       setErrorMsg("Request Details wajib diisi.");

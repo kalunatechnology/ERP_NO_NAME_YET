@@ -1,3 +1,11 @@
+/**
+ * File: frontend-next/components/ui/TopExpensesBarChart.tsx
+ *
+ * Purpose: Implements React UI component responsibilities in the frontend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 "use client";
 
 import React, { useState } from "react";
@@ -23,6 +31,13 @@ interface TopExpensesBarChartProps {
 
 const DEFAULT_SCALES = ["200m", "300m", "400m", "600m", "800m", "1B", "2B", "3B"];
 
+/**
+ * TopExpensesBarChart coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function TopExpensesBarChart({
   title = "Top 5 Expenses",
   expenses,

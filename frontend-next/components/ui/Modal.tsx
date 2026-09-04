@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/ui/Modal.tsx
+ *
+ * Purpose: Defines React UI component responsibilities for the frontend application.
+ * Responsibility: Owns the executable contracts declared here and their framework/import integration boundary.
+ * Dependencies and side effects: Function comments identify HTTP, persistence, browser-state, and security effects where present.
+ */
 "use client";
 
 import { useEffect, ReactNode } from "react";
@@ -14,6 +21,13 @@ interface ModalProps {
   size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "full";
 }
 
+/**
+ * Modal owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
 export function Modal({
   isOpen,
   onClose,
@@ -25,6 +39,13 @@ export function Modal({
 }: ModalProps) {
   const effectiveMaxWidth = maxWidth || size || "lg";
   useEffect(() => {
+/**
+ * handleKeyDown owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };

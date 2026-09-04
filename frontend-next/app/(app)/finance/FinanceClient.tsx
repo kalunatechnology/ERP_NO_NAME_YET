@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/app/(app)/finance/FinanceClient.tsx
+ *
+ * Purpose: Defines the Next App Router entry and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,7 +13,9 @@ import {
   FileCheck, Plus, RefreshCw, Layers, CheckCircle2, XCircle,
   Building, Landmark, ShieldCheck, Scale, Zap, Trash2, ArrowRight,
   BookOpen, BarChart3, Activity, Banknote, ArrowLeftRight, TrendingDown,
-  AlertTriangle, CheckSquare, Clock, Eye
+  AlertTriangle, CheckSquare, Clock, Eye, LayoutDashboard, Crown, BriefcaseBusiness,
+  ClipboardList, Receipt, RotateCcw, WalletCards, LibraryBig, FileBarChart,
+  Link2, Calculator, CalendarRange, HardHat
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import api from "@/lib/api/axios";
@@ -30,56 +39,23 @@ const ExecutiveAuditReportWorkspace = dynamic(() => import("@/components/finance
 const DocumentPrintModal            = dynamic(() => import("@/components/finance/DocumentPrintModal").then(m => m.DocumentPrintModal), { ssr: false });
 
 const FINANCE_TABS = [
-  { id: "overview",         label: "📊 Dashboard"                  },
-  { id: "executive_report", label: "👑 Executive Audit Report"     },
-  { id: "company_master",   label: "🏢 Master Perusahaan"          },
-  { id: "profit",           label: "📈 Profitabilitas"             },
-  { id: "costing",          label: "⚙️ Costing & WIP"              },
-  { id: "fundings",         label: "💰 Funding Proyek"             },
-  { id: "ap",               label: "📋 Tagihan Vendor (AP)"        },
-  { id: "billing",          label: "🧾 Billing Termin"             },
-  { id: "ar",               label: "🔄 Piutang (AR)"               },
-  { id: "cashbank",         label: "🏦 Kas & Bank"                 },
-  { id: "gl",               label: "📒 Buku Besar & Trial Balance"  },
-  { id: "lapkeu",           label: "📑 Laporan Keuangan"           },
-  { id: "banking_hub",      label: "🔗 Banking Hub & Rekonsiliasi" },
-  { id: "tax",              label: "🧮 Perpajakan"                 },
-  { id: "assets",           label: "🏗️ Aset Tetap"                 },
-  { id: "period_closing",   label: "📅 Tutup Buku"                 },
-  { id: "audit_trail",      label: "🛡️ Audit Trail"                },
-];
-
-const DEFAULT_VENDOR_BILLS = [
-  {
-    id: "bill-1",
-    supplier_name: "PT. Schneider Electric Automation",
-    invoice_number: "INV-SCH-2026-089",
-    po_number: "PO-2026-041",
-    grn_number: "GRN-2026-033",
-    amount: 32500000,
-    due_date: "2026-09-15",
-    status: "PENDING_MATCH",
-  },
-  {
-    id: "bill-2",
-    supplier_name: "PT. Siemens Industrial Indonesia",
-    invoice_number: "INV-SIE-2026-012",
-    po_number: "PO-2026-039",
-    grn_number: "GRN-2026-028",
-    amount: 48000000,
-    due_date: "2026-09-20",
-    status: "MATCHED",
-  },
-  {
-    id: "bill-3",
-    supplier_name: "PT. Omron Electronic Mfg",
-    invoice_number: "INV-OMR-2026-077",
-    po_number: "PO-2026-035",
-    grn_number: "GRN-2026-021",
-    amount: 18500000,
-    due_date: "2026-08-30",
-    status: "PAID",
-  },
+  { id: "overview", label: "Dashboard", icon: LayoutDashboard },
+  { id: "executive_report", label: "Executive Report", icon: Crown },
+  { id: "company_master", label: "Master Perusahaan", icon: Building },
+  { id: "profit", label: "Profitabilitas", icon: TrendingUp },
+  { id: "costing", label: "Costing & WIP", icon: Calculator },
+  { id: "fundings", label: "Funding Proyek", icon: BriefcaseBusiness },
+  { id: "ap", label: "Tagihan Vendor", icon: ClipboardList },
+  { id: "billing", label: "Billing Termin", icon: Receipt },
+  { id: "ar", label: "Piutang", icon: RotateCcw },
+  { id: "cashbank", label: "Kas & Bank", icon: WalletCards },
+  { id: "gl", label: "Buku Besar", icon: LibraryBig },
+  { id: "lapkeu", label: "Laporan Keuangan", icon: FileBarChart },
+  { id: "banking_hub", label: "Rekonsiliasi", icon: Link2 },
+  { id: "tax", label: "Perpajakan", icon: Scale },
+  { id: "assets", label: "Aset Tetap", icon: HardHat },
+  { id: "period_closing", label: "Tutup Buku", icon: CalendarRange },
+  { id: "audit_trail", label: "Audit Trail", icon: ShieldCheck },
 ];
 
 export const BANK_ACCOUNTS = [
@@ -89,37 +65,13 @@ export const BANK_ACCOUNTS = [
   { id: "petty", name: "Kas Kecil Kasir (Petty Cash)", number: "CASH-OFFICE-01", balance: 35000000, bank: "Brankas Tunai Kantor", type: "PETTY_CASH" },
 ];
 
-export const DEFAULT_CUSTOMER_RECEIPTS = [
-  {
-    id: "rec-1",
-    receipt_number: "REC-2026-001",
-    customer_name: "PT Cisco Systems Indonesia",
-    project_name: "Produksi Video Content Komersial PT Cisco Systems Indonesia",
-    invoice_ref: "INV-CISCO-001 (Termin DP 50%)",
-    amount: 75000000,
-    bank_account: "BCA Giro Operasional — 882-019-2810",
-    payment_date: "2026-08-20",
-    payment_method: "BANK_TRANSFER",
-    reference_number: "TRF-CISCO-882190",
-    status: "RECEIVED",
-    notes: "Pembayaran termin DP 50% project video commercial"
-  },
-  {
-    id: "rec-2",
-    receipt_number: "REC-2026-002",
-    customer_name: "PT Industri Otomasi Indonesia",
-    project_name: "Implementasi Sistem Otomasi Conveyor Line 1",
-    invoice_ref: "INV-OTO-001 (Termin 1 Fabrikasi)",
-    amount: 120000000,
-    bank_account: "Bank Mandiri Escrow Proyek — 131-002-8819",
-    payment_date: "2026-08-22",
-    payment_method: "BANK_TRANSFER",
-    reference_number: "TRF-MDR-449102",
-    status: "RECEIVED",
-    notes: "Pembayaran termin 1 milestone instalasi conveyor"
-  }
-];
-
+/**
+ * FinanceClient coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export default function FinanceClient() {
   const { userRole } = useAuth();
   const [activeTab, setActiveTab] = useState(userRole === "executive" ? "executive_report" : "overview");
@@ -128,9 +80,23 @@ export default function FinanceClient() {
   // Tracks which tabs received a 403 response — shows inline AccessDeniedState instead of redirecting
   const [tabErrors, setTabErrors] = useState<Record<string, 403 | null>>({});
 
+/**
+ * markTabForbidden coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const markTabForbidden = (tab: string) =>
     setTabErrors(prev => ({ ...prev, [tab]: 403 }));
 
+/**
+ * clearTabError coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const clearTabError = (tab: string) =>
     setTabErrors(prev => ({ ...prev, [tab]: null }));
 
@@ -148,8 +114,8 @@ export default function FinanceClient() {
   const [costEntries, setCostEntries] = useState<any[]>([]);
   const [fundings, setFundings] = useState<any[]>([]);
   const [proposals, setProposals] = useState<any[]>([]);
-  const [vendorBills, setVendorBills] = useState<any[]>(DEFAULT_VENDOR_BILLS);
-  const [customerReceipts, setCustomerReceipts] = useState<any[]>(DEFAULT_CUSTOMER_RECEIPTS);
+  const [vendorBills, setVendorBills] = useState<any[]>([]);
+  const [customerReceipts, setCustomerReceipts] = useState<any[]>([]);
 
   /* Accounting / GL states */
   const [trialBalance, setTrialBalance] = useState<any>(null);
@@ -193,7 +159,7 @@ export default function FinanceClient() {
     bank_account: "BCA Giro Operasional — 882-019-2810",
     payment_method: "BANK_TRANSFER",
     payment_date: new Date().toISOString().split("T")[0],
-    reference_number: "TRF-BCA-" + Math.floor(100000 + Math.random() * 900000),
+    reference_number: "",
     notes: "Pelunasan tagihan pengadaan komponen vendor",
   });
   const [receiptForm, setReceiptForm] = useState({
@@ -204,29 +170,49 @@ export default function FinanceClient() {
     bank_account: "BCA Giro Operasional — 882-019-2810",
     payment_date: new Date().toISOString().split("T")[0],
     payment_method: "BANK_TRANSFER",
-    reference_number: "TRF-IN-BCA-" + Math.floor(100000 + Math.random() * 900000),
+    reference_number: "",
     notes: "Penerimaan pembayaran pelunasan termin invoice penagihan klien",
   });
 
+/**
+ * loadFinanceData coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const loadFinanceData = async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      // Fetch each endpoint independently so one 403 doesn't block the rest
+      // A forbidden tab remains isolated, but transport/server failures must be visible.
+/**
+ * safeGet coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
       const safeGet = async (url: string, tabHint?: string) => {
         try {
-          return await api.get(url);
+          const response = await api.get(url);
+          if (tabHint) clearTabError(tabHint);
+          return response;
         } catch (err: unknown) {
-          if (isForbiddenError(err) && tabHint) markTabForbidden(tabHint);
-          return { data: [] };
+          if (isForbiddenError(err) && tabHint) {
+            markTabForbidden(tabHint);
+            return { data: [] };
+          }
+          throw err;
         }
       };
 
-      const [costRes, fundRes, propRes, apRes, tbRes, jeRes, plRes, bsRes, stmtRes] = await Promise.all([
+      const [costRes, fundRes, propRes, apRes, receiptRes, tbRes, jeRes, plRes, bsRes, stmtRes] = await Promise.all([
         safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
         safeGet("/api/v1/finance/project-fundings/?page_size=50", "fundings"),
         safeGet("/api/v1/finance/billing-proposals/?page_size=50", "billing"),
         safeGet("/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50", "ap"),
+        safeGet("/api/v1/finance/customer-receipts/?page_size=50", "ar"),
         safeGet("/api/v1/finance/trial-balance", "gl"),
         safeGet("/api/v1/finance/journal-entries/?page_size=30&ordering=-posting_date", "gl"),
         safeGet("/api/v1/finance/profit-and-loss", "lapkeu"),
@@ -238,12 +224,11 @@ export default function FinanceClient() {
       setFundings(normalizeList(fundRes.data).rows);
       setProposals(normalizeList(propRes.data).rows);
 
-      const apList = normalizeList(apRes.data).rows;
-      if (apList.length > 0) {
-        setVendorBills(apList);
-      } else {
-        setVendorBills(prev => (prev.length > 0 ? prev : DEFAULT_VENDOR_BILLS));
-      }
+      setVendorBills(normalizeList(apRes.data).rows);
+      setCustomerReceipts(normalizeList<any>(receiptRes.data).rows.map((receipt) => ({
+        ...receipt,
+        ...(typeof receipt.allocation_plan === "object" && receipt.allocation_plan ? receipt.allocation_plan : {}),
+      })));
 
       // Accounting data
       if (tbRes.data?.data) setTrialBalance(tbRes.data.data);
@@ -268,6 +253,13 @@ export default function FinanceClient() {
     }
   };
 
+/**
+ * handleReverseEntry coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleReverseEntry = async () => {
     if (!selectedJournalEntry || !reversalReason.trim()) return;
     try {
@@ -311,6 +303,13 @@ export default function FinanceClient() {
   const grossMargin = totalRevenue - totalCost;
 
   /* Operations */
+/**
+ * handlePostToWIP coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handlePostToWIP = async (entryId: number) => {
     try {
       await api.patch(`/api/v1/finance/project-cost-entries/${entryId}/`, { status: "POSTED_TO_WIP" });
@@ -321,6 +320,13 @@ export default function FinanceClient() {
     }
   };
 
+/**
+ * handleDecideFunding coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleDecideFunding = async (fundingId: number, status: "APPROVED" | "REJECTED") => {
     try {
       await api.patch(`/api/v1/finance/project-fundings/${fundingId}/`, { status });
@@ -331,6 +337,13 @@ export default function FinanceClient() {
     }
   };
 
+/**
+ * handleApproveBilling coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleApproveBilling = async (proposalId: number) => {
     try {
       await api.patch(`/api/v1/finance/billing-proposals/${proposalId}/`, { status: "APPROVED" });
@@ -341,56 +354,74 @@ export default function FinanceClient() {
     }
   };
 
+/**
+ * handleVerifyThreeWayMatch coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleVerifyThreeWayMatch = (bill: any) => {
     setSelectedBillForMatch(bill);
     setIsMatchModalOpen(true);
   };
 
+/**
+ * handleConfirmThreeWayMatch coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleConfirmThreeWayMatch = async () => {
     if (!selectedBillForMatch) return;
     try {
-      if (typeof selectedBillForMatch.id === "string" && selectedBillForMatch.id.includes("-") && !selectedBillForMatch.id.startsWith("bill-")) {
-        await api.patch(`/api/v1/finance/billing-documents/${selectedBillForMatch.id}/`, { status: "MATCHED" }).catch(() => {});
-      }
-      setVendorBills(prev => prev.map(b => b.id === selectedBillForMatch.id ? { ...b, status: "MATCHED" } : b));
-      toast.success("✓ Verifikasi 3-Way Match Selesai! Tagihan telah diverifikasi & Siap Dibayar.", { icon: "🛡️" });
+      await api.patch(`/api/v1/finance/billing-documents/${selectedBillForMatch.id}/`, { status: "MATCHED" });
+      await loadFinanceData(true);
+      toast.success("Verifikasi 3-Way Match selesai. Tagihan siap dibayar.");
       setIsMatchModalOpen(false);
     } catch {
       toast.error("Gagal memverifikasi 3-way match");
     }
   };
 
+/**
+ * handleOpenPayModal coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleOpenPayModal = (bill: any) => {
     setSelectedBillForPay(bill);
     setPaymentForm({
       bank_account: "BCA Giro Operasional — 882-019-2810",
       payment_method: "BANK_TRANSFER",
       payment_date: new Date().toISOString().split("T")[0],
-      reference_number: "TRF-BCA-" + Math.floor(100000 + Math.random() * 900000),
+      reference_number: "",
       notes: `Pelunasan tagihan ${bill.supplier_name || 'Vendor'} (${bill.invoice_number})`,
     });
     setIsPaymentModalOpen(true);
   };
 
+/**
+ * handleExecutePayment coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleExecutePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBillForPay) return;
     try {
-      if (typeof selectedBillForPay.id === "string" && selectedBillForPay.id.includes("-") && !selectedBillForPay.id.startsWith("bill-")) {
-        await api.patch(`/api/v1/finance/billing-documents/${selectedBillForPay.id}/`, {
-          status: "PAID",
-          payment_status: "PAID",
-          paid_amount: selectedBillForPay.amount
-        }).catch(() => {});
-      }
-      setVendorBills(prev => prev.map(b => b.id === selectedBillForPay.id ? {
-        ...b,
+      await api.patch(`/api/v1/finance/billing-documents/${selectedBillForPay.id}/`, {
         status: "PAID",
         payment_status: "PAID",
-        paid_at: paymentForm.payment_date,
-        payment_ref: paymentForm.reference_number
-      } : b));
-      toast.success(`✓ Pembayaran Tagihan ${selectedBillForPay.supplier_name} (${formatMoney(selectedBillForPay.amount)}) Berhasil Diproses!`, { icon: "💳" });
+        paid_amount: selectedBillForPay.total_amount ?? selectedBillForPay.amount,
+      });
+      await loadFinanceData(true);
+      toast.success(`Pembayaran ${selectedBillForPay.supplier_name} (${formatMoney(selectedBillForPay.amount)}) berhasil diproses.`);
       setIsPaymentModalOpen(false);
     } catch {
       toast.error("Gagal memproses pembayaran");
@@ -414,10 +445,10 @@ export default function FinanceClient() {
     <div className="flex flex-col gap-6">
 
       {/* Header & Global Toolbar */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-bold text-text-primary">Finance & Accounting</h1>
-          <p className="text-xs text-text-secondary mt-0.5">Double-entry bookkeeping, costing, billing termin, dan 3-way match AP</p>
+          <h1 className="page-title">Finance & Accounting</h1>
+          <p className="page-description">Pembukuan, pengendalian biaya, penagihan, dan rekonsiliasi perusahaan</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -435,7 +466,7 @@ export default function FinanceClient() {
             </>
           ) : (
             <span className="px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold flex items-center gap-1.5">
-              👑 Mode Eksekutif (Preview & Audit Report)
+              <Crown size={13} /> Mode Eksekutif · Read only
             </span>
           )}
           <button
@@ -451,7 +482,7 @@ export default function FinanceClient() {
       {userRole === "executive" && (
         <div className="p-3.5 rounded-2xl bg-[#FAF5FF] border border-[#E9D5FF] text-xs text-[#581C87] flex items-center justify-between flex-wrap gap-2 shadow-2xs">
           <div className="flex items-center gap-2">
-            <span className="text-base">👑</span>
+            <Crown size={16} aria-hidden="true" />
             <span>
               <b>Executive Viewport Active:</b> Anda memiliki akses penuh membaca seluruh metrik keuangan, arus kas, dan audit trail satu lembar.
             </span>
@@ -464,15 +495,19 @@ export default function FinanceClient() {
 
       {/* 11 Subtabs navigation */}
       <div className="flex border-b border-text-tertiary overflow-x-auto no-scrollbar gap-1">
-        {FINANCE_TABS.map(tab => (
+        {FINANCE_TABS.map(tab => {
+          const TabIcon = tab.icon;
+          return (
           <button
             key={tab.id}
             className={cn("tab-btn", activeTab === tab.id && "active")}
             onClick={() => setActiveTab(tab.id)}
           >
+            <TabIcon size={14} aria-hidden="true" />
             {tab.label}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── TAB 1: OVERVIEW ────────────────────── */}
@@ -738,7 +773,7 @@ export default function FinanceClient() {
                           onClick={() => handleOpenPayModal(b)}
                           className="btn-primary py-1 px-3 text-2xs gap-1 bg-emerald-600 hover:bg-emerald-700 font-bold shadow-xs"
                         >
-                          <CreditCard size={12} /> 💳 Bayar Tagihan (Pay AP)
+                          <CreditCard size={12} /> Bayar tagihan
                         </button>
                       )}
 
@@ -1495,7 +1530,7 @@ export default function FinanceClient() {
       <Modal
         isOpen={isMatchModalOpen}
         onClose={() => setIsMatchModalOpen(false)}
-        title="🛡️ Verifikasi 3-Way Match (AP)"
+        title="Verifikasi 3-Way Match"
         subtitle={`Vendor: ${selectedBillForMatch?.supplier_name || "Supplier"}`}
       >
         <div className="flex flex-col gap-4">
@@ -1655,7 +1690,7 @@ export default function FinanceClient() {
       <Modal
         isOpen={isBillingModalOpen}
         onClose={() => setIsBillingModalOpen(false)}
-        title="🧾 Buat Proposal Billing Termin & Skema Pajak"
+        title="Buat Proposal Billing Termin"
         subtitle="Pengajuan termin invoice penagihan ke klien beserta kalkulasi PPN & PPh Withholding"
         size="md"
       >
@@ -1681,7 +1716,7 @@ export default function FinanceClient() {
                 total_amount: dpp + ppn,
                 net_cash_amount: netCash,
               });
-              toast.success("Proposal billing & skema pajak berhasil diajukan!", { icon: "🧾" });
+              toast.success("Proposal billing dan skema pajak berhasil diajukan.");
               setIsBillingModalOpen(false);
               await loadFinanceData(true);
             } catch {
@@ -1848,20 +1883,28 @@ export default function FinanceClient() {
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            const newBill = {
-              id: "bill-" + Date.now(),
-              supplier_name: apForm.supplier_name,
-              invoice_number: apForm.invoice_number || `INV-${Date.now().toString().slice(-4)}`,
-              po_number: "PO-" + Math.floor(1000 + Math.random() * 9000),
-              grn_number: "GRN-" + Math.floor(1000 + Math.random() * 9000),
-              amount: Number(apForm.amount),
-              due_date: apForm.due_date || new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
+            try {
+              await api.post("/api/v1/finance/billing-documents/", {
+              billing_type: "SUPPLIER_INVOICE",
+              invoice_number: apForm.invoice_number,
+              invoice_date: new Date().toISOString(),
+              due_date: apForm.due_date || null,
+              subtotal: Number(apForm.amount),
+              tax_amount: 0,
+              total_amount: Number(apForm.amount),
+              paid_amount: 0,
+              outstanding_amount: Number(apForm.amount),
+              payment_status: "UNPAID",
               status: "PENDING_MATCH",
-            };
-            setVendorBills(prev => [newBill, ...prev]);
-            toast.success("✓ Tagihan vendor berhasil didaftarkan & Menunggu 3-Way Match!");
-            setIsAPModalOpen(false);
-            setAPForm({ supplier_name: "", invoice_number: "", amount: 25000000, due_date: "" });
+              rejection_reason: "",
+            });
+              await loadFinanceData(true);
+              toast.success("✓ Tagihan vendor berhasil didaftarkan & Menunggu 3-Way Match!");
+              setIsAPModalOpen(false);
+              setAPForm({ supplier_name: "", invoice_number: "", amount: 25000000, due_date: "" });
+            } catch {
+              toast.error("Gagal mendaftarkan tagihan vendor");
+            }
           }}
           className="flex flex-col gap-4"
         >
@@ -1881,6 +1924,7 @@ export default function FinanceClient() {
               <label className="text-xs font-semibold text-text-primary block mb-1">Nomor Faktur Vendor</label>
               <input
                 type="text"
+                required
                 placeholder="INV-SCH-2026-09"
                 value={apForm.invoice_number}
                 onChange={e => setAPForm({ ...apForm, invoice_number: e.target.value })}
@@ -1908,7 +1952,7 @@ export default function FinanceClient() {
       <Modal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
-        title="💳 Proses Pembayaran Tagihan Vendor (AP)"
+        title="Proses Pembayaran Tagihan Vendor"
         subtitle={`Vendor: ${selectedBillForPay?.supplier_name} — Faktur: ${selectedBillForPay?.invoice_number}`}
         size="md"
       >
@@ -2004,25 +2048,33 @@ export default function FinanceClient() {
         size="md"
       >
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            const newRec = {
-              id: "rec-" + Date.now(),
-              receipt_number: "REC-" + Date.now().toString().slice(-6),
-              customer_name: receiptForm.customer_name,
-              project_name: receiptForm.project_name,
-              invoice_ref: receiptForm.invoice_ref,
-              amount: Number(receiptForm.amount),
-              bank_account: receiptForm.bank_account,
-              payment_date: receiptForm.payment_date,
-              payment_method: receiptForm.payment_method,
-              reference_number: receiptForm.reference_number,
-              status: "RECEIVED",
-              notes: receiptForm.notes,
-            };
-            setCustomerReceipts([newRec, ...customerReceipts]);
-            toast.success(`Uang Masuk sebesar ${formatMoney(newRec.amount)} berhasil dicatat ke ${newRec.bank_account.split("—")[0]}!`, { icon: "💰" });
-            setIsReceiptModalOpen(false);
+            try {
+              await api.post("/api/v1/finance/customer-receipts/", {
+                payment_type: "CUSTOMER_RECEIPT",
+                payment_date: receiptForm.payment_date,
+                amount: Number(receiptForm.amount),
+                payment_method: receiptForm.payment_method,
+                reference_number: receiptForm.reference_number,
+                status: "RECEIVED",
+                allocation_plan: {
+                  customer_name: receiptForm.customer_name,
+                  project_name: receiptForm.project_name,
+                  invoice_ref: receiptForm.invoice_ref,
+                  bank_account: receiptForm.bank_account,
+                  notes: receiptForm.notes,
+                },
+                execution_reference: "",
+                execution_note: receiptForm.notes,
+                failure_reason: "",
+              });
+              await loadFinanceData(true);
+              toast.success(`Penerimaan ${formatMoney(receiptForm.amount)} berhasil dicatat.`);
+              setIsReceiptModalOpen(false);
+            } catch {
+              toast.error("Gagal mencatat penerimaan pelanggan");
+            }
           }}
           className="flex flex-col gap-3.5 p-1"
         >
@@ -2153,7 +2205,7 @@ export default function FinanceClient() {
         <Modal
           isOpen={isReversalModalOpen}
           onClose={() => { setIsReversalModalOpen(false); setReversalReason(""); }}
-          title="↩️ Reversal Jurnal (Storno)"
+          title="Reversal Jurnal (Storno)"
           subtitle={`Jurnal: ${selectedJournalEntry?.entry_number || "-"}`}
         >
           <div className="flex flex-col gap-4">
@@ -2181,7 +2233,7 @@ export default function FinanceClient() {
                 disabled={reversalReason.trim().length < 5}
                 className="btn-primary text-xs py-2 px-4 font-bold bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-40"
               >
-                ↩️ Konfirmasi Storno Jurnal
+                Konfirmasi Storno Jurnal
               </button>
             </div>
           </div>
@@ -2192,6 +2244,13 @@ export default function FinanceClient() {
 }
 
 /* ── Tab: Funding Proyek (Persetujuan Permodalan Proyek) ── */
+/**
+ * TabFundingProyek coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabFundingProyek({
   fundings,
   onRefresh,
@@ -2210,16 +2269,34 @@ function TabFundingProyek({
   /* State Pencairan Kas Bank */
   const [selectedBankAccount, setSelectedBankAccount] = useState("BCA Giro Operasional — 882-019-2810");
   const [paymentMethod, setPaymentMethod] = useState("BANK_TRANSFER");
-  const [voucherNumber, setVoucherNumber] = useState("VCH-DISB-" + Math.floor(100000 + Math.random() * 900000));
+  const [voucherNumber, setVoucherNumber] = useState("");
   const [disburseDate, setDisburseDate] = useState(new Date().toISOString().split("T")[0]);
 
   // Helper resolusi nominal dana yang aman dari berbagai kemungkinan nama field backend
+/**
+ * getFundingAmount coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const getFundingAmount = (f: any): number => {
     return Number(f.amount ?? f.funding_amount ?? f.requested_amount ?? f.approved_limit ?? f.total_amount ?? 0);
   };
 
+/**
+ * handleDecision coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleDecision = async () => {
     if (!selectedFunding) return;
+    if (decisionAction === "DISBURSED" && !voucherNumber.trim()) {
+      toast.error("Nomor voucher pencairan wajib diisi.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       const payloadNote = decisionAction === "DISBURSED"
@@ -2232,16 +2309,10 @@ function TabFundingProyek({
         notes: payloadNote,
         bank_account: selectedBankAccount,
         voucher_number: voucherNumber,
-      }).catch(async () => {
-        // Fallback PATCH langsung ke status funding
-        await api.patch(`/api/v1/finance/project-fundings/${selectedFunding.id}/`, {
-          status: decisionAction,
-          review_note: payloadNote,
-        });
       });
 
       if (decisionAction === "DISBURSED") {
-        toast.success(`Dana berhasil dicairkan dari ${selectedBankAccount.split("—")[0]}! Saldo kas terpotong.`, { icon: "⚡" });
+        toast.success(`Dana berhasil dicairkan dari ${selectedBankAccount.split("—")[0]}. Saldo kas telah diperbarui.`);
       } else {
         toast.success(`Pengajuan dana berhasil diubah ke status: ${decisionAction}`);
       }
@@ -2256,6 +2327,13 @@ function TabFundingProyek({
     }
   };
 
+/**
+ * handleDeleteFunding coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleDeleteFunding = async (id: string | number) => {
     if (!confirm("Apakah Anda yakin ingin menghapus pengajuan dana ini?")) return;
     try {
@@ -2374,7 +2452,7 @@ function TabFundingProyek({
                             onClick={() => {
                               setSelectedFunding(f);
                               setDecisionAction("DISBURSED");
-                              setVoucherNumber("VCH-DISB-" + Math.floor(100000 + Math.random() * 900000));
+                              setVoucherNumber("");
                               setIsDecisionModalOpen(true);
                             }}
                             className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold text-2xs hover:bg-blue-700 shadow-xs flex items-center gap-1"
@@ -2417,7 +2495,7 @@ function TabFundingProyek({
           onClose={() => setIsDecisionModalOpen(false)}
           title={
             decisionAction === "DISBURSED"
-              ? "⚡ Pencairan Kas Modal Kerja Proyek"
+              ? "Pencairan Kas Modal Kerja Proyek"
               : `Keputusan Permodalan: ${decisionAction}`
           }
           subtitle={selectedFunding.description || selectedFunding.purpose || "Verifikasi Pencairan Dana"}
@@ -2487,6 +2565,7 @@ function TabFundingProyek({
                   <label className="text-xs font-bold text-text-primary block mb-1">Nomor Voucher Pengeluaran Kas / Bank *</label>
                   <input
                     type="text"
+                    required={decisionAction === "DISBURSED"}
                     value={voucherNumber}
                     onChange={e => setVoucherNumber(e.target.value)}
                     className="w-full border border-text-tertiary rounded-lg p-2 text-xs font-mono font-bold"
@@ -2520,7 +2599,7 @@ function TabFundingProyek({
                   "bg-emerald-600 hover:bg-emerald-700 text-white"
                 )}
               >
-                {isSubmitting ? "Memproses..." : decisionAction === "DISBURSED" ? "⚡ Eksekusi Pencairan & Potong Saldo" : `Konfirmasi ${decisionAction}`}
+                {isSubmitting ? "Memproses..." : decisionAction === "DISBURSED" ? "Eksekusi Pencairan" : `Konfirmasi ${decisionAction}`}
               </button>
             </div>
           </div>

@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/ui/MonthlyStackedBarChart.tsx
+ *
+ * Purpose: Defines React UI component responsibilities for the frontend application.
+ * Responsibility: Owns the executable contracts declared here and their framework/import integration boundary.
+ * Dependencies and side effects: Function comments identify HTTP, persistence, browser-state, and security effects where present.
+ */
 "use client";
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -53,6 +60,13 @@ const DEFAULT_DATA: MonthlyBarItem[] = MONTH_NAMES_DEFAULT.map((month) => ({
   notes: "Belum ada data transaksi tercatat",
 }));
 
+/**
+ * formatValueDisplay owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
 function formatValueDisplay(valInJt: number): string {
   if (valInJt <= 0) return "Rp 0";
   if (valInJt >= 1000) {
@@ -62,6 +76,13 @@ function formatValueDisplay(valInJt: number): string {
   return `Rp ${Math.round(valInJt).toLocaleString("id-ID")} Juta`;
 }
 
+/**
+ * MonthlyStackedBarChart owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
 export function MonthlyStackedBarChart({
   title,
   subtitle,
@@ -143,6 +164,13 @@ export function MonthlyStackedBarChart({
     const divisor = isMiliar ? 1000 : 1;
     const activeUnit = unit || (isMiliar ? " M" : " Jt");
 
+/**
+ * formatTick owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
     const formatTick = (val: number) => {
       const scaled = val / divisor;
       const formatted = isMiliar
@@ -163,9 +191,23 @@ export function MonthlyStackedBarChart({
 
   // Calculate slider width and left position percentage
   const sliderWidthPercent = Math.min(100, (visibleCount / totalMonths) * 100);
+/**
+ * sliderLeftPercent owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
   const sliderLeftPercent = (startIndex / totalMonths) * 100;
 
   // Handle slider interaction
+/**
+ * handleSliderClick owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
   const handleSliderClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!sliderTrackRef.current) return;
     const rect = sliderTrackRef.current.getBoundingClientRect();
@@ -175,11 +217,25 @@ export function MonthlyStackedBarChart({
     setStartIndex(Math.max(0, Math.min(maxStartIndex, targetStart)));
   };
 
+/**
+ * handleMouseDown owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
   const handleMouseDown = () => {
     isDraggingRef.current = true;
   };
 
   useEffect(() => {
+/**
+ * handleMouseMove owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDraggingRef.current || !sliderTrackRef.current) return;
       const rect = sliderTrackRef.current.getBoundingClientRect();
@@ -189,6 +245,13 @@ export function MonthlyStackedBarChart({
       setStartIndex(Math.max(0, Math.min(maxStartIndex, targetStart)));
     };
 
+/**
+ * handleMouseUp owns the local UI behavior described by its typed signature.
+ *
+ * @param input - Uses the declared props, event, or value arguments.
+ * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
+ * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
+ */
     const handleMouseUp = () => {
       isDraggingRef.current = false;
     };
@@ -243,7 +306,7 @@ export function MonthlyStackedBarChart({
                 const val = Number(e.target.value);
                 setSelectedScale(val);
                 const opt = MAX_SCALE_OPTIONS.find((o) => o.value === val);
-                toast.success(`Skala grafik diubah ke ${opt?.label || "Auto"}`, { icon: "📊" });
+                toast.success(`Skala grafik diubah ke ${opt?.label || "Auto"}.`);
               }}
               className="bg-transparent text-xs font-bold text-[#0E341F] focus:outline-none cursor-pointer pr-1"
             >
@@ -261,7 +324,7 @@ export function MonthlyStackedBarChart({
               type="button"
               onClick={() => {
                 loadRealFinancials(true);
-                toast.success("Data finansial bulanan disinkronkan real-time", { icon: "🔄" });
+                toast.success("Data finansial bulanan telah disinkronkan.");
               }}
               disabled={loading || refreshing}
               className="p-1.5 rounded-lg text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors cursor-pointer"

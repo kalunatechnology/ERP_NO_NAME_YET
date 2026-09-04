@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/sales/sales.routes.ts
+ *
+ * Purpose: Implements Express API routing responsibilities for the sales domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
@@ -9,6 +17,14 @@ export const salesRouter = Router();
 // QUOTATION ACTIONS
 // =============================================================================
 
+/**
+ * POST route handler: `/quotations/:id/submit-approval`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `sales_quotation` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 salesRouter.post('/quotations/:id/submit-approval', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.sales_quotation.update({
@@ -21,6 +37,14 @@ salesRouter.post('/quotations/:id/submit-approval', async (req: Request, res: Re
   }
 });
 
+/**
+ * POST route handler: `/quotations/:id/send`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `sales_quotation` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.sales_quotation.update({
@@ -33,6 +57,14 @@ salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, nex
   }
 });
 
+/**
+ * POST route handler: `/quotations/:id/customer-decision`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `sales_quotation` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 salesRouter.post('/quotations/:id/customer-decision', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const decision = String(req.body.decision ?? '').toUpperCase();
@@ -53,6 +85,14 @@ salesRouter.post('/quotations/:id/customer-decision', async (req: Request, res: 
 // ORDER ACTIONS
 // =============================================================================
 
+/**
+ * POST route handler: `/orders/:id/confirm`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `sales_order` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 salesRouter.post('/orders/:id/confirm', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.sales_order.update({
@@ -65,6 +105,14 @@ salesRouter.post('/orders/:id/confirm', async (req: Request, res: Response, next
   }
 });
 
+/**
+ * POST route handler: `/orders/:id/allocate`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `sales_order` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 salesRouter.post('/orders/:id/allocate', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.sales_order.update({
@@ -77,6 +125,14 @@ salesRouter.post('/orders/:id/allocate', async (req: Request, res: Response, nex
   }
 });
 
+/**
+ * POST route handler: `/orders/:id/convert-to-project`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `sales_order`, `iam_user`, `project_project` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const order = await prisma.sales_order.findUnique({ where: { id: req.params.id } });
@@ -112,6 +168,14 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
 // DELIVERY ACTIONS
 // =============================================================================
 
+/**
+ * POST route handler: `/deliveries/:id/dispatch`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Uses Prisma model(s) `sales_delivery` in the handler path.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 salesRouter.post('/deliveries/:id/dispatch', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.sales_delivery.update({

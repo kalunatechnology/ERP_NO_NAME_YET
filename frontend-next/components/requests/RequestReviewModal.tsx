@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/requests/RequestReviewModal.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState } from "react";
@@ -18,6 +25,13 @@ interface RequestReviewModalProps {
   onActionComplete: () => void;
 }
 
+/**
+ * RequestReviewModal coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function RequestReviewModal({ isOpen, onClose, request, onActionComplete }: RequestReviewModalProps) {
   const { user, userRole, isAdmin } = useAuth();
   const [remarks, setRemarks] = useState("");
@@ -39,12 +53,26 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
   const isFinanceRole = isAdmin || userRole === "finance" || userRole === "executive";
   const isCreatorOrTagged = user?.id === request.created_by_id || (request.tagged_users || []).some((u: any) => u.id === user?.id);
 
+/**
+ * isOMStage coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const isOMStage = (request.status === "PENDING_OM" || request.status === "RE_CHECKING") && isOMRole;
   const isExecStage = request.status === "PENDING_EXEC" && isPMRole;
   const isDisbursedOrRegistered = request.status === "REGISTERED" || request.status === "DISBURSED" || request.status === "LPJ_REVISION";
   const isOMLPJStage = request.status === "PENDING_LPJ_VERIFICATION" && isOMRole;
   const isCompleted = request.status === "COMPLETED";
 
+/**
+ * handleOMAction coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleOMAction = async (decision: "APPROVE" | "RE_CHECK") => {
     if (decision === "RE_CHECK" && !remarks.trim()) {
       setError("Catatan perbaikan (alasan Re-checking) wajib diisi untuk pemohon.");
@@ -68,6 +96,13 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
     }
   };
 
+/**
+ * handleExecAction coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleExecAction = async (decision: "APPROVE" | "REJECT") => {
     setLoading(true);
     setError("");
@@ -86,6 +121,13 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
     }
   };
 
+/**
+ * handleDisburseAction coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleDisburseAction = async () => {
     setLoading(true);
     setError("");
@@ -103,6 +145,13 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
     }
   };
 
+/**
+ * handleSubmitLPJ coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleSubmitLPJ = async () => {
     const cleanNum = parseFloat(lpjRealization.replace(/\./g, "").replace(/,/g, ".")) || 0;
     if (cleanNum <= 0) {
@@ -139,6 +188,13 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
     }
   };
 
+/**
+ * handleVerifyLPJByOM coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
   const handleVerifyLPJByOM = async (decision: "APPROVE" | "REVISE") => {
     if (decision === "REVISE" && !remarks.trim()) {
       setError("Catatan alasan revisi LPJ wajib diisi untuk pemohon.");
@@ -360,7 +416,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                     onClick={() => setShowRecheckInput(true)}
                     className="px-4 py-2.5 rounded-[14px] bg-orange-50 border border-orange-200 text-orange-800 text-xs font-bold hover:bg-orange-100 transition-colors"
                   >
-                    ↩ Minta Re-checking
+                    Minta pemeriksaan ulang
                   </button>
                 ) : (
                   <button
@@ -426,7 +482,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   disabled={loading}
                   className="px-4 py-2.5 rounded-[14px] bg-orange-50 border border-orange-200 text-orange-800 text-xs font-bold hover:bg-orange-100 transition-colors"
                 >
-                  ↩ Minta Revisi LPJ
+                  Minta revisi LPJ
                 </button>
                 <button
                   type="button"

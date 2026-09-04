@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/layout/AppShell.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useEffect, ReactNode, useState, useCallback } from "react";
@@ -16,14 +23,23 @@ interface AppShellProps {
 
 // Role permission mapping — include ALL role code variants from detectRole() and backend
 const RESTRICTED_ROUTES: Record<string, string[]> = {
-  "/crm":       ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "CRM_LEAD", "CRM_MANAGER", "CRM_STAFF", "CRM", "SALES", "MANAGER", "PM", "PROJECT_MANAGER", "ROLE_PROJECT_MANAGER", "ROLE-PM", "ROLE-MANAGER", "ROLE-STAFF", "ROLE-CRM", "crm", "pm", "executive"],
-  "/finance":   ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "FINANCE_LEAD", "FINANCE_MANAGER", "FINANCE_APPROVER", "FINANCE_STAFF", "FINANCE", "ACCOUNTING", "ACCOUNTING_FINANCE", "AP_AR", "AP", "AR", "ROLE-FINANCE", "ROLE-APAR", "finance", "executive"],
-  "/reporting": ["ADMIN", "EXECUTIVE", "DIRECTOR", "SUPERADMIN", "PM", "PROJECT_MANAGER", "FINANCE_LEAD", "FINANCE", "ACCOUNTING_FINANCE", "ROLE-FINANCE", "ROLE-PM", "finance", "pm", "executive"],
+  "/crm": ["ROLE-PM", "ROLE-CRM-LEAD", "ROLE-SALES", "ROLE-DIRECTOR"],
+  "/finance": ["ROLE-FINANCE", "ROLE-DIRECTOR"],
+  "/projects": ["ROLE-PM", "ROLE-OM", "ROLE-DIRECTOR", "ROLE-SUPERVISOR", "ROLE-STAFF"],
+  "/tasks": ["ROLE-PM", "ROLE-OM", "ROLE-SUPERVISOR", "ROLE-STAFF"],
+  "/reporting": [],
 };
 
 
+/**
+ * AppShell implements the local UI interaction represented by its typed signature.
+ *
+ * @param input - The declared props/event/value arguments; caller identity and company state come only from imported context/API helpers.
+ * @returns The rendered React value, synchronous result, or Promise declared by the implementation.
+ * Side effects: updates the local React/browser state or invokes callbacks visible below.
+ */
 export function AppShell({ children }: AppShellProps) {
-  const { user, userRole, isAdmin, isLoading, isAuthenticated } = useAuth();
+  const { user, userRole, isLoading, isAuthenticated } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -70,20 +86,30 @@ export function AppShell({ children }: AppShellProps) {
   const closeMobileRight    = useCallback(() => setMobileRightPanelOpen(false), []);
 
   /* ── Access control ──────────────────────────────────── */
-  const isSuperUser = Boolean((user as any)?.is_superuser) || isAdmin || userRole === "executive";
+  const isSuperUser = userRole === "super_admin";
+/**
+ * userRolesList implements the local UI interaction represented by its typed signature.
+ *
+ * @param input - The declared props/event/value arguments; caller identity and company state come only from imported context/API helpers.
+ * @returns The rendered React value, synchronous result, or Promise declared by the implementation.
+ * Side effects: updates the local React/browser state or invokes callbacks visible below.
+ */
   const userRolesList = (user?.roles || []).map((r: any) =>
     (typeof r === "string" ? r : r.role_code || r.role || r.name || r.code || "").toUpperCase()
   );
-  if (userRole) userRolesList.push(userRole.toUpperCase());
+  const enabledModules = new Set((user?.enabled_modules ?? []).map((module) => module.toUpperCase()));
 
-  const requiredRoles = Object.entries(RESTRICTED_ROUTES).find(([route]) =>
+  const restrictedRoute = Object.entries(RESTRICTED_ROUTES).find(([route]) =>
     pathname.startsWith(route)
-  )?.[1];
+  );
+  const requiredRoles = restrictedRoute?.[1];
+  const moduleCode = restrictedRoute?.[0].slice(1).toUpperCase();
 
   const hasAccess =
     !requiredRoles ||
     isSuperUser ||
-    requiredRoles.some((role) => userRolesList.includes(role.toUpperCase()));
+    (Boolean(moduleCode && enabledModules.has(moduleCode)) &&
+      (requiredRoles.length === 0 || requiredRoles.some((role) => userRolesList.includes(role))));
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace("/login");

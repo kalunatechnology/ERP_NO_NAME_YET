@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/finance/ProjectTaxWorkspace.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
 import { useState } from "react";
@@ -261,7 +268,7 @@ export function ProjectTaxWorkspace() {
     };
 
     setTransactions([newTx, ...transactions]);
-    toast.success("Faktur Pajak & Transaksi Billing berhasil dicatat!", { icon: "🧾" });
+    toast.success("Faktur pajak dan transaksi billing berhasil dicatat.");
     setIsAddTaxModalOpen(false);
   };
 
@@ -354,7 +361,7 @@ export function ProjectTaxWorkspace() {
             </div>
           </div>
           <span className="badge badge-success text-3xs font-bold">
-            ⚡ Live Engine
+            Kalkulasi aktif
           </span>
         </div>
 
@@ -582,7 +589,7 @@ export function ProjectTaxWorkspace() {
                         ? "bg-amber-100 text-amber-800 border border-amber-300"
                         : "bg-bg-light text-text-secondary border border-text-tertiary"
                     )}>
-                      {tx.client_type === "WAPU" ? "🏛️ Klien WAPU (BUMN)" : "🏢 Non-WAPU"}
+                      {tx.client_type === "WAPU" ? "Klien WAPU (BUMN)" : "Non-WAPU"}
                     </span>
                   </td>
 
@@ -729,7 +736,7 @@ export function ProjectTaxWorkspace() {
       <Modal
         isOpen={isAddTaxModalOpen}
         onClose={() => setIsAddTaxModalOpen(false)}
-        title="🧾 Terbitkan Faktur Pajak & Transaksi Billing Proyek"
+        title="Terbitkan Faktur Pajak & Billing Proyek"
         subtitle="Entri faktur PPN dan perhitungan withholding tax PPh"
         size="md"
       >

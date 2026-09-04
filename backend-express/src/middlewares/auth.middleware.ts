@@ -1,7 +1,16 @@
+/**
+ * File: backend-express/src/middlewares/auth.middleware.ts
+ *
+ * Purpose: Implements request middleware responsibilities for the platform domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
 import { UnauthorizedError } from '../utils/errors';
 import prisma from '../config/database';
+import { loadUserAccessContext } from '../modules/accounts/access-context.service';
 
 /**
  * Authentication Middleware.
@@ -35,7 +44,6 @@ export async function authenticate(
       email: true,
       full_name: true,
       is_staff: true,
-      is_superuser: true,
       status: true,
       tenant_id: true,
       is_active: true,
@@ -46,16 +54,22 @@ export async function authenticate(
     return next(new UnauthorizedError('Akun tidak aktif atau tidak ditemukan.'));
   }
 
-  // Inject into request
+  const access = await loadUserAccessContext(user.id);
+
+  // Administrative authority is derived from canonical role codes, not legacy booleans.
   req.user = {
     id: user.id,
     email: user.email,
     full_name: user.full_name ?? '',
     is_staff: user.is_staff,
-    is_superuser: user.is_superuser,
+    is_superuser: access.isSuperAdmin,
     status: user.status ?? 'ACTIVE',
     tenant_id: user.tenant_id,
-    roles: payload.roles ?? [],
+    company_id: access.companyId,
+    accessible_company_ids: access.companyIds,
+    roles: access.roles,
+    active_role_code: access.activeRoleCode,
+    enabled_modules: access.enabledModules,
   };
   req.tenantId = user.tenant_id;
 
@@ -85,7 +99,6 @@ export async function optionalAuthenticate(
       email: true,
       full_name: true,
       is_staff: true,
-      is_superuser: true,
       status: true,
       tenant_id: true,
       is_active: true,
@@ -93,15 +106,20 @@ export async function optionalAuthenticate(
   });
 
   if (user?.is_active) {
+    const access = await loadUserAccessContext(user.id);
     req.user = {
       id: user.id,
       email: user.email,
       full_name: user.full_name ?? '',
       is_staff: user.is_staff,
-      is_superuser: user.is_superuser,
+      is_superuser: access.isSuperAdmin,
       status: user.status ?? 'ACTIVE',
       tenant_id: user.tenant_id,
-      roles: payload.roles ?? [],
+      company_id: access.companyId,
+      accessible_company_ids: access.companyIds,
+      roles: access.roles,
+      active_role_code: access.activeRoleCode,
+      enabled_modules: access.enabledModules,
     };
     req.tenantId = user.tenant_id;
   }

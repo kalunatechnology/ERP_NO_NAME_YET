@@ -1,9 +1,36 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { parseRoleCode } from '../src/types/roles';
 
 const prisma = new PrismaClient();
 const DUMMY_PASSWORD = 'DummyPass123!';
 
+/**
+ * Declares a seed-managed account and its least-privilege IAM assignment.
+ *
+ * The catalog is intentionally the only source of user-role truth for the
+ * development/demo identities below. A non-superuser always receives one
+ * explicit company membership; only the dedicated system account is global.
+ */
+type SeedUser = {
+  email: string;
+  username: string;
+  name: string;
+  isSuper: boolean;
+  roleCodes: string[];
+  activeRoleCode: string;
+  tenantId: string;
+  companyId: string | null;
+};
+
+/**
+ * main implements this file's named function contract.
+ *
+ * @param input - Uses the typed parameters declared by the signature.
+ * @returns The value or Promise declared by the implementation.
+ * Database: reads or mutates `core_tenant`, `core_company`, `core_organization` exactly as shown; no wider transaction is implied.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
+ */
 async function main() {
   console.log('🌱 Starting comprehensive universal ERP domain dataset seeding...');
 
@@ -86,6 +113,23 @@ async function main() {
     });
   }
 
+  // Ghost users must never point at SMA's organization: company isolation is
+  // enforced by both membership and role-assignment context.
+  let orgGhost = await prisma.core_organization.findFirst({ where: { organization_code: 'ORG-GHOST-HQ' } });
+  if (!orgGhost) {
+    orgGhost = await prisma.core_organization.create({
+      data: {
+        id: '00000000-0000-0000-0000-000000000199',
+        tenant_id: tenantGhost.id,
+        company_id: compGhost.id,
+        organization_code: 'ORG-GHOST-HQ',
+        organization_name: 'Ghost Company Headquarters',
+        organization_type: 'DIVISION',
+        status: 'GHOST',
+      },
+    });
+  }
+
   // Fallback aliases
   const tenant = tenantSMA;
   const company = compSMA;
@@ -95,8 +139,10 @@ async function main() {
   // ===========================================================================
   console.log('  -> [2/7] Seeding Roles & Official Team (DummyPass123!)...');
   const rolesData = [
-    { code: 'ROLE-ADMIN', name: 'System Administrator', desc: 'Full System Access' },
+    { code: 'ROLE-SUPER-ADMIN', name: 'Super Administrator', desc: 'Company governance, module enablement, and global read access' },
+    { code: 'ROLE-COMPANY-ADMIN', name: 'Company Administrator', desc: 'User and access administration within one company' },
     { code: 'ROLE-DIRECTOR', name: 'Executive Director', desc: 'Executive Oversight & Approval' },
+    { code: 'ROLE-OM', name: 'Operational Manager', desc: 'Operational delivery, project oversight, and periodic reporting' },
     { code: 'ROLE-PM', name: 'Project Manager', desc: 'Project & Task Management' },
     { code: 'ROLE-SUPERVISOR', name: 'Field Supervisor', desc: 'Site Operations & Task Verification' },
     { code: 'ROLE-CRM-LEAD', name: 'CRM & Commercial Lead', desc: 'Inquiries, Estimates, & Deals' },
@@ -106,44 +152,65 @@ async function main() {
   ];
 
   const roleMap = new Map<string, any>();
-  for (const r of rolesData) {
-    let role = await prisma.iam_role.findFirst({ where: { role_code: r.code } });
-    if (!role) {
-      role = await prisma.iam_role.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenant_id: tenantSMA.id,
-          role_code: r.code,
-          role_name: r.name,
-          description: r.desc,
-        },
-      });
+  for (const tenantId of [tenantSMA.id, tenantGhost.id]) {
+    for (const r of rolesData) {
+      const roleCode = parseRoleCode(r.code);
+      if (!roleCode) throw new Error(`Unknown role code: ${r.code}`);
+      let role = await prisma.iam_role.findFirst({ where: { tenant_id: tenantId, role_code: roleCode } });
+      if (!role) {
+        role = await prisma.iam_role.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: tenantId,
+            role_code: roleCode,
+            role_name: r.name,
+            description: r.desc,
+          },
+        });
+      }
+      roleMap.set(`${tenantId}:${r.code}`, role);
     }
-    roleMap.set(r.code, role);
   }
 
-  // 8 Official Team Members of PT Sinergi Muda Arsa (@arsalynk.com)
-  const officialUsers = [
-    { email: 'rian@arsalynk.com', username: 'rian', name: 'Rian Destianto', isSuper: true, roleCode: 'ROLE-DIRECTOR', tenantId: tenantSMA.id, companyId: compSMA.id },
-    { email: 'melika@arsalynk.com', username: 'melika', name: 'Melika Citra Tania', isSuper: false, roleCode: 'ROLE-PM', tenantId: tenantSMA.id, companyId: compSMA.id },
-    { email: 'melika.ops@arsalynk.com', username: 'melika.ops', name: 'Melika (Ops & Supervisor)', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
-    { email: 'arof@arsalynk.com', username: 'arof', name: 'Arof Fudding', isSuper: false, roleCode: 'ROLE-PM', tenantId: tenantSMA.id, companyId: compSMA.id },
-    { email: 'arof.finance@arsalynk.com', username: 'arof.finance', name: 'Arof (Finance & Tax)', isSuper: false, roleCode: 'ROLE-FINANCE', tenantId: tenantSMA.id, companyId: compSMA.id },
-    { email: 'laode@arsalynk.com', username: 'laode', name: 'Laode Fahmi Hidayat', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
-    { email: 'jundy@arsalynk.com', username: 'jundy', name: 'Jundy Isham Izzudin', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
-    { email: 'noorman@arsalynk.com', username: 'noorman', name: 'M Noorman Perdana', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
-    
-    // Ghost Testing Users (PT Coba Arsalynk)
-    { email: 'admin.director@arsalynk.id', username: 'admin.director', name: 'Ghost Admin System', isSuper: true, roleCode: 'ROLE-ADMIN', tenantId: tenantGhost.id, companyId: compGhost.id },
-    { email: 'director@arsalynk.id', username: 'director', name: 'Ghost Executive Director', isSuper: true, roleCode: 'ROLE-DIRECTOR', tenantId: tenantGhost.id, companyId: compGhost.id },
-    { email: 'pm.lead@arsalynk.id', username: 'pm.lead', name: 'Ghost Lead Project Manager', isSuper: false, roleCode: 'ROLE-PM', tenantId: tenantGhost.id, companyId: compGhost.id },
-    { email: 'supervisor@arsalynk.id', username: 'supervisor', name: 'Ghost Field Supervisor', isSuper: false, roleCode: 'ROLE-SUPERVISOR', tenantId: tenantGhost.id, companyId: compGhost.id },
-    { email: 'crm.lead@arsalynk.id', username: 'crm.lead', name: 'Ghost CRM & Commercial Lead', isSuper: false, roleCode: 'ROLE-CRM-LEAD', tenantId: tenantGhost.id, companyId: compGhost.id },
-    { email: 'sales@arsalynk.id', username: 'sales', name: 'Ghost Commercial & Sales Staff', isSuper: false, roleCode: 'ROLE-SALES', tenantId: tenantGhost.id, companyId: compGhost.id },
-    { email: 'finance.lead@arsalynk.id', username: 'finance.lead', name: 'Ghost Finance Controller', isSuper: false, roleCode: 'ROLE-FINANCE', tenantId: tenantGhost.id, companyId: compGhost.id },
-    { email: 'dummy.finance@example.com', username: 'dummy.finance', name: 'Ghost AP & AR Specialist', isSuper: false, roleCode: 'ROLE-FINANCE', tenantId: tenantGhost.id, companyId: compGhost.id },
-    { email: 'estimator@arsalynk.id', username: 'estimator', name: 'Ghost Cost Estimator', isSuper: false, roleCode: 'ROLE-PM', tenantId: tenantGhost.id, companyId: compGhost.id },
-    { email: 'staff.dev@arsalynk.id', username: 'staff.dev', name: 'Ghost Technical & Dev Staff', isSuper: false, roleCode: 'ROLE-STAFF', tenantId: tenantGhost.id, companyId: compGhost.id },
+  /**
+   * Demo identity catalog.
+   *
+   * Security rules:
+   * - dummy.admin@example.com is the sole global Super Admin.
+   * - Laode Fahmi is the SMA Company Admin. Rian is Director only, preserving
+   *   the separation between company IAM administration and executive approval.
+   * - Split PM and Finance personas use separate accounts so finance
+   *   segregation-of-duties tests are not weakened by a broad combined role.
+   * - Every non-superuser is bound to exactly one company.
+   *
+   * The listed default password is hashed only when an account is first
+   * created. Existing passwords are deliberately preserved on later seeds.
+   */
+  const officialUsers: SeedUser[] = [
+    // PT Sinergi Muda Arsa — official/demo team
+    { email: 'rian@arsalynk.com', username: 'rian', name: 'Rian Destianto', isSuper: false, roleCodes: ['ROLE-DIRECTOR'], activeRoleCode: 'ROLE-DIRECTOR', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'melika@arsalynk.com', username: 'melika', name: 'Melika Citra Tania', isSuper: false, roleCodes: ['ROLE-PM', 'ROLE-OM'], activeRoleCode: 'ROLE-PM', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'melika.ops@arsalynk.com', username: 'melika.ops', name: 'Melika (Ops)', isSuper: false, roleCodes: ['ROLE-OM', 'ROLE-SUPERVISOR'], activeRoleCode: 'ROLE-OM', tenantId: tenantSMA.id, companyId: compSMA.id },
+    // Approved multi-role account: Arof can operate as both PM and Finance.
+    // The active role remains PM by default and may be switched in-session.
+    { email: 'arof@arsalynk.com', username: 'arof', name: 'Arof Fudding', isSuper: false, roleCodes: ['ROLE-PM', 'ROLE-FINANCE'], activeRoleCode: 'ROLE-PM', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'arof.finance@arsalynk.com', username: 'arof.finance', name: 'Arof (Finance)', isSuper: false, roleCodes: ['ROLE-FINANCE'], activeRoleCode: 'ROLE-FINANCE', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'laode@arsalynk.com', username: 'laode', name: 'Laode Fahmi Hidayat', isSuper: false, roleCodes: ['ROLE-COMPANY-ADMIN', 'ROLE-SUPERVISOR', 'ROLE-STAFF'], activeRoleCode: 'ROLE-COMPANY-ADMIN', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'jundy@arsalynk.com', username: 'jundy', name: 'Jundy Isham Izzudin', isSuper: false, roleCodes: ['ROLE-SUPERVISOR', 'ROLE-STAFF'], activeRoleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
+    { email: 'noorman@arsalynk.com', username: 'noorman', name: 'M Noorman Perdana', isSuper: false, roleCodes: ['ROLE-SUPERVISOR', 'ROLE-STAFF'], activeRoleCode: 'ROLE-SUPERVISOR', tenantId: tenantSMA.id, companyId: compSMA.id },
+
+    // PT Coba Arsalynk — isolated Ghost localhost/UAT identities
+    { email: 'dummy.admin@example.com', username: 'dummy.admin', name: 'System Super Administrator', isSuper: true, roleCodes: ['ROLE-SUPER-ADMIN'], activeRoleCode: 'ROLE-SUPER-ADMIN', tenantId: tenantGhost.id, companyId: null },
+    { email: 'admin.director@arsalynk.id', username: 'admin.director', name: 'Ghost Admin System', isSuper: false, roleCodes: ['ROLE-COMPANY-ADMIN'], activeRoleCode: 'ROLE-COMPANY-ADMIN', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'director@arsalynk.id', username: 'director', name: 'Ghost Executive Director', isSuper: false, roleCodes: ['ROLE-DIRECTOR'], activeRoleCode: 'ROLE-DIRECTOR', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'pm.lead@arsalynk.id', username: 'pm.lead', name: 'Ghost Lead Project Manager', isSuper: false, roleCodes: ['ROLE-PM'], activeRoleCode: 'ROLE-PM', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'supervisor@arsalynk.id', username: 'supervisor', name: 'Ghost Field Supervisor', isSuper: false, roleCodes: ['ROLE-SUPERVISOR', 'ROLE-STAFF'], activeRoleCode: 'ROLE-SUPERVISOR', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'crm.lead@arsalynk.id', username: 'crm.lead', name: 'Ghost CRM Lead', isSuper: false, roleCodes: ['ROLE-CRM-LEAD'], activeRoleCode: 'ROLE-CRM-LEAD', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'sales@arsalynk.id', username: 'sales', name: 'Ghost Sales Staff', isSuper: false, roleCodes: ['ROLE-SALES'], activeRoleCode: 'ROLE-SALES', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'finance.lead@arsalynk.id', username: 'finance.lead', name: 'Ghost Finance Controller', isSuper: false, roleCodes: ['ROLE-FINANCE'], activeRoleCode: 'ROLE-FINANCE', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'dummy.finance@example.com', username: 'dummy.finance', name: 'Ghost AP/AR Specialist', isSuper: false, roleCodes: ['ROLE-FINANCE'], activeRoleCode: 'ROLE-FINANCE', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'estimator@arsalynk.id', username: 'estimator', name: 'Ghost Cost Estimator', isSuper: false, roleCodes: ['ROLE-CRM-LEAD'], activeRoleCode: 'ROLE-CRM-LEAD', tenantId: tenantGhost.id, companyId: compGhost.id },
+    { email: 'staff.dev@arsalynk.id', username: 'staff.dev', name: 'Ghost Technical Staff', isSuper: false, roleCodes: ['ROLE-STAFF'], activeRoleCode: 'ROLE-STAFF', tenantId: tenantGhost.id, companyId: compGhost.id },
   ];
 
   const userMap = new Map<string, any>();
@@ -160,7 +227,6 @@ async function main() {
           tenant_id: u.tenantId,
           email: u.email,
           username: u.username,
-          password_hash: passwordHash,
           full_name: u.name,
           is_active: true,
           is_staff: u.isSuper,
@@ -187,28 +253,168 @@ async function main() {
     }
     userMap.set(u.username, user);
 
-    const role = roleMap.get(u.roleCode);
-    if (role) {
-      const existingUR = await prisma.iam_user_role.findFirst({
-        where: { user_id: user.id, role_id: role.id },
-      });
-      if (!existingUR) {
-        await prisma.iam_user_role.create({
-          data: {
-            id: crypto.randomUUID(),
-            user_id: user.id,
-            role_id: role.id,
-            company_id: u.companyId,
-            organization_id: orgHQ.id,
-          },
+    /**
+     * Reconcile, rather than only append, seed-managed roles.
+     *
+     * Leaving removed roles attached would silently preserve privilege after a
+     * catalog revision (for example the former Arof PM+Finance combination).
+     * This applies only to explicit seed identities, whose catalog is the
+     * intended authority for their role set.
+     */
+    const expectedRoleIds = u.roleCodes
+      .map((code) => roleMap.get(`${u.tenantId}:${code}`)?.id)
+      .filter((id): id is string => Boolean(id));
+    await prisma.iam_user_role.deleteMany({
+      where: {
+        user_id: user.id,
+        role_id: { notIn: expectedRoleIds },
+      },
+    });
+
+    // Sync the remaining exact role set and its company/organization scope.
+    let firstAssignedRoleId: string | null = null;
+    const organizationId = u.companyId === compGhost.id ? orgGhost.id : orgHQ.id;
+    for (const code of u.roleCodes) {
+      const role = roleMap.get(`${u.tenantId}:${code}`);
+      if (role) {
+        if (!firstAssignedRoleId) firstAssignedRoleId = role.id;
+        const existingUR = await prisma.iam_user_role.findFirst({
+          where: { user_id: user.id, role_id: role.id },
         });
-      } else {
-        await prisma.iam_user_role.update({
-          where: { id: existingUR.id },
-          data: { company_id: u.companyId },
-        });
+        if (!existingUR) {
+          await prisma.iam_user_role.create({
+            data: {
+              id: crypto.randomUUID(),
+              user_id: user.id,
+              role_id: role.id,
+              tenant_id: u.tenantId,
+              company_id: u.isSuper ? null : u.companyId,
+              organization_id: u.isSuper ? null : organizationId,
+            },
+          });
+        } else {
+          await prisma.iam_user_role.update({
+            where: { id: existingUR.id },
+            data: {
+              tenant_id: u.tenantId,
+              company_id: u.isSuper ? null : u.companyId,
+              organization_id: u.isSuper ? null : organizationId,
+            },
+          });
+        }
       }
     }
+
+    // Set Active Role
+    const activeRole = u.activeRoleCode ? roleMap.get(`${u.tenantId}:${u.activeRoleCode}`) : null;
+    const resolvedActiveRoleId = activeRole ? activeRole.id : firstAssignedRoleId;
+    if (resolvedActiveRoleId) {
+      await prisma.iam_user.update({
+        where: { id: user.id },
+        data: { active_role_id: resolvedActiveRoleId },
+      });
+    }
+
+    // Sync Company Membership
+    if (!u.isSuper && u.companyId) {
+      await prisma.iam_user_company_membership.upsert({
+        where: { user_id: user.id },
+        update: {
+          company_id: u.companyId,
+          tenant_id: u.tenantId,
+          status: 'ACTIVE',
+        },
+        create: {
+          id: crypto.randomUUID(),
+          user_id: user.id,
+          company_id: u.companyId,
+          tenant_id: u.tenantId,
+          status: 'ACTIVE',
+        },
+      });
+    } else if (u.isSuper) {
+      // A global Super Admin is intentionally not a member of any company.
+      await prisma.iam_user_company_membership.deleteMany({
+        where: { user_id: user.id },
+      });
+    }
+  }
+
+  // ===========================================================================
+  // 2.1 COMPANY MODULE ACCESS ENTITLEMENTS (Pay-per-module Feature Toggles)
+  // ===========================================================================
+  console.log('  -> [2.1/7] Seeding Company Module Entitlements...');
+  const allModules = [
+    'CORE',
+    'REQUESTS',
+    'CRM',
+    'SALES',
+    'PROJECTS',
+    'FINANCE',
+    'PROCUREMENT',
+    'INVENTORY',
+    'MANUFACTURING',
+    'QUALITY',
+    'ASSETS',
+    'SERVICE',
+    'LOGISTICS',
+    'ANALYTICS',
+    'IMPLEMENTATION',
+    'REPORTING',
+  ];
+
+  // PT Sinergi Muda Arsa (Official): All modules enabled
+  for (const moduleCode of allModules) {
+    await prisma.iam_company_module_access.upsert({
+      where: {
+        company_id_module_code: {
+          company_id: compSMA.id,
+          module_code: moduleCode,
+        },
+      },
+      update: {
+        enabled: true,
+        allow_read: true,
+        allow_write: true,
+      },
+      create: {
+        id: crypto.randomUUID(),
+        tenant_id: tenantSMA.id,
+        company_id: compSMA.id,
+        module_code: moduleCode,
+        enabled: true,
+        allow_read: true,
+        allow_write: true,
+      },
+    });
+  }
+
+  // PT Coba Arsalynk (Ghost): Selected modules enabled
+  const ghostModules = ['CORE', 'REQUESTS', 'CRM', 'SALES', 'PROJECTS', 'FINANCE'];
+  for (const moduleCode of allModules) {
+    const isEnabled = ghostModules.includes(moduleCode);
+    await prisma.iam_company_module_access.upsert({
+      where: {
+        company_id_module_code: {
+          company_id: compGhost.id,
+          module_code: moduleCode,
+        },
+      },
+      update: {
+        enabled: isEnabled,
+        allow_read: isEnabled,
+        allow_write: isEnabled,
+      },
+      create: {
+        id: crypto.randomUUID(),
+        tenant_id: tenantGhost.id,
+        company_id: compGhost.id,
+        module_code: moduleCode,
+        enabled: isEnabled,
+        allow_read: isEnabled,
+        allow_write: isEnabled,
+      },
+    });
   }
 
   // ===========================================================================

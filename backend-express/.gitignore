@@ -12,8 +12,6 @@ dist/
 *.log
 logs/
 
-# Prisma
-prisma/migrations/*.sql
 
 # OS
 .DS_Store

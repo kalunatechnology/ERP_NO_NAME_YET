@@ -1,25 +1,54 @@
+/**
+ * File: frontend-next/app/(app)/reporting/ReportingClient.tsx
+ *
+ * Purpose: Defines the Next App Router entry and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   RefreshCw, BarChart3, TrendingUp, DollarSign, FileText,
   Download, CalendarDays, ChevronDown, Layers, Building2,
-  ArrowUpRight, ArrowDownRight, Book,
+  ArrowUpRight, ArrowDownRight, Book, ClipboardCheck, Clock3,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
+import { useAuth, UserRoleType } from "@/contexts/AuthContext";
 
 /* ── Tab Config ──────────────────────────────────── */
 const REPORT_TABS = [
   { id: "project-pnl", label: "Project P&L",    icon: BarChart3    },
   { id: "executive",   label: "Executive View",  icon: Building2    },
   { id: "journals",    label: "General Ledger",  icon: Book         },
+  { id: "periodic",    label: "Ringkasan Berkala", icon: ClipboardCheck },
+  { id: "attendance",  label: "Kehadiran", icon: Clock3 },
 ];
 
+const ROLE_REPORT_TABS: Record<UserRoleType, string[]> = {
+  super_admin: ['executive', 'periodic', 'attendance'],
+  company_admin: ['executive', 'periodic', 'attendance'],
+  executive: ['executive', 'project-pnl', 'periodic', 'attendance'],
+  pm: ['executive', 'project-pnl', 'journals', 'periodic', 'attendance'],
+  om: ['executive', 'project-pnl', 'periodic', 'attendance'],
+  finance: ['executive', 'project-pnl', 'journals', 'periodic', 'attendance'],
+  crm: ['executive', 'periodic', 'attendance'],
+  staff: ['periodic', 'attendance'],
+};
+
 /* ── Data Loading ────────────────────────────────── */
+/**
+ * loadReportingData coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+ */
 async function loadReportingData() {
   const pairs = await Promise.allSettled([
     api.get("/api/v1/projects/projects/?page_size=100").then(r => normalizeList<any>(r.data).rows),
@@ -27,6 +56,8 @@ async function loadReportingData() {
     api.get("/api/v1/finance/billing-proposals/?page_size=200").then(r => normalizeList<any>(r.data).rows),
     api.get("/api/v1/sales/orders/?page_size=200").then(r => normalizeList<any>(r.data).rows),
     api.get("/api/v1/finance/journal-entries/?page_size=200").then(r => normalizeList<any>(r.data).rows).catch(() => []),
+    api.get('/api/v1/reporting/periodic-project-summary?period_type=MONTHLY').then(r => r.data).catch(() => null),
+    api.get('/api/v1/reporting/attendance-summary').then(r => r.data).catch(() => null),
   ]);
 
   return {
@@ -35,10 +66,19 @@ async function loadReportingData() {
     billings:    pairs[2].status === "fulfilled" ? pairs[2].value : [],
     orders:      pairs[3].status === "fulfilled" ? pairs[3].value : [],
     journals:    pairs[4].status === "fulfilled" ? pairs[4].value : [],
+    periodic:    pairs[5].status === 'fulfilled' ? pairs[5].value : null,
+    attendance:  pairs[6].status === 'fulfilled' ? pairs[6].value : null,
   };
 }
 
 /* ── Shared Components ───────────────────────────── */
+/**
+ * MetricCard coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function MetricCard({ label, value, sub, valueColor, icon: Icon, iconBg, iconColor }: {
   label: string; value: string; sub?: string;
   valueColor?: string; icon: React.ElementType; iconBg: string; iconColor: string;
@@ -57,6 +97,13 @@ function MetricCard({ label, value, sub, valueColor, icon: Icon, iconBg, iconCol
   );
 }
 
+/**
+ * ProgressBarSimple coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function ProgressBarSimple({ value, color = "#16A34A" }: { value: number; color?: string }) {
   return (
     <div className="w-full bg-gray-100 rounded-full overflow-hidden h-1.5">
@@ -65,6 +112,13 @@ function ProgressBarSimple({ value, color = "#16A34A" }: { value: number; color?
   );
 }
 
+/**
+ * StatusBadge coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function StatusBadge({ status }: { status: string }) {
   return (
     <span className={cn("inline-flex px-2 py-0.5 rounded-full text-2xs font-semibold", getStatusColor(status))}>
@@ -73,6 +127,13 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * EmptyState coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function EmptyState({ msg }: { msg: string }) {
   return (
     <div className="py-10 text-center text-sm text-text-secondary">{msg}</div>
@@ -82,6 +143,13 @@ function EmptyState({ msg }: { msg: string }) {
 /* ══════════════════════════════════════════════════
    TAB: PROJECT P&L
 ══════════════════════════════════════════════════ */
+/**
+ * TabProjectPnL coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> }) {
   const [selectedId, setSelectedId] = useState<string>("");
 
@@ -202,6 +270,13 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
 /* ══════════════════════════════════════════════════
    TAB: EXECUTIVE VIEW
 ══════════════════════════════════════════════════ */
+/**
+ * TabExecutive coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) {
   const totalRevenue   = data.projects.reduce((s, p) => s + Number(p.budget_amount || p.budget || 0), 0);
   const totalActualCost = data.projects.reduce((s, p) => s + Number(p.actual_cost || 0), 0);
@@ -272,6 +347,13 @@ function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) 
 /* ══════════════════════════════════════════════════
    TAB: GENERAL LEDGER / JOURNALS
 ══════════════════════════════════════════════════ */
+/**
+ * TabJournals coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function TabJournals({ data }: { data: ReturnType<typeof createDefaultData> }) {
   const journals = data.journals;
 
@@ -316,15 +398,58 @@ function TabJournals({ data }: { data: ReturnType<typeof createDefaultData> }) {
 }
 
 /* ── Default data ─────────────────────────────── */
+/**
+ * createDefaultData coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 function createDefaultData() {
-  return { projects: [] as any[], costEntries: [] as any[], billings: [] as any[], orders: [] as any[], journals: [] as any[] };
+  return { projects: [] as any[], costEntries: [] as any[], billings: [] as any[], orders: [] as any[], journals: [] as any[], periodic: null as any, attendance: null as any };
+}
+
+function TabPeriodic({ data }: { data: ReturnType<typeof createDefaultData> }) {
+  const summary = data.periodic?.summary;
+  return <div className="card rounded-xl p-5">
+    <h2 className="font-bold text-text-primary">Ringkasan Aktivitas Berkala</h2>
+    <p className="text-xs text-text-secondary mt-1">Kompilasi otomatis dari task harian pada periode berjalan.</p>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+      {[['Total Task', summary?.total_tasks ?? 0], ['Selesai', summary?.completed_tasks ?? 0], ['Terhambat', summary?.blocked_tasks ?? 0], ['Completion', `${summary?.completion_rate_percent ?? 0}%`]].map(([label, value]) =>
+        <div key={String(label)} className="rounded-lg border border-text-tertiary/50 p-3"><div className="text-2xs text-text-secondary">{label}</div><div className="text-lg font-bold">{value}</div></div>)}
+    </div>
+  </div>;
+}
+
+function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> }) {
+  const attendance = data.attendance;
+  return <div className="card rounded-xl p-5">
+    <h2 className="font-bold text-text-primary">Laporan Kehadiran</h2>
+    <p className="text-xs text-text-secondary mt-1">Disusun dari timesheet proyek yang menjadi bukti aktivitas kerja aktual.</p>
+    <div className="grid grid-cols-3 gap-3 mt-4">
+      {[['Hari Kerja', attendance?.work_days ?? 0], ['Total Jam', attendance?.total_hours ?? 0], ['Entri', attendance?.entry_count ?? 0]].map(([label, value]) =>
+        <div key={String(label)} className="rounded-lg border border-text-tertiary/50 p-3"><div className="text-2xs text-text-secondary">{label}</div><div className="text-lg font-bold">{value}</div></div>)}
+    </div>
+  </div>;
 }
 
 /* ══════════════════════════════════════════════════
    MAIN REPORTING CLIENT
 ══════════════════════════════════════════════════ */
+/**
+ * ReportingClient coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export default function ReportingClient() {
-  const [activeTab, setActiveTab] = useState("project-pnl");
+  const { userRole } = useAuth();
+  const searchParams = useSearchParams();
+  const allowedTabs = useMemo(() => REPORT_TABS.filter((tab) => ROLE_REPORT_TABS[userRole].includes(tab.id)), [userRole]);
+  const requestedTab = searchParams.get('tab');
+  const initialTab = requestedTab && ROLE_REPORT_TABS[userRole].includes(requestedTab) ? requestedTab : allowedTabs[0]?.id ?? 'periodic';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState(createDefaultData());
@@ -345,6 +470,11 @@ export default function ReportingClient() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  useEffect(() => {
+    const nextTab = requestedTab && ROLE_REPORT_TABS[userRole].includes(requestedTab) ? requestedTab : allowedTabs[0]?.id;
+    if (nextTab && !allowedTabs.some((tab) => tab.id === activeTab)) setActiveTab(nextTab);
+  }, [activeTab, allowedTabs, requestedTab, userRole]);
+
   /* Track recently opened Reporting */
   useEffect(() => {
     feedApi.trackRecentItem({
@@ -355,9 +485,16 @@ export default function ReportingClient() {
     }).catch(() => {});
   }, [activeTab]);
 
+/**
+ * handleExport coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleExport = (format: "csv" | "pdf") => {
     if (format === "csv") {
-      toast("Mengunduh laporan CSV...", { icon: "📊" });
+      toast("Mengunduh laporan CSV...");
       const rows = [
         ["Proyek", "Budget", "Actual Cost", "Gross Profit", "Margin %"],
         ...data.projects.map(p => {
@@ -376,7 +513,7 @@ export default function ReportingClient() {
       a.click();
       toast.success("File CSV berhasil diunduh.");
     } else if (format === "pdf") {
-      toast("Membuka dialog cetak PDF...", { icon: "🖨️" });
+      toast("Membuka dialog cetak PDF...");
       const reportElement = document.getElementById("printable-report-area");
       if (!reportElement) {
         window.print();
@@ -446,7 +583,7 @@ export default function ReportingClient() {
 
       {/* ── Tabs ───────────────────────────── */}
       <div className="flex gap-1.5 p-1.5 bg-bg-lighter rounded-xl border border-text-tertiary/50">
-        {REPORT_TABS.map(({ id, label, icon: Icon }) => (
+        {allowedTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
@@ -474,6 +611,8 @@ export default function ReportingClient() {
             {activeTab === "project-pnl" && <TabProjectPnL data={data} />}
             {activeTab === "executive"   && <TabExecutive data={data} />}
             {activeTab === "journals"    && <TabJournals data={data} />}
+            {activeTab === "periodic"    && <TabPeriodic data={data} />}
+            {activeTab === "attendance"  && <TabAttendance data={data} />}
           </>
         )}
       </div>

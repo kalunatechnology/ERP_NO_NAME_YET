@@ -1,7 +1,16 @@
+/**
+ * File: backend-express/src/modules/core/request.service.ts
+ *
+ * Purpose: Implements domain service responsibilities for the core domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import crypto from 'crypto';
 import prisma from '../../config/database';
 import { ValidationError, NotFoundError, ForbiddenError } from '../../utils/errors';
 import { AuditService } from './audit.service';
+import { RoleCode } from '../../types/roles';
 
 export interface TaggedUser {
   id: string;
@@ -39,6 +48,14 @@ export class RequestService {
   // 1. CREATE REQUEST CARD
   // ---------------------------------------------------------------------------
 
+/**
+ * createRequest implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `core_workflow_instance`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async createRequest(payload: CreateRequestPayload, userId: string, companyId?: string | null) {
     const {
       request_type, title, description, amount, budget_category,
@@ -126,6 +143,13 @@ export class RequestService {
   // 2. LEVEL 1: VALIDATION THROUGH OM
   // ---------------------------------------------------------------------------
 
+/**
+ * validateByOM implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `core_workflow_instance`; transaction scope is exactly the coded scope.
+ */
   static async validateByOM(params: {
     requestId: string;
     decision:  'APPROVE' | 'RE_CHECK';
@@ -206,6 +230,13 @@ export class RequestService {
   // 3. LEVEL 2: EXECUTIVE / PM APPROVAL
   // ---------------------------------------------------------------------------
 
+/**
+ * approveByExecutive implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `core_workflow_instance`; transaction scope is exactly the coded scope.
+ */
   static async approveByExecutive(params: {
     requestId:  string;
     decision:   'APPROVE' | 'REJECT';
@@ -281,6 +312,13 @@ export class RequestService {
   // 4. PENCAIRAN DANA (DISBURSEMENT) - FINANCE
   // ---------------------------------------------------------------------------
 
+/**
+ * disburseRequest implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `core_workflow_instance`; transaction scope is exactly the coded scope.
+ */
   static async disburseRequest(params: {
     requestId:         string;
     disburseAccountId?: string;
@@ -329,6 +367,13 @@ export class RequestService {
   // 5. SUBMIT LPJ & NOTA BUKTI (SETTLEMENT) - PEMOHON
   // ---------------------------------------------------------------------------
 
+/**
+ * submitLPJ implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `core_workflow_instance`; transaction scope is exactly the coded scope.
+ */
   static async submitLPJ(params: {
     requestId:         string;
     realizationAmount: number;
@@ -393,6 +438,13 @@ export class RequestService {
   // 6. VERIFIKASI LPJ OLEH OM (TUTUP TIKET / CLOSED)
   // ---------------------------------------------------------------------------
 
+/**
+ * verifyLPJByOM implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `core_workflow_instance`; transaction scope is exactly the coded scope.
+ */
   static async verifyLPJByOM(params: {
     requestId: string;
     decision:  'APPROVE' | 'REVISE';
@@ -468,6 +520,13 @@ export class RequestService {
   // 7. GET REQUESTS LIST & FEED
   // ---------------------------------------------------------------------------
 
+/**
+ * getRequests implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `core_audit_event`, `core_workflow_instance`, `core_workflow_approval`; transaction scope is exactly the coded scope.
+ */
   static async getRequests(params: {
     type?:      string;
     status?:    string;
@@ -506,6 +565,14 @@ export class RequestService {
     });
 
     const rows = auditLogs.map(log => {
+/**
+ * payload implements a named function within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: No database operation is implied unless explicitly present in the implementation.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
       const payload = (log.after_data as any) || {};
       const entityId = log.entity_id || log.id;
       const liveInstance = instances.find(inst => inst.id === log.entity_id);
@@ -561,6 +628,14 @@ export class RequestService {
   // 8. GET TEAM MEMBERS (Company Isolated Search)
   // ---------------------------------------------------------------------------
 
+/**
+ * getTeamMembers implements a named method within this file's domain service boundary.
+ *
+ * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
+ * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
+ * Data/side effects: Reads or mutates Prisma model(s) `iam_user_role`, `iam_user`, `iam_role`; transaction boundaries are exactly those visible in the body.
+ * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ */
   static async getTeamMembers(companyId?: string | null, search?: string) {
     let companyUserIds: string[] | null = null;
 
@@ -602,8 +677,6 @@ export class RequestService {
         full_name:    true,
         email:        true,
         username:     true,
-        is_staff:     true,
-        is_superuser: true,
       },
     }).catch(() => []);
 
@@ -613,19 +686,27 @@ export class RequestService {
         ...(companyId ? { company_id: companyId } : {}),
       },
     }).catch(() => []);
+    const roleIds = [...new Set(userRoleMappings.map((mapping) => mapping.role_id).filter((id): id is string => Boolean(id)))];
+    const roles = roleIds.length
+      ? await prisma.iam_role.findMany({ where: { id: { in: roleIds } } }).catch(() => [])
+      : [];
+    const roleCodeById = new Map(roles.map((role) => [role.id, role.role_code]));
 
-    return users.map((u: { id: string; full_name: string; email: string; username: string; is_staff: boolean; is_superuser: boolean }) => {
-      const roleMap = userRoleMappings.find(r => r.user_id === u.id);
+    return users.map((u) => {
+      const roleCodes = userRoleMappings
+        .filter((mapping) => mapping.user_id === u.id && mapping.role_id)
+        .map((mapping) => roleCodeById.get(mapping.role_id!))
+        .filter((code): code is RoleCode => code !== undefined);
       let roleLabel = 'Team Member';
       
-      if (u.is_superuser) {
+      if (roleCodes.includes(RoleCode.SUPER_ADMIN)) {
         roleLabel = 'Superadmin';
-      } else if (roleMap?.role_id?.toUpperCase().includes('ADMIN') || u.is_staff) {
+      } else if (roleCodes.includes(RoleCode.COMPANY_ADMIN)) {
         roleLabel = 'Company Admin';
-      } else if (roleMap?.role_id?.toUpperCase().includes('MANAGER') || roleMap?.role_id?.toUpperCase().includes('OM')) {
-        roleLabel = 'Operations Manager';
-      } else if (roleMap?.role_id?.toUpperCase().includes('PM')) {
+      } else if (roleCodes.includes(RoleCode.PROJECT_MANAGER)) {
         roleLabel = 'Project Manager';
+      } else if (roleCodes.includes(RoleCode.DIRECTOR)) {
+        roleLabel = 'Director';
       }
 
       return {
@@ -642,6 +723,13 @@ export class RequestService {
   // HELPER: NOTIFICATION CREATOR (Safe UUID handling)
   // ---------------------------------------------------------------------------
 
+/**
+ * createNotification implements this operation using the typed arguments declared in its signature.
+ *
+ * @param input - Parameters declared by the function/method.
+ * @returns The synchronous result or Promise produced below.
+ * Database/side effects: uses `core_notification`, `iam_role`, `core_notification_recipient`; transaction scope is exactly the coded scope.
+ */
   private static async createNotification(params: {
     title:              string;
     message:            string;
@@ -677,7 +765,7 @@ export class RequestService {
           const roleRecord = await prisma.iam_role.findFirst({
             where: {
               OR: [
-                { role_code: { equals: params.recipient_role_id, mode: 'insensitive' } },
+                { role_code: { equals: params.recipient_role_id as RoleCode } },
                 { role_name: { equals: params.recipient_role_id, mode: 'insensitive' } },
               ],
             },

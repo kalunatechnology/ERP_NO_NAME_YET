@@ -1,3 +1,10 @@
+/**
+ * File: frontend-next/components/finance/AuditTrailWorkspace.tsx
+ *
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ */
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -108,7 +115,7 @@ export default function AuditTrailWorkspace() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-text-primary">🛡️ Audit Trail & Governance Log</h2>
+        <h2 className="page-title">Audit Trail & Governance Log</h2>
         <p className="text-xs text-text-secondary mt-0.5">
           Field-level delta logger · Before/After diff viewer · SoD maker-checker signature
         </p>
@@ -190,7 +197,7 @@ export default function AuditTrailWorkspace() {
                 {/* Expanded: JSON Diff Viewer */}
                 {isExpanded && (
                   <div className="border-t border-white/10 px-6 py-4 bg-black/20">
-                    <p className="text-xs font-bold text-text-secondary mb-2">⚡ Field-Level Changes (Before → After):</p>
+                    <p className="text-xs font-bold text-text-secondary mb-2">Perubahan field (sebelum → sesudah)</p>
                     <DiffViewer before={event.before_data ?? {}} after={event.after_data ?? {}} />
                     <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-4">
                       <div>

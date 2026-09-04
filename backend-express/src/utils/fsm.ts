@@ -1,4 +1,14 @@
+/**
+ * File: backend-express/src/utils/fsm.ts
+ *
+ * Purpose: Implements shared utility responsibilities in the backend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 // =============================================================================
+import { RoleCode } from '../types/roles';
+
 // FINITE STATE MACHINE (FSM) — Document Lifecycle Engine
 // Mendefinisikan state transitions yang valid untuk setiap tipe dokumen keuangan.
 // Mencegah perpindahan state yang tidak sah (e.g., POSTED → DRAFT).
@@ -40,28 +50,28 @@ export interface StateTransition {
 
 export const BILLING_DOCUMENT_FSM: StateTransition[] = [
   { from: 'DRAFT', event: 'submit', to: 'SUBMITTED', requiresSoD: false, description: 'Maker mengajukan dokumen' },
-  { from: 'SUBMITTED', event: 'verify', to: 'VERIFIED', requiresSoD: true, requiresRole: ['FINANCE_STAFF', 'FINANCE_MANAGER'], description: 'Checker memverifikasi' },
-  { from: 'VERIFIED', event: 'approve', to: 'APPROVED', requiresSoD: true, requiresRole: ['FINANCE_MANAGER', 'DIRECTOR'], description: 'Approver menyetujui' },
-  { from: 'APPROVED', event: 'post', to: 'POSTED', requiresSoD: true, requiresRole: ['FINANCE_STAFF', 'FINANCE_MANAGER'], description: 'Posting ke General Ledger' },
+  { from: 'SUBMITTED', event: 'verify', to: 'VERIFIED', requiresSoD: true, requiresRole: [RoleCode.FINANCE], description: 'Checker memverifikasi' },
+  { from: 'VERIFIED', event: 'approve', to: 'APPROVED', requiresSoD: true, requiresRole: [RoleCode.FINANCE, RoleCode.DIRECTOR], description: 'Approver menyetujui' },
+  { from: 'APPROVED', event: 'post', to: 'POSTED', requiresSoD: true, requiresRole: [RoleCode.FINANCE], description: 'Posting ke General Ledger' },
   { from: 'SUBMITTED', event: 'reject', to: 'REJECTED', requiresSoD: true, description: 'Checker menolak dokumen' },
   { from: 'VERIFIED', event: 'reject', to: 'REJECTED', requiresSoD: true, description: 'Approver menolak dokumen' },
   { from: 'DRAFT', event: 'cancel', to: 'CANCELLED', requiresSoD: false, description: 'Pembuat membatalkan sebelum disubmit' },
   { from: 'REJECTED', event: 'cancel', to: 'CANCELLED', requiresSoD: false, description: 'Membatalkan dokumen yang ditolak' },
-  { from: 'POSTED', event: 'reverse', to: 'REVERSED', requiresSoD: true, requiresRole: ['FINANCE_MANAGER', 'DIRECTOR'], description: 'Pembalikan jurnal (Storno)' },
+  { from: 'POSTED', event: 'reverse', to: 'REVERSED', requiresSoD: true, requiresRole: [RoleCode.FINANCE, RoleCode.DIRECTOR], description: 'Pembalikan jurnal (Storno)' },
 ];
 
 export const PAYMENT_FSM: StateTransition[] = [
   { from: 'DRAFT', event: 'submit', to: 'SUBMITTED', requiresSoD: false, description: 'Maker mengajukan payment' },
-  { from: 'SUBMITTED', event: 'approve', to: 'APPROVED', requiresSoD: true, requiresRole: ['FINANCE_MANAGER', 'DIRECTOR'], description: 'Approval pembayaran' },
-  { from: 'APPROVED', event: 'post', to: 'POSTED', requiresSoD: true, requiresRole: ['FINANCE_STAFF'], description: 'Eksekusi pembayaran' },
+  { from: 'SUBMITTED', event: 'approve', to: 'APPROVED', requiresSoD: true, requiresRole: [RoleCode.FINANCE, RoleCode.DIRECTOR], description: 'Approval pembayaran' },
+  { from: 'APPROVED', event: 'post', to: 'POSTED', requiresSoD: true, requiresRole: [RoleCode.FINANCE], description: 'Eksekusi pembayaran' },
   { from: 'SUBMITTED', event: 'reject', to: 'REJECTED', requiresSoD: true, description: 'Penolakan payment' },
   { from: 'DRAFT', event: 'cancel', to: 'CANCELLED', requiresSoD: false },
 ];
 
 export const FUND_REQUEST_FSM: StateTransition[] = [
   { from: 'DRAFT', event: 'submit', to: 'SUBMITTED', requiresSoD: false, description: 'Pengajuan dana proyek' },
-  { from: 'SUBMITTED', event: 'approve', to: 'APPROVED', requiresSoD: true, requiresRole: ['FINANCE_MANAGER', 'DIRECTOR'], description: 'Persetujuan dana proyek' },
-  { from: 'APPROVED', event: 'draw', to: 'DRAWN', requiresSoD: true, requiresRole: ['FINANCE_STAFF'], description: 'Pencairan dana' },
+  { from: 'SUBMITTED', event: 'approve', to: 'APPROVED', requiresSoD: true, requiresRole: [RoleCode.FINANCE, RoleCode.DIRECTOR], description: 'Persetujuan dana proyek' },
+  { from: 'APPROVED', event: 'draw', to: 'DRAWN', requiresSoD: true, requiresRole: [RoleCode.FINANCE], description: 'Pencairan dana' },
   { from: 'SUBMITTED', event: 'reject', to: 'REJECTED', requiresSoD: true, description: 'Penolakan pengajuan dana' },
   { from: 'DRAFT', event: 'cancel', to: 'CANCELLED', requiresSoD: false },
 ];

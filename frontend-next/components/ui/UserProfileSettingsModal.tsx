@@ -1,3 +1,11 @@
+/**
+ * File: frontend-next/components/ui/UserProfileSettingsModal.tsx
+ *
+ * Purpose: Implements React UI component responsibilities in the frontend application.
+ * Responsibility: Owns the contracts declared here and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
+ * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
+ */
 "use client";
 
 import { useState } from "react";
@@ -26,11 +34,18 @@ interface UserProfileSettingsModalProps {
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * UserProfileSettingsModal coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
 export function UserProfileSettingsModal({
   isOpen,
   onClose,
 }: UserProfileSettingsModalProps) {
-  const { user, userRole, company } = useAuth();
+  const { user, userRole, company, setActiveRole } = useAuth();
   const [activeTab, setActiveTab] = useState<"security" | "profile">("security");
 
   // Form states
@@ -45,6 +60,7 @@ export function UserProfileSettingsModal({
 
   const [isSubmittingPass, setIsSubmittingPass] = useState(false);
   const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
+  const [isSwitchingRole, setIsSwitchingRole] = useState(false);
 
   if (!isOpen) return null;
 
@@ -55,14 +71,21 @@ export function UserProfileSettingsModal({
       ? String(rawComp)
       : "PT Sinergi Muda Arsa";
 
+/**
+ * handlePasswordSubmit coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentPassword || !newPassword) {
       toast.error("Password saat ini dan password baru wajib diisi.");
       return;
     }
-    if (newPassword.length < 6) {
-      toast.error("Password baru minimal harus 6 karakter.");
+    if (newPassword.length < 8) {
+      toast.error("Password baru minimal harus 8 karakter.");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -93,6 +116,13 @@ export function UserProfileSettingsModal({
     }
   };
 
+/**
+ * handleProfileSubmit coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName || !email) {
@@ -110,7 +140,7 @@ export function UserProfileSettingsModal({
         .then((r) => r.data)
         .catch(() => null);
 
-      toast.success(res?.message || "Profil berhasil diperbarui!", { icon: "✅" });
+      toast.success(res?.message || "Profil berhasil diperbarui.");
       onClose();
       window.location.reload();
     } catch (err: any) {
@@ -122,7 +152,27 @@ export function UserProfileSettingsModal({
   };
 
   const initial = user?.full_name?.[0] ?? user?.email?.[0]?.toUpperCase() ?? "U";
-  const displayRole = user?.roles?.[0]?.role_name || getRoleLabel(userRole);
+  const activeRole = user?.roles?.find((role) => role.role_code === user.active_role_code) || user?.roles?.[0];
+  const displayRole = activeRole?.role_name || getRoleLabel(userRole);
+
+/**
+ * handleRoleChange coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
+  const handleRoleChange = async (roleCode: string) => {
+    setIsSwitchingRole(true);
+    try {
+      await setActiveRole(roleCode);
+      toast.success("Role aktif berhasil diubah tanpa login ulang.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Gagal mengubah role aktif.");
+    } finally {
+      setIsSwitchingRole(false);
+    }
+  };
 
   return (
     <Modal
@@ -150,6 +200,27 @@ export function UserProfileSettingsModal({
               <Building2 size={11} className="text-brand-green" />
               <span>{activeCompanyName}</span>
             </div>
+            {(user?.roles?.length ?? 0) > 1 && (
+              <div className="mt-2 flex items-center gap-2">
+                <label htmlFor="active-role" className="text-3xs font-semibold text-text-secondary">
+                  Role aktif
+                </label>
+                <select
+                  id="active-role"
+                  value={user?.active_role_code || activeRole?.role_code || ""}
+                  onChange={(event) => void handleRoleChange(event.target.value)}
+                  disabled={isSwitchingRole}
+                  className="input h-7 py-0 text-2xs flex-1"
+                >
+                  {user?.roles?.map((role) => (
+                    <option key={role.role_code} value={role.role_code}>
+                      {role.role_name || role.role_code}
+                    </option>
+                  ))}
+                </select>
+                {isSwitchingRole && <Loader2 size={12} className="animate-spin" />}
+              </div>
+            )}
           </div>
         </div>
 
@@ -216,7 +287,7 @@ export function UserProfileSettingsModal({
                   type={showNewPass ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Minimal 6 karakter"
+                  placeholder="Minimal 8 karakter"
                   className="input text-xs pr-10"
                   required
                 />

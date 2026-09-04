@@ -1,3 +1,11 @@
+/**
+ * File: backend-express/src/modules/core/request.routes.ts
+ *
+ * Purpose: Implements Express API routing responsibilities for the core domain.
+ * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
+ * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
+ */
 import { Router, Request, Response, NextFunction } from 'express';
 import { RequestService } from './request.service';
 import { sendSuccess, sendError } from '../../utils/response';
@@ -9,6 +17,14 @@ export const requestRouter = Router();
 // =============================================================================
 
 // List request cards with filters
+/**
+ * GET route handler: `/`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 requestRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await RequestService.getRequests({
@@ -23,6 +39,14 @@ requestRouter.get('/', async (req: Request, res: Response, next: NextFunction) =
 });
 
 // Create new card request (Meeting, Leave, Fund Request, Other)
+/**
+ * POST route handler: `/`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 requestRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await RequestService.createRequest(
@@ -35,6 +59,14 @@ requestRouter.post('/', async (req: Request, res: Response, next: NextFunction) 
 });
 
 // List team members for "Who's inside" selector with search
+/**
+ * GET route handler: `/team-members`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 requestRouter.get('/team-members', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const search = req.query.search as string | undefined;
@@ -44,6 +76,14 @@ requestRouter.get('/team-members', async (req: Request, res: Response, next: Nex
 });
 
 // Level 1: OM Validation (APPROVE or RE_CHECK)
+/**
+ * POST route handler: `/:id/validate-om`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 requestRouter.post('/:id/validate-om', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
@@ -61,6 +101,14 @@ requestRouter.post('/:id/validate-om', async (req: Request, res: Response, next:
 });
 
 // Level 2: Executive/PM Approval (APPROVE or REJECT)
+/**
+ * POST route handler: `/:id/approve-exec`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 requestRouter.post('/:id/approve-exec', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
@@ -78,6 +126,14 @@ requestRouter.post('/:id/approve-exec', async (req: Request, res: Response, next
 });
 
 // Level 3: Finance Disbursement
+/**
+ * POST route handler: `/:id/disburse`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 requestRouter.post('/:id/disburse', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { disburse_account_id, disburse_reference } = req.body;
@@ -92,6 +148,14 @@ requestRouter.post('/:id/disburse', async (req: Request, res: Response, next: Ne
 });
 
 // Level 4: Requester Submit LPJ / Nota Belanja
+/**
+ * POST route handler: `/:id/submit-lpj`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 requestRouter.post('/:id/submit-lpj', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { realization_amount, discrepancy_amount, discrepancy_type, notes, invoices } = req.body;
@@ -112,6 +176,14 @@ requestRouter.post('/:id/submit-lpj', async (req: Request, res: Response, next: 
 });
 
 // Level 5: OM Final Verification of LPJ (Closes Ticket)
+/**
+ * POST route handler: `/:id/verify-lpj-om`.
+ *
+ * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
+ * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
+ * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
+ * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ */
 requestRouter.post('/:id/verify-lpj-om', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
