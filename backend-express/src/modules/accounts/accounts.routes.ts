@@ -506,6 +506,36 @@ async function setUserModuleAccess(req: Request, res: Response, next: NextFuncti
 }
 
 /**
+ * DELETE /api/v1/accounts/users/:userId/module-access/:moduleCode
+ *
+ * Removes only the explicit personal override so authorization falls back to
+ * the user's role and the Super-Admin-approved company entitlement. This is
+ * distinct from PUT `{allow_read:false, allow_write:false}`, which explicitly
+ * blocks the module for that user.
+ */
+async function resetUserModuleAccess(req: Request, res: Response, next: NextFunction) {
+  try {
+    const companyId = req.companyId;
+    const userId = req.params.userId;
+    const moduleCode = String(req.params.moduleCode || '').trim().toUpperCase();
+    if (!companyId || !moduleCode) throw new ValidationError('Company dan module code wajib valid.');
+    if (!isSuperAdmin(req.user?.roles ?? []) && userId === req.user?.id) {
+      throw new ForbiddenError('Company Admin tidak dapat mengubah akses modul miliknya sendiri.');
+    }
+    const membership = await prisma.iam_user_company_membership.findUnique({ where: { user_id: userId } });
+    if (!membership || membership.company_id !== companyId || membership.status !== 'ACTIVE') {
+      throw new ForbiddenError('User target tidak terdaftar aktif pada company Anda.');
+    }
+    await prisma.iam_user_module_access.deleteMany({
+      where: { user_id: userId, company_id: companyId, module_code: moduleCode },
+    });
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * validateUserRoleAssignment implements a named function within this file's Express API routing boundary.
  *
  * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
@@ -674,6 +704,7 @@ function mountAccountResources(router: Router) {
   router.post('/users/invite', requireCompanyAdmin, inviteUser);
   router.get('/user-module-access', requireCompanyAdmin, listUserModuleAccess);
   router.put('/users/:userId/module-access/:moduleCode', requireCompanyAdmin, requireCompanyContextForWrite, setUserModuleAccess);
+  router.delete('/users/:userId/module-access/:moduleCode', requireCompanyAdmin, requireCompanyContextForWrite, resetUserModuleAccess);
   router.use('/users', requireAdminForWrite, requireCompanyContextForWrite, usersCrud());
   router.use('/roles', requireAdminForWrite, rolesCrud());
   router.use('/permissions', requireSuperAdminForWrite, createCrudRouter({ modelName: 'iam_permission', searchFields: ['permission_code', 'module_code', 'resource_name'] }));

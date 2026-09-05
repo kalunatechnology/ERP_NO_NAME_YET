@@ -8,13 +8,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import api from '@/lib/api/axios';
 
 // =============================================================================
 // FIXED ASSETS WORKSPACE
 // Fitur: Register aset, Depreciation Schedule, Batch Depreciation, Disposal
 // =============================================================================
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 interface Asset {
   id: string;
@@ -106,16 +105,14 @@ export default function FixedAssetsWorkspace() {
   const loadAssets = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/v1/assets/assets?page=1&page_size=100`);
-      const json = await res.json();
+      const { data: json } = await api.get('/api/v1/assets/assets?page=1&page_size=100');
       const list: Asset[] = json.data?.rows ?? json.data ?? json.rows ?? [];
       setAssets(list);
 
       // Load books for each asset
       const bookMap: Record<string, AssetBook> = {};
       await Promise.allSettled(list.map(async (a) => {
-        const r = await fetch(`${API}/api/v1/assets/books?asset_id=${a.id}&page_size=1`);
-        const j = await r.json();
+        const { data: j } = await api.get(`/api/v1/assets/books?asset_id=${a.id}&page_size=1`);
         const book = j.data?.rows?.[0] ?? j.data?.[0];
         if (book) bookMap[a.id] = book;
       }));
@@ -135,8 +132,7 @@ export default function FixedAssetsWorkspace() {
     setSchedule(null);
     setActiveTab('schedule');
     try {
-      const res = await fetch(`${API}/api/v1/assets/assets/${assetId}/depreciation-schedule`);
-      const json = await res.json();
+      const { data: json } = await api.get(`/api/v1/assets/assets/${assetId}/depreciation-schedule`);
       setSchedule(json.data?.schedule ?? []);
     } catch {
       showToast('Gagal memuat jadwal penyusutan.', 'error');
@@ -149,12 +145,7 @@ export default function FixedAssetsWorkspace() {
     setSingleDepAsset(assetId);
     setSingleDepLoading(true);
     try {
-      const res = await fetch(`${API}/api/v1/assets/assets/${assetId}/depreciate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ period_date: depreciationPeriod }),
-      });
-      const json = await res.json();
+      const { data: json } = await api.post(`/api/v1/assets/assets/${assetId}/depreciate`, { period_date: depreciationPeriod });
       if (json.data?.skipped) {
         showToast(`⏭ ${json.data.reason}`, 'error');
       } else {
@@ -173,12 +164,7 @@ export default function FixedAssetsWorkspace() {
     setBatchLoading(true);
     setBatchResult(null);
     try {
-      const res = await fetch(`${API}/api/v1/assets/assets/batch-depreciate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ period_date: depreciationPeriod }),
-      });
-      const json = await res.json();
+      const { data: json } = await api.post('/api/v1/assets/assets/batch-depreciate', { period_date: depreciationPeriod });
       setBatchResult(json.data);
       showToast(`Batch selesai: ${json.data?.processed} diproses, ${json.data?.skipped} dilewati.`, 'success');
       loadAssets();
@@ -193,12 +179,7 @@ export default function FixedAssetsWorkspace() {
     if (!disposeAssetId || !disposeProceeds) return;
     setDisposeLoading(true);
     try {
-      const res = await fetch(`${API}/api/v1/assets/assets/${disposeAssetId}/dispose`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ disposal_date: disposeDate, proceeds_amount: Number(disposeProceeds) }),
-      });
-      const json = await res.json();
+      const { data: json } = await api.post(`/api/v1/assets/assets/${disposeAssetId}/dispose`, { disposal_date: disposeDate, proceeds_amount: Number(disposeProceeds) });
       const gl = json.data?.is_gain ? 'Laba' : 'Rugi';
       showToast(`Aset berhasil dilepas. ${gl}: ${formatRp(Math.abs(json.data?.gain_or_loss ?? 0))}`, 'success');
       setDisposeAssetId(null);

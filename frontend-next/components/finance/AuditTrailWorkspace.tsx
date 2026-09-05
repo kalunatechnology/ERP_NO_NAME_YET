@@ -8,13 +8,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import api from '@/lib/api/axios';
 
 // =============================================================================
 // AUDIT TRAIL WORKSPACE
 // Fitur: Visual log audit, Filter, Field-level JSON Diff Viewer
 // =============================================================================
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 interface AuditEvent {
   id: string;
@@ -96,8 +95,7 @@ export default function AuditTrailWorkspace() {
         ...(filterFrom   ? { from_date: filterFrom } : {}),
         ...(filterTo     ? { to_date: filterTo } : {}),
       });
-      const res = await fetch(`${API}/api/v1/finance/audit-trail?${params}`);
-      const json = await res.json();
+      const { data: json } = await api.get(`/api/v1/finance/audit-trail?${params}`);
       setEvents(json.data?.rows ?? []);
       setTotal(json.data?.total ?? 0);
     } catch {

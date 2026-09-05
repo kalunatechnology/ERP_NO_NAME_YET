@@ -475,15 +475,13 @@ export async function createSupportTicket(payload: {
 }
 
 /**
- * checkTicketWarrantyStatus adapts a frontend operation to its HTTP API contract.
+ * Refreshes a warranty/support ticket from the canonical service-case record.
  *
- * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
- * @returns The typed payload or Promise produced after response normalization.
- * External dependency: calls `/api/v1/service/cases/${id}/check-status/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
- * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
+ * This is intentionally a GET: checking current status must not mutate the
+ * ticket or rely on the unimplemented legacy `/check-status` action.
  */
 export async function checkTicketWarrantyStatus(id: string | number) {
-  const { data } = await api.post(`/api/v1/service/cases/${id}/check-status/`, {});
+  const { data } = await api.get(`/api/v1/service/cases/${id}/`);
   return data;
 }
 

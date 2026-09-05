@@ -768,6 +768,7 @@ Tidak ada Python/composer dependency yang termasuk runtime dua aplikasi ini.
 | Backend | `npm run test:q9:delegation` | delegasi Finance per user oleh Company Admin; test mengembalikan override target sesudah selesai |
 | Backend | `npm run reconcile:q10` | menyelaraskan entitlement CRM Ghost pada company yang diturunkan dari membership user kanonis |
 | Backend | `npm run test:q10:bdd` | delapan executable Given–When–Then system scenarios; Express berjalan pada port sementara dan role Arof dipulihkan otomatis |
+| Backend | `npm run test:q10:access` | 12-case Company Admin access matrix: load, blocked/read/write/inherit, normalization, reload, dan seluruh negative security boundary |
 | Backend | `npm run audit:project-progress` | audit read-only progres proyek tanpa Main Task dan flag manual override historis |
 | Backend | `npm run reconcile:project-progress` | reset terarah hanya pada `progress_percent` proyek non-zero yang tidak memiliki Main Task |
 | Backend | `npm run lint` | TypeScript check (script actual) |
@@ -788,6 +789,7 @@ Format command, one-command DB reset, and automated deploy script **NOT FOUND**.
 - `tests/q9-user-module-delegation.integration.ts`: membuktikan Jundy memperoleh Finance read/write hanya setelah Laode mendelegasikannya; test merestore override awal.
 - `tests/features/q10-critical-system.feature`: living specification Given–When–Then untuk health/auth, Director, Company Admin/company isolation, PM/CRM/Finance role behavior, role switching, dan integrity progres WBS.
 - `tests/q10-system.bdd.ts`: runner system BDD yang menyalakan Express pada ephemeral port, memakai middleware/API/Prisma nyata, menguji projection timeline frontend, dan memulihkan active role Arof melalui `finally`. Hasil terakhir 2026-09-05: 8/8 PASS.
+- `tests/features/q10-company-admin-access.feature` dan `tests/q10-company-admin-access.bdd.ts`: living specification serta executable 12-case matrix untuk pengaturan modul per user. Suite menyimpan state awal override Finance Jundy dan selalu mengembalikannya pada `finally`. Hasil terakhir 2026-09-05: 12/12 PASS.
 - Jest, ts-jest dan Supertest tersedia. Unit test frontend/E2E browser suite/test database isolation dedicated **NOT FOUND**.
 - Karena test menyentuh database aktual dari environment, jangan arahkan ke production. Data entitlement dapat diubah sementara oleh suite.
 
@@ -1224,6 +1226,7 @@ Verification snapshot: **154 logic files** memiliki file-level documentation, te
 
 - **RESOLVED PROGRESS INTEGRITY (2026-09-05):** dashboard sebelumnya mengubah `project_project`/generic task menjadi baris Main Task sintetis dan mempercayai persentase tersimpan. Adapter sekarang hanya membentuk timeline dari `project_main_task`; tanpa Main Task, timeline kosong dan progres proyek 0. Audit database menemukan satu orphan progress (`Pembangunan Gardu Induk 150kV Cikarang`, 45%) dan rekonsiliasi terarah mengubahnya ke 0 tanpa menyentuh task sah; audit akhir mencatat nol pelanggaran.
 - **Q10 BDD FINDING RESOLVED (2026-09-05):** Ghost CRM Lead semula mendapat 403 karena entitlement CRM nonaktif pada company yang benar-benar terkait melalui membership. Rekonsiliasi sekarang menentukan target dari `iam_user_company_membership`, bukan `findFirst(company_code)`, dan suite membuktikan CRM kembali 200 tanpa melemahkan company/module middleware.
+- **Q10 ACCESS UX/CONTRACT (2026-09-05):** halaman Company Admin sekarang user-first dan memisahkan entitlement company milik Super Admin dari delegasi personal. Empat state eksplisit adalah `Role default` (hapus override), `No access`, `View only`, dan `View & manage`; self-change dinonaktifkan. `DELETE /api/v1/accounts/users/:userId/module-access/:moduleCode` mengembalikan authorization ke role default tanpa menyentuh role user.
 
 - **SECURITY / POTENTIAL ISSUE:** hardcoded live-looking chatbot caller credential exists in frontend source and is shipped to browsers. Rotate/remove it and proxy sensitive auth server-side; value omitted here.
 - **POTENTIAL ISSUE:** Axios default backend port 8000 differs from backend and Next rewrite default 8001.

@@ -31,7 +31,9 @@ async function request(path: string, options: RequestInit = {}, token?: string) 
     headers.set('idempotency-key', crypto.randomUUID());
   }
   if (token) headers.set('authorization', `Bearer ${token}`);
-  return fetch(`${BASE_URL}${path}`, { ...options, headers });
+  // A test must fail deterministically when the remote pooler/API stalls;
+  // leaving fetch unbounded can skip the finally-based fixture restoration.
+  return fetch(`${BASE_URL}${path}`, { ...options, headers, signal: options.signal ?? AbortSignal.timeout(30_000) });
 }
 
 /**
@@ -87,7 +89,9 @@ async function main() {
   for (const email of demoEmails) sessions.set(email, await login(email));
 
   const superAdmin = sessions.get('dummy.admin@example.com')!;
-  const companyAdmin = sessions.get('rian@arsalynk.com')!;
+  // Rian is intentionally Director-only. Laode is the canonical SMA Company
+  // Admin and is therefore the identity that must exercise company governance.
+  const companyAdmin = sessions.get('laode@arsalynk.com')!;
   const crm = sessions.get('crm.lead@arsalynk.id')!;
   const sales = sessions.get('sales@arsalynk.id')!;
   const finance = sessions.get('finance.lead@arsalynk.id')!;

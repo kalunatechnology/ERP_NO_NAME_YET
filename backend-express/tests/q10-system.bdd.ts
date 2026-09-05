@@ -40,7 +40,13 @@ async function main(): Promise<void> {
     const headers = new Headers(options.headers);
     headers.set('content-type', 'application/json');
     if (token) headers.set('authorization', `Bearer ${token}`);
-    return fetch(`${baseUrl}${path}`, { ...options, headers });
+    return fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers,
+      // Normal API requests mirror the frontend Axios 30-second timeout.
+      // Login overrides this below with the agreed 15-second ceiling.
+      signal: options.signal ?? AbortSignal.timeout(30_000),
+    });
   }
 
   /** Authenticates a canonical fixture through the public login endpoint. */
@@ -48,6 +54,7 @@ async function main(): Promise<void> {
     const response = await request('/api/v1/auth/token', undefined, {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+      signal: AbortSignal.timeout(15_000),
     });
     assert.equal(response.status, 200, `${email} login returned ${response.status}`);
     return response.json() as Promise<Session>;
@@ -172,6 +179,7 @@ async function main(): Promise<void> {
 
     console.log(JSON.stringify({ status: 'PASS', suite: 'Q10 BDD System Testing', scenarios: results }, null, 2));
   } finally {
+    server.closeAllConnections?.();
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await prisma.$disconnect();
   }

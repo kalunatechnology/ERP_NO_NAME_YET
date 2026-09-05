@@ -1,0 +1,17 @@
+{
+  "name": "q10-system-testing",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Read-only Express–Next contract and BDD audit harness.",
+  "scripts": {
+    "audit:contracts": "node run-contract-audit.js",
+    "audit:runtime": "node run-runtime-contract-bdd.js",
+    "test:login": "node run-login-loading-bdd.js",
+    "bdd:isolated": "node run-q10-isolated.js",
+    "bdd:all": "node run-all-bdd.js",
+    "q11:contract-bdd": "node run-q11-contract-bdd.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

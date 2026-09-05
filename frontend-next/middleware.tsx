@@ -33,9 +33,10 @@ export function middleware(request: NextRequest) {
   // Periksa token di cookie
   const token = request.cookies.get('access_token')?.value;
   const isLoginPage = pathname === '/login';
+  const isPublicErrorPage = pathname === '/error' || pathname.startsWith('/error/');
 
   // 1. Jika belum login dan mengakses halaman selain /login -> redirect ke /login
-  if (!token && !isLoginPage) {
+  if (!token && !isLoginPage && !isPublicErrorPage) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('callbackUrl', pathname);
     return NextResponse.redirect(loginUrl);

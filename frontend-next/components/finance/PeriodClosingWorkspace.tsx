@@ -8,17 +8,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import api from '@/lib/api/axios';
 
 // =============================================================================
 // PERIOD CLOSING WORKSPACE
 // Fitur: Status periode fiskal, Checklist Tutup Buku, Year-End Closing, Storno Rollback
 // =============================================================================
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? '';
-const mutationHeaders = () => ({
-  'Content-Type': 'application/json',
-  'Idempotency-Key': crypto.randomUUID(),
-});
 
 interface FiscalPeriod {
   id: string;
@@ -87,12 +82,10 @@ export default function PeriodClosingWorkspace() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [pRes, yRes] = await Promise.all([
-        fetch(`${API}/api/v1/finance/fiscal-periods/status`),
-        fetch(`${API}/api/v1/finance/fiscal-years?page_size=10`),
+      const [{ data: pJson }, { data: yJson }] = await Promise.all([
+        api.get('/api/v1/finance/fiscal-periods/status'),
+        api.get('/api/v1/finance/fiscal-years?page_size=10'),
       ]);
-      const pJson = await pRes.json();
-      const yJson = await yRes.json();
       setPeriods(pJson.data ?? []);
       setFiscalYears(yJson.data?.rows ?? yJson.data ?? []);
     } catch {
@@ -108,13 +101,7 @@ export default function PeriodClosingWorkspace() {
     setClosingPeriodId(periodId);
     setClosingLoading(true);
     try {
-      const res = await fetch(`${API}/api/v1/finance/period-closings/request`, {
-        method: 'POST',
-        headers: mutationHeaders(),
-        body: JSON.stringify({ closing_type: 'MONTHLY', fiscal_period_id: periodId }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message ?? 'Gagal');
+      await api.post('/api/v1/finance/period-closings/request', { closing_type: 'MONTHLY', fiscal_period_id: periodId });
       showToast('Permintaan tutup periode tercatat dan menunggu persetujuan Finance.', 'success');
       loadData();
     } catch (err: any) {
@@ -127,11 +114,7 @@ export default function PeriodClosingWorkspace() {
 
   const reopenPeriod = async (periodId: string) => {
     try {
-      const res = await fetch(`${API}/api/v1/finance/fiscal-periods/${periodId}/reopen`, {
-        method: 'POST',
-        headers: mutationHeaders(),
-      });
-      if (!res.ok) throw new Error('Gagal');
+      await api.post(`/api/v1/finance/fiscal-periods/${periodId}/reopen`);
       showToast('Periode berhasil dibuka kembali.', 'success');
       loadData();
     } catch {
@@ -144,13 +127,7 @@ export default function PeriodClosingWorkspace() {
     setYearEndLoading(true);
     setYearEndResult(null);
     try {
-      const res = await fetch(`${API}/api/v1/finance/period-closings/request`, {
-        method: 'POST',
-        headers: mutationHeaders(),
-        body: JSON.stringify({ closing_type: 'YEAR_END', fiscal_year_id: selectedYearId }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message ?? 'Gagal');
+      await api.post('/api/v1/finance/period-closings/request', { closing_type: 'YEAR_END', fiscal_year_id: selectedYearId });
       showToast('Permintaan tutup buku tahunan tercatat dan menunggu persetujuan Finance.', 'success');
       loadData();
     } catch (err: any) {
@@ -164,13 +141,7 @@ export default function PeriodClosingWorkspace() {
     if (!rollbackYearId || rollbackReason.trim().length < 10) return;
     setRollbackLoading(true);
     try {
-      const res = await fetch(`${API}/api/v1/finance/fiscal-years/${rollbackYearId}/reopen-year-end`, {
-        method: 'POST',
-        headers: mutationHeaders(),
-        body: JSON.stringify({ reason: rollbackReason }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message ?? 'Gagal');
+      await api.post(`/api/v1/finance/fiscal-years/${rollbackYearId}/reopen-year-end`, { reason: rollbackReason });
       showToast('Rollback tutup buku tahunan berhasil. Jurnal Storno diterbitkan.', 'success');
       setRollbackYearId(null);
       setRollbackReason('');

@@ -241,18 +241,23 @@ export class AccountsService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async changeActiveRole(userId: string, roleCode: string) {
-    const user = await prisma.iam_user.findUnique({ where: { id: userId } });
+    // Fetch identity and assignments concurrently. The previous implementation
+    // performed these reads sequentially and then rebuilt the entire profile,
+    // causing role switching to exceed the remote-pooler response budget.
+    const [user, userRoles] = await Promise.all([
+      prisma.iam_user.findUnique({ where: { id: userId } }),
+      prisma.iam_user_role.findMany({ where: { user_id: userId }, select: { role_id: true } }),
+    ]);
     if (!user) throw new NotFoundError('User');
 
-    const userRoles = await prisma.iam_user_role.findMany({
-      where: { user_id: userId },
-    });
     const roleIds = userRoles.map((ur) => ur.role_id).filter((id): id is string => Boolean(id));
-    const rolesList = await prisma.iam_role.findMany({
-      where: { id: { in: roleIds } },
-    });
     const parsedRoleCode = parseRoleCode(roleCode);
-    const targetRole = rolesList.find((r) => r.role_code === parsedRoleCode || r.id === roleCode);
+    const targetRole = await prisma.iam_role.findFirst({
+      where: parsedRoleCode
+        ? { id: { in: roleIds }, role_code: parsedRoleCode, tenant_id: user.tenant_id }
+        : { id: roleCode, tenant_id: user.tenant_id },
+      select: { id: true, role_code: true },
+    });
     if (!targetRole) {
       throw new ValidationError(`Role ${roleCode} tidak terdaftar pada akun ini.`);
     }
@@ -262,7 +267,14 @@ export class AccountsService {
       data: { active_role_id: targetRole.id },
     });
 
-    return this.getCurrentUser(userId);
+    // The frontend intentionally refreshes `/auth/me` after this mutation.
+    // Returning the new role identity keeps legacy callers compatible while
+    // avoiding a second, duplicate full access-context reconstruction here.
+    return {
+      detail: 'Role aktif berhasil diperbarui.',
+      active_role_id: targetRole.id,
+      active_role_code: toExternalRoleCode(targetRole.role_code),
+    };
   }
 
 /**
