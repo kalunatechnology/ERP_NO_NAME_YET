@@ -5963,6 +5963,7 @@ Baseline tidak menjalankan ulang SQL dan tidak memodifikasi data bisnis. Databas
 | Finance | `scripts/seed_company_finance_master.ts` | Master finance per company |
 | Demo/company | `scripts/seed_sinergi_muda_arsa.ts`, `setup_two_companies.ts`, `seed_team_users.ts` | Dataset perusahaan/tim untuk setup atau demo |
 | Repair/sync | `repair_role_tenant_assignments.ts`, `sync_company_isolation.ts` | Reparasi mapping role/tenant dan isolasi company |
+| Q9 reconciliation | `scripts/reconcile_q9_access.ts` | Rekonsiliasi terarah 19 identity kanonis, sole Super Admin, one-company membership, active role, dan 16 modul SMA read/write |
 | Test fixture | Dibuat oleh test Q6/Q7 saat runtime | Record uji dibuat dan dibersihkan secara selektif |
 
 Seed memuat akun demo. Password/credential tidak direproduksi di dokumen ini. Implementasi aktual menetapkan hanya `dummy.admin@example.com` sebagai `is_superuser=true` dan `ROLE-SUPER-ADMIN`; script repair juga menormalisasi seluruh user lain menjadi non-super. Company Admin tetap role terpisah dan company-scoped. Catalog identity dan least-privilege role terbaru dirinci pada [System Documentation](./SYSTEM_DOCUMENTATION.md#canonical-demo-identity-catalog).
@@ -6026,5 +6027,5 @@ IAM/Core menyediakan identity, company, module entitlement dan audit untuk selur
 - **POTENTIAL ISSUE:** FK/index tidak boleh diasumsikan hanya dari nama `*_id`; hanya atribut relation/index pada schema yang menjaminnya.
 - **TECHNICAL DEBT:** generic CRUD melakukan autofill field required pada beberapa kasus, yang dapat menghasilkan nilai sintetik dan menyembunyikan kontrak domain yang belum eksplisit.
 - **TECHNICAL DEBT:** hard-delete generik dan kebijakan retention tidak seragam.
-- **LIVE DATA DRIFT (audit 2026-09-04):** beberapa assignment pada database terkonfigurasi belum cocok dengan katalog seed—Rian masih Company Admin, Laode belum Company Admin, Melika Ops belum OM, dan Ghost Estimator masih PM. Arof PM + Finance adalah konfigurasi yang disetujui. Rekonsiliasi harus targeted dan diikuti audit `active_role_id`, assignment, tenant, dan membership.
-- **ENTITLEMENT:** record module access bersifat fail-closed. Pada audit yang sama tidak ada module access aktif; user dengan role RBAC benar tetap menerima 403 sampai Super Admin mengaktifkan module untuk company tersebut.
+- **RESOLVED LIVE DRIFT (2026-09-05):** rekonsiliasi targeted telah menyelaraskan 19 identity dengan katalog seed. `tests/q9-access.integration.ts` membuktikan active role dimiliki user, ordinary user mempunyai tepat satu membership, role company cocok, dan hanya `dummy.admin@example.com` Super Admin.
+- **CURRENT ENTITLEMENT BASELINE (2026-09-05):** seluruh 16 module code SMA memiliki `enabled=true`, `allow_read=true`, dan `allow_write=true`. Company Admin dapat memperketat read/write setelah aktivasi Super Admin; deployment database lain tidak otomatis mewarisi state ini.

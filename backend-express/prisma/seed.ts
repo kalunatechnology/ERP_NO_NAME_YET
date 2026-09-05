@@ -179,8 +179,8 @@ async function main() {
    * - dummy.admin@example.com is the sole global Super Admin.
    * - Laode Fahmi is the SMA Company Admin. Rian is Director only, preserving
    *   the separation between company IAM administration and executive approval.
-   * - Split PM and Finance personas use separate accounts so finance
-   *   segregation-of-duties tests are not weakened by a broad combined role.
+   * - Arof's primary account intentionally carries PM + Finance and defaults
+   *   to PM; the dedicated finance persona remains available for focused tests.
    * - Every non-superuser is bound to exactly one company.
    *
    * The listed default password is hashed only when an account is first
@@ -257,7 +257,8 @@ async function main() {
      * Reconcile, rather than only append, seed-managed roles.
      *
      * Leaving removed roles attached would silently preserve privilege after a
-     * catalog revision (for example the former Arof PM+Finance combination).
+     * catalog revision. Arof PM+Finance is the approved current combination
+     * and must not be treated as stale privilege.
      * This applies only to explicit seed identities, whose catalog is the
      * intended authority for their role set.
      */
@@ -363,7 +364,8 @@ async function main() {
     'REPORTING',
   ];
 
-  // PT Sinergi Muda Arsa (Official): All modules enabled
+  // PT Sinergi Muda Arsa: all modules are readable by default. Write access is
+  // fail-closed and is granted per module by the Company Admin when required.
   for (const moduleCode of allModules) {
     await prisma.iam_company_module_access.upsert({
       where: {
@@ -375,7 +377,7 @@ async function main() {
       update: {
         enabled: true,
         allow_read: true,
-        allow_write: true,
+        allow_write: false,
       },
       create: {
         id: crypto.randomUUID(),
@@ -384,7 +386,7 @@ async function main() {
         module_code: moduleCode,
         enabled: true,
         allow_read: true,
-        allow_write: true,
+        allow_write: false,
       },
     });
   }

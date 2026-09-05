@@ -78,12 +78,12 @@ const ANIM_STYLES = `
 `;
 
 const OFFICIAL_SMA_USERS = [
-  { role: "COMPANY ADMIN", label: "Rian (Company Admin)", name: "Rian", email: "rian@arsalynk.com", phone: "81234567801", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-COMPANY-ADMIN" },
+  { role: "DIRECTOR", label: "Rian (Director)", name: "Rian", email: "rian@arsalynk.com", phone: "81234567801", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-DIRECTOR" },
   { role: "LEAD PM", label: "Melika (Lead Project Manager)", name: "Melika", email: "melika@arsalynk.com", phone: "81234567802", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-PM" },
-  { role: "OPERATIONS", label: "Melika (Operational Lead & Ops)", name: "Melika Ops", email: "melika.ops@arsalynk.com", phone: "81234567803", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
+  { role: "OPERATIONS", label: "Melika (Operational Lead & Supervisor)", name: "Melika Ops", email: "melika.ops@arsalynk.com", phone: "81234567803", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-OM" },
   { role: "PM & RISET", label: "📐 Arof (Lead PM & Riset)", name: "Arof", email: "arof@arsalynk.com", phone: "81234567804", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-PM" },
   { role: "FINANCE LEAD", label: "💼 Arof (Finance Lead & Tax)", name: "Arof Finance", email: "arof.finance@arsalynk.com", phone: "81234567805", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-FINANCE" },
-  { role: "ENGINEER", label: "👷 Laode (Field Specialist / Engineer)", name: "Laode", email: "laode@arsalynk.com", phone: "81234567806", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
+  { role: "COMPANY ADMIN", label: "Laode (Company Admin & Engineer)", name: "Laode", email: "laode@arsalynk.com", phone: "81234567806", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-COMPANY-ADMIN" },
   { role: "CREATIVE MEDIA", label: "🎬 Jundy (Creative Media Specialist)", name: "Jundy", email: "jundy@arsalynk.com", phone: "81234567807", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
   { role: "SURVEYOR", label: "📍 Noorman (Survey Specialist)", name: "Noorman", email: "noorman@arsalynk.com", phone: "81234567808", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
 ];

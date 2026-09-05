@@ -11,6 +11,8 @@ import { CoreService } from './core.service';
 import { authenticate } from '../../middlewares/auth.middleware';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { requireAdminForWrite, requireSuperAdminForWrite, requireSuperuser } from '../../middlewares/rbac.middleware';
+import { isCompanyAdmin, isSuperAdmin } from '../../types/roles';
+import { ForbiddenError, ValidationError } from '../../utils/errors';
 
 export const coreRouter = Router();
 export const feedShortcutRouter = Router();
@@ -217,6 +219,29 @@ coreRouter.get('/companies/:id/modules', authenticate, requireSuperuser, async (
  */
 const handleSetCompanyModule = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const roles = req.user?.roles ?? [];
+    const superAdmin = isSuperAdmin(roles);
+    const companyAdmin = isCompanyAdmin(roles);
+    if (!superAdmin && !companyAdmin) {
+      throw new ForbiddenError('Hanya Super Admin atau Company Admin yang dapat mengatur akses modul.');
+    }
+    if (!superAdmin && req.companyId !== req.params.id) {
+      throw new ForbiddenError('Company Admin hanya dapat mengatur akses company aktifnya sendiri.');
+    }
+
+    // Module activation represents the commercial entitlement boundary and
+    // remains exclusive to Super Admin. Company Admin may tune read/write for
+    // its own company, but cannot activate a module that was not provisioned.
+    const current = await CoreService.getCompanyModules(req.params.id);
+    const currentModule = current.find((item) => item.module_code === req.params.moduleCode.trim().toUpperCase());
+    if (!currentModule) throw new ValidationError('Module tidak ditemukan dalam katalog sistem.');
+    if (!superAdmin && typeof req.body.enabled === 'boolean' && req.body.enabled !== currentModule.enabled) {
+      throw new ForbiddenError('Aktivasi modul hanya dapat dilakukan oleh Super Admin.');
+    }
+    if (!superAdmin && !currentModule.enabled) {
+      throw new ForbiddenError('Module belum diaktifkan oleh Super Admin.');
+    }
+
     const result = await CoreService.setCompanyModuleAccess(
       req.params.id,
       req.params.moduleCode,
@@ -241,7 +266,7 @@ const handleSetCompanyModule = async (req: Request, res: Response, next: NextFun
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-coreRouter.patch('/companies/:id/modules/:moduleCode', authenticate, requireSuperAdminForWrite, handleSetCompanyModule);
+coreRouter.patch('/companies/:id/modules/:moduleCode', authenticate, handleSetCompanyModule);
 /**
  * PUT route handler: `/companies/:id/modules/:moduleCode`.
  *
@@ -250,7 +275,7 @@ coreRouter.patch('/companies/:id/modules/:moduleCode', authenticate, requireSupe
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-coreRouter.put('/companies/:id/modules/:moduleCode', authenticate, requireSuperAdminForWrite, handleSetCompanyModule);
+coreRouter.put('/companies/:id/modules/:moduleCode', authenticate, handleSetCompanyModule);
 
 // REST ViewSets
 coreRouter.use('/companies', requireSuperAdminForWrite, createCrudRouter({ modelName: 'core_company', searchFields: ['company_code', 'legal_name'] }));

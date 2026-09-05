@@ -200,27 +200,6 @@ export function UserProfileSettingsModal({
               <Building2 size={11} className="text-brand-green" />
               <span>{activeCompanyName}</span>
             </div>
-            {(user?.roles?.length ?? 0) > 1 && (
-              <div className="mt-2 flex items-center gap-2">
-                <label htmlFor="active-role" className="text-3xs font-semibold text-text-secondary">
-                  Role aktif
-                </label>
-                <select
-                  id="active-role"
-                  value={user?.active_role_code || activeRole?.role_code || ""}
-                  onChange={(event) => void handleRoleChange(event.target.value)}
-                  disabled={isSwitchingRole}
-                  className="input h-7 py-0 text-2xs flex-1"
-                >
-                  {user?.roles?.map((role) => (
-                    <option key={role.role_code} value={role.role_code}>
-                      {role.role_name || role.role_code}
-                    </option>
-                  ))}
-                </select>
-                {isSwitchingRole && <Loader2 size={12} className="animate-spin" />}
-              </div>
-            )}
           </div>
         </div>
 
@@ -332,6 +311,18 @@ export function UserProfileSettingsModal({
                 Simpan Password Baru
               </button>
             </div>
+            {(user?.roles?.length ?? 0) > 1 && (
+              <div className="rounded-xl border border-text-tertiary bg-bg-light p-3">
+                <label htmlFor="active-role" className="mb-1.5 block text-xs font-semibold text-text-primary">Role aktif</label>
+                <p className="mb-2 text-2xs text-text-secondary">Ganti konteks kerja tanpa keluar atau login ulang.</p>
+                <div className="flex items-center gap-2">
+                  <select id="active-role" value={user?.active_role_code || activeRole?.role_code || ""} onChange={(event) => void handleRoleChange(event.target.value)} disabled={isSwitchingRole} className="input h-8 py-0 text-xs flex-1">
+                    {user?.roles?.map((role) => <option key={role.role_code} value={role.role_code}>{role.role_name || role.role_code}</option>)}
+                  </select>
+                  {isSwitchingRole && <Loader2 size={13} className="animate-spin" />}
+                </div>
+              </div>
+            )}
           </form>
         ) : (
           <form onSubmit={handleProfileSubmit} className="flex flex-col gap-3.5 text-xs">

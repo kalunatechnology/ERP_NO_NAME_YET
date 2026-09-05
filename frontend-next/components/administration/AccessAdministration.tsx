@@ -57,9 +57,12 @@ export function AccessAdministration() {
         setModules(response.data?.results || []);
         setUsers([]);
       } else {
-        const response = await api.get("/api/v1/accounts/users/?page_size=100");
-        setUsers(normalizeList<UserRow>(response.data).rows);
-        setModules([]);
+        const [userResponse, moduleResponse] = await Promise.all([
+          api.get("/api/v1/accounts/users/?page_size=100"),
+          api.get("/api/v1/core/company-modules/my-modules"),
+        ]);
+        setUsers(normalizeList<UserRow>(userResponse.data).rows);
+        setModules(moduleResponse.data?.results || []);
       }
     } catch (error: any) {
       toast.error(error?.response?.data?.error?.message || "Gagal memuat data company.");
@@ -150,7 +153,28 @@ export function AccessAdministration() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="flex flex-col gap-4">
+          <section className="card rounded-2xl p-4">
+            <div className="mb-3">
+              <h2 className="font-bold text-sm">Akses Modul Company</h2>
+              <p className="mt-1 text-xs text-text-secondary">Atur hak baca dan tulis untuk modul yang telah diaktifkan Super Admin. Pengaturan ini hanya berlaku pada company Anda.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {modules.map((item) => (
+                <div key={item.module_code} className="rounded-xl border border-text-tertiary p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-xs">{item.module_code}</span>
+                    <span className={item.enabled ? "badge badge-success" : "badge"}>{item.enabled ? "Active" : "Locked"}</span>
+                  </div>
+                  <div className="mt-3 flex gap-2 text-xs">
+                    <button disabled={!item.enabled || savingModule === item.module_code} onClick={() => updateModule(item, { allow_read: !item.allow_read })} className="btn-ghost">Read: {item.allow_read ? "On" : "Off"}</button>
+                    <button disabled={!item.enabled || savingModule === item.module_code} onClick={() => updateModule(item, { allow_write: !item.allow_write })} className="btn-ghost">Write: {item.allow_write ? "On" : "Off"}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <form onSubmit={submitInvite} className="card rounded-2xl p-4 flex flex-col gap-3">
             <h2 className="font-bold text-sm flex items-center gap-2"><UserPlus size={16} /> Invite User</h2>
             <input required className="input" placeholder="Nama lengkap" value={invite.name} onChange={(e) => setInvite({ ...invite, name: e.target.value })} />
@@ -164,6 +188,7 @@ export function AccessAdministration() {
           <div className="card rounded-2xl p-4 xl:col-span-2">
             <h2 className="font-bold text-sm flex items-center gap-2 mb-3"><Users size={16} /> Company Users</h2>
             <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="border-b"><th className="text-left p-2">Nama</th><th className="text-left p-2">Email</th><th className="text-left p-2">Status</th></tr></thead><tbody>{users.map((item) => <tr key={item.id} className="border-b border-gray-100"><td className="p-2 font-semibold">{item.full_name || "-"}</td><td className="p-2">{item.email}</td><td className="p-2">{item.is_active === false ? "Inactive" : item.status || "Active"}</td></tr>)}</tbody></table></div>
+          </div>
           </div>
         </div>
       )}

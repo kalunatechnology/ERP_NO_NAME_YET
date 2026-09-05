@@ -15,6 +15,9 @@
     "typecheck": "tsc --noEmit",
     "test:q6": "ts-node --files tests/q6.integration.ts",
     "test:q7": "ts-node --files tests/q7.integration.ts",
+    "test:q9": "ts-node --files tests/q9-access.integration.ts",
+    "test:q9:http": "ts-node --files tests/q9-http.integration.ts",
+    "reconcile:q9": "ts-node scripts/reconcile_q9_access.ts",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {

@@ -620,9 +620,11 @@ Catalog berikut berasal dari `backend-express/prisma/seed.ts`. Password demo tid
 
 ### Identity catalog versus live IAM state
 
-`prisma/seed.ts` adalah sumber katalog untuk 19 identity di atas, tetapi perubahan file seed tidak otomatis memperbarui record yang sudah ada sampai seed atau script rekonsiliasi dijalankan. Audit database terkonfigurasi pada 2026-09-04 menemukan drift yang masih harus diperlakukan sebagai kondisi aktual: Rian masih mempunyai assignment Company Admin, Laode belum mempunyai Company Admin, Melika Ops belum mempunyai OM, dan Ghost Estimator masih PM. Arof mempunyai PM + Finance dan **bukan drift**. Jangan menghapus salah satu role Arof saat melakukan rekonsiliasi.
+`prisma/seed.ts` adalah sumber katalog untuk 19 identity di atas. Pada 2026-09-05, `scripts/reconcile_q9_access.ts` telah dijalankan terhadap database terkonfigurasi untuk menyelaraskan katalog tersebut: Rian hanya Director; Laode Company Admin + Supervisor + Staff dengan Company Admin aktif; Melika/Melika Ops/Arof dan seluruh persona Ghost mengikuti tabel di atas; dan hanya `dummy.admin@example.com` menjadi Super Admin. Akun legacy di luar katalog tidak dihapus.
 
-Setelah rekonsiliasi IAM, verifikasi minimum adalah: hanya `dummy.admin@example.com` memiliki Super Admin; setiap user biasa mempunyai tepat satu membership company aktif; `iam_user.active_role_id` menunjuk salah satu assignment milik user; seluruh `iam_user_role.company_id` sama dengan membership; dan role aktual cocok dengan tabel katalog di atas.
+Verifikasi `tests/q9-access.integration.ts` lulus untuk seluruh 19 identity: hanya `dummy.admin@example.com` memiliki Super Admin; setiap user biasa mempunyai tepat satu membership company aktif; `iam_user.active_role_id` menunjuk salah satu assignment milik user; seluruh `iam_user_role.company_id` sama dengan membership; dan tidak terdapat assignment role lintas-company pada katalog.
+
+Halaman `/resources` berubah menjadi `AccessAdministration` bagi Super Admin/Company Admin. Super Admin memilih company dan mengaktifkan modul; Company Admin hanya melihat company miliknya, dapat mengubah flag read/write modul yang telah diaktifkan, mengundang user non-administratif, dan melihat daftar user company. Pergantian active role multi-role tersedia pada profile settings tepat di bawah aksi Change Password dan memanggil `PATCH /api/v1/auth/active-role` tanpa login ulang.
 
 ### Sidebar feed and contact isolation
 
@@ -755,7 +757,10 @@ Tidak ada Python/composer dependency yang termasuk runtime dua aplikasi ini.
 | Backend | `npm run prisma:migrate` | Prisma migrate dev |
 | Backend | `npm run prisma:studio` | Prisma Studio |
 | Backend | `npm run typecheck` | TypeScript noEmit |
-| Backend | `npm run test:q6` / `test:q7` | integration suites |
+| Backend | `npm run test:q6` / `test:q7` | integration suites Q6/Q7 |
+| Backend | `npm run reconcile:q9` | rekonsiliasi terarah 19 identity dan baseline modul SMA; mutasi database |
+| Backend | `npm run test:q9` | audit read-only identity, active role, membership, cross-company assignment dan entitlement SMA |
+| Backend | `npm run test:q9:http` | regression HTTP Director/Company Admin, role switch, anonymous auth dan forged-company rejection |
 | Backend | `npm run lint` | TypeScript check (script actual) |
 | Frontend | `npm install` / `npm ci` | install dependencies |
 | Frontend | `npm run dev` | Next development server |
@@ -767,8 +772,10 @@ Format command, one-command DB reset, and automated deploy script **NOT FOUND**.
 
 ## 12. Testing
 
-- `tests/q6.integration.test.ts`: 20 integration scenarios for health/auth/tenant/module/business API/error/security; membutuhkan backend dan database configured.
-- `tests/q7.finance-governance.integration.test.ts`: 6 governance scenarios untuk idempotency, financial immutability, SoD/reversal/closing; test memutasi data dan melakukan cleanup selektif.
+- `tests/q6.integration.ts`: integration scenarios untuk health/auth/tenant/module/business API/error/security; membutuhkan backend dan database configured. Sebagian fixture ekspektasi historisnya mendahului katalog Q9.
+- `tests/q7.integration.ts`: governance scenarios untuk idempotency, financial immutability, SoD/reversal/closing; test memutasi data dan melakukan cleanup selektif.
+- `tests/q9-access.integration.ts`: audit database read-only untuk katalog 19 user, sole Super Admin, one-company membership, active-role ownership dan 16 entitlement SMA read/write.
+- `tests/q9-http.integration.ts`: pengujian HTTP nyata untuk Rian Projects/Reports, Laode access management, role switching tanpa login ulang, 401 anonymous dan 403 forged company.
 - Jest, ts-jest dan Supertest tersedia. Unit test frontend/E2E browser suite/test database isolation dedicated **NOT FOUND**.
 - Karena test menyentuh database aktual dari environment, jangan arahkan ke production. Data entitlement dapat diubah sementara oleh suite.
 
@@ -855,6 +862,7 @@ Tabel berikut mencakup file relevan di kedua aplikasi. Untuk source, exports dan
 | `backend-express/scripts/purge_clean_workspaces.ts` | File pendukung aplikasi sesuai import/export aktual. | `main()` | `@prisma/client` | Direct mount, framework discovery, script execution, or no static reverse import |
 | `backend-express/scripts/repair_role_tenant_assignments.ts` | File pendukung aplikasi sesuai import/export aktual. | `main()` | `../src/config/database` | Direct mount, framework discovery, script execution, or no static reverse import |
 | `backend-express/scripts/repair_melika_access.ts` | Reparasi terarah role Melika menjadi PM + OM dengan PM sebagai active role; tidak menyentuh user lain. | `repairMelikaAccess()` | `../src/config/database`, `../src/types/roles` | Hanya dijalankan manual untuk koreksi data terverifikasi |
+| `backend-express/scripts/reconcile_q9_access.ts` | Rekonsiliasi atomik 19 identity kanonis, sole Super Admin, one-company membership, active role, dan baseline 16 modul SMA read/write. | `reconcileQ9Access()` | `crypto`, `../src/config/database`, `../src/modules/core/core.service`, `@prisma/client` | Dijalankan manual melalui `npm run reconcile:q9` setelah review scope |
 | `backend-express/scripts/seed_company_finance_master.ts` | Seed/setup data melalui Prisma; memutasi database ketika dijalankan eksplisit. | `main()` | `@prisma/client`, `crypto` | Direct mount, framework discovery, script execution, or no static reverse import |
 | `backend-express/scripts/seed_operational_master.ts` | Seed/setup data melalui Prisma; memutasi database ketika dijalankan eksplisit. | `main()` | `@prisma/client`, `crypto` | Direct mount, framework discovery, script execution, or no static reverse import |
 | `backend-express/scripts/seed_sinergi_muda_arsa.ts` | Seed/setup data melalui Prisma; memutasi database ketika dijalankan eksplisit. | `main()` | `@prisma/client`, `crypto` | Direct mount, framework discovery, script execution, or no static reverse import |
@@ -927,6 +935,8 @@ Tabel berikut mencakup file relevan di kedua aplikasi. Untuk source, exports dan
 | `backend-express/src/workflows/tenants/default/sales_order.workflow.ts` | Definisi atau engine workflow/status transition tenant/domain. | `DefaultSalesOrderWorkflow`, `getInitialStatus()`, `getAvailableTransitions( currentStatus: string, _context: TransitionContext, )`, `validateTransition( document: WorkflowDocument, _fromStatus: string, toStatus: string, _context: TransitionContext, )`, `onStatusChanged( _document: WorkflowDocument, _fromStatus: string, _toStatus: string, _context: TransitionContext, )`, `requiresApproval(document: WorkflowDocument, _context: TransitionContext)` | `../../engine` | `backend-express/src/workflows/index.ts` |
 | `backend-express/tests/q6.integration.ts` | File pendukung aplikasi sesuai import/export aktual. | `request(path: string, options: RequestInit = {}, token?: string)`, `login(email: string)`, `check(name: string, run: ()`, `main()` | `node:assert/strict`, `../src/config/database` | Direct mount, framework discovery, script execution, or no static reverse import |
 | `backend-express/tests/q7.integration.ts` | File pendukung aplikasi sesuai import/export aktual. | `main()` | `node:assert/strict`, `../src/config/database` | Direct mount, framework discovery, script execution, or no static reverse import |
+| `backend-express/tests/q9-access.integration.ts` | Audit read-only invariant katalog IAM dan entitlement Q9. | `main()` | `node:assert/strict`, `../src/config/database`, `../src/modules/core/core.service` | `npm run test:q9` |
+| `backend-express/tests/q9-http.integration.ts` | Regression HTTP Q9 dan role-switch dengan pemulihan active role pada finally. | `request()`, `login()`, `main()` | `node:assert/strict`, HTTP backend lokal | `npm run test:q9:http` |
 | `backend-express/tests/sidebar-company-isolation.integration.ts` | Regression test read-only yang membuktikan seluruh contact sidebar berasal dari company membership caller dan tidak bocor dari Ghost company. | `testSidebarCompanyIsolation()` | `node:assert/strict`, `../src/config/database`, `../src/modules/core/core.service` | Dijalankan manual terhadap database test/target terkontrol |
 | `backend-express/tsconfig.json` | Konfigurasi build/runtime tool. | No named runtime export detected | Tool/runtime or none | Direct mount, framework discovery, script execution, or no static reverse import |
 | `backend-express/vercel.json` | File pendukung aplikasi sesuai import/export aktual. | No named runtime export detected | Tool/runtime or none | Direct mount, framework discovery, script execution, or no static reverse import |
@@ -1030,6 +1040,7 @@ Audit mengecualikan `node_modules`, `.next`, `dist`, generated Prisma Client, lo
 | `backend-express/scripts/purge_clean_workspaces.ts` | Script/seed | Yes | Yes | Complete |
 | `backend-express/scripts/repair_role_tenant_assignments.ts` | Script/seed | Yes | Yes | Complete |
 | `backend-express/scripts/repair_melika_access.ts` | Script/seed | Yes | Yes | Complete |
+| `backend-express/scripts/reconcile_q9_access.ts` | Script/seed | Yes | Yes | Complete |
 | `backend-express/scripts/seed_company_finance_master.ts` | Script/seed | Yes | Yes | Complete |
 | `backend-express/scripts/seed_operational_master.ts` | Script/seed | Yes | Yes | Complete |
 | `backend-express/scripts/seed_sinergi_muda_arsa.ts` | Script/seed | Yes | Yes | Complete |
@@ -1102,6 +1113,8 @@ Audit mengecualikan `node_modules`, `.next`, `dist`, generated Prisma Client, lo
 | `backend-express/tests/q6.integration.ts` | Test | Yes | Yes | Complete |
 | `backend-express/tests/q7.integration.ts` | Test | Yes | Yes | Complete |
 | `backend-express/tests/sidebar-company-isolation.integration.ts` | Test | Yes | Yes | Complete |
+| `backend-express/tests/q9-access.integration.ts` | Test | Yes | Yes | Complete |
+| `backend-express/tests/q9-http.integration.ts` | Test | Yes | Yes | Complete |
 | `frontend-next/app/(app)/crm/CrmClient.tsx` | Next route/layout | Yes | Yes | Complete |
 | `frontend-next/app/(app)/crm/page.tsx` | Next route/layout | Yes | Yes | Complete |
 | `frontend-next/app/(app)/dashboard/DashboardClient.tsx` | Next route/layout | Yes | Yes | Complete |
@@ -1174,7 +1187,7 @@ Audit mengecualikan `node_modules`, `.next`, `dist`, generated Prisma Client, lo
 | `frontend-next/tailwind.config.ts` | Configuration | Yes | Yes | Complete |
 | `frontend-next/types/chatbot.ts` | Infrastructure/types | Yes | Yes | Complete |
 
-Verification snapshot: **151 logic files** memiliki file-level documentation. Audit declaration memastikan named function, class method, middleware, API handler, important callback, workflow transition, database operation, dan external integration yang terdeteksi memiliki JSDoc. Backend dan frontend TypeScript checks lulus setelah perubahan komentar.
+Verification snapshot: **154 logic files** memiliki file-level documentation, termasuk tiga file rekonsiliasi/regression Q9. Audit declaration memastikan named function, class method, middleware, API handler, important callback, workflow transition, database operation, dan external integration yang terdeteksi memiliki JSDoc. Backend dan frontend TypeScript checks lulus setelah perubahan komentar.
 
 ### Important function/class behavior
 
@@ -1208,8 +1221,8 @@ Verification snapshot: **151 logic files** memiliki file-level documentation. Au
 - **TECHNICAL DEBT:** ESLint frontend diabaikan saat build; lint script/tooling perlu diverifikasi terhadap Next 14 setup.
 - **NOT IMPLEMENTED:** queue/worker, centralized observability, rate limiting, server-side chatbot proxy, automated backup/restore/DR, and repository CI/CD.
 - **PARTIALLY VERIFIED:** database yang dikonfigurasi pada audit 2026-09-04 telah membaseline empat migration dan `prisma migrate status` melaporkan schema up to date. Target deployment lain dan nilai environment production tetap harus diverifikasi terpisah.
-- **DATA DRIFT:** katalog role source dan database terkonfigurasi belum sepenuhnya selaras untuk Rian, Laode, Melika Ops, dan Ghost Estimator. Arof PM + Finance adalah konfigurasi yang benar. Drift ini dapat menyebabkan 403 walaupun source/seed terlihat benar.
-- **ENTITLEMENT STATE:** pada audit 2026-09-04 seluruh module entitlement masih nonaktif, termasuk `PROJECTS` untuk SMA. Director Rian secara RBAC boleh membaca Projects, tetapi tetap mendapat 403 sampai Super Admin mengaktifkan entitlement read Projects untuk company tersebut.
+- **RESOLVED IN CONFIGURED DATABASE (2026-09-05):** drift Rian, Laode, Melika Ops, dan Ghost Estimator telah direkonsiliasi secara terarah; Arof tetap PM + Finance. Audit Q9 lulus untuk 19 identity dan sole Super Admin.
+- **RESOLVED IN CONFIGURED DATABASE (2026-09-05):** 16 module entitlement SMA telah diaktifkan untuk read/write. HTTP regression membuktikan Rian menerima 200 pada Projects dan Reports. Database deployment lain tetap harus menjalankan rekonsiliasi/migration secara eksplisit.
 
 ## 20. Cross-component traceability
 
