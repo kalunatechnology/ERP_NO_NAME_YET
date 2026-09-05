@@ -11,6 +11,7 @@ type Company = { id: string; legal_name?: string; company_code?: string; name?: 
 type ModuleAccess = { module_code: string; enabled: boolean; allow_read: boolean; allow_write: boolean };
 type UserRow = { id: string; full_name?: string; email: string; status?: string; is_active?: boolean };
 type Role = { id: string; role_code: string; role_name: string };
+type UserModuleAccess = { user_id: string; module_code: string; allow_read: boolean; allow_write: boolean };
 
 /**
  * AccessAdministration coordinates the UI behavior represented by this function.
@@ -27,6 +28,8 @@ export function AccessAdministration() {
   const [modules, setModules] = useState<ModuleAccess[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [userModuleAccess, setUserModuleAccess] = useState<UserModuleAccess[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingModule, setSavingModule] = useState<string | null>(null);
   const [invite, setInvite] = useState({ name: "", email: "", password: "", role_code: "ROLE-STAFF" });
@@ -57,12 +60,16 @@ export function AccessAdministration() {
         setModules(response.data?.results || []);
         setUsers([]);
       } else {
-        const [userResponse, moduleResponse] = await Promise.all([
+        const [userResponse, moduleResponse, personalAccessResponse] = await Promise.all([
           api.get("/api/v1/accounts/users/?page_size=100"),
           api.get("/api/v1/core/company-modules/my-modules"),
+          api.get("/api/v1/accounts/user-module-access"),
         ]);
-        setUsers(normalizeList<UserRow>(userResponse.data).rows);
+        const userRows = normalizeList<UserRow>(userResponse.data).rows;
+        setUsers(userRows);
+        setSelectedUserId((current) => current || userRows[0]?.id || "");
         setModules(moduleResponse.data?.results || []);
+        setUserModuleAccess(personalAccessResponse.data?.results || []);
       }
     } catch (error: any) {
       toast.error(error?.response?.data?.error?.message || "Gagal memuat data company.");
@@ -91,6 +98,24 @@ export function AccessAdministration() {
       toast.success(`Akses ${module.module_code} diperbarui.`);
     } catch (error: any) {
       toast.error(error?.response?.data?.error?.message || "Perubahan modul gagal disimpan.");
+    } finally {
+      setSavingModule(null);
+    }
+  }
+
+  /** Delegates one already-approved company module to the selected user only. */
+  async function updateUserModule(module: ModuleAccess, patch: Partial<UserModuleAccess>) {
+    if (!selectedUserId) return;
+    setSavingModule(`user:${module.module_code}`);
+    const existing = userModuleAccess.find((item) => item.user_id === selectedUserId && item.module_code === module.module_code);
+    const allowWrite = patch.allow_write ?? existing?.allow_write ?? false;
+    const allowRead = allowWrite || (patch.allow_read ?? existing?.allow_read ?? false);
+    try {
+      await api.put(`/api/v1/accounts/users/${selectedUserId}/module-access/${module.module_code}`, { allow_read: allowRead, allow_write: allowWrite });
+      await loadCompanyContext();
+      toast.success(`Akses personal ${module.module_code} diperbarui.`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error?.message || "Perubahan akses personal gagal disimpan.");
     } finally {
       setSavingModule(null);
     }
@@ -172,6 +197,28 @@ export function AccessAdministration() {
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+          <section className="card rounded-2xl p-4">
+            <div className="mb-3">
+              <h2 className="font-bold text-sm">Akses Modul per User</h2>
+              <p className="mt-1 text-xs text-text-secondary">Delegasikan modul kepada user tertentu saat diperlukan. Hanya modul yang sudah diaktifkan Super Admin untuk company ini yang dapat diatur. Read/Write di sini merupakan override personal; role operasional tidak perlu diubah untuk memakai delegasi.</p>
+            </div>
+            <select className="input max-w-xl mb-3" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
+              {users.map((item) => <option key={item.id} value={item.id}>{item.full_name || item.email} — {item.email}</option>)}
+            </select>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {modules.filter((item) => item.enabled).map((module) => {
+                const personal = userModuleAccess.find((item) => item.user_id === selectedUserId && item.module_code === module.module_code);
+                const disabled = savingModule === `user:${module.module_code}`;
+                return <div key={module.module_code} className="rounded-xl border border-text-tertiary p-3">
+                  <div className="flex items-center justify-between gap-2"><span className="font-bold text-xs">{module.module_code}</span><span className="badge badge-success">Company Approved</span></div>
+                  <div className="mt-3 flex gap-2 text-xs">
+                    <button disabled={disabled} onClick={() => updateUserModule(module, { allow_read: !(personal?.allow_read ?? false), allow_write: personal?.allow_write ?? false })} className="btn-ghost">Read: {personal?.allow_read ? "On" : "Off"}</button>
+                    <button disabled={disabled} onClick={() => updateUserModule(module, { allow_write: !(personal?.allow_write ?? false), allow_read: true })} className="btn-ghost">Write: {personal?.allow_write ? "On" : "Off"}</button>
+                  </div>
+                </div>;
+              })}
             </div>
           </section>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">

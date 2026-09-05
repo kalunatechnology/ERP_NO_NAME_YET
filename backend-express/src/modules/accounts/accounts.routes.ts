@@ -446,6 +446,66 @@ async function inviteUser(req: Request, res: Response, next: NextFunction) {
 }
 
 /**
+ * GET /api/v1/accounts/user-module-access
+ *
+ * Returns only the explicit per-user module overrides for the caller's active
+ * company. Company modules remain the ceiling; this endpoint never exposes
+ * users or grants from another company.
+ */
+async function listUserModuleAccess(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!req.companyId) throw new ForbiddenError('Pilih company sebelum melihat akses personal.');
+    const rows = await prisma.iam_user_module_access.findMany({
+      where: { company_id: req.companyId },
+      orderBy: [{ user_id: 'asc' }, { module_code: 'asc' }],
+    });
+    res.json({ results: rows });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PUT /api/v1/accounts/users/:userId/module-access/:moduleCode
+ *
+ * Delegates a company-approved module to exactly one user. The Company Admin
+ * cannot self-grant, and cannot grant any module that Super Admin has not
+ * enabled for this company. `allow_write` always implies `allow_read`.
+ */
+async function setUserModuleAccess(req: Request, res: Response, next: NextFunction) {
+  try {
+    const companyId = req.companyId;
+    const userId = req.params.userId;
+    const moduleCode = String(req.params.moduleCode || '').trim().toUpperCase();
+    if (!companyId || !moduleCode) throw new ValidationError('Company dan module code wajib valid.');
+    if (!isSuperAdmin(req.user?.roles ?? []) && userId === req.user?.id) {
+      throw new ForbiddenError('Company Admin tidak dapat memberikan eskalasi modul kepada dirinya sendiri.');
+    }
+    const membership = await prisma.iam_user_company_membership.findUnique({ where: { user_id: userId } });
+    if (!membership || membership.company_id !== companyId || membership.status !== 'ACTIVE') {
+      throw new ForbiddenError('User target tidak terdaftar aktif pada company Anda.');
+    }
+    const companyModule = await prisma.iam_company_module_access.findUnique({
+      where: { company_id_module_code: { company_id: companyId, module_code: moduleCode } },
+    });
+    const now = new Date();
+    if (!companyModule?.enabled || (companyModule.effective_from && companyModule.effective_from > now) || (companyModule.effective_until && companyModule.effective_until < now)) {
+      throw new ForbiddenError(`Modul ${moduleCode} belum disetujui aktif oleh Super Admin untuk company ini.`);
+    }
+    const allowWrite = Boolean(req.body.allow_write);
+    const allowRead = allowWrite || Boolean(req.body.allow_read);
+    const result = await prisma.iam_user_module_access.upsert({
+      where: { user_id_module_code: { user_id: userId, module_code: moduleCode } },
+      create: { tenant_id: membership.tenant_id, company_id: companyId, user_id: userId, module_code: moduleCode, allow_read: allowRead, allow_write: allowWrite, granted_by_id: req.user?.id },
+      update: { allow_read: allowRead, allow_write: allowWrite, granted_by_id: req.user?.id },
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * validateUserRoleAssignment implements a named function within this file's Express API routing boundary.
  *
  * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
@@ -612,6 +672,8 @@ const rolePermissionsCrud = () => createCrudRouter({
  */
 function mountAccountResources(router: Router) {
   router.post('/users/invite', requireCompanyAdmin, inviteUser);
+  router.get('/user-module-access', requireCompanyAdmin, listUserModuleAccess);
+  router.put('/users/:userId/module-access/:moduleCode', requireCompanyAdmin, requireCompanyContextForWrite, setUserModuleAccess);
   router.use('/users', requireAdminForWrite, requireCompanyContextForWrite, usersCrud());
   router.use('/roles', requireAdminForWrite, rolesCrud());
   router.use('/permissions', requireSuperAdminForWrite, createCrudRouter({ modelName: 'iam_permission', searchFields: ['permission_code', 'module_code', 'resource_name'] }));

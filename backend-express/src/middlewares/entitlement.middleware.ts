@@ -82,6 +82,27 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         );
       }
 
+      // A Company Admin can tailor access for one user, but never bypass the
+      // Super-Admin company entitlement checked above. No override means
+      // inheritance from the company setting; an override is authoritative.
+      const userOverride = await prisma.iam_user_module_access.findUnique({
+        where: { user_id_module_code: { user_id: req.user.id, module_code: normalizedModule } },
+      });
+      if (userOverride) {
+        if (userOverride.company_id !== companyId || userOverride.tenant_id !== req.user.tenant_id) {
+          return next(new ForbiddenError(`Konfigurasi akses personal ${normalizedModule} tidak sesuai company.`));
+        }
+        if (effectiveMode === 'read' && !userOverride.allow_read) {
+          return next(new ForbiddenError(`Akses baca personal untuk modul ${normalizedModule} dinonaktifkan.`));
+        }
+        if (effectiveMode === 'write' && !userOverride.allow_write) {
+          return next(new ForbiddenError(`Akses tulis personal untuk modul ${normalizedModule} dinonaktifkan.`));
+        }
+        req.moduleAccess = { moduleCode: normalizedModule, delegated: true, allowRead: userOverride.allow_read, allowWrite: userOverride.allow_write };
+      } else {
+        req.moduleAccess = { moduleCode: normalizedModule, delegated: false, allowRead: access.allow_read, allowWrite: access.allow_write };
+      }
+
       next();
     } catch (error) {
       next(error);

@@ -18,6 +18,7 @@ export interface UserAccessContext {
   companyIds: string[];
   isSuperAdmin: boolean;
   enabledModules: string[];
+  delegatedModules: string[];
 }
 
 /**
@@ -104,6 +105,20 @@ export async function loadUserAccessContext(userId: string): Promise<UserAccessC
       })
     : [];
 
+  // A missing per-user record deliberately preserves legacy inheritance from
+  // the company entitlement. Once Company Admin creates an override, its
+  // allow_read flag becomes the user's effective module visibility.
+  const userModuleAccess = membership
+    ? await prisma.iam_user_module_access.findMany({
+        where: { user_id: userId, company_id: membership.company_id, tenant_id: membership.tenant_id },
+        select: { module_code: true, allow_read: true, allow_write: true },
+      })
+    : [];
+  const overrideByModule = new Map(userModuleAccess.map((item) => [item.module_code.toUpperCase(), item]));
+  const enabledModules = moduleAccess
+    .map((item) => item.module_code.toUpperCase())
+    .filter((moduleCode) => overrideByModule.get(moduleCode)?.allow_read ?? true);
+
   return {
     roles,
     activeRoleId,
@@ -111,6 +126,7 @@ export async function loadUserAccessContext(userId: string): Promise<UserAccessC
     companyId: superAdmin ? null : companyIds[0] ?? null,
     companyIds,
     isSuperAdmin: superAdmin,
-    enabledModules: moduleAccess.map((item) => item.module_code.toUpperCase()),
+    enabledModules,
+    delegatedModules: userModuleAccess.filter((item) => item.allow_read).map((item) => item.module_code.toUpperCase()),
   };
 }

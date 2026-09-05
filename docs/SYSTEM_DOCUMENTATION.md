@@ -626,6 +626,10 @@ Verifikasi `tests/q9-access.integration.ts` lulus untuk seluruh 19 identity: han
 
 Halaman `/resources` berubah menjadi `AccessAdministration` bagi Super Admin/Company Admin. Super Admin memilih company dan mengaktifkan modul; Company Admin hanya melihat company miliknya, dapat mengubah flag read/write modul yang telah diaktifkan, mengundang user non-administratif, dan melihat daftar user company. Pergantian active role multi-role tersedia pada profile settings tepat di bawah aksi Change Password dan memanggil `PATCH /api/v1/auth/active-role` tanpa login ulang.
 
+### Delegasi modul personal (Q9)
+
+Mulai migration `20260905160000_q9_user_module_delegation`, akses modul memiliki dua lapis. `iam_company_module_access` adalah batas company yang hanya dapat diaktifkan Super Admin. `iam_user_module_access` adalah override personal yang hanya dapat dibuat Company Admin untuk user dengan membership pada company yang sama. Endpoint `PUT /api/v1/accounts/users/:userId/module-access/:moduleCode` menolak target lintas company, self-escalation Company Admin, dan modul yang belum enabled oleh Super Admin; write selalu menyiratkan read. Middleware entitlement menerapkan override itu sebelum handler/rule role berjalan. UI **Akses Modul per User** di `/resources` hanya menampilkan module company-approved.
+
 ### Sidebar feed and contact isolation
 
 `GET /api/v1/sidebar-feed` dan alias `/api/v1/core/sidebar-feed` menerima identity dan `req.companyId` yang sudah diselesaikan middleware. `CoreService.getSidebarFeed(userId, companyId)` membatasi notification ke recipient/company, activity ke company, dan contact ke `iam_user_company_membership` aktif pada company yang sama. Actor juga hanya diserialisasi jika termasuk user company yang diizinkan. Session Super Admin tanpa company eksplisit tidak mengagregasi contact/activity lintas company.
@@ -761,6 +765,11 @@ Tidak ada Python/composer dependency yang termasuk runtime dua aplikasi ini.
 | Backend | `npm run reconcile:q9` | rekonsiliasi terarah 19 identity dan baseline modul SMA; mutasi database |
 | Backend | `npm run test:q9` | audit read-only identity, active role, membership, cross-company assignment dan entitlement SMA |
 | Backend | `npm run test:q9:http` | regression HTTP Director/Company Admin, role switch, anonymous auth dan forged-company rejection |
+| Backend | `npm run test:q9:delegation` | delegasi Finance per user oleh Company Admin; test mengembalikan override target sesudah selesai |
+| Backend | `npm run reconcile:q10` | menyelaraskan entitlement CRM Ghost pada company yang diturunkan dari membership user kanonis |
+| Backend | `npm run test:q10:bdd` | delapan executable Given–When–Then system scenarios; Express berjalan pada port sementara dan role Arof dipulihkan otomatis |
+| Backend | `npm run audit:project-progress` | audit read-only progres proyek tanpa Main Task dan flag manual override historis |
+| Backend | `npm run reconcile:project-progress` | reset terarah hanya pada `progress_percent` proyek non-zero yang tidak memiliki Main Task |
 | Backend | `npm run lint` | TypeScript check (script actual) |
 | Frontend | `npm install` / `npm ci` | install dependencies |
 | Frontend | `npm run dev` | Next development server |
@@ -776,6 +785,9 @@ Format command, one-command DB reset, and automated deploy script **NOT FOUND**.
 - `tests/q7.integration.ts`: governance scenarios untuk idempotency, financial immutability, SoD/reversal/closing; test memutasi data dan melakukan cleanup selektif.
 - `tests/q9-access.integration.ts`: audit database read-only untuk katalog 19 user, sole Super Admin, one-company membership, active-role ownership dan 16 entitlement SMA read/write.
 - `tests/q9-http.integration.ts`: pengujian HTTP nyata untuk Rian Projects/Reports, Laode access management, role switching tanpa login ulang, 401 anonymous dan 403 forged company.
+- `tests/q9-user-module-delegation.integration.ts`: membuktikan Jundy memperoleh Finance read/write hanya setelah Laode mendelegasikannya; test merestore override awal.
+- `tests/features/q10-critical-system.feature`: living specification Given–When–Then untuk health/auth, Director, Company Admin/company isolation, PM/CRM/Finance role behavior, role switching, dan integrity progres WBS.
+- `tests/q10-system.bdd.ts`: runner system BDD yang menyalakan Express pada ephemeral port, memakai middleware/API/Prisma nyata, menguji projection timeline frontend, dan memulihkan active role Arof melalui `finally`. Hasil terakhir 2026-09-05: 8/8 PASS.
 - Jest, ts-jest dan Supertest tersedia. Unit test frontend/E2E browser suite/test database isolation dedicated **NOT FOUND**.
 - Karena test menyentuh database aktual dari environment, jangan arahkan ke production. Data entitlement dapat diubah sementara oleh suite.
 
@@ -817,6 +829,8 @@ Troubleshooting: 401 biasanya token/secret/expiry/user inactive; 403 biasanya co
 - Semua data tenant-owned harus selalu difilter company/tenant; global master hanya yang benar-benar tidak memiliki ownership field.
 - Super Admin lintas-company bersifat read/reporting; mutation operasional membutuhkan company eksplisit dan authorization yang sesuai.
 - Company Admin tidak boleh enable module di luar entitlement Super Admin.
+- Progres bersifat turunan: checklist/status Daily → Weekly → Main Task → Project. Generic project task bukan Main Task; proyek tanpa Main Task harus 0% dan tidak menghasilkan baris Timeline Proyek.
+- Payload create/update Main Task, Weekly Task, dan Project tidak boleh menetapkan atau mengaktifkan manual progress override melalui generic CRUD.
 - Mutation bisnis yang dicakup wajib idempotent; key sama + payload berbeda adalah conflict.
 - Posted/closed/paid/locked/executed/reversed finance records tidak diedit/dihapus langsung.
 - Journal harus balanced; reversal dan closing mengikuti SoD/audit trail.
@@ -1207,6 +1221,9 @@ Verification snapshot: **154 logic files** memiliki file-level documentation, te
 | `streamChatCompletion(options)` | message/caller token/callbacks | Promise<void> + chunks | fetch SSE external chatbot; invokes callbacks | HTTP/SSE/Abort/network errors |
 
 ## 19. Known Issues & Technical Debt
+
+- **RESOLVED PROGRESS INTEGRITY (2026-09-05):** dashboard sebelumnya mengubah `project_project`/generic task menjadi baris Main Task sintetis dan mempercayai persentase tersimpan. Adapter sekarang hanya membentuk timeline dari `project_main_task`; tanpa Main Task, timeline kosong dan progres proyek 0. Audit database menemukan satu orphan progress (`Pembangunan Gardu Induk 150kV Cikarang`, 45%) dan rekonsiliasi terarah mengubahnya ke 0 tanpa menyentuh task sah; audit akhir mencatat nol pelanggaran.
+- **Q10 BDD FINDING RESOLVED (2026-09-05):** Ghost CRM Lead semula mendapat 403 karena entitlement CRM nonaktif pada company yang benar-benar terkait melalui membership. Rekonsiliasi sekarang menentukan target dari `iam_user_company_membership`, bukan `findFirst(company_code)`, dan suite membuktikan CRM kembali 200 tanpa melemahkan company/module middleware.
 
 - **SECURITY / POTENTIAL ISSUE:** hardcoded live-looking chatbot caller credential exists in frontend source and is shipped to browsers. Rotate/remove it and proxy sensitive auth server-side; value omitted here.
 - **POTENTIAL ISSUE:** Axios default backend port 8000 differs from backend and Next rewrite default 8001.

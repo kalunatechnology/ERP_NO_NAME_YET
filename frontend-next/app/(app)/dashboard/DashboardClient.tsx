@@ -26,6 +26,7 @@ import { CompletionRateCard, RateItem } from "@/components/ui/CompletionRateCard
 import { ProjectDonutSummaryCard, ProjectStatusCount } from "@/components/ui/ProjectDonutSummaryCard";
 import { TopExpensesBarChart, ExpenseItem } from "@/components/ui/TopExpensesBarChart";
 import { ProjectTimelineGantt, GanttTaskItem } from "@/components/ui/ProjectTimelineGantt";
+import { buildMainTaskTimeline } from "@/lib/dashboard/project-timeline";
 import { ProjectMilestoneCard, ProjectSummary, MilestoneItem } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { InventoryCheckingCard } from "@/components/ui/InventoryCheckingCard";
@@ -229,16 +230,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
   const totalBudget = projects.reduce((acc, p) => acc + Number(p.budget_amount || (p as any).budget || 0), 0);
   const totalAllocated = 0; // Proyek baru diinisiasi, belum ada realisasi beban
 
-  // Derive Real Timeline Tasks for PM from actual DB projects
-  const timelineTasks: GanttTaskItem[] = projects.map((p, idx) => ({
-    id: p.id,
-    name: p.project_name || p.name || `Proyek #${idx + 1}`,
-    startWeek: 1,
-    endWeek: Math.min(8, 4 + idx),
-    progress: Number(p.progress_percentage || p.progress || 0),
-    assignee: p.project_manager_name || "Melika / Arof",
-    status: (p.status || "IN_PROGRESS") as any,
-  }));
+  const timelineTasks = buildMainTaskTimeline(projects);
 
   // Clean empty state for expenses (fresh company setup)
   const topExpenses: ExpenseItem[] = [];
@@ -760,16 +752,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
  */
   const urgentPending = (finData?.pendingItems || []).filter(i => i.urgency === "urgent").length;
 
-  // Derive Real Timeline Tasks
-  const timelineTasks: GanttTaskItem[] = projects.map((p, idx) => ({
-    id: p.id,
-    name: p.project_name || p.name || `Proyek #${idx + 1}`,
-    startWeek: 1,
-    endWeek: Math.min(8, 4 + idx),
-    progress: Number(p.progress_percentage || p.progress || 0),
-    assignee: p.project_manager_name || "Melika Citra / Arof Fudding",
-    status: (p.status || "IN_PROGRESS") as any,
-  }));
+  const timelineTasks = buildMainTaskTimeline(projects);
 
   // Clean empty state for expenses
   const topExpenses: ExpenseItem[] = [];
@@ -1354,8 +1337,11 @@ export default function DashboardClient() {
     else setRefreshing(true);
     setLoadError(null);
     try {
-      // Load project data for all roles
-      const projectData = canUseProjects ? await loadAllProjects(user?.enabled_modules || []) : [];
+      // Company Admin is an IAM operator, not a Project/Finance persona. Do not
+      // fetch operational widgets merely because the company has enabled a
+      // module: those calls correctly require the delegated user's own role.
+      const mayReadProjectDashboard = ["pm", "om", "executive", "staff", "crm"].includes(userRole);
+      const projectData = canUseProjects && mayReadProjectDashboard ? await loadAllProjects(user?.enabled_modules || []) : [];
       setProjects(projectData);
 
       // Load finance data for finance & executive roles
@@ -1444,7 +1430,14 @@ export default function DashboardClient() {
           <KpiCard label="Kelola Company" value="Open" subLabel="Buka Company & Access" icon={Building2} onClick={() => window.location.assign('/resources')} />
         </div>
       )}
-      {(userRole === "pm" || userRole === "om" || userRole === "company_admin") && (
+      {userRole === "company_admin" && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <KpiCard label="User & Role" value="Kelola" subLabel="Atur user dan akses personal company" icon={Users} onClick={() => window.location.assign('/resources')} />
+          <KpiCard label="Company Modules" value="Delegasi" subLabel="Hanya modul yang telah disetujui Super Admin" icon={Layers} onClick={() => window.location.assign('/resources')} />
+          <KpiCard label="Operational Data" value="Scoped" subLabel="Gunakan role operasional terpisah bila diperlukan" icon={ShieldAlert} />
+        </div>
+      )}
+      {(userRole === "pm" || userRole === "om") && (
         <PMDashboard projects={projects} loading={loading} />
       )}
       {userRole === "finance" && (

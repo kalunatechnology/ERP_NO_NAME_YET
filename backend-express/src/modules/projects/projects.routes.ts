@@ -873,16 +873,22 @@ projectsRouter.use('/main-tasks', createCrudRouter({
     if (!data.name) data.name = 'Main Task';
     if (!data.created_by_id && req.user?.id) data.created_by_id = req.user.id;
     if (data.weight === undefined) data.weight = 10;
-    if (data.progress === undefined) data.progress = 0;
+    // Progress is derived from Weekly Tasks; API payloads cannot seed it.
+    data.progress = 0;
     if (!data.status) data.status = 'PLANNED';
     if (!data.priority) data.priority = 'MEDIUM';
-    if (data.is_progress_overridden === undefined) data.is_progress_overridden = false;
-    if (data.override_reason === undefined) data.override_reason = '';
+    // Manual progress overrides are no longer part of the public contract.
+    // New Main Tasks must always participate in the automatic WBS roll-up.
+    data.is_progress_overridden = false;
+    data.override_reason = '';
     return data;
   },
   beforeUpdate: async (req, data) => {
     if (data.project && !data.project_id) data.project_id = data.project;
     if (data.title && !data.name) data.name = data.title;
+    delete data.progress;
+    delete data.is_progress_overridden;
+    delete data.override_reason;
     return data;
   },
   afterCreate: async (_req, rec) => {
@@ -903,16 +909,22 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
     if (!data.target_description && data.target_output) data.target_description = data.target_output;
     if (data.target_description === undefined) data.target_description = '';
-    if (data.progress === undefined) data.progress = 0;
+    // Progress is derived from Daily Tasks; API payloads cannot seed it.
+    data.progress = 0;
     if (!data.status) data.status = 'PLANNED';
     if (data.week_number === undefined) data.week_number = 1;
-    if (data.is_progress_overridden === undefined) data.is_progress_overridden = false;
-    if (data.override_reason === undefined) data.override_reason = '';
+    // Weekly progress is controlled by Daily Task completion only. Ignoring
+    // caller-supplied override flags prevents a hidden manual-progress path.
+    data.is_progress_overridden = false;
+    data.override_reason = '';
     return data;
   },
   beforeUpdate: async (req, data) => {
     if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
+    delete data.progress;
+    delete data.is_progress_overridden;
+    delete data.override_reason;
     return data;
   },
   afterCreate: async (_req, rec) => {
@@ -1070,6 +1082,8 @@ projectsRouter.use('/projects', createCrudRouter({
     if (!data.health_status) {
       data.health_status = 'ON_TRACK';
     }
+    // Project progress is a WBS roll-up and is never accepted from create.
+    data.progress_percent = 0;
     if (!data.source_type) {
       data.source_type = 'INTERNAL';
     }
@@ -1093,6 +1107,9 @@ projectsRouter.use('/projects', createCrudRouter({
     if (data.planned_end_date && typeof data.planned_end_date === 'string') {
       data.planned_end_date = new Date(data.planned_end_date);
     }
+    delete data.progress_percent;
+    delete data.progress;
+    delete data.progress_percentage;
     return data;
   },
 }));

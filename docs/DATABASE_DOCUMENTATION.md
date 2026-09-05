@@ -5964,6 +5964,7 @@ Baseline tidak menjalankan ulang SQL dan tidak memodifikasi data bisnis. Databas
 | Demo/company | `scripts/seed_sinergi_muda_arsa.ts`, `setup_two_companies.ts`, `seed_team_users.ts` | Dataset perusahaan/tim untuk setup atau demo |
 | Repair/sync | `repair_role_tenant_assignments.ts`, `sync_company_isolation.ts` | Reparasi mapping role/tenant dan isolasi company |
 | Q9 reconciliation | `scripts/reconcile_q9_access.ts` | Rekonsiliasi terarah 19 identity kanonis, sole Super Admin, one-company membership, active role, dan 16 modul SMA read/write |
+| Personal module delegation | `migrations/20260905160000_q9_user_module_delegation` | Tabel `iam_user_module_access` untuk override read/write seorang user, dibatasi oleh module entitlement company |
 | Test fixture | Dibuat oleh test Q6/Q7 saat runtime | Record uji dibuat dan dibersihkan secara selektif |
 
 Seed memuat akun demo. Password/credential tidak direproduksi di dokumen ini. Implementasi aktual menetapkan hanya `dummy.admin@example.com` sebagai `is_superuser=true` dan `ROLE-SUPER-ADMIN`; script repair juga menormalisasi seluruh user lain menjadi non-super. Company Admin tetap role terpisah dan company-scoped. Catalog identity dan least-privilege role terbaru dirinci pada [System Documentation](./SYSTEM_DOCUMENTATION.md#canonical-demo-identity-catalog).
@@ -6006,6 +6007,7 @@ IAM/Core menyediakan identity, company, module entitlement dan audit untuk selur
 - Mapping role/user/company harus konsisten dengan satu-company efektif untuk user biasa; Super Admin dikecualikan dari membership operasional.
 - Foreign key dan unique constraint yang benar-benar enforceable hanya yang tercantum dalam atribut setiap model.
 - Financial terminal records tidak boleh dimutasi langsung melalui flow aplikasi; journal posting harus balance dan reversal/closing memiliki governance khusus.
+- Progress project mengikuti hierarchy aktual `project_control_item`/status Daily → `project_daily_task` → `project_weekly_task` → `project_main_task` → `project_project`. Tanpa Main Task, `project_project.progress_percent` wajib 0; generic `project_task` tidak boleh dipromosikan menjadi Main Task.
 - Karena banyak status berupa String, service/middleware adalah bagian penting dari integrity boundary, bukan database saja.
 
 ## 14. Database Security
@@ -6029,3 +6031,6 @@ IAM/Core menyediakan identity, company, module entitlement dan audit untuk selur
 - **TECHNICAL DEBT:** hard-delete generik dan kebijakan retention tidak seragam.
 - **RESOLVED LIVE DRIFT (2026-09-05):** rekonsiliasi targeted telah menyelaraskan 19 identity dengan katalog seed. `tests/q9-access.integration.ts` membuktikan active role dimiliki user, ordinary user mempunyai tepat satu membership, role company cocok, dan hanya `dummy.admin@example.com` Super Admin.
 - **CURRENT ENTITLEMENT BASELINE (2026-09-05):** seluruh 16 module code SMA memiliki `enabled=true`, `allow_read=true`, dan `allow_write=true`. Company Admin dapat memperketat read/write setelah aktivasi Super Admin; deployment database lain tidak otomatis mewarisi state ini.
+- **PER-USER DELEGATION (2026-09-05):** `iam_user_module_access` menambahkan `UNIQUE(user_id, module_code)`, company/user foreign keys, dan CHECK `allow_write → allow_read`. Ketiadaan record mempertahankan inheritance company; record personal menjadi override efektif dan tidak dapat mengaktifkan modul company secara mandiri.
+- **RESOLVED ORPHAN PROGRESS (2026-09-05):** audit read-only menemukan satu `project_project` tanpa baris `project_main_task` tetapi memiliki `progress_percent=45`. Rekonsiliasi terarah mengubah hanya record tersebut menjadi 0; verifikasi akhir menemukan nol orphan progress dan tidak ada manual override aktif pada Main/Weekly Task.
+- **Q10 ENTITLEMENT DRIFT (RESOLVED 2026-09-05):** entitlement CRM Ghost pada company milik `crm.lead@arsalynk.id` semula `enabled/read/write=false`, tidak sesuai canonical demo seed. `reconcile_q10_test_baseline.ts` menurunkan company dari one-company membership user lalu mengaktifkan hanya CRM pada record tersebut. Pendekatan ini menghindari pemilihan record salah ketika lookup berdasarkan kode company tidak unik secara efektif pada data lama.

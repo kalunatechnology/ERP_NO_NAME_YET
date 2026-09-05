@@ -526,6 +526,26 @@ model iam_company_module_access {
   @@map("iam_company_module_access")
 }
 
+/// A Company Admin's explicit per-user override for a module already enabled
+/// by Super Admin for the same company. Absence means the user inherits the
+/// company entitlement; a record can narrow or grant read/write for one user.
+model iam_user_module_access {
+  id            String   @id @default(uuid())
+  tenant_id     String   @map("tenant_id")
+  company_id    String   @map("company_id")
+  user_id       String   @map("user_id")
+  module_code   String   @map("module_code")
+  allow_read    Boolean  @default(false)
+  allow_write   Boolean  @default(false)
+  granted_by_id String?  @map("granted_by_id")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@unique([user_id, module_code])
+  @@index([tenant_id, company_id, user_id])
+  @@map("iam_user_module_access")
+}
+
 model iam_role_permission {
   tenant_id     String?   @map("tenant_id")
   company_id    String?   @map("company_id")

@@ -269,12 +269,14 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
     // 2. Build weekly tasks mapped by main_task
     const weeklyByMain: Record<string, WeeklyTask[]> = {};
     rawWeekly.forEach((w: any) => {
-      const mId = String(w.main_task || w.main_task_id || "");
+      const mId = String(w.main_task_id || w.main_task || "");
       if (!weeklyByMain[mId]) weeklyByMain[mId] = [];
       const wId = String(w.id);
       const wDailies = dailyByWeekly[wId] || [];
       const doneDailies = wDailies.filter(d => d.status === "COMPLETED" || d.status === "DONE");
-      const calcProg = wDailies.length ? Math.round((doneDailies.length / wDailies.length) * 100) : Number(w.progress || 0);
+      // Weekly progress is exclusively rolled up from Daily Tasks. A stale
+      // persisted percentage must not create progress when no Daily Task exists.
+      const calcProg = wDailies.length ? Math.round((doneDailies.length / wDailies.length) * 100) : 0;
 
       weeklyByMain[mId].push({
         id: w.id,
@@ -295,7 +297,7 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
 
     // 3. Main Tasks
     let pMainTasks: MainTask[] = rawMainTasks
-      .filter((m: any) => String(m.project) === pid)
+      .filter((m: any) => String(m.project_id || m.project || "") === pid)
       .map((m: any) => {
         const mId = String(m.id);
         const wTasks = weeklyByMain[mId] || [];
@@ -307,7 +309,10 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
           title: m.name || m.title || `Work Package #${String(m.id).slice(0, 4)}`,
           description: m.description || "",
           weight: Number(m.weight || 10),
-          progress: Number(m.progress || 0),
+          // Main Task progress exists only as a roll-up of its Weekly Tasks.
+          progress: wTasks.length
+            ? Math.round((wTasks.reduce((sum, weekly) => sum + Number(weekly.progress || 0), 0) / wTasks.length) * 100) / 100
+            : 0,
           status: m.status || "PLANNED",
           priority: m.priority || "MEDIUM",
           assignments: assigns,
@@ -316,7 +321,8 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
         };
       });
 
-    // Fallback: If no ProjectMainTask exists yet, generate from standard Task objects
+    // Generic tasks remain a separate resource. They must never be promoted to
+    // WBS Main Tasks because that fabricates a hierarchy and project progress.
     const pGenericTasks = rawTasks
       .filter((t: any) => String(t.project) === pid)
       .map((t: any) => ({
@@ -331,31 +337,22 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
         parent_task: t.parent_task,
       }));
 
-    if (pMainTasks.length === 0 && pGenericTasks.length > 0) {
-      pMainTasks = pGenericTasks.map((gt: any) => ({
-        id: gt.id,
-        project: pid,
-        name: gt.title,
-        title: gt.title,
-        description: gt.description,
-        weight: 10,
-        progress: gt.status === "DONE" || gt.status === "COMPLETED" ? 100 : 0,
-        status: gt.status,
-        priority: gt.priority,
-        weekly_tasks: weeklyByMain[String(gt.id)] || [],
-        weekly_plans: weeklyByMain[String(gt.id)] || [],
-      }));
-    }
-
     const calcBudget = Number(p.budget_amount || p.total_budget || 0);
     const actualCost = Number(p.actual_cost || 0);
+    const totalMainWeight = pMainTasks.reduce((sum, task) => sum + Math.max(0, Number(task.weight || 0)), 0);
+    const derivedProjectProgress = totalMainWeight > 0
+      ? Math.round((pMainTasks.reduce((sum, task) => sum + Number(task.progress || 0) * Math.max(0, Number(task.weight || 0)), 0) / totalMainWeight) * 100) / 100
+      : 0;
 
     return {
       ...p,
       project_name: p.name || p.project_name || `Proyek ${p.id}`,
       project_code: p.code || p.project_code || `PRJ-${String(p.id).slice(0, 6)}`,
       status: p.lifecycle_status || p.status || "DRAFT",
-      progress: Number((p as any).progress_percent || p.progress_percentage || p.progress || 0),
+      // Never trust an orphaned project percentage: without Main Tasks the
+      // project has no measurable execution progress and therefore remains 0%.
+      progress: derivedProjectProgress,
+      progress_percentage: derivedProjectProgress,
       budget: calcBudget,
       actual_cost: actualCost,
       main_tasks: pMainTasks,

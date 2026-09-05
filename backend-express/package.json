@@ -17,7 +17,12 @@
     "test:q7": "ts-node --files tests/q7.integration.ts",
     "test:q9": "ts-node --files tests/q9-access.integration.ts",
     "test:q9:http": "ts-node --files tests/q9-http.integration.ts",
+    "test:q9:delegation": "ts-node --files tests/q9-user-module-delegation.integration.ts",
+    "test:q10:bdd": "ts-node --files tests/q10-system.bdd.ts",
     "reconcile:q9": "ts-node scripts/reconcile_q9_access.ts",
+    "reconcile:q10": "ts-node scripts/reconcile_q10_test_baseline.ts",
+    "audit:project-progress": "ts-node scripts/audit_project_progress.ts",
+    "reconcile:project-progress": "ts-node scripts/reconcile_project_progress.ts",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {

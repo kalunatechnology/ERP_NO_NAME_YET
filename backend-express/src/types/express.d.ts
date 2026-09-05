@@ -13,6 +13,8 @@ export interface AuthenticatedUser {
   roles: string[];
   active_role_code: string | null;
   enabled_modules: string[];
+  /** Module codes granted directly to this user by its Company Admin. */
+  delegated_modules?: string[];
 }
 
 // Augment Express Request type globally
@@ -23,6 +25,9 @@ declare global {
       companyId?: string | null;
       tenantId?: string | null;
       requestId?: string;
+      /** Set by entitlement middleware so downstream role checks know whether
+       * the request is an explicit Company-Admin delegation. */
+      moduleAccess?: { moduleCode: string; delegated: boolean; allowRead: boolean; allowWrite: boolean };
     }
   }
 }

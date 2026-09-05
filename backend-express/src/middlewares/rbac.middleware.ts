@@ -18,8 +18,10 @@ import { isCompanyAdmin, isSuperAdmin } from '../types/roles';
  */
 
 /**
- * Require that at least one of the given role codes is present in req.user.roles.
- * Superusers always pass regardless of roles.
+ * Require that at least one role is assigned to the caller. Superusers always
+ * pass. A role check immediately following `requireModuleAccess` also accepts
+ * an explicit Company-Admin per-user delegation for that same module and HTTP
+ * mode; the delegation can never exceed the Super-Admin company entitlement.
  */
 export function requireRole(...allowedRoles: string[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
@@ -29,7 +31,12 @@ export function requireRole(...allowedRoles: string[]) {
     if (isSuperAdmin(req.user.roles)) return next();
 
     const hasRole = req.user.roles.some((r) => allowedRoles.includes(r));
-    if (!hasRole) {
+    const isWriteMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+    const hasDelegatedModuleAccess = Boolean(
+      req.moduleAccess?.delegated
+      && (isWriteMethod ? req.moduleAccess.allowWrite : req.moduleAccess.allowRead),
+    );
+    if (!hasRole && !hasDelegatedModuleAccess) {
       return next(
         new ForbiddenError(
           `Akses ditolak. Diperlukan salah satu role: ${allowedRoles.join(', ')}.`,
