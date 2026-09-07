@@ -2,6 +2,8 @@
 
 Dokumen ini adalah dokumentasi **AS-IS** database untuk backend Express dan frontend Next. Ia dibaca bersama [System Documentation](./SYSTEM_DOCUMENTATION.md). Nilai credential sengaja tidak dicantumkan.
 
+**Update 7 September 2026:** enam folder migration kini tersedia. Migration terbaru `20260907010000_reporting_views` telah dideploy pada database proyek terkonfigurasi dan membuat empat view read-only ter-scope: `view_finance_main_dashboard`, `view_project_dashboard`, `view_project_timeline_cost`, dan `view_crm_sales_dashboard`. Lihat [Current Implementation Status](./CURRENT_IMPLEMENTATION_STATUS.md) untuk bukti runtime dan aturan deployment target lain.
+
 ## Status dan cakupan
 
 - **IMPLEMENTED:** PostgreSQL melalui Prisma Client; schema sumber berada di `backend-express/prisma/schema.prisma`.
@@ -6025,7 +6027,7 @@ IAM/Core menyediakan identity, company, module entitlement dan audit untuk selur
 ## 16. Database Known Issues
 
 - **POTENTIAL ISSUE:** banyak status/jenis berupa string bebas tanpa CHECK/enum database; jalur generic CRUD dapat melemahkan state machine bila endpoint tetap terbuka.
-- **POTENTIAL ISSUE:** schema sangat besar (252 model) tetapi hanya empat migration folder tersedia; database terkonfigurasi sudah dibaseline dan up to date pada audit 2026-09-04, sementara database target lain tetap membutuhkan pemeriksaan drift sebelum deploy.
+- **POTENTIAL ISSUE:** schema sangat besar (252 model) dan enam migration folder tersedia; database proyek terkonfigurasi telah menerima migration reporting views pada 2026-09-07, sementara database target lain tetap membutuhkan pemeriksaan drift dan `prisma migrate status` sebelum deploy.
 - **POTENTIAL ISSUE:** FK/index tidak boleh diasumsikan hanya dari nama `*_id`; hanya atribut relation/index pada schema yang menjaminnya.
 - **TECHNICAL DEBT:** generic CRUD melakukan autofill field required pada beberapa kasus, yang dapat menghasilkan nilai sintetik dan menyembunyikan kontrak domain yang belum eksplisit.
 - **TECHNICAL DEBT:** hard-delete generik dan kebijakan retention tidak seragam.

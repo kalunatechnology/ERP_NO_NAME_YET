@@ -1,5 +1,7 @@
 # ERP Backend — Technical Documentation
 
+> **Legacy reference (7 September 2026):** `backend/` is the Django migration source, not the active application backend. The active runtime is `backend-express/`, consumed by `frontend-next/`. Use [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md), [System Documentation](../docs/SYSTEM_DOCUMENTATION.md), and [Migration Audit](../MIGRATION_AUDIT.md) for current behavior. Do not run this legacy service as the production API.
+
 > **Version**: 1.0.0 &bull; **Updated**: 18 Agustus 2026
 > **Framework**: Django 5.x &bull; **API**: Django REST Framework 3.16
 > **Database**: PostgreSQL (Supabase) &bull; **Auth**: JWT (SimpleJWT)

@@ -198,12 +198,10 @@ function LoginFormContent() {
     try {
       await login(ident, data.password);
       
-      // Clean, minimal transition
+      // Authentication has completed; do not add an artificial delay to the
+      // critical login-to-dashboard path. The dashboard owns its own loading UI.
       setIsTransitioning(true);
-
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 360);
+      router.push("/dashboard");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Email atau password salah";
       toast.error(msg);

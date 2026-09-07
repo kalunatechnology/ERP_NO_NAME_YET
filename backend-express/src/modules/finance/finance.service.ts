@@ -7,6 +7,7 @@
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { AccountingError, NotFoundError, ValidationError } from '../../utils/errors';
 // NOTE: PeriodClosingService is imported lazily to avoid circular deps
@@ -136,9 +137,11 @@ export class FinanceService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async postJournalEntry(entryId: string) {
+  static async postJournalEntry(entryId: string, companyId?: string) {
     return prisma.$transaction(async (tx) => {
-      const entry = await tx.fin_journal_entry.findUnique({ where: { id: entryId } });
+      const entry = await tx.fin_journal_entry.findFirst({
+        where: { id: entryId, ...(companyId ? { company_id: companyId } : {}) },
+      });
       if (!entry) throw new NotFoundError('JournalEntry');
       if (entry.status === 'POSTED') throw new ValidationError('Jurnal sudah dalam status POSTED.');
       if (entry.status === 'REVERSED') throw new ValidationError('Jurnal yang sudah di-reverse tidak dapat di-post ulang.');
@@ -148,7 +151,9 @@ export class FinanceService {
       const { PeriodClosingService } = await import('./period-closing.service');
       await PeriodClosingService.assertPeriodOpen(postingDate);
 
-      const lines = await tx.fin_journal_line.findMany({ where: { journal_entry_id: entryId } });
+      const lines = await tx.fin_journal_line.findMany({
+        where: { journal_entry_id: entryId, ...(companyId ? { company_id: companyId } : {}) },
+      });
       if (lines.length < 2) throw new AccountingError('Jurnal harus memiliki minimal 2 baris (Debit & Credit).');
 
       let totalDebit = 0;
@@ -186,12 +191,14 @@ export class FinanceService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async getAccountBalance(accountId: string, companyId?: string | null) {
-    const account = await prisma.fin_account.findUnique({ where: { id: accountId } });
+    const account = await prisma.fin_account.findFirst({
+      where: { id: accountId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
+    });
     if (!account) throw new NotFoundError('Account');
 
     // Ambil posted entry IDs dulu, lalu filter journal lines berdasarkan ID tersebut
     const postedEntries = await prisma.fin_journal_entry.findMany({
-      where: { status: 'POSTED' },
+      where: { status: 'POSTED', ...(companyId ? { company_id: companyId } : { company_id: null }) },
       select: { id: true },
     });
     const postedEntryIds = postedEntries.map((e) => e.id);
@@ -199,6 +206,7 @@ export class FinanceService {
     const lines = await prisma.fin_journal_line.findMany({
       where: {
         account_id: accountId,
+        ...(companyId ? { company_id: companyId } : { company_id: null }),
         journal_entry_id: { in: postedEntryIds },
       },
     });
@@ -236,8 +244,8 @@ export class FinanceService {
  * Data/side effects: Reads or mutates Prisma model(s) `fin_bank_account`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async getBankAccountBalance(bankAccountId: string) {
-    const bankAccount = await prisma.fin_bank_account.findUnique({ where: { id: bankAccountId } });
+  static async getBankAccountBalance(bankAccountId: string, companyId: string) {
+    const bankAccount = await prisma.fin_bank_account.findFirst({ where: { id: bankAccountId, company_id: companyId } });
     if (!bankAccount) throw new NotFoundError('BankAccount');
 
     if (!bankAccount.ledger_account_id) {
@@ -272,14 +280,14 @@ export class FinanceService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async reverseJournalEntry(entryId: string, reason: string, reversedByUserId: string) {
+  static async reverseJournalEntry(entryId: string, reason: string, reversedByUserId: string, companyId: string) {
     return prisma.$transaction(async (tx) => {
-      const entry = await tx.fin_journal_entry.findUnique({ where: { id: entryId } });
+      const entry = await tx.fin_journal_entry.findFirst({ where: { id: entryId, company_id: companyId } });
       if (!entry) throw new NotFoundError('JournalEntry');
       if (entry.status === 'REVERSED') throw new ValidationError('Jurnal ini sudah pernah di-reverse sebelumnya.');
       if (entry.status !== 'POSTED') throw new ValidationError('Hanya jurnal dengan status POSTED yang dapat di-reverse.');
 
-      const originalLines = await tx.fin_journal_line.findMany({ where: { journal_entry_id: entryId } });
+      const originalLines = await tx.fin_journal_line.findMany({ where: { journal_entry_id: entryId, company_id: companyId } });
       if (originalLines.length === 0) throw new AccountingError('Jurnal tidak memiliki baris transaksi.');
 
       const journal = await tx.fin_journal.findUnique({ where: { id: entry.journal_id ?? '' } });
@@ -288,6 +296,9 @@ export class FinanceService {
       const reversalEntry = await tx.fin_journal_entry.create({
         data: {
           id: crypto.randomUUID(),
+          tenant_id: entry.tenant_id,
+          company_id: companyId,
+          created_by_id: reversedByUserId,
           journal_id: entry.journal_id,
           fiscal_period_id: entry.fiscal_period_id,
           currency_id: entry.currency_id,
@@ -301,11 +312,13 @@ export class FinanceService {
         },
       });
 
-      // Buat baris pembalik — Debit dan Kredit dibalik
-      for (const line of originalLines) {
-        await tx.fin_journal_line.create({
-          data: {
+      // Buat seluruh baris pembalik dalam satu round trip — Debit dan Kredit dibalik.
+      await tx.fin_journal_line.createMany({
+        data: originalLines.map((line) => ({
             id: crypto.randomUUID(),
+            tenant_id: line.tenant_id,
+            company_id: companyId,
+            created_by_id: reversedByUserId,
             journal_entry_id: reversalEntry.id,
             account_id: line.account_id,
             party_id: line.party_id,
@@ -318,9 +331,8 @@ export class FinanceService {
             transaction_amount: line.transaction_amount,
             due_date: line.due_date,
             source_document_line_id: line.source_document_line_id,
-          },
-        });
-      }
+        })),
+      });
 
       // Tandai jurnal asal sebagai REVERSED
       await tx.fin_journal_entry.update({
@@ -366,8 +378,10 @@ export class FinanceService {
     if (fromBankAccountId === toBankAccountId) throw new ValidationError('Rekening pengirim dan penerima tidak boleh sama.');
 
     return prisma.$transaction(async (tx) => {
-      const fromBank = await tx.fin_bank_account.findUnique({ where: { id: fromBankAccountId } });
-      const toBank = await tx.fin_bank_account.findUnique({ where: { id: toBankAccountId } });
+      const [fromBank, toBank] = await Promise.all([
+        tx.fin_bank_account.findFirst({ where: { id: fromBankAccountId, company_id: companyId } }),
+        tx.fin_bank_account.findFirst({ where: { id: toBankAccountId, company_id: companyId } }),
+      ]);
       if (!fromBank) throw new NotFoundError('Bank Account Pengirim');
       if (!toBank) throw new NotFoundError('Bank Account Penerima');
       if (!fromBank.ledger_account_id) throw new ValidationError('Bank pengirim tidak memiliki akun buku besar yang tertaut.');
@@ -384,6 +398,9 @@ export class FinanceService {
       const entryOut = await tx.fin_journal_entry.create({
         data: {
           id: crypto.randomUUID(),
+          tenant_id: fromBank.tenant_id,
+          company_id: companyId,
+          created_by_id: executedByUserId,
           journal_id: journal.id,
           entry_number: `${transferRef}-OUT`,
           posting_date: new Date(),
@@ -396,6 +413,9 @@ export class FinanceService {
         data: [
           {
             id: crypto.randomUUID(),
+            tenant_id: fromBank.tenant_id,
+            company_id: companyId,
+            created_by_id: executedByUserId,
             journal_entry_id: entryOut.id,
             account_id: transitAccount.id,
             debit_base: amount,
@@ -404,6 +424,9 @@ export class FinanceService {
           },
           {
             id: crypto.randomUUID(),
+            tenant_id: fromBank.tenant_id,
+            company_id: companyId,
+            created_by_id: executedByUserId,
             journal_entry_id: entryOut.id,
             account_id: fromBank.ledger_account_id,
             debit_base: 0,
@@ -417,6 +440,9 @@ export class FinanceService {
       const entryIn = await tx.fin_journal_entry.create({
         data: {
           id: crypto.randomUUID(),
+          tenant_id: toBank.tenant_id,
+          company_id: companyId,
+          created_by_id: executedByUserId,
           journal_id: journal.id,
           entry_number: `${transferRef}-IN`,
           posting_date: new Date(),
@@ -429,6 +455,9 @@ export class FinanceService {
         data: [
           {
             id: crypto.randomUUID(),
+            tenant_id: toBank.tenant_id,
+            company_id: companyId,
+            created_by_id: executedByUserId,
             journal_entry_id: entryIn.id,
             account_id: toBank.ledger_account_id,
             debit_base: amount,
@@ -437,6 +466,9 @@ export class FinanceService {
           },
           {
             id: crypto.randomUUID(),
+            tenant_id: toBank.tenant_id,
+            company_id: companyId,
+            created_by_id: executedByUserId,
             journal_entry_id: entryIn.id,
             account_id: transitAccount.id,
             debit_base: 0,
@@ -478,14 +510,16 @@ export class FinanceService {
     debit_amount?: number;
     credit_amount?: number;
     running_balance?: number;
-  }>) {
-    const bankAccount = await prisma.fin_bank_account.findUnique({ where: { id: bankAccountId } });
+  }>, companyId: string) {
+    const bankAccount = await prisma.fin_bank_account.findFirst({ where: { id: bankAccountId, company_id: companyId } });
     if (!bankAccount) throw new NotFoundError('BankAccount');
 
     return prisma.$transaction(async (tx) => {
       const statement = await tx.fin_bank_statement.create({
         data: {
           id: crypto.randomUUID(),
+          tenant_id: bankAccount.tenant_id,
+          company_id: companyId,
           bank_account_id: bankAccountId,
           statement_date: statementDate,
           opening_balance: 0,
@@ -494,11 +528,10 @@ export class FinanceService {
         },
       });
 
-      const createdLines = [];
-      for (const line of statementLines) {
-        const created = await tx.fin_bank_statement_line.create({
-          data: {
+      const createdLines = statementLines.map((line) => ({
             id: crypto.randomUUID(),
+            tenant_id: bankAccount.tenant_id,
+            company_id: companyId,
             bank_statement_id: statement.id,
             transaction_date: line.transaction_date,
             reference_number: line.reference_number,
@@ -506,10 +539,8 @@ export class FinanceService {
             debit_amount: line.debit_amount ?? 0,
             credit_amount: line.credit_amount ?? 0,
             running_balance: line.running_balance ?? 0,
-          },
-        });
-        createdLines.push(created);
-      }
+      }));
+      if (createdLines.length) await tx.fin_bank_statement_line.createMany({ data: createdLines });
 
       return {
         statement_id: statement.id,
@@ -535,20 +566,24 @@ export class FinanceService {
     matchedAmount: number;
     matchType: string;
     reconciledByUserId: string;
+    companyId: string;
   }) {
-    const { statementLineId, paymentId, journalLineId, matchedAmount, matchType, reconciledByUserId } = payload;
+    const { statementLineId, paymentId, journalLineId, matchedAmount, matchType, reconciledByUserId, companyId } = payload;
 
-    const statementLine = await prisma.fin_bank_statement_line.findUnique({ where: { id: statementLineId } });
+    const statementLine = await prisma.fin_bank_statement_line.findFirst({ where: { id: statementLineId, company_id: companyId } });
     if (!statementLine) throw new NotFoundError('BankStatementLine');
 
     const existing = await prisma.fin_bank_reconciliation.findFirst({
-      where: { bank_statement_line_id: statementLineId },
+      where: { bank_statement_line_id: statementLineId, company_id: companyId },
     });
     if (existing) throw new ValidationError('Baris mutasi ini sudah direkonsiliasi sebelumnya.');
 
     return prisma.fin_bank_reconciliation.create({
       data: {
         id: crypto.randomUUID(),
+        tenant_id: statementLine.tenant_id,
+        company_id: companyId,
+        created_by_id: reconciledByUserId,
         bank_statement_line_id: statementLineId,
         payment_id: paymentId ?? null,
         journal_line_id: journalLineId ?? null,
@@ -572,36 +607,33 @@ export class FinanceService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async getTrialBalance(companyId?: string | null) {
-    await this.ensureStandardCOA(companyId);
-    const accounts = await prisma.fin_account.findMany({
-      where: companyId ? { company_id: companyId } : undefined,
-      orderBy: { account_code: 'asc' },
-    });
-
-    // Two-step query: get posted entry IDs, then fetch lines
-    const postedEntries = await prisma.fin_journal_entry.findMany({
-      where: { status: 'POSTED' },
-      select: { id: true },
-    });
-    const postedEntryIds = postedEntries.map((e) => e.id);
-    const lines = await prisma.fin_journal_line.findMany({
-      where: { journal_entry_id: { in: postedEntryIds } },
-    });
-
-    const accountLinesMap = new Map<string, { debit: number; credit: number }>();
-    for (const l of lines) {
-      if (!l.account_id) continue;
-      const cur = accountLinesMap.get(l.account_id) ?? { debit: 0, credit: 0 };
-      cur.debit += Number(l.debit_base ?? 0);
-      cur.credit += Number(l.credit_base ?? 0);
-      accountLinesMap.set(l.account_id, cur);
-    }
+    type TrialBalanceRow = {
+      id: string; account_code: string; account_name: string; account_type: string;
+      normal_balance: string; total_debit: number; total_credit: number;
+    };
+    const companyPredicate = companyId
+      ? Prisma.sql`a.company_id = ${companyId}::uuid`
+      : Prisma.sql`a.company_id IS NULL`;
+    // A financial report must remain read-only. COA setup belongs to an explicit
+    // setup/write workflow, not to GET. Aggregate posted journal lines in SQL so
+    // the database returns one row per account in a single round trip.
+    const accounts = await prisma.$queryRaw<TrialBalanceRow[]>(Prisma.sql`
+      SELECT a.id, a.account_code, a.account_name, a.account_type, a.normal_balance,
+             COALESCE(SUM(l.debit_base) FILTER (WHERE je.status = 'POSTED'), 0) AS total_debit,
+             COALESCE(SUM(l.credit_base) FILTER (WHERE je.status = 'POSTED'), 0) AS total_credit
+      FROM fin_account a
+      LEFT JOIN fin_journal_line l ON l.account_id = a.id AND l.company_id IS NOT DISTINCT FROM a.company_id
+      LEFT JOIN fin_journal_entry je ON je.id = l.journal_entry_id AND je.company_id IS NOT DISTINCT FROM a.company_id
+      WHERE ${companyPredicate}
+      GROUP BY a.id, a.account_code, a.account_name, a.account_type, a.normal_balance
+      ORDER BY a.account_code ASC
+    `);
 
     let grandDebit = 0;
     let grandCredit = 0;
 
     const list = accounts.map((acc) => {
-      const totals = accountLinesMap.get(acc.id) ?? { debit: 0, credit: 0 };
+      const totals = { debit: Number(acc.total_debit ?? 0), credit: Number(acc.total_credit ?? 0) };
       const net =
         acc.normal_balance === 'DEBIT'
           ? totals.debit - totals.credit
@@ -656,13 +688,14 @@ export class FinanceService {
     const postedPLEntries = await prisma.fin_journal_entry.findMany({
       where: {
         status: 'POSTED',
+        ...(companyId ? { company_id: companyId } : { company_id: null }),
         ...(startDate || endDate ? { posting_date: postingDateFilter } : {}),
       },
       select: { id: true },
     });
     const postedPLIds = postedPLEntries.map((e) => e.id);
     const lines = await prisma.fin_journal_line.findMany({
-      where: { journal_entry_id: { in: postedPLIds } },
+      where: { journal_entry_id: { in: postedPLIds }, ...(companyId ? { company_id: companyId } : { company_id: null }) },
     });
 
     const accountLinesMap = new Map<string, { debit: number; credit: number }>();
@@ -729,13 +762,14 @@ export class FinanceService {
     const bsPostedEntries = await prisma.fin_journal_entry.findMany({
       where: {
         status: 'POSTED',
+        ...(companyId ? { company_id: companyId } : { company_id: null }),
         ...(asOfDate ? { posting_date: { lte: asOfDate } } : {}),
       },
       select: { id: true },
     });
     const bsPostedIds = bsPostedEntries.map((e) => e.id);
     const lines = await prisma.fin_journal_line.findMany({
-      where: { journal_entry_id: { in: bsPostedIds } },
+      where: { journal_entry_id: { in: bsPostedIds }, ...(companyId ? { company_id: companyId } : { company_id: null }) },
     });
 
     const accountLinesMap = new Map<string, { debit: number; credit: number }>();
@@ -793,14 +827,19 @@ export class FinanceService {
  * Data/side effects: Reads or mutates Prisma model(s) `fin_project_funding`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async decideFunding(fundingId: string, decision: string, remarks = '', userId?: string) {
+  static async decideFunding(fundingId: string, decision: string, remarks = '', userId?: string, companyId?: string) {
     const dec = decision.toUpperCase();
     if (!['APPROVED', 'REJECTED'].includes(dec)) {
       throw new ValidationError('Decision must be APPROVED or REJECTED.');
     }
 
+    const funding = await prisma.fin_project_funding.findFirst({
+      where: { id: fundingId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
+      select: { id: true },
+    });
+    if (!funding) throw new NotFoundError('ProjectFunding');
     return prisma.fin_project_funding.update({
-      where: { id: fundingId },
+      where: { id: funding.id },
       data: {
         status: dec,
         approved_by_id: userId,
@@ -817,9 +856,11 @@ export class FinanceService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async postBillingDocument(billingId: string, userId?: string) {
+  static async postBillingDocument(billingId: string, userId?: string, companyId?: string) {
     return prisma.$transaction(async (tx) => {
-      const doc = await tx.fin_billing_document.findUnique({ where: { id: billingId } });
+      const doc = await tx.fin_billing_document.findFirst({
+        where: { id: billingId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
+      });
       if (!doc) throw new NotFoundError('BillingDocument');
 
       // ==== PERIOD GUARD (Defense-in-Depth) ====
@@ -841,14 +882,16 @@ export class FinanceService {
       });
 
       const existingTax = await tx.fin_tax_transaction.findFirst({
-        where: { billing_document_id: billingId },
+        where: { billing_document_id: billingId, company_id: doc.company_id },
       });
 
       if (!existingTax && taxAmount > 0) {
         await tx.fin_tax_transaction.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: doc.tenant_id,
             company_id: doc.company_id,
+            created_by_id: userId,
             billing_document_id: doc.id,
             taxable_amount: subtotal,
             tax_rate: 11,
@@ -875,6 +918,9 @@ export class FinanceService {
         const entry = await tx.fin_journal_entry.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: doc.tenant_id,
+            company_id: doc.company_id,
+            created_by_id: userId,
             journal_id: journal.id,
             entry_number: `JE-BILL-${doc.invoice_number}`,
             posting_date: new Date(),
@@ -887,6 +933,9 @@ export class FinanceService {
         await tx.fin_journal_line.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: doc.tenant_id,
+            company_id: doc.company_id,
+            created_by_id: userId,
             journal_entry_id: entry.id,
             account_id: arAccount.id,
             project_id: doc.project_id,
@@ -900,6 +949,9 @@ export class FinanceService {
         await tx.fin_journal_line.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: doc.tenant_id,
+            company_id: doc.company_id,
+            created_by_id: userId,
             journal_entry_id: entry.id,
             account_id: revenueAccount.id,
             project_id: doc.project_id,
@@ -914,6 +966,9 @@ export class FinanceService {
           await tx.fin_journal_line.create({
             data: {
               id: crypto.randomUUID(),
+              tenant_id: doc.tenant_id,
+              company_id: doc.company_id,
+              created_by_id: userId,
               journal_entry_id: entry.id,
               account_id: ppnLiability.id,
               project_id: doc.project_id,
@@ -939,31 +994,35 @@ export class FinanceService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async getTaxSummary(companyId?: string | null) {
-    const taxTxs = await prisma.fin_tax_transaction.findMany({
-      where: companyId ? { company_id: companyId } : undefined,
-    });
-
-    let totalDpp = 0;
-    let totalPpnOutput = 0;
-    let totalPpnInput = 0;
-
-    for (const tx of taxTxs) {
-      const taxable = Number(tx.taxable_amount ?? 0);
-      const tax = Number(tx.tax_amount ?? 0);
-      totalDpp += taxable;
-      if (tx.tax_direction === 'INPUT') {
-        totalPpnInput += tax;
-      } else {
-        totalPpnOutput += tax;
-      }
-    }
+    const where = companyId ? { company_id: companyId } : { company_id: null };
+    const [groups, taxTxs] = await Promise.all([
+      prisma.fin_tax_transaction.groupBy({
+        by: ['tax_direction'],
+        where,
+        _sum: { taxable_amount: true, tax_amount: true },
+        _count: { _all: true },
+      }),
+      prisma.fin_tax_transaction.findMany({
+        where,
+        orderBy: [{ tax_date: 'desc' }, { id: 'desc' }],
+        take: 100,
+      }),
+    ]);
+    const totalDpp = groups.reduce((sum, group) => sum + Number(group._sum.taxable_amount ?? 0), 0);
+    const totalPpnInput = groups
+      .filter((group) => group.tax_direction === 'INPUT')
+      .reduce((sum, group) => sum + Number(group._sum.tax_amount ?? 0), 0);
+    const totalPpnOutput = groups
+      .filter((group) => group.tax_direction !== 'INPUT')
+      .reduce((sum, group) => sum + Number(group._sum.tax_amount ?? 0), 0);
+    const transactionCount = groups.reduce((sum, group) => sum + group._count._all, 0);
 
     return {
       total_dpp: totalDpp,
       total_ppn_output: totalPpnOutput,
       total_ppn_input: totalPpnInput,
       net_ppn_payable: totalPpnOutput - totalPpnInput,
-      transaction_count: taxTxs.length,
+      transaction_count: transactionCount,
       transactions: taxTxs,
     };
   }
@@ -989,6 +1048,11 @@ export class FinanceService {
     userId:      string,
     companyId?:  string | null,
   ) {
+    const project = await prisma.project_project.findFirst({
+      where: { id: projectId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
+      select: { id: true, tenant_id: true, company_id: true },
+    });
+    if (!project) throw new NotFoundError('Project');
     // Period Guard
     const { PeriodClosingService } = await import('./period-closing.service');
     await PeriodClosingService.assertPeriodOpen(new Date(), companyId ?? null);
@@ -1025,6 +1089,9 @@ export class FinanceService {
       await tx.fin_journal_entry.create({
         data: {
           id:           entryId,
+          tenant_id:    project.tenant_id,
+          company_id:   project.company_id,
+          created_by_id: userId,
           journal_id:   journal?.id ?? null,
           entry_number: `WIP-CAP-${projectId.slice(0, 8)}-${Date.now()}`,
           description:  description || `Kapitalisasi WIP Proyek ${projectId}`,
@@ -1038,6 +1105,9 @@ export class FinanceService {
       await tx.fin_journal_line.create({
         data: {
           id:               crypto.randomUUID(),
+          tenant_id:        project.tenant_id,
+          company_id:       project.company_id,
+          created_by_id:    userId,
           journal_entry_id: entryId,
           account_id:       cogsAccount.id,
           project_id:       projectId,
@@ -1050,6 +1120,9 @@ export class FinanceService {
       await tx.fin_journal_line.create({
         data: {
           id:               crypto.randomUUID(),
+          tenant_id:        project.tenant_id,
+          company_id:       project.company_id,
+          created_by_id:    userId,
           journal_entry_id: entryId,
           account_id:       wipAccount.id,
           project_id:       projectId,
@@ -1065,6 +1138,9 @@ export class FinanceService {
         const variance = await tx.fin_cost_variance.create({
           data: {
             id:              crypto.randomUUID(),
+            tenant_id:       project.tenant_id,
+            company_id:      project.company_id,
+            created_by_id:   userId,
             project_id:      projectId,
             ideal_amount:    new Decimal(actualWIPBalance),
             actual_amount:   new Decimal(amount),
@@ -1109,8 +1185,9 @@ export class FinanceService {
     ntpn:         string,
     paymentRef:   string,
     paidAt:       Date,
+    companyId:    string,
   ) {
-    const taxTx = await prisma.fin_tax_transaction.findUnique({ where: { id: taxTxId } });
+    const taxTx = await prisma.fin_tax_transaction.findFirst({ where: { id: taxTxId, company_id: companyId } });
     if (!taxTx) throw new NotFoundError('TaxTransaction');
     if (taxTx.status === 'PAID') throw new ValidationError('NTPN sudah pernah dicatat untuk transaksi pajak ini.');
 
@@ -1160,7 +1237,9 @@ export class FinanceService {
   }) {
     const { bankAccountId, csvContent, companyId, userId } = params;
 
-    const bankAcc = await prisma.fin_bank_account.findUnique({ where: { id: bankAccountId } });
+    const bankAcc = await prisma.fin_bank_account.findFirst({
+      where: { id: bankAccountId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
+    });
     if (!bankAcc) throw new NotFoundError('BankAccount');
 
     const lines = csvContent
@@ -1183,6 +1262,9 @@ export class FinanceService {
     const statement = await prisma.fin_bank_statement.create({
       data: {
         id:                 statementId,
+        tenant_id:          bankAcc.tenant_id,
+        company_id:         bankAcc.company_id,
+        created_by_id:      userId,
         bank_account_id:    bankAccountId,
         statement_date:     now,
         opening_balance:    new Decimal(0),
@@ -1191,13 +1273,15 @@ export class FinanceService {
       },
     });
 
-    let importedCount = 0;
-    let matchedCount = 0;
+    const importedLines: Array<{
+      id: string; tenant_id: string | null; company_id: string | null; created_by_id?: string;
+      bank_statement_id: string; transaction_date: Date; reference_number: string; description: string;
+      debit_amount: Decimal; credit_amount: Decimal; running_balance: Decimal; matchAmount: number;
+    }> = [];
     let totalInflow = 0;
     let totalOutflow = 0;
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
+    for (const row of rows) {
       const cols = row.includes(';') ? row.split(';') : row.split(',');
       if (cols.length < 3) continue;
 
@@ -1261,17 +1345,12 @@ export class FinanceService {
       if (isNegative) totalOutflow += numAmount;
       else totalInflow += numAmount;
 
-      const matchedPayment = await prisma.fin_payment.findFirst({
-        where: {
-          amount: new Decimal(numAmount),
-          status: { in: ['POSTED', 'PAID', 'PENDING'] },
-        },
-      }).catch(() => null);
-
       const lineId = crypto.randomUUID();
-      await prisma.fin_bank_statement_line.create({
-        data: {
+      importedLines.push({
           id:                 lineId,
+          tenant_id:          bankAcc.tenant_id,
+          company_id:         bankAcc.company_id,
+          created_by_id:      userId,
           bank_statement_id:  statementId,
           transaction_date:   isNaN(txDate.getTime()) ? now : txDate,
           reference_number:   `REF-${lineId.slice(-6)}`,
@@ -1279,12 +1358,29 @@ export class FinanceService {
           debit_amount:       isNegative ? new Decimal(numAmount) : new Decimal(0),
           credit_amount:      !isNegative ? new Decimal(numAmount) : new Decimal(0),
           running_balance:    new Decimal(0),
-        },
+          matchAmount:        numAmount,
       });
-
-      importedCount++;
-      if (matchedPayment) matchedCount++;
     }
+
+    const uniqueAmounts = [...new Set(importedLines.map((line) => line.matchAmount))];
+    const matchedPayments = uniqueAmounts.length
+      ? await prisma.fin_payment.findMany({
+          where: {
+            amount: { in: uniqueAmounts.map((amount) => new Decimal(amount)) },
+            status: { in: ['POSTED', 'PAID', 'PENDING'] },
+            ...(companyId ? { company_id: companyId } : { company_id: null }),
+          },
+          select: { amount: true },
+        }).catch(() => [])
+      : [];
+    const matchedAmounts = new Set(matchedPayments.map((payment) => Number(payment.amount)));
+    const matchedCount = importedLines.filter((line) => matchedAmounts.has(line.matchAmount)).length;
+    if (importedLines.length) {
+      await prisma.fin_bank_statement_line.createMany({
+        data: importedLines.map(({ matchAmount: _matchAmount, ...line }) => line),
+      });
+    }
+    const importedCount = importedLines.length;
 
     return {
       statement_id:         statementId,
@@ -1363,6 +1459,7 @@ export class FinanceService {
     const costVariances = await prisma.fin_cost_variance.findMany({
       where: {
         calculated_at: { gte: startDate, lte: endDate },
+        ...(companyId ? { company_id: companyId } : { company_id: null }),
       },
       take: 10,
     }).catch(() => []);
@@ -1371,6 +1468,7 @@ export class FinanceService {
     const journalEntries = await prisma.fin_journal_entry.findMany({
       where: {
         posting_date: { gte: startDate, lte: endDate },
+        ...(companyId ? { company_id: companyId } : { company_id: null }),
       },
       select: {
         id:                    true,
@@ -1387,6 +1485,7 @@ export class FinanceService {
     const closedPeriods = await prisma.fin_fiscal_period.findMany({
       where: {
         status: { in: ['CLOSED', 'LOCKED'] },
+        ...(companyId ? { company_id: companyId } : { company_id: null }),
       },
       take: 12,
     }).catch(() => []);

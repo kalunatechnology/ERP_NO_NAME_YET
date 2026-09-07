@@ -9,8 +9,8 @@
 import { Request, Response, NextFunction, Router } from 'express';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database';
-import { paginateArray, parsePagination, sendDeleteSuccess } from './response';
-import { ConflictError, ForbiddenError, NotFoundError } from './errors';
+import { paginateArray, paginateCursor, parsePagination, sendDeleteSuccess } from './response';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from './errors';
 import {
   applyAndValidateWriteScope,
   buildResourceScope,
@@ -18,6 +18,10 @@ import {
 
 export interface CrudOptions {
   modelName: keyof typeof prisma;
+  /** Primary lookup field exposed through the legacy `/:id` URL. */
+  lookupField?: string;
+  /** Keeps route compatibility while rejecting writes to database views. */
+  readOnly?: boolean;
   searchFields?: string[];
   defaultSort?: { field: string; order: 'asc' | 'desc' };
   select?: Record<string, unknown>;
@@ -290,6 +294,20 @@ export function normalizeRecord(record: any, modelName?: string): any {
  */
 export function createCrudRouter(options: CrudOptions): Router {
   const router = Router();
+  if (options.readOnly) {
+    router.use((req: Request, res: Response, next: NextFunction) => {
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+        res.status(405).json({
+          success: false,
+          error: 'METHOD_NOT_ALLOWED',
+          detail: 'Resource reporting ini bersifat read-only.',
+          request_id: req.requestId,
+        });
+        return;
+      }
+      next();
+    });
+  }
 /**
  * delegate implements this file's named function contract.
  *
@@ -312,10 +330,17 @@ export function createCrudRouter(options: CrudOptions): Router {
   const assertFinancialRecordMutable = (existing: any) => {
     if (!modelNameStr.startsWith('fin_')) return;
     const terminal = new Set(['POSTED', 'PAID', 'CLOSED', 'LOCKED', 'EXECUTED', 'REVERSED']);
-    const state = String(existing?.status ?? existing?.payment_status ?? existing?.approval_status ?? '').toUpperCase();
-    if (terminal.has(state)) {
+    // Finance models carry lifecycle data in more than one column. A billing
+    // document, for example, can retain a workflow `status` of DRAFT while its
+    // `payment_status` is PAID. Treat any terminal lifecycle field as immutable
+    // so callers cannot bypass the official reversal/storno workflow merely by
+    // choosing a record whose primary status is not terminal.
+    const terminalState = [existing?.status, existing?.payment_status, existing?.approval_status]
+      .map((value) => String(value ?? '').toUpperCase())
+      .find((state) => terminal.has(state));
+    if (terminalState) {
       throw new ConflictError(
-        `Record keuangan berstatus ${state} bersifat immutable. Gunakan workflow reversal/storno resmi.`,
+        `Record keuangan berstatus ${terminalState} bersifat immutable. Gunakan workflow reversal/storno resmi.`,
       );
     }
   };
@@ -513,6 +538,9 @@ export function createCrudRouter(options: CrudOptions): Router {
   router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { page, pageSize, skip } = parsePagination(req);
+      const cursor = typeof req.query['cursor'] === 'string' && req.query['cursor'].trim()
+        ? req.query['cursor'].trim()
+        : null;
       let where: Record<string, any> = {};
       const validFields = getModelFields(modelNameStr);
 
@@ -521,7 +549,7 @@ export function createCrudRouter(options: CrudOptions): Router {
 
       // Query param filters with FK alias mapping
       for (const [key, val] of Object.entries(req.query)) {
-        if (['page', 'page_size', 'search', 'ordering'].includes(key)) continue;
+        if (['page', 'page_size', 'search', 'ordering', 'cursor'].includes(key)) continue;
         if (typeof val === 'string' && val !== '') {
           let resolvedKey = key;
           if (key === 'project') resolvedKey = 'project_id';
@@ -581,15 +609,25 @@ export function createCrudRouter(options: CrudOptions): Router {
         orderBy['id'] = 'desc';
       }
 
+      if (cursor) {
+        const orderingFields = Object.keys(orderBy);
+        if (!validFields.has('id')) throw new ValidationError('Cursor pagination memerlukan field id.');
+        if (orderingFields.length !== 1 || orderingFields[0] !== 'id') {
+          throw new ValidationError('Cursor hanya dapat digunakan dengan ordering id atau -id.');
+        }
+      }
+
       const queryArgs: any = {
         where,
-        skip,
-        take: pageSize,
+        skip: cursor ? 1 : skip,
+        take: cursor ? pageSize + 1 : pageSize,
       };
+      if (cursor) queryArgs.cursor = { id: cursor };
       if (Object.keys(orderBy).length > 0) {
         queryArgs.orderBy = orderBy;
       }
       if (options.include) queryArgs.include = options.include;
+      else if (options.select) queryArgs.select = options.select;
 
       const [totalCount, items] = await Promise.all([
         delegate.count({ where }),
@@ -597,7 +635,11 @@ export function createCrudRouter(options: CrudOptions): Router {
       ]);
 
       const formattedItems = items.map(format);
-      res.json(paginateArray(req, formattedItems, totalCount, page, pageSize));
+      if (cursor) {
+        res.json(paginateCursor(req, formattedItems, totalCount, pageSize, formattedItems.length > pageSize));
+      } else {
+        res.json(paginateArray(req, formattedItems, totalCount, page, pageSize));
+      }
     } catch (err) {
       next(err);
     }
@@ -666,8 +708,10 @@ export function createCrudRouter(options: CrudOptions): Router {
   router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const queryArgs: any = { where: await scopedWhere(req, { id }) };
+      const lookupField = options.lookupField ?? 'id';
+      const queryArgs: any = { where: await scopedWhere(req, { [lookupField]: id }) };
       if (options.include) queryArgs.include = options.include;
+      else if (options.select) queryArgs.select = options.select;
 
       const record = await delegate.findFirst(queryArgs);
       if (!record) throw new NotFoundError(modelNameStr);

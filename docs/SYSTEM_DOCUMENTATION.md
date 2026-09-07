@@ -2,6 +2,8 @@
 
 Dokumen ini adalah **Single Source of Truth teknis AS-IS** untuk backend Express dan frontend Next pada repository ini. Ini bukan README. Dokumentasi database terpisah tersedia di [Database Documentation](./DATABASE_DOCUMENTATION.md). Audit dilakukan terhadap implementasi source, konfigurasi, route, middleware, service, schema, migration, seed, frontend, test, dan deployment yang tersimpan di repository. Secret tidak direproduksi.
 
+**Baseline diperbarui 7 September 2026.** Ringkasan operasional dan indeks bukti terbaru tersedia di [Current Implementation Status](./CURRENT_IMPLEMENTATION_STATUS.md). Inventaris runtime mencakup 2.616 route: 783 authenticated GET lulus dan 1.833 mutation pipeline lulus dalam dry-run non-destruktif. Login 9/9 memenuhi batas 3 detik; benchmark terakhir login sampai seluruh data awal adalah 2.009 ms.
+
 ## Status legend
 
 - **IMPLEMENTED** — ditemukan dan digunakan pada source/config.
@@ -688,7 +690,11 @@ Masing-masing module router mengekspos domain resources melalui custom actions d
 
 ### Requests, commands, dashboard/reporting
 
-Request management memiliki request, approval, comment/attachment dan lifecycle UI. Commands menyediakan global command/search/action endpoints. Dashboard/frontend mengagregasi feed, CRM, project, finance dan reporting API; reporting/analytics backend menyediakan read/report resources. Tidak ada background materialization worker yang ditemukan.
+Request management memiliki request, approval, comment/attachment dan lifecycle UI. Commands menyediakan global command/search/action endpoints. Dashboard utama memakai BFF read-only `GET /api/v1/dashboard/bootstrap?sections=...`: Express memvalidasi company, entitlement modul, dan role aktif lalu mengumpulkan dataset Project, Finance, dan/atau CRM secara paralel. Next meminta section di atas layar terlebih dahulu dan menunda section sekunder sampai browser idle. Reporting/analytics backend tetap menyediakan read/report resources terpisah untuk halaman modul. Tidak ada background materialization worker yang ditemukan.
+
+| Method | Endpoint | Auth | Authorization | Controller | Purpose |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/api/v1/dashboard/bootstrap?sections=projects,finance,crm` | JWT | Company eksplisit, module entitlement, dan active-role per section | `backend-express/src/modules/dashboard/dashboard.routes.ts` | Menggabungkan source record widget dashboard dalam satu response tanpa mengubah data operasional. |
 
 ## 8. Frontend Architecture
 
@@ -696,7 +702,7 @@ Request management memiliki request, approval, comment/attachment dan lifecycle 
 - `AuthContext` menjadi sumber identity, token, active company, role/module access dan pergantian role tanpa login ulang.
 - `lib/api/axios.ts` adalah client standar dengan auth/company/idempotency interceptor dan refresh mutex. API module `auth/crm/feed/finance/project` membungkus kontrak domain.
 - Beberapa komponen memakai native `fetch` dan environment variable lain; ini melewati interceptor standar kecuali header dibangun manual.
-- State dominan adalah React local state/context; global query cache library **NOT FOUND**. Loading/error state ditangani per page/component.
+- State dominan adalah React local state/context; global query-cache frontend tidak digunakan. Loading/error state ditangani per page/component. Backend memiliki bounded read-through cache khusus proyeksi dashboard dan Request Card, dengan scoped key, request coalescing, TTL pendek, stale fallback, dan invalidasi mutation Request Card.
 - Form memakai React Hook Form/Zod pada bagian tertentu; implementasi tidak seragam di seluruh workspace.
 - UI shell: Sidebar, Topbar, RightSidebar, GlobalCommandPalette, AppShell. Finance dan request mempunyai komponen workflow/domain khusus.
 
@@ -851,7 +857,7 @@ IMPLEMENTED: Morgan request log, Prisma log menurut environment, global error lo
 | Chatbot/RAG | `frontend-next/services/chatbot.service.ts` | Browser Bearer caller token; SSE/JSON/multipart | throws Error/callback; no backend circuit breaker |
 | Vercel | backend adapter/config; possible frontend host | build artifact + env | platform behavior; no repo runbook |
 
-Payment gateway, transactional email, WhatsApp, cloud object storage, Redis/cache, message broker: **NOT FOUND**.
+Payment gateway, transactional email, WhatsApp, cloud object storage, shared Redis, dan message broker: **NOT FOUND**. Cache proses-lokal untuk dashboard BFF dan Request Card **IMPLEMENTED**; cache ini bukan pengganti Redis untuk deployment multi-instance.
 
 ## 18. File-by-File Documentation
 
@@ -1221,6 +1227,16 @@ Verification snapshot: **154 logic files** memiliki file-level documentation, te
 | Axios request interceptor | HTTP config | augmented config | reads localStorage; adds Bearer/company/idempotency | browser crypto/storage/network errors |
 | `refreshTokenOnce()` | implicit refresh token | new access token/null | singleton refresh request; updates/clears storage/cookie | rejects and redirects to error/401 on invalid refresh |
 | `streamChatCompletion(options)` | message/caller token/callbacks | Promise<void> + chunks | fetch SSE external chatbot; invokes callbacks | HTTP/SSE/Abort/network errors |
+
+## 18.1 Routing and loading revision — 7 September 2026
+
+- Complete route inventory: 2,616 unique method/path pairs; every row passed runtime registration/auth-boundary execution.
+- Authenticated data execution: 783/783 GET routes passed; generated mutation pipeline: 1,833/1,833 passed with persistence blocked for safety.
+- Login returns compact company identity and no longer requires a company-profile waterfall before initial render.
+- Initial dashboard uses one BFF bootstrap request plus Request Card feed in parallel. Project and Finance projections are aggregate/raw-SQL snapshots rather than browser collection fan-out.
+- Dashboard and Request Card use bounded process-local read-through caches with scoped keys, short freshness, stale fallback, and in-flight request coalescing. Request Card mutation success invalidates its feed cache.
+- Authentication request bursts share only the active database promise; completed authorization decisions are not cached.
+- Latest measured login-to-complete-initial-data result is 2,009 ms. See [Current Implementation Status](./CURRENT_IMPLEMENTATION_STATUS.md) for exact timings and operational limitations.
 
 ## 19. Known Issues & Technical Debt
 

@@ -1,5 +1,7 @@
 # Q10 executable BDD plan
 
+**Completed checkpoint — 7 September 2026:** the sequence below has been executed. Static contract, all login personas, eight critical scenarios, twelve Company Admin scenarios, runtime API contract, 2,616 route registration checks, 783 authenticated reads, and 1,833 mutation pipeline dry-runs pass. The earlier `P1001` block was transient and is no longer the current status. See [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
+
 This folder is independent from the Next and Express applications. Its first
 runner is read-only contract discovery. The next runners must be added in this
 order to keep failures attributable and test data reversible:
@@ -7,10 +9,9 @@ order to keep failures attributable and test data reversible:
 ## Current checkpoint
 
 - Static contract discovery is complete; see [Q10_AUDIT_REPORT.md](./Q10_AUDIT_REPORT.md).
-- Selected runtime contracts were attempted against the actual Express app.
-- Further runtime BDD execution is blocked until the configured Prisma
-  datasource is reachable again (`P1001` observed during login).
-- No application remediation is included in this testing folder.
+- Runtime contracts were executed against the actual Express app and configured project database.
+- A transient Prisma `P1001` remains documented as environment evidence, but successful retries and the final full suite passed.
+- Application remediation and performance evidence are now tracked in [Performance Changelog](./PERFORMANCE_CHANGELOG.md).
 
 1. `contract`: static route/method/transport audit.
 2. `identity`: login, refresh, active role, one-company scope, module ceiling.

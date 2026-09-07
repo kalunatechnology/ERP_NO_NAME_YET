@@ -10,9 +10,34 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { CRMService } from './crm.service';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { NotFoundError, ValidationError } from '../../utils/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 
 export const crmRouter = Router();
+
+function activeCompanyId(req: Request): string {
+  if (!req.companyId) throw new ForbiddenError('Pilih company sebelum menjalankan operasi CRM.');
+  return req.companyId;
+}
+
+async function decideExecutiveApproval(req: Request, decision: 'APPROVED' | 'REJECTED') {
+  const companyId = activeCompanyId(req);
+  return prisma.$transaction(async (tx) => {
+    const approval = await tx.crm_executive_approval.findFirst({
+      where: { id: req.params.id, company_id: companyId },
+      select: { id: true },
+    });
+    if (!approval) throw new NotFoundError('ExecutiveApproval');
+    return tx.crm_executive_approval.update({
+      where: { id: approval.id },
+      data: {
+        decision,
+        remarks: req.body.remarks ?? '',
+        approver_user_id: req.user?.id,
+        decided_at: new Date(),
+      },
+    });
+  });
+}
 
 // =============================================================================
 // CUSTOM ACTIONS ON INQUIRIES
@@ -28,7 +53,7 @@ export const crmRouter = Router();
  */
 crmRouter.post('/customer-inquiries/:id/qualify', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CRMService.qualifyInquiry(req.params.id, req.user?.id ?? 'system');
+    const result = await CRMService.qualifyInquiry(req.params.id, req.user?.id ?? 'system', activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -49,7 +74,7 @@ crmRouter.post('/customer-inquiries/:id/qualify', async (req: Request, res: Resp
  */
 crmRouter.post('/cost-estimates/:id/calculate', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CRMService.calculateEstimate(req.params.id, req.user?.id ?? 'system');
+    const result = await CRMService.calculateEstimate(req.params.id, req.user?.id ?? 'system', activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -66,7 +91,7 @@ crmRouter.post('/cost-estimates/:id/calculate', async (req: Request, res: Respon
  */
 crmRouter.post('/cost-estimates/:id/create-quotation', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CRMService.createQuotationFromEstimate(req.params.id, req.user?.id ?? 'system');
+    const result = await CRMService.createQuotationFromEstimate(req.params.id, req.user?.id ?? 'system', activeCompanyId(req));
     res.status(result.created ? 201 : 200).json(result);
   } catch (err) {
     next(err);
@@ -89,7 +114,7 @@ crmRouter.post('/credit-status-snapshots/calculate', async (req: Request, res: R
   try {
     const customerPartyId = req.body.customer_party ?? req.body.customer_party_id;
     if (!customerPartyId) throw new ValidationError('customer_party_id is required');
-    const result = await CRMService.calculateCreditSnapshot(customerPartyId, req.companyId);
+    const result = await CRMService.calculateCreditSnapshot(customerPartyId, activeCompanyId(req));
     res.status(201).json(result);
   } catch (err) {
     next(err);
@@ -110,7 +135,7 @@ crmRouter.post('/credit-status-snapshots/calculate', async (req: Request, res: R
  */
 crmRouter.post('/opportunities/:id/process-deal-won', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CRMService.processDealWon(req.params.id, req.user, req.companyId);
+    const result = await CRMService.processDealWon(req.params.id, req.user, activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -127,7 +152,7 @@ crmRouter.post('/opportunities/:id/process-deal-won', async (req: Request, res: 
  */
 crmRouter.post('/opportunities/:id/executive-override', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CRMService.executiveOverride(req.params.id, req.user, req.companyId);
+    const result = await CRMService.executiveOverride(req.params.id, req.user, activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -144,17 +169,18 @@ crmRouter.post('/opportunities/:id/executive-override', async (req: Request, res
  */
 crmRouter.get('/opportunities/:id/customer-360', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const opp = await prisma.crm_opportunity.findUnique({ where: { id: req.params.id } });
+    const companyId = activeCompanyId(req);
+    const opp = await prisma.crm_opportunity.findFirst({ where: { id: req.params.id, company_id: companyId } });
     if (!opp) throw new NotFoundError('Opportunity');
 
     const customer = opp.customer_party_id
-      ? await prisma.master_party.findUnique({ where: { id: opp.customer_party_id } })
+      ? await prisma.master_party.findFirst({ where: { id: opp.customer_party_id, company_id: companyId } })
       : null;
 
     const [quotationsCount, ordersCount, projectsCount] = await Promise.all([
-      customer ? prisma.sales_quotation.count({ where: { customer_party_id: customer.id } }) : 0,
-      customer ? prisma.sales_order.count({ where: { customer_party_id: customer.id } }) : 0,
-      customer ? prisma.project_project.count({ where: { customer_party_id: customer.id } }) : 0,
+      customer ? prisma.sales_quotation.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.sales_order.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.project_project.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
     ]);
 
     res.json({
@@ -194,15 +220,7 @@ crmRouter.post('/executive-approvals/:id/decide', async (req: Request, res: Resp
     if (!['APPROVED', 'REJECTED'].includes(decision)) {
       throw new ValidationError('Gunakan APPROVED atau REJECTED.');
     }
-    const updated = await prisma.crm_executive_approval.update({
-      where: { id: req.params.id },
-      data: {
-        decision,
-        remarks: req.body.remarks ?? '',
-        approver_user_id: req.user?.id,
-        decided_at: new Date(),
-      },
-    });
+    const updated = await decideExecutiveApproval(req, decision as 'APPROVED' | 'REJECTED');
     res.json(updated);
   } catch (err) {
     next(err);
@@ -219,15 +237,7 @@ crmRouter.post('/executive-approvals/:id/decide', async (req: Request, res: Resp
  */
 crmRouter.post('/executive-approvals/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.crm_executive_approval.update({
-      where: { id: req.params.id },
-      data: {
-        decision: 'APPROVED',
-        remarks: req.body.remarks ?? '',
-        approver_user_id: req.user?.id,
-        decided_at: new Date(),
-      },
-    });
+    const updated = await decideExecutiveApproval(req, 'APPROVED');
     res.json(updated);
   } catch (err) {
     next(err);
@@ -244,15 +254,7 @@ crmRouter.post('/executive-approvals/:id/approve', async (req: Request, res: Res
  */
 crmRouter.post('/executive-approvals/:id/reject', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.crm_executive_approval.update({
-      where: { id: req.params.id },
-      data: {
-        decision: 'REJECTED',
-        remarks: req.body.remarks ?? '',
-        approver_user_id: req.user?.id,
-        decided_at: new Date(),
-      },
-    });
+    const updated = await decideExecutiveApproval(req, 'REJECTED');
     res.json(updated);
   } catch (err) {
     next(err);

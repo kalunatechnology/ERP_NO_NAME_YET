@@ -9,6 +9,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
+import { ForbiddenError, NotFoundError } from '../../utils/errors';
 
 export const masterDataRouter = Router();
 
@@ -23,12 +24,16 @@ export const masterDataRouter = Router();
  */
 masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses master data.');
+    const companyId = req.companyId;
     const { party_id, customer_profile_id, credit_limit, payment_term_id, credit_hold } = req.body;
     let profile = null;
 
     if (customer_profile_id) {
+      const existing = await prisma.master_customer_profile.findFirst({ where: { id: customer_profile_id, company_id: companyId }, select: { id: true } });
+      if (!existing) throw new NotFoundError('CustomerProfile');
       profile = await prisma.master_customer_profile.update({
-        where: { id: customer_profile_id },
+        where: { id: existing.id },
         data: {
           credit_limit: credit_limit !== undefined ? credit_limit : undefined,
           payment_term_id: payment_term_id !== undefined ? payment_term_id : undefined,
@@ -36,8 +41,10 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
         },
       });
     } else if (party_id) {
+      const party = await prisma.master_party.findFirst({ where: { id: party_id, company_id: companyId } });
+      if (!party) throw new NotFoundError('Party');
       const existing = await prisma.master_customer_profile.findFirst({
-        where: { party_id },
+        where: { party_id, company_id: companyId },
       });
       if (existing) {
         profile = await prisma.master_customer_profile.update({
@@ -52,6 +59,9 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
         profile = await prisma.master_customer_profile.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: party.tenant_id,
+            company_id: companyId,
+            created_by_id: req.user?.id,
             party_id,
             customer_code: `CUST-${String(party_id).slice(0, 6)}`,
             risk_category: 'LOW',

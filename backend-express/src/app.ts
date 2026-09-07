@@ -44,6 +44,7 @@ import { analyticsRouter } from './modules/analytics/analytics.routes';
 import { implementationRouter } from './modules/implementation/implementation.routes';
 import { reportingRouter } from './modules/reporting/reporting.routes';
 import { commandsRouter } from './modules/commands/commands.routes';
+import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 
 // Initialize Workflows
 import './workflows';
@@ -94,7 +95,7 @@ export function createApp(): Express {
         'X-Requested-With',
         'Idempotency-Key',
       ],
-      exposedHeaders: ['X-Request-ID', 'X-Idempotent-Replay'],
+      exposedHeaders: ['X-Request-ID', 'X-Idempotent-Replay', 'X-Dashboard-Cache', 'X-Request-Cache', 'Server-Timing'],
     }),
   );
   app.use(compression());
@@ -204,6 +205,7 @@ export function createApp(): Express {
   apiV1.use('/implementation', requireModuleAccess('IMPLEMENTATION'), implementationRouter);
   apiV1.use('/reporting', requireModuleAccess('REPORTING'), reportingRouter);
   apiV1.use('/commands', commandsRouter);
+  apiV1.use('/dashboard', dashboardRouter);
 
   app.use('/api/v1', apiV1);
 

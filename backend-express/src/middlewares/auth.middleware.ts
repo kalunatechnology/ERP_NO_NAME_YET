@@ -9,8 +9,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
 import { UnauthorizedError } from '../utils/errors';
-import prisma from '../config/database';
-import { loadUserAccessContext } from '../modules/accounts/access-context.service';
+import { loadAuthenticationSnapshotCoalesced, loadUserAccessContext } from '../modules/accounts/access-context.service';
 
 /**
  * Authentication Middleware.
@@ -37,24 +36,14 @@ export async function authenticate(
   }
 
   // Load fresh user from DB to ensure account is still active
-  const user = await prisma.iam_user.findUnique({
-    where: { id: payload.userId },
-    select: {
-      id: true,
-      email: true,
-      full_name: true,
-      is_staff: true,
-      status: true,
-      tenant_id: true,
-      is_active: true,
-    },
-  });
+  const authSnapshot = await loadAuthenticationSnapshotCoalesced(payload.userId);
+  const user = authSnapshot?.user;
 
   if (!user || !user.is_active) {
     return next(new UnauthorizedError('Akun tidak aktif atau tidak ditemukan.'));
   }
 
-  const access = await loadUserAccessContext(user.id);
+  const access = await loadUserAccessContext(user.id, user, authSnapshot!.rows);
 
   // Administrative authority is derived from canonical role codes, not legacy booleans.
   req.user = {
@@ -93,21 +82,11 @@ export async function optionalAuthenticate(
   const payload = verifyAccessToken(token);
   if (!payload) return next();
 
-  const user = await prisma.iam_user.findUnique({
-    where: { id: payload.userId },
-    select: {
-      id: true,
-      email: true,
-      full_name: true,
-      is_staff: true,
-      status: true,
-      tenant_id: true,
-      is_active: true,
-    },
-  });
+  const authSnapshot = await loadAuthenticationSnapshotCoalesced(payload.userId);
+  const user = authSnapshot?.user;
 
   if (user?.is_active) {
-    const access = await loadUserAccessContext(user.id);
+    const access = await loadUserAccessContext(user.id, user, authSnapshot!.rows);
     req.user = {
       id: user.id,
       email: user.email,

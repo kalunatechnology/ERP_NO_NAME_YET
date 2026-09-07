@@ -6,6 +6,8 @@
 > **Target**: `backend-express/` (Node.js 20+ / Express / TypeScript / Prisma / PostgreSQL)  
 > **Frontend Consumer**: `frontend-next/` (Next.js App Router / React)
 
+> **Current status — 7 September 2026:** migration ke Express/Next adalah runtime aktif. Semua 2.616 route terdaftar telah dieksekusi pada registration/auth boundary; 783 authenticated GET dan 1.833 mutation dry-run routes lulus. Enam Prisma migration tersedia, termasuk reporting views. Lihat [Current Implementation Status](docs/CURRENT_IMPLEMENTATION_STATUS.md). Angka discovery di bawah adalah snapshot audit migrasi 26 Agustus dan dipertahankan sebagai histori, bukan inventaris runtime terbaru.
+
 ---
 
 ## 1. EXECUTIVE SUMMARY & DISCOVERY SCOPE

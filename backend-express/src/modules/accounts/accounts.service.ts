@@ -8,10 +8,34 @@
  */
 import prisma from '../../config/database';
 import { signTokenPair, verifyRefreshToken } from '../../utils/jwt';
-import { UnauthorizedError, ValidationError, NotFoundError } from '../../utils/errors';
+import { ForbiddenError, UnauthorizedError, ValidationError, NotFoundError } from '../../utils/errors';
 import { hashPassword, isLegacyDjangoPassword, verifyPassword } from '../../utils/password';
 import { loadUserAccessContext } from './access-context.service';
-import { parseRoleCode, RoleCode, toExternalRoleCode } from '../../types/roles';
+import { isSuperAdmin, parseRoleCode, RoleCode, toExternalRoleCode } from '../../types/roles';
+import { Prisma } from '@prisma/client';
+
+type LoginAccessSnapshot = {
+  user_roles: Array<{
+    id: string;
+    role_id: string | null;
+    company_id: string | null;
+    organization_id: string | null;
+  }>;
+  membership: {
+    tenant_id: string;
+    company_id: string;
+    status: string;
+    legal_name?: string;
+    company_code?: string;
+  } | null;
+  roles: Array<{
+    id: string;
+    role_code: string;
+    role_name: string;
+  }>;
+  company_modules: Array<{ module_code: string }>;
+  user_modules: Array<{ module_code: string; allow_read: boolean; allow_write: boolean }>;
+};
 
 export class AccountsService {
 /**
@@ -53,23 +77,87 @@ export class AccountsService {
       throw new UnauthorizedError('Email atau password tidak valid.');
     }
 
-    const passwordUpdate = isLegacyDjangoPassword(user.password_hash)
-      ? { password_hash: await hashPassword(pass) }
-      : {};
-    user = await prisma.iam_user.update({
-      where: { id: user.id },
-      data: { ...passwordUpdate, last_login_at: new Date() },
-    });
+    const loginAt = new Date();
+    const passwordHash = isLegacyDjangoPassword(user.password_hash)
+      ? await hashPassword(pass)
+      : undefined;
 
-    const userRoles = await prisma.iam_user_role.findMany({
-      where: { user_id: user.id },
-    });
-
+    const now = new Date();
+    const snapshots = await prisma.$queryRaw<Array<{ snapshot: LoginAccessSnapshot }>>(Prisma.sql`
+      WITH updated_user AS (
+        UPDATE iam_user
+        SET last_login_at = ${loginAt},
+            password_hash = COALESCE(${passwordHash ?? null}, password_hash)
+        WHERE id = ${user.id}::uuid
+        RETURNING id, tenant_id
+      ), membership AS (
+        SELECT m.tenant_id, m.company_id, m.status, c.legal_name, c.company_code
+        FROM iam_user_company_membership m
+        JOIN core_company c ON c.id = m.company_id AND c.tenant_id IS NOT DISTINCT FROM m.tenant_id
+        WHERE m.user_id = ${user.id}::uuid
+        LIMIT 1
+      )
+      SELECT jsonb_build_object(
+        'user_roles', COALESCE((
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', ur.id, 'role_id', ur.role_id, 'company_id', ur.company_id,
+            'organization_id', ur.organization_id
+          )) FROM iam_user_role ur WHERE ur.user_id = ${user.id}::uuid
+        ), '[]'::jsonb),
+        'membership', (SELECT to_jsonb(m) FROM membership m),
+        'roles', COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('id', r.id, 'role_code', r.role_code, 'role_name', r.role_name))
+          FROM iam_role r
+          JOIN iam_user_role ur ON ur.role_id = r.id
+          WHERE ur.user_id = ${user.id}::uuid AND r.tenant_id = ${user.tenant_id}::uuid
+        ), '[]'::jsonb),
+        'company_modules', COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('module_code', cma.module_code))
+          FROM iam_company_module_access cma JOIN membership m ON m.company_id = cma.company_id AND m.tenant_id = cma.tenant_id
+          WHERE cma.enabled = true AND cma.allow_read = true
+            AND (cma.effective_from IS NULL OR cma.effective_from <= ${now})
+            AND (cma.effective_until IS NULL OR cma.effective_until >= ${now})
+        ), '[]'::jsonb),
+        'user_modules', COALESCE((
+          SELECT jsonb_agg(jsonb_build_object(
+            'module_code', uma.module_code, 'allow_read', uma.allow_read, 'allow_write', uma.allow_write
+          )) FROM iam_user_module_access uma
+          JOIN membership m ON m.company_id = uma.company_id AND m.tenant_id = uma.tenant_id
+          WHERE uma.user_id = ${user.id}::uuid
+        ), '[]'::jsonb)
+      ) AS snapshot
+      FROM updated_user
+    `);
+    const snapshot = snapshots[0]?.snapshot;
+    if (!snapshot) throw new UnauthorizedError('Email atau password tidak valid.');
+    const userRoles = snapshot.user_roles;
+    const membership = snapshot.membership;
+    const rolesList = snapshot.roles
+      .map((role) => ({ ...role, role_code: parseRoleCode(role.role_code) }))
+      .filter((role): role is typeof role & { role_code: RoleCode } => role.role_code !== null);
+    const companyModules = snapshot.company_modules;
+    const userModules = snapshot.user_modules;
+    user = { ...user, last_login_at: loginAt, ...(passwordHash ? { password_hash: passwordHash } : {}) };
 
     const roleIds = userRoles.map((ur) => ur.role_id).filter((id): id is string => Boolean(id));
-    const rolesList = await prisma.iam_role.findMany({
-      where: { id: { in: roleIds } },
-    });
+
+    if (rolesList.length !== new Set(roleIds).size) {
+      throw new ForbiddenError('Konfigurasi akses user tidak valid: role berada di luar tenant user.');
+    }
+    const roleCodes = [...new Set(rolesList.map((role) => role.role_code))];
+    const superAdmin = isSuperAdmin(roleCodes);
+    if (superAdmin && membership) {
+      throw new ForbiddenError('Konfigurasi akses tidak valid: Super Admin tidak boleh memiliki membership company.');
+    }
+    if (!superAdmin && (!membership || membership.status !== 'ACTIVE')) {
+      throw new ForbiddenError('Konfigurasi akses tidak valid: user wajib memiliki satu membership company aktif.');
+    }
+    if (membership && membership.tenant_id !== user.tenant_id) {
+      throw new ForbiddenError('Konfigurasi akses tidak valid: membership berada di luar tenant user.');
+    }
+    if (!superAdmin && userRoles.some((item) => item.company_id !== membership?.company_id)) {
+      throw new ForbiddenError('Konfigurasi akses tidak valid: assignment role tidak sesuai membership company.');
+    }
     const rolesMap = new Map(rolesList.map((r) => [r.id, r]));
 
     const serializedRoles = userRoles.map((ur) => {
@@ -84,9 +172,12 @@ export class AccountsService {
       };
     });
 
-    const roleCodes = rolesList.map((role) => role.role_code);
-    const access = await loadUserAccessContext(user.id);
-    const primaryCompanyId = access.companyId;
+    const activeRole = rolesList.find((role) => role.id === user.active_role_id) ?? rolesList[0] ?? null;
+    const overrideByModule = new Map(userModules.map((item) => [item.module_code.toUpperCase(), item]));
+    const enabledModules = companyModules
+      .map((item) => item.module_code.toUpperCase())
+      .filter((moduleCode) => overrideByModule.get(moduleCode)?.allow_read ?? true);
+    const primaryCompanyId = superAdmin ? null : membership?.company_id ?? null;
 
     const tokens = signTokenPair({
       userId: user.id,
@@ -104,13 +195,14 @@ export class AccountsService {
       full_name: user.full_name,
       status: user.status,
       is_staff: user.is_staff,
-      is_superuser: access.isSuperAdmin,
+      is_superuser: superAdmin,
       is_active: user.is_active,
       tenant_id: user.tenant_id,
       company_id: primaryCompanyId,
-      active_role_id: access.activeRoleId,
-      active_role_code: access.activeRoleCode ? toExternalRoleCode(access.activeRoleCode) : null,
-      enabled_modules: access.enabledModules,
+      company: membership ? { id: membership.company_id, name: membership.legal_name, code: membership.company_code } : null,
+      active_role_id: activeRole?.id ?? null,
+      active_role_code: activeRole ? toExternalRoleCode(activeRole.role_code) : null,
+      enabled_modules: enabledModules,
       roles: serializedRoles,
       last_login: user.last_login_at,
       date_joined: user.date_joined,
@@ -176,19 +268,22 @@ export class AccountsService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async getCurrentUser(userId: string) {
-    const user = await prisma.iam_user.findUnique({
-      where: { id: userId },
-    });
+    const [user, userRoles, membership, companyRows] = await Promise.all([
+      prisma.iam_user.findUnique({ where: { id: userId } }),
+      prisma.iam_user_role.findMany({ where: { user_id: userId } }),
+      prisma.iam_user_company_membership.findUnique({ where: { user_id: userId } }),
+      prisma.$queryRaw<Array<{ id: string; legal_name: string; company_code: string }>>(Prisma.sql`
+        SELECT c.id, c.legal_name, c.company_code
+        FROM core_company c JOIN iam_user_company_membership m ON m.company_id=c.id
+        WHERE m.user_id=${userId}::uuid AND c.tenant_id IS NOT DISTINCT FROM m.tenant_id LIMIT 1
+      `),
+    ]);
     if (!user) throw new NotFoundError('User');
 
-    const userRoles = await prisma.iam_user_role.findMany({
-      where: { user_id: userId },
-    });
-
     const roleIds = userRoles.map((ur) => ur.role_id).filter((id): id is string => Boolean(id));
-    const rolesList = await prisma.iam_role.findMany({
-      where: { id: { in: roleIds } },
-    });
+    const rolesList = roleIds.length
+      ? await prisma.iam_role.findMany({ where: { id: { in: roleIds }, tenant_id: user.tenant_id } })
+      : [];
     const rolesMap = new Map(rolesList.map((r) => [r.id, r]));
 
     const serializedRoles = userRoles.map((ur) => {
@@ -203,7 +298,11 @@ export class AccountsService {
       };
     });
 
-    const access = await loadUserAccessContext(user.id);
+    const access = await loadUserAccessContext(
+      user.id,
+      { tenant_id: user.tenant_id, active_role_id: user.active_role_id },
+      { assignments: userRoles, membership, roleRecords: rolesList },
+    );
     const primaryCompanyId = access.companyId;
 
     const userPayload = {
@@ -217,6 +316,7 @@ export class AccountsService {
       is_active: user.is_active,
       tenant_id: user.tenant_id,
       company_id: primaryCompanyId,
+      company: companyRows[0] ? { id: companyRows[0].id, name: companyRows[0].legal_name, code: companyRows[0].company_code } : null,
       active_role_id: access.activeRoleId,
       active_role_code: access.activeRoleCode ? toExternalRoleCode(access.activeRoleCode) : null,
       enabled_modules: access.enabledModules,

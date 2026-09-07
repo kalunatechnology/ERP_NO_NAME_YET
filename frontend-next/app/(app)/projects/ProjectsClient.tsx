@@ -38,6 +38,7 @@ import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { feedApi } from "@/lib/api/feed.api";
+import { loadDashboardBootstrap } from "@/lib/api/dashboard.api";
 import { ProjectTimelineGantt } from "@/components/ui/ProjectTimelineGantt";
 import { TopExpensesBarChart } from "@/components/ui/TopExpensesBarChart";
 import { ProjectMilestoneCard } from "@/components/ui/ProjectMilestoneCard";
@@ -302,8 +303,9 @@ export default function ProjectsClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
+      const projectBundle = loadDashboardBootstrap(["projects"]).then((response) => response.projects);
       const [data, transferList, uList, custList, divisions] = await Promise.all([
-        loadAllProjects(user?.enabled_modules || []),
+        projectBundle.then((bundle) => loadAllProjects(user?.enabled_modules || [], bundle)),
         getTransferRequests().catch(() => []),
         fetchCompanyUsers().catch(() => []),
         fetchProjectCustomers().catch(() => []),
@@ -320,13 +322,6 @@ export default function ProjectsClient() {
 
       if (targetId) {
         setSelectedId(targetId);
-        Promise.allSettled([
-          fetchProjectFinancialPerformance(targetId),
-          fetchProjectFundingRequests(targetId)
-        ]).then(([perfRes, fundingRes]) => {
-          if (perfRes.status === "fulfilled") setFinancialPerformance(perfRes.value);
-          if (fundingRes.status === "fulfilled") setFundingRequestsList(Array.isArray(fundingRes.value) ? fundingRes.value : []);
-        });
       }
 
       setTransfers(transferList);

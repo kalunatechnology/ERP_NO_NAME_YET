@@ -2,7 +2,7 @@
  * Q10 login loading BDD.
  *
  * Boots the real Express application and verifies that canonical demo users
- * receive a complete authentication response within the agreed 15-second
+ * receive a complete authentication response within the agreed 3-second
  * loading budget. It records latency and identity metadata without printing
  * passwords or tokens. Login can update last_login_at by application design.
  */
@@ -17,7 +17,7 @@ const { createApp } = require(path.join(backend, 'src', 'app.ts'));
 const prisma = require(path.join(backend, 'src', 'config', 'database.ts')).default;
 
 const password = process.env.Q10_DEMO_PASSWORD || 'DummyPass123!';
-const loginBudgetMs = 15000;
+const loginBudgetMs = 3000;
 const personas = [
   { email: 'rian@arsalynk.com', expectedRole: 'ROLE-DIRECTOR' },
   { email: 'laode@arsalynk.com', expectedRole: 'ROLE-COMPANY-ADMIN' },
@@ -31,6 +31,9 @@ const personas = [
 
 /** Starts the actual Express middleware stack on an ephemeral local port. */
 async function startServer() {
+  // Production `server.ts` connects before listen(). Mirroring that lifecycle
+  // keeps cold process startup outside the user-visible button-to-response SLA.
+  await prisma.$connect();
   const server = createApp().listen(0, '127.0.0.1');
   await new Promise((resolve, reject) => {
     server.once('listening', resolve);
@@ -64,7 +67,7 @@ async function attemptLogin(baseUrl, persona) {
       email: persona.email,
       status: response.status,
       elapsed_ms: elapsedMs,
-      within_15_seconds: elapsedMs <= loginBudgetMs,
+      within_3_seconds: elapsedMs <= loginBudgetMs,
       token_shape_valid: tokenShapeValid,
       identity_valid: identityValid,
       expected_role: persona.expectedRole,
@@ -78,7 +81,7 @@ async function attemptLogin(baseUrl, persona) {
     return {
       email: persona.email,
       elapsed_ms: Math.round(performance.now() - startedAt),
-      within_15_seconds: false,
+      within_3_seconds: false,
       result: 'FAIL',
       error: error?.name || 'UnknownError',
       message: error?.message || 'Login request failed',
@@ -109,7 +112,7 @@ async function main() {
       scenario: 'invalid password is rejected',
       status: invalid.status,
       elapsed_ms: invalidElapsedMs,
-      within_15_seconds: invalidElapsedMs <= loginBudgetMs,
+      within_3_seconds: invalidElapsedMs <= loginBudgetMs,
       result: invalid.status === 401 && invalidElapsedMs <= loginBudgetMs ? 'PASS' : 'FAIL',
     };
     results.push(negativeResult);

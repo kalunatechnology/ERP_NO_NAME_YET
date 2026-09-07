@@ -7,7 +7,10 @@
 
 import axios from "axios";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+// Express defaults to port 8001 in local development. Keeping this fallback
+// aligned with the backend prevents an otherwise valid login from waiting on
+// Axios' network timeout when no frontend environment override is present.
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
 
 const api = axios.create({
   baseURL: API_BASE,

@@ -81,13 +81,23 @@ function resolveDatabaseTopology(config: z.infer<typeof envSchema>) {
   const target = process.env.VERCEL === '1' ? 'vercel' : config.DEPLOYMENT_TARGET ?? 'local';
   const directUrl = config.SUPABASE_DIRECT_URL ?? config.DIRECT_URL;
 
+  const withPoolDefaults = (value: string, connectionLimit: number) => {
+    const url = new URL(value);
+    if (url.hostname.endsWith('.pooler.supabase.com') && !url.searchParams.has('connection_limit')) {
+      // Bound Supavisor sessions explicitly: one for serverless instances and
+      // a small pool for persistent Express processes running BFF fan-out.
+      url.searchParams.set('connection_limit', String(connectionLimit));
+    }
+    return url.toString();
+  };
+
   if (target === 'vercel') {
     const poolerUrl = config.SUPABASE_POOLER_URL ?? config.DATABASE_URL;
     const pooler = new URL(poolerUrl);
     if (!pooler.hostname.endsWith('.pooler.supabase.com') || pooler.port !== '6543') {
       throw new Error('Vercel requires SUPABASE_POOLER_URL using Supabase transaction pooler port 6543.');
     }
-    return { target, databaseUrl: poolerUrl, directUrl };
+    return { target, databaseUrl: withPoolDefaults(poolerUrl, 1), directUrl };
   }
 
   if (target === 'hostinger') {
@@ -98,7 +108,7 @@ function resolveDatabaseTopology(config: z.infer<typeof envSchema>) {
     return { target, databaseUrl: directUrl, directUrl };
   }
 
-  return { target, databaseUrl: config.DATABASE_URL, directUrl };
+  return { target, databaseUrl: withPoolDefaults(config.DATABASE_URL, 5), directUrl };
 }
 
 /**

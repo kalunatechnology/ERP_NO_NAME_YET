@@ -9,6 +9,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
+import { ForbiddenError, NotFoundError } from '../../utils/errors';
 
 export const serviceRouter = Router();
 
@@ -23,8 +24,11 @@ export const serviceRouter = Router();
  */
 serviceRouter.post('/cases/:id/resolve', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses service.');
+    const record = await prisma.service_case.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { id: true } });
+    if (!record) throw new NotFoundError('ServiceCase');
     const updated = await prisma.service_case.update({
-      where: { id: req.params.id },
+      where: { id: record.id },
       data: { status: 'RESOLVED', resolved_at: new Date() },
     });
     res.json(updated);

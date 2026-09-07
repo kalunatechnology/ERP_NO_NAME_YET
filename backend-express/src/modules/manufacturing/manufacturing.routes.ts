@@ -9,8 +9,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
+import { ForbiddenError, NotFoundError } from '../../utils/errors';
 
 export const manufacturingRouter = Router();
+
+function companyId(req: Request): string {
+  if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses manufacturing.');
+  return req.companyId;
+}
 
 // Custom actions on production orders
 /**
@@ -23,8 +29,10 @@ export const manufacturingRouter = Router();
  */
 manufacturingRouter.post('/production-orders/:id/release', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const record = await prisma.mfg_production_order.findFirst({ where: { id: req.params.id, company_id: companyId(req) }, select: { id: true } });
+    if (!record) throw new NotFoundError('ProductionOrder');
     const updated = await prisma.mfg_production_order.update({
-      where: { id: req.params.id },
+      where: { id: record.id },
       data: { status: 'RELEASED' },
     });
     res.json(updated);
@@ -43,8 +51,10 @@ manufacturingRouter.post('/production-orders/:id/release', async (req: Request, 
  */
 manufacturingRouter.post('/production-orders/:id/issue-materials', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const record = await prisma.mfg_production_order.findFirst({ where: { id: req.params.id, company_id: companyId(req) }, select: { id: true } });
+    if (!record) throw new NotFoundError('ProductionOrder');
     const updated = await prisma.mfg_production_order.update({
-      where: { id: req.params.id },
+      where: { id: record.id },
       data: { status: 'IN_PROGRESS' },
     });
     res.json(updated);
@@ -63,8 +73,10 @@ manufacturingRouter.post('/production-orders/:id/issue-materials', async (req: R
  */
 manufacturingRouter.post('/work-orders/:id/start', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const record = await prisma.mfg_work_order.findFirst({ where: { id: req.params.id, company_id: companyId(req) }, select: { id: true } });
+    if (!record) throw new NotFoundError('WorkOrder');
     const updated = await prisma.mfg_work_order.update({
-      where: { id: req.params.id },
+      where: { id: record.id },
       data: { status: 'IN_PROGRESS', actual_start_at: new Date() },
     });
     res.json(updated);
@@ -83,8 +95,10 @@ manufacturingRouter.post('/work-orders/:id/start', async (req: Request, res: Res
  */
 manufacturingRouter.post('/work-orders/:id/complete', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const record = await prisma.mfg_work_order.findFirst({ where: { id: req.params.id, company_id: companyId(req) }, select: { id: true } });
+    if (!record) throw new NotFoundError('WorkOrder');
     const updated = await prisma.mfg_work_order.update({
-      where: { id: req.params.id },
+      where: { id: record.id },
       data: { status: 'COMPLETED', actual_end_at: new Date() },
     });
     res.json(updated);

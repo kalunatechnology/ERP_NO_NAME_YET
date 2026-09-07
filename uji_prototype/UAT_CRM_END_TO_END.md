@@ -1,5 +1,7 @@
 # UAT CRM End-to-End
 
+> **Revalidation note — 7 September 2026:** CRM custom actions are company-scoped and their generated quotation/order/project/supporting records inherit tenant/company context. Run this flow on disposable data, preserve cleanup identifiers, and use the current official personas. Technical baseline: [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
+
 ## Akun
 
 - CRM: membuat inquiry, spesifikasi, estimate, quotation, dan mencatat keputusan customer.

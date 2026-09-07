@@ -45,7 +45,7 @@ coreRouter.get('/sidebar-feed', authenticate, async (req: Request, res: Response
  */
 coreRouter.post('/sidebar-feed/mark-read', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CoreService.markNotificationsRead(req.user!.id);
+    const result = await CoreService.markNotificationsRead(req.user!.id, req.companyId ?? null);
     res.json(result);
   } catch (err) {
     next(err);
@@ -63,7 +63,7 @@ coreRouter.post('/sidebar-feed/mark-read', authenticate, async (req: Request, re
  */
 coreRouter.get('/recent-items', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CoreService.getRecentItems(req.user!.id);
+    const result = await CoreService.getRecentItems(req.user!.id, req.companyId ?? null);
     res.json(result);
   } catch (err) {
     next(err);
@@ -80,7 +80,7 @@ coreRouter.get('/recent-items', authenticate, async (req: Request, res: Response
  */
 coreRouter.post('/recent-items/track', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CoreService.trackRecentItem(req.user!.id, req.body);
+    const result = await CoreService.trackRecentItem(req.user!.id, req.body, req.user!.tenant_id, req.companyId ?? null);
     res.json(result);
   } catch (err) {
     next(err);
@@ -97,7 +97,7 @@ coreRouter.post('/recent-items/track', authenticate, async (req: Request, res: R
  */
 coreRouter.post('/track-recent', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CoreService.trackRecentItem(req.user!.id, req.body);
+    const result = await CoreService.trackRecentItem(req.user!.id, req.body, req.user!.tenant_id, req.companyId ?? null);
     res.json(result);
   } catch (err) {
     next(err);
@@ -131,7 +131,7 @@ feedShortcutRouter.get('/sidebar-feed', authenticate, async (req: Request, res: 
  */
 feedShortcutRouter.post('/sidebar-feed/mark-read', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CoreService.markNotificationsRead(req.user!.id);
+    const result = await CoreService.markNotificationsRead(req.user!.id, req.companyId ?? null);
     res.json(result);
   } catch (err) {
     next(err);
@@ -147,7 +147,7 @@ feedShortcutRouter.post('/sidebar-feed/mark-read', authenticate, async (req: Req
  */
 feedShortcutRouter.get('/recent-items', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CoreService.getRecentItems(req.user!.id);
+    const result = await CoreService.getRecentItems(req.user!.id, req.companyId ?? null);
     res.json(result);
   } catch (err) {
     next(err);
@@ -163,7 +163,7 @@ feedShortcutRouter.get('/recent-items', authenticate, async (req: Request, res: 
  */
 feedShortcutRouter.post('/recent-items/track', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CoreService.trackRecentItem(req.user!.id, req.body);
+    const result = await CoreService.trackRecentItem(req.user!.id, req.body, req.user!.tenant_id, req.companyId ?? null);
     res.json(result);
   } catch (err) {
     next(err);

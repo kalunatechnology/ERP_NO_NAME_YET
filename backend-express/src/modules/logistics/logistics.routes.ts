@@ -9,6 +9,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
+import { ForbiddenError, NotFoundError } from '../../utils/errors';
 
 export const logisticsRouter = Router();
 
@@ -23,10 +24,16 @@ export const logisticsRouter = Router();
  */
 logisticsRouter.post('/shipments/:id/proof-of-delivery', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses logistics.');
+    const shipment = await prisma.logistics_shipment.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
+    if (!shipment) throw new NotFoundError('Shipment');
     const pod = await prisma.logistics_proof_of_delivery.create({
       data: {
         id: crypto.randomUUID(),
-        shipment_id: req.params.id,
+        tenant_id: shipment.tenant_id,
+        company_id: req.companyId,
+        created_by_id: req.user?.id,
+        shipment_id: shipment.id,
         receiver_name: req.body.recipient_name ?? req.body.receiver_name ?? 'Recipient',
         received_at: new Date(),
         remarks: req.body.remarks ?? '',

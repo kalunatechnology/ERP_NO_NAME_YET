@@ -71,8 +71,8 @@ export class PeriodClosingService {
  * Data/side effects: Reads or mutates Prisma model(s) `fin_fiscal_period`, `fin_journal_entry`, `fin_journal_line`, `fin_account`, `fin_financial_snapshot`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async closeFiscalPeriod(periodId: string, closedByUserId: string) {
-    const period = await prisma.fin_fiscal_period.findUnique({ where: { id: periodId } });
+  static async closeFiscalPeriod(periodId: string, closedByUserId: string, companyId: string) {
+    const period = await prisma.fin_fiscal_period.findFirst({ where: { id: periodId, company_id: companyId } });
     if (!period) throw new NotFoundError('FiscalPeriod');
     if (period.status !== 'OPEN') throw new ValidationError(`Periode sudah berstatus ${period.status}.`);
 
@@ -107,7 +107,7 @@ export class PeriodClosingService {
     }).then(r => r.map(e => e.id));
 
     const lines = await prisma.fin_journal_line.findMany({
-      where: { journal_entry_id: { in: postedIds } },
+      where: { journal_entry_id: { in: postedIds }, company_id: companyId },
     });
 
     // Hitung revenue vs expense untuk periode ini
@@ -190,7 +190,7 @@ export class PeriodClosingService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async executeYearEndClosing(fiscalYearId: string, companyId: string, closedByUserId: string) {
-    const fiscalYear = await prisma.fin_fiscal_year.findUnique({ where: { id: fiscalYearId } });
+    const fiscalYear = await prisma.fin_fiscal_year.findFirst({ where: { id: fiscalYearId, company_id: companyId } });
     if (!fiscalYear) throw new NotFoundError('FiscalYear');
     if (fiscalYear.company_id && fiscalYear.company_id !== companyId) throw new ValidationError('Tahun fiskal berada di luar company aktif.');
     if (fiscalYear.status === 'CLOSED') throw new ValidationError('Tahun fiskal sudah pernah ditutup.');
@@ -216,7 +216,7 @@ export class PeriodClosingService {
     }).then(r => r.map(e => e.id));
 
     const lines = await prisma.fin_journal_line.findMany({
-      where: { journal_entry_id: { in: postedIds } },
+      where: { journal_entry_id: { in: postedIds }, company_id: companyId },
     });
 
     // Akumulasi saldo per akun nominal
@@ -253,6 +253,8 @@ export class PeriodClosingService {
           account_type:            'EQUITY',
           normal_balance:          'CREDIT',
           company_id:              companyId,
+          tenant_id:               fiscalYear.tenant_id,
+          created_by_id:           closedByUserId,
           allow_manual_posting:    false,
           reconciliation_required: false,
           status:                  'ACTIVE',
@@ -273,42 +275,43 @@ export class PeriodClosingService {
           source_document_id: fiscalYearId,
           company_id:         companyId,
           tenant_id:          fiscalYear.tenant_id,
+          created_by_id:      closedByUserId,
         },
       });
 
-      let linesCreated = 0;
-      for (const acc of nominalAccounts) {
+      const closingLines = nominalAccounts.flatMap((acc) => {
         const balance = accMap.get(acc.id) ?? 0;
-        if (Math.abs(balance) < 0.01) continue;
-
+        if (Math.abs(balance) < 0.01) return [];
         const isRevenue = acc.account_type === 'REVENUE';
-        await tx.fin_journal_line.create({
-          data: {
+        return [{
             id:               crypto.randomUUID(),
+            tenant_id:        fiscalYear.tenant_id,
+            company_id:       companyId,
+            created_by_id:    closedByUserId,
             journal_entry_id: entryId,
             account_id:       acc.id,
             // Revenue (CREDIT normal): Debit untuk zero-out
             // Expense (DEBIT normal): Credit untuk zero-out
             debit_base:  isRevenue ? new Decimal(Math.abs(balance)) : null,
             credit_base: isRevenue ? null : new Decimal(Math.abs(balance)),
-          },
-        });
-        linesCreated++;
-      }
+        }];
+      });
 
       // Offset ke Laba Ditahan 3200
       if (Math.abs(netProfitLoss) > 0.01) {
-        await tx.fin_journal_line.create({
-          data: {
+        closingLines.push({
             id:               crypto.randomUUID(),
+            tenant_id:        fiscalYear.tenant_id,
+            company_id:       companyId,
+            created_by_id:    closedByUserId,
             journal_entry_id: entryId,
             account_id:       retainedEarningsAccount!.id,
             debit_base:  netProfitLoss < 0 ? new Decimal(Math.abs(netProfitLoss)) : null,
             credit_base: netProfitLoss >= 0 ? new Decimal(netProfitLoss) : null,
-          },
         });
-        linesCreated++;
       }
+      if (closingLines.length) await tx.fin_journal_line.createMany({ data: closingLines });
+      const linesCreated = closingLines.length;
 
       // Tutup semua periode & tahun fiskal
       await tx.fin_fiscal_period.updateMany({
@@ -359,12 +362,12 @@ export class PeriodClosingService {
  * Data/side effects: Reads or mutates Prisma model(s) `fin_fiscal_year`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async reopenFiscalYear(fiscalYearId: string, reason: string, reopenedByUserId: string) {
+  static async reopenFiscalYear(fiscalYearId: string, reason: string, reopenedByUserId: string, companyId: string) {
     if (!reason || reason.trim().length < 10) {
       throw new ValidationError('Alasan pembukaan kembali buku tahunan wajib diisi minimal 10 karakter.');
     }
 
-    const fiscalYear = await prisma.fin_fiscal_year.findUnique({ where: { id: fiscalYearId } });
+    const fiscalYear = await prisma.fin_fiscal_year.findFirst({ where: { id: fiscalYearId, company_id: companyId } });
     if (!fiscalYear) throw new NotFoundError('FiscalYear');
     if (fiscalYear.status !== 'CLOSED') throw new ValidationError('Tahun fiskal belum ditutup.');
 
@@ -372,6 +375,7 @@ export class PeriodClosingService {
     const closingEntry = await prisma.fin_journal_entry.findFirst({
       where: {
         source_document_id: fiscalYearId,
+        company_id: companyId,
         description:        { contains: 'Jurnal Penutup Tahunan' },
         status:             'POSTED',
       },
@@ -382,7 +386,7 @@ export class PeriodClosingService {
     }
 
     const originalLines = await prisma.fin_journal_line.findMany({
-      where: { journal_entry_id: closingEntry.id },
+      where: { journal_entry_id: closingEntry.id, company_id: companyId },
     });
 
     await prisma.$transaction(async (tx) => {
@@ -391,6 +395,9 @@ export class PeriodClosingService {
       await tx.fin_journal_entry.create({
         data: {
           id:                   reversalEntryId,
+          tenant_id:            fiscalYear.tenant_id,
+          company_id:           companyId,
+          created_by_id:        reopenedByUserId,
           entry_number:         `REV-CLOSE-${fiscalYear.fiscal_year_name}-${Date.now()}`,
           description:          `ROLLBACK Jurnal Penutup ${fiscalYear.fiscal_year_name}: ${reason}`,
           status:               'POSTED',
@@ -400,18 +407,19 @@ export class PeriodClosingService {
         },
       });
 
-      // Balik semua baris (debit ↔ credit)
-      for (const line of originalLines) {
-        await tx.fin_journal_line.create({
-          data: {
+      // Balik semua baris (debit ↔ credit) dalam satu round trip.
+      if (originalLines.length) await tx.fin_journal_line.createMany({
+        data: originalLines.map((line) => ({
             id:               crypto.randomUUID(),
+            tenant_id:        line.tenant_id,
+            company_id:       companyId,
+            created_by_id:    reopenedByUserId,
             journal_entry_id: reversalEntryId,
             account_id:       line.account_id,
             debit_base:       line.credit_base, // swap
             credit_base:      line.debit_base,  // swap
-          },
-        });
-      }
+        })),
+      });
 
       // Tandai jurnal penutup asli sebagai REVERSED
       await tx.fin_journal_entry.update({
@@ -421,7 +429,7 @@ export class PeriodClosingService {
 
       // Buka kembali semua periode & tahun fiskal
       await tx.fin_fiscal_period.updateMany({
-        where: { fiscal_year_id: fiscalYearId },
+        where: { fiscal_year_id: fiscalYearId, company_id: companyId },
         data:  { status: 'OPEN' },
       });
       await tx.fin_fiscal_year.update({

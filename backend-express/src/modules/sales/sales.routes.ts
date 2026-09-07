@@ -9,9 +9,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { NotFoundError, ValidationError } from '../../utils/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 
 export const salesRouter = Router();
+
+function activeCompanyId(req: Request): string {
+  if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses data sales.');
+  return req.companyId;
+}
 
 // =============================================================================
 // QUOTATION ACTIONS
@@ -27,8 +32,10 @@ export const salesRouter = Router();
  */
 salesRouter.post('/quotations/:id/submit-approval', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const quotation = await prisma.sales_quotation.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
+    if (!quotation) throw new NotFoundError('Quotation');
     const updated = await prisma.sales_quotation.update({
-      where: { id: req.params.id },
+      where: { id: quotation.id },
       data: { status: 'PENDING_APPROVAL' },
     });
     res.json(updated);
@@ -47,8 +54,10 @@ salesRouter.post('/quotations/:id/submit-approval', async (req: Request, res: Re
  */
 salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const quotation = await prisma.sales_quotation.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
+    if (!quotation) throw new NotFoundError('Quotation');
     const updated = await prisma.sales_quotation.update({
-      where: { id: req.params.id },
+      where: { id: quotation.id },
       data: { status: 'SENT' },
     });
     res.json(updated);
@@ -71,8 +80,10 @@ salesRouter.post('/quotations/:id/customer-decision', async (req: Request, res: 
     if (!['ACCEPTED', 'REJECTED'].includes(decision)) {
       throw new ValidationError('Decision must be ACCEPTED or REJECTED.');
     }
+    const quotation = await prisma.sales_quotation.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
+    if (!quotation) throw new NotFoundError('Quotation');
     const updated = await prisma.sales_quotation.update({
-      where: { id: req.params.id },
+      where: { id: quotation.id },
       data: { status: decision },
     });
     res.json(updated);
@@ -95,8 +106,10 @@ salesRouter.post('/quotations/:id/customer-decision', async (req: Request, res: 
  */
 salesRouter.post('/orders/:id/confirm', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const order = await prisma.sales_order.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
+    if (!order) throw new NotFoundError('Order');
     const updated = await prisma.sales_order.update({
-      where: { id: req.params.id },
+      where: { id: order.id },
       data: { status: 'CONFIRMED' },
     });
     res.json(updated);
@@ -115,8 +128,10 @@ salesRouter.post('/orders/:id/confirm', async (req: Request, res: Response, next
  */
 salesRouter.post('/orders/:id/allocate', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const order = await prisma.sales_order.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
+    if (!order) throw new NotFoundError('Order');
     const updated = await prisma.sales_order.update({
-      where: { id: req.params.id },
+      where: { id: order.id },
       data: { status: 'ALLOCATED' },
     });
     res.json(updated);
@@ -135,13 +150,27 @@ salesRouter.post('/orders/:id/allocate', async (req: Request, res: Response, nex
  */
 salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const order = await prisma.sales_order.findUnique({ where: { id: req.params.id } });
+    const companyId = activeCompanyId(req);
+    const order = await prisma.sales_order.findFirst({ where: { id: req.params.id, company_id: companyId } });
     if (!order) throw new NotFoundError('Order');
 
-    const pmUser = await prisma.iam_user.findFirst({ where: { username: 'pm' } });
+    const existing = await prisma.project_project.findFirst({ where: { sales_order_id: order.id, company_id: companyId } });
+    if (existing) {
+      res.json(existing);
+      return;
+    }
+    const pmCandidate = await prisma.iam_user.findFirst({ where: { username: 'pm', is_active: true } });
+    const pmMembership = pmCandidate ? await prisma.iam_user_company_membership.findFirst({
+      where: { user_id: pmCandidate.id, company_id: companyId, status: 'ACTIVE' },
+      select: { id: true },
+    }) : null;
+    const pmUser = pmMembership ? pmCandidate : null;
     const project = await prisma.project_project.create({
       data: {
         id: crypto.randomUUID(),
+        tenant_id: order.tenant_id,
+        company_id: companyId,
+        created_by_id: req.user?.id,
         customer_party_id: order.customer_party_id,
         customer_name: '',
         description: '',
@@ -178,8 +207,10 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
  */
 salesRouter.post('/deliveries/:id/dispatch', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const delivery = await prisma.sales_delivery.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
+    if (!delivery) throw new NotFoundError('Delivery');
     const updated = await prisma.sales_delivery.update({
-      where: { id: req.params.id },
+      where: { id: delivery.id },
       data: { delivery_status: 'DISPATCHED' },
     });
     res.json(updated);

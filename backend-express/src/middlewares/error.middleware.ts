@@ -46,6 +46,20 @@ export function errorHandler(
   // -----------------------------------------------------------------------
   // 2. Prisma Errors
   // -----------------------------------------------------------------------
+  if (
+    err instanceof Prisma.PrismaClientInitializationError ||
+    err instanceof Prisma.PrismaClientRustPanicError
+  ) {
+    console.error('[database-unavailable]', err.message);
+    res.status(503).json({
+      success: false,
+      error: 'DATABASE_UNAVAILABLE',
+      detail: 'Layanan database sementara tidak tersedia. Silakan coba kembali.',
+      request_id: req.requestId,
+    });
+    return;
+  }
+
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     switch (err.code) {
       // Unique constraint violation → 409

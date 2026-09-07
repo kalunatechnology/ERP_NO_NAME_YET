@@ -9,6 +9,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
+import { ForbiddenError, NotFoundError } from '../../utils/errors';
 
 export const procurementRouter = Router();
 
@@ -23,9 +24,21 @@ export const procurementRouter = Router();
  */
 procurementRouter.post('/purchase-requisitions/:id/convert-to-rfq', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses procurement.');
+    const requisition = await prisma.proc_purchase_requisition.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
+    if (!requisition) throw new NotFoundError('PurchaseRequisition');
+    const existing = await prisma.proc_rfq.findFirst({ where: { requisition_id: requisition.id, company_id: req.companyId } });
+    if (existing) {
+      res.json(existing);
+      return;
+    }
     const rfq = await prisma.proc_rfq.create({
       data: {
         id: crypto.randomUUID(),
+        tenant_id: requisition.tenant_id,
+        company_id: req.companyId,
+        created_by_id: req.user?.id,
+        requisition_id: requisition.id,
         status: 'DRAFT',
         issue_date: new Date(),
       },
@@ -47,10 +60,21 @@ procurementRouter.post('/purchase-requisitions/:id/convert-to-rfq', async (req: 
  */
 procurementRouter.post('/purchase-orders/:id/three-way-match', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses procurement.');
+    const purchaseOrder = await prisma.proc_purchase_order.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
+    if (!purchaseOrder) throw new NotFoundError('PurchaseOrder');
+    const existing = await prisma.proc_three_way_match.findFirst({ where: { purchase_order_id: purchaseOrder.id, company_id: req.companyId } });
+    if (existing) {
+      res.json(existing);
+      return;
+    }
     const match = await prisma.proc_three_way_match.create({
       data: {
         id: crypto.randomUUID(),
-        purchase_order_id: req.params.id,
+        tenant_id: purchaseOrder.tenant_id,
+        company_id: req.companyId,
+        created_by_id: req.user?.id,
+        purchase_order_id: purchaseOrder.id,
         match_status: 'MATCHED',
         reviewed_at: new Date(),
       },

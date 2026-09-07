@@ -8,6 +8,7 @@
  * Module codes:
  *   SALES_ORDER, PROJECT, PURCHASE_ORDER, SALES_QUOTATION, INVOICE, PAYMENT, PROCUREMENT
  */
+import { AppError } from '../utils/errors';
 
 export interface TransitionContext {
   user: {
@@ -41,25 +42,25 @@ export interface WorkflowDocument {
   [key: string]: unknown;
 }
 
-export class WorkflowValidationError extends Error {
+export class WorkflowValidationError extends AppError {
   public readonly errors?: Record<string, unknown>;
   constructor(message: string, errors?: Record<string, unknown>) {
-    super(message);
+    super(message, 400, 'WORKFLOW_VALIDATION_ERROR', errors);
     this.name = 'WorkflowValidationError';
     this.errors = errors;
   }
 }
 
-export class WorkflowTransitionError extends Error {
+export class WorkflowTransitionError extends AppError {
   constructor(message: string) {
-    super(message);
+    super(message, 400, 'WORKFLOW_TRANSITION_ERROR');
     this.name = 'WorkflowTransitionError';
   }
 }
 
-export class WorkflowNotFoundError extends Error {
+export class WorkflowNotFoundError extends AppError {
   constructor(tenantCode: string, moduleCode: string) {
-    super(`No workflow registered for tenant '${tenantCode}' module '${moduleCode}'.`);
+    super(`No workflow registered for tenant '${tenantCode}' module '${moduleCode}'.`, 404, 'WORKFLOW_NOT_FOUND');
     this.name = 'WorkflowNotFoundError';
   }
 }

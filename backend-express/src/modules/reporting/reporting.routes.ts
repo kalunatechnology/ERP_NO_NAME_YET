@@ -9,8 +9,18 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
+import { ForbiddenError, ValidationError } from '../../utils/errors';
 
 export const reportingRouter = Router();
+
+function activeCompanyId(req: Request): string {
+  if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses laporan.');
+  return req.companyId;
+}
+
+function reportLimit(req: Request, fallback = 100): number {
+  return Math.min(200, Math.max(1, Math.trunc(Number(req.query.page_size) || fallback)));
+}
 
 // Reporting is a projection boundary: reports may be read/exported, but source
 // records must be changed through their owning CRM, project, or finance workflow.
@@ -30,7 +40,7 @@ reportingRouter.use((req, res, next) => {
  */
 reportingRouter.get('/crm-sales-dashboard', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const companyScope = { company_id: req.companyId! };
+    const companyScope = { company_id: activeCompanyId(req) };
     const [oppCount, wonCount, totalPipeline] = await Promise.all([
       prisma.crm_opportunity.count({ where: companyScope }),
       prisma.crm_opportunity.count({ where: { ...companyScope, status: 'WON' } }),
@@ -62,7 +72,7 @@ reportingRouter.get('/crm-sales-dashboard', async (req: Request, res: Response, 
  */
 reportingRouter.get('/finance-main-dashboard', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const companyScope = { company_id: req.companyId! };
+    const companyScope = { company_id: activeCompanyId(req) };
     const [postedBills, totalPayments] = await Promise.all([
       prisma.fin_billing_document.aggregate({
         where: { ...companyScope, status: 'POSTED' },
@@ -97,8 +107,10 @@ reportingRouter.get('/finance-main-dashboard', async (req: Request, res: Respons
  */
 reportingRouter.get('/portfolio-financial-performance', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const projects = await prisma.project_project.findMany({
-      where: { company_id: req.companyId! },
+    const companyId = activeCompanyId(req);
+    const take = reportLimit(req);
+    const [projects, total] = await Promise.all([prisma.project_project.findMany({
+      where: { company_id: companyId },
       select: {
         id: true,
         project_name: true,
@@ -107,8 +119,10 @@ reportingRouter.get('/portfolio-financial-performance', async (req: Request, res
         progress_percent: true,
         status: true,
       },
-    });
-    res.json({ projects, count: projects.length });
+      take: take + 1,
+    }), prisma.project_project.count({ where: { company_id: companyId } })]);
+    const hasMore = projects.length > take;
+    res.json({ projects: projects.slice(0, take), count: total, has_more: hasMore });
   } catch (err) {
     next(err);
   }
@@ -132,21 +146,24 @@ reportingRouter.get('/periodic-project-summary', async (req: Request, res: Respo
     const defaultDays = periodType === 'DAILY' ? 1 : periodType === 'WEEKLY' ? 7 : 30;
     const start = req.query.start_date ? new Date(String(req.query.start_date)) : new Date(now.getTime() - (defaultDays - 1) * 86400000);
     const end = req.query.end_date ? new Date(String(req.query.end_date)) : now;
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) throw new ValidationError('Rentang tanggal laporan tidak valid.');
     end.setHours(23, 59, 59, 999);
     const staffOnly = req.user?.active_role_code === 'STAFF';
 
-    const tasks = await prisma.project_daily_task.findMany({
-      where: {
-        company_id: req.companyId!,
+    const take = reportLimit(req);
+    const baseWhere = {
+        company_id: activeCompanyId(req),
         planned_date: { gte: start, lte: end },
         ...(staffOnly ? { owner_id: req.user!.id } : {}),
-      },
+    };
+    const [tasks, total, completed, blocked] = await Promise.all([
+      prisma.project_daily_task.findMany({ where: baseWhere,
       orderBy: { planned_date: 'asc' },
-    });
-
-    const total = tasks.length;
-    const completed = tasks.filter((task) => ['COMPLETED', 'DONE'].includes(task.status)).length;
-    const blocked = tasks.filter((task) => task.is_blocked || task.status === 'BLOCKED').length;
+      take: take + 1 }),
+      prisma.project_daily_task.count({ where: baseWhere }),
+      prisma.project_daily_task.count({ where: { ...baseWhere, status: { in: ['COMPLETED', 'DONE'] } } }),
+      prisma.project_daily_task.count({ where: { ...baseWhere, OR: [{ is_blocked: true }, { status: 'BLOCKED' }] } }),
+    ]);
     return res.json({
       period_type: periodType,
       start_date: start,
@@ -157,7 +174,8 @@ reportingRouter.get('/periodic-project-summary', async (req: Request, res: Respo
         blocked_tasks: blocked,
         completion_rate_percent: total ? Math.round((completed / total) * 10000) / 100 : 0,
       },
-      tasks,
+      tasks: tasks.slice(0, take),
+      has_more: tasks.length > take,
     });
   } catch (err) {
     return next(err);
@@ -175,27 +193,29 @@ reportingRouter.get('/attendance-summary', async (req: Request, res: Response, n
     const now = new Date();
     const start = req.query.start_date ? new Date(String(req.query.start_date)) : new Date(now.getFullYear(), now.getMonth(), 1);
     const end = req.query.end_date ? new Date(String(req.query.end_date)) : now;
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) throw new ValidationError('Rentang tanggal laporan tidak valid.');
     end.setHours(23, 59, 59, 999);
     const staffOnly = req.user?.active_role_code === 'STAFF';
-    const entries = await prisma.project_timesheet.findMany({
-      where: {
-        company_id: req.companyId!,
+    const take = reportLimit(req);
+    const where = {
+        company_id: activeCompanyId(req),
         work_date: { gte: start, lte: end },
         ...(staffOnly ? { employee_id: req.user!.id } : {}),
-      },
+    };
+    const [entries, totals] = await Promise.all([prisma.project_timesheet.findMany({ where,
       orderBy: { work_date: 'desc' },
-    });
+      take: take + 1 }), prisma.project_timesheet.aggregate({ where, _sum: { hours: true }, _count: { _all: true } })]);
 
-    const totalHours = entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0);
-    const workDays = new Set(entries.filter((entry) => entry.work_date).map((entry) => entry.work_date!.toISOString().slice(0, 10))).size;
-    res.json({ start_date: start, end_date: end, total_hours: totalHours, work_days: workDays, entry_count: entries.length, entries });
+    const visibleEntries = entries.slice(0, take);
+    const workDays = new Set(visibleEntries.filter((entry) => entry.work_date).map((entry) => entry.work_date!.toISOString().slice(0, 10))).size;
+    res.json({ start_date: start, end_date: end, total_hours: totals._sum.hours ?? 0, work_days: workDays, entry_count: totals._count._all, entries: visibleEntries, has_more: entries.length > take });
   } catch (err) {
     next(err);
   }
 });
 
 // REST ViewSets
-reportingRouter.use('/finance-main-dashboards', createCrudRouter({ modelName: 'view_finance_main_dashboard' }));
-reportingRouter.use('/project-dashboards', createCrudRouter({ modelName: 'view_project_dashboard' }));
-reportingRouter.use('/project-timeline-costs', createCrudRouter({ modelName: 'view_project_timeline_cost' }));
-reportingRouter.use('/crm-sales-dashboards', createCrudRouter({ modelName: 'view_crm_sales_dashboard' }));
+reportingRouter.use('/finance-main-dashboards', createCrudRouter({ modelName: 'view_finance_main_dashboard', lookupField: 'company_id', readOnly: true }));
+reportingRouter.use('/project-dashboards', createCrudRouter({ modelName: 'view_project_dashboard', lookupField: 'project_id', readOnly: true }));
+reportingRouter.use('/project-timeline-costs', createCrudRouter({ modelName: 'view_project_timeline_cost', lookupField: 'project_id', readOnly: true }));
+reportingRouter.use('/crm-sales-dashboards', createCrudRouter({ modelName: 'view_crm_sales_dashboard', lookupField: 'company_id', readOnly: true }));

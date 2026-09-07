@@ -10,9 +10,14 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { NotFoundError } from '../../utils/errors';
+import { ForbiddenError, NotFoundError } from '../../utils/errors';
 
 export const projectsRouter = Router();
+
+function activeCompanyId(req: Request): string {
+  if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses data proyek.');
+  return req.companyId;
+}
 
 // =============================================================================
 // 0. CUSTOMERS / CLIENTS LIST (Strict Company & Tenant Isolated)
@@ -28,38 +33,36 @@ export const projectsRouter = Router();
  */
 projectsRouter.get('/customers', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const companyId = req.companyId;
+    const companyId = activeCompanyId(req);
     const tenantId = req.user?.tenant_id;
 
-    // 1. Get from existing projects in database (Strict Company & Tenant Scoped)
-    const projectCustomers = await prisma.project_project.findMany({
+    const [projectCustomers, parties, crmCustomers] = await Promise.all([
+      prisma.project_project.findMany({
       where: {
-        ...(companyId ? { company_id: companyId } : {}),
+        company_id: companyId,
         ...(tenantId ? { tenant_id: tenantId } : {}),
       },
       select: { customer_name: true },
       distinct: ['customer_name'],
-    });
-
-    // 2. Get from master_party (Strict Tenant Scoped)
-    const parties = await prisma.master_party.findMany({
+      }),
+      prisma.master_party.findMany({
       where: {
         ...(tenantId ? { tenant_id: tenantId } : {}),
+        company_id: companyId,
         party_type: 'CUSTOMER',
         status: 'ACTIVE',
       },
       select: { display_name: true, legal_name: true },
-    });
-
-    // 3. Get from CRM inquiries (Strict Company & Tenant Scoped)
-    const crmCustomers = await prisma.crm_customer_inquiry.findMany({
+      }),
+      prisma.crm_customer_inquiry.findMany({
       where: {
-        ...(companyId ? { company_id: companyId } : {}),
+        company_id: companyId,
         ...(tenantId ? { tenant_id: tenantId } : {}),
       },
       select: { customer_name: true },
       distinct: ['customer_name'],
-    });
+      }),
+    ]);
 
     const set = new Set<string>();
     projectCustomers.forEach(p => { if (p.customer_name?.trim()) set.add(p.customer_name.trim()); });
@@ -107,11 +110,14 @@ projectsRouter.post('/customers', async (req: Request, res: Response, next: Next
       return;
     }
 
-    const tenantId = req.user?.tenant_id ?? '24b709e5-ae7a-4ded-be06-c0e9f5998f9d';
+    const tenantId = req.user?.tenant_id;
+    const companyId = activeCompanyId(req);
+    if (!tenantId) throw new ForbiddenError('Tenant user tidak tersedia.');
 
     const existing = await prisma.master_party.findFirst({
       where: {
         tenant_id: tenantId,
+        company_id: companyId,
         OR: [
           { display_name: { equals: clientName, mode: 'insensitive' } },
           { legal_name: { equals: clientName, mode: 'insensitive' } },
@@ -135,6 +141,8 @@ projectsRouter.post('/customers', async (req: Request, res: Response, next: Next
       data: {
         id: partyId,
         tenant_id: tenantId,
+        company_id: companyId,
+        created_by_id: req.user?.id,
         party_code: `CUST-${cleanCode || Date.now().toString().slice(-4)}`,
         party_type: 'CUSTOMER',
         legal_name: clientName,
@@ -169,7 +177,7 @@ projectsRouter.post('/customers', async (req: Request, res: Response, next: Next
  */
 const handleHierarchy = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = await ProjectsService.getProjectHierarchy(req.params.id);
+    const data = await ProjectsService.getProjectHierarchy(req.params.id, activeCompanyId(req));
     res.json(data);
   } catch (err) {
     next(err);
@@ -209,7 +217,7 @@ projectsRouter.get('/:id/hierarchy', handleHierarchy);
  */
 projectsRouter.post('/projects/:id/recalculate_health', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.calculateProjectEVM(req.params.id);
+    const result = await ProjectsService.calculateProjectEVM(req.params.id, new Date(), activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -226,7 +234,7 @@ projectsRouter.post('/projects/:id/recalculate_health', async (req: Request, res
  */
 projectsRouter.get('/projects/:id/health', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.calculateProjectEVM(req.params.id);
+    const result = await ProjectsService.calculateProjectEVM(req.params.id, new Date(), activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -243,7 +251,7 @@ projectsRouter.get('/projects/:id/health', async (req: Request, res: Response, n
  */
 projectsRouter.get('/projects/:id/evm-metrics', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.calculateProjectEVM(req.params.id);
+    const result = await ProjectsService.calculateProjectEVM(req.params.id, new Date(), activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -260,7 +268,7 @@ projectsRouter.get('/projects/:id/evm-metrics', async (req: Request, res: Respon
  */
 projectsRouter.get('/projects/:id/evm', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.calculateProjectEVM(req.params.id);
+    const result = await ProjectsService.calculateProjectEVM(req.params.id, new Date(), activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -277,7 +285,7 @@ projectsRouter.get('/projects/:id/evm', async (req: Request, res: Response, next
  */
 projectsRouter.post('/projects/:id/advance_stage', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.advanceStage(req.params.id, req.body.stage ?? req.body.target_status);
+    const result = await ProjectsService.advanceStage(req.params.id, req.body.stage ?? req.body.target_status, activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -294,7 +302,7 @@ projectsRouter.post('/projects/:id/advance_stage', async (req: Request, res: Res
  */
 projectsRouter.post('/projects/:id/advance-stage', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.advanceStage(req.params.id, req.body.stage ?? req.body.target_status);
+    const result = await ProjectsService.advanceStage(req.params.id, req.body.stage ?? req.body.target_status, activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -311,7 +319,7 @@ projectsRouter.post('/projects/:id/advance-stage', async (req: Request, res: Res
  */
 projectsRouter.get('/projects/:id/financial-performance', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.calculateProjectEVM(req.params.id);
+    const result = await ProjectsService.calculateProjectEVM(req.params.id, new Date(), activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -329,7 +337,7 @@ projectsRouter.get('/projects/:id/financial-performance', async (req: Request, r
 projectsRouter.get('/projects/:id/funding_requests', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const fundings = await prisma.fin_project_funding.findMany({
-      where: { project_id: req.params.id },
+      where: { project_id: req.params.id, company_id: activeCompanyId(req) },
     });
     res.json(fundings);
   } catch (err) {
@@ -347,12 +355,14 @@ projectsRouter.get('/projects/:id/funding_requests', async (req: Request, res: R
  */
 projectsRouter.post('/projects/:id/funding_requests', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const project = await prisma.project_project.findUnique({ where: { id: req.params.id } });
+    const project = await prisma.project_project.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
     if (!project) throw new NotFoundError('Project');
     const funding = await prisma.fin_project_funding.create({
       data: {
         id: crypto.randomUUID(),
         tenant_id: project.tenant_id,
+        company_id: project.company_id,
+        created_by_id: req.user?.id,
         project_id: project.id,
         funding_type: req.body.source ?? 'INTERNAL',
         requested_amount: req.body.amount ?? req.body.requested_amount ?? 0,
@@ -379,8 +389,10 @@ projectsRouter.post('/projects/:id/funding_requests', async (req: Request, res: 
 projectsRouter.post('/projects/:id/update_financials', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { budget_amount, contract_amount, target_margin_percent } = req.body;
+    const project = await prisma.project_project.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
+    if (!project) throw new NotFoundError('Project');
     const updated = await prisma.project_project.update({
-      where: { id: req.params.id },
+      where: { id: project.id },
       data: {
         budget_amount: budget_amount !== undefined ? budget_amount : undefined,
         contract_amount: contract_amount !== undefined ? contract_amount : undefined,
@@ -403,9 +415,10 @@ projectsRouter.post('/projects/:id/update_financials', async (req: Request, res:
  */
 projectsRouter.get('/projects/:id/costs', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const companyId = activeCompanyId(req);
     const [entries, expenses] = await Promise.all([
-      prisma.fin_project_cost_entry.findMany({ where: { project_id: req.params.id } }),
-      prisma.project_expense.findMany({ where: { project_id: req.params.id } }),
+      prisma.fin_project_cost_entry.findMany({ where: { project_id: req.params.id, company_id: companyId } }),
+      prisma.project_expense.findMany({ where: { project_id: req.params.id, company_id: companyId } }),
     ]);
     res.json({ entries, expenses });
   } catch (err) {
@@ -424,7 +437,7 @@ projectsRouter.get('/projects/:id/costs', async (req: Request, res: Response, ne
 projectsRouter.get('/projects/:id/milestones', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const milestones = await prisma.project_milestone.findMany({
-      where: { project_id: req.params.id },
+      where: { project_id: req.params.id, company_id: activeCompanyId(req) },
     });
     res.json(milestones);
   } catch (err) {
@@ -447,61 +460,70 @@ projectsRouter.get('/projects/:id/milestones', async (req: Request, res: Respons
 const handleAssignMembers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const mainTaskId = req.params.id;
-    const mainTask = await prisma.project_main_task.findUnique({ where: { id: mainTaskId } });
+    const companyId = activeCompanyId(req);
+    const mainTask = await prisma.project_main_task.findFirst({ where: { id: mainTaskId, company_id: companyId } });
     if (!mainTask) throw new NotFoundError('MainTask');
 
     const rawUsers = req.body.user_ids ?? req.body.assignee ?? [];
-    const userIds: string[] = Array.isArray(rawUsers) ? rawUsers.map(String) : [String(rawUsers)].filter(Boolean);
+    const userIds: string[] = [...new Set(Array.isArray(rawUsers) ? rawUsers.map(String) : [String(rawUsers)].filter(Boolean))];
+    const memberships = userIds.length ? await prisma.iam_user_company_membership.findMany({
+      where: { company_id: companyId, user_id: { in: userIds }, status: 'ACTIVE' },
+      select: { user_id: true },
+    }) : [];
+    if (memberships.length !== userIds.length) throw new ForbiddenError('Satu atau lebih assignee berada di luar company aktif.');
 
     await prisma.$transaction(async (tx) => {
       // Remove assignments not in userIds
       await tx.project_task_assignment.deleteMany({
         where: {
           main_task_id: mainTaskId,
+          company_id: companyId,
           assignee_id: { notIn: userIds },
         },
       });
 
-      // Add new assignments
-      for (const uid of userIds) {
-        const existing = await tx.project_task_assignment.findFirst({
-          where: { main_task_id: mainTaskId, assignee_id: uid },
-        });
-        if (!existing) {
-          await tx.project_task_assignment.create({
-            data: {
+      const [existingAssignments, existingMembers] = await Promise.all([
+        tx.project_task_assignment.findMany({
+          where: { main_task_id: mainTaskId, company_id: companyId, assignee_id: { in: userIds } },
+          select: { assignee_id: true },
+        }),
+        mainTask.project_id ? tx.project_member.findMany({
+          where: { project_id: mainTask.project_id, company_id: companyId, user_id: { in: userIds } },
+          select: { user_id: true },
+        }) : Promise.resolve([]),
+      ]);
+      const assignedIds = new Set(existingAssignments.map((item) => item.assignee_id));
+      const memberIds = new Set(existingMembers.map((item) => item.user_id).filter(Boolean));
+      const newAssignments = userIds.filter((uid) => !assignedIds.has(uid)).map((uid) => ({
               id: crypto.randomUUID(),
+              tenant_id: mainTask.tenant_id,
+              company_id: companyId,
+              created_by_id: req.user?.id,
               main_task_id: mainTaskId,
               assignee_id: uid,
               assigned_by_id: req.user?.id ?? null,
               assigned_at: new Date(),
-            },
-          });
-        }
-        // Ensure Member in project
-        if (mainTask.project_id) {
-          const mExisting = await tx.project_member.findFirst({
-            where: { project_id: mainTask.project_id, user_id: uid },
-          });
-          if (!mExisting) {
-            await tx.project_member.create({
-              data: {
+      }));
+      if (newAssignments.length) await tx.project_task_assignment.createMany({ data: newAssignments });
+      if (mainTask.project_id) {
+        const newMembers = userIds.filter((uid) => !memberIds.has(uid)).map((uid) => ({
                 id: crypto.randomUUID(),
+                tenant_id: mainTask.tenant_id,
+                company_id: companyId,
+                created_by_id: req.user?.id,
                 project_id: mainTask.project_id,
                 user_id: uid,
                 project_role: 'MEMBER',
                 status: 'ACTIVE',
                 permissions_json: '{}',
                 assigned_at: new Date(),
-              },
-            });
-          }
-        }
+        }));
+        if (newMembers.length) await tx.project_member.createMany({ data: newMembers });
       }
     });
 
     const updatedAssignments = await prisma.project_task_assignment.findMany({
-      where: { main_task_id: mainTaskId },
+      where: { main_task_id: mainTaskId, company_id: companyId },
     });
     res.json({ success: true, count: userIds.length, assignments: updatedAssignments });
   } catch (err) {
@@ -544,6 +566,7 @@ const handleMainTaskOverrideProgress = async (req: Request, res: Response, next:
       Number(req.body.progress ?? 0),
       req.body.reason ?? '',
       req.user,
+      activeCompanyId(req),
     );
     res.json(updated);
   } catch (err) {
@@ -588,6 +611,7 @@ const handleWeeklyTaskOverrideProgress = async (req: Request, res: Response, nex
       Number(req.body.progress ?? 0),
       req.body.reason ?? '',
       req.user,
+      activeCompanyId(req),
     );
     res.json(updated);
   } catch (err) {
@@ -626,7 +650,7 @@ const handleWeeklyTaskOverrideProgress = async (req: Request, res: Response, nex
  */
 const handleUpdateDailyProgress = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await ProjectsService.updateDailyTaskProgress(req.params.id, req.body, req.user);
+    const updated = await ProjectsService.updateDailyTaskProgress(req.params.id, req.body, req.user, activeCompanyId(req));
     res.json(updated);
   } catch (err) {
     next(err);
@@ -680,7 +704,7 @@ projectsRouter.post('/daily-tasks/:id/update-progress', handleUpdateDailyProgres
  */
 const handleReportBlocked = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await ProjectsService.reportBlocked(req.params.id, req.body.reason ?? '', req.user);
+    const updated = await ProjectsService.reportBlocked(req.params.id, req.body.reason ?? '', req.user, activeCompanyId(req));
     res.json(updated);
   } catch (err) {
     next(err);
@@ -722,6 +746,7 @@ const handleRequestTransfer = async (req: Request, res: Response, next: NextFunc
       targetUserId,
       req.body.reason ?? '',
       req.user,
+      activeCompanyId(req),
     );
     res.json(result);
   } catch (err) {
@@ -764,6 +789,7 @@ const handleDirectReassign = async (req: Request, res: Response, next: NextFunct
       targetUserId,
       req.body.reason ?? '',
       req.user,
+      activeCompanyId(req),
     );
     res.json(result);
   } catch (err) {
@@ -809,6 +835,7 @@ projectsRouter.post('/task-transfers/:id/approve', async (req: Request, res: Res
       true,
       req.user,
       req.body.review_note ?? '',
+      activeCompanyId(req),
     );
     res.json(result);
   } catch (err) {
@@ -831,6 +858,7 @@ projectsRouter.post('/task-transfers/:id/reject', async (req: Request, res: Resp
       false,
       req.user,
       req.body.review_note ?? '',
+      activeCompanyId(req),
     );
     res.json(result);
   } catch (err) {
@@ -848,8 +876,14 @@ projectsRouter.post('/task-transfers/:id/reject', async (req: Request, res: Resp
  */
 projectsRouter.post('/task-transfers/:id/cancel', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const companyId = activeCompanyId(req);
+    const transfer = await prisma.project_task_transfer_request.findFirst({
+      where: { id: req.params.id, company_id: companyId, requested_by_id: req.user?.id, status: 'PENDING' },
+      select: { id: true },
+    });
+    if (!transfer) throw new NotFoundError('TaskTransferRequest');
     const result = await prisma.project_task_transfer_request.update({
-      where: { id: req.params.id },
+      where: { id: transfer.id },
       data: { status: 'CANCELLED' },
     });
     res.json(result);
@@ -891,11 +925,11 @@ projectsRouter.use('/main-tasks', createCrudRouter({
     delete data.override_reason;
     return data;
   },
-  afterCreate: async (_req, rec) => {
-    await ProjectsService.recalculateTaskTree({ mainTaskId: rec.id });
+  afterCreate: async (req, rec) => {
+    await ProjectsService.recalculateTaskTree({ mainTaskId: rec.id, companyId: activeCompanyId(req) });
   },
-  afterUpdate: async (_req, rec) => {
-    await ProjectsService.recalculateTaskTree({ mainTaskId: rec.id });
+  afterUpdate: async (req, rec) => {
+    await ProjectsService.recalculateTaskTree({ mainTaskId: rec.id, companyId: activeCompanyId(req) });
   },
 }));
 
@@ -927,11 +961,11 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     delete data.override_reason;
     return data;
   },
-  afterCreate: async (_req, rec) => {
-    await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id });
+  afterCreate: async (req, rec) => {
+    await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id, companyId: activeCompanyId(req) });
   },
-  afterUpdate: async (_req, rec) => {
-    await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id });
+  afterUpdate: async (req, rec) => {
+    await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id, companyId: activeCompanyId(req) });
   },
 }));
 
@@ -982,11 +1016,11 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     }
     return data;
   },
-  afterCreate: async (_req, rec) => {
-    await ProjectsService.recalculateTaskTree({ dailyTaskId: rec.id });
+  afterCreate: async (req, rec) => {
+    await ProjectsService.recalculateTaskTree({ dailyTaskId: rec.id, companyId: activeCompanyId(req) });
   },
-  afterUpdate: async (_req, rec) => {
-    await ProjectsService.recalculateTaskTree({ dailyTaskId: rec.id });
+  afterUpdate: async (req, rec) => {
+    await ProjectsService.recalculateTaskTree({ dailyTaskId: rec.id, companyId: activeCompanyId(req) });
   },
 }));
 
@@ -1040,10 +1074,13 @@ projectsRouter.use('/projects', createCrudRouter({
     } else {
       // Auto-register to database master_party if it's a new client (Strict Tenant Scoped)
       const clientName = String(data.customer_name).trim();
-      const tenantId = req.user?.tenant_id ?? '24b709e5-ae7a-4ded-be06-c0e9f5998f9d';
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) throw new ForbiddenError('Tenant aktif diperlukan.');
+      const companyId = activeCompanyId(req);
       const existing = await prisma.master_party.findFirst({
         where: {
           tenant_id: tenantId,
+          company_id: companyId,
           OR: [
             { display_name: { equals: clientName, mode: 'insensitive' } },
             { legal_name: { equals: clientName, mode: 'insensitive' } },
@@ -1057,6 +1094,8 @@ projectsRouter.use('/projects', createCrudRouter({
           data: {
             id: crypto.randomUUID(),
             tenant_id: tenantId,
+            company_id: companyId,
+            created_by_id: req.user?.id,
             party_code: `CUST-${cleanCode || Date.now().toString().slice(-4)}`,
             party_type: 'CUSTOMER',
             legal_name: clientName,
@@ -1120,17 +1159,17 @@ projectsRouter.use('/control-items', createCrudRouter({
     if (data.daily_task_id && !data.item_type) data.item_type = 'TASK_CHECKLIST';
     return data;
   },
-  afterCreate: async (_req, record) => {
-    if (record.daily_task_id) await ProjectsService.recalculateTaskTree({ dailyTaskId: record.daily_task_id });
+  afterCreate: async (req, record) => {
+    if (record.daily_task_id) await ProjectsService.recalculateTaskTree({ dailyTaskId: record.daily_task_id, companyId: activeCompanyId(req) });
   },
-  afterUpdate: async (_req, record, before) => {
+  afterUpdate: async (req, record, before) => {
     const dailyTaskIds = new Set([record.daily_task_id, before.daily_task_id].filter(Boolean));
     for (const dailyTaskId of dailyTaskIds) {
-      await ProjectsService.recalculateTaskTree({ dailyTaskId });
+      await ProjectsService.recalculateTaskTree({ dailyTaskId, companyId: activeCompanyId(req) });
     }
   },
-  afterDelete: async (_req, record) => {
-    if (record.daily_task_id) await ProjectsService.recalculateTaskTree({ dailyTaskId: record.daily_task_id });
+  afterDelete: async (req, record) => {
+    if (record.daily_task_id) await ProjectsService.recalculateTaskTree({ dailyTaskId: record.daily_task_id, companyId: activeCompanyId(req) });
   },
 }));
 projectsRouter.use('/expenses', createCrudRouter({ modelName: 'project_expense', searchFields: ['description'] }));

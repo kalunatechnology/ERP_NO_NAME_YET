@@ -77,23 +77,34 @@ const SOURCE_MODULE: Partial<Record<keyof CRMData, string>> = {
  * External dependency: calls `/api/v1/commands/reporting/crm-sales-dashboard/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function loadCRMData(enabledModules?: readonly string[]): Promise<{ data: CRMData; dashboard: CRMDashboard }> {
+export async function loadCRMData(
+  enabledModules?: readonly string[],
+  bundle?: { data: Partial<CRMData>; dashboard: CRMDashboard },
+): Promise<{ data: CRMData; dashboard: CRMDashboard }> {
   const enabled = new Set((enabledModules || []).map((code) => code.toUpperCase()));
   const sources = Object.entries(CRM_SOURCES).filter(([key]) => {
     const moduleCode = SOURCE_MODULE[key as keyof CRMData];
     return !moduleCode || enabled.size === 0 || enabled.has(moduleCode);
   });
-  const entries = await Promise.all(
-    sources.map(async ([key, path]) => {
+  const emptyData = Object.fromEntries(Object.keys(CRM_SOURCES).map((key) => [key, []]));
+
+  if (bundle) {
+    return {
+      data: { ...emptyData, ...bundle.data } as CRMData,
+      dashboard: bundle.dashboard || {},
+    };
+  }
+
+  // The KPI request starts together with collection reads. Previously it waited
+  // until every CRM collection finished, creating an avoidable second waterfall.
+  const [entries, dashRes] = await Promise.all([
+    Promise.all(sources.map(async ([key, path]) => {
       const res = await api.get(path);
       return [key, normalizeList<any>(res.data).rows];
-    })
-  );
-
-  const dashRes = await api.get("/api/v1/commands/reporting/crm-sales-dashboard/");
+    })),
+    api.get("/api/v1/commands/reporting/crm-sales-dashboard/"),
+  ]);
   const dashboard: CRMDashboard = dashRes.data?.data || dashRes.data || {};
-
-  const emptyData = Object.fromEntries(Object.keys(CRM_SOURCES).map((key) => [key, []]));
 
   return {
     data: { ...emptyData, ...Object.fromEntries(entries) } as CRMData,

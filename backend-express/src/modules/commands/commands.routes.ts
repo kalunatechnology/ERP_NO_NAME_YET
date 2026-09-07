@@ -7,16 +7,87 @@
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
 import { Router, Request, Response, NextFunction } from 'express';
+import type { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
-import { WorkflowRegistry } from '../../workflows/registry';
+import { WorkflowRegistry, WorkflowTransitionError } from '../../workflows';
 import { ProjectsService } from '../projects/projects.service';
 import { FinanceService } from '../finance/finance.service';
-import { NotFoundError } from '../../utils/errors';
+import { ForbiddenError, NotFoundError } from '../../utils/errors';
 import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
 import { requireRole } from '../../middlewares/rbac.middleware';
 import { RoleCode } from '../../types/roles';
 
 export const commandsRouter = Router();
+
+commandsRouter.use('/sales', requireModuleAccess('SALES'), requireRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER));
+commandsRouter.use('/projects', requireModuleAccess('PROJECTS'), requireRole(RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.SUPERVISOR, RoleCode.STAFF));
+commandsRouter.use('/finance', requireModuleAccess('FINANCE'), requireRole(RoleCode.FINANCE, RoleCode.DIRECTOR));
+
+function activeCompanyId(req: Request): string {
+  if (!req.companyId) throw new ForbiddenError('Pilih company sebelum menjalankan command operasional.');
+  return req.companyId;
+}
+
+async function updateBusinessDocumentStatus(req: Request, status: string) {
+  const companyId = activeCompanyId(req);
+  return prisma.$transaction(async (tx) => {
+    const document = await tx.core_business_document.findFirst({
+      where: { id: req.params.id, company_id: companyId },
+      select: { id: true },
+    });
+    if (!document) throw new NotFoundError('Document');
+    return tx.core_business_document.update({ where: { id: document.id }, data: { status } });
+  });
+}
+
+async function updateProjectStatus(req: Request, data: { status: string; started_at?: Date }) {
+  const companyId = activeCompanyId(req);
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project_project.findFirst({
+      where: { id: req.params.id, company_id: companyId },
+      select: { id: true },
+    });
+    if (!project) throw new NotFoundError('Project');
+    return tx.project_project.update({ where: { id: project.id }, data });
+  });
+}
+
+async function findWorkflowDocument(tx: Prisma.TransactionClient, module: string, documentId: string, companyId: string) {
+  switch (module.toUpperCase()) {
+    case 'PROJECT':
+      return tx.project_project.findFirst({ where: { id: documentId, company_id: companyId } });
+    case 'SALES_ORDER':
+      return tx.sales_order.findFirst({ where: { id: documentId, company_id: companyId } });
+    case 'PURCHASE_ORDER':
+      return tx.proc_purchase_order.findFirst({ where: { id: documentId, company_id: companyId } });
+    default:
+      throw new WorkflowTransitionError(`Module workflow '${module}' tidak didukung oleh penyimpanan command.`);
+  }
+}
+
+async function updateWorkflowDocumentStatus(tx: Prisma.TransactionClient, module: string, documentId: string, status: string) {
+  switch (module.toUpperCase()) {
+    case 'PROJECT':
+      return tx.project_project.update({ where: { id: documentId }, data: { status } });
+    case 'SALES_ORDER':
+      return tx.sales_order.update({ where: { id: documentId }, data: { status } });
+    case 'PURCHASE_ORDER':
+      return tx.proc_purchase_order.update({ where: { id: documentId }, data: { status } });
+    default:
+      throw new WorkflowTransitionError(`Module workflow '${module}' tidak didukung oleh penyimpanan command.`);
+  }
+}
+
+function requireWorkflowEntitlement(req: Request, res: Response, next: NextFunction) {
+  const entitlementByWorkflow: Record<string, string> = {
+    PROJECT: 'PROJECTS',
+    SALES_ORDER: 'SALES',
+    PURCHASE_ORDER: 'PROCUREMENT',
+  };
+  const moduleCode = entitlementByWorkflow[String(req.params.module || '').toUpperCase()];
+  if (!moduleCode) return next(new WorkflowTransitionError(`Module workflow '${req.params.module}' tidak didukung.`));
+  return requireModuleAccess(moduleCode)(req, res, next);
+}
 
 // =============================================================================
 // WORKFLOW ENGINE COMMANDS
@@ -42,9 +113,10 @@ commandsRouter.get('/workflow/registry', (_req: Request, res: Response) => {
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-commandsRouter.get('/workflow/transitions/:module/:document_id', async (req: Request, res: Response, next: NextFunction) => {
+commandsRouter.get('/workflow/transitions/:module/:document_id', requireWorkflowEntitlement, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { module, document_id } = req.params;
+    const companyId = activeCompanyId(req);
     const tenantCode = req.user?.tenant_id ? 'arsalynk' : 'default';
     const wf = WorkflowRegistry.get(tenantCode, module);
 
@@ -54,15 +126,18 @@ commandsRouter.get('/workflow/transitions/:module/:document_id', async (req: Req
         is_superuser: req.user?.is_superuser ?? false,
         roles: req.user?.roles ?? [],
       },
-      company_id: req.companyId ?? null,
+      company_id: companyId,
       tenant_code: tenantCode,
     };
 
-    const transitions = wf.getAvailableTransitions('DRAFT', context);
+    const document = await prisma.$transaction((tx) => findWorkflowDocument(tx, module, document_id, companyId));
+    if (!document) throw new NotFoundError('Workflow document');
+    const currentStatus = String(document.status);
+    const transitions = wf.getAvailableTransitions(currentStatus, context);
     res.json({
       module,
       document_id,
-      current_status: 'DRAFT',
+      current_status: currentStatus,
       available_transitions: transitions,
     });
   } catch (err) {
@@ -78,10 +153,12 @@ commandsRouter.get('/workflow/transitions/:module/:document_id', async (req: Req
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-commandsRouter.post('/workflow/execute/:module/:document_id', async (req: Request, res: Response, next: NextFunction) => {
+commandsRouter.post('/workflow/execute/:module/:document_id', requireWorkflowEntitlement, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { module, document_id } = req.params;
     const { action, note, extra } = req.body;
+    if (!action || typeof action !== 'string') throw new WorkflowTransitionError('Action workflow wajib diisi.');
+    const companyId = activeCompanyId(req);
     const tenantCode = req.user?.tenant_id ? 'arsalynk' : 'default';
     const wf = WorkflowRegistry.get(tenantCode, module);
 
@@ -91,18 +168,34 @@ commandsRouter.post('/workflow/execute/:module/:document_id', async (req: Reques
         is_superuser: req.user?.is_superuser ?? false,
         roles: req.user?.roles ?? [],
       },
-      company_id: req.companyId ?? null,
+      company_id: companyId,
       tenant_code: tenantCode,
       note,
       extra,
     };
+
+    const result = await prisma.$transaction(async (tx) => {
+      const document = await findWorkflowDocument(tx, module, document_id, companyId);
+      if (!document) throw new NotFoundError('Workflow document');
+      const fromStatus = String(document.status);
+      const transition = wf.getAvailableTransitions(fromStatus, context).find((item) => item.action === action);
+      if (!transition) {
+        throw new WorkflowTransitionError(`Action '${action}' tidak tersedia dari status '${fromStatus}'.`);
+      }
+      await wf.validateTransition(document, fromStatus, transition.to_status, context);
+      const updated = await updateWorkflowDocumentStatus(tx, module, document.id, transition.to_status);
+      await wf.onStatusChanged(updated, fromStatus, transition.to_status, context);
+      return { updated, fromStatus, transition };
+    });
 
     res.json({
       success: true,
       module,
       document_id,
       action,
-      new_status: 'EXECUTED',
+      previous_status: result.fromStatus,
+      new_status: result.transition.to_status,
+      document: result.updated,
     });
   } catch (err) {
     next(err);
@@ -123,10 +216,7 @@ commandsRouter.post('/workflow/execute/:module/:document_id', async (req: Reques
  */
 commandsRouter.post('/core/documents/:id/submit', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.core_business_document.update({
-      where: { id: req.params.id },
-      data: { status: 'SUBMITTED' },
-    });
+    const updated = await updateBusinessDocumentStatus(req, 'SUBMITTED');
     res.json(updated);
   } catch (err) {
     next(err);
@@ -143,10 +233,7 @@ commandsRouter.post('/core/documents/:id/submit', async (req: Request, res: Resp
  */
 commandsRouter.post('/core/documents/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.core_business_document.update({
-      where: { id: req.params.id },
-      data: { status: 'APPROVED' },
-    });
+    const updated = await updateBusinessDocumentStatus(req, 'APPROVED');
     res.json(updated);
   } catch (err) {
     next(err);
@@ -163,10 +250,7 @@ commandsRouter.post('/core/documents/:id/approve', async (req: Request, res: Res
  */
 commandsRouter.post('/core/documents/:id/reject', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.core_business_document.update({
-      where: { id: req.params.id },
-      data: { status: 'REJECTED' },
-    });
+    const updated = await updateBusinessDocumentStatus(req, 'REJECTED');
     res.json(updated);
   } catch (err) {
     next(err);
@@ -183,10 +267,7 @@ commandsRouter.post('/core/documents/:id/reject', async (req: Request, res: Resp
  */
 commandsRouter.post('/core/documents/:id/post', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.core_business_document.update({
-      where: { id: req.params.id },
-      data: { status: 'POSTED' },
-    });
+    const updated = await updateBusinessDocumentStatus(req, 'POSTED');
     res.json(updated);
   } catch (err) {
     next(err);
@@ -203,10 +284,7 @@ commandsRouter.post('/core/documents/:id/post', async (req: Request, res: Respon
  */
 commandsRouter.post('/core/documents/:id/cancel', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.core_business_document.update({
-      where: { id: req.params.id },
-      data: { status: 'CANCELLED' },
-    });
+    const updated = await updateBusinessDocumentStatus(req, 'CANCELLED');
     res.json(updated);
   } catch (err) {
     next(err);
@@ -223,10 +301,7 @@ commandsRouter.post('/core/documents/:id/cancel', async (req: Request, res: Resp
  */
 commandsRouter.post('/core/documents/:id/reverse', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.core_business_document.update({
-      where: { id: req.params.id },
-      data: { status: 'REVERSED' },
-    });
+    const updated = await updateBusinessDocumentStatus(req, 'REVERSED');
     res.json(updated);
   } catch (err) {
     next(err);
@@ -243,7 +318,9 @@ commandsRouter.post('/core/documents/:id/reverse', async (req: Request, res: Res
  */
 commandsRouter.get('/core/documents/:id/history', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await prisma.core_business_document.findUnique({ where: { id: req.params.id } });
+    const doc = await prisma.core_business_document.findFirst({
+      where: { id: req.params.id, company_id: activeCompanyId(req) },
+    });
     if (!doc) throw new NotFoundError('Document');
     res.json({ document: doc, history: [] });
   } catch (err) {
@@ -265,23 +342,31 @@ commandsRouter.get('/core/documents/:id/history', async (req: Request, res: Resp
  */
 commandsRouter.post('/sales/quotations/:id/convert-to-order', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const quotation = await prisma.sales_quotation.findUnique({ where: { id: req.params.id } });
-    if (!quotation) throw new NotFoundError('Quotation');
-
-    const order = await prisma.sales_order.create({
-      data: {
-        id: crypto.randomUUID(),
-        quotation_id: quotation.id,
-        customer_party_id: quotation.customer_party_id,
-        order_date: new Date(),
-        total_amount: quotation.total_amount ?? 0,
-        status: 'CONFIRMED',
-      },
-    });
-
-    await prisma.sales_quotation.update({
-      where: { id: quotation.id },
-      data: { status: 'ACCEPTED' },
+    const companyId = activeCompanyId(req);
+    const order = await prisma.$transaction(async (tx) => {
+      const quotation = await tx.sales_quotation.findFirst({
+        where: { id: req.params.id, company_id: companyId },
+      });
+      if (!quotation) throw new NotFoundError('Quotation');
+      const created = await tx.sales_order.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: quotation.tenant_id,
+          company_id: companyId,
+          created_by_id: req.user?.id,
+          quotation_id: quotation.id,
+          customer_party_id: quotation.customer_party_id,
+          currency_id: quotation.currency_id,
+          payment_term_id: quotation.payment_term_id,
+          order_date: new Date(),
+          subtotal: quotation.subtotal,
+          tax_amount: quotation.tax_amount,
+          total_amount: quotation.total_amount ?? 0,
+          status: 'CONFIRMED',
+        },
+      });
+      await tx.sales_quotation.update({ where: { id: quotation.id }, data: { status: 'ACCEPTED' } });
+      return created;
     });
 
     res.status(201).json(order);
@@ -302,12 +387,9 @@ commandsRouter.post('/sales/quotations/:id/convert-to-order', async (req: Reques
  * Data/side effects: Uses Prisma model(s) `project_project` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-commandsRouter.post('/projects/projects/:id/start', async (req: Request, res: Response, next: NextFunction) => {
+commandsRouter.post('/projects/projects/:id/start', requireRole(RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.project_project.update({
-      where: { id: req.params.id },
-      data: { status: 'ACTIVE', started_at: new Date() },
-    });
+    const updated = await updateProjectStatus(req, { status: 'ACTIVE', started_at: new Date() });
     res.json(updated);
   } catch (err) {
     next(err);
@@ -322,12 +404,9 @@ commandsRouter.post('/projects/projects/:id/start', async (req: Request, res: Re
  * Data/side effects: Uses Prisma model(s) `project_project` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-commandsRouter.post('/projects/projects/:id/close', async (req: Request, res: Response, next: NextFunction) => {
+commandsRouter.post('/projects/projects/:id/close', requireRole(RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await prisma.project_project.update({
-      where: { id: req.params.id },
-      data: { status: 'COMPLETED' },
-    });
+    const updated = await updateProjectStatus(req, { status: 'COMPLETED' });
     res.json(updated);
   } catch (err) {
     next(err);
@@ -344,7 +423,7 @@ commandsRouter.post('/projects/projects/:id/close', async (req: Request, res: Re
  */
 commandsRouter.get('/projects/projects/:id/health', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.calculateProjectEVM(req.params.id);
+    const result = await ProjectsService.calculateProjectEVM(req.params.id, new Date(), activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -361,9 +440,10 @@ commandsRouter.get('/projects/projects/:id/health', async (req: Request, res: Re
  */
 commandsRouter.get('/projects/projects/:id/costs', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const companyId = activeCompanyId(req);
     const [entries, expenses] = await Promise.all([
-      prisma.fin_project_cost_entry.findMany({ where: { project_id: req.params.id } }),
-      prisma.project_expense.findMany({ where: { project_id: req.params.id } }),
+      prisma.fin_project_cost_entry.findMany({ where: { project_id: req.params.id, company_id: companyId } }),
+      prisma.project_expense.findMany({ where: { project_id: req.params.id, company_id: companyId } }),
     ]);
     res.json({ entries, expenses });
   } catch (err) {
@@ -381,7 +461,9 @@ commandsRouter.get('/projects/projects/:id/costs', async (req: Request, res: Res
  */
 commandsRouter.get('/projects/projects/:id/flow-status', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const project = await prisma.project_project.findUnique({ where: { id: req.params.id } });
+    const project = await prisma.project_project.findFirst({
+      where: { id: req.params.id, company_id: activeCompanyId(req) },
+    });
     if (!project) throw new NotFoundError('Project');
     res.json({
       project_id: project.id,
@@ -406,9 +488,9 @@ commandsRouter.get('/projects/projects/:id/flow-status', async (req: Request, re
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-commandsRouter.post('/finance/journal-entries/:id/post', async (req: Request, res: Response, next: NextFunction) => {
+commandsRouter.post('/finance/journal-entries/:id/post', requireRole(RoleCode.FINANCE), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await FinanceService.postJournalEntry(req.params.id);
+    const result = await FinanceService.postJournalEntry(req.params.id, activeCompanyId(req));
     res.json(result);
   } catch (err) {
     next(err);
@@ -441,7 +523,7 @@ commandsRouter.get('/finance/flow-status', (_req: Request, res: Response) => {
  */
 commandsRouter.get('/reporting/crm-sales-dashboard', requireModuleAccess('CRM'), requireRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const companyWhere = req.companyId ? { company_id: req.companyId } : {};
+    const companyWhere = { company_id: activeCompanyId(req) };
     const [oppCount, wonCount, totalPipeline, wonOpportunities] = await Promise.all([
       prisma.crm_opportunity.count({ where: companyWhere }),
       prisma.crm_opportunity.count({ where: { ...companyWhere, status: 'WON' } }),
@@ -481,7 +563,7 @@ commandsRouter.get('/reporting/crm-sales-dashboard', requireModuleAccess('CRM'),
  */
 commandsRouter.get('/reporting/finance-main-dashboard', requireModuleAccess('FINANCE'), requireRole(RoleCode.FINANCE, RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const companyWhere = req.companyId ? { company_id: req.companyId } : {};
+    const companyWhere = { company_id: activeCompanyId(req) };
     const [postedBills, incomingPayments, outgoingPayments, overdueInvoices] = await Promise.all([
       prisma.fin_billing_document.aggregate({
         where: { ...companyWhere, status: 'POSTED' },
@@ -525,7 +607,7 @@ commandsRouter.get('/reporting/finance-main-dashboard', requireModuleAccess('FIN
 commandsRouter.get('/reporting/portfolio-financial-performance', requireModuleAccess('PROJECTS'), requireRole(RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.FINANCE), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const projects = await prisma.project_project.findMany({
-      where: req.companyId ? { company_id: req.companyId } : {},
+      where: { company_id: activeCompanyId(req) },
       select: {
         id: true,
         project_name: true,

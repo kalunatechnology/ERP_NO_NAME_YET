@@ -175,7 +175,13 @@ export interface TaskTransfer {
  * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function loadAllProjects(enabledModules: string[] = []): Promise<Project[]> {
+export interface ProjectDashboardBundle {
+  projects: any[]; mainTasks: any[]; assignments: any[]; weeklyTasks: any[];
+  dailyTasks: any[]; tasks: any[]; milestones: any[]; stages: any[];
+  costEntries: any[]; proposals: any[]; fundings: any[]; users: any[];
+}
+
+export async function loadAllProjects(enabledModules: string[] = [], bundle?: ProjectDashboardBundle): Promise<Project[]> {
   const canReadFinance = enabledModules.some((code) => code.toUpperCase() === "FINANCE");
 /**
  * emptyResponse adapts a frontend operation to its HTTP API contract.
@@ -190,20 +196,27 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
     projectsRes, mainTasksRes, assignmentsRes, weeklyTasksRes, dailyTasksRes,
     tasksRes, milestonesRes, stagesRes,
     costEntriesRes, proposalsRes, fundingsRes, usersRes
-  ] = await Promise.all([
-    api.get("/api/v1/projects/projects/?page_size=100"),
-    api.get("/api/v1/projects/main-tasks/?page_size=300"),
-    api.get("/api/v1/projects/task-assignments/?page_size=500"),
-    api.get("/api/v1/projects/weekly-tasks/?page_size=500"),
-    api.get("/api/v1/projects/daily-tasks/?page_size=1000"),
-    api.get("/api/v1/projects/tasks/?page_size=500"),
-    api.get("/api/v1/projects/milestones/?page_size=300"),
-    api.get("/api/v1/projects/readiness-checks/?page_size=200"),
-    canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=300") : emptyResponse(),
-    canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=200") : emptyResponse(),
-    canReadFinance ? api.get("/api/v1/finance/project-fundings/?page_size=100") : emptyResponse(),
-    api.get("/api/v1/accounts/users/?page_size=200"),
-  ]);
+  ] = bundle
+    ? [
+        { data: bundle.projects }, { data: bundle.mainTasks }, { data: bundle.assignments },
+        { data: bundle.weeklyTasks }, { data: bundle.dailyTasks }, { data: bundle.tasks },
+        { data: bundle.milestones }, { data: bundle.stages }, { data: bundle.costEntries },
+        { data: bundle.proposals }, { data: bundle.fundings }, { data: bundle.users },
+      ]
+    : await Promise.all([
+        api.get("/api/v1/projects/projects/?page_size=100"),
+        api.get("/api/v1/projects/main-tasks/?page_size=300"),
+        api.get("/api/v1/projects/task-assignments/?page_size=500"),
+        api.get("/api/v1/projects/weekly-tasks/?page_size=500"),
+        api.get("/api/v1/projects/daily-tasks/?page_size=1000"),
+        api.get("/api/v1/projects/tasks/?page_size=500"),
+        api.get("/api/v1/projects/milestones/?page_size=300"),
+        api.get("/api/v1/projects/readiness-checks/?page_size=200"),
+        canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=300") : emptyResponse(),
+        canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=200") : emptyResponse(),
+        canReadFinance ? api.get("/api/v1/finance/project-fundings/?page_size=100") : emptyResponse(),
+        api.get("/api/v1/accounts/users/?page_size=200"),
+      ]);
 
   const projects     = normalizeList<Project>(projectsRes.data).rows;
   const rawMainTasks = normalizeList<any>(mainTasksRes.data).rows;
@@ -231,12 +244,13 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
     rawAssigns.forEach((a: any) => {
       const mId = String(a.main_task || a.main_task_id || "");
       if (!assignmentsByMain[mId]) assignmentsByMain[mId] = [];
-      const uName = a.assignee_name || a.user_name || userMap[String(a.assignee)] || "Team Member";
+      const assigneeId = a.assignee || a.assignee_id;
+      const uName = a.assignee_name || a.user_name || userMap[String(assigneeId)] || "Team Member";
       assignmentsByMain[mId].push({
         id: a.id,
         main_task: mId,
-        assignee: a.assignee,
-        assignee_id: a.assignee,
+        assignee: assigneeId,
+        assignee_id: assigneeId,
         assignee_name: uName,
         user_name: uName,
         assignee_email: a.assignee_email || "",
@@ -324,7 +338,7 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
     // Generic tasks remain a separate resource. They must never be promoted to
     // WBS Main Tasks because that fabricates a hierarchy and project progress.
     const pGenericTasks = rawTasks
-      .filter((t: any) => String(t.project) === pid)
+      .filter((t: any) => String(t.project || t.project_id) === pid)
       .map((t: any) => ({
         id: t.id,
         project: pid,
@@ -334,7 +348,7 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
         status: t.status || "PENDING",
         priority: t.priority || "MEDIUM",
         progress: Number(t.progress_percent || t.progress || 0),
-        parent_task: t.parent_task,
+        parent_task: t.parent_task || t.parent_task_id,
       }));
 
     const calcBudget = Number(p.budget_amount || p.total_budget || 0);
@@ -357,8 +371,8 @@ export async function loadAllProjects(enabledModules: string[] = []): Promise<Pr
       actual_cost: actualCost,
       main_tasks: pMainTasks,
       tasks: pGenericTasks,
-      milestones: milestones.filter((m) => String(m.project) === pid),
-      stages: stages.filter((s) => String(s.project) === pid),
+      milestones: milestones.filter((m: any) => String(m.project || m.project_id) === pid),
+      stages: stages.filter((s: any) => String(s.project || s.project_id) === pid),
       cost_entries: costEntries.filter((c) => String(c.project) === pid),
       billing_proposals: proposals.filter((pr) => String(pr.project) === pid),
       fundings: fundings.filter((f) => String(f.project) === pid),

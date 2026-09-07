@@ -1,7 +1,23 @@
 # Q12 — Final End-to-End Verification Report
 
-**Executed:** 5 September 2026  
+**Executed:** 5 September 2026; final extension 7 September 2026
 **Scope:** Express backend, Next frontend, IAM, company isolation, module delegation, Finance transaction controls, project progress rules, and the generated frontend-to-Express contract matrix.
+
+## Final extension summary
+
+| Verification | Result | Evidence |
+|---|---|---|
+| Complete Express route registration | PASS | 2,616/2,616, zero 404/5xx/timeout |
+| Authenticated GET matrix | PASS | 783/783 reached data handlers; max 2,010.4 ms |
+| Mutation protected-pipeline matrix | PASS | 1,833/1,833; writes blocked by Prisma firewall |
+| Login 3-second SLA | PASS | 9/9 scenarios |
+| Login to complete initial dashboard | PASS | latest 2,009 ms including Request Card feed |
+| Dashboard read-through cache | PASS | MISS 1,033 ms; HIT 118 ms |
+| Request Card read-through cache | PASS | first 1,388 ms; HIT 394 ms; mutation invalidation enabled |
+| Authentication single-flight | PASS | parallel initial requests share only the active snapshot; no completed auth decision cached |
+| Full final BDD | PASS | static, login, critical, Company Admin, runtime contract suites |
+
+Canonical current summary: [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
 
 ## Verified results
 
@@ -10,8 +26,8 @@
 | Backend TypeScript type-check | PASS | `tsc --noEmit` |
 | Backend production build | PASS | Prisma client generation + TypeScript compile |
 | Next production build | PASS | 14 routes generated successfully |
-| Frontend-to-Express route contract | PASS | 176/176 calls mapped; 0 static gaps |
-| Anonymous access boundary | PASS | 176/176 protected calls returned 401 before controller/persistence |
+| Frontend-to-Express route contract | PASS | latest matrix 177/177 calls mapped; 0 static gaps |
+| Anonymous access boundary | PASS | protected calls stop at authentication before controller/persistence |
 | Q6 authenticated end-to-end integration | PASS | 20/20 assertions |
 | Q7 Finance idempotency/immutability | PASS | 6/6 assertions; temporary billing fixture deleted |
 | Q9 IAM database invariants (after tests) | PASS | 19 canonical identities, 1 Super Admin, 0 cross-company roles |
@@ -43,11 +59,11 @@ This is not an active authorization bypass in the tests above, but it is a data-
 
 ### Runtime-performance observation — **MONITOR**
 
-The authenticated suites completed successfully, but several calls were slow while using the configured remote Prisma/Supabase pooler. Tests now have a 30-second general HTTP ceiling (and 15 seconds for login). Monitor connection latency and pooler capacity before production load testing; this is a stability concern, not a failed functional assertion.
+The authenticated suites completed successfully. Application-level query consolidation, scoped BFF caches, stale fallback, and authentication single-flight now reduce healthy-path initial loading to 2,009 ms in the latest run. Remote Prisma/Supabase tail latency remains an infrastructure concern: a hard worst-case three-second SLA still requires healthy pooler capacity, regional proximity, and a shared Redis-compatible cache for multi-instance deployment.
 
 ## Evidence artifacts
 
-- [Q11 generated 176-case contract matrix](Q11_CONTRACT_BDD_CASES.md)
+- [Q11 generated 177-case contract matrix](Q11_CONTRACT_BDD_CASES.md)
 - [Q11 machine-readable results](Q11_CONTRACT_BDD_RESULTS.json)
 - [Q11 contract report](Q11_CONTRACT_BDD_REPORT.md)
 - [Q10 audit report](Q10_AUDIT_REPORT.md)

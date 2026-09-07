@@ -1,5 +1,7 @@
 # UAT 7 Flow — Project Management dan Finance
 
+> **Revalidation note — 7 September 2026:** run against the active Express backend and use a disposable company. The fixed record counts below are an older database snapshot, not current prerequisites. Confirm fixtures through the API before starting and use [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md) for the current SLA and regression baseline.
+
 Dokumen ini menguji 3 flow Project Management dan 4 flow Finance/Accounting melalui prototype FE dengan backend dan Supabase live.
 
 ## Persiapan

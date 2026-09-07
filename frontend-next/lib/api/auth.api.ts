@@ -21,6 +21,7 @@ export interface UserProfile {
   is_superuser?: boolean;
   is_staff?: boolean;
   company_id?: string | null;
+  company?: { id: string | number; name?: string; legal_name?: string; code?: string; company_code?: string } | null;
   active_role_code?: string | null;
   enabled_modules?: string[];
   roles?: { role?: string; role_code?: string; role_name?: string; company_id?: string | number | null }[];
@@ -248,7 +249,7 @@ export async function loginUser(email: string, password: string): Promise<LoginP
       email: cleanEmail,
       username: cleanEmail,
       password,
-    });
+    }, { timeout: 15_000 });
     const payload = res.data?.data || res.data;
     const access = payload?.access;
     const refresh = payload?.refresh || "";

@@ -61,9 +61,35 @@ export function paginateArray<T>(
 export function parsePagination(req: Request): { page: number; pageSize: number; skip: number } {
   const page = Math.max(1, parseInt(String(req.query['page'] ?? '1'), 10) || 1);
   const requestedSize = parseInt(String(req.query['page_size'] ?? String(env.PAGE_SIZE)), 10) || env.PAGE_SIZE;
-  const pageSize = Math.min(requestedSize, env.MAX_PAGE_SIZE);
+  const pageSize = Math.max(1, Math.min(requestedSize, env.MAX_PAGE_SIZE));
   const skip = (page - 1) * pageSize;
   return { page, pageSize, skip };
+}
+
+/**
+ * Builds a DRF-compatible envelope for keyset pagination. Existing clients can
+ * keep reading `count`, `next`, `previous`, and `results`; cursor-aware clients
+ * avoid increasingly expensive OFFSET scans on deep pages.
+ */
+export function paginateCursor<T extends { id?: unknown }>(
+  req: Request,
+  items: T[],
+  totalCount: number,
+  pageSize: number,
+  hasMore: boolean,
+): PaginatedResponse<T> {
+  const visible = items.slice(0, pageSize);
+  const lastId = visible.at(-1)?.id;
+  let next: string | null = null;
+  if (hasMore && typeof lastId === 'string' && lastId) {
+    const base = `${req.protocol}://${req.get('host')}${req.path}`;
+    const params = new URLSearchParams(req.query as Record<string, string>);
+    params.delete('page');
+    params.set('cursor', lastId);
+    params.set('page_size', String(pageSize));
+    next = `${base}?${params.toString()}`;
+  }
+  return { count: totalCount, next, previous: null, results: visible };
 }
 
 /**

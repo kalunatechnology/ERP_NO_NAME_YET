@@ -20,6 +20,11 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/erro
 
 export const financeRouter = Router();
 
+function activeCompanyId(req: Request): string {
+  if (!req.companyId) throw new ForbiddenError('Company aktif wajib dipilih.');
+  return req.companyId;
+}
+
 /**
  * financeUserCount implements a named function within this file's Express API routing boundary.
  *
@@ -101,7 +106,7 @@ financeRouter.post('/period-closings/:id/execute', requireFinanceRole([RoleCode.
     }
     const result = record.closing_type === 'YEAR_END'
       ? await PeriodClosingService.executeYearEndClosing(record.document_id!, req.companyId, req.user?.id ?? 'system')
-      : await PeriodClosingService.closeFiscalPeriod(record.fiscal_period_id!, req.user?.id ?? 'system');
+      : await PeriodClosingService.closeFiscalPeriod(record.fiscal_period_id!, req.user?.id ?? 'system', req.companyId);
     await prisma.fin_period_closing.update({ where: { id: record.id }, data: {
       status: 'COMPLETED', executed_by: req.user?.id, completed_at: new Date(),
     } });
@@ -123,7 +128,7 @@ financeRouter.post('/period-closings/:id/execute', requireFinanceRole([RoleCode.
  */
 financeRouter.post('/accounts/setup-standard', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const map = await FinanceService.ensureStandardCOA(req.companyId);
+    const map = await FinanceService.ensureStandardCOA(activeCompanyId(req));
     sendSuccess(res, { accounts_created_or_found: map.size, coa: Array.from(map.values()) });
   } catch (err) {
     next(err);
@@ -144,7 +149,7 @@ financeRouter.post('/accounts/setup-standard', async (req: Request, res: Respons
  */
 financeRouter.get('/accounts/:id/balance', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await FinanceService.getAccountBalance(req.params.id, req.companyId);
+    const result = await FinanceService.getAccountBalance(req.params.id, activeCompanyId(req));
     sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -161,7 +166,7 @@ financeRouter.get('/accounts/:id/balance', async (req: Request, res: Response, n
  */
 financeRouter.get('/bank-accounts/:id/balance', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await FinanceService.getBankAccountBalance(req.params.id);
+    const result = await FinanceService.getBankAccountBalance(req.params.id, activeCompanyId(req));
     sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -182,7 +187,7 @@ financeRouter.get('/bank-accounts/:id/balance', async (req: Request, res: Respon
  */
 financeRouter.post('/journal-entries/:id/post', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await FinanceService.postJournalEntry(req.params.id);
+    const result = await FinanceService.postJournalEntry(req.params.id, activeCompanyId(req));
     sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -202,7 +207,7 @@ financeRouter.post(
   requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   enforceSoD({
     getCreatorId: async (req) => {
-      const entry = await prisma.fin_journal_entry.findUnique({ where: { id: req.params.id } });
+      const entry = await prisma.fin_journal_entry.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
       return (entry as any)?.created_by_id ?? null;
     },
     action: 'reverse',
@@ -217,6 +222,7 @@ financeRouter.post(
         req.params.id,
         reason,
         req.user?.id ?? 'unknown',
+        activeCompanyId(req),
       );
       sendSuccess(res, result);
     } catch (err) {
@@ -239,7 +245,7 @@ financeRouter.post(
  */
 financeRouter.get('/trial-balance', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await FinanceService.getTrialBalance(req.companyId);
+    const result = await FinanceService.getTrialBalance(activeCompanyId(req));
     sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -258,7 +264,7 @@ financeRouter.get('/profit-and-loss', async (req: Request, res: Response, next: 
   try {
     const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
     const endDate = req.query.end_date ? new Date(req.query.end_date as string) : undefined;
-    const result = await FinanceService.getProfitAndLoss(req.companyId, startDate, endDate);
+    const result = await FinanceService.getProfitAndLoss(activeCompanyId(req), startDate, endDate);
     sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -276,7 +282,7 @@ financeRouter.get('/profit-and-loss', async (req: Request, res: Response, next: 
 financeRouter.get('/balance-sheet', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const asOfDate = req.query.as_of_date ? new Date(req.query.as_of_date as string) : undefined;
-    const result = await FinanceService.getBalanceSheet(req.companyId, asOfDate);
+    const result = await FinanceService.getBalanceSheet(activeCompanyId(req), asOfDate);
     sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -340,10 +346,12 @@ financeRouter.post('/bank-accounts/:id/import-statement', async (req: Request, r
     if (!statement_date || !Array.isArray(lines)) {
       return sendError(res, 'statement_date dan lines[] wajib diisi.', 400);
     }
+    if (lines.length > 5000) throw new ValidationError('Maksimal 5.000 baris per import statement.');
     const result = await FinanceService.importBankStatement(
       req.params.id,
       new Date(statement_date),
       lines,
+      activeCompanyId(req),
     );
     sendSuccess(res, result, 201);
   } catch (err) {
@@ -374,6 +382,7 @@ financeRouter.post(
         matchedAmount: Number(matched_amount),
         matchType: match_type,
         reconciledByUserId: req.user?.id ?? 'unknown',
+        companyId: activeCompanyId(req),
       });
       sendSuccess(res, result);
     } catch (err) {
@@ -396,7 +405,7 @@ financeRouter.post(
  */
 financeRouter.get('/tax-summary', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await FinanceService.getTaxSummary(req.companyId);
+    const result = await FinanceService.getTaxSummary(activeCompanyId(req));
     sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -423,6 +432,7 @@ financeRouter.post('/project-fundings/:id/decide', async (req: Request, res: Res
       decision,
       req.body.remarks ?? '',
       req.user?.id,
+      activeCompanyId(req),
     );
     sendSuccess(res, result);
   } catch (err) {
@@ -440,7 +450,9 @@ financeRouter.post('/project-fundings/:id/decide', async (req: Request, res: Res
  */
 financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const funding = await prisma.fin_project_funding.findUnique({ where: { id: req.params.id } });
+    const funding = await prisma.fin_project_funding.findFirst({
+      where: { id: req.params.id, company_id: activeCompanyId(req) },
+    });
     if (!funding) return sendError(res, 'Project funding tidak ditemukan.', 404);
 
     const fsm = new DocumentFSM('FUND_REQUEST');
@@ -470,7 +482,7 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
  */
 financeRouter.post('/billing-documents/:id/post', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updated = await FinanceService.postBillingDocument(req.params.id, req.user?.id);
+    const updated = await FinanceService.postBillingDocument(req.params.id, req.user?.id, activeCompanyId(req));
     sendSuccess(res, updated);
   } catch (err) {
     next(err);
@@ -489,14 +501,14 @@ financeRouter.post(
   requireFinanceRole([RoleCode.FINANCE]),
   enforceSoD({
     getCreatorId: async (req) => {
-      const doc = await prisma.fin_billing_document.findUnique({ where: { id: req.params.id } });
+      const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
       return (doc as any)?.created_by_id ?? null;
     },
     action: 'verify',
   }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const doc = await prisma.fin_billing_document.findUnique({ where: { id: req.params.id } });
+      const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
       if (!doc) return sendError(res, 'Billing document tidak ditemukan.', 404);
 
       const fsm = new DocumentFSM('BILLING');
@@ -525,14 +537,14 @@ financeRouter.post(
   requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   enforceSoD({
     getCreatorId: async (req) => {
-      const doc = await prisma.fin_billing_document.findUnique({ where: { id: req.params.id } });
+      const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
       return (doc as any)?.created_by_id ?? null;
     },
     action: 'approve',
   }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const doc = await prisma.fin_billing_document.findUnique({ where: { id: req.params.id } });
+      const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
       if (!doc) return sendError(res, 'Billing document tidak ditemukan.', 404);
 
       const fsm = new DocumentFSM('BILLING');
@@ -559,7 +571,7 @@ financeRouter.post(
  */
 financeRouter.post('/billing-documents/:id/reject', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await prisma.fin_billing_document.findUnique({ where: { id: req.params.id } });
+    const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
     if (!doc) return sendError(res, 'Billing document tidak ditemukan.', 404);
 
     const fsm = new DocumentFSM('BILLING');
@@ -589,7 +601,7 @@ financeRouter.post('/billing-documents/:id/reject', async (req: Request, res: Re
  */
 financeRouter.post('/payments/:id/submit', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payment = await prisma.fin_payment.findUnique({ where: { id: req.params.id } });
+    const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
     if (!payment) return sendError(res, 'Payment tidak ditemukan.', 404);
 
     const fsm = new DocumentFSM('PAYMENT');
@@ -614,14 +626,14 @@ financeRouter.post(
   requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   enforceSoD({
     getCreatorId: async (req) => {
-      const payment = await prisma.fin_payment.findUnique({ where: { id: req.params.id } });
+      const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
       return (payment as any)?.created_by_id ?? null;
     },
     action: 'approve',
   }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const payment = await prisma.fin_payment.findUnique({ where: { id: req.params.id } });
+      const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
       if (!payment) return sendError(res, 'Payment tidak ditemukan.', 404);
 
       const fsm = new DocumentFSM('PAYMENT');
@@ -645,7 +657,7 @@ financeRouter.post(
  */
 financeRouter.post('/payments/:id/execute', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payment = await prisma.fin_payment.findUnique({ where: { id: req.params.id } });
+    const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
     if (!payment) return sendError(res, 'Payment tidak ditemukan.', 404);
 
     const fsm = new DocumentFSM('PAYMENT');
@@ -677,6 +689,7 @@ financeRouter.post('/payments/:id/execute', async (req: Request, res: Response, 
 financeRouter.get('/fiscal-periods/status', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const periods = await prisma.fin_fiscal_period.findMany({
+      where: { company_id: activeCompanyId(req) },
       orderBy: { start_date: 'desc' },
       take: 24,
     });
@@ -715,10 +728,10 @@ financeRouter.post(
   requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const updated = await prisma.fin_fiscal_period.update({
-        where: { id: req.params.id },
-        data:  { status: 'OPEN' },
-      });
+      const companyId = activeCompanyId(req);
+      const period = await prisma.fin_fiscal_period.findFirst({ where: { id: req.params.id, company_id: companyId }, select: { id: true } });
+      if (!period) throw new NotFoundError('Fiscal period');
+      const updated = await prisma.fin_fiscal_period.update({ where: { id: period.id }, data: { status: 'OPEN' } });
       sendSuccess(res, updated);
     } catch (err) { next(err); }
   },
@@ -771,6 +784,7 @@ financeRouter.post(
         req.params.id,
         reason,
         req.user?.id ?? 'system',
+        activeCompanyId(req),
       );
       sendSuccess(res, result);
     } catch (err) { next(err); }
@@ -800,7 +814,7 @@ financeRouter.post('/projects/:id/capitalize-wip',
         Number(amount),
         description ?? '',
         req.user?.id ?? 'system',
-        req.companyId,
+        activeCompanyId(req),
       );
       sendSuccess(res, result);
     } catch (err) { next(err); }
@@ -826,7 +840,7 @@ financeRouter.post('/tax-transactions/:id/record-ntpn', async (req: Request, res
       return sendError(res, 'ntpn, payment_reference, dan paid_at wajib diisi.', 400);
     }
     const result = await FinanceService.recordNTPN(
-      req.params.id, ntpn, payment_reference, new Date(paid_at),
+      req.params.id, ntpn, payment_reference, new Date(paid_at), activeCompanyId(req),
     );
     sendSuccess(res, result);
   } catch (err) { next(err); }
@@ -853,9 +867,9 @@ financeRouter.get('/audit-trail', async (req: Request, res: Response, next: Next
       action:    req.query.action    as string | undefined,
       fromDate:  req.query.from_date ? new Date(req.query.from_date as string) : undefined,
       toDate:    req.query.to_date   ? new Date(req.query.to_date   as string) : undefined,
-      companyId: req.companyId ?? undefined,
+      companyId: activeCompanyId(req),
       page:      req.query.page      ? Number(req.query.page)      : 1,
-      pageSize:  req.query.page_size ? Number(req.query.page_size) : 50,
+      pageSize:  Math.min(100, Math.max(1, req.query.page_size ? Number(req.query.page_size) || 50 : 50)),
     });
     sendSuccess(res, result);
   } catch (err) { next(err); }
@@ -872,7 +886,7 @@ financeRouter.get('/audit-trail', async (req: Request, res: Response, next: Next
 financeRouter.get('/executive-audit-report', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const year = req.query.year ? Number(req.query.year) : undefined;
-    const result = await FinanceService.getExecutiveAuditReport(req.companyId ?? undefined, year);
+    const result = await FinanceService.getExecutiveAuditReport(activeCompanyId(req), year);
     sendSuccess(res, result);
   } catch (err) { next(err); }
 });
@@ -892,10 +906,13 @@ financeRouter.post('/bank-accounts/:id/import-csv', async (req: Request, res: Re
     if (!csv_content || typeof csv_content !== 'string') {
       return sendError(res, 'csv_content (isi file CSV) wajib dikirimkan sebagai text string.', 400);
     }
+    if (Buffer.byteLength(csv_content, 'utf8') > 5 * 1024 * 1024) {
+      throw new ValidationError('Ukuran CSV maksimal 5 MB per import.');
+    }
     const result = await FinanceService.importBankStatementCSV({
       bankAccountId: req.params.id,
       csvContent:    csv_content,
-      companyId:     req.companyId ?? undefined,
+      companyId:     activeCompanyId(req),
       userId:        req.user?.id,
     });
     sendSuccess(res, result);

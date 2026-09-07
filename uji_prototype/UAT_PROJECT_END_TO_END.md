@@ -1,5 +1,7 @@
 # UAT End-to-End Project Management, Finance, dan User Access
 
+> **Revalidation note — 7 September 2026:** project hierarchy and ID actions now require active-company scope; project progress must come from real WBS/Main Task data and manual progress override is closed. Run on disposable records and verify current external role codes from the login payload. Technical baseline: [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
+
 ## Tujuan
 
 Case ini menguji satu rangkaian data yang sama dari order masuk sampai project berjalan, perubahan client ditagihkan, masalah operasional diselesaikan, dan akses user tetap terisolasi.

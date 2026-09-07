@@ -1,7 +1,9 @@
 # MASTER TEST SUITE — PENGUJIAN END-TO-END 3 MODUL UTAMA ARSALYNT ERP
+
+> **Rebased 7 September 2026:** use Express/TypeScript/Prisma at port 8000 as the active backend. The static frontend at port 5500 is an optional API test harness; the active Next frontend is port 3000. Route, security, and performance evidence is maintained in [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md). Historical endpoint names below must be checked against the generated route inventory before execution.
 **Versi:** 2026.1  
 **Cakupan Sistem:** 3 Modul Utama (CRM & Sales ➔ Project Management ➔ Accounting & Finance)  
-**Lingkungan Uji:** Frontend Modular ES Modules (`http://127.0.0.1:5500`) + Django REST Backend (`http://127.0.0.1:8000`) + PostgreSQL/Supabase Database
+**Lingkungan Uji:** Next frontend (`http://127.0.0.1:3000`) or optional Modular ES Modules harness (`http://127.0.0.1:5500`) + Express REST Backend (`http://127.0.0.1:8000`) + PostgreSQL/Supabase Database
 
 ---
 

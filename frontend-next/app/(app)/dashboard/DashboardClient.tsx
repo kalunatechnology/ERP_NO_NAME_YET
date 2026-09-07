@@ -19,6 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { loadAllProjects, Project } from "@/lib/api/project.api";
 import { loadFinanceDashboard, FinanceDashboardData } from "@/lib/api/finance.api";
 import { loadCRMData, CRMData, CRMDashboard as CRMDashType } from "@/lib/api/crm.api";
+import { loadDashboardBootstrap } from "@/lib/api/dashboard.api";
 import { formatMoney, formatDate, getStatusColor, cn } from "@/lib/utils";
 
 import { ProjectDistributionGauge } from "@/components/ui/ProjectDistributionGauge";
@@ -1025,10 +1026,11 @@ function CRMDashboard({
 
   const opps = crmData?.opportunities || [];
   const activeOpps = opps.filter(o => !["CANCELLED", "CANCEL", "BATAL"].includes((o.status || "").toUpperCase()));
-  const totalPipeline = activeOpps.reduce((acc, o) => acc + Number(o.expected_amount || 0), 0);
+  const totalPipeline = Number(crmDash?.total_pipeline_value || crmDash?.weighted_project_value || 0);
   const winRate = Number(crmDash?.win_rate_percent || 0).toFixed(1);
-  const inquiries = crmData?.inquiries || [];
-  const tickets = crmData?.cases || [];
+  const inquiryCount = Number(crmDash?.total_inquiries ?? crmData?.inquiries?.length ?? 0);
+  const ticketCount = Number(crmDash?.total_service_cases ?? crmData?.cases?.length ?? 0);
+  const activeOpportunityCount = Number(crmDash?.active_opportunities ?? activeOpps.length);
 
   return (
     <div className="flex flex-col gap-6 pb-8">
@@ -1038,8 +1040,8 @@ function CRMDashboard({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             label="Total Pipeline Deal"
-            value={formatMoney(totalPipeline || crmDash?.weighted_project_value || 0)}
-            subLabel={`${activeOpps.length} deal aktif`}
+            value={formatMoney(totalPipeline)}
+            subLabel={`${activeOpportunityCount} deal aktif`}
             icon={DollarSign}
             iconBg="#F0FDF4"
             iconColor="#16A34A"
@@ -1054,7 +1056,7 @@ function CRMDashboard({
           />
           <KpiCard
             label="Inquiry Masuk"
-            value={inquiries.length}
+            value={inquiryCount}
             subLabel="prospek calon klien"
             icon={Building2}
             iconBg="#FAF5FF"
@@ -1062,7 +1064,7 @@ function CRMDashboard({
           />
           <KpiCard
             label="Kasus Support & Garansi"
-            value={tickets.length}
+            value={ticketCount}
             subLabel="layanan purnajual"
             icon={ShieldAlert}
             iconBg="#FEF2F2"
@@ -1337,24 +1339,48 @@ export default function DashboardClient() {
     else setRefreshing(true);
     setLoadError(null);
     try {
-      // Company Admin is an IAM operator, not a Project/Finance persona. Do not
-      // fetch operational widgets merely because the company has enabled a
-      // module: those calls correctly require the delegated user's own role.
       const mayReadProjectDashboard = ["pm", "om", "executive", "staff", "crm"].includes(userRole);
-      const projectData = canUseProjects && mayReadProjectDashboard ? await loadAllProjects(user?.enabled_modules || []) : [];
-      setProjects(projectData);
+      const primarySections: Array<"projects" | "finance" | "crm"> = [];
+      if (canUseProjects && mayReadProjectDashboard && userRole !== "crm") primarySections.push("projects");
+      if ((userRole === "finance" || userRole === "executive") && canUseFinance) primarySections.push("finance");
+      if (userRole === "crm" && canUseCrm) primarySections.push("crm");
 
-      // Load finance data for finance & executive roles
-      if ((userRole === "finance" || userRole === "executive") && canUseFinance) {
-        const fin = await loadFinanceDashboard(user?.enabled_modules || []);
-        setFinData(fin);
-      }
-
-      // Load CRM data for crm & executive roles
-      if ((userRole === "crm" || userRole === "executive") && canUseCrm) {
-        const crm = await loadCRMData(user?.enabled_modules || []);
+      // One BFF request provides the above-the-fold datasets. Express performs
+      // the underlying reads concurrently while preserving tenant and RBAC scope.
+      const primary = await loadDashboardBootstrap(primarySections);
+      const primaryTasks: Promise<void>[] = [];
+      if (primary.projects) primaryTasks.push(loadAllProjects(user?.enabled_modules || [], primary.projects).then(setProjects));
+      else if (!canUseProjects || !mayReadProjectDashboard) setProjects([]);
+      if (primary.finance) primaryTasks.push(loadFinanceDashboard(user?.enabled_modules || [], primary.finance).then(setFinData));
+      if (primary.crm) primaryTasks.push(loadCRMData(user?.enabled_modules || [], primary.crm).then((crm) => {
         setCrmData(crm.data);
         setCrmDash(crm.dashboard || {});
+      }));
+      await Promise.all(primaryTasks);
+
+      // Lower-priority sections are requested only after primary widgets render.
+      // CRM detail is secondary for an Executive; project context is secondary
+      // on the CRM dashboard. This avoids competing with the visible KPI cards.
+      const deferredSections: Array<"projects" | "crm"> = [];
+      if (userRole === "executive" && canUseCrm) deferredSections.push("crm");
+      if (userRole === "crm" && canUseProjects) deferredSections.push("projects");
+      if (deferredSections.length) {
+        const schedule = typeof window !== "undefined" && "requestIdleCallback" in window
+          ? (callback: () => void) => (window as any).requestIdleCallback(callback, { timeout: 1500 })
+          : (callback: () => void) => window.setTimeout(callback, 200);
+        schedule(() => {
+          void loadDashboardBootstrap(deferredSections).then(async (deferred) => {
+            if (deferred.projects) setProjects(await loadAllProjects(user?.enabled_modules || [], deferred.projects));
+            if (deferred.crm) {
+              const crm = await loadCRMData(user?.enabled_modules || [], deferred.crm);
+              setCrmData(crm.data);
+              setCrmDash(crm.dashboard || {});
+            }
+          }).catch((error: any) => {
+            const message = error?.response?.data?.error?.message || error?.response?.data?.detail || error?.message;
+            if (message) setLoadError(`Data sekunder belum dapat dimuat: ${message}`);
+          });
+        });
       }
     } catch (error: any) {
       const message = error?.response?.data?.error?.message || error?.response?.data?.detail || error?.message || "Gagal memuat dashboard";

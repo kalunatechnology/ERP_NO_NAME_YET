@@ -1,5 +1,7 @@
 # Q8 — Production Readiness & Frontend Stabilization
 
+**Status diperbarui 7 September 2026.** Route registration 2.616/2.616, authenticated GET 783/783, mutation pipeline dry-run 1.833/1.833, full BDD, backend compile, dan frontend 14-route production build semuanya lulus. Benchmark terbaru login sampai seluruh data dashboard awal adalah 2.009 ms. Rincian: [Current Implementation Status](docs/CURRENT_IMPLEMENTATION_STATUS.md).
+
 ## Status verifikasi
 
 - Backend Prisma Client generation: lulus.
@@ -15,7 +17,7 @@
 
 - Setiap respons API sekarang memiliki `X-Request-ID` untuk korelasi laporan frontend, log server, dan audit event.
 - Respons error menyertakan `request_id`; nilai ini aman ditampilkan kepada user saat meminta bantuan.
-- CORS mengekspos `X-Request-ID` dan `X-Idempotent-Replay` kepada frontend.
+- CORS mengekspos `X-Request-ID`, `X-Idempotent-Replay`, `Server-Timing`, `X-Dashboard-Cache`, dan `X-Request-Cache` kepada frontend.
 - Mutation gagal tetap dicatat oleh audit middleware, dengan payload sensitif disensor.
 - Health check tetap menjadi satu-satunya endpoint operasional publik di luar autentikasi.
 
@@ -56,6 +58,8 @@ Frontend:
 6. Pastikan mutation frontend mengirim `Idempotency-Key` dan laporan error menyertakan `request_id`.
 7. Jalankan smoke test production tanpa memasukkan data asli.
 8. Setelah hasil stabil, masukkan master data serta data perusahaan asli secara bertahap.
+9. Catat pengujian cold dan cache-hit secara terpisah; pastikan complete initial dashboard tetap <= 3.000 ms pada lingkungan target.
+10. Untuk deployment lebih dari satu instance, pindahkan read-through cache proses-lokal ke Redis-compatible shared cache dengan scoped key dan aturan invalidasi yang sama.
 
 ## Catatan font
 

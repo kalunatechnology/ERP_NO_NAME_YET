@@ -1,9 +1,11 @@
 # BUKU PANDUAN EKSEKUSI PENGUJIAN MANUAL (MANUAL TESTING PLAYBOOK)
+
+> **Current runtime note — 7 September 2026:** the backend URL remains port 8000, but the active service is Express/TypeScript/Prisma, not Django REST Framework. The active Next frontend normally runs on port 3000; port 5500 refers only to this legacy static prototype. Use the official persona cards currently presented by `/login`, and verify the account/role before committing any test mutation. See [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
 ## Studi Kasus Simulasi Penggunaan Nyata End-to-End 3 Modul ERP: CRM ➔ Proyek ➔ Finance
 **Target Pengguna:** Tester Manual, QA Engineer, Product Owner, & Developer  
 **Lingkungan Uji:**  
 - **Frontend App:** `http://127.0.0.1:5500` (atau `http://localhost:5500`)  
-- **Backend API:** `http://127.0.0.1:8000` (Django REST Framework)  
+- **Backend API:** `http://127.0.0.1:8000` (Express/TypeScript/Prisma)
 - **Password Default Seluruh Akun Demo:** `DummyPass123!`
 
 ---

@@ -9,6 +9,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
+import { ForbiddenError, NotFoundError } from '../../utils/errors';
 
 export const qualityRouter = Router();
 
@@ -23,8 +24,11 @@ export const qualityRouter = Router();
  */
 qualityRouter.post('/inspections/:id/complete', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses quality.');
+    const record = await prisma.qa_inspection.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { id: true } });
+    if (!record) throw new NotFoundError('Inspection');
     const updated = await prisma.qa_inspection.update({
-      where: { id: req.params.id },
+      where: { id: record.id },
       data: { status: 'COMPLETED' },
     });
     res.json(updated);

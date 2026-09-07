@@ -51,6 +51,14 @@ export interface FinanceDashboardData {
   rawProjects: any[];
 }
 
+export interface FinanceDashboardBundle {
+  view?: FinanceDashboardData;
+  costEntries?: any[];
+  fundings?: any[];
+  billingProposals?: any[];
+  projects?: any[];
+}
+
 /**
  * loadFinanceDashboard adapts a frontend operation to its HTTP API contract.
  *
@@ -59,14 +67,17 @@ export interface FinanceDashboardData {
  * External dependency: calls `/api/v1/finance/project-cost-entries/?page_size=200`, `/api/v1/finance/project-fundings/?page_size=200`, `/api/v1/finance/billing-proposals/?page_size=200`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function loadFinanceDashboard(enabledModules?: string[]): Promise<FinanceDashboardData> {
+export async function loadFinanceDashboard(enabledModules?: string[], bundle?: FinanceDashboardBundle): Promise<FinanceDashboardData> {
+  if (bundle?.view) return bundle.view;
   const canReadProjects = !enabledModules || enabledModules.some((code) => code.toUpperCase() === "PROJECTS");
-  const [costRes, fundRes, propRes, projRes] = await Promise.all([
-    api.get("/api/v1/finance/project-cost-entries/?page_size=200"),
-    api.get("/api/v1/finance/project-fundings/?page_size=200"),
-    api.get("/api/v1/finance/billing-proposals/?page_size=200"),
-    canReadProjects ? api.get("/api/v1/projects/projects/?page_size=100") : Promise.resolve({ data: [] }),
-  ]);
+  const [costRes, fundRes, propRes, projRes] = bundle
+    ? [{ data: bundle.costEntries || [] }, { data: bundle.fundings || [] }, { data: bundle.billingProposals || [] }, { data: bundle.projects || [] }]
+    : await Promise.all([
+        api.get("/api/v1/finance/project-cost-entries/?page_size=200"),
+        api.get("/api/v1/finance/project-fundings/?page_size=200"),
+        api.get("/api/v1/finance/billing-proposals/?page_size=200"),
+        canReadProjects ? api.get("/api/v1/projects/projects/?page_size=100") : Promise.resolve({ data: [] }),
+      ]);
 
   const rawCostEntries     = normalizeList<any>(costRes.data).rows;
   const rawFundings        = normalizeList<any>(fundRes.data).rows;

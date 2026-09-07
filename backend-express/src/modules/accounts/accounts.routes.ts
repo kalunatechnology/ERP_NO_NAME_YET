@@ -38,10 +38,12 @@ export const accountsRouter = Router();
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
 publicAuthRouter.post('/token', async (req: Request, res: Response, next: NextFunction) => {
+  const startedAt = performance.now();
   try {
     const identifier = req.body.email || req.body.username || '';
     const password = req.body.password || '';
     const result = await AccountsService.login(identifier, password);
+    res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
     res.json(result);
   } catch (err) {
     next(err);

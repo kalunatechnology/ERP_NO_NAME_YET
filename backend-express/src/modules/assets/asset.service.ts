@@ -89,8 +89,8 @@ export class AssetService {
  * Data/side effects: Reads or mutates Prisma model(s) `asset_asset`, `asset_book`, `asset_depreciation_line`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async runMonthlyDepreciation(assetId: string, periodDate: Date, userId: string) {
-    const asset = await prisma.asset_asset.findUnique({ where: { id: assetId } });
+  static async runMonthlyDepreciation(assetId: string, periodDate: Date, userId: string, companyId: string) {
+    const asset = await prisma.asset_asset.findFirst({ where: { id: assetId, company_id: companyId } });
     if (!asset) throw new NotFoundError('Asset');
     if (asset.status !== 'ACTIVE') {
       throw new ValidationError(`Aset "${asset.asset_name}" tidak aktif (status: ${asset.status}).`);
@@ -309,7 +309,7 @@ export class AssetService {
       await Promise.allSettled(
         chunk.map(async (asset) => {
           try {
-            const result = await this.runMonthlyDepreciation(asset.id, periodDate, userId);
+            const result = await this.runMonthlyDepreciation(asset.id, periodDate, userId, companyId);
             results.push({
               asset_id:   asset.id,
               asset_name: asset.asset_name,
@@ -356,8 +356,8 @@ export class AssetService {
  * Data/side effects: Reads or mutates Prisma model(s) `asset_asset`, `asset_book`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async getDepreciationSchedule(assetId: string) {
-    const asset = await prisma.asset_asset.findUnique({ where: { id: assetId } });
+  static async getDepreciationSchedule(assetId: string, companyId: string) {
+    const asset = await prisma.asset_asset.findFirst({ where: { id: assetId, company_id: companyId } });
     if (!asset) throw new NotFoundError('Asset');
 
     const book = await prisma.asset_book.findFirst({ where: { asset_id: assetId } });
@@ -439,8 +439,8 @@ export class AssetService {
  * Data/side effects: Reads or mutates Prisma model(s) `asset_asset`, `asset_book`, `fin_account`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async disposeAsset(assetId: string, disposalDate: Date, proceedsAmount: number, userId: string) {
-    const asset = await prisma.asset_asset.findUnique({ where: { id: assetId } });
+  static async disposeAsset(assetId: string, disposalDate: Date, proceedsAmount: number, userId: string, companyId: string) {
+    const asset = await prisma.asset_asset.findFirst({ where: { id: assetId, company_id: companyId } });
     if (!asset) throw new NotFoundError('Asset');
     if (asset.status !== 'ACTIVE') throw new ValidationError('Hanya aset aktif yang dapat dilepas.');
 

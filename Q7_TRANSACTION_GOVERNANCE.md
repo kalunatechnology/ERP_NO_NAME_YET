@@ -1,5 +1,7 @@
 # Q7 — Transaction Governance & Financial Closing
 
+> **Revalidated 7 September 2026:** aturan idempotency, terminal-state immutability, company scope, dan separation of duties tetap lulus setelah optimasi routing/cache. Cache baru hanya membungkus dashboard dan Request Card GET; mutation tidak dicache dan mutation Request Card yang berhasil menginvalidasi feed. Lihat [Current Implementation Status](docs/CURRENT_IMPLEMENTATION_STATUS.md).
+
 ## Aturan yang diterapkan
 
 - Semua mutation transaksi ERP (`POST`, `PUT`, `PATCH`, `DELETE`) pada modul bisnis wajib membawa `Idempotency-Key` sepanjang 16–128 karakter.

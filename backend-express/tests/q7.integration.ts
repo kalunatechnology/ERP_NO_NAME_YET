@@ -78,9 +78,24 @@ async function main() {
     const blockedDelete = await call(`/api/v1/finance/billing-documents/${createdId}/`, 'DELETE', {}, `Q7-TEST-${crypto.randomUUID()}`);
     assert.equal(blockedDelete.status, 409);
 
+    // A legacy/partially migrated document can have a non-terminal workflow
+    // status while payment reconciliation is already PAID. Any later mutation
+    // must still be rejected; payment_status is an independent terminal state.
+    await prisma.fin_billing_document.update({
+      where: { id: createdId },
+      data: { status: 'DRAFT', payment_status: 'PAID' },
+    });
+    const blockedPaidMutation = await call(
+      `/api/v1/finance/billing-documents/${createdId}/`,
+      'PATCH',
+      { rejection_reason: 'must not be written' },
+      `Q7-TEST-${crypto.randomUUID()}`,
+    );
+    assert.equal(blockedPaidMutation.status, 409);
+
     const duplicates = await prisma.fin_billing_document.count({ where: { invoice_number: payload.invoice_number } });
     assert.equal(duplicates, 1);
-    console.log(JSON.stringify({ passed: 6, failed: 0, replayed_record_id: createdId, duplicates }, null, 2));
+    console.log(JSON.stringify({ passed: 7, failed: 0, replayed_record_id: createdId, duplicates }, null, 2));
   } finally {
     if (createdId) await prisma.fin_billing_document.deleteMany({ where: { id: createdId } });
     await prisma.iam_company_module_access.update({ where: { id: entitlement.id }, data: {

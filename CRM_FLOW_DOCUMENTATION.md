@@ -2,6 +2,8 @@
 
 Dokumen ini memetakan flow operasional **Customer Relationship Management (CRM)** dan **Customer Support/Service** pada ERP. Format diagram menggunakan **Mermaid** dan deskripsi terstruktur sehingga mudah disesuaikan (*editable*), dikembangkan, dan diintegrasikan ke backend maupun frontend.
 
+> **Runtime note — 7 September 2026:** flow ini dijalankan melalui backend Express/Prisma dan frontend Next aktif. Endpoint CRM telah masuk audit route menyeluruh; company scope dan derived-record inheritance telah diperketat. Dashboard CRM menggunakan agregasi server dan maksimal enam opportunity preview. Lihat [Current Implementation Status](docs/CURRENT_IMPLEMENTATION_STATUS.md).
+
 ---
 
 ## 📑 Daftar Isi

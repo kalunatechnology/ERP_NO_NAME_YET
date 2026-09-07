@@ -1,6 +1,6 @@
 # Q11 Generated Express–Next Contract BDD Cases
 
-Generated from 176 frontend HTTP call sites.
+Generated from 177 frontend HTTP call sites.
 
 ## Q11-CONTRACT-001: POST /api/v1/master-data/parties
 
@@ -608,451 +608,457 @@ Generated from 176 frontend HTTP call sites.
 - **When** frontend call site `frontend-next\lib\api\crm.api.ts` invokes `DELETE /api/v1/crm/inquiry-requirements/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-102: POST /api/v1/sidebar-feed/mark-read
+## Q11-CONTRACT-102: GET /api/v1/dashboard/bootstrap
+
+- **Given** the Express application is running and the caller has no bearer token.
+- **When** frontend call site `frontend-next\lib\api\dashboard.api.ts` invokes `GET /api/v1/dashboard/bootstrap`.
+- **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
+
+## Q11-CONTRACT-103: POST /api/v1/sidebar-feed/mark-read
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `POST /api/v1/sidebar-feed/mark-read`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-103: POST /api/v1/core/sidebar-feed/mark-read
+## Q11-CONTRACT-104: POST /api/v1/core/sidebar-feed/mark-read
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `POST /api/v1/core/sidebar-feed/mark-read`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-104: POST /api/v1/recent-items/track
+## Q11-CONTRACT-105: POST /api/v1/recent-items/track
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `POST /api/v1/recent-items/track`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-105: POST /api/v1/core/recent-items/track
+## Q11-CONTRACT-106: POST /api/v1/core/recent-items/track
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `POST /api/v1/core/recent-items/track`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-106: GET /api/v1/recent-items
+## Q11-CONTRACT-107: GET /api/v1/recent-items
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/recent-items`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-107: GET /api/v1/core/recent-items
+## Q11-CONTRACT-108: GET /api/v1/core/recent-items
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/core/recent-items`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-108: GET /api/v1/projects/tasks
+## Q11-CONTRACT-109: GET /api/v1/projects/tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/projects/tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-109: GET /api/v1/projects/projects
+## Q11-CONTRACT-110: GET /api/v1/projects/projects
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/projects/projects`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-110: GET /api/v1/finance/project-cost-entries
+## Q11-CONTRACT-111: GET /api/v1/finance/project-cost-entries
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/finance/project-cost-entries`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-111: GET /api/v1/finance/billing-proposals
+## Q11-CONTRACT-112: GET /api/v1/finance/billing-proposals
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/finance/billing-proposals`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-112: GET /api/v1/finance/project-fundings
+## Q11-CONTRACT-113: GET /api/v1/finance/project-fundings
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/finance/project-fundings`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-113: GET /api/v1/crm/opportunities
+## Q11-CONTRACT-114: GET /api/v1/crm/opportunities
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/crm/opportunities`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-114: GET /api/v1/core/sidebar-feed
+## Q11-CONTRACT-115: GET /api/v1/core/sidebar-feed
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/core/sidebar-feed`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-115: GET /api/v1/projects/projects
+## Q11-CONTRACT-116: GET /api/v1/projects/projects
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/projects/projects`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-116: GET /api/v1/finance/project-cost-entries
+## Q11-CONTRACT-117: GET /api/v1/finance/project-cost-entries
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/finance/project-cost-entries`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-117: GET /api/v1/crm/opportunities
+## Q11-CONTRACT-118: GET /api/v1/crm/opportunities
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/crm/opportunities`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-118: GET /api/v1/inventory/stock-balances
+## Q11-CONTRACT-119: GET /api/v1/inventory/stock-balances
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/inventory/stock-balances`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-119: GET /api/v1/master-data/products
+## Q11-CONTRACT-120: GET /api/v1/master-data/products
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\feed.api.ts` invokes `GET /api/v1/master-data/products`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-120: GET /api/v1/finance/project-cost-entries
+## Q11-CONTRACT-121: GET /api/v1/finance/project-cost-entries
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\finance.api.ts` invokes `GET /api/v1/finance/project-cost-entries`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-121: GET /api/v1/finance/project-fundings
+## Q11-CONTRACT-122: GET /api/v1/finance/project-fundings
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\finance.api.ts` invokes `GET /api/v1/finance/project-fundings`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-122: GET /api/v1/finance/billing-proposals
+## Q11-CONTRACT-123: GET /api/v1/finance/billing-proposals
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\finance.api.ts` invokes `GET /api/v1/finance/billing-proposals`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-123: GET /api/v1/projects/projects
+## Q11-CONTRACT-124: GET /api/v1/projects/projects
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\finance.api.ts` invokes `GET /api/v1/projects/projects`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-124: GET /api/v1/finance/billing-documents
+## Q11-CONTRACT-125: GET /api/v1/finance/billing-documents
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\finance.api.ts` invokes `GET /api/v1/finance/billing-documents`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-125: GET /api/v1/finance/billing-proposals
+## Q11-CONTRACT-126: GET /api/v1/finance/billing-proposals
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\finance.api.ts` invokes `GET /api/v1/finance/billing-proposals`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-126: GET /api/v1/finance/customer-receipts
+## Q11-CONTRACT-127: GET /api/v1/finance/customer-receipts
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\finance.api.ts` invokes `GET /api/v1/finance/customer-receipts`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-127: GET /api/v1/finance/project-cost-entries
+## Q11-CONTRACT-128: GET /api/v1/finance/project-cost-entries
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\finance.api.ts` invokes `GET /api/v1/finance/project-cost-entries`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-128: GET /api/v1/projects/projects
+## Q11-CONTRACT-129: GET /api/v1/projects/projects
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/projects`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-129: GET /api/v1/projects/main-tasks
+## Q11-CONTRACT-130: GET /api/v1/projects/main-tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/main-tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-130: GET /api/v1/projects/task-assignments
+## Q11-CONTRACT-131: GET /api/v1/projects/task-assignments
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/task-assignments`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-131: GET /api/v1/projects/weekly-tasks
+## Q11-CONTRACT-132: GET /api/v1/projects/weekly-tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/weekly-tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-132: GET /api/v1/projects/daily-tasks
+## Q11-CONTRACT-133: GET /api/v1/projects/daily-tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/daily-tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-133: GET /api/v1/projects/tasks
+## Q11-CONTRACT-134: GET /api/v1/projects/tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-134: GET /api/v1/projects/milestones
+## Q11-CONTRACT-135: GET /api/v1/projects/milestones
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/milestones`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-135: GET /api/v1/projects/readiness-checks
+## Q11-CONTRACT-136: GET /api/v1/projects/readiness-checks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/readiness-checks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-136: GET /api/v1/finance/project-cost-entries
+## Q11-CONTRACT-137: GET /api/v1/finance/project-cost-entries
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/finance/project-cost-entries`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-137: GET /api/v1/finance/billing-proposals
+## Q11-CONTRACT-138: GET /api/v1/finance/billing-proposals
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/finance/billing-proposals`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-138: GET /api/v1/finance/project-fundings
+## Q11-CONTRACT-139: GET /api/v1/finance/project-fundings
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/finance/project-fundings`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-139: GET /api/v1/accounts/users
+## Q11-CONTRACT-140: GET /api/v1/accounts/users
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/accounts/users`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-140: POST /api/v1/projects/projects
+## Q11-CONTRACT-141: POST /api/v1/projects/projects
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/projects`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-141: POST /api/v1/projects/customers
+## Q11-CONTRACT-142: POST /api/v1/projects/customers
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/customers`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-142: PATCH /api/v1/projects/projects/:param
+## Q11-CONTRACT-143: PATCH /api/v1/projects/projects/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `PATCH /api/v1/projects/projects/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-143: DELETE /api/v1/projects/projects/:param
+## Q11-CONTRACT-144: DELETE /api/v1/projects/projects/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/projects/projects/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-144: POST /api/v1/projects/projects/:param/recalculate_health
+## Q11-CONTRACT-145: POST /api/v1/projects/projects/:param/recalculate_health
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/projects/:param/recalculate_health`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-145: POST /api/v1/projects/projects/:param/advance_stage
+## Q11-CONTRACT-146: POST /api/v1/projects/projects/:param/advance_stage
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/projects/:param/advance_stage`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-146: POST /api/v1/projects/main-tasks
+## Q11-CONTRACT-147: POST /api/v1/projects/main-tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/main-tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-147: POST /api/v1/projects/tasks
+## Q11-CONTRACT-148: POST /api/v1/projects/tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-148: DELETE /api/v1/projects/main-tasks/:param
+## Q11-CONTRACT-149: DELETE /api/v1/projects/main-tasks/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/projects/main-tasks/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-149: DELETE /api/v1/projects/tasks/:param
+## Q11-CONTRACT-150: DELETE /api/v1/projects/tasks/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/projects/tasks/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-150: POST /api/v1/projects/weekly-tasks
+## Q11-CONTRACT-151: POST /api/v1/projects/weekly-tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/weekly-tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-151: POST /api/v1/projects/tasks
+## Q11-CONTRACT-152: POST /api/v1/projects/tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-152: DELETE /api/v1/projects/weekly-tasks/:param
+## Q11-CONTRACT-153: DELETE /api/v1/projects/weekly-tasks/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/projects/weekly-tasks/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-153: DELETE /api/v1/projects/tasks/:param
+## Q11-CONTRACT-154: DELETE /api/v1/projects/tasks/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/projects/tasks/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-154: POST /api/v1/projects/daily-tasks
+## Q11-CONTRACT-155: POST /api/v1/projects/daily-tasks
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/daily-tasks`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-155: PATCH /api/v1/projects/daily-tasks/:param
+## Q11-CONTRACT-156: PATCH /api/v1/projects/daily-tasks/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `PATCH /api/v1/projects/daily-tasks/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-156: DELETE /api/v1/projects/daily-tasks/:param
+## Q11-CONTRACT-157: DELETE /api/v1/projects/daily-tasks/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/projects/daily-tasks/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-157: POST /api/v1/projects/task-transfers
+## Q11-CONTRACT-158: POST /api/v1/projects/task-transfers
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/task-transfers`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-158: GET /api/v1/projects/task-transfers
+## Q11-CONTRACT-159: GET /api/v1/projects/task-transfers
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/task-transfers`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-159: POST /api/v1/projects/task-transfers/:param/approve
+## Q11-CONTRACT-160: POST /api/v1/projects/task-transfers/:param/approve
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/task-transfers/:param/approve`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-160: POST /api/v1/projects/task-transfers/:param/reject
+## Q11-CONTRACT-161: POST /api/v1/projects/task-transfers/:param/reject
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/task-transfers/:param/reject`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-161: POST /api/v1/finance/project-cost-entries
+## Q11-CONTRACT-162: POST /api/v1/finance/project-cost-entries
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/finance/project-cost-entries`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-162: DELETE /api/v1/finance/project-cost-entries/:param
+## Q11-CONTRACT-163: DELETE /api/v1/finance/project-cost-entries/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/finance/project-cost-entries/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-163: POST /api/v1/finance/project-fundings
+## Q11-CONTRACT-164: POST /api/v1/finance/project-fundings
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/finance/project-fundings`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-164: DELETE /api/v1/finance/project-fundings/:param
+## Q11-CONTRACT-165: DELETE /api/v1/finance/project-fundings/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/finance/project-fundings/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-165: POST /api/v1/finance/billing-proposals
+## Q11-CONTRACT-166: POST /api/v1/finance/billing-proposals
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/finance/billing-proposals`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-166: DELETE /api/v1/finance/billing-proposals/:param
+## Q11-CONTRACT-167: DELETE /api/v1/finance/billing-proposals/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/finance/billing-proposals/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-167: GET /api/v1/projects/projects/:param/financial-performance
+## Q11-CONTRACT-168: GET /api/v1/projects/projects/:param/financial-performance
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/projects/:param/financial-performance`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-168: POST /api/v1/projects/projects/:param/update_financials
+## Q11-CONTRACT-169: POST /api/v1/projects/projects/:param/update_financials
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/projects/:param/update_financials`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-169: GET /api/v1/projects/projects/:param/funding_requests
+## Q11-CONTRACT-170: GET /api/v1/projects/projects/:param/funding_requests
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/projects/:param/funding_requests`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-170: POST /api/v1/projects/projects/:param/funding_requests
+## Q11-CONTRACT-171: POST /api/v1/projects/projects/:param/funding_requests
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/projects/:param/funding_requests`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-171: POST /api/v1/projects/milestones
+## Q11-CONTRACT-172: POST /api/v1/projects/milestones
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/milestones`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-172: POST /api/v1/projects/main-tasks/:param/assign_members
+## Q11-CONTRACT-173: POST /api/v1/projects/main-tasks/:param/assign_members
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/main-tasks/:param/assign_members`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-173: POST /api/v1/projects/task-assignments
+## Q11-CONTRACT-174: POST /api/v1/projects/task-assignments
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `POST /api/v1/projects/task-assignments`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-174: DELETE /api/v1/projects/task-assignments/:param
+## Q11-CONTRACT-175: DELETE /api/v1/projects/task-assignments/:param
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `DELETE /api/v1/projects/task-assignments/:param`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-175: GET /api/v1/accounts/users
+## Q11-CONTRACT-176: GET /api/v1/accounts/users
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/accounts/users`.
 - **Then** the backend route exists and rejects the request with HTTP 401 before any business mutation.
 
-## Q11-CONTRACT-176: GET /api/v1/projects/members
+## Q11-CONTRACT-177: GET /api/v1/projects/members
 
 - **Given** the Express application is running and the caller has no bearer token.
 - **When** frontend call site `frontend-next\lib\api\project.api.ts` invokes `GET /api/v1/projects/members`.

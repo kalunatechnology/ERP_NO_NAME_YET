@@ -1,8 +1,10 @@
 # Q11 — Express–Next Contract BDD Execution Report
 
 **Execution status:** PASS  
-**Executed:** 5 September 2026  
+**Executed:** 5 September 2026; revalidated 7 September 2026
 **Scope:** every HTTP call statically discovered in `frontend-next` and its matching Express route contract.
+
+The current generated matrix contains **177/177** frontend contracts with zero findings. The 176-case counts below are the original Q11 snapshot and are retained as historical execution evidence. Current whole-backend coverage is documented in [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
 
 ## Result summary
 

@@ -9,8 +9,33 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { RequestService } from './request.service';
 import { sendSuccess, sendError } from '../../utils/response';
+import { ForbiddenError } from '../../utils/errors';
+import { ReadThroughCache } from '../../utils/read-through-cache';
 
 export const requestRouter = Router();
+const requestFeedCache = new ReadThroughCache<Awaited<ReturnType<typeof RequestService.getRequests>>>(250);
+
+// A successful request mutation invalidates all compact feed projections. The
+// collection is bounded and small, so full invalidation is safer than risking
+// a missed filter-specific key.
+requestRouter.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.once('finish', () => {
+      if (res.statusCode >= 200 && res.statusCode < 400) requestFeedCache.clear();
+    });
+  }
+  next();
+});
+
+function activeCompanyId(req: Request): string {
+  if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses request.');
+  return req.companyId;
+}
+
+function activeUserId(req: Request): string {
+  if (!req.user?.id) throw new ForbiddenError('User terautentikasi diperlukan.');
+  return req.user.id;
+}
 
 // =============================================================================
 // MARKA+ INTERNAL REQUESTS & TICKETING ENDPOINTS
@@ -27,14 +52,17 @@ export const requestRouter = Router();
  */
 requestRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await RequestService.getRequests({
-      status:    req.query.status as string | undefined,
-      type:      req.query.type   as string | undefined,
-      companyId: req.companyId ?? undefined,
-      page:      req.query.page      ? Number(req.query.page)      : 1,
-      pageSize:  req.query.page_size ? Number(req.query.page_size) : 30,
-    });
-    sendSuccess(res, result);
+    const companyId = activeCompanyId(req);
+    const status = req.query.status as string | undefined;
+    const type = req.query.type as string | undefined;
+    const page = req.query.page ? Number(req.query.page) : 1;
+    const pageSize = req.query.page_size ? Number(req.query.page_size) : 30;
+    const key = [companyId, status ?? '', type ?? '', page, pageSize].join('|');
+    const cached = await requestFeedCache.get(key, () => RequestService.getRequests({
+      status, type, companyId, page, pageSize,
+    }), { ttlMs: 10_000, staleMs: 50_000, timeoutMs: 1_000 });
+    res.setHeader('X-Request-Cache', cached.state);
+    sendSuccess(res, cached.value);
   } catch (err) { next(err); }
 });
 
@@ -51,8 +79,9 @@ requestRouter.post('/', async (req: Request, res: Response, next: NextFunction) 
   try {
     const result = await RequestService.createRequest(
       req.body,
-      req.user?.id ?? 'usr-current',
-      req.companyId,
+      activeUserId(req),
+      activeCompanyId(req),
+      req.user?.tenant_id,
     );
     sendSuccess(res, result, 201);
   } catch (err) { next(err); }
@@ -70,7 +99,7 @@ requestRouter.post('/', async (req: Request, res: Response, next: NextFunction) 
 requestRouter.get('/team-members', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const search = req.query.search as string | undefined;
-    const members = await RequestService.getTeamMembers(req.companyId ?? undefined, search);
+    const members = await RequestService.getTeamMembers(activeCompanyId(req), search);
     sendSuccess(res, members);
   } catch (err) { next(err); }
 });
@@ -94,7 +123,8 @@ requestRouter.post('/:id/validate-om', async (req: Request, res: Response, next:
       requestId: req.params.id,
       decision,
       remarks,
-      omUserId:  req.user?.id ?? 'om-user',
+      omUserId:  activeUserId(req),
+      companyId: activeCompanyId(req),
     });
     sendSuccess(res, result);
   } catch (err) { next(err); }
@@ -119,7 +149,8 @@ requestRouter.post('/:id/approve-exec', async (req: Request, res: Response, next
       requestId:  req.params.id,
       decision,
       remarks,
-      execUserId: req.user?.id ?? 'exec-user',
+      execUserId: activeUserId(req),
+      companyId: activeCompanyId(req),
     });
     sendSuccess(res, result);
   } catch (err) { next(err); }
@@ -141,7 +172,8 @@ requestRouter.post('/:id/disburse', async (req: Request, res: Response, next: Ne
       requestId:          req.params.id,
       disburseAccountId:  disburse_account_id,
       disburseReference:  disburse_reference,
-      disburseUserId:     req.user?.id ?? 'fin-user',
+      disburseUserId:     activeUserId(req),
+      companyId:          activeCompanyId(req),
     });
     sendSuccess(res, result);
   } catch (err) { next(err); }
@@ -169,7 +201,8 @@ requestRouter.post('/:id/submit-lpj', async (req: Request, res: Response, next: 
       discrepancyType:    discrepancy_type ?? 'NONE',
       notes,
       invoices,
-      requesterUserId:    req.user?.id ?? 'req-user',
+      requesterUserId:    activeUserId(req),
+      companyId:          activeCompanyId(req),
     });
     sendSuccess(res, result);
   } catch (err) { next(err); }
@@ -194,7 +227,8 @@ requestRouter.post('/:id/verify-lpj-om', async (req: Request, res: Response, nex
       requestId: req.params.id,
       decision,
       remarks,
-      omUserId:  req.user?.id ?? 'om-user',
+      omUserId:  activeUserId(req),
+      companyId: activeCompanyId(req),
     });
     sendSuccess(res, result);
   } catch (err) { next(err); }

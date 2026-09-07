@@ -1,5 +1,7 @@
 # Panduan Skenario Pengujian End-to-End: Alur Terpadu CRM ➔ Budgeting ➔ Proyek ➔ Finance ➔ Dashboard Keuntungan
 
+> **Updated testing context — 7 September 2026:** execute these business flows against `backend-express/`; use `frontend-next/` for current UX testing or `uji_prototype/` only as an API exploration client. Preserve unique Run IDs and cleanup rules. Performance acceptance is measured separately using [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
+
 Dokumen ini memandu pengujian **alur data bisnis terpadu** pada Arsalynt ERP yang menghubungkan 4 pilar utama sistem:
 1. **CRM & Penjualan** (Inquiry, Estimasi HPP, Quotation, Deal Won & Credit Check).
 2. **Budgeting & Funding** (Pengajuan anggaran proyek & persetujuan Finance).

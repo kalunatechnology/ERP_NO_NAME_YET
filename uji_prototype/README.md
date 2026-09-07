@@ -1,5 +1,7 @@
 # ERP Frontend Prototype
 
+> **Historical testing client:** this static prototype remains available for broad API exploration, but the active user frontend is `frontend-next/` and the active backend is `backend-express/`. Use [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md) before testing. Current login automatically supplies company context; manual `X-Company-ID` remains useful only for explicit API-console scenarios.
+
 Frontend statis berbasis **HTML, CSS, dan JavaScript murni** untuk menguji ERP Operational API.
 
 ## Fitur

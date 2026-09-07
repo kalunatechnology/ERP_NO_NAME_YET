@@ -1,0 +1,917 @@
+{
+  "generated_at": "2026-09-07T00:30:35.217Z",
+  "classification": "Candidates require manual route-level verification; static evidence is not a performance benchmark.",
+  "totals": {
+    "backend_files_with_queries": 26,
+    "unbounded_find_many_candidates": 80,
+    "frontend_files_with_http_calls": 20,
+    "frontend_page_size_over_50": 63
+  },
+  "backend_query_counts": [
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "query_calls": 61
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "query_calls": 56
+    },
+    {
+      "file": "backend-express/src/modules/crm/crm.service.ts",
+      "query_calls": 41
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.routes.ts",
+      "query_calls": 28
+    },
+    {
+      "file": "backend-express/src/modules/assets/asset.service.ts",
+      "query_calls": 27
+    },
+    {
+      "file": "backend-express/src/modules/commands/commands.routes.ts",
+      "query_calls": 26
+    },
+    {
+      "file": "backend-express/src/modules/accounts/accounts.service.ts",
+      "query_calls": 24
+    },
+    {
+      "file": "backend-express/src/modules/finance/period-closing.service.ts",
+      "query_calls": 22
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "query_calls": 22
+    },
+    {
+      "file": "backend-express/src/modules/core/request.service.ts",
+      "query_calls": 21
+    },
+    {
+      "file": "backend-express/src/modules/sales/sales.routes.ts",
+      "query_calls": 17
+    },
+    {
+      "file": "backend-express/src/modules/core/core.service.ts",
+      "query_calls": 14
+    },
+    {
+      "file": "backend-express/src/modules/reporting/reporting.routes.ts",
+      "query_calls": 13
+    },
+    {
+      "file": "backend-express/src/modules/accounts/accounts.routes.ts",
+      "query_calls": 10
+    },
+    {
+      "file": "backend-express/src/modules/dashboard/dashboard.routes.ts",
+      "query_calls": 9
+    },
+    {
+      "file": "backend-express/src/modules/manufacturing/manufacturing.routes.ts",
+      "query_calls": 8
+    },
+    {
+      "file": "backend-express/src/modules/crm/crm.routes.ts",
+      "query_calls": 7
+    },
+    {
+      "file": "backend-express/src/modules/accounts/access-context.service.ts",
+      "query_calls": 6
+    },
+    {
+      "file": "backend-express/src/modules/master_data/master_data.routes.ts",
+      "query_calls": 6
+    },
+    {
+      "file": "backend-express/src/modules/procurement/procurement.routes.ts",
+      "query_calls": 6
+    },
+    {
+      "file": "backend-express/src/modules/accounts/resource-scope.service.ts",
+      "query_calls": 5
+    },
+    {
+      "file": "backend-express/src/modules/core/audit.service.ts",
+      "query_calls": 3
+    },
+    {
+      "file": "backend-express/src/modules/inventory/inventory.routes.ts",
+      "query_calls": 2
+    },
+    {
+      "file": "backend-express/src/modules/logistics/logistics.routes.ts",
+      "query_calls": 2
+    },
+    {
+      "file": "backend-express/src/modules/quality/quality.routes.ts",
+      "query_calls": 2
+    },
+    {
+      "file": "backend-express/src/modules/service/service.routes.ts",
+      "query_calls": 2
+    }
+  ],
+  "unbounded_find_many_candidates": [
+    {
+      "file": "backend-express/src/modules/accounts/access-context.service.ts",
+      "line": 139,
+      "evidence": "({ where: { user_id: userId } })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/access-context.service.ts",
+      "line": 150,
+      "evidence": "({ where: { id: { in: roleIds }, tenant_id: user.tenant_id, }, })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/access-context.service.ts",
+      "line": 200,
+      "evidence": "({ where: { company_id: membership.company_id, tenant_id: membership.tenant_id, enabled: true, allow_read: true, AND: [ { OR: [{ effective_from: null }, { e"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/access-context.service.ts",
+      "line": 214,
+      "evidence": "({ where: { user_id: userId, company_id: membership.company_id, tenant_id: membership.tenant_id }, select: { module_code: true, allow_read: true, allow_write: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/accounts.routes.ts",
+      "line": 460,
+      "evidence": "({ where: { company_id: req.companyId }, orderBy: [{ user_id: 'asc' }, { module_code: 'asc' }], })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/accounts.service.ts",
+      "line": 269,
+      "evidence": "({ where: { user_id: userId } })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/accounts.service.ts",
+      "line": 276,
+      "evidence": "({ where: { id: { in: roleIds }, tenant_id: user.tenant_id } })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/accounts.service.ts",
+      "line": 339,
+      "evidence": "({ where: { user_id: userId }, select: { role_id: true } })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/accounts.service.ts",
+      "line": 525,
+      "evidence": "({ where: { tenant_id: tenantId, role_code: { in: uniqueRoleCodes } }, })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/resource-scope.service.ts",
+      "line": 43,
+      "evidence": "({ where: { ...(!superAdmin && req.user?.tenant_id ? { tenant_id: req.user.tenant_id } : {}), ...(req.companyId ? { company_id: req.companyId } : {}), }, select: { id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/resource-scope.service.ts",
+      "line": 66,
+      "evidence": "({ where: { project_id: { in: projectIds } }, select: { id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/resource-scope.service.ts",
+      "line": 72,
+      "evidence": "({ where: { main_task_id: { in: mainTasks.map((row) => row.id) } }, select: { id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/resource-scope.service.ts",
+      "line": 78,
+      "evidence": "({ where: { weekly_task_id: { in: weeklyTasks.map((row) => row.id) } }, select: { id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/accounts/resource-scope.service.ts",
+      "line": 121,
+      "evidence": "({ where: { company_id: req.companyId }, select: { user_id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/assets/asset.service.ts",
+      "line": 290,
+      "evidence": "({ where: { status: 'ACTIVE', ...(companyId ? { company_id: companyId } : {}), }, select: { id: true, asset_name: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/commands/commands.routes.ts",
+      "line": 445,
+      "evidence": "({ where: { project_id: req.params.id, company_id: companyId } })"
+    },
+    {
+      "file": "backend-express/src/modules/commands/commands.routes.ts",
+      "line": 446,
+      "evidence": "({ where: { project_id: req.params.id, company_id: companyId } })"
+    },
+    {
+      "file": "backend-express/src/modules/commands/commands.routes.ts",
+      "line": 531,
+      "evidence": "({ where: { ...companyWhere, status: 'WON', opened_at: { not: null }, closed_at: { not: null } }, select: { opened_at: true, closed_at: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/commands/commands.routes.ts",
+      "line": 609,
+      "evidence": "({ where: { company_id: activeCompanyId(req) }, select: { id: true, project_name: true, project_code: true, budget_amount: true, progress_percent: true, status: true, }, "
+    },
+    {
+      "file": "backend-express/src/modules/core/core.service.ts",
+      "line": 34,
+      "evidence": "({ where: { company_id: companyId, status: 'ACTIVE' }, select: { user_id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/core/core.service.ts",
+      "line": 74,
+      "evidence": "({ where: { id: { in: allowedActorIds } }, select: { id: true, full_name: true, username: true, email: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/core/core.service.ts",
+      "line": 79,
+      "evidence": "({ where: { id: { in: allowedActorIds } }, select: { id: true, full_name: true, username: true, email: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/core/core.service.ts",
+      "line": 86,
+      "evidence": "({ where: { company_id: companyId, user_id: { in: contactIds } }, select: { user_id: true, role_id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/core/core.service.ts",
+      "line": 93,
+      "evidence": "({ where: { id: { in: roleIds } }, select: { id: true, role_code: true, role_name: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/core/core.service.ts",
+      "line": 251,
+      "evidence": "({ where: { company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/core/request.service.ts",
+      "line": 683,
+      "evidence": "({ where: { company_id: companyId }, select: { user_id: true, role_id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/core/request.service.ts",
+      "line": 719,
+      "evidence": "({ where: { user_id: { in: users.map(u => u.id) }, ...(companyId ? { company_id: companyId } : {}), }, })"
+    },
+    {
+      "file": "backend-express/src/modules/core/request.service.ts",
+      "line": 727,
+      "evidence": "({ where: { id: { in: roleIds } } })"
+    },
+    {
+      "file": "backend-express/src/modules/crm/crm.service.ts",
+      "line": 94,
+      "evidence": "({ where: { estimate_id: estimateId, company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/crm/crm.service.ts",
+      "line": 130,
+      "evidence": "({ where: { estimate_id: estimateId, company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/crm/crm.service.ts",
+      "line": 261,
+      "evidence": "({ where: { estimate_id: estimateId, company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/crm/crm.service.ts",
+      "line": 341,
+      "evidence": "({ where: { party_id: customerPartyId, ...(companyId ? { company_id: companyId } : { company_id: null }), billing_type: 'CUSTOMER_INVOICE', status: 'POSTED', }, })"
+    },
+    {
+      "file": "backend-express/src/modules/dashboard/dashboard.routes.ts",
+      "line": 194,
+      "evidence": "({ where: { ...opportunityScope, status: 'WON', opened_at: { not: null }, closed_at: { not: null } }, select: { opened_at: true, closed_at: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.routes.ts",
+      "line": 37,
+      "evidence": "({ where: { role_code: RoleCode.FINANCE }, select: { id: true } })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 153,
+      "evidence": "({ where: { journal_entry_id: entryId, ...(companyId ? { company_id: companyId } : {}) }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 199,
+      "evidence": "({ where: { status: 'POSTED', ...(companyId ? { company_id: companyId } : { company_id: null }) }, select: { id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 205,
+      "evidence": "({ where: { account_id: accountId, ...(companyId ? { company_id: companyId } : { company_id: null }), journal_entry_id: { in: postedEntryIds }, }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 289,
+      "evidence": "({ where: { journal_entry_id: entryId, company_id: companyId } })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 610,
+      "evidence": "({ where: companyId ? { company_id: companyId } : undefined, orderBy: { account_code: 'asc' }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 616,
+      "evidence": "({ where: { status: 'POSTED', ...(companyId ? { company_id: companyId } : { company_id: null }) }, select: { id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 621,
+      "evidence": "({ where: { journal_entry_id: { in: postedEntryIds }, ...(companyId ? { company_id: companyId } : { company_id: null }) }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 677,
+      "evidence": "({ where: { ...(companyId ? { company_id: companyId } : {}), account_type: { in: ['REVENUE', 'EXPENSE'] }, }, orderBy: { account_code: 'asc' }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 690,
+      "evidence": "({ where: { status: 'POSTED', ...(companyId ? { company_id: companyId } : { company_id: null }), ...(startDate || endDate ? { posting_date: postingDateFilter } : {}), }, select: { id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 699,
+      "evidence": "({ where: { journal_entry_id: { in: postedPLIds }, ...(companyId ? { company_id: companyId } : { company_id: null }) }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 755,
+      "evidence": "({ where: { ...(companyId ? { company_id: companyId } : {}), account_type: { in: ['ASSET', 'LIABILITY', 'EQUITY'] }, }, orderBy: { account_code: 'asc' }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 764,
+      "evidence": "({ where: { status: 'POSTED', ...(companyId ? { company_id: companyId } : { company_id: null }), ...(asOfDate ? { posting_date: { lte: asOfDate } } : {}), }, select: { id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 773,
+      "evidence": "({ where: { journal_entry_id: { in: bsPostedIds }, ...(companyId ? { company_id: companyId } : { company_id: null }) }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 1369,
+      "evidence": "({ where: { amount: { in: uniqueAmounts.map((amount) => new Decimal(amount)) }, status: { in: ['POSTED', 'PAID', 'PENDING'] }, ...(companyId ? { company_id: companyId } : { company_id: null }), "
+    },
+    {
+      "file": "backend-express/src/modules/finance/finance.service.ts",
+      "line": 1417,
+      "evidence": "({ where: { entity_name: 'core_internal_request', event_type: 'CREATE_REQUEST', occurred_at: { gte: startDate, lte: endDate }, ...(companyId ? { company_id: companyId } : {}), }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/period-closing.service.ts",
+      "line": 97,
+      "evidence": "({ where: { ...(period.company_id ? { company_id: period.company_id } : {}), status: 'POSTED', posting_date: { gte: period.start_date ?? undefined, lte: period.end_date ?? undefined,"
+    },
+    {
+      "file": "backend-express/src/modules/finance/period-closing.service.ts",
+      "line": 109,
+      "evidence": "({ where: { journal_entry_id: { in: postedIds }, company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/period-closing.service.ts",
+      "line": 114,
+      "evidence": "({ where: period.company_id ? { company_id: period.company_id } : undefined, select: { id: true, account_type: true, normal_balance: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/period-closing.service.ts",
+      "line": 199,
+      "evidence": "({ where: { ...(companyId ? { company_id: companyId } : {}), account_type: { in: ['REVENUE', 'EXPENSE'] }, }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/period-closing.service.ts",
+      "line": 209,
+      "evidence": "({ where: { company_id: companyId, status: 'POSTED', posting_date: { gte: yearStart, lte: yearEnd }, }, select: { id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/period-closing.service.ts",
+      "line": 218,
+      "evidence": "({ where: { journal_entry_id: { in: postedIds }, company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/finance/period-closing.service.ts",
+      "line": 388,
+      "evidence": "({ where: { journal_entry_id: closingEntry.id, company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 40,
+      "evidence": "({ where: { company_id: companyId, ...(tenantId ? { tenant_id: tenantId } : {}), }, select: { customer_name: true }, distinct: ['customer_name'], })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 48,
+      "evidence": "({ where: { ...(tenantId ? { tenant_id: tenantId } : {}), company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE', }, select: { display_name: true, legal_name: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 57,
+      "evidence": "({ where: { company_id: companyId, ...(tenantId ? { tenant_id: tenantId } : {}), }, select: { customer_name: true }, distinct: ['customer_name'], })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 339,
+      "evidence": "({ where: { project_id: req.params.id, company_id: activeCompanyId(req) }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 420,
+      "evidence": "({ where: { project_id: req.params.id, company_id: companyId } })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 421,
+      "evidence": "({ where: { project_id: req.params.id, company_id: companyId } })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 439,
+      "evidence": "({ where: { project_id: req.params.id, company_id: activeCompanyId(req) }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 469,
+      "evidence": "({ where: { company_id: companyId, user_id: { in: userIds }, status: 'ACTIVE' }, select: { user_id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 486,
+      "evidence": "({ where: { main_task_id: mainTaskId, company_id: companyId, assignee_id: { in: userIds } }, select: { assignee_id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 490,
+      "evidence": "({ where: { project_id: mainTask.project_id, company_id: companyId, user_id: { in: userIds } }, select: { user_id: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.routes.ts",
+      "line": 525,
+      "evidence": "({ where: { main_task_id: mainTaskId, company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 82,
+      "evidence": "({ where: { daily_task_id: dt.id, ...(companyId ? { company_id: companyId } : {}) }, select: { status: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 111,
+      "evidence": "({ where: { weekly_task_id: weeklyId, ...(companyId ? { company_id: companyId } : {}) }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 156,
+      "evidence": "({ where: { main_task_id: mainId, ...(companyId ? { company_id: companyId } : {}) }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 189,
+      "evidence": "({ where: { project_id: projId, ...(companyId ? { company_id: companyId } : {}) }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 225,
+      "evidence": "({ where: { project_id: projectId, company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 228,
+      "evidence": "({ where: { project_id: projectId, company_id: companyId }, orderBy: { created_at: 'asc' }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 232,
+      "evidence": "({ where: { is_active: true, ...(project.company_id ? { iam_user_role: { some: { company_id: project.company_id, }, "
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 284,
+      "evidence": "({ where: { main_task_id: { in: mainTaskIds }, company_id: companyId }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 287,
+      "evidence": "({ where: { main_task_id: { in: mainTaskIds }, company_id: companyId }, orderBy: { week_number: 'asc' }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 294,
+      "evidence": "({ where: { weekly_task_id: { in: weeklyTaskIds }, company_id: companyId }, orderBy: { planned_date: 'asc' }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 425,
+      "evidence": "({ where: { project_id: projectId, ...(companyId ? { company_id: companyId } : {}) }, select: { total_cost: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 429,
+      "evidence": "({ where: { project_id: projectId, ...(companyId ? { company_id: companyId } : {}) }, select: { amount: true }, })"
+    },
+    {
+      "file": "backend-express/src/modules/projects/projects.service.ts",
+      "line": 528,
+      "evidence": "({ where: { daily_task_id: dailyTaskId, company_id: companyId }, select: { status: true }, })"
+    }
+  ],
+  "frontend_http_call_counts": [
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "http_calls": 49
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "http_calls": 29
+    },
+    {
+      "file": "frontend-next/lib/api/feed.api.ts",
+      "http_calls": 18
+    },
+    {
+      "file": "frontend-next/app/(app)/finance/FinanceClient.tsx",
+      "http_calls": 14
+    },
+    {
+      "file": "frontend-next/components/administration/AccessAdministration.tsx",
+      "http_calls": 10
+    },
+    {
+      "file": "frontend-next/app/(app)/projects/ProjectsClient.tsx",
+      "http_calls": 9
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "http_calls": 8
+    },
+    {
+      "file": "frontend-next/app/(app)/reporting/ReportingClient.tsx",
+      "http_calls": 7
+    },
+    {
+      "file": "frontend-next/components/finance/CompanyMasterWorkspace.tsx",
+      "http_calls": 6
+    },
+    {
+      "file": "frontend-next/components/finance/FixedAssetsWorkspace.tsx",
+      "http_calls": 6
+    },
+    {
+      "file": "frontend-next/components/finance/PeriodClosingWorkspace.tsx",
+      "http_calls": 6
+    },
+    {
+      "file": "frontend-next/components/requests/RequestReviewModal.tsx",
+      "http_calls": 5
+    },
+    {
+      "file": "frontend-next/lib/api/auth.api.ts",
+      "http_calls": 5
+    },
+    {
+      "file": "frontend-next/components/requests/NewCardRequestModal.tsx",
+      "http_calls": 2
+    },
+    {
+      "file": "frontend-next/app/(app)/crm/CrmClient.tsx",
+      "http_calls": 1
+    },
+    {
+      "file": "frontend-next/app/(app)/resources/ResourcesClient.tsx",
+      "http_calls": 1
+    },
+    {
+      "file": "frontend-next/components/finance/AuditTrailWorkspace.tsx",
+      "http_calls": 1
+    },
+    {
+      "file": "frontend-next/components/finance/ExecutiveAuditReportWorkspace.tsx",
+      "http_calls": 1
+    },
+    {
+      "file": "frontend-next/components/requests/RequestCardFeed.tsx",
+      "http_calls": 1
+    },
+    {
+      "file": "frontend-next/lib/api/dashboard.api.ts",
+      "http_calls": 1
+    }
+  ],
+  "frontend_oversized_page_requests": [
+    {
+      "file": "frontend-next/app/(app)/projects/ProjectsClient.tsx",
+      "line": 219,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/app/(app)/projects/ProjectsClient.tsx",
+      "line": 236,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/app/(app)/projects/ProjectsClient.tsx",
+      "line": 312,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/app/(app)/reporting/ReportingClient.tsx",
+      "line": 54,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/app/(app)/reporting/ReportingClient.tsx",
+      "line": 55,
+      "page_size": 500
+    },
+    {
+      "file": "frontend-next/app/(app)/reporting/ReportingClient.tsx",
+      "line": 56,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/app/(app)/reporting/ReportingClient.tsx",
+      "line": 57,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/app/(app)/reporting/ReportingClient.tsx",
+      "line": 58,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/components/administration/AccessAdministration.tsx",
+      "line": 83,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/components/administration/AccessAdministration.tsx",
+      "line": 84,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/components/administration/AccessAdministration.tsx",
+      "line": 109,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/components/finance/FixedAssetsWorkspace.tsx",
+      "line": 108,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 46,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 47,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 48,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 49,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 50,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 51,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 52,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 53,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 54,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 55,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 56,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 57,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 58,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 59,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 60,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 61,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 62,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/crm.api.ts",
+      "line": 63,
+      "page_size": 300
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 67,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 67,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 67,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 76,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 77,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 78,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 79,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 228,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 228,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 228,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 233,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 234,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 235,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/finance.api.ts",
+      "line": 236,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 191,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 191,
+      "page_size": 300
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 191,
+      "page_size": 500
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 207,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 208,
+      "page_size": 300
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 209,
+      "page_size": 500
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 210,
+      "page_size": 500
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 211,
+      "page_size": 1000
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 212,
+      "page_size": 500
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 213,
+      "page_size": 300
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 214,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 215,
+      "page_size": 300
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 216,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 217,
+      "page_size": 100
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 218,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 983,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 983,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 989,
+      "page_size": 200
+    },
+    {
+      "file": "frontend-next/lib/api/project.api.ts",
+      "line": 990,
+      "page_size": 200
+    }
+  ]
+}

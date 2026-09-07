@@ -21,13 +21,23 @@ import prisma from './config/database';
 async function main() {
   const app = createApp();
 
-  // Test database connection on startup
-  try {
-    await prisma.$connect();
-    console.log('✅ Database connected successfully via Prisma');
-  } catch (err) {
-    console.error('❌ Failed to connect to database:', err);
-    process.exit(1);
+  // Supavisor may transiently reject a new session while rotating or waking.
+  // Keep readiness closed and retry a bounded number of times before failing.
+  const maxConnectAttempts = 5;
+  for (let attempt = 1; attempt <= maxConnectAttempts; attempt += 1) {
+    try {
+      await prisma.$connect();
+      console.log('✅ Database connected successfully via Prisma');
+      break;
+    } catch (err) {
+      if (attempt === maxConnectAttempts) {
+        console.error('❌ Failed to connect to database after bounded retries:', err);
+        process.exit(1);
+      }
+      const delayMs = Math.min(5000, attempt * 1000);
+      console.warn(`⚠️ Database connection attempt ${attempt}/${maxConnectAttempts} failed; retrying in ${delayMs} ms.`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
   }
 
   const server = app.listen(env.PORT, () => {

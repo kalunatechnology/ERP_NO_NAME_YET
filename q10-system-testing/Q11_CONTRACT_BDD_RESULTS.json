@@ -1,17 +1,17 @@
 {
   "suite": "Q11 Generated Express–Next Contract BDD",
   "safety": "All runtime scenarios omit bearer credentials. Protected calls must return 401 before controller/persistence execution; no business records are created, updated, or deleted.",
-  "total": 176,
+  "total": 177,
   "by_method": {
     "DELETE": 17,
-    "GET": 70,
+    "GET": 71,
     "PATCH": 12,
     "POST": 76,
     "PUT": 1
   },
-  "protected_calls": 176,
+  "protected_calls": 177,
   "public_calls": 0,
-  "passed": 176,
+  "passed": 177,
   "failed": 0,
   "status": "PASS",
   "failures": [],
@@ -1129,6 +1129,17 @@
     },
     {
       "id": 102,
+      "method": "GET",
+      "path": "/api/v1/dashboard/bootstrap",
+      "file": "frontend-next\\lib\\api\\dashboard.api.ts",
+      "public": false,
+      "static_match": true,
+      "runtime_status": 401,
+      "runtime_error": null,
+      "result": "PASS"
+    },
+    {
+      "id": 103,
       "method": "POST",
       "path": "/api/v1/sidebar-feed/mark-read",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
@@ -1139,7 +1150,7 @@
       "result": "PASS"
     },
     {
-      "id": 103,
+      "id": 104,
       "method": "POST",
       "path": "/api/v1/core/sidebar-feed/mark-read",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
@@ -1150,7 +1161,7 @@
       "result": "PASS"
     },
     {
-      "id": 104,
+      "id": 105,
       "method": "POST",
       "path": "/api/v1/recent-items/track",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
@@ -1161,7 +1172,7 @@
       "result": "PASS"
     },
     {
-      "id": 105,
+      "id": 106,
       "method": "POST",
       "path": "/api/v1/core/recent-items/track",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
@@ -1172,7 +1183,7 @@
       "result": "PASS"
     },
     {
-      "id": 106,
+      "id": 107,
       "method": "GET",
       "path": "/api/v1/recent-items",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
@@ -1183,7 +1194,7 @@
       "result": "PASS"
     },
     {
-      "id": 107,
+      "id": 108,
       "method": "GET",
       "path": "/api/v1/core/recent-items",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
@@ -1194,20 +1205,9 @@
       "result": "PASS"
     },
     {
-      "id": 108,
-      "method": "GET",
-      "path": "/api/v1/projects/tasks",
-      "file": "frontend-next\\lib\\api\\feed.api.ts",
-      "public": false,
-      "static_match": true,
-      "runtime_status": 401,
-      "runtime_error": null,
-      "result": "PASS"
-    },
-    {
       "id": 109,
       "method": "GET",
-      "path": "/api/v1/projects/projects",
+      "path": "/api/v1/projects/tasks",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1218,7 +1218,7 @@
     {
       "id": 110,
       "method": "GET",
-      "path": "/api/v1/finance/project-cost-entries",
+      "path": "/api/v1/projects/projects",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1229,7 +1229,7 @@
     {
       "id": 111,
       "method": "GET",
-      "path": "/api/v1/finance/billing-proposals",
+      "path": "/api/v1/finance/project-cost-entries",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1240,7 +1240,7 @@
     {
       "id": 112,
       "method": "GET",
-      "path": "/api/v1/finance/project-fundings",
+      "path": "/api/v1/finance/billing-proposals",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1251,7 +1251,7 @@
     {
       "id": 113,
       "method": "GET",
-      "path": "/api/v1/crm/opportunities",
+      "path": "/api/v1/finance/project-fundings",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1262,7 +1262,7 @@
     {
       "id": 114,
       "method": "GET",
-      "path": "/api/v1/core/sidebar-feed",
+      "path": "/api/v1/crm/opportunities",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1273,7 +1273,7 @@
     {
       "id": 115,
       "method": "GET",
-      "path": "/api/v1/projects/projects",
+      "path": "/api/v1/core/sidebar-feed",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1284,7 +1284,7 @@
     {
       "id": 116,
       "method": "GET",
-      "path": "/api/v1/finance/project-cost-entries",
+      "path": "/api/v1/projects/projects",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1295,7 +1295,7 @@
     {
       "id": 117,
       "method": "GET",
-      "path": "/api/v1/crm/opportunities",
+      "path": "/api/v1/finance/project-cost-entries",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1306,7 +1306,7 @@
     {
       "id": 118,
       "method": "GET",
-      "path": "/api/v1/inventory/stock-balances",
+      "path": "/api/v1/crm/opportunities",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1317,7 +1317,7 @@
     {
       "id": 119,
       "method": "GET",
-      "path": "/api/v1/master-data/products",
+      "path": "/api/v1/inventory/stock-balances",
       "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
@@ -1328,8 +1328,8 @@
     {
       "id": 120,
       "method": "GET",
-      "path": "/api/v1/finance/project-cost-entries",
-      "file": "frontend-next\\lib\\api\\finance.api.ts",
+      "path": "/api/v1/master-data/products",
+      "file": "frontend-next\\lib\\api\\feed.api.ts",
       "public": false,
       "static_match": true,
       "runtime_status": 401,
@@ -1339,7 +1339,7 @@
     {
       "id": 121,
       "method": "GET",
-      "path": "/api/v1/finance/project-fundings",
+      "path": "/api/v1/finance/project-cost-entries",
       "file": "frontend-next\\lib\\api\\finance.api.ts",
       "public": false,
       "static_match": true,
@@ -1350,7 +1350,7 @@
     {
       "id": 122,
       "method": "GET",
-      "path": "/api/v1/finance/billing-proposals",
+      "path": "/api/v1/finance/project-fundings",
       "file": "frontend-next\\lib\\api\\finance.api.ts",
       "public": false,
       "static_match": true,
@@ -1361,7 +1361,7 @@
     {
       "id": 123,
       "method": "GET",
-      "path": "/api/v1/projects/projects",
+      "path": "/api/v1/finance/billing-proposals",
       "file": "frontend-next\\lib\\api\\finance.api.ts",
       "public": false,
       "static_match": true,
@@ -1372,7 +1372,7 @@
     {
       "id": 124,
       "method": "GET",
-      "path": "/api/v1/finance/billing-documents",
+      "path": "/api/v1/projects/projects",
       "file": "frontend-next\\lib\\api\\finance.api.ts",
       "public": false,
       "static_match": true,
@@ -1383,7 +1383,7 @@
     {
       "id": 125,
       "method": "GET",
-      "path": "/api/v1/finance/billing-proposals",
+      "path": "/api/v1/finance/billing-documents",
       "file": "frontend-next\\lib\\api\\finance.api.ts",
       "public": false,
       "static_match": true,
@@ -1394,7 +1394,7 @@
     {
       "id": 126,
       "method": "GET",
-      "path": "/api/v1/finance/customer-receipts",
+      "path": "/api/v1/finance/billing-proposals",
       "file": "frontend-next\\lib\\api\\finance.api.ts",
       "public": false,
       "static_match": true,
@@ -1405,7 +1405,7 @@
     {
       "id": 127,
       "method": "GET",
-      "path": "/api/v1/finance/project-cost-entries",
+      "path": "/api/v1/finance/customer-receipts",
       "file": "frontend-next\\lib\\api\\finance.api.ts",
       "public": false,
       "static_match": true,
@@ -1416,8 +1416,8 @@
     {
       "id": 128,
       "method": "GET",
-      "path": "/api/v1/projects/projects",
-      "file": "frontend-next\\lib\\api\\project.api.ts",
+      "path": "/api/v1/finance/project-cost-entries",
+      "file": "frontend-next\\lib\\api\\finance.api.ts",
       "public": false,
       "static_match": true,
       "runtime_status": 401,
@@ -1427,7 +1427,7 @@
     {
       "id": 129,
       "method": "GET",
-      "path": "/api/v1/projects/main-tasks",
+      "path": "/api/v1/projects/projects",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1438,7 +1438,7 @@
     {
       "id": 130,
       "method": "GET",
-      "path": "/api/v1/projects/task-assignments",
+      "path": "/api/v1/projects/main-tasks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1449,7 +1449,7 @@
     {
       "id": 131,
       "method": "GET",
-      "path": "/api/v1/projects/weekly-tasks",
+      "path": "/api/v1/projects/task-assignments",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1460,7 +1460,7 @@
     {
       "id": 132,
       "method": "GET",
-      "path": "/api/v1/projects/daily-tasks",
+      "path": "/api/v1/projects/weekly-tasks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1471,7 +1471,7 @@
     {
       "id": 133,
       "method": "GET",
-      "path": "/api/v1/projects/tasks",
+      "path": "/api/v1/projects/daily-tasks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1482,7 +1482,7 @@
     {
       "id": 134,
       "method": "GET",
-      "path": "/api/v1/projects/milestones",
+      "path": "/api/v1/projects/tasks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1493,7 +1493,7 @@
     {
       "id": 135,
       "method": "GET",
-      "path": "/api/v1/projects/readiness-checks",
+      "path": "/api/v1/projects/milestones",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1504,7 +1504,7 @@
     {
       "id": 136,
       "method": "GET",
-      "path": "/api/v1/finance/project-cost-entries",
+      "path": "/api/v1/projects/readiness-checks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1515,7 +1515,7 @@
     {
       "id": 137,
       "method": "GET",
-      "path": "/api/v1/finance/billing-proposals",
+      "path": "/api/v1/finance/project-cost-entries",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1526,7 +1526,7 @@
     {
       "id": 138,
       "method": "GET",
-      "path": "/api/v1/finance/project-fundings",
+      "path": "/api/v1/finance/billing-proposals",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1537,7 +1537,7 @@
     {
       "id": 139,
       "method": "GET",
-      "path": "/api/v1/accounts/users",
+      "path": "/api/v1/finance/project-fundings",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1547,8 +1547,8 @@
     },
     {
       "id": 140,
-      "method": "POST",
-      "path": "/api/v1/projects/projects",
+      "method": "GET",
+      "path": "/api/v1/accounts/users",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1559,7 +1559,7 @@
     {
       "id": 141,
       "method": "POST",
-      "path": "/api/v1/projects/customers",
+      "path": "/api/v1/projects/projects",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1569,8 +1569,8 @@
     },
     {
       "id": 142,
-      "method": "PATCH",
-      "path": "/api/v1/projects/projects/:param",
+      "method": "POST",
+      "path": "/api/v1/projects/customers",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1580,7 +1580,7 @@
     },
     {
       "id": 143,
-      "method": "DELETE",
+      "method": "PATCH",
       "path": "/api/v1/projects/projects/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
@@ -1591,8 +1591,8 @@
     },
     {
       "id": 144,
-      "method": "POST",
-      "path": "/api/v1/projects/projects/:param/recalculate_health",
+      "method": "DELETE",
+      "path": "/api/v1/projects/projects/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1603,7 +1603,7 @@
     {
       "id": 145,
       "method": "POST",
-      "path": "/api/v1/projects/projects/:param/advance_stage",
+      "path": "/api/v1/projects/projects/:param/recalculate_health",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1614,7 +1614,7 @@
     {
       "id": 146,
       "method": "POST",
-      "path": "/api/v1/projects/main-tasks",
+      "path": "/api/v1/projects/projects/:param/advance_stage",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1625,7 +1625,7 @@
     {
       "id": 147,
       "method": "POST",
-      "path": "/api/v1/projects/tasks",
+      "path": "/api/v1/projects/main-tasks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1635,8 +1635,8 @@
     },
     {
       "id": 148,
-      "method": "DELETE",
-      "path": "/api/v1/projects/main-tasks/:param",
+      "method": "POST",
+      "path": "/api/v1/projects/tasks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1647,7 +1647,7 @@
     {
       "id": 149,
       "method": "DELETE",
-      "path": "/api/v1/projects/tasks/:param",
+      "path": "/api/v1/projects/main-tasks/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1657,8 +1657,8 @@
     },
     {
       "id": 150,
-      "method": "POST",
-      "path": "/api/v1/projects/weekly-tasks",
+      "method": "DELETE",
+      "path": "/api/v1/projects/tasks/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1669,7 +1669,7 @@
     {
       "id": 151,
       "method": "POST",
-      "path": "/api/v1/projects/tasks",
+      "path": "/api/v1/projects/weekly-tasks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1679,8 +1679,8 @@
     },
     {
       "id": 152,
-      "method": "DELETE",
-      "path": "/api/v1/projects/weekly-tasks/:param",
+      "method": "POST",
+      "path": "/api/v1/projects/tasks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1691,7 +1691,7 @@
     {
       "id": 153,
       "method": "DELETE",
-      "path": "/api/v1/projects/tasks/:param",
+      "path": "/api/v1/projects/weekly-tasks/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1701,6 +1701,17 @@
     },
     {
       "id": 154,
+      "method": "DELETE",
+      "path": "/api/v1/projects/tasks/:param",
+      "file": "frontend-next\\lib\\api\\project.api.ts",
+      "public": false,
+      "static_match": true,
+      "runtime_status": 401,
+      "runtime_error": null,
+      "result": "PASS"
+    },
+    {
+      "id": 155,
       "method": "POST",
       "path": "/api/v1/projects/daily-tasks",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1711,7 +1722,7 @@
       "result": "PASS"
     },
     {
-      "id": 155,
+      "id": 156,
       "method": "PATCH",
       "path": "/api/v1/projects/daily-tasks/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1722,7 +1733,7 @@
       "result": "PASS"
     },
     {
-      "id": 156,
+      "id": 157,
       "method": "DELETE",
       "path": "/api/v1/projects/daily-tasks/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1733,19 +1744,8 @@
       "result": "PASS"
     },
     {
-      "id": 157,
-      "method": "POST",
-      "path": "/api/v1/projects/task-transfers",
-      "file": "frontend-next\\lib\\api\\project.api.ts",
-      "public": false,
-      "static_match": true,
-      "runtime_status": 401,
-      "runtime_error": null,
-      "result": "PASS"
-    },
-    {
       "id": 158,
-      "method": "GET",
+      "method": "POST",
       "path": "/api/v1/projects/task-transfers",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
@@ -1756,8 +1756,8 @@
     },
     {
       "id": 159,
-      "method": "POST",
-      "path": "/api/v1/projects/task-transfers/:param/approve",
+      "method": "GET",
+      "path": "/api/v1/projects/task-transfers",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1768,7 +1768,7 @@
     {
       "id": 160,
       "method": "POST",
-      "path": "/api/v1/projects/task-transfers/:param/reject",
+      "path": "/api/v1/projects/task-transfers/:param/approve",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1779,7 +1779,7 @@
     {
       "id": 161,
       "method": "POST",
-      "path": "/api/v1/finance/project-cost-entries",
+      "path": "/api/v1/projects/task-transfers/:param/reject",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1789,6 +1789,17 @@
     },
     {
       "id": 162,
+      "method": "POST",
+      "path": "/api/v1/finance/project-cost-entries",
+      "file": "frontend-next\\lib\\api\\project.api.ts",
+      "public": false,
+      "static_match": true,
+      "runtime_status": 401,
+      "runtime_error": null,
+      "result": "PASS"
+    },
+    {
+      "id": 163,
       "method": "DELETE",
       "path": "/api/v1/finance/project-cost-entries/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1799,7 +1810,7 @@
       "result": "PASS"
     },
     {
-      "id": 163,
+      "id": 164,
       "method": "POST",
       "path": "/api/v1/finance/project-fundings",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1810,7 +1821,7 @@
       "result": "PASS"
     },
     {
-      "id": 164,
+      "id": 165,
       "method": "DELETE",
       "path": "/api/v1/finance/project-fundings/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1821,7 +1832,7 @@
       "result": "PASS"
     },
     {
-      "id": 165,
+      "id": 166,
       "method": "POST",
       "path": "/api/v1/finance/billing-proposals",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1832,7 +1843,7 @@
       "result": "PASS"
     },
     {
-      "id": 166,
+      "id": 167,
       "method": "DELETE",
       "path": "/api/v1/finance/billing-proposals/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1843,7 +1854,7 @@
       "result": "PASS"
     },
     {
-      "id": 167,
+      "id": 168,
       "method": "GET",
       "path": "/api/v1/projects/projects/:param/financial-performance",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1854,7 +1865,7 @@
       "result": "PASS"
     },
     {
-      "id": 168,
+      "id": 169,
       "method": "POST",
       "path": "/api/v1/projects/projects/:param/update_financials",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1865,19 +1876,8 @@
       "result": "PASS"
     },
     {
-      "id": 169,
-      "method": "GET",
-      "path": "/api/v1/projects/projects/:param/funding_requests",
-      "file": "frontend-next\\lib\\api\\project.api.ts",
-      "public": false,
-      "static_match": true,
-      "runtime_status": 401,
-      "runtime_error": null,
-      "result": "PASS"
-    },
-    {
       "id": 170,
-      "method": "POST",
+      "method": "GET",
       "path": "/api/v1/projects/projects/:param/funding_requests",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
@@ -1889,7 +1889,7 @@
     {
       "id": 171,
       "method": "POST",
-      "path": "/api/v1/projects/milestones",
+      "path": "/api/v1/projects/projects/:param/funding_requests",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1900,7 +1900,7 @@
     {
       "id": 172,
       "method": "POST",
-      "path": "/api/v1/projects/main-tasks/:param/assign_members",
+      "path": "/api/v1/projects/milestones",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1911,7 +1911,7 @@
     {
       "id": 173,
       "method": "POST",
-      "path": "/api/v1/projects/task-assignments",
+      "path": "/api/v1/projects/main-tasks/:param/assign_members",
       "file": "frontend-next\\lib\\api\\project.api.ts",
       "public": false,
       "static_match": true,
@@ -1921,6 +1921,17 @@
     },
     {
       "id": 174,
+      "method": "POST",
+      "path": "/api/v1/projects/task-assignments",
+      "file": "frontend-next\\lib\\api\\project.api.ts",
+      "public": false,
+      "static_match": true,
+      "runtime_status": 401,
+      "runtime_error": null,
+      "result": "PASS"
+    },
+    {
+      "id": 175,
       "method": "DELETE",
       "path": "/api/v1/projects/task-assignments/:param",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1931,7 +1942,7 @@
       "result": "PASS"
     },
     {
-      "id": 175,
+      "id": 176,
       "method": "GET",
       "path": "/api/v1/accounts/users",
       "file": "frontend-next\\lib\\api\\project.api.ts",
@@ -1942,7 +1953,7 @@
       "result": "PASS"
     },
     {
-      "id": 176,
+      "id": 177,
       "method": "GET",
       "path": "/api/v1/projects/members",
       "file": "frontend-next\\lib\\api\\project.api.ts",

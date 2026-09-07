@@ -154,6 +154,7 @@ type AuthAction =
   | { type: "LOGOUT" }
   | { type: "ERROR"; message: string }
   | { type: "SET_COMPANY"; company: string | null }
+  | { type: "SET_COMPANIES"; companies: CompanyItem[] }
   | { type: "CLEAR_ERROR" };
 
 /**
@@ -167,6 +168,16 @@ function checkIsAdmin(user: any): boolean {
   if (!user) return false;
   const roles = extractRoleCodes(user);
   return roles.includes("ROLE-SUPER-ADMIN") || roles.includes("ROLE-COMPANY-ADMIN");
+}
+
+function assignedCompanyItems(user: UserProfile): CompanyItem[] {
+  if (!user.company_id) return [];
+  const company = user.company;
+  return [{
+    id: company?.id || user.company_id,
+    name: company?.name || company?.legal_name || "Company",
+    code: company?.code || company?.company_code,
+  }];
 }
 
 /**
@@ -198,6 +209,8 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
       return { ...state, isLoading: false, error: action.message };
     case "SET_COMPANY":
       return { ...state, company: action.company };
+    case "SET_COMPANIES":
+      return { ...state, companies: action.companies };
     case "CLEAR_ERROR":
       return { ...state, error: null };
     default:
@@ -286,19 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthCookie(access);
 
     getMyProfile()
-      .then(async (user) => {
-        let companiesList: CompanyItem[] = [];
-        try {
-          const compRes = await getCompanies();
-          if (compRes.rows?.length) {
-            companiesList = compRes.rows.map((c: any) => ({
-              id: c.id,
-              name: c.legal_name || c.display_name || c.name || "Company",
-              code: c.company_code || c.code || "COMP"
-            }));
-          }
-        } catch {/* ignore */}
-
+      .then((user) => {
         const isAdmin = checkIsAdmin(user);
         const userRole = detectRole(user);
 
@@ -310,7 +311,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem("active_company_id", String(activeCompany));
         }
 
-        dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: companiesList, isAdmin, userRole });
+        dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: assignedCompanyItems(user), isAdmin, userRole });
+
+        // Only Super Admin can switch across companies. Load that selector after
+        // authentication is usable so it cannot hold the initial page hostage.
+        if (userRole === "super_admin") {
+          void getCompanies().then((compRes) => {
+            dispatch({ type: "SET_COMPANIES", companies: (compRes.rows || []).map((c: any) => ({
+              id: c.id,
+              name: c.legal_name || c.display_name || c.name || "Company",
+              code: c.company_code || c.code || "COMP",
+            })) });
+          }).catch(() => {});
+        }
       })
       .catch(() => {
         localStorage.removeItem("erp.access");
@@ -345,25 +358,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("erp.company");
       localStorage.removeItem("active_company_id");
 
-      await loginUser(email, password);
+      const authenticated = await loginUser(email, password);
       
       const savedToken = localStorage.getItem("erp.access") || localStorage.getItem("access_token");
       if (savedToken) {
         setAuthCookie(savedToken);
       }
 
-      const user = await getMyProfile();
-      let companiesList: CompanyItem[] = [];
-      try {
-        const compRes = await getCompanies();
-        if (compRes.rows?.length) {
-          companiesList = compRes.rows.map((c: any) => ({
-            id: c.id,
-            name: c.legal_name || c.display_name || c.name || "Company",
-            code: c.company_code || c.code || "COMP"
-          }));
-        }
-      } catch {/* ignore */}
+      // The token endpoint already returns the canonical access context. A
+      // profile fallback remains only for compatibility with an older backend.
+      const user = authenticated.user || await getMyProfile();
 
       const isAdmin = checkIsAdmin(user);
       const userRole = detectRole(user);
@@ -376,7 +380,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("active_company_id", String(activeCompany));
       }
 
-      dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: companiesList, isAdmin, userRole });
+      dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: assignedCompanyItems(user), isAdmin, userRole });
+
+      if (userRole === "super_admin") {
+        void getCompanies().then((compRes) => {
+          dispatch({ type: "SET_COMPANIES", companies: (compRes.rows || []).map((c: any) => ({
+            id: c.id,
+            name: c.legal_name || c.display_name || c.name || "Company",
+            code: c.company_code || c.code || "COMP",
+          })) });
+        }).catch(() => {});
+      }
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || "Gagal masuk sistem";
       dispatch({ type: "ERROR", message: msg });

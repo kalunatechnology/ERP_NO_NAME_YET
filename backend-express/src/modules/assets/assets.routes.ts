@@ -12,6 +12,7 @@ import { AssetService } from './asset.service';
 import { sendSuccess, sendError } from '../../utils/response';
 import { requireFinanceRole } from '../../middleware/sod.middleware';
 import { RoleCode } from '../../types/roles';
+import { ForbiddenError } from '../../utils/errors';
 
 export const assetsRouter = Router();
 
@@ -36,10 +37,12 @@ assetsRouter.post(
       if (!period_date) {
         return sendError(res, 'period_date wajib diisi (format: YYYY-MM-DD).', 400);
       }
+      if (!req.companyId) throw new ForbiddenError('Pilih company sebelum menjalankan penyusutan aset.');
       const result = await AssetService.runMonthlyDepreciation(
         req.params.id,
         new Date(period_date),
         req.user?.id ?? 'system',
+        req.companyId,
       );
       sendSuccess(res, result);
     } catch (err) {
@@ -65,7 +68,11 @@ assetsRouter.post(
       if (!period_date) {
         return sendError(res, 'period_date wajib diisi (format: YYYY-MM-DD).', 400);
       }
-      const companyId = company_id ?? req.companyId ?? '';
+      if (!req.companyId) throw new ForbiddenError('Pilih company sebelum menjalankan penyusutan aset.');
+      if (company_id && company_id !== req.companyId) {
+        throw new ForbiddenError('Company pada payload tidak sesuai dengan company aktif.');
+      }
+      const companyId = req.companyId;
       const result = await AssetService.runBatchDepreciation(
         new Date(period_date),
         companyId,
@@ -89,7 +96,8 @@ assetsRouter.post(
  */
 assetsRouter.get('/assets/:id/depreciation-schedule', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await AssetService.getDepreciationSchedule(req.params.id);
+    if (!req.companyId) throw new ForbiddenError('Pilih company sebelum melihat jadwal penyusutan aset.');
+    const result = await AssetService.getDepreciationSchedule(req.params.id, req.companyId);
     sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -113,11 +121,13 @@ assetsRouter.post(
       if (!disposal_date || proceeds_amount === undefined) {
         return sendError(res, 'disposal_date dan proceeds_amount wajib diisi.', 400);
       }
+      if (!req.companyId) throw new ForbiddenError('Pilih company sebelum melakukan disposal aset.');
       const result = await AssetService.disposeAsset(
         req.params.id,
         new Date(disposal_date),
         Number(proceeds_amount),
         req.user?.id ?? 'system',
+        req.companyId,
       );
       sendSuccess(res, result, 201);
     } catch (err) {

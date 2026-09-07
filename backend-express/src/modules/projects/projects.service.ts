@@ -15,6 +15,8 @@ export class ProjectsService {
    */
   static async logActivity(params: {
     projectId: string;
+    tenantId?: string | null;
+    companyId?: string | null;
     actorId?: string;
     taskLevel: string;
     taskId: string;
@@ -29,6 +31,9 @@ export class ProjectsService {
       await prisma.project_task_activity_log.create({
         data: {
           id: crypto.randomUUID(),
+          tenant_id: params.tenantId ?? null,
+          company_id: params.companyId ?? null,
+          created_by_id: params.actorId ?? null,
           project_id: params.projectId,
           actor_id: params.actorId ?? null,
           task_level: params.taskLevel,
@@ -56,23 +61,26 @@ export class ProjectsService {
     weeklyTaskId?: string;
     mainTaskId?: string;
     projectId?: string;
+    companyId?: string;
   }) {
     return prisma.$transaction(async (tx) => {
       let weeklyId = params.weeklyTaskId;
       let mainId = params.mainTaskId;
       let projId = params.projectId;
+      let companyId = params.companyId;
 
       if (params.dailyTaskId) {
-        const dt = await tx.project_daily_task.findUnique({
-          where: { id: params.dailyTaskId },
+        const dt = await tx.project_daily_task.findFirst({
+          where: { id: params.dailyTaskId, ...(companyId ? { company_id: companyId } : {}) },
         });
+        companyId ??= dt?.company_id ?? undefined;
         if (dt?.weekly_task_id) {
           weeklyId = dt.weekly_task_id;
 
           // Daily progress is a derived value. A linked checklist is authoritative;
           // tasks without checklist items fall back to a binary status-derived value.
           const checklist = await tx.project_control_item.findMany({
-            where: { daily_task_id: dt.id },
+            where: { daily_task_id: dt.id, ...(companyId ? { company_id: companyId } : {}) },
             select: { status: true },
           });
           const completedStates = new Set(['DONE', 'COMPLETED', 'CHECKED', 'APPROVED']);
@@ -93,14 +101,15 @@ export class ProjectsService {
       }
 
       if (weeklyId) {
-        const wt = await tx.project_weekly_task.findUnique({
-          where: { id: weeklyId },
+        const wt = await tx.project_weekly_task.findFirst({
+          where: { id: weeklyId, ...(companyId ? { company_id: companyId } : {}) },
         });
+        companyId ??= wt?.company_id ?? undefined;
         if (wt) {
           mainId = wt.main_task_id ?? undefined;
           if (!wt.is_progress_overridden) {
             const dailyTasks = await tx.project_daily_task.findMany({
-              where: { weekly_task_id: weeklyId },
+              where: { weekly_task_id: weeklyId, ...(companyId ? { company_id: companyId } : {}) },
             });
             if (dailyTasks.length > 0) {
               const avg =
@@ -137,14 +146,15 @@ export class ProjectsService {
       }
 
       if (mainId) {
-        const mt = await tx.project_main_task.findUnique({
-          where: { id: mainId },
+        const mt = await tx.project_main_task.findFirst({
+          where: { id: mainId, ...(companyId ? { company_id: companyId } : {}) },
         });
+        companyId ??= mt?.company_id ?? undefined;
         if (mt) {
           projId = mt.project_id ?? undefined;
           if (!mt.is_progress_overridden) {
             const weeklyTasks = await tx.project_weekly_task.findMany({
-              where: { main_task_id: mainId },
+              where: { main_task_id: mainId, ...(companyId ? { company_id: companyId } : {}) },
             });
             if (weeklyTasks.length > 0) {
               const avg =
@@ -177,7 +187,7 @@ export class ProjectsService {
 
       if (projId) {
         const mainTasks = await tx.project_main_task.findMany({
-          where: { project_id: projId },
+          where: { project_id: projId, ...(companyId ? { company_id: companyId } : {}) },
         });
         let totalWeight = 0;
         let weightedSum = 0;
@@ -204,19 +214,19 @@ export class ProjectsService {
   /**
    * Returns the complete 5-level hierarchical WBS tree matching Django hierarchy action
    */
-  static async getProjectHierarchy(projectId: string) {
-    const project = await prisma.project_project.findUnique({
-      where: { id: projectId },
+  static async getProjectHierarchy(projectId: string, companyId: string) {
+    const project = await prisma.project_project.findFirst({
+      where: { id: projectId, company_id: companyId },
     });
     if (!project) throw new NotFoundError('Project');
 
     // Fetch members and project manager
     const [members, mainTasks, allUsers] = await Promise.all([
       prisma.project_member.findMany({
-        where: { project_id: projectId },
+        where: { project_id: projectId, company_id: companyId },
       }),
       prisma.project_main_task.findMany({
-        where: { project_id: projectId },
+        where: { project_id: projectId, company_id: companyId },
         orderBy: { created_at: 'asc' },
       }),
       prisma.iam_user.findMany({
@@ -272,17 +282,17 @@ export class ProjectsService {
     const mainTaskIds = mainTasks.map((m) => m.id);
     const [assignments, weeklyTasks] = await Promise.all([
       prisma.project_task_assignment.findMany({
-        where: { main_task_id: { in: mainTaskIds } },
+        where: { main_task_id: { in: mainTaskIds }, company_id: companyId },
       }),
       prisma.project_weekly_task.findMany({
-        where: { main_task_id: { in: mainTaskIds } },
+        where: { main_task_id: { in: mainTaskIds }, company_id: companyId },
         orderBy: { week_number: 'asc' },
       }),
     ]);
 
     const weeklyTaskIds = weeklyTasks.map((w) => w.id);
     const dailyTasks = await prisma.project_daily_task.findMany({
-      where: { weekly_task_id: { in: weeklyTaskIds } },
+      where: { weekly_task_id: { in: weeklyTaskIds }, company_id: companyId },
       orderBy: { planned_date: 'asc' },
     });
 
@@ -388,9 +398,9 @@ export class ProjectsService {
   /**
    * EVM calculation
    */
-  static async calculateProjectEVM(projectId: string, asOfDate: Date = new Date()) {
-    const project = await prisma.project_project.findUnique({
-      where: { id: projectId },
+  static async calculateProjectEVM(projectId: string, asOfDate: Date = new Date(), companyId?: string) {
+    const project = await prisma.project_project.findFirst({
+      where: { id: projectId, ...(companyId ? { company_id: companyId } : {}) },
     });
     if (!project) throw new NotFoundError('Project');
 
@@ -413,11 +423,11 @@ export class ProjectsService {
 
     const [costEntries, expenses] = await Promise.all([
       prisma.fin_project_cost_entry.findMany({
-        where: { project_id: projectId },
+        where: { project_id: projectId, ...(companyId ? { company_id: companyId } : {}) },
         select: { total_cost: true },
       }),
       prisma.project_expense.findMany({
-        where: { project_id: projectId },
+        where: { project_id: projectId, ...(companyId ? { company_id: companyId } : {}) },
         select: { amount: true },
       }),
     ]);
@@ -469,9 +479,9 @@ export class ProjectsService {
  * Data/side effects: Reads or mutates Prisma model(s) `project_project`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async advanceStage(projectId: string, targetStage?: string) {
+  static async advanceStage(projectId: string, targetStage: string | undefined, companyId: string) {
     const STAGE_ORDER = ['DRAFT', 'VERIFIED', 'RESERVED', 'STARTED', 'COMPLETED'];
-    const project = await prisma.project_project.findUnique({ where: { id: projectId } });
+    const project = await prisma.project_project.findFirst({ where: { id: projectId, company_id: companyId } });
     if (!project) throw new NotFoundError('Project');
 
     let nextStage = targetStage;
@@ -494,17 +504,17 @@ export class ProjectsService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async updateDailyTaskProgress(dailyTaskId: string, data: any, user: any) {
+  static async updateDailyTaskProgress(dailyTaskId: string, data: any, user: any, companyId: string) {
     return prisma.$transaction(async (tx) => {
-      const task = await tx.project_daily_task.findUnique({
-        where: { id: dailyTaskId },
+      const task = await tx.project_daily_task.findFirst({
+        where: { id: dailyTaskId, company_id: companyId },
       });
       if (!task) throw new NotFoundError('DailyTask');
 
-      const weekly = await tx.project_weekly_task.findUnique({
-        where: { id: task.weekly_task_id },
+      const weekly = await tx.project_weekly_task.findFirst({
+        where: { id: task.weekly_task_id, company_id: companyId },
       });
-      const mainTask = weekly ? await tx.project_main_task.findUnique({ where: { id: weekly.main_task_id } }) : null;
+      const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
       const projectId = mainTask?.project_id;
 
       let status = data.status ?? task.status;
@@ -516,7 +526,7 @@ export class ProjectsService {
       }
 
       const checklist = await tx.project_control_item.findMany({
-        where: { daily_task_id: dailyTaskId },
+        where: { daily_task_id: dailyTaskId, company_id: companyId },
         select: { status: true },
       });
       const completedStates = new Set(['DONE', 'COMPLETED', 'CHECKED', 'APPROVED']);
@@ -566,6 +576,8 @@ export class ProjectsService {
       if (projectId) {
         await this.logActivity({
           projectId,
+          tenantId: task.tenant_id,
+          companyId,
           actorId: user?.id,
           taskLevel: 'DAILY',
           taskId: dailyTaskId,
@@ -578,7 +590,7 @@ export class ProjectsService {
         });
       }
 
-      await this.recalculateTaskTree({ dailyTaskId });
+      await this.recalculateTaskTree({ dailyTaskId, companyId });
       return updated;
     });
   }
@@ -591,13 +603,13 @@ export class ProjectsService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async reportBlocked(dailyTaskId: string, reason: string, user: any) {
+  static async reportBlocked(dailyTaskId: string, reason: string, user: any, companyId: string) {
     return prisma.$transaction(async (tx) => {
-      const task = await tx.project_daily_task.findUnique({ where: { id: dailyTaskId } });
+      const task = await tx.project_daily_task.findFirst({ where: { id: dailyTaskId, company_id: companyId } });
       if (!task) throw new NotFoundError('DailyTask');
 
-      const weekly = await tx.project_weekly_task.findUnique({ where: { id: task.weekly_task_id } });
-      const mainTask = weekly ? await tx.project_main_task.findUnique({ where: { id: weekly.main_task_id } }) : null;
+      const weekly = await tx.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } });
+      const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
       const projectId = mainTask?.project_id;
 
       const updated = await tx.project_daily_task.update({
@@ -613,6 +625,8 @@ export class ProjectsService {
       if (projectId) {
         await this.logActivity({
           projectId,
+          tenantId: task.tenant_id,
+          companyId,
           actorId: user?.id,
           taskLevel: 'DAILY',
           taskId: dailyTaskId,
@@ -625,7 +639,7 @@ export class ProjectsService {
         });
       }
 
-      await this.recalculateTaskTree({ dailyTaskId });
+      await this.recalculateTaskTree({ dailyTaskId, companyId });
       return updated;
     });
   }
@@ -638,17 +652,20 @@ export class ProjectsService {
  * Data/side effects: Reads or mutates Prisma model(s) `project_daily_task`, `project_weekly_task`, `project_main_task`, `project_task_transfer_request`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async requestTaskTransfer(dailyTaskId: string, targetUserId: string, reason: string, requester: any) {
-    const task = await prisma.project_daily_task.findUnique({ where: { id: dailyTaskId } });
+  static async requestTaskTransfer(dailyTaskId: string, targetUserId: string, reason: string, requester: any, companyId: string) {
+    const task = await prisma.project_daily_task.findFirst({ where: { id: dailyTaskId, company_id: companyId } });
     if (!task) throw new NotFoundError('DailyTask');
 
-    const weekly = await prisma.project_weekly_task.findUnique({ where: { id: task.weekly_task_id } });
-    const mainTask = weekly ? await prisma.project_main_task.findUnique({ where: { id: weekly.main_task_id } }) : null;
+    const weekly = await prisma.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } });
+    const mainTask = weekly ? await prisma.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
     const projectId = mainTask?.project_id;
 
     const transferReq = await prisma.project_task_transfer_request.create({
       data: {
         id: crypto.randomUUID(),
+        tenant_id: task.tenant_id,
+        company_id: companyId,
+        created_by_id: requester?.id ?? null,
         daily_task_id: dailyTaskId,
         requested_by_id: requester?.id ?? '',
         target_user_id: targetUserId,
@@ -662,6 +679,8 @@ export class ProjectsService {
     if (projectId) {
       await this.logActivity({
         projectId,
+        tenantId: task.tenant_id,
+        companyId,
         actorId: requester?.id,
         taskLevel: 'DAILY',
         taskId: dailyTaskId,
@@ -685,13 +704,13 @@ export class ProjectsService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async directReassign(dailyTaskId: string, targetUserId: string, reason: string, pmUser: any) {
+  static async directReassign(dailyTaskId: string, targetUserId: string, reason: string, pmUser: any, companyId: string) {
     return prisma.$transaction(async (tx) => {
-      const task = await tx.project_daily_task.findUnique({ where: { id: dailyTaskId } });
+      const task = await tx.project_daily_task.findFirst({ where: { id: dailyTaskId, company_id: companyId } });
       if (!task) throw new NotFoundError('DailyTask');
 
-      const weekly = await tx.project_weekly_task.findUnique({ where: { id: task.weekly_task_id } });
-      const mainTask = weekly ? await tx.project_main_task.findUnique({ where: { id: weekly.main_task_id } }) : null;
+      const weekly = await tx.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } });
+      const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
       const projectId = mainTask?.project_id;
 
       const oldOwner = task.owner_id;
@@ -706,6 +725,8 @@ export class ProjectsService {
       if (projectId) {
         await this.logActivity({
           projectId,
+          tenantId: task.tenant_id,
+          companyId,
           actorId: pmUser?.id,
           taskLevel: 'DAILY',
           taskId: dailyTaskId,
@@ -730,16 +751,16 @@ export class ProjectsService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async processTransferApproval(transferId: string, approved: boolean, pmUser: any, reviewNote = '') {
+  static async processTransferApproval(transferId: string, approved: boolean, pmUser: any, reviewNote: string, companyId: string) {
     return prisma.$transaction(async (tx) => {
-      const transfer = await tx.project_task_transfer_request.findUnique({
-        where: { id: transferId },
+      const transfer = await tx.project_task_transfer_request.findFirst({
+        where: { id: transferId, company_id: companyId },
       });
       if (!transfer) throw new NotFoundError('TaskTransferRequest');
 
-      const task = await tx.project_daily_task.findUnique({ where: { id: transfer.daily_task_id } });
-      const weekly = task ? await tx.project_weekly_task.findUnique({ where: { id: task.weekly_task_id } }) : null;
-      const mainTask = weekly ? await tx.project_main_task.findUnique({ where: { id: weekly.main_task_id } }) : null;
+      const task = await tx.project_daily_task.findFirst({ where: { id: transfer.daily_task_id, company_id: companyId } });
+      const weekly = task ? await tx.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } }) : null;
+      const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
       const projectId = mainTask?.project_id;
 
       if (approved) {
@@ -761,6 +782,8 @@ export class ProjectsService {
         if (projectId && task) {
           await this.logActivity({
             projectId,
+            tenantId: task.tenant_id,
+            companyId,
             actorId: pmUser?.id,
             taskLevel: 'DAILY',
             taskId: task.id,
@@ -785,6 +808,8 @@ export class ProjectsService {
         if (projectId && task) {
           await this.logActivity({
             projectId,
+            tenantId: task.tenant_id,
+            companyId,
             actorId: pmUser?.id,
             taskLevel: 'DAILY',
             taskId: task.id,
@@ -810,10 +835,10 @@ export class ProjectsService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async overrideProgress(entityType: 'MAIN' | 'WEEKLY', entityId: string, progress: number, reason: string, pmUser: any) {
+  static async overrideProgress(entityType: 'MAIN' | 'WEEKLY', entityId: string, progress: number, reason: string, pmUser: any, companyId: string) {
     return prisma.$transaction(async (tx) => {
       if (entityType === 'MAIN') {
-        const mt = await tx.project_main_task.findUnique({ where: { id: entityId } });
+        const mt = await tx.project_main_task.findFirst({ where: { id: entityId, company_id: companyId } });
         if (!mt) throw new NotFoundError('MainTask');
         const oldProgress = mt.progress;
 
@@ -830,6 +855,8 @@ export class ProjectsService {
         if (mt.project_id) {
           await this.logActivity({
             projectId: mt.project_id,
+            tenantId: mt.tenant_id,
+            companyId,
             actorId: pmUser?.id,
             taskLevel: 'MAIN',
             taskId: mt.id,
@@ -842,14 +869,14 @@ export class ProjectsService {
           });
         }
 
-        await this.recalculateTaskTree({ mainTaskId: entityId });
+        await this.recalculateTaskTree({ mainTaskId: entityId, companyId });
         return updated;
       } else {
-        const wt = await tx.project_weekly_task.findUnique({ where: { id: entityId } });
+        const wt = await tx.project_weekly_task.findFirst({ where: { id: entityId, company_id: companyId } });
         if (!wt) throw new NotFoundError('WeeklyTask');
         const oldProgress = wt.progress;
 
-        const mainTask = await tx.project_main_task.findUnique({ where: { id: wt.main_task_id } });
+        const mainTask = await tx.project_main_task.findFirst({ where: { id: wt.main_task_id, company_id: companyId } });
 
         const updated = await tx.project_weekly_task.update({
           where: { id: entityId },
@@ -864,6 +891,8 @@ export class ProjectsService {
         if (mainTask?.project_id) {
           await this.logActivity({
             projectId: mainTask.project_id,
+            tenantId: wt.tenant_id,
+            companyId,
             actorId: pmUser?.id,
             taskLevel: 'WEEKLY',
             taskId: wt.id,
@@ -876,7 +905,7 @@ export class ProjectsService {
           });
         }
 
-        await this.recalculateTaskTree({ weeklyTaskId: entityId });
+        await this.recalculateTaskTree({ weeklyTaskId: entityId, companyId });
         return updated;
       }
     });

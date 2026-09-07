@@ -43,6 +43,22 @@ function endpoint(method, route) {
   return `${method.toUpperCase()} ${normalizePath(route)}`;
 }
 
+/** Expands the exact public contract registered by createCrudRouter. */
+function crudRouteRecords(base, file, kind) {
+  return [
+    ['get', base],
+    ['post', base],
+    ['get', `${base}/metadata`],
+    ['post', `${base}/bulk-create`],
+    ['patch', `${base}/bulk-update`],
+    ['post', `${base}/bulk-delete`],
+    ['get', `${base}/:param`],
+    ['put', `${base}/:param`],
+    ['patch', `${base}/:param`],
+    ['delete', `${base}/:param`],
+  ].map(([method, routePath]) => ({ method, path: normalizePath(routePath), file, kind }));
+}
+
 /** Adds route records from a backend router source file. */
 function extractRouterRoutes(file, mounts) {
   const source = fs.readFileSync(file, 'utf8');
@@ -63,8 +79,7 @@ function extractRouterRoutes(file, mounts) {
     for (const match of source.matchAll(generic)) {
       for (const prefix of prefixes) {
         const base = normalizePath(`${prefix}/${match[1]}`);
-        for (const method of ['get', 'post', 'patch', 'put', 'delete']) routeRecords.push({ method, path: base, file, kind: 'generic' });
-        for (const method of ['get', 'patch', 'put', 'delete']) routeRecords.push({ method, path: `${base}/:param`, file, kind: 'generic' });
+        routeRecords.push(...crudRouteRecords(base, file, 'generic'));
       }
     }
     // Some routers wrap CRUD factory creation in a local helper (for example
@@ -74,8 +89,7 @@ function extractRouterRoutes(file, mounts) {
       if (!new RegExp(`(?:const|function)\\s+${match[2]}[\\s\\S]{0,600}?createCrudRouter`).test(source)) continue;
       for (const prefix of prefixes) {
         const base = normalizePath(`${prefix}/${match[1]}`);
-        for (const method of ['get', 'post', 'patch', 'put', 'delete']) routeRecords.push({ method, path: base, file, kind: 'generic-helper' });
-        for (const method of ['get', 'patch', 'put', 'delete']) routeRecords.push({ method, path: `${base}/:param`, file, kind: 'generic-helper' });
+        routeRecords.push(...crudRouteRecords(base, file, 'generic-helper'));
       }
     }
   }

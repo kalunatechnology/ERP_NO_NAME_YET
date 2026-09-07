@@ -18,10 +18,10 @@ export class CRMService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async qualifyInquiry(inquiryId: string, userId: string) {
+  static async qualifyInquiry(inquiryId: string, userId: string, companyId: string) {
     return prisma.$transaction(async (tx) => {
-      const inquiry = await tx.crm_customer_inquiry.findUnique({
-        where: { id: inquiryId },
+      const inquiry = await tx.crm_customer_inquiry.findFirst({
+        where: { id: inquiryId, company_id: companyId },
       });
       if (!inquiry) throw new NotFoundError('CustomerInquiry');
 
@@ -84,15 +84,15 @@ export class CRMService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async calculateEstimate(estimateId: string, userId: string) {
+  static async calculateEstimate(estimateId: string, userId: string, companyId: string) {
     return prisma.$transaction(async (tx) => {
-      const estimate = await tx.crm_cost_estimate.findUnique({
-        where: { id: estimateId },
+      const estimate = await tx.crm_cost_estimate.findFirst({
+        where: { id: estimateId, company_id: companyId },
       });
       if (!estimate) throw new NotFoundError('CostEstimate');
 
       let lines = await tx.crm_cost_estimate_line.findMany({
-        where: { estimate_id: estimateId },
+        where: { estimate_id: estimateId, company_id: companyId },
       });
 
       if (lines.length === 0) {
@@ -100,6 +100,8 @@ export class CRMService {
         await tx.crm_cost_estimate_line.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: estimate.tenant_id,
+            company_id: companyId,
             estimate_id: estimateId,
             cost_element: 'MATERIAL',
             description: 'Biaya Langsung Material / Pekerjaan',
@@ -113,6 +115,8 @@ export class CRMService {
           await tx.crm_cost_estimate_line.create({
             data: {
               id: crypto.randomUUID(),
+              tenant_id: estimate.tenant_id,
+              company_id: companyId,
               estimate_id: estimateId,
               cost_element: 'OVERHEAD',
               description: 'Biaya Overhead & Operasional',
@@ -124,7 +128,7 @@ export class CRMService {
           });
         }
         lines = await tx.crm_cost_estimate_line.findMany({
-          where: { estimate_id: estimateId },
+          where: { estimate_id: estimateId, company_id: companyId },
         });
       }
 
@@ -184,19 +188,19 @@ export class CRMService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async createQuotationFromEstimate(estimateId: string, userId: string) {
+  static async createQuotationFromEstimate(estimateId: string, userId: string, companyId: string) {
     return prisma.$transaction(async (tx) => {
-      let estimate = await tx.crm_cost_estimate.findUnique({
-        where: { id: estimateId },
+      let estimate = await tx.crm_cost_estimate.findFirst({
+        where: { id: estimateId, company_id: companyId },
       });
       if (!estimate) throw new NotFoundError('CostEstimate');
 
       if (estimate.status !== 'CALCULATED' && estimate.status !== 'QUOTED') {
-        estimate = await this.calculateEstimate(estimateId, userId);
+        estimate = await this.calculateEstimate(estimateId, userId, companyId);
       }
 
       const existingVersion = await tx.crm_quotation_version.findFirst({
-        where: { estimate_id: estimateId },
+        where: { estimate_id: estimateId, company_id: companyId },
       });
       if (existingVersion && existingVersion.quotation_id) {
         return {
@@ -208,14 +212,14 @@ export class CRMService {
 
       let customerPartyId = null;
       if (estimate.opportunity_id) {
-        const opp = await tx.crm_opportunity.findUnique({
-          where: { id: estimate.opportunity_id },
+        const opp = await tx.crm_opportunity.findFirst({
+          where: { id: estimate.opportunity_id, company_id: companyId },
         });
         customerPartyId = opp?.customer_party_id;
       }
       if (!customerPartyId && estimate.inquiry_id) {
-        const inq = await tx.crm_customer_inquiry.findUnique({
-          where: { id: estimate.inquiry_id },
+        const inq = await tx.crm_customer_inquiry.findFirst({
+          where: { id: estimate.inquiry_id, company_id: companyId },
         });
         customerPartyId = inq?.customer_party_id;
       }
@@ -239,6 +243,9 @@ export class CRMService {
       const quotation = await tx.sales_quotation.create({
         data: {
           id: crypto.randomUUID(),
+          tenant_id: estimate.tenant_id,
+          company_id: companyId,
+          created_by_id: userId,
           document_id: document.id,
           opportunity_id: estimate.opportunity_id,
           customer_party_id: customerPartyId,
@@ -252,7 +259,7 @@ export class CRMService {
       });
 
       const estimateLines = await tx.crm_cost_estimate_line.findMany({
-        where: { estimate_id: estimateId },
+        where: { estimate_id: estimateId, company_id: companyId },
       });
       const markup = Number(estimate.markup_percent ?? 0) / 100;
 
@@ -264,6 +271,9 @@ export class CRMService {
         await tx.sales_quotation_line.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: estimate.tenant_id,
+            company_id: companyId,
+            created_by_id: userId,
             quotation_id: quotation.id,
             product_id: el.product_id,
             description: el.description,
@@ -278,6 +288,8 @@ export class CRMService {
       await tx.crm_quotation_version.create({
         data: {
           id: crypto.randomUUID(),
+          tenant_id: estimate.tenant_id,
+          company_id: companyId,
           quotation_id: quotation.id,
           estimate_id: estimateId,
           version_number: 1,
@@ -322,13 +334,14 @@ export class CRMService {
  */
   static async calculateCreditSnapshot(customerPartyId: string, companyId?: string | null) {
     const profile = await prisma.master_customer_profile.findFirst({
-      where: { party_id: customerPartyId },
+      where: { party_id: customerPartyId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
     });
     const creditLimit = Number(profile?.credit_limit ?? 0);
 
     const bills = await prisma.fin_billing_document.findMany({
       where: {
         party_id: customerPartyId,
+        ...(companyId ? { company_id: companyId } : { company_id: null }),
         billing_type: 'CUSTOMER_INVOICE',
         status: 'POSTED',
       },
@@ -353,6 +366,7 @@ export class CRMService {
     return prisma.crm_credit_status_snapshot.create({
       data: {
         id: crypto.randomUUID(),
+        tenant_id: profile?.tenant_id ?? null,
         customer_party_id: customerPartyId,
         company_id: companyId ?? null,
         snapshot_at: new Date(),
@@ -376,15 +390,15 @@ export class CRMService {
  */
   static async processDealWon(opportunityId: string, user: any, explicitCompanyId?: string | null) {
     return prisma.$transaction(async (tx) => {
-      const opportunity = await tx.crm_opportunity.findUnique({
-        where: { id: opportunityId },
+      const opportunity = await tx.crm_opportunity.findFirst({
+        where: { id: opportunityId, ...(explicitCompanyId ? { company_id: explicitCompanyId } : { company_id: null }) },
       });
       if (!opportunity) throw new NotFoundError('Opportunity');
 
       let customerPartyId = opportunity.customer_party_id;
       if (!customerPartyId) {
         const firstParty = await tx.master_party.findFirst({
-          where: { status: 'ACTIVE' },
+          where: { status: 'ACTIVE', company_id: explicitCompanyId ?? null },
         });
         if (firstParty) {
           customerPartyId = firstParty.id;
@@ -423,12 +437,15 @@ export class CRMService {
 
       if (isSafe) {
         const quotation = await tx.sales_quotation.findFirst({
-          where: { customer_party_id: customerPartyId },
+          where: { customer_party_id: customerPartyId, company_id: companyId },
         });
 
         createdOrder = await tx.sales_order.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: opportunity.tenant_id,
+            company_id: companyId,
+            created_by_id: user?.id,
             customer_party_id: customerPartyId,
             quotation_id: quotation?.id,
             order_date: new Date(),
@@ -438,7 +455,7 @@ export class CRMService {
         });
 
         const pmUser =
-          (await tx.iam_user.findFirst({ where: { username: 'pm' } })) ?? user;
+          (await tx.iam_user.findFirst({ where: { username: 'pm', tenant_id: opportunity.tenant_id } })) ?? user;
 
         createdProject = await tx.project_project.create({
           data: {
@@ -465,6 +482,9 @@ export class CRMService {
           await tx.project_member.create({
             data: {
               id: crypto.randomUUID(),
+              tenant_id: opportunity.tenant_id,
+              company_id: companyId,
+              created_by_id: user?.id,
               project_id: createdProject.id,
               user_id: pmUser.id,
               project_role: 'PROJECT_MANAGER',
@@ -477,7 +497,9 @@ export class CRMService {
         proformaBilling = await tx.fin_billing_document.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: opportunity.tenant_id,
             company_id: companyId,
+            created_by_id: user?.id,
             party_id: customerPartyId,
             billing_type: 'PROFORMA_INVOICE',
             status: 'DRAFT',
@@ -527,8 +549,8 @@ export class CRMService {
  */
   static async executiveOverride(opportunityId: string, user: any, companyId?: string | null) {
     return prisma.$transaction(async (tx) => {
-      const opportunity = await tx.crm_opportunity.findUnique({
-        where: { id: opportunityId },
+      const opportunity = await tx.crm_opportunity.findFirst({
+        where: { id: opportunityId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
       });
       if (!opportunity) throw new NotFoundError('Opportunity');
 
@@ -538,6 +560,9 @@ export class CRMService {
       const createdOrder = await tx.sales_order.create({
         data: {
           id: crypto.randomUUID(),
+          tenant_id: opportunity.tenant_id,
+          company_id: companyId ?? opportunity.company_id,
+          created_by_id: user?.id,
           customer_party_id: customerPartyId,
           order_date: new Date(),
           total_amount: dealAmount,
@@ -546,7 +571,7 @@ export class CRMService {
       });
 
       const pmUser =
-        (await tx.iam_user.findFirst({ where: { username: 'pm' } })) ?? user;
+        (await tx.iam_user.findFirst({ where: { username: 'pm', tenant_id: opportunity.tenant_id } })) ?? user;
 
       const createdProject = await tx.project_project.create({
         data: {
@@ -573,6 +598,9 @@ export class CRMService {
         await tx.project_member.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: opportunity.tenant_id,
+            company_id: companyId ?? opportunity.company_id,
+            created_by_id: user?.id,
             project_id: createdProject.id,
             user_id: pmUser.id,
             project_role: 'PROJECT_MANAGER',

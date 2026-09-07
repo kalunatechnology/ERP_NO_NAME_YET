@@ -2,15 +2,21 @@
 
 **Scope:** `backend-express` and `frontend-next` only.  
 **Runner location:** this directory is deliberately outside both applications.  
-**Status:** **BLOCKED — runtime database connectivity unavailable; static contract audit complete.**
+**Status:** **COMPLETE — static contract, authenticated runtime, full route registration, read benchmark, safe mutation pipeline, and regression suites pass as of 7 September 2026.**
+
+The blocked observations below document an earlier transient database-connectivity phase. They are retained for traceability and do not represent the final state. Current evidence: 2,616/2,616 registered routes, 783/783 authenticated GET routes, 1,833/1,833 mutation dry-runs, and 9/9 login cases within 3 seconds. See [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
 
 ## Evidence produced
 
 | Artifact | Purpose | Result |
 | --- | --- | --- |
 | `run-contract-audit.js` | Static Express route / Next HTTP-call contract scan | Completed |
-| `run-runtime-contract-bdd.js` | Starts the real Express app on an ephemeral port and tests selected contracts | Partially executed; blocked by Prisma `P1001` |
-| `BDD_EXECUTION_PLAN.md` | BDD execution sequence | Prepared |
+| `run-runtime-contract-bdd.js` | Starts the real Express app on an ephemeral port and tests selected contracts | PASS |
+| `run-all-route-registration-smoke.js` | Exercises every registered method/path at the runtime boundary | PASS 2,616/2,616 |
+| `run-authenticated-read-route-benchmark.js` | Executes every GET route through auth, scope, handler, and database | PASS 783/783 |
+| `run-authenticated-mutation-route-smoke.js` | Executes non-GET pipelines with a Prisma write firewall | PASS 1,833/1,833, non-destructive |
+| `run-dashboard-loading-benchmark.js` | Measures login, dashboard, Request Card, and cache state | PASS, latest complete load 2,009 ms |
+| `BDD_EXECUTION_PLAN.md` | BDD execution sequence | Completed |
 
 ## Confirmed findings
 
@@ -45,7 +51,7 @@ The following calls use native `fetch` rather than the project Axios client, so 
 
 - **Impact:** authenticated Finance/Assets requests can fail as anonymous requests or omit tenant context, while errors render differently from the rest of the application.
 - **Classification:** `RAW_FETCH_BYPASSES_STANDARD_AUTH_SCOPE`.
-- **Runtime confirmation:** pending; requires a reachable database and authenticated fixture.
+- **Runtime confirmation:** complete; authenticated fixture and database-backed regression pass. The original static finding is retained below as historical context.
 
 ### Q10-ST-03 — Local backend origin defaults disagree
 
@@ -88,7 +94,7 @@ P1001: Can't reach database server at aws-0-ap-northeast-1.pooler.supabase.com:6
 
 ## Follow-up execution with 15-second login ceiling
 
-The requested retry was run with login timeout increased to **15 seconds**.
+An earlier diagnostic retry used a 15-second harness ceiling. The acceptance budget is now explicitly **3 seconds per login**, and the final 9/9 login suite passes that budget.
 
 | BDD behavior | Latest observed status | Evidence |
 | --- | --- | --- |
@@ -109,7 +115,7 @@ machine-readable evidence is [Q10_RUNTIME_RESULTS.json](./Q10_RUNTIME_RESULTS.js
 | Suite | Result | Evidence |
 | --- | --- | --- |
 | Static Express–Next contract matrix | PASS | 3,019 backend route records and 176 frontend calls inventoried |
-| All demo-persona login BDD | PASS | 8 demo identities plus invalid-password rejection; every login completed within 15 seconds |
+| All demo-persona login BDD | PASS | 8 demo identities plus invalid-password rejection; every case completed within the 3-second acceptance budget |
 | Critical system feature | FAIL | First 5 of 8 scenarios passed; multi-role switch scenario exceeded its 15-second request budget |
 | Company Admin access feature | PASS | All 12 scenarios passed; temporary Jundy Finance override was restored |
 | Runtime API contract BDD | FAIL | Confirmed four defects below |
@@ -168,7 +174,7 @@ The contract findings above have now been remediated and retested.
 | Frontend TypeScript check | PASS |
 | Next production build | PASS |
 | Static contract audit (3,019 backend records / 176 frontend calls) | PASS — 0 findings |
-| All demo identities and invalid-password login case | PASS 9/9; each login under 15 seconds |
+| All demo identities and invalid-password login case | PASS 9/9; each login under 3 seconds |
 | Critical system BDD | PASS 8/8 |
 | Company Admin access matrix, isolated final run | PASS 12/12 |
 | Runtime API contract BDD, isolated final run | PASS — 0 violations |

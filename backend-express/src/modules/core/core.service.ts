@@ -20,32 +20,38 @@ export class CoreService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async getSidebarFeed(userId: string, companyId: string | null) {
-    const notifications = await prisma.core_app_notification.findMany({
-      where: {
-        recipient_id: userId,
-        ...(companyId ? { company_id: companyId } : {}),
-      },
-      orderBy: { created_at: 'desc' },
-      take: 10,
-    });
-
     // A company-less super admin session has no single tenant context. Returning
     // an empty company stream prevents accidental aggregation across companies.
-    const memberships = companyId
-      ? await prisma.iam_user_company_membership.findMany({
+    const [notifications, memberships, activities] = await Promise.all([
+      prisma.core_app_notification.findMany({
+        where: {
+          recipient_id: userId,
+          ...(companyId ? { company_id: companyId } : { company_id: null }),
+        },
+        orderBy: { created_at: 'desc' },
+        take: 10,
+      }),
+      companyId ? prisma.iam_user_company_membership.findMany({
           where: { company_id: companyId, status: 'ACTIVE' },
           select: { user_id: true },
-        })
-      : [];
+        }) : Promise.resolve([]),
+      companyId ? prisma.core_activity_feed.findMany({
+        where: { company_id: companyId },
+        orderBy: { created_at: 'desc' },
+        take: 15,
+      }) : Promise.resolve([]),
+    ]);
     const companyUserIds = memberships.map((membership) => membership.user_id);
+    const actorIds = [
+      ...notifications.map((n) => n.actor_id).filter((id): id is string => Boolean(id)),
+      ...activities.map((a) => a.actor_id).filter((id): id is string => Boolean(id)),
+    ];
+    const allowedActorIds = companyId
+      ? actorIds.filter((id) => companyUserIds.includes(id))
+      : actorIds.filter((id) => id === userId);
 
-    const [activities, contactUsers] = companyId
+    const [contactUsers, actors] = companyId
       ? await Promise.all([
-          prisma.core_activity_feed.findMany({
-            where: { company_id: companyId },
-            orderBy: { created_at: 'desc' },
-            take: 15,
-          }),
           prisma.iam_user.findMany({
             where: {
               id: { in: companyUserIds.filter((id) => id !== userId) },
@@ -65,8 +71,15 @@ export class CoreService {
             orderBy: { full_name: 'asc' },
             take: 20,
           }),
+          prisma.iam_user.findMany({
+            where: { id: { in: allowedActorIds } },
+            select: { id: true, full_name: true, username: true, email: true },
+          }),
         ])
-      : [[], []];
+      : [[], await prisma.iam_user.findMany({
+          where: { id: { in: allowedActorIds } },
+          select: { id: true, full_name: true, username: true, email: true },
+        })];
 
     const contactIds = contactUsers.map((contact) => contact.id);
     const roleAssignments = companyId && contactIds.length > 0
@@ -108,18 +121,6 @@ export class CoreService {
       };
     });
 
-    const actorIds = [
-      ...notifications.map((n) => n.actor_id).filter((id): id is string => Boolean(id)),
-      ...activities.map((a) => a.actor_id).filter((id): id is string => Boolean(id)),
-    ];
-
-    const allowedActorIds = companyId
-      ? actorIds.filter((id) => companyUserIds.includes(id))
-      : actorIds.filter((id) => id === userId);
-    const actors = await prisma.iam_user.findMany({
-      where: { id: { in: allowedActorIds } },
-      select: { id: true, full_name: true, username: true, email: true },
-    });
     const actorMap = new Map(actors.map((a) => [a.id, a]));
 
     const serializedNotifications = notifications.map((n) => ({
@@ -147,9 +148,9 @@ export class CoreService {
  * Data/side effects: Reads or mutates Prisma model(s) `core_app_notification`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async markNotificationsRead(userId: string) {
+  static async markNotificationsRead(userId: string, companyId: string | null) {
     await prisma.core_app_notification.updateMany({
-      where: { recipient_id: userId, is_read: false },
+      where: { recipient_id: userId, is_read: false, ...(companyId ? { company_id: companyId } : { company_id: null }) },
       data: { is_read: true },
     });
     return { status: 'all notifications marked as read' };
@@ -163,9 +164,9 @@ export class CoreService {
  * Data/side effects: Reads or mutates Prisma model(s) `core_user_recent_item`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async getRecentItems(userId: string) {
+  static async getRecentItems(userId: string, companyId: string | null) {
     return prisma.core_user_recent_item.findMany({
-      where: { user_id: userId },
+      where: { user_id: userId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
       orderBy: { last_accessed_at: 'desc' },
       take: 10,
     });
@@ -181,9 +182,11 @@ export class CoreService {
   static async trackRecentItem(
     userId: string,
     data: { item_type: string; object_id: string; title: string; target_url: string },
+    tenantId: string | null,
+    companyId: string | null,
   ) {
     const existing = await prisma.core_user_recent_item.findFirst({
-      where: { user_id: userId, object_id: data.object_id },
+      where: { user_id: userId, object_id: data.object_id, ...(companyId ? { company_id: companyId } : { company_id: null }) },
     });
 
     if (existing) {
@@ -202,6 +205,9 @@ export class CoreService {
     return prisma.core_user_recent_item.create({
       data: {
         id: crypto.randomUUID(),
+        tenant_id: tenantId,
+        company_id: companyId,
+        created_by_id: userId,
         user_id: userId,
         item_type: data.item_type,
         object_id: data.object_id,

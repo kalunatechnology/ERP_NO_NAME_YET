@@ -11,6 +11,7 @@ import prisma from '../../config/database';
 import { ValidationError, NotFoundError, ForbiddenError } from '../../utils/errors';
 import { AuditService } from './audit.service';
 import { RoleCode } from '../../types/roles';
+import { Prisma } from '@prisma/client';
 
 export interface TaggedUser {
   id: string;
@@ -56,7 +57,7 @@ export class RequestService {
  * Data/side effects: Reads or mutates Prisma model(s) `core_workflow_instance`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async createRequest(payload: CreateRequestPayload, userId: string, companyId?: string | null) {
+  static async createRequest(payload: CreateRequestPayload, userId: string, companyId: string, tenantId?: string | null) {
     const {
       request_type, title, description, amount, budget_category,
       bank_target, project_id, start_at, end_at, tagged_users = [],
@@ -78,7 +79,10 @@ export class RequestService {
     const instanceId = crypto.randomUUID();
     await prisma.core_workflow_instance.create({
       data: {
-        id:            instanceId,
+          id:            instanceId,
+          tenant_id:     tenantId ?? null,
+          company_id:    companyId,
+          created_by_id: userId,
         workflow_code: `INTERNAL_${request_type}`,
         current_state: initialStatus,
         status:        is_draft ? 'DRAFT' : 'IN_PROGRESS',
@@ -155,10 +159,11 @@ export class RequestService {
     decision:  'APPROVE' | 'RE_CHECK';
     remarks?:  string;
     omUserId:  string;
+    companyId: string;
   }) {
-    const { requestId, decision, remarks = '', omUserId } = params;
+    const { requestId, decision, remarks = '', omUserId, companyId } = params;
 
-    const instance = await prisma.core_workflow_instance.findUnique({ where: { id: requestId } });
+    const instance = await prisma.core_workflow_instance.findFirst({ where: { id: requestId, company_id: companyId } });
     if (!instance) throw new NotFoundError('Request');
 
     if (instance.current_state !== 'PENDING_OM' && instance.current_state !== 'RE_CHECKING') {
@@ -176,6 +181,9 @@ export class RequestService {
       await tx.core_workflow_approval.create({
         data: {
           id:                   crypto.randomUUID(),
+          tenant_id:            instance.tenant_id,
+          company_id:           companyId,
+          created_by_id:        omUserId,
           workflow_instance_id: requestId,
           approver_user_id:     omUserId,
           approval_level:       'OM',
@@ -193,6 +201,7 @@ export class RequestService {
       before:      { status: instance.current_state },
       after:       { status: nextState, om_remarks: remarks, om_user_id: omUserId },
       userId:      omUserId,
+      companyId,
       description: `OM ${decision === 'APPROVE' ? 'menyetujui & meneruskan ke Executive' : 'meminta Re-checking'}: ${remarks}`,
     });
 
@@ -205,6 +214,7 @@ export class RequestService {
         notification_type:  'EXECUTIVE_APPROVAL',
         priority:           'HIGH',
         recipient_role_id:  'PROJECT_MANAGER',
+        company_id:         companyId,
       });
     } else {
       await this.createNotification({
@@ -213,6 +223,7 @@ export class RequestService {
         action_url:         `/dashboard?tab=requests&id=${requestId}`,
         notification_type:  'REVISION_REQUESTED',
         priority:           'MEDIUM',
+        company_id:         companyId,
       });
     }
 
@@ -242,10 +253,11 @@ export class RequestService {
     decision:   'APPROVE' | 'REJECT';
     remarks?:   string;
     execUserId: string;
+    companyId:  string;
   }) {
-    const { requestId, decision, remarks = '', execUserId } = params;
+    const { requestId, decision, remarks = '', execUserId, companyId } = params;
 
-    const instance = await prisma.core_workflow_instance.findUnique({ where: { id: requestId } });
+    const instance = await prisma.core_workflow_instance.findFirst({ where: { id: requestId, company_id: companyId } });
     if (!instance) throw new NotFoundError('Request');
 
     if (instance.current_state !== 'PENDING_EXEC') {
@@ -267,6 +279,9 @@ export class RequestService {
       await tx.core_workflow_approval.create({
         data: {
           id:                   crypto.randomUUID(),
+          tenant_id:            instance.tenant_id,
+          company_id:           companyId,
+          created_by_id:        execUserId,
           workflow_instance_id: requestId,
           approver_user_id:     execUserId,
           approval_level:       'EXECUTIVE_PM',
@@ -284,6 +299,7 @@ export class RequestService {
       before:      { status: 'PENDING_EXEC' },
       after:       { status: nextState, exec_remarks: remarks, exec_user_id: execUserId },
       userId:      execUserId,
+      companyId,
       description: `Executive/PM ${decision === 'APPROVE' ? 'menyetujui resmi (TICKET REGISTERED)' : 'menolak'}: ${remarks}`,
     });
 
@@ -296,6 +312,7 @@ export class RequestService {
       action_url:         `/dashboard?tab=requests&id=${requestId}`,
       notification_type:  'FINAL_STATUS',
       priority:           decision === 'APPROVE' ? 'MEDIUM' : 'HIGH',
+      company_id:         companyId,
     });
 
     return {
@@ -324,10 +341,11 @@ export class RequestService {
     disburseAccountId?: string;
     disburseReference?: string;
     disburseUserId:    string;
+    companyId:          string;
   }) {
-    const { requestId, disburseAccountId, disburseReference, disburseUserId } = params;
+    const { requestId, disburseAccountId, disburseReference, disburseUserId, companyId } = params;
 
-    const instance = await prisma.core_workflow_instance.findUnique({ where: { id: requestId } });
+    const instance = await prisma.core_workflow_instance.findFirst({ where: { id: requestId, company_id: companyId } });
     if (!instance) throw new NotFoundError('Request');
 
     if (instance.current_state !== 'REGISTERED') {
@@ -353,6 +371,7 @@ export class RequestService {
       before:      { status: 'REGISTERED' },
       after:       { status: 'DISBURSED', disbursement: disbursementData },
       userId:      disburseUserId,
+      companyId,
       description: `Dana permohonan berhasil dicairkan oleh Finance (Ref: ${disbursementData.reference_number})`,
     });
 
@@ -382,10 +401,11 @@ export class RequestService {
     notes?:            string;
     invoices?:         LPJInvoiceItem[];
     requesterUserId:   string;
+    companyId:          string;
   }) {
-    const { requestId, realizationAmount, discrepancyAmount = 0, discrepancyType = 'NONE', notes = '', invoices = [], requesterUserId } = params;
+    const { requestId, realizationAmount, discrepancyAmount = 0, discrepancyType = 'NONE', notes = '', invoices = [], requesterUserId, companyId } = params;
 
-    const instance = await prisma.core_workflow_instance.findUnique({ where: { id: requestId } });
+    const instance = await prisma.core_workflow_instance.findFirst({ where: { id: requestId, company_id: companyId } });
     if (!instance) throw new NotFoundError('Request');
 
     if (instance.current_state !== 'REGISTERED' && instance.current_state !== 'DISBURSED' && instance.current_state !== 'LPJ_REVISION') {
@@ -414,6 +434,7 @@ export class RequestService {
       before:      { status: instance.current_state },
       after:       { status: 'PENDING_LPJ_VERIFICATION', lpj: lpjData },
       userId:      requesterUserId,
+      companyId,
       description: `Pemohon mengunggah pertanggungjawaban LPJ realisasi Rp ${Number(realizationAmount).toLocaleString('id-ID')}`,
     });
 
@@ -425,6 +446,7 @@ export class RequestService {
       notification_type:  'LPJ_VERIFICATION',
       priority:           'HIGH',
       recipient_role_id:  'OPERATIONS_MANAGER',
+      company_id:         companyId,
     });
 
     return {
@@ -450,10 +472,11 @@ export class RequestService {
     decision:  'APPROVE' | 'REVISE';
     remarks?:  string;
     omUserId:  string;
+    companyId: string;
   }) {
-    const { requestId, decision, remarks = '', omUserId } = params;
+    const { requestId, decision, remarks = '', omUserId, companyId } = params;
 
-    const instance = await prisma.core_workflow_instance.findUnique({ where: { id: requestId } });
+    const instance = await prisma.core_workflow_instance.findFirst({ where: { id: requestId, company_id: companyId } });
     if (!instance) throw new NotFoundError('Request');
 
     if (instance.current_state !== 'PENDING_LPJ_VERIFICATION') {
@@ -475,6 +498,9 @@ export class RequestService {
       await tx.core_workflow_approval.create({
         data: {
           id:                   crypto.randomUUID(),
+          tenant_id:            instance.tenant_id,
+          company_id:           companyId,
+          created_by_id:        omUserId,
           workflow_instance_id: requestId,
           approver_user_id:     omUserId,
           approval_level:       'OM_LPJ_VERIFICATION',
@@ -492,6 +518,7 @@ export class RequestService {
       before:      { status: 'PENDING_LPJ_VERIFICATION' },
       after:       { status: nextState, om_lpj_remarks: remarks, om_user_id: omUserId },
       userId:      omUserId,
+      companyId,
       description: `OM ${decision === 'APPROVE' ? 'memverifikasi nota LPJ cocok (TIKET RESMI CLOSED)' : 'meminta revisi nota LPJ'}: ${remarks}`,
     });
 
@@ -504,6 +531,7 @@ export class RequestService {
       action_url:         `/dashboard?tab=requests&id=${requestId}`,
       notification_type:  'LPJ_RESULT',
       priority:           decision === 'APPROVE' ? 'LOW' : 'HIGH',
+      company_id:         companyId,
     });
 
     return {
@@ -534,37 +562,50 @@ export class RequestService {
     pageSize?:  number;
     companyId?: string | null;
   }) {
-    const { type, status, page = 1, pageSize = 20, companyId } = params;
+    const { type, status, companyId } = params;
+    const page = Math.max(1, Math.trunc(Number(params.page) || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.trunc(Number(params.pageSize) || 20)));
 
-    const where: any = {
-      entity_name: 'core_internal_request',
-      event_type:  'CREATE_REQUEST',
+    type RequestFeedRow = {
+      id: string; entity_id: string | null; user_id: string | null; company_id: string | null;
+      after_data: Record<string, unknown> | null; occurred_at: Date; current_state: string | null;
+      approvals: Array<{ approval_level: string; decision: string; remarks: string; decided_at: Date | string | null; approver_user_id: string | null }>;
+      total_count: bigint;
     };
+    const companyClause = companyId ? Prisma.sql`AND ae.company_id = ${companyId}::uuid` : Prisma.empty;
+    // The feed is a read model: select the audit payload, live workflow state,
+    // approvals, and exact total in one atomic database snapshot. This removes
+    // the previous two-wave/four-query waterfall without weakening company scope.
+    const feedRows = await prisma.$queryRaw<RequestFeedRow[]>(Prisma.sql`
+      WITH logs AS (
+        SELECT ae.id, ae.entity_id, ae.user_id, ae.company_id, ae.after_data, ae.occurred_at,
+               count(*) OVER() AS total_count
+        FROM core_audit_event ae
+        WHERE ae.entity_name = 'core_internal_request' AND ae.event_type = 'CREATE_REQUEST'
+          ${companyClause}
+        ORDER BY ae.occurred_at DESC
+        OFFSET ${(page - 1) * pageSize} LIMIT ${pageSize}
+      )
+      SELECT logs.*,
+             wi.current_state,
+             COALESCE((
+               SELECT jsonb_agg(jsonb_build_object(
+                 'approval_level', wa.approval_level, 'decision', wa.decision,
+                 'remarks', wa.remarks, 'decided_at', wa.decided_at,
+                 'approver_user_id', wa.approver_user_id
+               ) ORDER BY wa.decided_at ASC)
+               FROM core_workflow_approval wa
+               WHERE wa.workflow_instance_id = logs.entity_id
+                 AND (${companyId ?? null}::uuid IS NULL OR wa.company_id = ${companyId ?? null}::uuid)
+             ), '[]'::jsonb) AS approvals
+      FROM logs
+      LEFT JOIN core_workflow_instance wi ON wi.id = logs.entity_id
+        AND (${companyId ?? null}::uuid IS NULL OR wi.company_id = ${companyId ?? null}::uuid)
+      ORDER BY logs.occurred_at DESC
+    `);
+    const total = Number(feedRows[0]?.total_count ?? 0);
 
-    if (companyId) {
-      where.company_id = companyId;
-    }
-
-    const total = await prisma.core_audit_event.count({ where });
-
-    const auditLogs = await prisma.core_audit_event.findMany({
-      where,
-      orderBy: { occurred_at: 'desc' },
-      skip:    (page - 1) * pageSize,
-      take:    pageSize,
-    });
-
-    const instanceIds = auditLogs.map(a => a.entity_id).filter(Boolean) as string[];
-    const instances = await prisma.core_workflow_instance.findMany({
-      where: { id: { in: instanceIds } },
-    });
-
-    const approvals = await prisma.core_workflow_approval.findMany({
-      where: { workflow_instance_id: { in: instanceIds } },
-      orderBy: { decided_at: 'asc' },
-    });
-
-    const rows = auditLogs.map(log => {
+    const rows = feedRows.map(log => {
 /**
  * payload implements a named function within this file's domain service boundary.
  *
@@ -575,8 +616,7 @@ export class RequestService {
  */
       const payload = (log.after_data as any) || {};
       const entityId = log.entity_id || log.id;
-      const liveInstance = instances.find(inst => inst.id === log.entity_id);
-      const reqApprovals = approvals.filter(appr => appr.workflow_instance_id === log.entity_id);
+      const reqApprovals = log.approvals ?? [];
 
       return {
         id:                 entityId,
@@ -592,7 +632,7 @@ export class RequestService {
         end_at:             payload.end_at,
         tagged_users:       payload.tagged_users || [],
         attachment_url:     payload.attachment_url,
-        status:             liveInstance?.current_state || payload.status || 'PENDING_OM',
+        status:             log.current_state || payload.status || 'PENDING_OM',
         created_by_id:      payload.created_by_id || log.user_id,
         company_id:         payload.company_id || log.company_id,
         created_at:         log.occurred_at,
@@ -637,7 +677,7 @@ export class RequestService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async getTeamMembers(companyId?: string | null, search?: string) {
-    let companyUserIds: string[] | null = null;
+    let companyUserIds: string[] = [];
 
     if (companyId) {
       const userRoles = await prisma.iam_user_role.findMany({
@@ -645,16 +685,12 @@ export class RequestService {
         select: { user_id: true, role_id: true },
       });
       const ids = userRoles.map(r => r.user_id).filter(Boolean) as string[];
-      if (ids.length > 0) {
-        companyUserIds = ids;
-      }
+      companyUserIds = ids;
     }
 
     const whereClause: any = { is_active: true };
 
-    if (companyUserIds !== null) {
-      whereClause.id = { in: companyUserIds };
-    }
+    if (companyId) whereClause.id = { in: companyUserIds };
 
     if (search && search.trim()) {
       const q = search.trim();
