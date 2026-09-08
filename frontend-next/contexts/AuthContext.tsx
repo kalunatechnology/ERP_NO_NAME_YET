@@ -79,7 +79,7 @@ function extractRoleCodes(user: any): string[] {
 }
 
 /**
- * Detects user's primary role from their profile (roles array + email pattern fallback).
+ * Detects the user's primary role from canonical role codes returned by the backend.
  * Priority: executive > om > pm > finance > crm > staff
  */
 export function detectRole(user: any): UserRoleType {

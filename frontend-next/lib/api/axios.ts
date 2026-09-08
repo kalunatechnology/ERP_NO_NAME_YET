@@ -94,7 +94,7 @@ function refreshTokenOnce(): Promise<string | null> {
 
   if (typeof window === "undefined") return Promise.resolve(null);
   const refresh = localStorage.getItem("erp.refresh");
-  if (!refresh || refresh.startsWith("demo-")) {
+  if (!refresh) {
     return Promise.resolve(null);
   }
 

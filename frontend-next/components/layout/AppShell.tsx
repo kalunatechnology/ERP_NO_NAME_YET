@@ -26,7 +26,7 @@ const RESTRICTED_ROUTES: Record<string, string[]> = {
   "/crm": ["ROLE-PM", "ROLE-CRM-LEAD", "ROLE-SALES", "ROLE-DIRECTOR"],
   "/finance": ["ROLE-FINANCE", "ROLE-DIRECTOR"],
   "/projects": ["ROLE-PM", "ROLE-OM", "ROLE-DIRECTOR", "ROLE-SUPERVISOR", "ROLE-STAFF"],
-  "/tasks": ["ROLE-PM", "ROLE-OM", "ROLE-SUPERVISOR", "ROLE-STAFF"],
+  "/tasks": ["ROLE-PM", "ROLE-OM", "ROLE-DIRECTOR", "ROLE-SUPERVISOR", "ROLE-STAFF"],
   "/reporting": [],
 };
 

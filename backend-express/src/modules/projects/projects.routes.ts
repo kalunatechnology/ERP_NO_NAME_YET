@@ -11,6 +11,7 @@ import prisma from '../../config/database';
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError } from '../../utils/errors';
+import { RoleCode } from '../../types/roles';
 
 export const projectsRouter = Router();
 
@@ -940,6 +941,29 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
   beforeCreate: async (req, data) => {
     if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
     if (req.body.main_task && !data.main_task_id) data.main_task_id = req.body.main_task;
+    const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(
+      req.user?.active_role_code as RoleCode,
+    );
+    if (isOperationalAssignee) {
+      const mainTaskId = String(data.main_task_id ?? '');
+      if (!mainTaskId || !req.user?.id) {
+        throw new ForbiddenError('Main Task dan assignee aktif wajib tersedia untuk membuat target mingguan.');
+      }
+      const assignment = await prisma.project_task_assignment.findFirst({
+        where: {
+          main_task_id: mainTaskId,
+          assignee_id: req.user.id,
+          company_id: activeCompanyId(req),
+          ...(req.user.tenant_id ? { tenant_id: req.user.tenant_id } : {}),
+        },
+        select: { id: true },
+      });
+      if (!assignment) {
+        throw new ForbiddenError('Anda hanya dapat membuat target mingguan pada Main Task yang ditugaskan kepada Anda.');
+      }
+      // An operational assignee can plan their own work, not reassign it.
+      data.assignee_id = req.user.id;
+    }
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
     if (!data.target_description && data.target_output) data.target_description = data.target_output;
     if (data.target_description === undefined) data.target_description = '';

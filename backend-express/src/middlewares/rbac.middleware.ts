@@ -49,7 +49,7 @@ export function requireRole(...allowedRoles: string[]) {
 
 export interface ActiveRoleMutationPolicy {
   restrictedRoles: string[];
-  allowedMutationPaths?: RegExp[];
+  allowedMutationPaths?: Array<RegExp | { path: RegExp; methods?: string[] }>;
   message: string;
 }
 
@@ -75,7 +75,11 @@ export function restrictActiveRoleMutations(policy: ActiveRoleMutationPolicy) {
     if (!policy.restrictedRoles.includes(activeRole)) return next();
 
     const requestPath = req.originalUrl.split('?')[0] ?? req.path;
-    const allowed = (policy.allowedMutationPaths ?? []).some((pattern) => pattern.test(requestPath));
+    const allowed = (policy.allowedMutationPaths ?? []).some((rule) => {
+      if (rule instanceof RegExp) return rule.test(requestPath);
+      return rule.path.test(requestPath)
+        && (!rule.methods || rule.methods.includes(req.method.toUpperCase()));
+    });
     if (allowed) return next();
 
     return next(new ForbiddenError(policy.message));

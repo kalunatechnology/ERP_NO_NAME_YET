@@ -174,8 +174,9 @@ export function createApp(): Express {
         /\/api\/v1\/projects\/daily-tasks\/[^/]+\/(update[-_]progress|report[-_]blocked|request[-_]transfer)$/,
         /\/api\/v1\/projects\/daily-tasks\/[^/]+$/,
         /\/api\/v1\/projects\/timesheets(?:\/[^/]+)?\/?$/,
+        { path: /\/api\/v1\/projects\/weekly-tasks\/?$/, methods: ['POST'] },
       ],
-      message: 'Staff dan Supervisor hanya dapat memperbarui tugas/timesheet miliknya melalui flow operasional.',
+      message: 'Staff dan Supervisor hanya dapat memperbarui tugas/timesheet miliknya atau membuat target mingguan pada Main Task yang ditugaskan kepadanya.',
     }),
     projectsRouter,
   );

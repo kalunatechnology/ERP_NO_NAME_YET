@@ -32,6 +32,10 @@ type SeedUser = {
  * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
  */
 async function main() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'I_UNDERSTAND_THIS_WRITES_DEMO_DATA') {
+    throw new Error('Demo seed is disabled in production. Use migrations for production data changes.');
+  }
+
   console.log('🌱 Starting comprehensive universal ERP domain dataset seeding...');
 
   const salt = await bcrypt.genSalt(10);

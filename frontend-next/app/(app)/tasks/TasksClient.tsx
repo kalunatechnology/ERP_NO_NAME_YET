@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useDeferredValue } from "react";
 import { cn, formatDate, getStatusColor } from "@/lib/utils";
 import { loadAllProjects, Project, DailyTask, updateDailyTask } from "@/lib/api/project.api";
-import { useAuth, detectRole } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckCircle2, Search, Check, Layers, RefreshCw,
   CalendarDays, AlertTriangle, Clock, ChevronDown, ChevronRight, Pencil, X, Save,
@@ -261,7 +261,7 @@ function TaskRow({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function TasksClient() {
-  const { user, userRole, isAdmin } = useAuth();
+  const { user, userRole } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -281,30 +281,8 @@ export default function TasksClient() {
     }).catch(() => {});
   }, []);
 
-  const isPM = useMemo(() => {
-    if (!user) return false;
-    if (userRole === "pm" || userRole === "executive" || isAdmin) return true;
-    if ((user as any).is_superuser || (user as any).is_staff) return true;
-    const role = detectRole(user);
-    if (role === "pm" || role === "executive") return true;
-/**
- * email coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-    const email = (user.email || "").toLowerCase();
-/**
- * username coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-    const username = (user.username || "").toLowerCase();
-    return username.includes("pm") || username.includes("project") || username.includes("admin") || email.includes("pm") || email.includes("project") || email.includes("admin");
-  }, [user, userRole, isAdmin]);
+  // Mutation controls follow the active backend role; identity names and emails are never authorization signals.
+  const isPM = useMemo(() => userRole === "pm" || userRole === "om", [userRole]);
 
   const fetchTasks = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);

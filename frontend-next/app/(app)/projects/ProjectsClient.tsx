@@ -32,7 +32,7 @@ import {
   fetchProjectFundingRequests, submitProjectFundingRequest,
   fetchProjectCustomers
 } from "@/lib/api/project.api";
-import { useAuth, detectRole } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
@@ -108,7 +108,7 @@ function CategoryLabel({ label }: { label?: string | null }) {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function ProjectsClient() {
-  const { user, userRole, isAdmin } = useAuth();
+  const { user, userRole } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [activeTab, setActiveTab] = useState("TREE");
@@ -258,44 +258,8 @@ export default function ProjectsClient() {
   }, [selectedProject?.id]);
 
   /* Project Manager & Executive Role Guard */
-  const isPM = useMemo(() => {
-    if (!user) return false;
-    if (userRole === "pm" || userRole === "executive" || isAdmin) return true;
-    if ((user as any).is_superuser || (user as any).is_staff) return true;
-    const role = detectRole(user);
-    if (role === "pm" || role === "executive") return true;
-/**
- * email coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-    const email = (user.email || "").toLowerCase();
-/**
- * username coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-    const username = (user.username || "").toLowerCase();
-    if (username.includes("pm") || username.includes("project") || username.includes("admin")) return true;
-    if (email.includes("pm") || email.includes("project") || email.includes("admin")) return true;
-/**
- * userRoles coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-    const userRoles = (user.roles || []).map((r: any) => typeof r === "string" ? r : (r.role_code || r.role || r.name || r.code || ""));
-    if (userRoles.some((r: string) => r.toUpperCase().includes("PROJECT_MANAGER") || r.toUpperCase().includes("PM") || r.toUpperCase().includes("ADMIN") || r.toUpperCase().includes("SUPERVISOR"))) {
-      return true;
-    }
-    if (selectedProject && String((selectedProject as any).pm_id || (selectedProject as any).project_manager_id || (selectedProject as any).project_manager || "") === String(user.id)) return true;
-    return false;
-  }, [user, userRole, isAdmin, selectedProject]);
+  // Mutation controls follow the active backend role; identity names and emails are never authorization signals.
+  const isPM = useMemo(() => userRole === "pm" || userRole === "om", [userRole]);
 
   const [customerOptions, setCustomerOptions] = useState<string[]>([]);
 
@@ -1370,7 +1334,7 @@ export default function ProjectsClient() {
                               <button
                                 onClick={() => {
                                   setActiveMainTask(main);
-                                  const defaultPic = main.assignments?.[0]?.assignee_name || user?.full_name || user?.username || "Ahmad Rizki";
+                                  const defaultPic = main.assignments?.[0]?.assignee_name || user?.full_name || user?.username || "";
                                   const today = new Date().toISOString().split("T")[0];
                                   const nextWeek = new Date(Date.now() + 6 * 86400000).toISOString().split("T")[0];
                                   setWeeklyForm({
