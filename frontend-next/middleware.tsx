@@ -38,7 +38,7 @@ export function middleware(request: NextRequest) {
   // 1. Jika belum login dan mengakses halaman selain /login -> redirect ke /login
   if (!token && !isLoginPage && !isPublicErrorPage) {
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('callbackUrl', pathname);
+    loginUrl.searchParams.set('callbackUrl', `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }
 

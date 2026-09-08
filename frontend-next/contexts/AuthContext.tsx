@@ -250,6 +250,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     error: null,
   });
 
+  // API 401 handling stays on the active route. The app shell observes this
+  // state and replaces protected content with an in-place session notice.
+  useEffect(() => {
+    const handleSessionExpired = () => dispatch({ type: "LOGOUT" });
+    window.addEventListener("erp:session-expired", handleSessionExpired);
+    return () => window.removeEventListener("erp:session-expired", handleSessionExpired);
+  }, []);
+
   const setCompany = useCallback((id: string | null) => {
     if (id && (UUID_REGEX.test(String(id).trim()) || String(id) === "all")) {
       localStorage.setItem("erp.company", String(id));

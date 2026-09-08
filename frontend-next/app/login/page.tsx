@@ -8,7 +8,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import {
   Eye,
@@ -137,6 +137,11 @@ interface LoginForm {
 function LoginFormContent() {
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedCallback = searchParams?.get("callbackUrl") || "/dashboard";
+  const callbackUrl = requestedCallback.startsWith("/") && !requestedCallback.startsWith("//")
+    ? requestedCallback
+    : "/dashboard";
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showGhostPanel, setShowGhostPanel] = useState(false);
@@ -176,9 +181,9 @@ function LoginFormContent() {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated && !isTransitioning) {
-      router.replace("/dashboard");
+      router.replace(callbackUrl);
     }
-  }, [isAuthenticated, authLoading, router, isTransitioning]);
+  }, [isAuthenticated, authLoading, callbackUrl, router, isTransitioning]);
 
 /**
  * onSubmit coordinates the UI behavior represented by this function.
@@ -199,9 +204,10 @@ function LoginFormContent() {
       await login(ident, data.password);
       
       // Authentication has completed; do not add an artificial delay to the
-      // critical login-to-dashboard path. The dashboard owns its own loading UI.
+      // critical transition. Return to the protected route that requested
+      // authentication instead of discarding it in favor of the dashboard.
       setIsTransitioning(true);
-      router.push("/dashboard");
+      router.push(callbackUrl);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Email atau password salah";
       toast.error(msg);

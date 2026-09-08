@@ -67,6 +67,20 @@ api.interceptors.request.use(
 /* ── Response Interceptor: handle 401 → refresh token with Mutex Singleton ── */
 let refreshPromise: Promise<string | null> | null = null;
 
+/** Clears invalid browser credentials and lets the active app shell render an
+ * in-place re-authentication state without changing the current URL. */
+function expireSession() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("erp.access");
+  localStorage.removeItem("erp.refresh");
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("token");
+  localStorage.removeItem("erp.company");
+  localStorage.removeItem("active_company_id");
+  syncCookie();
+  window.dispatchEvent(new CustomEvent("erp:session-expired"));
+}
+
 /**
  * refreshTokenOnce adapts a frontend operation to its HTTP API contract.
  *
@@ -99,21 +113,7 @@ function refreshTokenOnce(): Promise<string | null> {
     })
     .catch((err) => {
       // Jika refresh token benar-benar invalid / expired
-      localStorage.removeItem("erp.access");
-      localStorage.removeItem("erp.refresh");
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("token");
-      localStorage.removeItem("erp.company");
-      localStorage.removeItem("active_company_id");
-      syncCookie();
-
-      if (
-        typeof window !== "undefined" &&
-        !window.location.pathname.includes("/login") &&
-        !window.location.pathname.includes("/error/")
-      ) {
-        window.location.href = "/error/401";
-      }
+      expireSession();
       throw err;
     })
     .finally(() => {
@@ -142,14 +142,8 @@ api.interceptors.response.use(
           original.headers.Authorization = `Bearer ${newAccess}`;
           return api(original);
         }
+        expireSession();
       } catch (refreshErr) {
-        if (
-          typeof window !== "undefined" &&
-          !window.location.pathname.includes("/login") &&
-          !window.location.pathname.includes("/error/")
-        ) {
-          window.location.href = "/error/401";
-        }
         return Promise.reject(refreshErr);
       }
     }
