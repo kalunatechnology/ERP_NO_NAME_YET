@@ -574,65 +574,24 @@ export default function ProjectsClient() {
   /* 3. Real Milestones from Live Project Data */
   const realMilestones = useMemo(() => {
     const rawMilestones = selectedProject?.milestones || [];
-    if (rawMilestones.length > 0) {
-      return rawMilestones.map((m: any, idx: number) => {
-        const isPassed = m.is_passed || m.status === "PASSED" || m.status === "COMPLETED";
-        const points = m.description
-          ? m.description.split("\n").filter((p: string) => p.trim())
-          : [
-              `Target Penyelesaian: ${m.target_date || "Sesuai Jadwal Proyek"}`,
-              `Status Verifikasi Termin: ${m.status || "PENDING"}`,
-            ];
+    return rawMilestones.map((m: any, idx: number) => {
+      const isPassed = m.is_passed || m.status === "PASSED" || m.status === "COMPLETED";
+      const points = m.description
+        ? m.description.split("\n").filter((p: string) => p.trim())
+        : [
+            `Target Penyelesaian: ${m.target_date || "Sesuai Jadwal Proyek"}`,
+            `Status Verifikasi Termin: ${m.status || "PENDING"}`,
+          ];
 
-        return {
-          id: m.id || idx + 1,
-          stepNumber: idx + 1,
-          title: m.name || m.title || `Milestone Tahap ${idx + 1}`,
-          points: points.length > 0 ? points : [`Pencapaian target ${m.name}`],
-          isActive: !isPassed && idx === 0,
-          status: isPassed ? "COMPLETED" : (m.status || "PENDING"),
-        };
-      });
-    }
-
-    // Default milestones contextualized with real project attributes
-    const projCode = selectedProject?.project_code || (selectedProject as any)?.code || "PRJ";
-    const projBudget = formatRupiah(Number(selectedProject?.budget_amount || (selectedProject as any)?.budget || 0));
-    const projEndDate = selectedProject?.planned_end_date || (selectedProject as any)?.end_date || "Sesuai Kontrak";
-
-    const defaultSteps = [
-      {
-        title: `Site Assessment, Permitting & Kickoff (${projCode})`,
-        points: [
-          `Inisiasi kontrak proyek ${selectedProject?.project_name || "Proyek"} dan verifikasi deal.`,
-          "Perizinan lingkungan dan penyiapan area staging operasional.",
-          "Penetapan struktur tim WBS dan safety officer.",
-        ],
-      },
-      {
-        title: "Pabrikasi, Alokasi Anggaran & Pengadaan Material",
-        points: [
-          `Alokasi anggaran belanja operasional proyek sebesar ${projBudget}.`,
-          "Distribusi WBS Main Task dan sinkronisasi target mingguan.",
-        ],
-      },
-      {
-        title: "Eksekusi Lapangan, Quality Gate QA & BAST Handover",
-        points: [
-          `Target penyelesaian operasional: ${projEndDate}.`,
-          "Pengujian standar mutu dan penandatanganan berita acara serah terima.",
-        ],
-      },
-    ];
-
-    return defaultSteps.map((step, idx) => ({
-      id: idx + 1,
-      stepNumber: idx + 1,
-      title: step.title,
-      points: step.points,
-      isActive: idx === 0,
-      status: idx === 0 ? "ACTIVE" : "PENDING",
-    }));
+      return {
+        id: m.id || idx + 1,
+        stepNumber: idx + 1,
+        title: m.name || m.title || `Milestone Tahap ${idx + 1}`,
+        points: points.length > 0 ? points : [`Pencapaian target ${m.name}`],
+        isActive: !isPassed && idx === 0,
+        status: isPassed ? "COMPLETED" : (m.status || "PENDING"),
+      };
+    });
   }, [selectedProject]);
 
   /* Aggregate All Tasks */
