@@ -56,6 +56,7 @@ const RESOURCES = [
  */
 export default function ResourcesClient() {
   const { userRole } = useAuth();
+  const isAccessAdministrator = userRole === "super_admin" || userRole === "company_admin";
   const searchParams = useSearchParams();
   const initialQuery = searchParams?.get("search") || "";
 
@@ -74,7 +75,7 @@ export default function ResourcesClient() {
 
   /* Track recently opened resource */
   useEffect(() => {
-    if (selectedRes) {
+    if (!isAccessAdministrator && selectedRes) {
       feedApi.trackRecentItem({
         item_type: "RESOURCE",
         object_id: selectedRes.id,
@@ -82,7 +83,7 @@ export default function ResourcesClient() {
         target_url: "/resources",
       }).catch(() => {});
     }
-  }, [selectedRes?.id]);
+  }, [isAccessAdministrator, selectedRes?.id]);
 
 /**
  * fetchRows coordinates the UI behavior represented by this function.
@@ -92,6 +93,10 @@ export default function ResourcesClient() {
  * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
  */
   const fetchRows = async (res = selectedRes) => {
+    // `/resources` is also the administration entry point. Administrators
+    // render AccessAdministration and must not execute the hidden Data
+    // Explorer's default Projects request behind that screen.
+    if (isAccessAdministrator) return;
     setLoading(true);
     try {
       const q = new URLSearchParams();
@@ -108,14 +113,14 @@ export default function ResourcesClient() {
   };
 
   useEffect(() => {
-    fetchRows(selectedRes);
-  }, [selectedRes]);
+    if (!isAccessAdministrator) void fetchRows(selectedRes);
+  }, [isAccessAdministrator, selectedRes]);
 
   // Extract top columns
   const sample = rows[0] || {};
   const columns = Object.keys(sample).slice(0, 6);
 
-  if (userRole === "super_admin" || userRole === "company_admin") {
+  if (isAccessAdministrator) {
     return <AccessAdministration />;
   }
 
