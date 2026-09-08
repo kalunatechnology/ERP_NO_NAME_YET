@@ -922,16 +922,6 @@ export async function createMilestone(payload: {
   return data;
 }
 
-/* ── Task Assignment Helper ──────────────────────── */
-export const DEFAULT_TEAM_MEMBERS = [
-  { id: "e0000000-0000-0000-0000-000000000002", email: "dummy.pm@example.com", username: "pm.dummy", full_name: "Budi Santoso", role_in_project: "PROJECT_MANAGER (PM)", department: "Engineering & PM" },
-  { id: "e0000000-0000-0000-0000-000000000005", email: "dummy.assignee@example.com", username: "assignee.dummy", full_name: "Ahmad Rizki", role_in_project: "LEAD_EDITOR / ASSIGNEE", department: "Creative & Production" },
-  { id: "e0000000-0000-0000-0000-000000000003", email: "dummy.staff@example.com", username: "staff.dummy", full_name: "Rina Sari", role_in_project: "UI/UX & 3D ARTIST", department: "Design & Media" },
-  { id: "e0000000-0000-0000-0000-000000000004", email: "dummy.finance@example.com", username: "finance.dummy", full_name: "Siti Rahma", role_in_project: "FINANCE_OFFICER", department: "Finance & Costing" },
-  { id: "e0000000-0000-0000-0000-000000000001", email: "dummy.admin@example.com", username: "admin.dummy", full_name: "System Administrator", role_in_project: "SYS_ADMIN", department: "Management" },
-  { id: "e0000000-0000-0000-0000-000000000006", email: "dummy.executive@example.com", username: "exec.dummy", full_name: "Hendra Wijaya", role_in_project: "DIRECTOR / EXECUTIVE", department: "Executive Board" },
-];
-
 /**
  * assignMemberToMainTask adapts a frontend operation to its HTTP API contract.
  *
@@ -1004,7 +994,9 @@ export async function fetchCompanyUsers(): Promise<any[]> {
       }));
     }
 
-    // Merge with default team members so team list is never empty
+    // Keep this list strictly company-scoped. An empty list is an honest
+    // state when no member is available for assignment; never fabricate
+    // people or IDs that do not exist in the active company.
     const seen = new Set<string>();
     const merged: any[] = [];
 
@@ -1023,15 +1015,8 @@ export async function fetchCompanyUsers(): Promise<any[]> {
       }
     });
 
-    DEFAULT_TEAM_MEMBERS.forEach((dm) => {
-      if (!seen.has(dm.email)) {
-        seen.add(dm.email);
-        merged.push(dm);
-      }
-    });
-
     return merged;
   } catch {
-    return DEFAULT_TEAM_MEMBERS;
+    return [];
   }
 }
