@@ -10,7 +10,15 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { Eye, EyeOff } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Ghost,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Check,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -46,6 +54,7 @@ const ANIM_STYLES = `
   .mk-fade-up-4   { animation: mk-fade-up 0.35s cubic-bezier(0.16,1,0.3,1) 0.16s both; }
   .mk-fade-up-5   { animation: mk-fade-up 0.35s cubic-bezier(0.16,1,0.3,1) 0.20s both; }
   .mk-fade-up-6   { animation: mk-fade-up 0.35s cubic-bezier(0.16,1,0.3,1) 0.24s both; }
+  .mk-ghost-panel { animation: mk-slide-down 0.2s cubic-bezier(0.16,1,0.3,1) both; }
   .mk-top-bar-anim {
     animation: mk-top-progress 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   }
@@ -59,7 +68,58 @@ const ANIM_STYLES = `
     box-shadow: 0 0 0 3px rgba(90,134,31,0.12);
     border-color: #275433;
   }
+  .mk-ghost-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .mk-ghost-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(90,134,31,0.08);
+  }
 `;
+
+const OFFICIAL_SMA_USERS = [
+  { role: "DIRECTOR", label: "Rian (Director)", name: "Rian", email: "rian@arsalynk.com", phone: "81234567801", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-DIRECTOR" },
+  { role: "LEAD PM", label: "Melika (Lead Project Manager)", name: "Melika", email: "melika@arsalynk.com", phone: "81234567802", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-PM" },
+  { role: "OPERATIONS", label: "Melika (Operational Lead & Supervisor)", name: "Melika Ops", email: "melika.ops@arsalynk.com", phone: "81234567803", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-OM" },
+  { role: "PM & RISET", label: "📐 Arof (Lead PM & Riset)", name: "Arof", email: "arof@arsalynk.com", phone: "81234567804", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-PM" },
+  { role: "FINANCE LEAD", label: "💼 Arof (Finance Lead & Tax)", name: "Arof Finance", email: "arof.finance@arsalynk.com", phone: "81234567805", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-FINANCE" },
+  { role: "COMPANY ADMIN", label: "Laode (Company Admin & Engineer)", name: "Laode", email: "laode@arsalynk.com", phone: "81234567806", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-COMPANY-ADMIN" },
+  { role: "CREATIVE MEDIA", label: "🎬 Jundy (Creative Media Specialist)", name: "Jundy", email: "jundy@arsalynk.com", phone: "81234567807", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
+  { role: "SURVEYOR", label: "📍 Noorman (Survey Specialist)", name: "Noorman", email: "noorman@arsalynk.com", phone: "81234567808", password: "DummyPass123!", cat: "sma", roleCode: "ROLE-SUPERVISOR" },
+];
+
+const GHOST_DEMO_USERS = [
+  { role: "SUPER ADMIN", label: "System Super Admin", name: "System Admin", email: "dummy.admin@example.com", phone: "81234567889", password: "DummyPass123!", cat: "exec" },
+  { role: "GHOST ADMIN", label: "Ghost Admin System", name: "Ghost Admin", email: "admin.director@arsalynk.id", phone: "81234567890", password: "DummyPass123!", cat: "exec" },
+  { role: "GHOST EXECUTIVE", label: "Ghost Executive Director", name: "Ghost Director", email: "director@arsalynk.id", phone: "81234567891", password: "DummyPass123!", cat: "exec" },
+  { role: "GHOST PM", label: "Ghost Lead Project Manager", name: "Ghost PM", email: "pm.lead@arsalynk.id", phone: "81234567892", password: "DummyPass123!", cat: "pm" },
+  { role: "GHOST SUPERVISOR", label: "👷 Ghost Field Supervisor", name: "Ghost Supervisor", email: "supervisor@arsalynk.id", phone: "81234567893", password: "DummyPass123!", cat: "pm" },
+  { role: "GHOST CRM", label: "👔 Ghost CRM & Commercial Lead", name: "Ghost CRM", email: "crm.lead@arsalynk.id", phone: "81234567894", password: "DummyPass123!", cat: "crm" },
+  { role: "GHOST SALES", label: "🧑‍💼 Ghost Commercial & Sales Staff", name: "Ghost Sales", email: "sales@arsalynk.id", phone: "81234567895", password: "DummyPass123!", cat: "crm" },
+  { role: "GHOST FINANCE", label: "💼 Ghost Finance Controller", name: "Ghost Finance", email: "finance.lead@arsalynk.id", phone: "81234567896", password: "DummyPass123!", cat: "fin" },
+  { role: "GHOST AP/AR", label: "Ghost AP & AR Specialist", name: "Ghost Accounting", email: "dummy.finance@example.com", phone: "81234567897", password: "DummyPass123!", cat: "fin" },
+  { role: "GHOST ESTIMATOR", label: "📐 Ghost Cost Estimator", name: "Ghost Estimator", email: "estimator@arsalynk.id", phone: "81234567898", password: "DummyPass123!", cat: "pm" },
+  { role: "GHOST STAFF", label: "🧑‍💻 Ghost Technical & Dev Staff", name: "Ghost Staff", email: "staff.dev@arsalynk.id", phone: "81234567899", password: "DummyPass123!", cat: "exec" },
+];
+
+const ALL_LOGIN_ACCOUNTS = [...OFFICIAL_SMA_USERS, ...GHOST_DEMO_USERS];
+
+const GHOST_CATEGORIES = [
+  { cat: "sma", label: "🌟 PT Sinergi Muda Arsa (8 Akun Resmi)" },
+  { cat: "all_ghost", label: "👻 Semua Dummy Ghost (10)" },
+  { cat: "exec", label: "Executive & Admin" },
+  { cat: "pm", label: "Project & Estimator" },
+  { cat: "fin", label: "Finance & AP/AR" },
+  { cat: "crm", label: "CRM & Sales" },
+];
+
+const CAT_COLOR: Record<string, string> = {
+  sma: "#275433",
+  exec: "#7C3AED",
+  pm: "#0EA5E9",
+  fin: "#F59E0B",
+  crm: "#10B981",
+};
 
 interface LoginForm {
   name?: string;
@@ -84,11 +144,29 @@ function LoginFormContent() {
     : "/dashboard";
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showGhostPanel, setShowGhostPanel] = useState(false);
+  const [filterCat, setFilterCat] = useState("sma");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [isLocalDev, setIsLocalDev] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname;
+      const isLocal =
+        hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        /^192\.168\./.test(hostname) ||
+        /^10\./.test(hostname) ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname);
+      setIsLocalDev(isLocal);
+    }
+  }, []);
 
   const {
     register,
     handleSubmit,
+    setValue,
     watch,
     formState: { errors },
   } = useForm<LoginForm>({
@@ -136,6 +214,42 @@ function LoginFormContent() {
       setSubmitting(false);
     }
   };
+
+/**
+ * quickGhostLogin coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
+  const quickGhostLogin = (user: typeof ALL_LOGIN_ACCOUNTS[0]) => {
+    setValue("name", user.name);
+    setValue("email", user.email);
+    setValue("password", user.password);
+    handleSubmit(onSubmit)();
+  };
+
+/**
+ * handleCopy coordinates the UI behavior represented by this function.
+ *
+ * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+ * @returns The rendered React node, callback result, or Promise declared by the implementation.
+ * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
+ */
+  const handleCopy = (text: string, key: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    toast.success(`${label} disalin!`, { duration: 1200 });
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const filteredLoginUsers =
+    filterCat === "sma"
+      ? OFFICIAL_SMA_USERS
+      : filterCat === "all_ghost"
+      ? GHOST_DEMO_USERS
+      : ALL_LOGIN_ACCOUNTS.filter((u) => u.cat === filterCat);
+
 
   return (
     <>
@@ -375,6 +489,135 @@ function LoginFormContent() {
           </div>
         </div>
 
+        {/* ── PANEL TESTING & QUICK LOGIN (8 AKUN RESMI PT SINERGI MUDA ARSA & GHOST) ── */}
+        {isLocalDev && (
+          <div className="w-full max-w-[1334px] mt-3 flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setShowGhostPanel(!showGhostPanel)}
+              className="text-xs font-bold text-[#275433] hover:text-[#0E341F] flex items-center gap-2 px-5 py-2 rounded-full bg-[#F0FEE0] border border-[#D5ECC2] shadow-2xs transition-all cursor-pointer hover:bg-[#EAF8D6]"
+            >
+              <Ghost size={15} className="text-[#5A861F]" />
+              <span>
+                {showGhostPanel
+                  ? "Tutup Panel Akses Cepat"
+                  : "Akses Cepat Pengujian: 8 Akun Resmi PT Sinergi Muda Arsa (@arsalynk.com) & Akun Ghost"}
+              </span>
+              {showGhostPanel ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            </button>
+
+            {showGhostPanel && (
+              <div className="mk-ghost-panel w-full bg-white border border-[#5A861F]/30 rounded-2xl p-4 mt-2 shadow-sm flex flex-col gap-3">
+                {/* Filter Category Tabs */}
+                <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-100 no-scrollbar">
+                  {GHOST_CATEGORIES.map((c) => (
+                    <button
+                      key={c.cat}
+                      type="button"
+                      onClick={() => setFilterCat(c.cat)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
+                        filterCat === c.cat
+                          ? "bg-[#5A861F] text-white shadow-xs"
+                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      )}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Grid Login Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                  {filteredLoginUsers.map((u) => {
+                    const emailKey = `email-${u.email}`;
+                    const pwKey = `pw-${u.email}`;
+                    const color = CAT_COLOR[u.cat] || "#5A861F";
+
+                    return (
+                      <div
+                        key={u.email}
+                        className="mk-ghost-card p-3 rounded-2xl border border-[#E5E9E2] bg-[#F8FBF5] hover:bg-[#F0FEE0]/30 flex flex-col justify-between gap-2 shadow-2xs"
+                      >
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span
+                              className="text-[12px] font-extrabold text-[#0E341F] truncate"
+                              title={u.label}
+                            >
+                              {u.label}
+                            </span>
+                            <span
+                              className="text-[8px] font-extrabold px-2 py-0.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: `${color}18`, color }}
+                            >
+                              {u.role}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between bg-white border border-[#E5E9E2] rounded-xl px-2.5 py-1 text-xs">
+                            <span className="font-mono text-[11px] font-bold text-slate-800 truncate">
+                              {u.email}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(u.email, emailKey, "Email")}
+                              className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                              title="Salin email"
+                            >
+                              {copiedKey === emailKey ? (
+                                <Check size={12} className="text-green-600" />
+                              ) : (
+                                <Copy size={12} />
+                              )}
+                            </button>
+                          </div>
+
+                          <div className="flex items-center justify-between bg-white border border-[#E5E9E2] rounded-xl px-2.5 py-1 text-xs">
+                            <span className="font-mono text-[11px] text-slate-600 truncate">
+                              {u.password}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleCopy(u.password, pwKey, "Password")
+                              }
+                              className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                              title="Salin password"
+                            >
+                              {copiedKey === pwKey ? (
+                                <Check size={12} className="text-green-600" />
+                              ) : (
+                                <Copy size={12} />
+                              )}
+                            </button>
+                          </div>
+
+                          <span className="text-[9px] font-mono text-slate-500 pl-0.5">
+                            Tel: +62 {u.phone}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => quickGhostLogin(u)}
+                          className="w-full py-2 rounded-xl text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-98 shadow-xs hover:brightness-105 transition-all"
+                          style={{ background: `linear-gradient(120deg, ${color}dd, ${color})` }}
+                        >
+                          Masuk sebagai {u.name.split(" ")[0] || u.name}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="text-center text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+                  PT Sinergi Muda Arsa Official Workspace &bull; Localhost Testing Environment
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

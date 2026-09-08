@@ -25,8 +25,13 @@ function main() {
     run(process.execPath, [path.join(__dirname, 'deploy_hostinger_migrations.js')]);
   }
 
-  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  run(npmCommand, ['run', 'build:compile']);
+  // Invoke local tool entry points through the current Node executable. This
+  // behaves consistently on Windows and Linux and never depends on shell
+  // resolution of npm/npm.cmd during a hosting build.
+  const root = path.resolve(__dirname, '..');
+  run(process.execPath, [path.join(root, 'node_modules', 'prisma', 'build', 'index.js'), 'generate']);
+  run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);
+  run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/q11-system-guardrails.ts']);
 }
 
 try {

@@ -10,7 +10,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { ForbiddenError, NotFoundError } from '../../utils/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
 
 export const projectsRouter = Router();
@@ -905,7 +905,7 @@ projectsRouter.use('/main-tasks', createCrudRouter({
     if (data.project && !data.project_id) data.project_id = data.project;
     if (req.body.project && !data.project_id) data.project_id = req.body.project;
     if (data.title && !data.name) data.name = data.title;
-    if (!data.name) data.name = 'Main Task';
+    if (!String(data.name ?? '').trim()) throw new ValidationError('Nama Main Task wajib diisi.');
     if (!data.created_by_id && req.user?.id) data.created_by_id = req.user.id;
     if (data.weight === undefined) data.weight = 10;
     // Progress is derived from Weekly Tasks; API payloads cannot seed it.
@@ -966,7 +966,7 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     }
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
     if (!data.target_description && data.target_output) data.target_description = data.target_output;
-    if (data.target_description === undefined) data.target_description = '';
+    if (!String(data.target_description ?? '').trim()) throw new ValidationError('Target mingguan wajib diisi.');
     // Progress is derived from Daily Tasks; API payloads cannot seed it.
     data.progress = 0;
     if (!data.status) data.status = 'PLANNED';
@@ -1003,9 +1003,9 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     if (data.owner && !data.owner_id) data.owner_id = data.owner;
     if (!data.owner_id && req.user?.id) data.owner_id = req.user.id;
     if (!data.title && data.activity_input) data.title = data.activity_input;
-    if (data.title === undefined) data.title = 'Aktivitas Harian';
+    if (!String(data.title ?? '').trim()) throw new ValidationError('Aktivitas harian wajib diisi.');
     if (data.description === undefined) data.description = '';
-    if (data.time_slot === undefined) data.time_slot = '09.00 - 12.00';
+    if (!String(data.time_slot ?? '').trim()) throw new ValidationError('Slot waktu aktivitas wajib diisi.');
     if (data.output_result === undefined) data.output_result = '';
     if (data.notes === undefined) data.notes = '';
     if (data.is_blocked === undefined) data.is_blocked = false;
@@ -1087,14 +1087,16 @@ projectsRouter.use('/projects', createCrudRouter({
   beforeCreate: async (req, data) => {
     // 1. Alias mappings
     if (!data.project_name && data.name) data.project_name = data.name;
-    if (!data.project_name) data.project_name = 'Untitled Project';
+    data.project_name = String(data.project_name ?? '').trim();
+    if (!data.project_name) throw new ValidationError('Nama proyek wajib diisi.');
 
     if (!data.project_code && data.code) data.project_code = data.code;
     if (!data.project_code) data.project_code = `PRJ-${Date.now().toString().slice(-4)}`;
 
     // 2. Default required schema fields
     if (data.customer_name === undefined || data.customer_name === null || data.customer_name === '') {
-      data.customer_name = data.client_name || data.customer || 'PT Sinergi Muda Arsa';
+      data.customer_name = String(data.client_name ?? '').trim();
+      if (!data.customer_name) throw new ValidationError('Nama customer wajib diisi.');
     } else {
       // Auto-register to database master_party if it's a new client (Strict Tenant Scoped)
       const clientName = String(data.customer_name).trim();
@@ -1131,7 +1133,8 @@ projectsRouter.use('/projects', createCrudRouter({
       }
     }
     if (data.manager_name === undefined || data.manager_name === null || data.manager_name === '') {
-      data.manager_name = data.pm_name || data.project_manager_name || (req.user as any)?.full_name || 'Melika (Lead PM)';
+      data.manager_name = data.pm_name || data.project_manager_name || (req.user as any)?.full_name;
+      if (!String(data.manager_name ?? '').trim()) throw new ValidationError('Nama Project Manager wajib diisi.');
     }
     if (data.description === undefined || data.description === null) {
       data.description = '';

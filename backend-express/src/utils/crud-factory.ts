@@ -72,6 +72,17 @@ export function hasModelField(modelName: string, fieldName: string): boolean {
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const REQUIRED_BUSINESS_LABEL_FIELDS = new Set([
+  'name',
+  'project_name',
+  'customer_name',
+  'task_name',
+  'milestone_name',
+  'target_description',
+  'time_slot',
+  'title',
+  'subject',
+]);
 
 /**
  * Universal auto-filler for required scalar & schema fields across all 200+ Prisma models.
@@ -170,6 +181,12 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
             continue;
           }
 
+          // Names and subjects are business data. Persisting generic labels such
+          // as "Untitled" makes an invalid request look like real ERP data.
+          if (REQUIRED_BUSINESS_LABEL_FIELDS.has(fn)) {
+            throw new ValidationError(`Field ${field.name} wajib diisi.`);
+          }
+
           // Codes & identifiers
           if (fn.endsWith('_code') || fn === 'code') {
             const prefix = fn.replace(/_code$/, '').slice(0, 3).toUpperCase() || 'DOC';
@@ -180,17 +197,17 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
           }
           // Names & titles
           else if (fn === 'task_name') {
-            result[field.name] = result.title || result.name || result.activity_input || 'Untitled Task';
+            result[field.name] = result.title || result.name || result.activity_input;
           } else if (fn === 'project_name') {
-            result[field.name] = result.name || result.title || 'Untitled Project';
+            result[field.name] = result.name || result.title;
           } else if (fn === 'customer_name') {
-            result[field.name] = result.client_name || result.customer || 'PT Sinergi Muda Arsa';
+            result[field.name] = result.client_name;
           } else if (fn === 'manager_name') {
             result[field.name] = result.pm_name || result.project_manager_name || (req?.user as any)?.full_name || 'Project Manager';
           } else if (fn === 'milestone_name') {
-            result[field.name] = result.name || result.title || 'Milestone';
+            result[field.name] = result.name || result.title;
           } else if (fn === 'title') {
-            result[field.name] = result.name || result.task_name || 'Untitled';
+            result[field.name] = result.name || result.task_name;
           }
           // Descriptions & text fields
           else if (['description', 'desc', 'notes', 'remarks', 'reason', 'override_reason', 'mitigation_plan', 'root_cause', 'milestone_impact', 'objective', 'scope_summary', 'specification_text', 'equipment_reference'].includes(fn)) {
@@ -212,9 +229,11 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
           } else if (['source_type', 'party_type', 'issue_type', 'source_channel', 'target_department', 'dispatch_type', 'action_type', 'dependency_type', 'funding_type', 'budget_category'].includes(fn)) {
             result[field.name] = 'INTERNAL';
           } else if (fn === 'approval_status') {
-            result[field.name] = 'APPROVED';
+            // Missing workflow state must fail closed and can only advance via
+            // the module's explicit approval action.
+            result[field.name] = 'PENDING';
           } else if (fn === 'subject') {
-            result[field.name] = result.title || result.name || 'Subject';
+            result[field.name] = result.title || result.name;
           }
           // JSON payloads
           else if (fn === 'evidence_json' || fn === 'payload_json' || fn === 'specification_json' || fn.endsWith('_json')) {
@@ -284,6 +303,20 @@ export function normalizeRecord(record: any, modelName?: string): any {
   return result;
 }
 
+/** Prevents generic CRUD paths, including bulk operations, from bypassing finance lifecycle workflows. */
+export function assertRecordMutable(modelName: string, existing: any): void {
+  if (!modelName.startsWith('fin_')) return;
+  const terminal = new Set(['POSTED', 'PAID', 'CLOSED', 'LOCKED', 'EXECUTED', 'REVERSED']);
+  const terminalState = [existing?.status, existing?.payment_status, existing?.approval_status]
+    .map((value) => String(value ?? '').toUpperCase())
+    .find((state) => terminal.has(state));
+  if (terminalState) {
+    throw new ConflictError(
+      `Record keuangan berstatus ${terminalState} bersifat immutable. Gunakan workflow reversal/storno resmi.`,
+    );
+  }
+}
+
 /**
  * createCrudRouter implements this file's named function contract.
  *
@@ -327,24 +360,6 @@ export function createCrudRouter(options: CrudOptions): Router {
  * Database: no direct Prisma operation is present in this function; persistence may be delegated to an imported service.
  * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
  */
-  const assertFinancialRecordMutable = (existing: any) => {
-    if (!modelNameStr.startsWith('fin_')) return;
-    const terminal = new Set(['POSTED', 'PAID', 'CLOSED', 'LOCKED', 'EXECUTED', 'REVERSED']);
-    // Finance models carry lifecycle data in more than one column. A billing
-    // document, for example, can retain a workflow `status` of DRAFT while its
-    // `payment_status` is PAID. Treat any terminal lifecycle field as immutable
-    // so callers cannot bypass the official reversal/storno workflow merely by
-    // choosing a record whose primary status is not terminal.
-    const terminalState = [existing?.status, existing?.payment_status, existing?.approval_status]
-      .map((value) => String(value ?? '').toUpperCase())
-      .find((state) => terminal.has(state));
-    if (terminalState) {
-      throw new ConflictError(
-        `Record keuangan berstatus ${terminalState} bersifat immutable. Gunakan workflow reversal/storno resmi.`,
-      );
-    }
-  };
-
 /**
  * format implements this file's named function contract.
  *
@@ -465,7 +480,7 @@ export function createCrudRouter(options: CrudOptions): Router {
             where: await scopedWhere(req, { id }),
           });
           if (!existing) throw new ForbiddenError('Data tidak ditemukan dalam scope company user.');
-          assertFinancialRecordMutable(existing);
+          assertRecordMutable(modelNameStr, existing);
           let data = { ...itemData };
           if (options.beforeUpdate) {
             const hookResult = await options.beforeUpdate(req, data, existing);
@@ -513,10 +528,10 @@ export function createCrudRouter(options: CrudOptions): Router {
       if (allowed !== new Set(ids).size) {
         throw new ForbiddenError('Satu atau lebih data berada di luar scope company user.');
       }
-      if (options.beforeDelete) {
-        const existingRecords = await delegate.findMany({ where });
-        for (const existing of existingRecords) {
-          assertFinancialRecordMutable(existing);
+      const existingRecords = await delegate.findMany({ where });
+      for (const existing of existingRecords) {
+        assertRecordMutable(modelNameStr, existing);
+        if (options.beforeDelete) {
           await options.beforeDelete(req, existing);
         }
       }
@@ -734,7 +749,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       const { id } = req.params;
       const existing = await delegate.findFirst({ where: await scopedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
-      assertFinancialRecordMutable(existing);
+      assertRecordMutable(modelNameStr, existing);
 
       let data = { ...req.body };
       const validFields = getModelFields(modelNameStr);
@@ -802,7 +817,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       const { id } = req.params;
       const existing = await delegate.findFirst({ where: await scopedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
-      assertFinancialRecordMutable(existing);
+      assertRecordMutable(modelNameStr, existing);
 
       let data = { ...req.body };
       const validFields = getModelFields(modelNameStr);
@@ -870,7 +885,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       const { id } = req.params;
       const existing = await delegate.findFirst({ where: await scopedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
-      assertFinancialRecordMutable(existing);
+      assertRecordMutable(modelNameStr, existing);
 
       if (options.beforeDelete) {
         await options.beforeDelete(req, existing);
