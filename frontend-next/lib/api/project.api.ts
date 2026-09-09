@@ -158,12 +158,15 @@ export interface Funding {
 
 export interface TaskTransfer {
   id: string | number;
-  task_id: string | number;
+  daily_task_id: string | number;
+  requested_by_id?: string | number;
+  target_user_id?: string | number;
   task_title?: string;
   from_user_name?: string;
   to_user_name?: string;
   reason?: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
+  review_note?: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 }
 
 /* ── Load all PM data in parallel ────────────────── */
@@ -667,7 +670,7 @@ export async function createDailyTask(payload: {
  *
  * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
  * @returns The typed payload or Promise produced after response normalization.
- * External dependency: calls `/api/v1/projects/daily-tasks/${id}/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * External dependency: calls the owner-only Daily Task progress action. Authentication, company scope, timeout, and idempotency are inherited from the shared Axios client.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function updateDailyTask(id: string | number, payload: Partial<DailyTask>) {
@@ -681,7 +684,7 @@ export async function updateDailyTask(id: string | number, payload: Partial<Dail
     ...payload,
     ...(normStatus ? { status: normStatus } : {})
   };
-  const { data } = await api.patch(`/api/v1/projects/daily-tasks/${id}/`, cleanPayload);
+  const { data } = await api.patch(`/api/v1/projects/daily-tasks/${id}/update-progress`, cleanPayload);
   return data;
 }
 
@@ -703,14 +706,31 @@ export async function deleteDailyTask(id: string | number) {
  *
  * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
  * @returns The typed payload or Promise produced after response normalization.
- * External dependency: calls `/api/v1/projects/task-transfers/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * External dependency: calls the audited owner transfer action. Authentication, company scope, timeout, and idempotency are inherited from the shared Axios client.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function requestTaskTransfer(payload: {
   daily_task_id: string | number;
+  target_user_id: string | number;
   reason: string;
 }) {
-  const { data } = await api.post("/api/v1/projects/task-transfers/", payload);
+  const { data } = await api.post(`/api/v1/projects/daily-tasks/${payload.daily_task_id}/request-transfer`, {
+    target_user_id: payload.target_user_id,
+    reason: payload.reason,
+  });
+  return data;
+}
+
+/** Reassigns a Daily Task through the PM/OM-only audited action. */
+export async function directReassignDailyTask(payload: {
+  daily_task_id: string | number;
+  target_user_id: string | number;
+  reason: string;
+}) {
+  const { data } = await api.post(`/api/v1/projects/daily-tasks/${payload.daily_task_id}/direct-reassign`, {
+    target_user_id: payload.target_user_id,
+    reason: payload.reason,
+  });
   return data;
 }
 

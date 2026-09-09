@@ -8,7 +8,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { ForbiddenError, UnauthorizedError } from '../utils/errors';
-import { isCompanyAdmin, isSuperAdmin } from '../types/roles';
+import { isSuperAdmin, RoleCode } from '../types/roles';
 
 /**
  * RBAC Middleware — Role-Based Access Control.
@@ -18,7 +18,7 @@ import { isCompanyAdmin, isSuperAdmin } from '../types/roles';
  */
 
 /**
- * Require that at least one role is assigned to the caller. Superusers always
+ * Require that the caller's currently active role is allowed. Superusers always
  * pass. A role check immediately following `requireModuleAccess` also accepts
  * an explicit Company-Admin per-user delegation for that same module and HTTP
  * mode; the delegation can never exceed the Super-Admin company entitlement.
@@ -30,7 +30,8 @@ export function requireRole(...allowedRoles: string[]) {
     }
     if (isSuperAdmin(req.user.roles)) return next();
 
-    const hasRole = req.user.roles.some((r) => allowedRoles.includes(r));
+    const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
+    const hasRole = allowedRoles.includes(activeRole);
     const isWriteMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const hasDelegatedModuleAccess = Boolean(
       req.moduleAccess?.delegated
@@ -39,11 +40,32 @@ export function requireRole(...allowedRoles: string[]) {
     if (!hasRole && !hasDelegatedModuleAccess) {
       return next(
         new ForbiddenError(
-          `Akses ditolak. Diperlukan salah satu role: ${allowedRoles.join(', ')}.`,
+          `Akses ditolak untuk role aktif ${activeRole || 'tidak tersedia'}. Pilih salah satu role: ${allowedRoles.join(', ')}.`,
         ),
       );
     }
     next();
+  };
+}
+
+/**
+ * Require an active role without accepting a module-level access delegation.
+ * Use this for approval, disbursement, override, and other duties whose actor
+ * identity is part of the business control itself.
+ */
+export function requireActiveRole(...allowedRoles: string[]) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) return next(new UnauthorizedError());
+    if (isSuperAdmin(req.user.roles)) return next();
+
+    const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
+    if (!allowedRoles.includes(activeRole)) {
+      return next(new ForbiddenError(
+        `Aksi ini membutuhkan role aktif: ${allowedRoles.join(', ')}. ` +
+        `Role aktif Anda: ${activeRole || 'tidak terdeteksi'}.`,
+      ));
+    }
+    return next();
   };
 }
 
@@ -107,7 +129,7 @@ export function requireAllRoles(...requiredRoles: string[]) {
  */
 export function requireStaff(req: Request, _res: Response, next: NextFunction): void {
   if (!req.user) return next(new UnauthorizedError());
-  if (isCompanyAdmin(req.user.roles)) return next();
+  if (isSuperAdmin(req.user.roles) || req.user.active_role_code === RoleCode.COMPANY_ADMIN) return next();
   return next(new ForbiddenError('Akses ditolak. Diperlukan izin staff.'));
 }
 
@@ -145,7 +167,7 @@ export function requireOwnerOrSuperuser(getOwnerId: (req: Request) => string | u
  */
 export function requireCompanyAdmin(req: Request, _res: Response, next: NextFunction): void {
   if (!req.user) return next(new UnauthorizedError());
-  if (isCompanyAdmin(req.user.roles)) return next();
+  if (isSuperAdmin(req.user.roles) || req.user.active_role_code === RoleCode.COMPANY_ADMIN) return next();
   return next(new ForbiddenError('Aksi ini memerlukan role Company Admin atau Super Admin.'));
 }
 

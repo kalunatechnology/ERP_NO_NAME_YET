@@ -93,6 +93,18 @@ Untuk setiap langkah mutasi, simpan:
 
 Error API yang terkontrol harus berbentuk JSON dengan `success: false`, `error` atau `errors`, `detail` jika relevan, dan `request_id`. Secara umum gunakan 400 untuk validation, 401 untuk unauthenticated/token, 403 untuk forbidden, 404 untuk record/route yang tidak ditemukan, 409 untuk unique conflict, dan 503 untuk database unavailable.
 
+### 2.5 Baseline akses regression — ACC-2026-09-09-01
+
+Jalankan pemeriksaan ini sebagai bagian dari TC-01, TC-03, dan TC-04; ini bukan test case keenam. Referensi keputusan akses adalah [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
+
+| Journey | Bukti yang wajib diambil | Expected result |
+|---|---|---|
+| TC-01 identity/role | Akun multi-role beralih active role; account dengan delegasi module mencoba action approval | Role tidak aktif dan delegasi module tidak boleh meloloskan `requireActiveRole`; policy module biasa tetap mengikuti entitlement/delegasi yang sah. |
+| TC-03 project/task | PM membuka project yang bukan kelolaannya; Staff membuka/memutasi Daily milik orang lain; PIC Weekly mencoba delete Weekly; owner dan PM mencoba transfer | Backend mengembalikan 403/404 scoped sesuai route. Owner mengubah progress/output/blocker sendiri dan mengajukan transfer; PM/OM melakukan direct reassignment pada project kelolaan; hapus Weekly hanya PM/OM. |
+| TC-04 request/finance/CRM | Staff mencoba validate/approve/disburse; user lain submit LPJ; CRM Lead mencoba executive override | OM/PM-or-Director/Finance/owner-only/Director gate menghasilkan 403 bila actor salah; state valid tetap dapat diproses oleh actor yang tepat. |
+
+Sebelum sign-off, jalankan `node backend-express/node_modules/ts-node/dist/bin.js --files backend-express/tests/q11-system-guardrails.ts` dari repository root, atau `npm run build` di `backend-express`. Q11 harus melaporkan 8/8 PASS.
+
 ---
 
 ## 3. TC-01 — Identity, Company Governance, and Controlled Access
@@ -828,5 +840,6 @@ Release tidak boleh mendapatkan sign-off production apabila salah satu berikut m
 | Database | `backend-express/prisma/schema.prisma`, `backend-express/prisma/migrations/**`, `backend-express/prisma/seed.ts` |
 | Reporting/dashboard/feed | `backend-express/src/modules/reporting/**`, `dashboard/**`, `core/core.routes.ts`, frontend reporting/layout/feed adapters |
 | AS-IS integration baseline | `docs/SYSTEM_INTEGRATION_AUDIT.md` |
+| Access-control baseline dan changelog | `docs/ACCESS_CONTROL_CHANGELOG.md`, `backend-express/tests/q11-system-guardrails.ts` |
 
 Panduan ini harus diperbarui ketika role gate, module entitlement, state machine, database constraint, API contract, UI route, atau cross-module side effect berubah. Lima business journey tetap dipertahankan; langkah di dalamnya disesuaikan agar QA selalu menguji hasil bisnis end-to-end, bukan komponen UI secara terpisah.

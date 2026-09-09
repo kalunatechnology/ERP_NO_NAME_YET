@@ -11,6 +11,8 @@ import prisma from '../../config/database';
 import { CRMService } from './crm.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { requireActiveRole } from '../../middlewares/rbac.middleware';
+import { RoleCode } from '../../types/roles';
 
 export const crmRouter = Router();
 
@@ -150,7 +152,7 @@ crmRouter.post('/opportunities/:id/process-deal-won', async (req: Request, res: 
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-crmRouter.post('/opportunities/:id/executive-override', async (req: Request, res: Response, next: NextFunction) => {
+crmRouter.post('/opportunities/:id/executive-override', requireActiveRole(RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await CRMService.executiveOverride(req.params.id, req.user, activeCompanyId(req));
     res.json(result);
@@ -214,7 +216,7 @@ crmRouter.get('/opportunities/:id/customer-360', async (req: Request, res: Respo
  * Data/side effects: Uses Prisma model(s) `crm_executive_approval` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-crmRouter.post('/executive-approvals/:id/decide', async (req: Request, res: Response, next: NextFunction) => {
+crmRouter.post('/executive-approvals/:id/decide', requireActiveRole(RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const decision = String(req.body.decision ?? '').toUpperCase();
     if (!['APPROVED', 'REJECTED'].includes(decision)) {
@@ -235,7 +237,7 @@ crmRouter.post('/executive-approvals/:id/decide', async (req: Request, res: Resp
  * Data/side effects: Uses Prisma model(s) `crm_executive_approval` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-crmRouter.post('/executive-approvals/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
+crmRouter.post('/executive-approvals/:id/approve', requireActiveRole(RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await decideExecutiveApproval(req, 'APPROVED');
     res.json(updated);
@@ -252,7 +254,7 @@ crmRouter.post('/executive-approvals/:id/approve', async (req: Request, res: Res
  * Data/side effects: Uses Prisma model(s) `crm_executive_approval` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-crmRouter.post('/executive-approvals/:id/reject', async (req: Request, res: Response, next: NextFunction) => {
+crmRouter.post('/executive-approvals/:id/reject', requireActiveRole(RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await decideExecutiveApproval(req, 'REJECTED');
     res.json(updated);

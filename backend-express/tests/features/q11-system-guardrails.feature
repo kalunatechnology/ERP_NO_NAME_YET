@@ -26,3 +26,18 @@ Feature: Q11 system-wide safety guardrails
     Given Hostinger performs the production backend build
     When compilation and deployment validation run
     Then Q11 is mandatory and demo seeding remains blocked in production
+
+  Scenario: Active role is the authorization context
+    Given one account has multiple assigned roles
+    When the user selects one active role
+    Then unrelated assigned roles cannot authorize another module mutation
+
+  Scenario: Project task access follows management and ownership
+    Given a PM manages selected projects and staff owns selected Daily Tasks
+    When task rows and mutations are authorized
+    Then PM visibility is project-scoped and execution updates remain owner-only
+
+  Scenario: Sensitive workflow actions require the exact active role
+    Given module access can be delegated independently from a business role
+    Then delegated module access cannot authorize approval or disbursement duties
+    And LPJ submission remains restricted to the original requester

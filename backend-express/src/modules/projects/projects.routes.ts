@@ -185,6 +185,22 @@ const handleHierarchy = async (req: Request, res: Response, next: NextFunction) 
   }
 };
 
+const enforceProjectBoundary = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+      await ProjectsService.assertCanManageProject(req.user, req.params.id, companyId);
+    } else {
+      await ProjectsService.assertCanViewProject(req.user, req.params.id, companyId);
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
+projectsRouter.use('/projects/:id', enforceProjectBoundary);
+
 /**
  * GET route handler: `/projects/:id/hierarchy`.
  *
@@ -202,7 +218,7 @@ projectsRouter.get('/projects/:id/hierarchy', handleHierarchy);
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-projectsRouter.get('/:id/hierarchy', handleHierarchy);
+projectsRouter.get('/:id/hierarchy', enforceProjectBoundary, handleHierarchy);
 
 // =============================================================================
 // 2. PROJECT CUSTOM ACTIONS & METRICS
@@ -464,6 +480,7 @@ const handleAssignMembers = async (req: Request, res: Response, next: NextFuncti
     const companyId = activeCompanyId(req);
     const mainTask = await prisma.project_main_task.findFirst({ where: { id: mainTaskId, company_id: companyId } });
     if (!mainTask) throw new NotFoundError('MainTask');
+    await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, companyId);
 
     const rawUsers = req.body.user_ids ?? req.body.assignee ?? [];
     const userIds: string[] = [...new Set(Array.isArray(rawUsers) ? rawUsers.map(String) : [String(rawUsers)].filter(Boolean))];
@@ -901,11 +918,18 @@ projectsRouter.post('/task-transfers/:id/cancel', async (req: Request, res: Resp
 projectsRouter.use('/main-tasks', createCrudRouter({
   modelName: 'project_main_task',
   searchFields: ['name', 'description'],
+  accessWhere: async (req) => ProjectsService.mainTaskAccessWhere(req.user, activeCompanyId(req)),
   beforeCreate: async (req, data) => {
     if (data.project && !data.project_id) data.project_id = data.project;
     if (req.body.project && !data.project_id) data.project_id = req.body.project;
     if (data.title && !data.name) data.name = data.title;
     if (!String(data.name ?? '').trim()) throw new ValidationError('Nama Main Task wajib diisi.');
+    const projectId = String(data.project_id ?? '');
+    const project = projectId
+      ? await prisma.project_project.findFirst({ where: { id: projectId, company_id: activeCompanyId(req) }, select: { id: true } })
+      : null;
+    if (!project) throw new ValidationError('Project induk tidak valid atau berada di luar company aktif.');
+    await ProjectsService.assertCanManageProject(req.user, project.id, activeCompanyId(req));
     if (!data.created_by_id && req.user?.id) data.created_by_id = req.user.id;
     if (data.weight === undefined) data.weight = 10;
     // Progress is derived from Weekly Tasks; API payloads cannot seed it.
@@ -918,13 +942,19 @@ projectsRouter.use('/main-tasks', createCrudRouter({
     data.override_reason = '';
     return data;
   },
-  beforeUpdate: async (req, data) => {
+  beforeUpdate: async (req, data, existing) => {
+    await ProjectsService.assertCanManageProject(req.user, existing.project_id, activeCompanyId(req));
     if (data.project && !data.project_id) data.project_id = data.project;
+    delete data.project;
+    delete data.project_id;
     if (data.title && !data.name) data.name = data.title;
     delete data.progress;
     delete data.is_progress_overridden;
     delete data.override_reason;
     return data;
+  },
+  beforeDelete: async (req, existing) => {
+    await ProjectsService.assertCanManageProject(req.user, existing.project_id, activeCompanyId(req));
   },
   afterCreate: async (req, rec) => {
     await ProjectsService.recalculateTaskTree({ mainTaskId: rec.id, companyId: activeCompanyId(req) });
@@ -938,14 +968,19 @@ projectsRouter.use('/main-tasks', createCrudRouter({
 projectsRouter.use('/weekly-tasks', createCrudRouter({
   modelName: 'project_weekly_task',
   searchFields: ['target_description'],
+  accessWhere: async (req) => ProjectsService.weeklyTaskAccessWhere(req.user, activeCompanyId(req)),
   beforeCreate: async (req, data) => {
     if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
     if (req.body.main_task && !data.main_task_id) data.main_task_id = req.body.main_task;
+    const mainTaskId = String(data.main_task_id ?? '');
+    const mainTask = mainTaskId
+      ? await prisma.project_main_task.findFirst({ where: { id: mainTaskId, company_id: activeCompanyId(req) }, select: { id: true, project_id: true } })
+      : null;
+    if (!mainTask) throw new ValidationError('Main Task tidak valid atau berada di luar company aktif.');
     const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(
       req.user?.active_role_code as RoleCode,
     );
     if (isOperationalAssignee) {
-      const mainTaskId = String(data.main_task_id ?? '');
       if (!mainTaskId || !req.user?.id) {
         throw new ForbiddenError('Main Task dan assignee aktif wajib tersedia untuk membuat target mingguan.');
       }
@@ -963,8 +998,11 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
       }
       // An operational assignee can plan their own work, not reassign it.
       data.assignee_id = req.user.id;
+    } else {
+      await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
     }
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
+    if (data.assignee_id) await ProjectsService.assertActiveCompanyMember(String(data.assignee_id), activeCompanyId(req));
     if (!data.target_description && data.target_output) data.target_description = data.target_output;
     if (!String(data.target_description ?? '').trim()) throw new ValidationError('Target mingguan wajib diisi.');
     // Progress is derived from Daily Tasks; API payloads cannot seed it.
@@ -977,13 +1015,37 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     data.override_reason = '';
     return data;
   },
-  beforeUpdate: async (req, data) => {
+  beforeUpdate: async (req, data, existing) => {
+    const mainTask = await prisma.project_main_task.findFirst({
+      where: { id: existing.main_task_id, company_id: activeCompanyId(req) },
+      select: { id: true, project_id: true },
+    });
+    if (!mainTask) throw new ValidationError('Hierarchy Weekly Task tidak valid.');
+    const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(
+      req.user?.active_role_code as RoleCode,
+    );
+    if (isOperationalAssignee) {
+      if (existing.assignee_id !== req.user?.id) throw new ForbiddenError('Anda hanya dapat memperbarui Weekly Task milik Anda.');
+    } else {
+      await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
+    }
     if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
+    delete data.main_task;
+    delete data.main_task_id;
+    delete data.assignee;
+    delete data.assignee_id;
     delete data.progress;
     delete data.is_progress_overridden;
     delete data.override_reason;
     return data;
+  },
+  beforeDelete: async (req, existing) => {
+    const mainTask = await prisma.project_main_task.findFirst({
+      where: { id: existing.main_task_id, company_id: activeCompanyId(req) },
+      select: { project_id: true },
+    });
+    await ProjectsService.assertCanManageProject(req.user, mainTask?.project_id, activeCompanyId(req));
   },
   afterCreate: async (req, rec) => {
     await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id, companyId: activeCompanyId(req) });
@@ -997,11 +1059,39 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
 projectsRouter.use('/daily-tasks', createCrudRouter({
   modelName: 'project_daily_task',
   searchFields: ['title', 'description', 'notes'],
+  accessWhere: async (req) => ProjectsService.dailyTaskAccessWhere(req.user, activeCompanyId(req)),
   beforeCreate: async (req, data) => {
     if (data.weekly_task && !data.weekly_task_id) data.weekly_task_id = data.weekly_task;
     if (req.body.weekly_task && !data.weekly_task_id) data.weekly_task_id = req.body.weekly_task;
-    if (data.owner && !data.owner_id) data.owner_id = data.owner;
-    if (!data.owner_id && req.user?.id) data.owner_id = req.user.id;
+    const companyId = activeCompanyId(req);
+    const weeklyTaskId = String(data.weekly_task_id ?? '');
+    const weeklyTask = weeklyTaskId
+      ? await prisma.project_weekly_task.findFirst({ where: { id: weeklyTaskId, company_id: companyId } })
+      : null;
+    if (!weeklyTask) throw new ValidationError('Weekly Task tidak valid atau berada di luar company aktif.');
+    const mainTask = await prisma.project_main_task.findFirst({
+      where: { id: weeklyTask.main_task_id, company_id: companyId },
+      select: { id: true, project_id: true },
+    });
+    if (!mainTask) throw new ValidationError('Main Task induk tidak valid.');
+
+    const activeRole = req.user?.active_role_code;
+    const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(activeRole as RoleCode);
+    if (isOperationalAssignee) {
+      const assignment = await prisma.project_task_assignment.findFirst({
+        where: { main_task_id: mainTask.id, assignee_id: req.user?.id, company_id: companyId },
+        select: { id: true },
+      });
+      if (!assignment || weeklyTask.assignee_id !== req.user?.id) {
+        throw new ForbiddenError('Anda hanya dapat membuat Daily Task pada Weekly Task milik Anda dari Main Task yang ditugaskan.');
+      }
+      data.owner_id = req.user?.id;
+    } else {
+      await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, companyId);
+      if (data.owner && !data.owner_id) data.owner_id = data.owner;
+      if (!data.owner_id) data.owner_id = weeklyTask.assignee_id ?? req.user?.id;
+    }
+    await ProjectsService.assertActiveCompanyMember(String(data.owner_id ?? ''), companyId);
     if (!data.title && data.activity_input) data.title = data.activity_input;
     if (!String(data.title ?? '').trim()) throw new ValidationError('Aktivitas harian wajib diisi.');
     if (data.description === undefined) data.description = '';
@@ -1027,18 +1117,23 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     if (data.progress === undefined) data.progress = 0;
     return data;
   },
-  beforeUpdate: async (req, data) => {
-    if (data.weekly_task && !data.weekly_task_id) data.weekly_task_id = data.weekly_task;
-    if (data.owner && !data.owner_id) data.owner_id = data.owner;
+  beforeUpdate: async (req, data, existing) => {
+    await ProjectsService.assertCanOperateDailyTask(existing.id, req.user, activeCompanyId(req));
+    // Hierarchy and ownership changes must use the audited assignment/transfer actions.
+    delete data.weekly_task;
+    delete data.weekly_task_id;
+    delete data.owner;
+    delete data.owner_id;
+    // Progress and operational status are derived by the dedicated action/checklist path.
+    delete data.progress;
+    delete data.status;
+    delete data.is_blocked;
+    delete data.block_reason;
     if (data.activity_input && !data.title) data.title = data.activity_input;
-    const st = String(data.status ?? '').toUpperCase();
-    if (['DONE', 'COMPLETED', 'SELESAI'].includes(st)) {
-      data.status = 'COMPLETED';
-      if (data.progress === undefined) data.progress = 100;
-    } else if (['ON_PROGRESS', 'PENDING', 'IN PROGRESS', 'ON-PROGRESS'].includes(st)) {
-      data.status = 'IN_PROGRESS';
-    }
     return data;
+  },
+  beforeDelete: async (req, existing) => {
+    await ProjectsService.assertCanManageDailyTask(existing.id, req.user, activeCompanyId(req));
   },
   afterCreate: async (req, rec) => {
     await ProjectsService.recalculateTaskTree({ dailyTaskId: rec.id, companyId: activeCompanyId(req) });
@@ -1064,17 +1159,8 @@ projectsRouter.use('/task-assignments', createCrudRouter({
 // Task Transfers
 projectsRouter.use('/task-transfers', createCrudRouter({
   modelName: 'project_task_transfer_request',
-  beforeCreate: async (req, data) => {
-    if (data.daily_task && !data.daily_task_id) data.daily_task_id = data.daily_task;
-    if (req.body.daily_task && !data.daily_task_id) data.daily_task_id = req.body.daily_task;
-    if (data.target_user && !data.target_user_id) data.target_user_id = data.target_user;
-    if (req.body.target_user && !data.target_user_id) data.target_user_id = req.body.target_user;
-    if (!data.requested_by_id && req.user?.id) data.requested_by_id = req.user.id;
-    if (data.reason === undefined) data.reason = '';
-    if (data.review_note === undefined) data.review_note = '';
-    if (!data.status) data.status = 'PENDING';
-    return data;
-  },
+  readOnly: true,
+  accessWhere: async (req) => ProjectsService.taskTransferAccessWhere(req.user, activeCompanyId(req)),
 }));
 
 // =============================================================================
@@ -1084,6 +1170,7 @@ projectsRouter.use('/task-transfers', createCrudRouter({
 projectsRouter.use('/projects', createCrudRouter({
   modelName: 'project_project',
   searchFields: ['project_name', 'project_code', 'status', 'customer_name'],
+  accessWhere: async (req) => ProjectsService.projectAccessWhere(req.user, activeCompanyId(req)),
   beforeCreate: async (req, data) => {
     // 1. Alias mappings
     if (!data.project_name && data.name) data.project_name = data.name;
@@ -1135,6 +1222,9 @@ projectsRouter.use('/projects', createCrudRouter({
     if (data.manager_name === undefined || data.manager_name === null || data.manager_name === '') {
       data.manager_name = data.pm_name || data.project_manager_name || (req.user as any)?.full_name;
       if (!String(data.manager_name ?? '').trim()) throw new ValidationError('Nama Project Manager wajib diisi.');
+    }
+    if (!data.project_manager_id && req.user?.active_role_code === RoleCode.PROJECT_MANAGER) {
+      data.project_manager_id = req.user.id;
     }
     if (data.description === undefined || data.description === null) {
       data.description = '';

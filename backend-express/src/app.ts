@@ -172,11 +172,14 @@ export function createApp(): Express {
       restrictedRoles: [RoleCode.SUPERVISOR, RoleCode.STAFF],
       allowedMutationPaths: [
         /\/api\/v1\/projects\/daily-tasks\/[^/]+\/(update[-_]progress|report[-_]blocked|request[-_]transfer)$/,
-        /\/api\/v1\/projects\/daily-tasks\/[^/]+$/,
+        { path: /\/api\/v1\/projects\/daily-tasks\/?$/, methods: ['POST'] },
+        { path: /\/api\/v1\/projects\/daily-tasks\/[^/]+\/?$/, methods: ['PUT', 'PATCH'] },
+        { path: /\/api\/v1\/projects\/task-transfers\/[^/]+\/cancel\/?$/, methods: ['POST'] },
         /\/api\/v1\/projects\/timesheets(?:\/[^/]+)?\/?$/,
         { path: /\/api\/v1\/projects\/weekly-tasks\/?$/, methods: ['POST'] },
+        { path: /\/api\/v1\/projects\/weekly-tasks\/[^/]+\/?$/, methods: ['PUT', 'PATCH'] },
       ],
-      message: 'Staff dan Supervisor hanya dapat memperbarui tugas/timesheet miliknya atau membuat target mingguan pada Main Task yang ditugaskan kepadanya.',
+      message: 'Staff dan Supervisor hanya dapat merencanakan serta memperbarui tugas/timesheet miliknya; penghapusan dan reassignment merupakan kewenangan PM/OM.',
     }),
     projectsRouter,
   );

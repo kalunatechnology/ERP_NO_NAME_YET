@@ -21,7 +21,7 @@ import {
   createMainTask, deleteMainTask,
   createWeeklyTask, deleteWeeklyTask,
   createDailyTask, updateDailyTask, deleteDailyTask,
-  requestTaskTransfer, getTransferRequests, approveTransfer, rejectTransfer,
+  requestTaskTransfer, directReassignDailyTask, getTransferRequests, approveTransfer, rejectTransfer,
   recalculateProjectHealth, advancePMFlow,
   createProjectCostEntry, deleteProjectCostEntry,
   createFundingRequest, deleteFundingRequest,
@@ -193,6 +193,7 @@ export default function ProjectsClient() {
     block_reason: ""
   });
   const [transferReason, setTransferReason] = useState("");
+  const [transferTargetUserId, setTransferTargetUserId] = useState("");
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
   const [newChecklistTitle, setNewChecklistTitle] = useState("");
   const [newChecklistDate, setNewChecklistDate] = useState("");
@@ -795,15 +796,23 @@ export default function ProjectsClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleSendTransfer = async () => {
-    if (!activeDailyTask || !transferReason.trim()) return;
+    if (!activeDailyTask || !transferTargetUserId || !transferReason.trim()) return;
     try {
-      await requestTaskTransfer({
+      const payload = {
         daily_task_id: activeDailyTask.id,
+        target_user_id: transferTargetUserId,
         reason: transferReason.trim()
-      });
-      toast.success("Permohonan alih tugas berhasil diajukan ke PM.");
+      };
+      if (isPM) {
+        await directReassignDailyTask(payload);
+        toast.success("Daily Task berhasil dialihkan.");
+      } else {
+        await requestTaskTransfer(payload);
+        toast.success("Permohonan alih tugas berhasil diajukan ke PM.");
+      }
       setIsTransferModalOpen(false);
       setTransferReason("");
+      setTransferTargetUserId("");
       fetchProjects(true);
     } catch {
       toast.error("Gagal mengajukan alih tugas");
@@ -1440,17 +1449,7 @@ export default function ProjectsClient() {
 
                                       {(() => {
                                         const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
-/**
- * isMainAssigned coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-                                        const isMainAssigned = (main.assignments || []).some(
-                                          (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
-                                        );
-                                        const canCreateDaily = isPM || isWeeklyPic || isMainAssigned;
+                                        const canCreateDaily = isPM || isWeeklyPic;
 
                                         if (canCreateDaily) {
                                           return (
@@ -1477,14 +1476,14 @@ export default function ProjectsClient() {
                                         return (
                                           <span
                                             className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-2 py-0.5 rounded"
-                                            title="Hanya PIC Weekly Task, tim ter-assign, atau PM yang dapat membuat Daily Task"
+                                            title="Hanya PIC Weekly Task atau PM yang dapat membuat Daily Task"
                                           >
                                             Hanya PIC atau PM
                                           </span>
                                         );
                                       })()}
 
-                                      {(isPM || String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id)) && (
+                                      {isPM && (
                                         <button
                                           onClick={async () => {
                                             if (confirm(`Hapus Target Mingguan #${weekly.week_number}?`)) {
@@ -1494,7 +1493,7 @@ export default function ProjectsClient() {
                                             }
                                           }}
                                           className="p-1 rounded text-text-secondary hover:text-red-600"
-                                          title="Hapus Target Mingguan (PIC / PM)"
+                                          title="Hapus Target Mingguan (PM / OM)"
                                         >
                                           <Trash2 size={12} />
                                         </button>
@@ -1533,19 +1532,8 @@ export default function ProjectsClient() {
                                                   const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
                                                   const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
                                                   const isDailyOwner = String(daily.owner_id || (daily as any).owner || "") === String(user?.id);
-                                                  const isWeeklyPic = String(weekly.assignee_id || (weekly as any).assignee || "") === String(user?.id);
-/**
- * isMainAssigned coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-                                                  const isMainAssigned = (main.assignments || []).some(
-                                                    (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(user?.id)
-                                                  );
-                                                  const canManageDaily = isPM || isDailyOwner || isWeeklyPic || isMainAssigned;
-                                                  const canDeleteDaily = isPM || isDailyOwner || isWeeklyPic;
+                                                  const canManageDaily = isDailyOwner;
+                                                  const canDeleteDaily = isPM;
                                                   const canTransferDaily = isPM || isDailyOwner;
 
                                                   return (
@@ -1622,6 +1610,7 @@ export default function ProjectsClient() {
                                                             <button
                                                               onClick={() => {
                                                                 setActiveDailyTask(daily);
+                                                                setTransferTargetUserId("");
                                                                 setIsTransferModalOpen(true);
                                                               }}
                                                               className="p-1 rounded text-amber-600 hover:bg-amber-50"
@@ -1784,6 +1773,7 @@ export default function ProjectsClient() {
                     {filteredPersonalTasks.map(({ projectId, projectName, projectCode, mainTaskName, weekNumber, daily }) => {
                       const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
                       const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
+                      const isDailyOwner = String(daily.owner_id || (daily as any).owner || "") === String(user?.id);
 
                       return (
                         <tr key={daily.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-100", isBlocked && "bg-red-50/50")}>
@@ -1805,12 +1795,14 @@ export default function ProjectsClient() {
                           <td className="py-3 px-3.5 align-top max-w-[260px]">
                             <div className="flex items-start gap-2">
                               <button
-                                onClick={() => handleQuickToggleDaily(daily)}
+                                onClick={() => handleQuickToggleDaily(daily, isDailyOwner)}
+                                disabled={!isDailyOwner}
                                 className={cn(
                                   "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
+                                  !isDailyOwner && "cursor-not-allowed opacity-40 bg-gray-100",
                                   isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
                                 )}
-                                title={isDone ? "Tandai belum selesai" : "Tandai selesai"}
+                                title={!isDailyOwner ? "Hanya pemilik task yang dapat memperbarui progres" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
                               >
                                 {isDone && <Check size={11} strokeWidth={3} />}
                               </button>
@@ -1840,34 +1832,39 @@ export default function ProjectsClient() {
 
                           <td className="py-3 px-3.5 align-top text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => {
-                                  setActiveDailyTask(daily);
-                                  setEditDailyForm({
-                                    status: daily.status,
-                                    progress: daily.progress || 0,
-                                    output_result: daily.output_result || "",
-                                    notes: daily.notes || "",
-                                    is_blocked: !!daily.is_blocked,
-                                    block_reason: daily.block_reason || ""
-                                  });
-                                  setIsEditDailyOpen(true);
-                                }}
-                                className="btn-outline py-0.5 px-2 text-2xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                              >
-                                <Edit size={11} /> Update
-                              </button>
+                              {isDailyOwner && (
+                                <button
+                                  onClick={() => {
+                                    setActiveDailyTask(daily);
+                                    setEditDailyForm({
+                                      status: daily.status,
+                                      progress: daily.progress || 0,
+                                      output_result: daily.output_result || "",
+                                      notes: daily.notes || "",
+                                      is_blocked: !!daily.is_blocked,
+                                      block_reason: daily.block_reason || ""
+                                    });
+                                    setIsEditDailyOpen(true);
+                                  }}
+                                  className="btn-outline py-0.5 px-2 text-2xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                >
+                                  <Edit size={11} /> Update
+                                </button>
+                              )}
 
-                              <button
-                                onClick={() => {
-                                  setActiveDailyTask(daily);
-                                  setIsTransferModalOpen(true);
-                                }}
-                                className="p-1 rounded text-amber-600 hover:bg-amber-50"
-                                title="Alih Tugas"
-                              >
-                                <RefreshCw size={12} />
-                              </button>
+                              {(isDailyOwner || isPM) && (
+                                <button
+                                  onClick={() => {
+                                    setActiveDailyTask(daily);
+                                    setTransferTargetUserId("");
+                                    setIsTransferModalOpen(true);
+                                  }}
+                                  className="p-1 rounded text-amber-600 hover:bg-amber-50"
+                                  title={isPM ? "Alihkan Task" : "Ajukan Alih Tugas"}
+                                >
+                                  <RefreshCw size={12} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1905,26 +1902,40 @@ export default function ProjectsClient() {
                     <span className="text-2xs text-text-secondary">Alasan: {tr.reason || "Beban kerja tinggi / kendala teknis"}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={async () => {
-                        await approveTransfer(tr.id);
-                        toast.success("Transfer tugas disetujui!");
-                        fetchProjects(true);
-                      }}
-                      className="btn-primary py-1 px-3 text-xs bg-emerald-600"
-                    >
-                      Setujui
-                    </button>
-                    <button
-                      onClick={async () => {
-                        await rejectTransfer(tr.id);
-                        toast.error("Transfer tugas ditolak");
-                        fetchProjects(true);
-                      }}
-                      className="btn-ghost py-1 px-3 text-xs text-red-600"
-                    >
-                      Tolak
-                    </button>
+                    {isPM && tr.status === "PENDING" ? (
+                      <>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await approveTransfer(tr.id);
+                              toast.success("Transfer tugas disetujui!");
+                              fetchProjects(true);
+                            } catch {
+                              toast.error("Transfer tidak dapat disetujui");
+                            }
+                          }}
+                          className="btn-primary py-1 px-3 text-xs bg-emerald-600"
+                        >
+                          Setujui
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await rejectTransfer(tr.id);
+                              toast.success("Transfer tugas ditolak");
+                              fetchProjects(true);
+                            } catch {
+                              toast.error("Transfer tidak dapat ditolak");
+                            }
+                          }}
+                          className="btn-ghost py-1 px-3 text-xs text-red-600"
+                        >
+                          Tolak
+                        </button>
+                      </>
+                    ) : (
+                      <span className="badge text-2xs">{tr.status}</span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -2586,15 +2597,38 @@ export default function ProjectsClient() {
 
       <Modal
         isOpen={isTransferModalOpen}
-        onClose={() => setIsTransferModalOpen(false)}
-        title="Ajukan Alih Tugas (Task Transfer)"
+        onClose={() => {
+          setIsTransferModalOpen(false);
+          setTransferTargetUserId("");
+          setTransferReason("");
+        }}
+        title={isPM ? "Alihkan Daily Task" : "Ajukan Alih Tugas (Task Transfer)"}
         subtitle={`Task: ${activeDailyTask?.title}`}
         size="md"
       >
         <div className="flex flex-col gap-3">
           <p className="text-xs text-text-secondary">
-            Ajukan permohonan delegasi tugas ini ke Project Manager untuk dipindahkan ke anggota tim lain:
+            {isPM
+              ? "Pilih anggota aktif sebagai pemilik baru. Perubahan ini akan dicatat sebagai reassignment oleh PM/OM."
+              : "Pilih anggota tujuan dan ajukan permohonan kepada Project Manager untuk ditinjau."}
           </p>
+          <div>
+            <label className="text-xs font-bold text-text-secondary block mb-1">Anggota Tujuan *</label>
+            <select
+              value={transferTargetUserId}
+              onChange={e => setTransferTargetUserId(e.target.value)}
+              className="input text-xs"
+            >
+              <option value="">Pilih anggota aktif</option>
+              {companyUsers
+                .filter(member => String(member.id) !== String(activeDailyTask?.owner_id || (activeDailyTask as any)?.owner || ""))
+                .map(member => (
+                  <option key={member.id} value={member.id}>
+                    {member.full_name || member.username || member.email}
+                  </option>
+                ))}
+            </select>
+          </div>
           <div>
             <label className="text-xs font-bold text-text-secondary block mb-1">Alasan Pengalihan Tugas *</label>
             <textarea
@@ -2606,8 +2640,18 @@ export default function ProjectsClient() {
             />
           </div>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setIsTransferModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleSendTransfer} className="btn-primary py-1.5 px-4 text-xs bg-amber-600 hover:bg-amber-700">Kirim Permohonan</button>
+            <button onClick={() => {
+              setIsTransferModalOpen(false);
+              setTransferTargetUserId("");
+              setTransferReason("");
+            }} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
+            <button
+              onClick={handleSendTransfer}
+              disabled={!transferTargetUserId || !transferReason.trim()}
+              className="btn-primary py-1.5 px-4 text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
+            >
+              {isPM ? "Alihkan Task" : "Kirim Permohonan"}
+            </button>
           </div>
         </div>
       </Modal>

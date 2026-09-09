@@ -7,15 +7,15 @@
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
 import { Request, Response, NextFunction } from 'express';
-import prisma from '../config/database';
 import { ForbiddenError } from '../utils/errors';
-import { isCompanyAdmin, isSuperAdmin, RoleCode } from '../types/roles';
+import { isSuperAdmin, RoleCode } from '../types/roles';
 
 // =============================================================================
 // SEGREGATION OF DUTIES (SoD) MIDDLEWARE — Enterprise Edition
 // Implementasi prinsip Maker-Checker dengan:
 //   - SoD Threshold Amount: Transaksi di bawah ambang batas dibebaskan dari SoD
-//   - Delegation of Authority (DoA): Pelimpahan wewenang persetujuan yang tercatat di audit
+//   - Fail-closed saat Maker dan Checker sama. DoA belum didukung sampai tersedia
+//     model delegasi yang memiliki delegator, company scope, masa berlaku, dan revocation.
 // =============================================================================
 
 export interface SoDContext {
@@ -32,33 +32,7 @@ export interface SoDContext {
 const DEFAULT_SOD_THRESHOLD_AMOUNT = Number(process.env.SOD_THRESHOLD_AMOUNT ?? 500000); // Rp 500.000
 
 // ---------------------------------------------------------------------------
-// Helper: Cek apakah ada Delegation of Authority (DoA) yang aktif
-// ---------------------------------------------------------------------------
-
-/**
- * findActiveDelegation implements a request-bound security or governance step.
- *
- * Input/output: Reads the Express request/response context, attaches only the identity/scope metadata declared in the implementation, then either calls `next` or rejects the request.
- * Security intent: The check runs before protected business handlers so unauthenticated, cross-company, unauthorized, or invalid requests cannot reach persistence mutations.
- * Data/side effects: Queries or records Prisma model(s) `core_workflow_approval`.
- */
-async function findActiveDelegation(delegatorUserId: string, delegateUserId: string): Promise<boolean> {
-  // Cek apakah ada workflow approval yang dilakukan oleh delegate atas nama delegator
-  try {
-    const delegation = await prisma.core_workflow_approval.findFirst({
-      where: {
-        approver_user_id: delegateUserId,
-        decision:         'DELEGATED',
-      },
-    });
-    return !!delegation;
-  } catch {
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// enforceSoD: Maker-Checker dengan Threshold & Delegation of Authority
+// enforceSoD: Maker-Checker dengan Threshold
 // ---------------------------------------------------------------------------
 
 /**
@@ -109,22 +83,15 @@ export function enforceSoD(options: {
         return next();
       }
 
-      // Maker === Checker — Cek Delegation of Authority (DoA)
-      const hasDelegation = await findActiveDelegation(creatorId, currentUserId);
-      if (hasDelegation) {
-        res.setHeader('X-SoD-Status',    'DELEGATION_OVERRIDE');
-        res.setHeader('X-SoD-Delegator', creatorId);
-        res.setHeader('X-SoD-Delegate',  currentUserId);
-        return next();
-      }
-
-      // Tidak ada pengecualian — Blokir
+      // The current schema has no delegator, validity window, company scope, or
+      // revocation fields for a trustworthy DoA grant. Fail closed until a
+      // dedicated delegation model exists; an arbitrary DELEGATED approval may
+      // never authorize maker === checker.
       return next(
         new ForbiddenError(
           `[SoD Violation] Pengguna yang membuat dokumen ini (${currentUserId}) ` +
           `tidak dapat melakukan aksi "${options.action ?? 'approve'}" pada dokumen yang sama. ` +
-          `Diperlukan Maker dan Checker yang berbeda. ` +
-          `Jika approver utama berhalangan, gunakan fitur Delegation of Authority.`,
+          `Diperlukan Maker dan Checker yang berbeda.`,
         ),
       );
     } catch (err) {
@@ -146,12 +113,13 @@ export function enforceSoD(options: {
  */
 export function requireFinanceRole(roles: string[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
-    const userRoles = req.user?.roles ?? [];
-    if (!userRoles.some((role) => roles.includes(role))) {
+    const assignedRoles = req.user?.roles ?? [];
+    const activeRole = req.user?.active_role_code ?? assignedRoles[0] ?? '';
+    if (!roles.includes(activeRole)) {
       return next(
         new ForbiddenError(
           `Aksi ini membutuhkan salah satu dari role berikut: ${roles.join(', ')}. ` +
-          `Role Anda saat ini: ${userRoles.join(', ') || 'tidak terdeteksi'}.`,
+          `Role aktif Anda: ${activeRole || 'tidak terdeteksi'}.`,
         ),
       );
     }
@@ -179,7 +147,8 @@ export function requireCompanyAdmin() {
  * Data/side effects: May mutate request metadata or the response, as shown in the implementation.
  */
   return (req: Request, _res: Response, next: NextFunction) => {
-    if (isCompanyAdmin(req.user?.roles ?? [])) {
+    const assignedRoles = req.user?.roles ?? [];
+    if (isSuperAdmin(assignedRoles) || req.user?.active_role_code === RoleCode.COMPANY_ADMIN) {
       return next();
     }
 
@@ -205,7 +174,7 @@ export function requireCompanyAdmin() {
 export function requireSuperadmin() {
   return (req: Request, _res: Response, next: NextFunction) => {
     const roles = req.user?.roles ?? [];
-    if (isSuperAdmin(roles) || roles.includes(RoleCode.DIRECTOR)) {
+    if (isSuperAdmin(roles) || req.user?.active_role_code === RoleCode.DIRECTOR) {
       return next();
     }
     return next(

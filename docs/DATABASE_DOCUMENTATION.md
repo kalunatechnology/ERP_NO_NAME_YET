@@ -2,7 +2,7 @@
 
 Dokumen ini adalah dokumentasi **AS-IS** database untuk backend Express dan frontend Next. Ia dibaca bersama [System Documentation](./SYSTEM_DOCUMENTATION.md). Nilai credential sengaja tidak dicantumkan.
 
-**Update 7 September 2026:** enam folder migration kini tersedia. Migration terbaru `20260907010000_reporting_views` telah dideploy pada database proyek terkonfigurasi dan membuat empat view read-only ter-scope: `view_finance_main_dashboard`, `view_project_dashboard`, `view_project_timeline_cost`, dan `view_crm_sales_dashboard`. Lihat [Current Implementation Status](./CURRENT_IMPLEMENTATION_STATUS.md) untuk bukti runtime dan aturan deployment target lain.
+**Update 9 September 2026:** enam folder migration kini tersedia. Migration terbaru `20260907010000_reporting_views` telah dideploy pada database proyek terkonfigurasi dan membuat empat view read-only ter-scope: `view_finance_main_dashboard`, `view_project_dashboard`, `view_project_timeline_cost`, dan `view_crm_sales_dashboard`. Revisi access control 9 September adalah perubahan service/route/frontend tanpa migration schema; lihat [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md) untuk aturan runtime dan bukti Q11.
 
 ## Status dan cakupan
 
@@ -5930,6 +5930,18 @@ flowchart LR
 - `createCrudRouter` menyediakan metadata, bulk, list, create, get, replace, patch, dan delete untuk banyak model; filtering company/tenant diturunkan dari resource-scope metadata.
 - Audit mutation ditulis ke `core_audit_event`; idempotency mutation bisnis ditulis ke `core_idempotency_key`.
 - Hard delete tersedia pada generic CRUD kecuali dicegah oleh FK atau rule khusus. Kebijakan retensi global/soft-delete tidak ditemukan.
+
+### Access-control runtime revision — 9 September 2026
+
+Perubahan `ACC-2026-09-09-01` tidak menambah atau mengubah tabel. Enforcement berada di application layer dan menggabungkan company/tenant scope dengan `accessWhere` domain dalam kondisi `AND`.
+
+- `project_project` discope dengan `project_manager_id`, `project_member`, dan `project_task_assignment` sesuai active role.
+- `project_main_task`, `project_weekly_task`, `project_daily_task`, dan `project_task_transfer_request` memakai owner/assignee/project scope pada query generic CRUD maupun service custom.
+- `project_daily_task.owner_id` adalah batas eksekusi progress/output/blocker. `project_task_transfer_request.requested_by_id`, `target_user_id`, dan `status='PENDING'` menjadi batas transfer; target harus punya `iam_user_company_membership.status='ACTIVE'`.
+- `core_workflow_instance.created_by_id` diverifikasi saat submit LPJ. Role actor transition Request dan CRM dipaksa pada route middleware, bukan oleh FK database.
+- SoD maker-checker fail-closed. Tidak ada tabel Delegation of Authority dengan delegator, validitas, company scope, dan revocation; maka DoA tidak boleh diasumsikan tersedia.
+
+Karena PostgreSQL RLS tidak ditemukan di repository, query/service ini adalah security boundary utama. Perubahan query/route pada domain tersebut wajib memperbarui Q11 dan [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
 
 ## 7. Financial transaction rules
 

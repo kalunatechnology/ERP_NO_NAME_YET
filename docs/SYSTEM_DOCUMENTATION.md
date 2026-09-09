@@ -2,7 +2,7 @@
 
 Dokumen ini adalah **Single Source of Truth teknis AS-IS** untuk backend Express dan frontend Next pada repository ini. Ini bukan README. Dokumentasi database terpisah tersedia di [Database Documentation](./DATABASE_DOCUMENTATION.md). Audit dilakukan terhadap implementasi source, konfigurasi, route, middleware, service, schema, migration, seed, frontend, test, dan deployment yang tersimpan di repository. Secret tidak direproduksi.
 
-**Baseline diperbarui 7 September 2026.** Ringkasan operasional dan indeks bukti terbaru tersedia di [Current Implementation Status](./CURRENT_IMPLEMENTATION_STATUS.md). Inventaris runtime mencakup 2.616 route: 783 authenticated GET lulus dan 1.833 mutation pipeline lulus dalam dry-run non-destruktif. Login 9/9 memenuhi batas 3 detik; benchmark terakhir login sampai seluruh data awal adalah 2.009 ms.
+**Baseline diperbarui 9 September 2026.** Ringkasan operasional dan indeks bukti terbaru tersedia di [Current Implementation Status](./CURRENT_IMPLEMENTATION_STATUS.md). Baseline aturan akses terbaru, changelog, dan bukti Q11 tersedia di [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md). Inventaris runtime mencakup 2.616 route: 783 authenticated GET lulus dan 1.833 mutation pipeline lulus dalam dry-run non-destruktif. Login 9/9 memenuhi batas 3 detik; benchmark terakhir login sampai seluruh data awal adalah 2.009 ms.
 
 ## Status legend
 
@@ -161,12 +161,12 @@ Setiap resource yang diregistrasikan dengan `createCrudRouter` memiliki:
 |---|---|---|---|
 | GET | `/metadata` | Prisma field metadata | no mutation |
 | POST | `/bulk` | bulk create/update/delete sesuai action payload | database mutation; scope dan terminal-state guard berlaku |
-| GET | `/` | list/search/filter/order/pagination | `page`, `page_size`, filter field; company/tenant scope ditambahkan |
+| GET | `/` | list/search/filter/order/pagination | `page`, `page_size`, filter field; company/tenant scope ditambahkan; resource tertentu menambahkan `accessWhere` domain row scope |
 | POST | `/` | create | input difilter terhadap field Prisma; required-field autofill dapat berlaku |
-| GET | `/:id` | detail | scoped lookup, 404 bila tidak ada |
-| PUT | `/:id` | replace-style update | mutation scoped; status terminal finance dapat diblokir |
-| PATCH | `/:id` | partial update | mutation scoped; status terminal finance dapat diblokir |
-| DELETE | `/:id` | hard delete | mutation scoped; FK/policy dapat menolak |
+| GET | `/:id` | detail | scoped lookup, 404 bila tidak ada; domain `accessWhere` bila terdaftar tetap berlaku |
+| PUT | `/:id` | replace-style update | mutation scoped; domain row scope dan status terminal finance dapat diblokir |
+| PATCH | `/:id` | partial update | mutation scoped; domain row scope dan status terminal finance dapat diblokir |
+| DELETE | `/:id` | hard delete | mutation scoped; domain row scope/FK/policy dapat menolak |
 
 Response list/pagination dan error mengikuti helper/global handler sejauh route tidak melakukan response custom. Seluruh mutation root bisnis yang dicakup idempotency membutuhkan header terkait.
 
@@ -640,6 +640,12 @@ Frontend menganggap feed kosong sebagai hasil valid dan tidak lagi membuat conta
 
 **Invariant keamanan:** jangan menambahkan kembali fallback contact global, filter berdasarkan pola email, atau query langsung seluruh `iam_user`. Identitas demo tetap valid; batas keamanan harus berasal dari membership company, bukan nama/email.
 
+### Access-control revision — 9 September 2026
+
+Policy role sekarang memakai `active_role_code`, bukan gabungan seluruh role yang pernah ditugaskan. Delegasi module personal masih dapat memenuhi policy module biasa bila entitlement company mengizinkan, tetapi tidak dapat meloloskan action yang identitas aktornya merupakan kontrol bisnis: approval Request, disbursement Finance, dan CRM executive override/approval memakai `requireActiveRole`.
+
+Project Management menerapkan row-level scope melalui `accessWhere` dan service Projects: PM hanya pada project manager/membership PM aktif; Staff/Supervisor hanya pada project/member atau assignment mereka; Daily execution tetap hanya owner. PM/OM mengelola struktur/reassignment pada project sendiri, bukan progress/output Daily milik staf. Detail dan matriks endpoint ada pada [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
+
 ## 7. Business Logic dan State Management
 
 ### CRM
@@ -796,6 +802,7 @@ Format command, one-command DB reset, and automated deploy script **NOT FOUND**.
 - `tests/features/q10-critical-system.feature`: living specification Given–When–Then untuk health/auth, Director, Company Admin/company isolation, PM/CRM/Finance role behavior, role switching, dan integrity progres WBS.
 - `tests/q10-system.bdd.ts`: runner system BDD yang menyalakan Express pada ephemeral port, memakai middleware/API/Prisma nyata, menguji projection timeline frontend, dan memulihkan active role Arof melalui `finally`. Hasil terakhir 2026-09-05: 8/8 PASS.
 - `tests/features/q10-company-admin-access.feature` dan `tests/q10-company-admin-access.bdd.ts`: living specification serta executable 12-case matrix untuk pengaturan modul per user. Suite menyimpan state awal override Finance Jundy dan selalu mengembalikannya pada `finally`. Hasil terakhir 2026-09-05: 12/12 PASS.
+- `tests/q11-system-guardrails.ts` dan `tests/features/q11-system-guardrails.feature`: regression guard build untuk active role, project/task row scope, Daily owner execution, transfer read-only generic CRUD, privileged Request/CRM actions, LPJ ownership, demo isolation, dan terminal Finance immutability. Baseline akses 9 September 2026: 8/8 PASS.
 - Jest, ts-jest dan Supertest tersedia. Unit test frontend/E2E browser suite/test database isolation dedicated **NOT FOUND**.
 - Karena test menyentuh database aktual dari environment, jangan arahkan ke production. Data entitlement dapat diubah sementara oleh suite.
 
@@ -1243,6 +1250,7 @@ Verification snapshot: **154 logic files** memiliki file-level documentation, te
 - **RESOLVED PROGRESS INTEGRITY (2026-09-05):** dashboard sebelumnya mengubah `project_project`/generic task menjadi baris Main Task sintetis dan mempercayai persentase tersimpan. Adapter sekarang hanya membentuk timeline dari `project_main_task`; tanpa Main Task, timeline kosong dan progres proyek 0. Audit database menemukan satu orphan progress (`Pembangunan Gardu Induk 150kV Cikarang`, 45%) dan rekonsiliasi terarah mengubahnya ke 0 tanpa menyentuh task sah; audit akhir mencatat nol pelanggaran.
 - **Q10 BDD FINDING RESOLVED (2026-09-05):** Ghost CRM Lead semula mendapat 403 karena entitlement CRM nonaktif pada company yang benar-benar terkait melalui membership. Rekonsiliasi sekarang menentukan target dari `iam_user_company_membership`, bukan `findFirst(company_code)`, dan suite membuktikan CRM kembali 200 tanpa melemahkan company/module middleware.
 - **Q10 ACCESS UX/CONTRACT (2026-09-05):** halaman Company Admin sekarang user-first dan memisahkan entitlement company milik Super Admin dari delegasi personal. Empat state eksplisit adalah `Role default` (hapus override), `No access`, `View only`, dan `View & manage`; self-change dinonaktifkan. `DELETE /api/v1/accounts/users/:userId/module-access/:moduleCode` mengembalikan authorization ke role default tanpa menyentuh role user.
+- **RESOLVED ACCESS BOUNDARY (2026-09-09):** active role sekarang menjadi konteks RBAC, scope Project/Task dipaksakan di backend, Request/CRM action sensitif memiliki strict role gate, dan SoD tidak lagi menawarkan Delegation of Authority yang belum didukung. Rincian dan change ID ada di [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
 
 - **SECURITY / POTENTIAL ISSUE:** hardcoded live-looking chatbot caller credential exists in frontend source and is shipped to browsers. Rotate/remove it and proxy sensitive auth server-side; value omitted here.
 - **POTENTIAL ISSUE:** Axios default backend port 8000 differs from backend and Next rewrite default 8001.

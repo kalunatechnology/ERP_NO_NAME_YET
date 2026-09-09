@@ -5,6 +5,8 @@
 **Legacy reference only:** `backend/` (Django) and `uji_prototype/` are not the active production runtime.  
 **Purpose:** technical documentation, business-process reference, developer handover, QA reference, and baseline for subsequent development.
 
+> **Access-control addendum — 9 September 2026:** audit ini merekam kondisi source pada 8 September. Temuan akses yang telah ditutup pada 9 September diberi status resolved di bawah; baseline operasional dan change log yang berlaku adalah [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
+
 ## 1. Scope, method, and evidence rules
 
 This document describes the implementation found in source code. It does not treat a model name, an `*_id` column, a diagram, seed data, or an old Django implementation as proof that an integration is operational.
@@ -619,14 +621,14 @@ All protected `/api/v1` routes pass through:
 | `/commands` | Per-subtree/endpoint | Mixed |
 | `/dashboard` | Per-section inside endpoint | Per-section logic |
 
-### 8.3 Assigned role versus active role
+### 8.3 Assigned role versus active role — historical finding, superseded 9 September 2026
 
-- `requireRole` accepts any role in `req.user.roles`, not only `active_role_code`.
-- `restrictActiveRoleMutations` uses `active_role_code`.
-- Finance's `requireFinanceRole` also checks the union of assigned roles.
-- The frontend route shell checks the union of roles while rendering role-specific navigation from a detected active role.
+- At audit time, `requireRole` accepted any role in `req.user.roles`, not only `active_role_code`.
+- At audit time, `restrictActiveRoleMutations` used `active_role_code`.
+- At audit time, Finance's `requireFinanceRole` also checked the union of assigned roles.
+- The frontend route shell checked the union of roles while rendering role-specific navigation from a detected active role.
 
-Consequently, changing active role does not consistently change all authorization. A multi-role user can pass broad role gates through an inactive assigned role while only some mutations are restricted by active role.
+Consequently, at audit time changing active role did not consistently change all authorization. This is resolved by `ACC-2026-09-09-01`; section 8.5 and the access-control changelog describe the active baseline.
 
 ### 8.4 Per-user module delegation
 
@@ -638,6 +640,18 @@ Effective access is:
 - Override cannot enable a company-disabled module.
 - Explicit read/write delegation can satisfy `requireRole` when mounted immediately after entitlement middleware.
 - Company Admin UI lists only company-approved modules for user delegation.
+
+### 8.5 Access-control remediation — 9 September 2026
+
+Temuan audit yang berkaitan dengan active role, Project task ownership, Request transition, CRM executive action, dan SoD telah diperbaiki pada source aktif.
+
+- `requireRole` mengevaluasi `active_role_code`; strict `requireActiveRole` dipakai untuk approval/disbursement/override sehingga delegasi module personal tidak dapat menggantikan role bisnis.
+- Project generic CRUD dan canonical detail route memakai row scope: PM hanya project kelolaan, Staff/Supervisor hanya membership/assignment/owner yang relevan, OM/Director portfolio sesuai policy, dan admin platform tetap memiliki scope administratif.
+- Daily progress/output/blocker owner-only. PM/OM mengelola structure, transfer approval, dan reassignment pada project yang memang dikelola.
+- Request route kini memiliki gate OM, PM/Director, Finance, dan ownership LPJ sesuai transisi; CRM executive override/decision Director-only.
+- SoD maker=checker fail-closed; Delegation of Authority belum dianggap implemented karena schema belum memiliki atribut grant yang diperlukan.
+
+Verifikasi implementasi ini adalah Q11 8/8 PASS dan backend build PASS. Perubahan ini tidak menyelesaikan gap lifecycle/finance lain yang tetap tercatat di audit.
 
 ## 9. Lifecycle and status consistency
 
@@ -704,8 +718,8 @@ Weak or split boundaries:
 
 | ID | Finding | Impact |
 |---|---|---|
-| INT-P0-01 | Request approval/disbursement/LPJ routes lack backend actor-role enforcement. | Any user with writable `REQUESTS` entitlement may call privileged transitions directly. |
-| INT-P0-02 | CRM executive override is not Director-only and does not require an approved approval record. | Credit hold can be bypassed by CRM/Sales/PM users. |
+| INT-P0-01 — RESOLVED 2026-09-09 | Request approval/disbursement/LPJ routes previously lacked backend actor-role enforcement. Active-role gates now protect OM validation/LPJ verification, PM-or-Director executive approval, and Finance disbursement; LPJ verifies original requester ownership. | Regressed by Q11; transaction-state and accounting completeness remain separate gaps. |
+| INT-P0-02 — PARTIALLY RESOLVED 2026-09-09 | CRM executive override and executive decisions are now Director-active-role-only. | Role bypass by CRM/Sales/PM is closed. Requirement for an approved approval record remains an independent lifecycle rule to verify before treating override as fully governed. |
 | INT-P0-03 | Almost all relationships are scalar UUIDs without Prisma relations or repository-created FKs. | Orphans, cross-company references, and unsafe deletes are possible. |
 | INT-P0-04 | Finance UI directly PATCHes funding/billing/payment-like statuses outside custom actions. | SoD, FSM validation, journal/tax effects, and audit semantics can be bypassed. |
 | INT-P0-05 | Asset disposal appears to use the accumulated-depreciation account as both contra-asset and asset-cost account. | Disposal journal may be materially wrong. |
@@ -724,7 +738,7 @@ Weak or split boundaries:
 | INT-P1-07 | Procurement three-way match performs no three-way comparison. | Invalid invoices/receipts can be marked matched. |
 | INT-P1-08 | Inventory/manufacturing/quality actions only change status. | Stock, valuation, production cost, and QA state are not synchronized. |
 | INT-P1-09 | Reporting returns hard-coded financial and CRM KPIs. | Management reports can present false values as real data. |
-| INT-P1-10 | Active-role selection and assigned-role authorization are inconsistent. | UI persona and backend authority can diverge. |
+| INT-P1-10 — RESOLVED 2026-09-09 | Active-role selection and assigned-role authorization were inconsistent. | `requireRole` and Finance policy now use active role; strict sensitive actions reject module-delegation bypass. |
 
 ### P2 — maintainability, UX, and auditability risk
 
@@ -740,6 +754,10 @@ Weak or split boundaries:
 | INT-P2-08 | External avatar service and chatbot are browser-side dependencies. | CSP/privacy/offline behavior depends on external availability. |
 
 ## 12. Recommended remediation roadmap
+
+### Completed access remediation — 9 September 2026
+
+The previous Phase A items for Request actor policy, LPJ ownership, Director-only CRM executive action, active-role alignment, and task/project row scope are implemented. Their acceptance evidence is Q11 and the [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md). The remaining roadmap items below are still open unless explicitly marked otherwise.
 
 ### Phase A — protect authoritative transitions
 

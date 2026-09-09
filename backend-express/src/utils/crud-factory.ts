@@ -29,6 +29,8 @@ export interface CrudOptions {
   beforeCreate?: (req: Request, data: any) => Promise<any> | any;
   beforeUpdate?: (req: Request, data: any, existing: any) => Promise<any> | any;
   beforeDelete?: (req: Request, existing: any) => Promise<void> | void;
+  /** Adds domain row visibility on top of the standard tenant/company scope. */
+  accessWhere?: (req: Request) => Promise<Record<string, unknown>> | Record<string, unknown>;
   afterCreate?: (req: Request, record: any) => Promise<void> | void;
   afterUpdate?: (req: Request, record: any, before: any) => Promise<void> | void;
   afterDelete?: (req: Request, record: any) => Promise<void> | void;
@@ -389,6 +391,13 @@ export function createCrudRouter(options: CrudOptions): Router {
     return { AND: [where, scope] };
   };
 
+  const authorizedWhere = async (req: Request, where: Record<string, unknown> = {}) => {
+    const companyScoped = await scopedWhere(req, where);
+    const accessScope = options.accessWhere ? await options.accessWhere(req) : {};
+    if (!accessScope || Object.keys(accessScope).length === 0) return companyScoped;
+    return { AND: [companyScoped, accessScope] };
+  };
+
 /**
  * cleanData implements this file's named function contract.
  *
@@ -477,7 +486,7 @@ export function createCrudRouter(options: CrudOptions): Router {
           }
           const { id, ...itemData } = item;
           const existing = await tx[options.modelName].findFirst({
-            where: await scopedWhere(req, { id }),
+            where: await authorizedWhere(req, { id }),
           });
           if (!existing) throw new ForbiddenError('Data tidak ditemukan dalam scope company user.');
           assertRecordMutable(modelNameStr, existing);
@@ -523,7 +532,7 @@ export function createCrudRouter(options: CrudOptions): Router {
         res.status(400).json({ detail: 'ids wajib diisi.' });
         return;
       }
-      const where = await scopedWhere(req, { id: { in: ids } });
+      const where = await authorizedWhere(req, { id: { in: ids } });
       const allowed = await delegate.count({ where });
       if (allowed !== new Set(ids).size) {
         throw new ForbiddenError('Satu atau lebih data berada di luar scope company user.');
@@ -605,7 +614,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       if (andConditions.length > 0) {
         where.AND = andConditions;
       }
-      where = await scopedWhere(req, where);
+      where = await authorizedWhere(req, where);
 
       // Ordering filter
       const ordering = req.query['ordering'] as string | undefined;
@@ -724,7 +733,7 @@ export function createCrudRouter(options: CrudOptions): Router {
     try {
       const { id } = req.params;
       const lookupField = options.lookupField ?? 'id';
-      const queryArgs: any = { where: await scopedWhere(req, { [lookupField]: id }) };
+      const queryArgs: any = { where: await authorizedWhere(req, { [lookupField]: id }) };
       if (options.include) queryArgs.include = options.include;
       else if (options.select) queryArgs.select = options.select;
 
@@ -747,7 +756,7 @@ export function createCrudRouter(options: CrudOptions): Router {
   router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const existing = await delegate.findFirst({ where: await scopedWhere(req, { id }) });
+      const existing = await delegate.findFirst({ where: await authorizedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
       assertRecordMutable(modelNameStr, existing);
 
@@ -815,7 +824,7 @@ export function createCrudRouter(options: CrudOptions): Router {
   router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const existing = await delegate.findFirst({ where: await scopedWhere(req, { id }) });
+      const existing = await delegate.findFirst({ where: await authorizedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
       assertRecordMutable(modelNameStr, existing);
 
@@ -883,7 +892,7 @@ export function createCrudRouter(options: CrudOptions): Router {
   router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const existing = await delegate.findFirst({ where: await scopedWhere(req, { id }) });
+      const existing = await delegate.findFirst({ where: await authorizedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
       assertRecordMutable(modelNameStr, existing);
 

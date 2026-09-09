@@ -408,6 +408,10 @@ export class RequestService {
     const instance = await prisma.core_workflow_instance.findFirst({ where: { id: requestId, company_id: companyId } });
     if (!instance) throw new NotFoundError('Request');
 
+    if (instance.created_by_id !== requesterUserId) {
+      throw new ForbiddenError('LPJ hanya dapat dikirim oleh pembuat request.');
+    }
+
     if (instance.current_state !== 'REGISTERED' && instance.current_state !== 'DISBURSED' && instance.current_state !== 'LPJ_REVISION') {
       throw new ValidationError(`Request belum siap untuk pelaporan LPJ (Status saat ini: ${instance.current_state}).`);
     }

@@ -1,5 +1,7 @@
 # Current Implementation Status
 
+> **Access-control update — 9 September 2026:** `ACC-2026-09-09-01` is implemented locally and verified through backend/frontend type-check, backend build, and Q11 8/8 PASS. It introduces active-role RBAC, Project/Task row scope, strict privileged workflow gates, LPJ ownership, and fail-closed SoD. No database migration is required. See [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
+
 **Status date:** 7 September 2026  
 **Active stack:** Node.js/Express/TypeScript/Prisma + PostgreSQL/Supabase, consumed by Next.js App Router  
 **Purpose:** concise operational baseline after the routing, security, loading-performance, and BFF resilience revisions.
@@ -96,6 +98,7 @@ The route matrix and read benchmark are safe reads except that successful login 
 - [Mutation dry-run result](../q10-system-testing/AUTHENTICATED_MUTATION_ROUTE_RESULTS.json)
 - [Database documentation](./DATABASE_DOCUMENTATION.md)
 - [System documentation](./SYSTEM_DOCUMENTATION.md)
+- [Access-control baseline and changelog](./ACCESS_CONTROL_CHANGELOG.md)
 
 ## User-testing baseline
 

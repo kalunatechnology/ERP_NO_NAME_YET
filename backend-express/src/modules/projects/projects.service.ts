@@ -7,9 +7,211 @@
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
 import prisma from '../../config/database';
-import { NotFoundError } from '../../utils/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { RoleCode } from '../../types/roles';
 
 export class ProjectsService {
+  private static activeRole(user: any): string {
+    return user?.active_role_code ?? user?.roles?.[0] ?? '';
+  }
+
+  private static isOperationalAssignee(user: any): boolean {
+    return ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
+  }
+
+  private static isProjectController(user: any): boolean {
+    return this.hasPlatformAdmin(user) || ([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
+  }
+
+  private static hasPlatformAdmin(user: any): boolean {
+    return user?.roles?.includes(RoleCode.SUPER_ADMIN) || this.activeRole(user) === RoleCode.COMPANY_ADMIN;
+  }
+
+  private static hasPortfolioRead(user: any): boolean {
+    return this.hasPlatformAdmin(user)
+      || ([RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
+  }
+
+  static async managedProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
+    if (this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) {
+      const projects = await db.project_project.findMany({
+        where: { company_id: companyId },
+        select: { id: true },
+      });
+      return projects.map((project: { id: string }) => project.id);
+    }
+    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER || !user?.id) return [];
+
+    const memberships = await db.project_member.findMany({
+      where: {
+        company_id: companyId,
+        user_id: user.id,
+        status: 'ACTIVE',
+        project_role: { in: ['PROJECT_MANAGER', 'PM', 'LEAD_PROJECT_MANAGER'] },
+      },
+      select: { project_id: true },
+    });
+    const memberProjectIds = memberships
+      .map((membership: { project_id: string | null }) => membership.project_id)
+      .filter((id: string | null): id is string => Boolean(id));
+    const projects = await db.project_project.findMany({
+      where: {
+        company_id: companyId,
+        OR: [
+          { project_manager_id: user.id },
+          ...(memberProjectIds.length ? [{ id: { in: memberProjectIds } }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+    return projects.map((project: { id: string }) => project.id);
+  }
+
+  static async assertCanManageProject(user: any, projectId: string | null | undefined, companyId: string, db: any = prisma): Promise<void> {
+    if (!projectId || !this.isProjectController(user)) {
+      throw new ForbiddenError('Aksi ini hanya dapat dilakukan PM project terkait atau Operational Manager.');
+    }
+    if (this.hasPlatformAdmin(user) || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) return;
+    const managedIds = await this.managedProjectIds(user, companyId, db);
+    if (!managedIds.includes(projectId)) {
+      throw new ForbiddenError('PM hanya dapat mengelola project yang menjadi tanggung jawabnya.');
+    }
+  }
+
+  static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
+      return { id: { in: await this.managedProjectIds(user, companyId, db) } };
+    }
+    if (!this.isOperationalAssignee(user) || !user?.id) return { id: { in: [] } };
+
+    const [memberships, assignments] = await Promise.all([
+      db.project_member.findMany({
+        where: { company_id: companyId, user_id: user.id, status: 'ACTIVE' },
+        select: { project_id: true },
+      }),
+      db.project_task_assignment.findMany({
+        where: { company_id: companyId, assignee_id: user.id },
+        select: { main_task_id: true },
+      }),
+    ]);
+    const mainIds = assignments.map((assignment: { main_task_id: string }) => assignment.main_task_id);
+    const assignedMainTasks = mainIds.length
+      ? await db.project_main_task.findMany({
+        where: { company_id: companyId, id: { in: mainIds } },
+        select: { project_id: true },
+      })
+      : [];
+    const projectIds = new Set<string>();
+    memberships.forEach((membership: { project_id: string | null }) => {
+      if (membership.project_id) projectIds.add(membership.project_id);
+    });
+    assignedMainTasks.forEach((task: { project_id: string }) => projectIds.add(task.project_id));
+    return { id: { in: [...projectIds] } };
+  }
+
+  static async assertCanViewProject(user: any, projectId: string, companyId: string, db: any = prisma): Promise<void> {
+    const accessWhere = await this.projectAccessWhere(user, companyId, db);
+    const project = await db.project_project.findFirst({
+      where: { company_id: companyId, AND: [{ id: projectId }, accessWhere] },
+      select: { id: true },
+    });
+    if (!project) throw new ForbiddenError('Anda tidak memiliki akses ke project ini.');
+  }
+
+  static async dailyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
+    if (this.isOperationalAssignee(user)) return { owner_id: user.id };
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
+
+    const projectIds = await this.managedProjectIds(user, companyId, db);
+    if (!projectIds.length) return { id: { in: [] } };
+    const mainTasks = await db.project_main_task.findMany({
+      where: { company_id: companyId, project_id: { in: projectIds } },
+      select: { id: true },
+    });
+    const mainTaskIds = mainTasks.map((task: { id: string }) => task.id);
+    if (!mainTaskIds.length) return { id: { in: [] } };
+    const weeklyTasks = await db.project_weekly_task.findMany({
+      where: { company_id: companyId, main_task_id: { in: mainTaskIds } },
+      select: { id: true },
+    });
+    return { weekly_task_id: { in: weeklyTasks.map((task: { id: string }) => task.id) } };
+  }
+
+  static async mainTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
+    if (this.isOperationalAssignee(user)) {
+      const assignments = await db.project_task_assignment.findMany({
+        where: { company_id: companyId, assignee_id: user.id },
+        select: { main_task_id: true },
+      });
+      return { id: { in: assignments.map((assignment: { main_task_id: string }) => assignment.main_task_id) } };
+    }
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
+    return { project_id: { in: await this.managedProjectIds(user, companyId, db) } };
+  }
+
+  static async weeklyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
+    if (this.isOperationalAssignee(user)) return { assignee_id: user.id };
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
+    const mainWhere = await this.mainTaskAccessWhere(user, companyId, db);
+    const mainTasks = await db.project_main_task.findMany({
+      where: { company_id: companyId, ...mainWhere },
+      select: { id: true },
+    });
+    return { main_task_id: { in: mainTasks.map((task: { id: string }) => task.id) } };
+  }
+
+  static async taskTransferAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
+    if (this.isOperationalAssignee(user)) {
+      return { OR: [{ requested_by_id: user.id }, { target_user_id: user.id }] };
+    }
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
+    const dailyWhere = await this.dailyTaskAccessWhere(user, companyId, db);
+    const dailyTasks = await db.project_daily_task.findMany({
+      where: { company_id: companyId, ...dailyWhere },
+      select: { id: true },
+    });
+    return { daily_task_id: { in: dailyTasks.map((task: { id: string }) => task.id) } };
+  }
+
+  private static async dailyTaskContext(dailyTaskId: string, companyId: string, db: any = prisma) {
+    const task = await db.project_daily_task.findFirst({ where: { id: dailyTaskId, company_id: companyId } });
+    if (!task) throw new NotFoundError('DailyTask');
+    const weekly = await db.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } });
+    const mainTask = weekly
+      ? await db.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } })
+      : null;
+    if (!weekly || !mainTask) throw new ValidationError('Hierarchy Daily Task tidak valid.');
+    return { task, weekly, mainTask, projectId: mainTask.project_id as string };
+  }
+
+  static async assertCanOperateDailyTask(dailyTaskId: string, user: any, companyId: string, db: any = prisma) {
+    const context = await this.dailyTaskContext(dailyTaskId, companyId, db);
+    if (!user?.id || context.task.owner_id !== user.id) {
+      throw new ForbiddenError('Progres, hasil, dan blocker Daily Task hanya dapat diperbarui oleh pemilik task.');
+    }
+    return context;
+  }
+
+  static async assertCanManageDailyTask(dailyTaskId: string, user: any, companyId: string, db: any = prisma) {
+    const context = await this.dailyTaskContext(dailyTaskId, companyId, db);
+    await this.assertCanManageProject(user, context.projectId, companyId, db);
+    return context;
+  }
+
+  static async assertActiveCompanyMember(userId: string, companyId: string, db: any = prisma): Promise<void> {
+    if (!userId) throw new ValidationError('User tujuan wajib dipilih.');
+    const membership = await db.iam_user_company_membership.findFirst({
+      where: { company_id: companyId, user_id: userId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!membership) throw new ForbiddenError('User tujuan bukan anggota aktif company ini.');
+  }
+
   /**
    * Log task activity to task_activity_log
    */
@@ -506,16 +708,7 @@ export class ProjectsService {
  */
   static async updateDailyTaskProgress(dailyTaskId: string, data: any, user: any, companyId: string) {
     return prisma.$transaction(async (tx) => {
-      const task = await tx.project_daily_task.findFirst({
-        where: { id: dailyTaskId, company_id: companyId },
-      });
-      if (!task) throw new NotFoundError('DailyTask');
-
-      const weekly = await tx.project_weekly_task.findFirst({
-        where: { id: task.weekly_task_id, company_id: companyId },
-      });
-      const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
-      const projectId = mainTask?.project_id;
+      const { task, projectId } = await this.assertCanOperateDailyTask(dailyTaskId, user, companyId, tx);
 
       let status = data.status ?? task.status;
 
@@ -604,13 +797,9 @@ export class ProjectsService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async reportBlocked(dailyTaskId: string, reason: string, user: any, companyId: string) {
+    if (!String(reason ?? '').trim()) throw new ValidationError('Alasan blocker wajib diisi.');
     return prisma.$transaction(async (tx) => {
-      const task = await tx.project_daily_task.findFirst({ where: { id: dailyTaskId, company_id: companyId } });
-      if (!task) throw new NotFoundError('DailyTask');
-
-      const weekly = await tx.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } });
-      const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
-      const projectId = mainTask?.project_id;
+      const { task, projectId } = await this.assertCanOperateDailyTask(dailyTaskId, user, companyId, tx);
 
       const updated = await tx.project_daily_task.update({
         where: { id: dailyTaskId },
@@ -653,12 +842,18 @@ export class ProjectsService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async requestTaskTransfer(dailyTaskId: string, targetUserId: string, reason: string, requester: any, companyId: string) {
-    const task = await prisma.project_daily_task.findFirst({ where: { id: dailyTaskId, company_id: companyId } });
-    if (!task) throw new NotFoundError('DailyTask');
-
-    const weekly = await prisma.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } });
-    const mainTask = weekly ? await prisma.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
-    const projectId = mainTask?.project_id;
+    if (!String(reason ?? '').trim()) throw new ValidationError('Alasan transfer wajib diisi.');
+    const { task, projectId } = await this.dailyTaskContext(dailyTaskId, companyId);
+    if (!requester?.id || task.owner_id !== requester.id) {
+      throw new ForbiddenError('Hanya pemilik Daily Task yang dapat mengajukan transfer. PM dapat memakai direct reassign untuk kebutuhan manajerial.');
+    }
+    if (targetUserId === requester.id) throw new ValidationError('User tujuan harus berbeda dari pemilik saat ini.');
+    await this.assertActiveCompanyMember(targetUserId, companyId);
+    const pending = await prisma.project_task_transfer_request.findFirst({
+      where: { daily_task_id: dailyTaskId, company_id: companyId, status: 'PENDING' },
+      select: { id: true },
+    });
+    if (pending) throw new ConflictError('Daily Task ini masih memiliki permintaan transfer aktif.');
 
     const transferReq = await prisma.project_task_transfer_request.create({
       data: {
@@ -705,13 +900,12 @@ export class ProjectsService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async directReassign(dailyTaskId: string, targetUserId: string, reason: string, pmUser: any, companyId: string) {
+    if (!String(reason ?? '').trim()) throw new ValidationError('Alasan reassignment wajib diisi.');
     return prisma.$transaction(async (tx) => {
-      const task = await tx.project_daily_task.findFirst({ where: { id: dailyTaskId, company_id: companyId } });
-      if (!task) throw new NotFoundError('DailyTask');
-
-      const weekly = await tx.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } });
-      const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
-      const projectId = mainTask?.project_id;
+      const { task, projectId } = await this.dailyTaskContext(dailyTaskId, companyId, tx);
+      await this.assertCanManageProject(pmUser, projectId, companyId, tx);
+      await this.assertActiveCompanyMember(targetUserId, companyId, tx);
+      if (task.owner_id === targetUserId) throw new ValidationError('Daily Task sudah dimiliki user tersebut.');
 
       const oldOwner = task.owner_id;
       const updated = await tx.project_daily_task.update({
@@ -758,10 +952,18 @@ export class ProjectsService {
       });
       if (!transfer) throw new NotFoundError('TaskTransferRequest');
 
+      if (transfer.status !== 'PENDING') {
+        throw new ConflictError('Permintaan transfer ini sudah diproses.');
+      }
+
       const task = await tx.project_daily_task.findFirst({ where: { id: transfer.daily_task_id, company_id: companyId } });
       const weekly = task ? await tx.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } }) : null;
       const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
       const projectId = mainTask?.project_id;
+      await this.assertCanManageProject(pmUser, projectId, companyId, tx);
+      if (approved && transfer.target_user_id) {
+        await this.assertActiveCompanyMember(transfer.target_user_id, companyId, tx);
+      }
 
       if (approved) {
         await tx.project_task_transfer_request.update({
@@ -836,10 +1038,15 @@ export class ProjectsService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async overrideProgress(entityType: 'MAIN' | 'WEEKLY', entityId: string, progress: number, reason: string, pmUser: any, companyId: string) {
+    if (!Number.isFinite(progress) || progress < 0 || progress > 100) {
+      throw new ValidationError('Progress harus berupa angka antara 0 dan 100.');
+    }
+    if (!String(reason ?? '').trim()) throw new ValidationError('Alasan override progress wajib diisi.');
     return prisma.$transaction(async (tx) => {
       if (entityType === 'MAIN') {
         const mt = await tx.project_main_task.findFirst({ where: { id: entityId, company_id: companyId } });
         if (!mt) throw new NotFoundError('MainTask');
+        await this.assertCanManageProject(pmUser, mt.project_id, companyId, tx);
         const oldProgress = mt.progress;
 
         const updated = await tx.project_main_task.update({
@@ -877,6 +1084,8 @@ export class ProjectsService {
         const oldProgress = wt.progress;
 
         const mainTask = await tx.project_main_task.findFirst({ where: { id: wt.main_task_id, company_id: companyId } });
+        if (!mainTask) throw new ValidationError('Hierarchy Weekly Task tidak valid.');
+        await this.assertCanManageProject(pmUser, mainTask.project_id, companyId, tx);
 
         const updated = await tx.project_weekly_task.update({
           where: { id: entityId },

@@ -11,6 +11,8 @@ import { RequestService } from './request.service';
 import { sendSuccess, sendError } from '../../utils/response';
 import { ForbiddenError } from '../../utils/errors';
 import { ReadThroughCache } from '../../utils/read-through-cache';
+import { requireActiveRole } from '../../middlewares/rbac.middleware';
+import { RoleCode } from '../../types/roles';
 
 export const requestRouter = Router();
 const requestFeedCache = new ReadThroughCache<Awaited<ReturnType<typeof RequestService.getRequests>>>(250);
@@ -113,7 +115,7 @@ requestRouter.get('/team-members', async (req: Request, res: Response, next: Nex
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-requestRouter.post('/:id/validate-om', async (req: Request, res: Response, next: NextFunction) => {
+requestRouter.post('/:id/validate-om', requireActiveRole(RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
     if (!decision || !['APPROVE', 'RE_CHECK'].includes(decision)) {
@@ -139,7 +141,7 @@ requestRouter.post('/:id/validate-om', async (req: Request, res: Response, next:
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-requestRouter.post('/:id/approve-exec', async (req: Request, res: Response, next: NextFunction) => {
+requestRouter.post('/:id/approve-exec', requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
     if (!decision || !['APPROVE', 'REJECT'].includes(decision)) {
@@ -165,7 +167,7 @@ requestRouter.post('/:id/approve-exec', async (req: Request, res: Response, next
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-requestRouter.post('/:id/disburse', async (req: Request, res: Response, next: NextFunction) => {
+requestRouter.post('/:id/disburse', requireActiveRole(RoleCode.FINANCE), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { disburse_account_id, disburse_reference } = req.body;
     const result = await RequestService.disburseRequest({
@@ -217,7 +219,7 @@ requestRouter.post('/:id/submit-lpj', async (req: Request, res: Response, next: 
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-requestRouter.post('/:id/verify-lpj-om', async (req: Request, res: Response, next: NextFunction) => {
+requestRouter.post('/:id/verify-lpj-om', requireActiveRole(RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
     if (!decision || !['APPROVE', 'REVISE'].includes(decision)) {
