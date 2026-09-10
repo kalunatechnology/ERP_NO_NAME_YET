@@ -396,7 +396,10 @@ async function main() {
   }
 
   // PT Coba Arsalynk (Ghost): Selected modules enabled
-  const ghostModules = ['CORE', 'REQUESTS', 'CRM', 'SALES', 'PROJECTS', 'FINANCE'];
+  // Reporting is a read-only projection of operational data. Its own routes
+  // restrict Staff to their assigned activity, so it is safe and necessary for
+  // the Ghost company test journey alongside its operational modules.
+  const ghostModules = ['CORE', 'REQUESTS', 'CRM', 'SALES', 'PROJECTS', 'FINANCE', 'REPORTING'];
   for (const moduleCode of allModules) {
     const isEnabled = ghostModules.includes(moduleCode);
     await prisma.iam_company_module_access.upsert({

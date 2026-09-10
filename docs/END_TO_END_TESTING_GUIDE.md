@@ -100,7 +100,7 @@ Jalankan pemeriksaan ini sebagai bagian dari TC-01, TC-03, dan TC-04; ini bukan 
 | Journey | Bukti yang wajib diambil | Expected result |
 |---|---|---|
 | TC-01 identity/role | Akun multi-role beralih active role; account dengan delegasi module mencoba action approval | Role tidak aktif dan delegasi module tidak boleh meloloskan `requireActiveRole`; policy module biasa tetap mengikuti entitlement/delegasi yang sah. |
-| TC-03 project/task | PM membuka project yang bukan kelolaannya; Staff membuka/memutasi Daily milik orang lain; PIC Weekly mencoba delete Weekly; owner dan PM mencoba transfer | Backend mengembalikan 403/404 scoped sesuai route. Owner mengubah progress/output/blocker sendiri dan mengajukan transfer; PM/OM melakukan direct reassignment pada project kelolaan; hapus Weekly hanya PM/OM. |
+| TC-03 project/task | Staff membuka `/tasks` dengan entitlement `PROJECTS` aktif; PM membuka project yang bukan kelolaannya; Staff membuka/memutasi Daily milik orang lain; PIC Weekly mencoba delete Weekly; owner dan PM mencoba transfer | `/tasks` tidak meminta entitlement `TASKS`; backend mengembalikan 403/404 scoped sesuai route. Owner mengubah progress/output/blocker sendiri dan mengajukan transfer; PM/OM melakukan direct reassignment pada project kelolaan; hapus Weekly hanya PM/OM. |
 | TC-04 request/finance/CRM | Staff mencoba validate/approve/disburse; user lain submit LPJ; CRM Lead mencoba executive override | OM/PM-or-Director/Finance/owner-only/Director gate menghasilkan 403 bila actor salah; state valid tetap dapat diproses oleh actor yang tepat. |
 
 Sebelum sign-off, jalankan `node backend-express/node_modules/ts-node/dist/bin.js --files backend-express/tests/q11-system-guardrails.ts` dari repository root, atau `npm run build` di `backend-express`. Q11 harus melaporkan 8/8 PASS.
@@ -616,6 +616,8 @@ Menguji seluruh modul yang belum tercakup oleh empat journey utama tanpa mengara
 - User company lain dan user tanpa module entitlement sebagai negative actors
 
 Untuk modul lanjutan, top-level source umumnya hanya memeriksa entitlement module dan tidak selalu memiliki role/action guard lokal. Expected business security tetap least privilege; keberhasilan actor yang tidak semestinya harus dicatat sebagai gap, bukan dianggap desain final.
+
+Untuk Reporting, gunakan entitlement `REPORTING` secara eksplisit. Pastikan menu Report tidak tampil untuk company tanpa entitlement tersebut. Untuk Staff yang memiliki entitlement, verifikasi `periodic-project-summary` dan `attendance-summary` hanya menampilkan aktivitas milik identity Staff yang sedang login; entitlement Reporting tidak mengubah row scope menjadi agregat perusahaan.
 
 ### 7.5 Precondition
 

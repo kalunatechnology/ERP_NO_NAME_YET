@@ -30,6 +30,34 @@ const RESTRICTED_ROUTES: Record<string, string[]> = {
   "/reporting": [],
 };
 
+// A route name is not necessarily a company entitlement code. Daily Tasks is
+// a Project-management workspace backed by `/api/v1/projects/*`, so it must
+// never be checked against a non-existent `TASKS` module entitlement.
+const MODULE_BY_ROUTE: Record<string, string> = {
+  "/crm": "CRM",
+  "/finance": "FINANCE",
+  "/projects": "PROJECTS",
+  "/tasks": "PROJECTS",
+  "/reporting": "REPORTING",
+};
+
+function normalizeActiveRoleCode(value: unknown): string {
+  const raw = String(value ?? "").trim().toUpperCase();
+  const aliases: Record<string, string> = {
+    SUPER_ADMIN: "ROLE-SUPER-ADMIN",
+    COMPANY_ADMIN: "ROLE-COMPANY-ADMIN",
+    DIRECTOR: "ROLE-DIRECTOR",
+    OPERATIONAL_MANAGER: "ROLE-OM",
+    PROJECT_MANAGER: "ROLE-PM",
+    SUPERVISOR: "ROLE-SUPERVISOR",
+    CRM_LEAD: "ROLE-CRM-LEAD",
+    SALES: "ROLE-SALES",
+    FINANCE: "ROLE-FINANCE",
+    STAFF: "ROLE-STAFF",
+  };
+  return aliases[raw] ?? raw;
+}
+
 
 /**
  * AppShell implements the local UI interaction represented by its typed signature.
@@ -93,22 +121,20 @@ export function AppShell({ children }: AppShellProps) {
  * @returns The rendered React value, synchronous result, or Promise declared by the implementation.
  * Side effects: updates the local React/browser state or invokes callbacks visible below.
  */
-  const userRolesList = (user?.roles || []).map((r: any) =>
-    (typeof r === "string" ? r : r.role_code || r.role || r.name || r.code || "").toUpperCase()
-  );
+  const activeRoleCode = normalizeActiveRoleCode(user?.active_role_code);
   const enabledModules = new Set((user?.enabled_modules ?? []).map((module) => module.toUpperCase()));
 
   const restrictedRoute = Object.entries(RESTRICTED_ROUTES).find(([route]) =>
     pathname.startsWith(route)
   );
   const requiredRoles = restrictedRoute?.[1];
-  const moduleCode = restrictedRoute?.[0].slice(1).toUpperCase();
+  const moduleCode = restrictedRoute ? MODULE_BY_ROUTE[restrictedRoute[0]] : undefined;
 
   const hasAccess =
     !requiredRoles ||
     isSuperUser ||
     (Boolean(moduleCode && enabledModules.has(moduleCode)) &&
-      (requiredRoles.length === 0 || requiredRoles.some((role) => userRolesList.includes(role))));
+      (requiredRoles.length === 0 || requiredRoles.includes(activeRoleCode)));
 
   if (isLoading) return null;
 

@@ -632,6 +632,8 @@ Halaman `/resources` berubah menjadi `AccessAdministration` bagi Super Admin/Com
 
 Mulai migration `20260905160000_q9_user_module_delegation`, akses modul memiliki dua lapis. `iam_company_module_access` adalah batas company yang hanya dapat diaktifkan Super Admin. `iam_user_module_access` adalah override personal yang hanya dapat dibuat Company Admin untuk user dengan membership pada company yang sama. Endpoint `PUT /api/v1/accounts/users/:userId/module-access/:moduleCode` menolak target lintas company, self-escalation Company Admin, dan modul yang belum enabled oleh Super Admin; write selalu menyiratkan read. Middleware entitlement menerapkan override itu sebelum handler/rule role berjalan. UI **Akses Modul per User** di `/resources` hanya menampilkan module company-approved.
 
+Route frontend `/reporting` dan seluruh endpoint `/api/v1/reporting/*` memakai entitlement `REPORTING` yang terpisah. Sidebar menyembunyikan menu Report bila entitlement tidak aktif, sehingga user tidak diarahkan ke 403 yang dapat diprediksi. Entitlement hanya membuka boundary laporan; scope route tetap berlaku: `periodic-project-summary` dan `attendance-summary` membatasi Staff pada aktivitasnya sendiri, sementara agregat perusahaan tersedia hanya untuk role manajerial yang diizinkan route.
+
 ### Sidebar feed and contact isolation
 
 `GET /api/v1/sidebar-feed` dan alias `/api/v1/core/sidebar-feed` menerima identity dan `req.companyId` yang sudah diselesaikan middleware. `CoreService.getSidebarFeed(userId, companyId)` membatasi notification ke recipient/company, activity ke company, dan contact ke `iam_user_company_membership` aktif pada company yang sama. Actor juga hanya diserialisasi jika termasuk user company yang diizinkan. Session Super Admin tanpa company eksplisit tidak mengagregasi contact/activity lintas company.
@@ -645,6 +647,8 @@ Frontend menganggap feed kosong sebagai hasil valid dan tidak lagi membuat conta
 Policy role sekarang memakai `active_role_code`, bukan gabungan seluruh role yang pernah ditugaskan. Delegasi module personal masih dapat memenuhi policy module biasa bila entitlement company mengizinkan, tetapi tidak dapat meloloskan action yang identitas aktornya merupakan kontrol bisnis: approval Request, disbursement Finance, dan CRM executive override/approval memakai `requireActiveRole`.
 
 Project Management menerapkan row-level scope melalui `accessWhere` dan service Projects: PM hanya pada project manager/membership PM aktif; Staff/Supervisor hanya pada project/member atau assignment mereka; Daily execution tetap hanya owner. PM/OM mengelola struktur/reassignment pada project sendiri, bukan progress/output Daily milik staf. Detail dan matriks endpoint ada pada [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
+
+Frontend `/tasks` adalah workspace Daily Task di bawah entitlement `PROJECTS`, bukan module `TASKS`. Route guard memetakan URL ke code entitlement secara eksplisit dan mengevaluasi role aktif ternormalisasi; sidebar dan API `/api/v1/projects/daily-tasks/*` memakai kontrak yang sama.
 
 ## 7. Business Logic dan State Management
 

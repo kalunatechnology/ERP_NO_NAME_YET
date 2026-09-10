@@ -2,8 +2,8 @@
 
 Dokumen ini adalah catatan resmi perubahan aturan akses pada runtime aktif `backend-express/` dan `frontend-next/`. Ia melengkapi, dan bila ada perbedaan pada area akses, lebih baru daripada catatan historis di dokumen lain. Source code dan test executable tetap menjadi bukti final.
 
-**Baseline aktif:** 9 September 2026  
-**Perubahan terakhir:** `ACC-2026-09-09-01` — active-role, project/task ownership, privileged workflow actions, dan SoD fail-closed.  
+**Baseline aktif:** 10 September 2026
+**Perubahan terakhir:** `ACC-2026-09-10-02` — Reporting entitlement dan sidebar diselaraskan dengan scope laporan Staff.
 **Tidak ada migration database dalam perubahan ini.**
 
 ## Cara membaca dan melacak perubahan
@@ -60,6 +60,10 @@ Urutan keputusan akses yang berlaku adalah:
 
 Frontend menyelaraskan affordance dengan backend, tetapi backend tetap authoritative:
 
+- Route `/tasks` adalah workspace Project Management dan selalu memakai entitlement `PROJECTS`, bukan module `TASKS`.
+- Route `/reporting` memakai entitlement mandiri `REPORTING`. Sidebar hanya boleh menampilkan route ini bila entitlement tersebut aktif; route tidak boleh dipetakan sebagai `PROJECTS` atau module lain.
+- Endpoint Reporting membatasi Staff pada data aktivitas dirinya sendiri. Karena itu fixture company QA PT Coba Arsalynk mengaktifkan `REPORTING`; entitlement ini tidak memberi akses ke agregat manajerial.
+- Route guard frontend mengevaluasi role aktif yang sudah dinormalisasi, bukan daftar seluruh role assignment.
 - Tombol membuat Daily hanya muncul untuk PIC Weekly atau PM/OM.
 - Tombol hapus Weekly hanya muncul untuk PM/OM.
 - Owner menggunakan request transfer; PM/OM menggunakan direct reassignment.
@@ -80,6 +84,8 @@ Verifikasi terakhir untuk `ACC-2026-09-09-01`:
 
 | ID | Tanggal | Status | Perubahan | Bukti source/test |
 |---|---|---|---|---|
+| `ACC-2026-09-10-02` | 10 Sep 2026 | Implemented and verified | Menyelaraskan entitlements Reporting: PT Coba Arsalynk fixture mengaktifkan `REPORTING` untuk journey laporan Staff yang dibatasi pada data sendiri, dan sidebar kini menyaring `/reporting` menurut entitlement `REPORTING`. | `prisma/seed.ts`, `Sidebar.tsx`, `AppShell.tsx`, Q11 |
+| `ACC-2026-09-10-01` | 10 Sep 2026 | Implemented and verified | Memperbaiki guard `/tasks` yang sebelumnya menurunkan module dari URL menjadi `TASKS`; Daily Tasks sebenarnya memakai API dan entitlement `PROJECTS`. Guard frontend juga memakai active role ternormalisasi agar tidak bertentangan dengan backend. | `frontend-next/components/layout/AppShell.tsx`, Q11 |
 | `ACC-2026-09-09-01` | 9 Sep 2026 | Implemented and verified | Mengganti role-union untuk policy RBAC menjadi active role; menambahkan strict `requireActiveRole` untuk aksi sensitif; menambah row scope project/task; mengunci execution Daily ke owner; memisahkan transfer owner dan reassignment PM/OM; menutup generic transfer mutation; menambahkan ownership LPJ; membatasi CRM executive actions ke Director; membuat SoD fail-closed tanpa DoA valid; menyelaraskan UI project task. | `rbac.middleware.ts`, `sod.middleware.ts`, `projects.service.ts`, `projects.routes.ts`, `request.*`, `crm.routes.ts`, `crud-factory.ts`, `ProjectsClient.tsx`, Q11 |
 
 ## Batasan yang masih harus dilacak

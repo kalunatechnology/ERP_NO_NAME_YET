@@ -193,12 +193,25 @@ async function main(): Promise<void> {
     assert(crmRoutes.includes("'/opportunities/:id/executive-override', requireActiveRole(RoleCode.DIRECTOR)"));
     assert(requestService.includes('instance.created_by_id !== requesterUserId'));
     assert(projectsClient.includes('const canCreateDaily = isPM || isWeeklyPic;'));
+    const [appShell, sidebarSource, seedSource] = await Promise.all([
+      readFile(`${__dirname}/../../frontend-next/components/layout/AppShell.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/layout/Sidebar.tsx`, 'utf8'),
+      readFile(`${__dirname}/../prisma/seed.ts`, 'utf8'),
+    ]);
+    assert(appShell.includes('"/tasks": "PROJECTS"'), 'Daily Tasks must use the PROJECTS entitlement.');
+    assert(appShell.includes('"/reporting": "REPORTING"'), 'Reporting must keep its own REPORTING entitlement.');
+    assert(appShell.includes('requiredRoles.includes(activeRoleCode)'), 'Frontend route guard must use the active role.');
+    assert(sidebarSource.includes('"/reporting": "REPORTING"'), 'Sidebar must not expose Reporting without entitlement.');
+    assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
     return {
       delegated_sensitive_action: 'blocked',
       request_approvals: 'active-role-gated',
       executive_override: 'director-only',
       lpj_submitter: 'request-owner-only',
       project_ui: 'aligned-with-backend',
+      daily_tasks_entitlement: 'PROJECTS',
+      reporting_entitlement: 'REPORTING',
+      reporting_sidebar: 'entitlement-filtered',
     };
   }));
 

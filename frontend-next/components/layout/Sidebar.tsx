@@ -104,6 +104,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
     "/tasks": "PROJECTS",
     "/crm": "CRM",
     "/finance": "FINANCE",
+    "/reporting": "REPORTING",
     "/resources": userRole === "executive" ? "ANALYTICS" : "",
   };
   const navItems = (NAV_BY_ROLE[userRole] ?? NAV_BY_ROLE.staff).filter((item) => {
