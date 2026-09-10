@@ -14,6 +14,8 @@ import { Bell, ChevronRight, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchRealAlertsList, RealAlertItem } from "@/lib/api/feed.api";
 import toast from "react-hot-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessRoute } from "@/lib/access/module-contract";
 
 export interface AlertItem {
   id: string | number;
@@ -48,6 +50,7 @@ export function AlertTimelineCard({
   autoFetch?: boolean;
 }) {
   const router = useRouter();
+  const { user, userRole } = useAuth();
   const [liveAlerts, setLiveAlerts] = useState<AlertItem[]>(controlledAlerts || []);
   const [loading, setLoading] = useState(false);
 
@@ -65,7 +68,12 @@ export function AlertTimelineCard({
     }
     setLoading(true);
     try {
-      const data = await fetchRealAlertsList();
+      const data = await fetchRealAlertsList({
+        enabledModules: user?.enabled_modules,
+        delegatedModules: user?.delegated_modules,
+        activeRoleCode: user?.active_role_code,
+        isSuperAdmin: userRole === "super_admin",
+      });
       setLiveAlerts(data);
     } catch {
       // ignore
@@ -80,7 +88,7 @@ export function AlertTimelineCard({
     } else {
       loadAlerts();
     }
-  }, [controlledAlerts]);
+  }, [controlledAlerts, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
 /**
  * handleItemClick coordinates the UI behavior represented by this function.
@@ -95,6 +103,17 @@ export function AlertTimelineCard({
       return;
     }
     if (item.href) {
+      const allowed = canAccessRoute({
+        pathname: item.href,
+        enabledModules: user?.enabled_modules,
+        delegatedModules: user?.delegated_modules,
+        activeRoleCode: user?.active_role_code,
+        isSuperAdmin: userRole === "super_admin",
+      });
+      if (!allowed) {
+        toast.error("Tautan alert tidak tersedia untuk role dan module aktif Anda.");
+        return;
+      }
       router.push(item.href);
       toast(`Membuka ${item.title}`);
     }

@@ -9,6 +9,7 @@ import api from './axios';
 import type { ProjectDashboardBundle } from './project.api';
 import type { FinanceDashboardBundle } from './finance.api';
 import type { CRMData, CRMDashboard } from './crm.api';
+import { canRequestDashboardSection, DashboardSection, FrontendAccessContext } from '@/lib/access/module-contract';
 
 export interface DashboardBootstrap {
   projects?: ProjectDashboardBundle;
@@ -17,8 +18,12 @@ export interface DashboardBootstrap {
 }
 
 /** Requests only the sections needed for the currently visible dashboard role. */
-export async function loadDashboardBootstrap(sections: Array<'projects' | 'finance' | 'crm'>): Promise<DashboardBootstrap> {
+export async function loadDashboardBootstrap(sections: DashboardSection[], access: FrontendAccessContext = {}): Promise<DashboardBootstrap> {
   if (!sections.length) return {};
+  const denied = sections.filter((section) => !canRequestDashboardSection(section, access));
+  if (denied.length) {
+    throw new Error(`Section dashboard tidak sesuai kontrak akses aktif: ${denied.join(', ')}.`);
+  }
   const response = await api.get('/api/v1/dashboard/bootstrap', {
     params: { sections: sections.join(',') },
     timeout: 30_000,

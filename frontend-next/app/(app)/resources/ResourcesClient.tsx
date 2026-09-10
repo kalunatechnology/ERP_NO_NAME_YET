@@ -18,6 +18,7 @@ import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
 import { useAuth } from "@/contexts/AuthContext";
 import { AccessAdministration } from "@/components/administration/AccessAdministration";
+import { canRequestApi } from "@/lib/access/module-contract";
 
 const RESOURCES = [
   /* ── Projects ────────── */
@@ -55,7 +56,7 @@ const RESOURCES = [
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function ResourcesClient() {
-  const { userRole } = useAuth();
+  const { user, userRole } = useAuth();
   const isAccessAdministrator = userRole === "super_admin" || userRole === "company_admin";
   const searchParams = useSearchParams();
   const initialQuery = searchParams?.get("search") || "";
@@ -66,12 +67,25 @@ export default function ResourcesClient() {
   const [search, setSearch] = useState(initialQuery);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const accessContext = {
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === "super_admin",
+  };
+  const visibleResources = RESOURCES.filter((resource) => canRequestApi(resource.endpoint, accessContext));
 
   useEffect(() => {
     if (initialQuery) {
       setSearch(initialQuery);
     }
   }, [initialQuery]);
+
+  useEffect(() => {
+    if (!isAccessAdministrator && !visibleResources.some((resource) => resource.id === selectedRes.id) && visibleResources[0]) {
+      setSelectedRes(visibleResources[0]);
+    }
+  }, [isAccessAdministrator, selectedRes.id, user?.active_role_code, user?.delegated_modules, user?.enabled_modules]);
 
   /* Track recently opened resource */
   useEffect(() => {
@@ -97,6 +111,11 @@ export default function ResourcesClient() {
     // render AccessAdministration and must not execute the hidden Data
     // Explorer's default Projects request behind that screen.
     if (isAccessAdministrator) return;
+    if (!canRequestApi(res.endpoint, accessContext)) {
+      toast.error(`Resource ${res.name} tidak tersedia untuk role dan module aktif Anda.`);
+      setRows([]);
+      return;
+    }
     setLoading(true);
     try {
       const q = new URLSearchParams();
@@ -148,7 +167,7 @@ export default function ResourcesClient() {
 
       {/* Resource selector chips */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-        {RESOURCES.map(r => (
+        {visibleResources.map(r => (
           <button
             key={r.id}
             onClick={() => {

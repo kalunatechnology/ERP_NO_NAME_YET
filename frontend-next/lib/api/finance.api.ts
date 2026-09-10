@@ -7,6 +7,7 @@
 
 import api from "./axios";
 import { normalizeList } from "./auth.api";
+import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 
 export interface FinanceKPIs {
   totalBudget: number;
@@ -67,9 +68,9 @@ export interface FinanceDashboardBundle {
  * External dependency: calls `/api/v1/finance/project-cost-entries/?page_size=200`, `/api/v1/finance/project-fundings/?page_size=200`, `/api/v1/finance/billing-proposals/?page_size=200`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function loadFinanceDashboard(enabledModules?: string[], bundle?: FinanceDashboardBundle): Promise<FinanceDashboardData> {
+export async function loadFinanceDashboard(enabledModules: string[] = [], bundle?: FinanceDashboardBundle, access?: Omit<FrontendAccessContext, "enabledModules">): Promise<FinanceDashboardData> {
   if (bundle?.view) return bundle.view;
-  const canReadProjects = !enabledModules || enabledModules.some((code) => code.toUpperCase() === "PROJECTS");
+  const canReadProjects = canRequestApi("/api/v1/projects/projects/", { ...access, enabledModules });
   const [costRes, fundRes, propRes, projRes] = bundle
     ? [{ data: bundle.costEntries || [] }, { data: bundle.fundings || [] }, { data: bundle.billingProposals || [] }, { data: bundle.projects || [] }]
     : await Promise.all([

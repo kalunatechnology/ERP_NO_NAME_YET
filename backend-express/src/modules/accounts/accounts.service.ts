@@ -177,6 +177,9 @@ export class AccountsService {
     const enabledModules = companyModules
       .map((item) => item.module_code.toUpperCase())
       .filter((moduleCode) => overrideByModule.get(moduleCode)?.allow_read ?? true);
+    const delegatedModules = userModules
+      .filter((item) => item.allow_read)
+      .map((item) => item.module_code.toUpperCase());
     const primaryCompanyId = superAdmin ? null : membership?.company_id ?? null;
 
     const tokens = signTokenPair({
@@ -203,6 +206,7 @@ export class AccountsService {
       active_role_id: activeRole?.id ?? null,
       active_role_code: activeRole ? toExternalRoleCode(activeRole.role_code) : null,
       enabled_modules: enabledModules,
+      delegated_modules: delegatedModules,
       roles: serializedRoles,
       last_login: user.last_login_at,
       date_joined: user.date_joined,
@@ -320,6 +324,7 @@ export class AccountsService {
       active_role_id: access.activeRoleId,
       active_role_code: access.activeRoleCode ? toExternalRoleCode(access.activeRoleCode) : null,
       enabled_modules: access.enabledModules,
+      delegated_modules: access.delegatedModules,
       roles: serializedRoles,
       last_login: user.last_login_at,
       date_joined: user.date_joined,

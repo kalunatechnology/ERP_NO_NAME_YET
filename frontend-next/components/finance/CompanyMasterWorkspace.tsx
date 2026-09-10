@@ -58,13 +58,13 @@ interface WorkAsset {
 }
 
 export function CompanyMasterWorkspace() {
-  const { user, userRole, isAdmin } = useAuth();
+  const { user, userRole } = useAuth();
   const [loading, setLoading] = useState(true);
   const [savingCompany, setSavingCompany] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<"financial" | "operational">("financial");
 
-  const canEditFinancial = isAdmin || userRole === "finance" || userRole === "executive";
-  const canEditOperational = isAdmin || userRole === "pm" || userRole === "staff" || userRole === "executive";
+  const canEditFinancial = userRole === "finance";
+  const canEditOperational = userRole === "finance";
 
   const [companyData, setCompanyData] = useState({
     id: "10000000-0000-0000-0000-000000000001",

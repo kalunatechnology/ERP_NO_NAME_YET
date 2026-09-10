@@ -288,7 +288,11 @@ export default function TasksClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const projs = await loadAllProjects(user?.enabled_modules || []);
+      const projs = await loadAllProjects(user?.enabled_modules || [], undefined, {
+        delegatedModules: user?.delegated_modules,
+        activeRoleCode: user?.active_role_code,
+        isSuperAdmin: userRole === "super_admin",
+      });
       setProjects(projs);
     } catch {
       toast.error("Gagal memuat data task");
@@ -296,7 +300,7 @@ export default function TasksClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.enabled_modules]);
+  }, [user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 

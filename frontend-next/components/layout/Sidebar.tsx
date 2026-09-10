@@ -18,6 +18,7 @@ import {
 import { useAuth, UserRoleType, getRoleLabel, getRoleBadgeStyle } from "@/contexts/AuthContext";
 import { feedApi, UserRecentItemDto } from "@/lib/api/feed.api";
 import { cn } from "@/lib/utils";
+import { canAccessRoute } from "@/lib/access/module-contract";
 
 interface SidebarProps {
   isMobile?: boolean;
@@ -89,6 +90,17 @@ const NAV_BY_ROLE: Record<UserRoleType, NavItem[]> = {
   ],
 };
 
+const DELEGATED_MODULE_NAV: Record<string, NavItem[]> = {
+  PROJECTS: [
+    { href: "/projects", label: "Projects", icon: FolderKanban },
+    { href: "/tasks", label: "Daily Tasks", icon: CheckSquare },
+  ],
+  CRM: [{ href: "/crm", label: "CRM & Sales", icon: Building2 }],
+  FINANCE: [{ href: "/finance", label: "Finance", icon: DollarSign }],
+  REPORTING: [{ href: "/reporting", label: "Reports", icon: BarChart3 }],
+  ANALYTICS: [{ href: "/resources", label: "Data Explorer", icon: BarChart3 }],
+};
+
 export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarProps = {}) {
   const pathname = usePathname();
   const { user, userRole, logout } = useAuth();
@@ -98,19 +110,16 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
   const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
   const roleLabel = getRoleLabel(userRole);
   const badgeStyle = getRoleBadgeStyle(userRole);
-  const enabledModules = new Set((user?.enabled_modules ?? []).map((module) => module.toUpperCase()));
-  const moduleByPath: Record<string, string> = {
-    "/projects": "PROJECTS",
-    "/tasks": "PROJECTS",
-    "/crm": "CRM",
-    "/finance": "FINANCE",
-    "/reporting": "REPORTING",
-    "/resources": userRole === "executive" ? "ANALYTICS" : "",
-  };
-  const navItems = (NAV_BY_ROLE[userRole] ?? NAV_BY_ROLE.staff).filter((item) => {
-    const moduleCode = moduleByPath[item.href];
-    return !moduleCode || userRole === "super_admin" || enabledModules.has(moduleCode);
-  });
+  const delegatedItems = (user?.delegated_modules ?? []).flatMap((module) => DELEGATED_MODULE_NAV[module.toUpperCase()] ?? []);
+  const candidateItems = [...(NAV_BY_ROLE[userRole] ?? NAV_BY_ROLE.staff), ...delegatedItems]
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index);
+  const navItems = candidateItems.filter((item) => canAccessRoute({
+    pathname: item.href,
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === "super_admin",
+  }));
 
   useEffect(() => {
     feedApi.getRecentItems().then((items) => {

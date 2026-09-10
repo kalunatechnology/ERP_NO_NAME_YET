@@ -24,6 +24,7 @@ export interface UserProfile {
   company?: { id: string | number; name?: string; legal_name?: string; code?: string; company_code?: string } | null;
   active_role_code?: string | null;
   enabled_modules?: string[];
+  delegated_modules?: string[];
   roles?: { role?: string; role_code?: string; role_name?: string; company_id?: string | number | null }[];
 }
 
@@ -90,6 +91,7 @@ export async function getMyProfile(): Promise<UserProfile> {
         roles: raw.roles || raw.user.roles || [],
         active_role_code: raw.active_role_code || raw.user.active_role_code || null,
         enabled_modules: raw.enabled_modules || raw.user.enabled_modules || [],
+        delegated_modules: raw.delegated_modules || raw.user.delegated_modules || [],
       }
     : raw;
 

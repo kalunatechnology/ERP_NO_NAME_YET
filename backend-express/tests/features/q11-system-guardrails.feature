@@ -41,3 +41,9 @@ Feature: Q11 system-wide safety guardrails
     Given module access can be delegated independently from a business role
     Then delegated module access cannot authorize approval or disbursement duties
     And LPJ submission remains restricted to the original requester
+
+  Scenario: Frontend routes and requests share the backend module contract
+    Given frontend pages can aggregate data from more than one backend module
+    When route visibility and API requests are evaluated
+    Then one canonical contract uses the active role and valid entitlements
+    And unauthorized cross-module requests are cancelled before transmission

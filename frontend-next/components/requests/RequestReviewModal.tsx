@@ -33,7 +33,7 @@ interface RequestReviewModalProps {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export function RequestReviewModal({ isOpen, onClose, request, onActionComplete }: RequestReviewModalProps) {
-  const { user, userRole, isAdmin } = useAuth();
+  const { user, userRole } = useAuth();
   const [remarks, setRemarks] = useState("");
   const [showRecheckInput, setShowRecheckInput] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -48,9 +48,10 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
   if (!isOpen || !request) return null;
 
   // Role permissions
-  const isOMRole = isAdmin || userRole === "om" || userRole === "executive";
-  const isPMRole = isAdmin || userRole === "pm" || userRole === "executive";
-  const isFinanceRole = isAdmin || userRole === "finance" || userRole === "executive";
+  const isSuperAdmin = userRole === "super_admin";
+  const isOMRole = isSuperAdmin || userRole === "om";
+  const isPMRole = isSuperAdmin || userRole === "pm" || userRole === "executive";
+  const isFinanceRole = isSuperAdmin || userRole === "finance";
   const isCreatorOrTagged = user?.id === request.created_by_id || (request.tagged_users || []).some((u: any) => u.id === user?.id);
 
 /**

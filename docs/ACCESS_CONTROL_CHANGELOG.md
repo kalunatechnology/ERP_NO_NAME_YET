@@ -3,7 +3,7 @@
 Dokumen ini adalah catatan resmi perubahan aturan akses pada runtime aktif `backend-express/` dan `frontend-next/`. Ia melengkapi, dan bila ada perbedaan pada area akses, lebih baru daripada catatan historis di dokumen lain. Source code dan test executable tetap menjadi bukti final.
 
 **Baseline aktif:** 10 September 2026
-**Perubahan terakhir:** `ACC-2026-09-10-02` — Reporting entitlement dan sidebar diselaraskan dengan scope laporan Staff.
+**Perubahan terakhir:** `ACC-2026-09-10-04` — Kontrak Route → Module → API dipusatkan dan request lintas-modul dibuat fail-closed.
 **Tidak ada migration database dalam perubahan ini.**
 
 ## Cara membaca dan melacak perubahan
@@ -60,9 +60,17 @@ Urutan keputusan akses yang berlaku adalah:
 
 Frontend menyelaraskan affordance dengan backend, tetapi backend tetap authoritative:
 
+- Registry tunggal `frontend-next/lib/access/module-contract.ts` adalah mirror frontend dari mount `requireModuleAccess(...)` dan `requireRole(...)` di `backend-express/src/app.ts` serta Commands/BFF. AppShell, Sidebar, loader, Data Explorer, panel global, dan Axios preflight wajib memakai registry ini; module tidak boleh diturunkan dari nama route.
+- Mapping route aktif: `/tasks` dan `/projects` → `PROJECTS`; `/crm` → `CRM`; `/finance` → `FINANCE`; `/reporting` → `REPORTING`; `/resources` → `ANALYTICS`; `/dashboard` tidak memiliki satu module karena section BFF dinilai satu per satu.
+- Setiap API modular dikenali dari prefix backend (`CRM`, `SALES`, `PROJECTS`, `FINANCE`, `PROCUREMENT`, `INVENTORY`, `MANUFACTURING`, `QUALITY`, `ASSETS`, `SERVICE`, `LOGISTICS`, `ANALYTICS`, `IMPLEMENTATION`, `REPORTING`, `REQUESTS`). Nilai module kosong atau tidak dikenal tidak diperlakukan sebagai entitlement sah.
+- Axios membatalkan request modular yang diketahui sebelum transmisi bila profil browser tidak memiliki company entitlement, delegasi personal yang sah, atau active role yang sesuai. Backend tetap mengulang seluruh pemeriksaan sebagai trust boundary.
+- Dashboard BFF tidak menerima delegasi module karena implementasi `canReadSection` backend hanya menerima company entitlement dan active role. Loader frontend mengikuti aturan tersebut.
+- Tab Finance `Aset Tetap`, resource Data Explorer, fallback panel global, alerts, dan inventory hanya memuat endpoint modul tambahan bila kontrak endpoint mengizinkan konteks aktif.
+- Profil login dan `/auth/me` membawa `delegated_modules`, sehingga route dan request frontend menggunakan delegasi efektif yang sama dengan backend tanpa membaca seluruh role account sebagai izin aktif.
 - Route `/tasks` adalah workspace Project Management dan selalu memakai entitlement `PROJECTS`, bukan module `TASKS`.
 - Route `/reporting` memakai entitlement mandiri `REPORTING`. Sidebar hanya boleh menampilkan route ini bila entitlement tersebut aktif; route tidak boleh dipetakan sebagai `PROJECTS` atau module lain.
 - Endpoint Reporting membatasi Staff pada data aktivitas dirinya sendiri. Karena itu fixture company QA PT Coba Arsalynk mengaktifkan `REPORTING`; entitlement ini tidak memberi akses ke agregat manajerial.
+- Reporting hanya memanggil source `PROJECTS` atau `FINANCE` jika entitlement miliknya aktif. Staff hanya memanggil projection Reporting yang memang menyajikan aktivitas dan kehadirannya sendiri. Fallback panel samping mengikuti aturan yang sama.
 - Route guard frontend mengevaluasi role aktif yang sudah dinormalisasi, bukan daftar seluruh role assignment.
 - Tombol membuat Daily hanya muncul untuk PIC Weekly atau PM/OM.
 - Tombol hapus Weekly hanya muncul untuk PM/OM.
@@ -71,19 +79,21 @@ Frontend menyelaraskan affordance dengan backend, tetapi backend tetap authorita
 
 ## Verifikasi dan regression guard
 
-`backend-express/tests/q11-system-guardrails.ts` adalah guardrail build untuk baseline ini. Skenario mencakup active role, scope PM/staff/admin pada task/project, transfer generic read-only, workflow action sensitif, ownership LPJ, serta keselarasan kontrak frontend. `backend-express/scripts/build.js` menjalankan Prisma generate, TypeScript compile, dan Q11; build Hostinger menjalankan migration hanya bila `DEPLOYMENT_TARGET=hostinger`.
+`backend-express/tests/q11-system-guardrails.ts` adalah guardrail build untuk baseline ini. Skenario mencakup active role, scope PM/staff/admin pada task/project, transfer generic read-only, workflow action sensitif, ownership LPJ, registry route/API, API preflight, serta loader lintas-modul. `backend-express/scripts/build.js` menjalankan Prisma generate, TypeScript compile, dan Q11; build Hostinger menjalankan migration hanya bila `DEPLOYMENT_TARGET=hostinger`.
 
-Verifikasi terakhir untuk `ACC-2026-09-09-01`:
+Verifikasi terakhir untuk `ACC-2026-09-10-04`:
 
 - backend TypeScript `--noEmit`: PASS;
 - frontend TypeScript `--noEmit`: PASS;
 - backend build pipeline: PASS;
-- Q11: 8/8 skenario PASS.
+- Q11: 9/9 skenario PASS.
 
 ## Change log
 
 | ID | Tanggal | Status | Perubahan | Bukti source/test |
 |---|---|---|---|---|
+| `ACC-2026-09-10-04` | 10 Sep 2026 | Implemented and verified | Memusatkan kontrak route, module, role aktif, entitlement, delegasi, endpoint API, dan section Dashboard BFF. Menutup allow-all saat entitlement kosong; menghentikan request lintas Project/Finance/CRM/Inventory/Assets yang tidak sah; menyaring Data Explorer dan tab Assets; menghapus probe Finance dari alur funding Project; mengekspor delegasi efektif lewat profil auth; serta menambah Axios preflight fail-closed. | `module-contract.ts`, `axios.ts`, `AppShell.tsx`, `Sidebar.tsx`, loader API dan caller dashboard/project/task/CRM/reporting/resources/panel, `accounts.service.ts`, Q11 |
+| `ACC-2026-09-10-03` | 10 Sep 2026 | Implemented and verified | Menghapus probe API Finance/CRM yang tidak sah dari halaman Reporting dan fallback panel samping. Data source kini dimuat hanya bila company memiliki entitlement induknya; konteks Staff diberi judul laporan personal dan ekspor CSV finansial disembunyikan. | `ReportingClient.tsx`, `feed.api.ts`, `RightPanel.tsx`, Q11 |
 | `ACC-2026-09-10-02` | 10 Sep 2026 | Implemented and verified | Menyelaraskan entitlements Reporting: PT Coba Arsalynk fixture mengaktifkan `REPORTING` untuk journey laporan Staff yang dibatasi pada data sendiri, dan sidebar kini menyaring `/reporting` menurut entitlement `REPORTING`. | `prisma/seed.ts`, `Sidebar.tsx`, `AppShell.tsx`, Q11 |
 | `ACC-2026-09-10-01` | 10 Sep 2026 | Implemented and verified | Memperbaiki guard `/tasks` yang sebelumnya menurunkan module dari URL menjadi `TASKS`; Daily Tasks sebenarnya memakai API dan entitlement `PROJECTS`. Guard frontend juga memakai active role ternormalisasi agar tidak bertentangan dengan backend. | `frontend-next/components/layout/AppShell.tsx`, Q11 |
 | `ACC-2026-09-09-01` | 9 Sep 2026 | Implemented and verified | Mengganti role-union untuk policy RBAC menjadi active role; menambahkan strict `requireActiveRole` untuk aksi sensitif; menambah row scope project/task; mengunci execution Daily ke owner; memisahkan transfer owner dan reassignment PM/OM; menutup generic transfer mutation; menambahkan ownership LPJ; membatasi CRM executive actions ke Director; membuat SoD fail-closed tanpa DoA valid; menyelaraskan UI project task. | `rbac.middleware.ts`, `sod.middleware.ts`, `projects.service.ts`, `projects.routes.ts`, `request.*`, `crm.routes.ts`, `crud-factory.ts`, `ProjectsClient.tsx`, Q11 |

@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import { useAuth } from "@/contexts/AuthContext";
 import toast from "react-hot-toast";
+import { canAccessRoute } from "@/lib/access/module-contract";
 
 interface RightPanelProps {
   onToggleCollapse?: () => void;
@@ -41,7 +42,7 @@ interface RightPanelProps {
  */
 export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: RightPanelProps) {
   const router = useRouter();
-  const { userRole, isAdmin } = useAuth();
+  const { user, userRole } = useAuth();
   const [notifications, setNotifications] = useState<DynamicFeedItem[]>([]);
   const [alerts, setAlerts] = useState<RealAlertItem[]>([]);
   const [activities, setActivities] = useState<DynamicFeedItem[]>([]);
@@ -61,19 +62,16 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
  */
   const checkCanAccess = (href?: string): boolean => {
     if (!href) return true;
-    if (href.startsWith("/finance")) {
-      const canAccess = isAdmin || userRole === "finance" || userRole === "executive";
-      if (!canAccess) {
-        toast.error("Akses ditolak. Notifikasi keuangan hanya tersedia untuk Finance dan Direksi.");
-        return false;
-      }
-    }
-    if (href.startsWith("/crm")) {
-      const canAccess = isAdmin || userRole === "crm" || userRole === "executive" || userRole === "pm";
-      if (!canAccess) {
-        toast.error("Akses ditolak. Modul CRM hanya tersedia untuk Commercial, PM, dan Direksi.");
-        return false;
-      }
+    const allowed = canAccessRoute({
+      pathname: href,
+      enabledModules: user?.enabled_modules,
+      delegatedModules: user?.delegated_modules,
+      activeRoleCode: user?.active_role_code,
+      isSuperAdmin: userRole === "super_admin",
+    });
+    if (!allowed) {
+      toast.error("Tautan ini tidak tersedia untuk role dan module aktif Anda.");
+      return false;
     }
     return true;
   };
@@ -83,8 +81,18 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
     else setRefreshing(true);
     try {
       const [data, realAlerts] = await Promise.all([
-        fetchDynamicRightPanelData(),
-        fetchRealAlertsList(userRole, isAdmin)
+        fetchDynamicRightPanelData({
+          enabledModules: user?.enabled_modules,
+          delegatedModules: user?.delegated_modules,
+          activeRoleCode: user?.active_role_code,
+          isSuperAdmin: userRole === "super_admin",
+        }),
+        fetchRealAlertsList({
+          enabledModules: user?.enabled_modules,
+          delegatedModules: user?.delegated_modules,
+          activeRoleCode: user?.active_role_code,
+          isSuperAdmin: userRole === "super_admin",
+        })
       ]);
       setNotifications((data.notifications || []).slice(0, 3));
       setAlerts(realAlerts.slice(0, 3));
@@ -98,7 +106,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
       setLoading(false);
       setRefreshing(false);
     }
-  }, [userRole, isAdmin]);
+  }, [user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
   useEffect(() => {
     loadFeed();

@@ -23,9 +23,6 @@ import {
   createDailyTask, updateDailyTask, deleteDailyTask,
   requestTaskTransfer, directReassignDailyTask, getTransferRequests, approveTransfer, rejectTransfer,
   recalculateProjectHealth, advancePMFlow,
-  createProjectCostEntry, deleteProjectCostEntry,
-  createFundingRequest, deleteFundingRequest,
-  createBillingProposal, deleteBillingProposal,
   createMilestone,
   assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers,
   fetchProjectFinancialPerformance, updateProjectFinancials,
@@ -123,9 +120,6 @@ export default function ProjectsClient() {
   const [isCreateDailyOpen, setIsCreateDailyOpen] = useState(false);
   const [isEditDailyOpen, setIsEditDailyOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
-  const [isCostModalOpen, setIsCostModalOpen] = useState(false);
-  const [isFundingModalOpen, setIsFundingModalOpen] = useState(false);
-  const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
   const [isMilestoneModalOpen, setIsMilestoneModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
   const [isLifecycleModalOpen, setIsLifecycleModalOpen] = useState(false);
@@ -200,8 +194,6 @@ export default function ProjectsClient() {
 
   const [costForm, setCostForm] = useState({ division_id: "", category: "MATERIAL", amount: 5000000, description: "" });
   const [divisionOptions, setDivisionOptions] = useState<any[]>([]);
-  const [fundingForm, setFundingForm] = useState({ amount: 25000000, purpose: "Operasional Awal", source: "KAS_PERUSAHAAN" });
-  const [billingForm, setBillingForm] = useState({ amount: 35000000, description: "Termin 1 (Uang Muka 30%)", milestone_percentage: 30 });
   const [milestoneForm, setMilestoneForm] = useState({ name: "", target_date: "" });
 
   /* Personal Workspace Filters & Timer */
@@ -268,9 +260,18 @@ export default function ProjectsClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const projectBundle = loadDashboardBootstrap(["projects"]).then((response) => response.projects);
+      const projectBundle = loadDashboardBootstrap(["projects"], {
+        enabledModules: user?.enabled_modules,
+        delegatedModules: user?.delegated_modules,
+        activeRoleCode: user?.active_role_code,
+        isSuperAdmin: userRole === "super_admin",
+      }).then((response) => response.projects);
       const [data, transferList, uList, custList, divisions] = await Promise.all([
-        projectBundle.then((bundle) => loadAllProjects(user?.enabled_modules || [], bundle)),
+        projectBundle.then((bundle) => loadAllProjects(user?.enabled_modules || [], bundle, {
+          delegatedModules: user?.delegated_modules,
+          activeRoleCode: user?.active_role_code,
+          isSuperAdmin: userRole === "super_admin",
+        })),
         getTransferRequests().catch(() => []),
         fetchCompanyUsers().catch(() => []),
         fetchProjectCustomers().catch(() => []),
@@ -298,7 +299,7 @@ export default function ProjectsClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedId]);
+  }, [selectedId, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
 /**
  * openAssignModal coordinates the UI behavior represented by this function.
@@ -353,7 +354,7 @@ export default function ProjectsClient() {
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [fetchProjects]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -415,20 +416,10 @@ export default function ProjectsClient() {
   const handleCreateFundingRequest = async () => {
     if (!selectedProject) return;
     try {
-      await api.post("/api/v1/finance/project-fundings/", {
-        project: selectedProject.id,
-        requested_amount: Number(fundingRequestForm.amount),
+      await submitProjectFundingRequest(selectedProject.id, {
         amount: Number(fundingRequestForm.amount),
-        purpose: fundingRequestForm.description || "Pengajuan Dana Operasional Proyek",
-        description: fundingRequestForm.description || "Pengajuan Dana Operasional Proyek",
-        funding_type: fundingRequestForm.category || "OPERATIONAL",
-        status: "SUBMITTED",
-      }).catch(async () => {
-        await submitProjectFundingRequest(selectedProject.id, {
-          amount: Number(fundingRequestForm.amount),
-          category: fundingRequestForm.category,
-          description: fundingRequestForm.description
-        });
+        category: fundingRequestForm.category,
+        description: fundingRequestForm.description
       });
 
       toast.success(`Permintaan dana ${formatRupiah(fundingRequestForm.amount)} berhasil diajukan ke Finance.`);
@@ -2116,9 +2107,7 @@ export default function ProjectsClient() {
                   <h3 className="text-xs font-bold text-text-primary">Catatan Biaya Riil (Actual Cost)</h3>
                   <span className="text-3xs text-text-secondary">Pengeluaran & Belanja Lapangan</span>
                 </div>
-                <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-0.5 px-2 text-2xs gap-1">
-                  <Plus size={11} /> Catat
-                </button>
+                <span className="text-3xs text-text-secondary">Dicatat melalui modul Finance</span>
               </div>
               <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
                 {(!selectedProject?.cost_entries || selectedProject.cost_entries.length === 0) ? (
@@ -2143,9 +2132,7 @@ export default function ProjectsClient() {
                   <h3 className="text-xs font-bold text-text-primary">Billing & Termin Invoice</h3>
                   <span className="text-3xs text-text-secondary">Klaim Pembayaran Customer</span>
                 </div>
-                <button onClick={() => setIsBillingModalOpen(true)} className="btn-primary py-0.5 px-2 text-2xs gap-1">
-                  <Plus size={11} /> Ajukan
-                </button>
+                <span className="text-3xs text-text-secondary">Diajukan melalui modul Finance</span>
               </div>
               <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
                 {(!selectedProject?.billing_proposals || selectedProject.billing_proposals.length === 0) ? (
@@ -2845,130 +2832,6 @@ export default function ProjectsClient() {
               className="btn-primary py-1.5 px-4 text-xs disabled:opacity-50"
             >
               Loloskan Stage Gate
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={isCostModalOpen}
-        onClose={() => setIsCostModalOpen(false)}
-        title="Catat Biaya Pengeluaran Riil (Actual Cost)"
-        subtitle={`Proyek: ${selectedProject?.project_name}`}
-        size="md"
-      >
-        <div className="flex flex-col gap-3">
-          <div>
-            <label className="text-xs font-bold text-text-secondary block mb-1">Kategori Biaya</label>
-            <select
-              value={costForm.category}
-              onChange={e => setCostForm({ ...costForm, category: e.target.value })}
-              className="input text-xs"
-            >
-              <option value="MATERIAL">Material & Komponen</option>
-              <option value="LABOR">Upah Tenaga Kerja</option>
-              <option value="SUBCON">Jasa Subkontraktor</option>
-              <option value="OVERHEAD">Overhead & Operasional</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-bold text-text-secondary block mb-1">Nominal Biaya (Rp) *</label>
-            <input
-              type="number"
-              value={costForm.amount}
-              onChange={e => setCostForm({ ...costForm, amount: Number(e.target.value) })}
-              className="input text-xs"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-text-secondary block mb-1">Keterangan Pengeluaran</label>
-            <input
-              type="text"
-              placeholder="Contoh: Sewa alat berat dan perlengkapan"
-              value={costForm.description}
-              onChange={e => setCostForm({ ...costForm, description: e.target.value })}
-              className="input text-xs"
-            />
-          </div>
-          <div className="flex justify-end gap-2 mt-2">
-            <button onClick={() => setIsCostModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button
-              onClick={async () => {
-                if (!selectedProject) return;
-                await createProjectCostEntry({
-                  project: selectedProject.id,
-                  division_id: costForm.division_id || undefined,
-                  category: costForm.category,
-                  amount: Number(costForm.amount),
-                  description: costForm.description
-                });
-                toast.success("Biaya riil berhasil dicatat!");
-                setIsCostModalOpen(false);
-                fetchProjects(true);
-              }}
-              className="btn-primary py-1.5 px-4 text-xs"
-            >
-              Simpan Biaya
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={isBillingModalOpen}
-        onClose={() => setIsBillingModalOpen(false)}
-        title="Ajukan Penagihan Termin Proyek"
-        subtitle={`Proyek: ${selectedProject?.project_name}`}
-        size="md"
-      >
-        <div className="flex flex-col gap-3">
-          <div>
-            <label className="text-xs font-bold text-text-secondary block mb-1">Keterangan Termin *</label>
-            <input
-              type="text"
-              value={billingForm.description}
-              onChange={e => setBillingForm({ ...billingForm, description: e.target.value })}
-              className="input text-xs"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-text-secondary block mb-1">Nominal Termin (Rp) *</label>
-              <input
-                type="number"
-                value={billingForm.amount}
-                onChange={e => setBillingForm({ ...billingForm, amount: Number(e.target.value) })}
-                className="input text-xs"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-text-secondary block mb-1">Target Milestone (%)</label>
-              <input
-                type="number"
-                value={billingForm.milestone_percentage}
-                onChange={e => setBillingForm({ ...billingForm, milestone_percentage: Number(e.target.value) })}
-                className="input text-xs"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-2">
-            <button onClick={() => setIsBillingModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button
-              onClick={async () => {
-                if (!selectedProject) return;
-                await createBillingProposal({
-                  project: selectedProject.id,
-                  amount: Number(billingForm.amount),
-                  description: billingForm.description,
-                  milestone_percentage: Number(billingForm.milestone_percentage)
-                });
-                toast.success("Termin penagihan diajukan ke Finance!");
-                setIsBillingModalOpen(false);
-                fetchProjects(true);
-              }}
-              className="btn-primary py-1.5 px-4 text-xs"
-            >
-              Ajukan Billing
             </button>
           </div>
         </div>

@@ -6,6 +6,7 @@
  */
 
 import api from "./axios";
+import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 import { normalizeList } from "./auth.api";
 
 export interface Project {
@@ -184,8 +185,8 @@ export interface ProjectDashboardBundle {
   costEntries: any[]; proposals: any[]; fundings: any[]; users: any[];
 }
 
-export async function loadAllProjects(enabledModules: string[] = [], bundle?: ProjectDashboardBundle): Promise<Project[]> {
-  const canReadFinance = enabledModules.some((code) => code.toUpperCase() === "FINANCE");
+export async function loadAllProjects(enabledModules: string[] = [], bundle?: ProjectDashboardBundle, access?: Omit<FrontendAccessContext, "enabledModules">): Promise<Project[]> {
+  const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", { ...access, enabledModules });
 /**
  * emptyResponse adapts a frontend operation to its HTTP API contract.
  *

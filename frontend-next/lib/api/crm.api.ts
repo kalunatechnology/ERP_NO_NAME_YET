@@ -7,6 +7,7 @@
 
 import api from "./axios";
 import { normalizeList } from "./auth.api";
+import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 
 /* ── Types ───────────────────────────────────────── */
 export interface CRMData {
@@ -63,11 +64,6 @@ const CRM_SOURCES: Record<keyof CRMData, string> = {
   parties:      "/api/v1/master-data/parties/?page_size=300",
 };
 
-const SOURCE_MODULE: Partial<Record<keyof CRMData, string>> = {
-  quotations: "SALES", contracts: "SALES", orders: "SALES",
-  cases: "SERVICE", resolutions: "SERVICE",
-};
-
 /* ── Data Loading ─────────────────────────────────── */
 /**
  * loadCRMData adapts a frontend operation to its HTTP API contract.
@@ -80,12 +76,10 @@ const SOURCE_MODULE: Partial<Record<keyof CRMData, string>> = {
 export async function loadCRMData(
   enabledModules?: readonly string[],
   bundle?: { data: Partial<CRMData>; dashboard: CRMDashboard },
+  access?: Omit<FrontendAccessContext, "enabledModules">,
 ): Promise<{ data: CRMData; dashboard: CRMDashboard }> {
-  const enabled = new Set((enabledModules || []).map((code) => code.toUpperCase()));
-  const sources = Object.entries(CRM_SOURCES).filter(([key]) => {
-    const moduleCode = SOURCE_MODULE[key as keyof CRMData];
-    return !moduleCode || enabled.size === 0 || enabled.has(moduleCode);
-  });
+  const requestAccess = { ...access, enabledModules };
+  const sources = Object.entries(CRM_SOURCES).filter(([, endpoint]) => canRequestApi(endpoint, requestAccess));
   const emptyData = Object.fromEntries(Object.keys(CRM_SOURCES).map((key) => [key, []]));
 
   if (bundle) {

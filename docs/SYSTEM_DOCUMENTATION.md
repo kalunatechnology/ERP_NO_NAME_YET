@@ -2,7 +2,7 @@
 
 Dokumen ini adalah **Single Source of Truth teknis AS-IS** untuk backend Express dan frontend Next pada repository ini. Ini bukan README. Dokumentasi database terpisah tersedia di [Database Documentation](./DATABASE_DOCUMENTATION.md). Audit dilakukan terhadap implementasi source, konfigurasi, route, middleware, service, schema, migration, seed, frontend, test, dan deployment yang tersimpan di repository. Secret tidak direproduksi.
 
-**Baseline diperbarui 9 September 2026.** Ringkasan operasional dan indeks bukti terbaru tersedia di [Current Implementation Status](./CURRENT_IMPLEMENTATION_STATUS.md). Baseline aturan akses terbaru, changelog, dan bukti Q11 tersedia di [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md). Inventaris runtime mencakup 2.616 route: 783 authenticated GET lulus dan 1.833 mutation pipeline lulus dalam dry-run non-destruktif. Login 9/9 memenuhi batas 3 detik; benchmark terakhir login sampai seluruh data awal adalah 2.009 ms.
+**Baseline diperbarui 10 September 2026.** Ringkasan operasional dan indeks bukti terbaru tersedia di [Current Implementation Status](./CURRENT_IMPLEMENTATION_STATUS.md). Baseline aturan akses terbaru, changelog, dan bukti Q11 tersedia di [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md). Inventaris runtime mencakup 2.616 route: 783 authenticated GET lulus dan 1.833 mutation pipeline lulus dalam dry-run non-destruktif. Login 9/9 memenuhi batas 3 detik; benchmark terakhir login sampai seluruh data awal adalah 2.009 ms.
 
 ## Status legend
 
@@ -84,6 +84,8 @@ Logout pada frontend membersihkan local state/cookie; kemampuan revocation serve
 ### Authorization dan tenant flow
 
 - Role menggunakan role code (enum aplikasi `RoleCode`); permission dan enabled module dimuat oleh `access-context.service.ts`.
+- Frontend tidak menurunkan module dari nama URL. `frontend-next/lib/access/module-contract.ts` memusatkan mirror kontrak route, active role, company entitlement, delegasi personal, API prefix, strict workflow action, dan section Dashboard BFF. AppShell, Sidebar, loader, resource explorer, panel global, serta Axios preflight memakai kontrak yang sama; `/tasks` secara eksplisit menggunakan `PROJECTS`.
+- Login dan `/auth/me` mengembalikan `enabled_modules` serta `delegated_modules`. Request modular yang diketahui dan tidak sesuai konteks aktif dibatalkan di browser sebelum transmisi; middleware backend tetap menjadi enforcement authoritative.
 - User non-super hanya mempunyai satu company efektif; forged `X-Company-ID` ditolak.
 - Super Admin dapat membaca seluruh company, tetapi mutation operasional diblokir tanpa/di luar company eksplisit; pengelolaan company/Company Admin tetap jalur administratif.
 - Company Admin mengelola user/role/permission dalam company-nya, terbatas pada module yang sudah diaktifkan Super Admin.

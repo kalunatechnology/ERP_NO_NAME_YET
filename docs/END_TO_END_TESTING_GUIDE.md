@@ -39,7 +39,7 @@ Jalankan di database QA/UAT yang terisolasi. Jangan menjalankan skenario mutasi 
 3. Jam aplikasi, database, dan browser dapat direkonsiliasi.
 4. Browser DevTools menyimpan log Network selama perpindahan halaman.
 5. Tester memiliki akses read-only ke database atau pendamping backend yang dapat membuktikan persistence.
-6. Company dasar PT Coba Arsalynk memiliki entitlement `CORE`, `REQUESTS`, `CRM`, `SALES`, `PROJECTS`, dan `FINANCE` sesuai seed/migration repository.
+6. Company dasar PT Coba Arsalynk memiliki entitlement `CORE`, `REQUESTS`, `CRM`, `SALES`, `PROJECTS`, `FINANCE`, dan `REPORTING` sesuai seed/migration repository.
 7. TC-05 menggunakan company fixture kedua yang memang diberi entitlement modul lanjutan; jangan mengaktifkan modul dengan manipulasi browser.
 
 Konektivitas live Supabase belum berhasil diverifikasi pada audit sumber karena endpoint direct bergantung IPv6. Sebelum test, buktikan `prisma migrate status` dan koneksi database dari host eksekusi. Kegagalan koneksi adalah blocker environment, bukan defect workflow.
@@ -103,7 +103,7 @@ Jalankan pemeriksaan ini sebagai bagian dari TC-01, TC-03, dan TC-04; ini bukan 
 | TC-03 project/task | Staff membuka `/tasks` dengan entitlement `PROJECTS` aktif; PM membuka project yang bukan kelolaannya; Staff membuka/memutasi Daily milik orang lain; PIC Weekly mencoba delete Weekly; owner dan PM mencoba transfer | `/tasks` tidak meminta entitlement `TASKS`; backend mengembalikan 403/404 scoped sesuai route. Owner mengubah progress/output/blocker sendiri dan mengajukan transfer; PM/OM melakukan direct reassignment pada project kelolaan; hapus Weekly hanya PM/OM. |
 | TC-04 request/finance/CRM | Staff mencoba validate/approve/disburse; user lain submit LPJ; CRM Lead mencoba executive override | OM/PM-or-Director/Finance/owner-only/Director gate menghasilkan 403 bila actor salah; state valid tetap dapat diproses oleh actor yang tepat. |
 
-Sebelum sign-off, jalankan `node backend-express/node_modules/ts-node/dist/bin.js --files backend-express/tests/q11-system-guardrails.ts` dari repository root, atau `npm run build` di `backend-express`. Q11 harus melaporkan 8/8 PASS.
+Sebelum sign-off, jalankan `node backend-express/node_modules/ts-node/dist/bin.js --files backend-express/tests/q11-system-guardrails.ts` dari repository root, atau `npm run build` di `backend-express`. Q11 harus melaporkan 9/9 PASS, termasuk kontrak Frontend Route → Module → API.
 
 ---
 
@@ -150,9 +150,9 @@ Memastikan identitas tidak dapat masuk dengan kredensial tidak valid, user hanya
 #### Fase B — company, dashboard, dan navigasi berbasis akses
 
 6. Verifikasi header/profile menampilkan Company Administrator dan PT Coba Arsalynk. Buka Company Dashboard, User & Access, dan Reports melalui perjalanan normal.
-7. Cocokkan menu dengan active role dan `enabled_modules`. Untuk PT Coba Arsalynk, data company-approved harus berisi `CORE`, `REQUESTS`, `CRM`, `SALES`, `PROJECTS`, `FINANCE`; modul lain tidak boleh muncul sebagai izin operasional hanya karena model/route tersedia.
+7. Cocokkan menu dengan active role, `enabled_modules`, dan `delegated_modules`. Untuk PT Coba Arsalynk, data company-approved harus berisi `CORE`, `REQUESTS`, `CRM`, `SALES`, `PROJECTS`, `FINANCE`, `REPORTING`; modul lain tidak boleh muncul sebagai izin operasional hanya karena model/route tersedia.
 8. Gunakan pencarian global atau Data Explorer untuk mencari data dengan `RUN_ID`. Ulangi list dengan `search`, field filter, `ordering`, `page_size`, halaman berikutnya, dan jika endpoint menyediakannya `cursor`. Pastikan metadata count/next/previous dan urutan stabil tanpa duplikasi antarpagina.
-9. Buka langsung URL sebuah modul yang tidak di-entitle, lalu panggil API modul tersebut dengan token dan `X-Company-ID` aktif. Pastikan response 403 dan route browser tidak berubah menjadi URL global yang kehilangan konteks secara tidak perlu.
+9. Buka langsung URL sebuah modul yang tidak di-entitle. Pastikan AppShell menampilkan penolakan tanpa mengubah path browser. Pantau Network: loader/background widget tidak boleh mengirim request modular yang sudah diketahui tidak sah. Untuk verifikasi trust boundary, panggil API yang sama di luar frontend dengan token dan `X-Company-ID` aktif; backend harus tetap memberi 403.
 
 #### Fase C — administrasi anggota dan least privilege
 
@@ -503,7 +503,7 @@ Menguji dua rantai yang seharusnya bertemu di Finance: Request → OM → Direct
 7. Login sebagai Finance dan disburse approved request dengan account/reference. Verifikasi state `DISBURSED` dan evidence reference.
 8. Login kembali sebagai requester dan submit LPJ dengan realization, discrepancy, notes, serta invoice URL/metadata. OM meminta revisi pada fixture pertama lalu memverifikasi fixture utama sampai `COMPLETED`.
 9. Coba setiap privileged endpoint menggunakan Staff, CRM Lead, Company Admin, actor company lain, dan actor pada urutan status yang salah. Secara bisnis backend harus menolak 403/validation.
-10. Source saat ini tidak memasang role middleware pada validate/approve/disburse/verify routes dan tidak membuktikan ownership saat submit LPJ. Bila actor tak berhak berhasil, catat **P0 FAIL**. Periksa juga workflow `status=COMPLETED` yang dapat muncul saat current state baru `REGISTERED`; catat inconsistency.
+10. Pastikan `validate-om`, `approve-exec`, `disburse`, `verify-lpj-om`, dan CRM executive action memakai role aktif yang tepat serta tidak dapat diloloskan oleh delegasi module. `submit-lpj` harus ditolak bila caller bukan requester. Bila actor tak berhak berhasil, catat **P0 FAIL**. Periksa juga setiap inconsistency state yang ditemukan pada urutan workflow.
 11. Cari payment, bank movement, journal, atau Finance disbursement yang dibuat oleh langkah 7. Saat ini Request menyimpan banyak data dalam `core_audit_event` JSON dan tidak membuat transaksi Finance. Ketidakhadiran accounting record adalah **KNOWN GAP**, bukan PASS.
 
 #### Fase B — project funding, billing, receivable, dan payment

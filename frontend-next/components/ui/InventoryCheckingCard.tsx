@@ -11,6 +11,7 @@ import React, { useState, useEffect } from "react";
 import { CheckCircle2, AlertTriangle, PackageCheck, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchRealInventoryCheckingData } from "@/lib/api/feed.api";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface InventoryCheckProps {
   itemName?: string;
@@ -38,13 +39,8 @@ export function InventoryCheckingCard({
   className,
   autoFetch = true,
 }: InventoryCheckProps) {
-  const [data, setData] = useState({
-    itemName: controlledItemName || 'Joint Copper Pipe 3"',
-    warehouseCode: controlledWarehouseCode || "WH1-CGK",
-    stockAvailable: controlledStockAvailable !== undefined ? controlledStockAvailable : 2500,
-    stockNeeded: controlledStockNeeded !== undefined ? controlledStockNeeded : 1000,
-    unit: controlledUnit || "units",
-  });
+  const { user, userRole } = useAuth();
+  const [data, setData] = useState<Awaited<ReturnType<typeof fetchRealInventoryCheckingData>>>(null);
   const [loading, setLoading] = useState(false);
 
 /**
@@ -58,7 +54,16 @@ export function InventoryCheckingCard({
     if (!autoFetch && controlledItemName) return;
     setLoading(true);
     try {
-      const real = await fetchRealInventoryCheckingData();
+      const real = await fetchRealInventoryCheckingData({
+        enabledModules: user?.enabled_modules,
+        delegatedModules: user?.delegated_modules,
+        activeRoleCode: user?.active_role_code,
+        isSuperAdmin: userRole === "super_admin",
+      });
+      if (!real) {
+        setData(null);
+        return;
+      }
       setData({
         itemName: controlledItemName || real.itemName,
         warehouseCode: controlledWarehouseCode || real.warehouseCode,
@@ -78,15 +83,24 @@ export function InventoryCheckingCard({
     if (controlledItemName) {
       setData({
         itemName: controlledItemName,
-        warehouseCode: controlledWarehouseCode || "WH1-CGK",
-        stockAvailable: controlledStockAvailable !== undefined ? controlledStockAvailable : 2500,
-        stockNeeded: controlledStockNeeded !== undefined ? controlledStockNeeded : 1000,
-        unit: controlledUnit || "units",
+        warehouseCode: controlledWarehouseCode || "-",
+        stockAvailable: controlledStockAvailable !== undefined ? controlledStockAvailable : 0,
+        stockNeeded: controlledStockNeeded !== undefined ? controlledStockNeeded : 0,
+        unit: controlledUnit || "unit",
       });
     } else {
       loadData();
     }
-  }, [controlledItemName, controlledWarehouseCode, controlledStockAvailable, controlledStockNeeded, controlledUnit]);
+  }, [controlledItemName, controlledWarehouseCode, controlledStockAvailable, controlledStockNeeded, controlledUnit, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
+
+  if (!data) {
+    return (
+      <div className={cn("w-full bg-white border border-[#E5E9E2] rounded-[24px] p-5 shadow-xs h-full", className)}>
+        <div className="flex items-center gap-2 text-sm font-bold text-text-primary"><PackageCheck size={17} /> Pemeriksaan Inventory</div>
+        <p className="mt-3 text-xs text-text-secondary">Data inventory tidak tersedia untuk module dan role aktif Anda.</p>
+      </div>
+    );
+  }
 
   const isAvailable = data.stockAvailable >= data.stockNeeded;
 

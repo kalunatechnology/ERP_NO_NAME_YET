@@ -30,6 +30,7 @@ import { ProjectTaxWorkspace } from "@/components/finance/ProjectTaxWorkspace";
 import { CompanyMasterWorkspace } from "@/components/finance/CompanyMasterWorkspace";
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 import { useAuth } from "@/contexts/AuthContext";
+import { canRequestApi } from "@/lib/access/module-contract";
 import dynamic from "next/dynamic";
 
 const FixedAssetsWorkspace          = dynamic(() => import("@/components/finance/FixedAssetsWorkspace"),          { ssr: false });
@@ -53,7 +54,7 @@ const FINANCE_TABS = [
   { id: "lapkeu", label: "Laporan Keuangan", icon: FileBarChart },
   { id: "banking_hub", label: "Rekonsiliasi", icon: Link2 },
   { id: "tax", label: "Perpajakan", icon: Scale },
-  { id: "assets", label: "Aset Tetap", icon: HardHat },
+  { id: "assets", label: "Aset Tetap", icon: HardHat, endpoint: "/api/v1/assets/assets" },
   { id: "period_closing", label: "Tutup Buku", icon: CalendarRange },
   { id: "audit_trail", label: "Audit Trail", icon: ShieldCheck },
 ];
@@ -73,7 +74,15 @@ export const BANK_ACCOUNTS = [
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function FinanceClient() {
-  const { userRole } = useAuth();
+  const { user, userRole } = useAuth();
+  const requestAccess = {
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: Boolean(user?.is_superuser),
+  };
+  const canUseAssets = canRequestApi("/api/v1/assets/assets", requestAccess);
+  const visibleTabs = FINANCE_TABS.filter((tab) => !tab.endpoint || canUseAssets);
   const [activeTab, setActiveTab] = useState(userRole === "executive" ? "executive_report" : "overview");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -101,6 +110,10 @@ export default function FinanceClient() {
     setTabErrors(prev => ({ ...prev, [tab]: null }));
 
   /* Track recently opened finance */
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) setActiveTab("overview");
+  }, [activeTab, canUseAssets]);
+
   useEffect(() => {
     feedApi.trackRecentItem({
       item_type: "ORDER",
@@ -495,7 +508,7 @@ export default function FinanceClient() {
 
       {/* 11 Subtabs navigation */}
       <div className="flex border-b border-text-tertiary overflow-x-auto no-scrollbar gap-1">
-        {FINANCE_TABS.map(tab => {
+        {visibleTabs.map(tab => {
           const TabIcon = tab.icon;
           return (
           <button

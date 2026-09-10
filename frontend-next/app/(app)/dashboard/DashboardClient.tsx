@@ -1333,6 +1333,11 @@ export default function DashboardClient() {
   const canUseFinance = userRole === "super_admin" || enabledModules.has("FINANCE");
   const canUseCrm = userRole === "super_admin" || enabledModules.has("CRM");
   const canUseRequests = userRole === "super_admin" || enabledModules.has("REQUESTS");
+  const apiAccessContext = {
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === "super_admin",
+  };
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -1347,12 +1352,12 @@ export default function DashboardClient() {
 
       // One BFF request provides the above-the-fold datasets. Express performs
       // the underlying reads concurrently while preserving tenant and RBAC scope.
-      const primary = await loadDashboardBootstrap(primarySections);
+      const primary = await loadDashboardBootstrap(primarySections, { ...apiAccessContext, enabledModules: user?.enabled_modules });
       const primaryTasks: Promise<void>[] = [];
-      if (primary.projects) primaryTasks.push(loadAllProjects(user?.enabled_modules || [], primary.projects).then(setProjects));
+      if (primary.projects) primaryTasks.push(loadAllProjects(user?.enabled_modules || [], primary.projects, apiAccessContext).then(setProjects));
       else if (!canUseProjects || !mayReadProjectDashboard) setProjects([]);
-      if (primary.finance) primaryTasks.push(loadFinanceDashboard(user?.enabled_modules || [], primary.finance).then(setFinData));
-      if (primary.crm) primaryTasks.push(loadCRMData(user?.enabled_modules || [], primary.crm).then((crm) => {
+      if (primary.finance) primaryTasks.push(loadFinanceDashboard(user?.enabled_modules || [], primary.finance, apiAccessContext).then(setFinData));
+      if (primary.crm) primaryTasks.push(loadCRMData(user?.enabled_modules || [], primary.crm, apiAccessContext).then((crm) => {
         setCrmData(crm.data);
         setCrmDash(crm.dashboard || {});
       }));
@@ -1369,10 +1374,10 @@ export default function DashboardClient() {
           ? (callback: () => void) => (window as any).requestIdleCallback(callback, { timeout: 1500 })
           : (callback: () => void) => window.setTimeout(callback, 200);
         schedule(() => {
-          void loadDashboardBootstrap(deferredSections).then(async (deferred) => {
-            if (deferred.projects) setProjects(await loadAllProjects(user?.enabled_modules || [], deferred.projects));
+          void loadDashboardBootstrap(deferredSections, { ...apiAccessContext, enabledModules: user?.enabled_modules }).then(async (deferred) => {
+            if (deferred.projects) setProjects(await loadAllProjects(user?.enabled_modules || [], deferred.projects, apiAccessContext));
             if (deferred.crm) {
-              const crm = await loadCRMData(user?.enabled_modules || [], deferred.crm);
+              const crm = await loadCRMData(user?.enabled_modules || [], deferred.crm, apiAccessContext);
               setCrmData(crm.data);
               setCrmDash(crm.dashboard || {});
             }
@@ -1389,7 +1394,7 @@ export default function DashboardClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [userRole, user?.enabled_modules, canUseProjects, canUseFinance, canUseCrm]);
+  }, [userRole, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, canUseProjects, canUseFinance, canUseCrm]);
 
   useEffect(() => {
     loadData();

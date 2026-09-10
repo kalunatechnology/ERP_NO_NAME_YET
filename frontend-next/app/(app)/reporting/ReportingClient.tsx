@@ -20,6 +20,7 @@ import { normalizeList } from "@/lib/api/auth.api";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
 import { useAuth, UserRoleType } from "@/contexts/AuthContext";
+import { canRequestApi } from "@/lib/access/module-contract";
 
 /* ── Tab Config ──────────────────────────────────── */
 const REPORT_TABS = [
@@ -49,26 +50,21 @@ const ROLE_REPORT_TABS: Record<UserRoleType, string[]> = {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
  */
-async function loadReportingData() {
-  const pairs = await Promise.allSettled([
-    api.get("/api/v1/projects/projects/?page_size=100").then(r => normalizeList<any>(r.data).rows),
-    api.get("/api/v1/finance/project-cost-entries/?page_size=500").then(r => normalizeList<any>(r.data).rows),
-    api.get("/api/v1/finance/billing-proposals/?page_size=200").then(r => normalizeList<any>(r.data).rows),
-    api.get("/api/v1/sales/orders/?page_size=200").then(r => normalizeList<any>(r.data).rows),
-    api.get("/api/v1/finance/journal-entries/?page_size=200").then(r => normalizeList<any>(r.data).rows).catch(() => []),
-    api.get('/api/v1/reporting/periodic-project-summary?period_type=MONTHLY').then(r => r.data).catch(() => null),
-    api.get('/api/v1/reporting/attendance-summary').then(r => r.data).catch(() => null),
+async function loadReportingData({ canReadProjects, canReadFinance }: { canReadProjects: boolean; canReadFinance: boolean }) {
+  // Do not use Reporting as a backdoor to Finance. Staff only need the two
+  // reporting projections below; finance/project sources are fetched solely
+  // when the company has granted their owning module.
+  const emptyRows = Promise.resolve<any[]>([]);
+  const [projects, costEntries, billings, journals, periodic, attendance] = await Promise.all([
+    canReadProjects ? api.get("/api/v1/projects/projects/?page_size=100").then(r => normalizeList<any>(r.data).rows) : emptyRows,
+    canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=500").then(r => normalizeList<any>(r.data).rows) : emptyRows,
+    canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=200").then(r => normalizeList<any>(r.data).rows) : emptyRows,
+    canReadFinance ? api.get("/api/v1/finance/journal-entries/?page_size=200").then(r => normalizeList<any>(r.data).rows) : emptyRows,
+    api.get('/api/v1/reporting/periodic-project-summary?period_type=MONTHLY').then(r => r.data),
+    api.get('/api/v1/reporting/attendance-summary').then(r => r.data),
   ]);
 
-  return {
-    projects:    pairs[0].status === "fulfilled" ? pairs[0].value : [],
-    costEntries: pairs[1].status === "fulfilled" ? pairs[1].value : [],
-    billings:    pairs[2].status === "fulfilled" ? pairs[2].value : [],
-    orders:      pairs[3].status === "fulfilled" ? pairs[3].value : [],
-    journals:    pairs[4].status === "fulfilled" ? pairs[4].value : [],
-    periodic:    pairs[5].status === 'fulfilled' ? pairs[5].value : null,
-    attendance:  pairs[6].status === 'fulfilled' ? pairs[6].value : null,
-  };
+  return { projects, costEntries, billings, orders: [], journals, periodic, attendance };
 }
 
 /* ── Shared Components ───────────────────────────── */
@@ -444,9 +440,23 @@ function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> })
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function ReportingClient() {
-  const { userRole } = useAuth();
+  const { user, userRole } = useAuth();
   const searchParams = useSearchParams();
-  const allowedTabs = useMemo(() => REPORT_TABS.filter((tab) => ROLE_REPORT_TABS[userRole].includes(tab.id)), [userRole]);
+  const requestAccess = {
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === 'super_admin',
+  };
+  const canReadProjects = canRequestApi('/api/v1/projects/projects/', requestAccess);
+  const canReadFinance = canRequestApi('/api/v1/finance/project-cost-entries/', requestAccess);
+  const allowedTabs = useMemo(() => REPORT_TABS.filter((tab) => {
+    if (!ROLE_REPORT_TABS[userRole].includes(tab.id)) return false;
+    if (tab.id === 'project-pnl') return canReadProjects && canReadFinance;
+    if (tab.id === 'executive') return canReadProjects;
+    if (tab.id === 'journals') return canReadFinance;
+    return true;
+  }), [canReadFinance, canReadProjects, userRole]);
   const requestedTab = searchParams.get('tab');
   const initialTab = requestedTab && ROLE_REPORT_TABS[userRole].includes(requestedTab) ? requestedTab : allowedTabs[0]?.id ?? 'periodic';
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -458,7 +468,7 @@ export default function ReportingClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const d = await loadReportingData();
+      const d = await loadReportingData({ canReadProjects, canReadFinance });
       setData(d);
     } catch {
       toast.error("Gagal memuat data laporan.");
@@ -466,7 +476,7 @@ export default function ReportingClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [canReadFinance, canReadProjects]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -558,22 +568,25 @@ export default function ReportingClient() {
     }
   };
 
+  const isPersonalReport = userRole === 'staff';
+  const canExportFinancialCsv = canReadProjects && canReadFinance;
+
   return (
     <div className="flex flex-col gap-5">
       {/* ── Header ─────────────────────────── */}
       <div className="card rounded-2xl p-5 flex items-center justify-between flex-wrap gap-4 border border-text-tertiary bg-white">
         <div>
-          <div className="text-2xs font-bold text-brand-green uppercase tracking-wider mb-1">Executive & Financial Intelligence</div>
-          <h1 className="text-xl font-bold text-text-primary">Pelaporan Laba/Rugi Proyek & Observabilitas Finansial</h1>
-          <p className="text-xs text-text-secondary mt-0.5">Visibilitas real-time: Revenue, Biaya Aktual (Labor/Material), Gross Margin, dan General Ledger.</p>
+          <div className="text-2xs font-bold text-brand-green uppercase tracking-wider mb-1">{isPersonalReport ? "Pelaporan Operasional Personal" : "Executive & Financial Intelligence"}</div>
+          <h1 className="text-xl font-bold text-text-primary">{isPersonalReport ? "Laporan Aktivitas dan Kehadiran Saya" : "Pelaporan Laba/Rugi Proyek & Observabilitas Finansial"}</h1>
+          <p className="text-xs text-text-secondary mt-0.5">{isPersonalReport ? "Ringkasan aktivitas tugas dan kehadiran yang tercatat atas nama Anda." : "Visibilitas real-time: Revenue, Biaya Aktual (Labor/Material), Gross Margin, dan General Ledger."}</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => handleExport("pdf")} className="btn-outline text-xs gap-1.5 border-brand-green/40 text-brand-deep-green hover:bg-brand-light-green">
             <FileText size={13} /> Cetak / PDF
           </button>
-          <button onClick={() => handleExport("csv")} className="btn-ghost text-xs gap-1.5 text-text-secondary hover:text-text-primary">
+          {canExportFinancialCsv && <button onClick={() => handleExport("csv")} className="btn-ghost text-xs gap-1.5 text-text-secondary hover:text-text-primary">
             <Download size={13} /> Export CSV
-          </button>
+          </button>}
           <button onClick={() => loadData(true)} disabled={refreshing} className="btn-ghost text-xs gap-1.5 text-text-secondary hover:text-text-primary">
             <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
             {refreshing ? "Memuat..." : "Segarkan"}

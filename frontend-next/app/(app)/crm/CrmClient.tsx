@@ -32,6 +32,7 @@ import {
 import api from "@/lib/api/axios";
 import { feedApi } from "@/lib/api/feed.api";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
+import { canAccessRoute } from "@/lib/access/module-contract";
 
 /* ── Tabs Configuration ──────────────────────────── */
 const CRM_TABS = [
@@ -1470,7 +1471,7 @@ function TabEngagement({ data }: { data: CRMData }) {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function CrmClient() {
-  const { user, userRole, isAdmin, isLoading: authLoading } = useAuth();
+  const { user, userRole, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -1484,14 +1485,13 @@ export default function CrmClient() {
   // RBAC Access Control Check
   const enabledModules = new Set((user?.enabled_modules || []).map((code) => code.toUpperCase()));
   const isSuper = userRole === "super_admin";
-  const isAllowed = !authLoading && Boolean(
-    isSuper ||
-    enabledModules.has("CRM") && (
-    isAdmin ||
-    userRole === "executive" ||
-    userRole === "crm" ||
-    userRole === "pm")
-  );
+  const isAllowed = !authLoading && canAccessRoute({
+    pathname: "/crm",
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: isSuper,
+  });
   const visibleTabs = CRM_TABS.filter((tab) => !tab.module || isSuper || enabledModules.has(tab.module));
 
   const loadData = useCallback(async (silent = false) => {
@@ -1499,7 +1499,11 @@ export default function CrmClient() {
     else setRefreshing(true);
     setLoadError(null);
     try {
-      const { data, dashboard } = await loadCRMData(Array.from(enabledModules));
+      const { data, dashboard } = await loadCRMData(Array.from(enabledModules), undefined, {
+        delegatedModules: user?.delegated_modules,
+        activeRoleCode: user?.active_role_code,
+        isSuperAdmin: userRole === "super_admin",
+      });
       setCrmData(data);
       setCrmDash(dashboard);
     } catch (e) {
@@ -1511,7 +1515,7 @@ export default function CrmClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.enabled_modules]);
+  }, [user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
   useEffect(() => {
     if (isAllowed) {

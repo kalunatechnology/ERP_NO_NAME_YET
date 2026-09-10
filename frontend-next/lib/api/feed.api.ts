@@ -9,6 +9,7 @@
 import api from "./axios";
 import { normalizeList } from "./auth.api";
 import { formatMoney } from "../utils";
+import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 
 export interface NotificationItem {
   id: string;
@@ -152,7 +153,7 @@ export const feedApi = {
  * External dependency: uses the configured API client/base URL referenced below. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function fetchDynamicRightPanelData(): Promise<{
+export async function fetchDynamicRightPanelData(access: FrontendAccessContext = {}): Promise<{
   notifications: DynamicFeedItem[];
   activities: DynamicFeedItem[];
   contacts: DynamicContact[];
@@ -245,16 +246,21 @@ export async function fetchDynamicRightPanelData(): Promise<{
     console.warn("Backend sidebar feed fallback to direct modules:", err);
   }
 
-  // Fallback: Aggregate from modular endpoints
+  // Fallback: Aggregate only from modules granted to the current company.
+  // A background panel must never probe Finance or CRM merely to build a feed.
+  const canReadProjects = canRequestApi("/api/v1/projects/projects/", access);
+  const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", access);
+  const canReadCrm = canRequestApi("/api/v1/crm/opportunities/", access);
+  const emptyResponse = () => Promise.resolve({ data: [] });
   const [
     tasksRes, projectsRes, costsRes, proposalsRes, fundingsRes, dealsRes
   ] = await Promise.all([
-    api.get("/api/v1/projects/tasks/?page_size=30").catch(() => ({ data: [] })),
-    api.get("/api/v1/projects/projects/?page_size=20").catch(() => ({ data: [] })),
-    api.get("/api/v1/finance/project-cost-entries/?page_size=20").catch(() => ({ data: [] })),
-    api.get("/api/v1/finance/billing-proposals/?page_size=20").catch(() => ({ data: [] })),
-    api.get("/api/v1/finance/project-fundings/?page_size=20").catch(() => ({ data: [] })),
-    api.get("/api/v1/crm/opportunities/?page_size=20").catch(() => ({ data: [] })),
+    canReadProjects ? api.get("/api/v1/projects/tasks/?page_size=30").catch(() => ({ data: [] })) : emptyResponse(),
+    canReadProjects ? api.get("/api/v1/projects/projects/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
+    canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
+    canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
+    canReadFinance ? api.get("/api/v1/finance/project-fundings/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
+    canReadCrm ? api.get("/api/v1/crm/opportunities/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
   ]);
 
   const tasks     = normalizeList<any>(tasksRes.data).rows;
@@ -437,13 +443,17 @@ export interface RealInventoryCheckData {
  * External dependency: calls `/api/v1/core/sidebar-feed`, `/api/v1/projects/projects/?page_size=10`, `/api/v1/finance/project-cost-entries/?page_size=10`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function fetchRealAlertsList(userRole?: string, isAdmin?: boolean): Promise<RealAlertItem[]> {
+export async function fetchRealAlertsList(access: FrontendAccessContext = {}): Promise<RealAlertItem[]> {
   try {
+    const canReadProjects = canRequestApi("/api/v1/projects/projects/", access);
+    const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", access);
+    const canReadCrm = canRequestApi("/api/v1/crm/opportunities/", access);
+    const emptyResponse = () => Promise.resolve({ data: [] });
     const [feedRes, projectsRes, costRes, oppsRes] = await Promise.all([
       api.get("/api/v1/core/sidebar-feed").catch(() => ({ data: { notifications: [], activities: [] } })),
-      api.get("/api/v1/projects/projects/?page_size=10").catch(() => ({ data: [] })),
-      api.get("/api/v1/finance/project-cost-entries/?page_size=10").catch(() => ({ data: [] })),
-      api.get("/api/v1/crm/opportunities/?page_size=10").catch(() => ({ data: [] })),
+      canReadProjects ? api.get("/api/v1/projects/projects/?page_size=10").catch(() => ({ data: [] })) : emptyResponse(),
+      canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=10").catch(() => ({ data: [] })) : emptyResponse(),
+      canReadCrm ? api.get("/api/v1/crm/opportunities/?page_size=10").catch(() => ({ data: [] })) : emptyResponse(),
     ]);
 
     const notifs = feedRes.data?.notifications || [];
@@ -532,39 +542,7 @@ export async function fetchRealAlertsList(userRole?: string, isAdmin?: boolean):
     console.error("Error loading real alerts:", err);
   }
 
-  // Graceful clean Indonesian fallback based on active company entity
-  return [
-    {
-      id: "real-alert-1",
-      category: "Status Proyek",
-      time: "Hari ini",
-      title: "Pembuatan Buku Pedoman Perubahan Perilaku",
-      snippet: "Dinas Dalduk: Progres proyek aktif pada database portofolio PT Sinergi Muda Arsa.",
-      isHighlighted: true,
-      categoryColor: "#22C55E",
-      href: "/projects",
-    },
-    {
-      id: "real-alert-2",
-      category: "Portofolio Aktif",
-      time: "Hari ini",
-      title: "Kajian Kelayakan Pengembangan GIK",
-      snippet: "BRIDA Kota Semarang: Tahap inisiasi teknis dan penyusunan timeline berjalan.",
-      isHighlighted: false,
-      categoryColor: "#22C55E",
-      href: "/projects",
-    },
-    {
-      id: "real-alert-3",
-      category: "Kontrak & CRM",
-      time: "Kemarin",
-      title: "Konten Edukasi Fisioterapi Padel",
-      snippet: "Goodphysio ID x PBPI Jaten: Portofolio aktif terverifikasi pada sistem ERP.",
-      isHighlighted: false,
-      categoryColor: "#9CA3AF",
-      href: "/crm",
-    },
-  ];
+  return [];
 }
 
 /**
@@ -575,7 +553,8 @@ export async function fetchRealAlertsList(userRole?: string, isAdmin?: boolean):
  * External dependency: calls `/api/v1/inventory/stock-balances/?page_size=5`, `/api/v1/master-data/products/?page_size=5`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function fetchRealInventoryCheckingData(): Promise<RealInventoryCheckData> {
+export async function fetchRealInventoryCheckingData(access: FrontendAccessContext = {}): Promise<RealInventoryCheckData | null> {
+  if (!canRequestApi("/api/v1/inventory/stock-balances/", access)) return null;
   try {
     const [balancesRes, productsRes] = await Promise.all([
       api.get("/api/v1/inventory/stock-balances/?page_size=5").catch(() => ({ data: [] })),
@@ -597,15 +576,15 @@ export async function fetchRealInventoryCheckingData(): Promise<RealInventoryChe
           p.product_code === topBal.product_code
       );
 
-      // Resolve item name: prefer DB product name → stock balance product name → product code → first product in list → fallback
+      // Resolve only values present in the database; missing identifiers do not
+      // justify inventing an operational item in the frontend.
       const itemName =
         prod?.product_name ||
         prod?.name ||
         topBal.product_name ||
         topBal.product_code ||
         products[0]?.product_name ||
-        products[0]?.name ||
-        'Joint Copper Pipe 3"';
+        products[0]?.name;
 
       // Resolve warehouse: prefer warehouse_code → warehouse_location_id (abbreviated) → fallback
       const warehouseRaw =
@@ -617,7 +596,7 @@ export async function fetchRealInventoryCheckingData(): Promise<RealInventoryChe
         ? String(warehouseRaw).length > 12
           ? `WH-${String(warehouseRaw).slice(0, 6).toUpperCase()}`
           : String(warehouseRaw).toUpperCase()
-        : "WH1-CGK";
+        : "-";
 
       // Resolve quantities — API uses available_quantity / reserved_quantity / on_hand_quantity
       const stockAvailable = Number(
@@ -650,22 +629,16 @@ export async function fetchRealInventoryCheckingData(): Promise<RealInventoryChe
     if (products.length > 0) {
       const p = products[0];
       return {
-        itemName: p.product_name || p.name || 'Joint Copper Pipe 3"',
-        warehouseCode: "WH1-CGK",
+        itemName: p.product_name || p.name || p.product_code,
+        warehouseCode: "-",
         stockAvailable: 0,
         stockNeeded: 0,
         unit: p.uom || "units",
       };
     }
   } catch {
-    // fallback to standard default
+    // The caller renders an explicit unavailable state.
   }
 
-  return {
-    itemName: 'Joint Copper Pipe 3"',
-    warehouseCode: "WH1-CGK",
-    stockAvailable: 2500,
-    stockNeeded: 1000,
-    unit: "units",
-  };
+  return null;
 }

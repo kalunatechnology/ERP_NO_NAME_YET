@@ -12,6 +12,7 @@ import React, {
 import {
   changeActiveRole, loginUser, logoutUser, getMyProfile, getCompanies, UserProfile,
 } from "@/lib/api/auth.api";
+import { normalizeRoleCode } from "@/lib/access/module-contract";
 
 /* ── UUID Regex Helper ───────────────────────── */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -38,24 +39,6 @@ function removeAuthCookie() {
 
 /* ── Role Type ───────────────────────────────── */
 export type UserRoleType = "super_admin" | "company_admin" | "executive" | "pm" | "om" | "finance" | "crm" | "staff";
-
-/** Converts legacy Prisma enum names and current API role codes to one UI contract. */
-function normalizeRoleCode(value: unknown): string {
-  const normalized = String(value || "").trim().toUpperCase();
-  const aliases: Record<string, string> = {
-    SUPER_ADMIN: "ROLE-SUPER-ADMIN",
-    COMPANY_ADMIN: "ROLE-COMPANY-ADMIN",
-    DIRECTOR: "ROLE-DIRECTOR",
-    OPERATIONAL_MANAGER: "ROLE-OM",
-    PROJECT_MANAGER: "ROLE-PM",
-    SUPERVISOR: "ROLE-SUPERVISOR",
-    CRM_LEAD: "ROLE-CRM-LEAD",
-    SALES: "ROLE-SALES",
-    FINANCE: "ROLE-FINANCE",
-    STAFF: "ROLE-STAFF",
-  };
-  return aliases[normalized] || normalized;
-}
 
 /**
  * extractRoleCodes coordinates the UI behavior represented by this function.

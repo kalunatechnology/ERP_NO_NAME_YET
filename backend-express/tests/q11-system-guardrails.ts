@@ -6,6 +6,7 @@ import { requireRole, requireActiveRole, requireCompanyAdmin } from '../src/midd
 import { requireFinanceRole } from '../src/middleware/sod.middleware';
 import { ProjectsService } from '../src/modules/projects/projects.service';
 import { RoleCode } from '../src/types/roles';
+import { canAccessRoute, canRequestApi, getRouteAccessContract } from '../../frontend-next/lib/access/module-contract';
 
 type Evidence = Record<string, unknown>;
 
@@ -36,6 +37,7 @@ async function main(): Promise<void> {
     'Active role is the authorization context',
     'Project task access follows management and ownership',
     'Sensitive workflow actions require the exact active role',
+    'Frontend routes and requests share the backend module contract',
   ];
   names.forEach((name) => assert(feature.includes(`Scenario: ${name}`), `Missing feature scenario: ${name}`));
 
@@ -193,25 +195,66 @@ async function main(): Promise<void> {
     assert(crmRoutes.includes("'/opportunities/:id/executive-override', requireActiveRole(RoleCode.DIRECTOR)"));
     assert(requestService.includes('instance.created_by_id !== requesterUserId'));
     assert(projectsClient.includes('const canCreateDaily = isPM || isWeeklyPic;'));
-    const [appShell, sidebarSource, seedSource] = await Promise.all([
-      readFile(`${__dirname}/../../frontend-next/components/layout/AppShell.tsx`, 'utf8'),
-      readFile(`${__dirname}/../../frontend-next/components/layout/Sidebar.tsx`, 'utf8'),
-      readFile(`${__dirname}/../prisma/seed.ts`, 'utf8'),
-    ]);
-    assert(appShell.includes('"/tasks": "PROJECTS"'), 'Daily Tasks must use the PROJECTS entitlement.');
-    assert(appShell.includes('"/reporting": "REPORTING"'), 'Reporting must keep its own REPORTING entitlement.');
-    assert(appShell.includes('requiredRoles.includes(activeRoleCode)'), 'Frontend route guard must use the active role.');
-    assert(sidebarSource.includes('"/reporting": "REPORTING"'), 'Sidebar must not expose Reporting without entitlement.');
-    assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
     return {
       delegated_sensitive_action: 'blocked',
       request_approvals: 'active-role-gated',
       executive_override: 'director-only',
       lpj_submitter: 'request-owner-only',
       project_ui: 'aligned-with-backend',
-      daily_tasks_entitlement: 'PROJECTS',
-      reporting_entitlement: 'REPORTING',
-      reporting_sidebar: 'entitlement-filtered',
+    };
+  }));
+
+  results.push(await scenario(names[8], async () => {
+    const pmAccess = { enabledModules: ['PROJECTS', 'REPORTING'], activeRoleCode: 'ROLE-PM' };
+    assert.equal(getRouteAccessContract('/tasks/weekly')?.module, 'PROJECTS');
+    assert.equal(canAccessRoute({ pathname: '/tasks', ...pmAccess }), true);
+    assert.equal(canRequestApi('/api/v1/projects/daily-tasks/', pmAccess), true);
+    assert.equal(canRequestApi('/api/v1/finance/project-cost-entries/', pmAccess), false);
+    assert.equal(canRequestApi('/api/v1/inventory/stock-balances/', pmAccess), false);
+    assert.equal(canRequestApi('/api/v1/requests/id/disburse/', { enabledModules: ['REQUESTS'], activeRoleCode: 'ROLE-PM' }), false);
+    assert.equal(canRequestApi('/api/v1/requests/id/disburse/', { enabledModules: ['REQUESTS'], activeRoleCode: 'ROLE-FINANCE' }), true);
+    const [contract, appShell, sidebar, axiosSource, crmApi, reportingClient, projectClient, financeClient, resourcesClient, feedSource, seedSource] = await Promise.all([
+      readFile(`${__dirname}/../../frontend-next/lib/access/module-contract.ts`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/layout/AppShell.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/layout/Sidebar.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/lib/api/axios.ts`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/lib/api/crm.api.ts`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/app/(app)/reporting/ReportingClient.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/app/(app)/projects/ProjectsClient.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/app/(app)/finance/FinanceClient.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/app/(app)/resources/ResourcesClient.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/lib/api/feed.api.ts`, 'utf8'),
+      readFile(`${__dirname}/../prisma/seed.ts`, 'utf8'),
+    ]);
+    for (const mapping of [
+      'prefix: "/tasks", module: "PROJECTS"',
+      'prefix: "/reporting", module: "REPORTING"',
+      'prefix: "/api/v1/projects", module: "PROJECTS"',
+      'prefix: "/api/v1/finance", module: "FINANCE"',
+      'prefix: "/api/v1/crm", module: "CRM"',
+      'prefix: "/api/v1/assets", module: "ASSETS"',
+    ]) assert(contract.includes(mapping), `Canonical frontend contract is missing ${mapping}`);
+    assert(contract.includes('activeRoleCode'), 'Canonical contract must evaluate the active role.');
+    assert(contract.includes('Dashboard BFF canReadSection deliberately does not accept module delegation'));
+    assert(appShell.includes('canAccessRoute({') && !appShell.includes('MODULE_BY_ROUTE'));
+    assert(sidebar.includes('canAccessRoute({') && !sidebar.includes('moduleByPath'));
+    assert(axiosSource.includes('ERR_FRONTEND_MODULE_ACCESS'));
+    assert(axiosSource.includes('canRequestApi(config.url || ""'));
+    assert(!crmApi.includes('enabled.size === 0'), 'Empty entitlements must not be interpreted as allow-all.');
+    assert(reportingClient.includes('canRequestApi(\'/api/v1/finance/project-cost-entries/\''));
+    assert(reportingClient.includes('Laporan Aktivitas dan Kehadiran Saya'));
+    assert(!projectClient.includes('/api/v1/finance/project-fundings/?project_id='), 'Project workspace must not probe Finance before its PROJECTS funding endpoint.');
+    assert(financeClient.includes('endpoint: "/api/v1/assets/assets"'), 'Finance Assets tab must be entitlement-aware.');
+    assert(resourcesClient.includes('visibleResources'), 'Data Explorer must filter API resources before fetching.');
+    assert(feedSource.includes('canRequestApi("/api/v1/inventory/stock-balances/"'));
+    assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
+    return {
+      route_registry: 'centralized',
+      tasks_module: 'PROJECTS',
+      active_role: 'enforced',
+      invalid_entitlement: 'fail-closed',
+      cross_module_loaders: 'preflight-gated',
+      unauthorized_network_request: 'cancelled',
     };
   }));
 

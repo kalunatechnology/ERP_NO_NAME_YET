@@ -16,48 +16,11 @@ import { RightPanel } from "@/components/ui/RightPanel";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
 import { ChatbotDrawer } from "@/components/chatbot/ChatbotDrawer";
 import { LogIn, PanelRightOpen } from "lucide-react";
+import { canAccessRoute, getRouteAccessContract } from "@/lib/access/module-contract";
 
 interface AppShellProps {
   children: ReactNode;
 }
-
-// Role permission mapping — include ALL role code variants from detectRole() and backend
-const RESTRICTED_ROUTES: Record<string, string[]> = {
-  "/crm": ["ROLE-PM", "ROLE-CRM-LEAD", "ROLE-SALES", "ROLE-DIRECTOR"],
-  "/finance": ["ROLE-FINANCE", "ROLE-DIRECTOR"],
-  "/projects": ["ROLE-PM", "ROLE-OM", "ROLE-DIRECTOR", "ROLE-SUPERVISOR", "ROLE-STAFF"],
-  "/tasks": ["ROLE-PM", "ROLE-OM", "ROLE-DIRECTOR", "ROLE-SUPERVISOR", "ROLE-STAFF"],
-  "/reporting": [],
-};
-
-// A route name is not necessarily a company entitlement code. Daily Tasks is
-// a Project-management workspace backed by `/api/v1/projects/*`, so it must
-// never be checked against a non-existent `TASKS` module entitlement.
-const MODULE_BY_ROUTE: Record<string, string> = {
-  "/crm": "CRM",
-  "/finance": "FINANCE",
-  "/projects": "PROJECTS",
-  "/tasks": "PROJECTS",
-  "/reporting": "REPORTING",
-};
-
-function normalizeActiveRoleCode(value: unknown): string {
-  const raw = String(value ?? "").trim().toUpperCase();
-  const aliases: Record<string, string> = {
-    SUPER_ADMIN: "ROLE-SUPER-ADMIN",
-    COMPANY_ADMIN: "ROLE-COMPANY-ADMIN",
-    DIRECTOR: "ROLE-DIRECTOR",
-    OPERATIONAL_MANAGER: "ROLE-OM",
-    PROJECT_MANAGER: "ROLE-PM",
-    SUPERVISOR: "ROLE-SUPERVISOR",
-    CRM_LEAD: "ROLE-CRM-LEAD",
-    SALES: "ROLE-SALES",
-    FINANCE: "ROLE-FINANCE",
-    STAFF: "ROLE-STAFF",
-  };
-  return aliases[raw] ?? raw;
-}
-
 
 /**
  * AppShell implements the local UI interaction represented by its typed signature.
@@ -113,28 +76,14 @@ export function AppShell({ children }: AppShellProps) {
   const closeMobileRight    = useCallback(() => setMobileRightPanelOpen(false), []);
 
   /* ── Access control ──────────────────────────────────── */
-  const isSuperUser = userRole === "super_admin";
-/**
- * userRolesList implements the local UI interaction represented by its typed signature.
- *
- * @param input - The declared props/event/value arguments; caller identity and company state come only from imported context/API helpers.
- * @returns The rendered React value, synchronous result, or Promise declared by the implementation.
- * Side effects: updates the local React/browser state or invokes callbacks visible below.
- */
-  const activeRoleCode = normalizeActiveRoleCode(user?.active_role_code);
-  const enabledModules = new Set((user?.enabled_modules ?? []).map((module) => module.toUpperCase()));
-
-  const restrictedRoute = Object.entries(RESTRICTED_ROUTES).find(([route]) =>
-    pathname.startsWith(route)
-  );
-  const requiredRoles = restrictedRoute?.[1];
-  const moduleCode = restrictedRoute ? MODULE_BY_ROUTE[restrictedRoute[0]] : undefined;
-
-  const hasAccess =
-    !requiredRoles ||
-    isSuperUser ||
-    (Boolean(moduleCode && enabledModules.has(moduleCode)) &&
-      (requiredRoles.length === 0 || requiredRoles.includes(activeRoleCode)));
+  const routeContract = getRouteAccessContract(pathname);
+  const hasAccess = canAccessRoute({
+    pathname,
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === "super_admin",
+  });
 
   if (isLoading) return null;
 
@@ -229,7 +178,7 @@ export function AppShell({ children }: AppShellProps) {
                   description="Akun Anda saat ini tidak memiliki izin yang cukup untuk mengakses modul ini. Silakan hubungi administrator atau beralih ke modul yang sesuai."
                   backHref="/dashboard"
                   backLabel="Kembali ke Dashboard"
-                  section={pathname.replace("/", "").toUpperCase()}
+                  section={routeContract?.module ?? "ROUTE"}
                 />
               ) : (
                 children
