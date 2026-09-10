@@ -3,6 +3,8 @@
 **Executed:** 5 September 2026; final extension 7 September 2026
 **Scope:** Express backend, Next frontend, IAM, company isolation, module delegation, Finance transaction controls, project progress rules, and the generated frontend-to-Express contract matrix.
 
+> **Readiness addendum — 10 September 2026:** the historical Q12 execution below remains evidence for its stated run dates. The later `ACC-2026-09-10-04` change centralizes Frontend Route → Module → API authorization, exposes effective `delegated_modules` in auth profiles, and adds fail-closed API preflight. Frontend/backend type-check, documentation validation, and Q11 System Guardrails 9/9 pass locally. Production browser smoke after a same-release frontend/backend deployment remains required; this addendum does not claim that Hostinger has already been redeployed.
+
 ## Final extension summary
 
 | Verification | Result | Evidence |
@@ -16,6 +18,7 @@
 | Request Card read-through cache | PASS | first 1,388 ms; HIT 394 ms; mutation invalidation enabled |
 | Authentication single-flight | PASS | parallel initial requests share only the active snapshot; no completed auth decision cached |
 | Full final BDD | PASS | static, login, critical, Company Admin, runtime contract suites |
+| Q11 system guardrails addendum | PASS locally | 9/9, including executable route/module/API assertions |
 
 Canonical current summary: [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
 

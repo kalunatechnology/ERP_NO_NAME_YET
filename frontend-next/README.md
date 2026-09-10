@@ -4,10 +4,12 @@ Next.js 14 App Router frontend for the active Express ERP API. Current technical
 
 ## Current behavior
 
-- Login hydrates user, company, active role, and enabled modules from one response.
+- Login hydrates user, company, active role, assigned roles, `enabled_modules`, and `delegated_modules` from one response.
 - The initial dashboard uses `/api/v1/dashboard/bootstrap?sections=projects,finance` plus the Request Card feed in parallel.
 - The dashboard does not restore the former multi-route browser fan-out.
 - API requests send JWT and the active `X-Company-ID` context.
+- `lib/access/module-contract.ts` is the frontend source for route/module/API preflight mapping. Route labels are never converted into module codes; `/tasks` uses `PROJECTS`.
+- Known modular requests are checked against active role, company entitlement, and valid personal delegation before transmission. Backend middleware remains authoritative.
 - Cache diagnostics are available through `X-Dashboard-Cache` and `X-Request-Cache`.
 - Production build currently generates 14 application routes successfully.
 

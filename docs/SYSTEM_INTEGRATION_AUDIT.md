@@ -5,7 +5,7 @@
 **Legacy reference only:** `backend/` (Django) and `uji_prototype/` are not the active production runtime.  
 **Purpose:** technical documentation, business-process reference, developer handover, QA reference, and baseline for subsequent development.
 
-> **Access-control addendum — 9 September 2026:** audit ini merekam kondisi source pada 8 September. Temuan akses yang telah ditutup pada 9 September diberi status resolved di bawah; baseline operasional dan change log yang berlaku adalah [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
+> **Access-control addendum — 10 September 2026:** audit ini merekam kondisi awal source pada 8 September. Temuan akses yang telah ditutup sampai 10 September diberi status resolved/partially resolved di bawah, termasuk active-role enforcement dan kontrak Frontend Route → Module → API. Baseline operasional dan change log yang berlaku adalah [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
 
 ## 1. Scope, method, and evidence rules
 
@@ -394,10 +394,13 @@ Storage and output:
 - The full request payload, disbursement metadata, and LPJ payload are reconstructed from `core_audit_event.after_data` rather than a dedicated request table.
 - Notifications are created for approval stages.
 
-Critical gaps:
+Resolved access controls:
 
-- The routes under `/requests` require the `REQUESTS` module but have no backend role middleware for OM validation, Executive approval, Finance disbursement, or OM LPJ verification. The frontend hides/shows buttons by role, but that is not an authorization boundary.
-- The service does not verify that LPJ is submitted by the original requester.
+- Request transitions now enforce the exact active role: OM for validation/LPJ verification, PM or Director for executive approval, and Finance for disbursement. These strict actions do not accept module delegation as a substitute for the business actor.
+- LPJ submission verifies that the caller is the original requester.
+
+Remaining integration gaps:
+
 - `disburseRequest` changes workflow state and writes audit metadata only. It does not create `fin_payment`, bank transaction, journal entry, or allocation.
 - Executive approval marks the workflow's overall `status=COMPLETED` while `current_state=REGISTERED`, before disbursement/LPJ completion; these two status dimensions conflict.
 
@@ -641,7 +644,7 @@ Effective access is:
 - Explicit read/write delegation can satisfy `requireRole` when mounted immediately after entitlement middleware.
 - Company Admin UI lists only company-approved modules for user delegation.
 
-### 8.5 Access-control remediation — 9 September 2026
+### 8.5 Access-control remediation — 10 September 2026
 
 Temuan audit yang berkaitan dengan active role, Project task ownership, Request transition, CRM executive action, dan SoD telah diperbaiki pada source aktif.
 
@@ -650,8 +653,11 @@ Temuan audit yang berkaitan dengan active role, Project task ownership, Request 
 - Daily progress/output/blocker owner-only. PM/OM mengelola structure, transfer approval, dan reassignment pada project yang memang dikelola.
 - Request route kini memiliki gate OM, PM/Director, Finance, dan ownership LPJ sesuai transisi; CRM executive override/decision Director-only.
 - SoD maker=checker fail-closed; Delegation of Authority belum dianggap implemented karena schema belum memiliki atribut grant yang diperlukan.
+- Frontend route/module/API contract dipusatkan pada `frontend-next/lib/access/module-contract.ts`. `/tasks` memakai `PROJECTS`; `/reporting` memakai `REPORTING`; Dashboard BFF dinilai per-section.
+- Auth profile mengekspos `delegated_modules`. AppShell, Sidebar, Data Explorer, modular loaders, panel global, dan Axios preflight menggunakan active role serta entitlement efektif yang sama.
+- Project tidak lagi mencoba endpoint Finance sebelum endpoint funding milik Projects. Finance Assets, Inventory, Reporting, dan source lintas-module lain tidak dimuat bila kontrak akses aktif tidak mengizinkan.
 
-Verifikasi implementasi ini adalah Q11 8/8 PASS dan backend build PASS. Perubahan ini tidak menyelesaikan gap lifecycle/finance lain yang tetap tercatat di audit.
+Verifikasi implementasi terbaru adalah Q11 9/9 PASS serta frontend/backend TypeScript PASS. Perubahan ini tidak menyelesaikan gap lifecycle/finance lain yang tetap tercatat di audit.
 
 ## 9. Lifecycle and status consistency
 
@@ -739,13 +745,14 @@ Weak or split boundaries:
 | INT-P1-08 | Inventory/manufacturing/quality actions only change status. | Stock, valuation, production cost, and QA state are not synchronized. |
 | INT-P1-09 | Reporting returns hard-coded financial and CRM KPIs. | Management reports can present false values as real data. |
 | INT-P1-10 — RESOLVED 2026-09-09 | Active-role selection and assigned-role authorization were inconsistent. | `requireRole` and Finance policy now use active role; strict sensitive actions reject module-delegation bypass. |
+| INT-P1-11 — RESOLVED 2026-09-10 | Frontend route labels, page-local maps, and background loaders could resolve or request a module that differed from the backend mount contract. | One registry now maps routes, API prefixes, active roles, entitlements, delegation, strict actions, and Dashboard BFF sections; known unauthorized requests are cancelled before transmission. |
 
 ### P2 — maintainability, UX, and auditability risk
 
 | ID | Finding | Impact |
 |---|---|---|
 | INT-P2-01 | Generic auto-fill writes empty/default values for required domain fields. | Invalid/incomplete records can look operational. |
-| INT-P2-02 | Several frontend `.catch(() => null/[])` paths hide failed integrations. | Empty panels or success toasts can mask 403/500 responses. |
+| INT-P2-02 — PARTIALLY RESOLVED 2026-09-10 | Module-aware loaders no longer issue expected unauthorized cross-module requests, and inventory no longer substitutes production-looking fallback rows. Other `.catch(() => null/[])` paths still exist. | Remaining paths can still hide genuine 500/timeout/data-contract failures and require a separate error-propagation audit. |
 | INT-P2-03 | No dedicated frontend for multiple licensed backend modules. | A module may be enabled but have no usable product workflow. |
 | INT-P2-04 | Dashboard/request cache is process-local. | Multi-instance deployments can show inconsistent cached projections. |
 | INT-P2-05 | Global audit is best-effort after response. | Successful mutations may have no audit record after an audit write failure. |
@@ -755,9 +762,9 @@ Weak or split boundaries:
 
 ## 12. Recommended remediation roadmap
 
-### Completed access remediation — 9 September 2026
+### Completed access remediation — 10 September 2026
 
-The previous Phase A items for Request actor policy, LPJ ownership, Director-only CRM executive action, active-role alignment, and task/project row scope are implemented. Their acceptance evidence is Q11 and the [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md). The remaining roadmap items below are still open unless explicitly marked otherwise.
+The previous Phase A items for Request actor policy, LPJ ownership, Director-only CRM executive action, active-role alignment, task/project row scope, and Frontend Route → Module → API alignment are implemented. Their acceptance evidence is Q11 and the [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md). The remaining roadmap items below are still open unless explicitly marked otherwise.
 
 ### Phase A — protect authoritative transitions
 
@@ -829,6 +836,7 @@ Each workflow test should verify actor, entitlement, input, records written, rec
 | Tenant scope | `backend-express/src/middlewares/tenant.middleware.ts` |
 | Module entitlement | `backend-express/src/middlewares/entitlement.middleware.ts` |
 | Role/active-role controls | `backend-express/src/middlewares/rbac.middleware.ts` |
+| Frontend route/module/API contract | `frontend-next/lib/access/module-contract.ts`, `components/layout/AppShell.tsx`, `components/layout/Sidebar.tsx`, `lib/api/axios.ts` |
 | SoD | `backend-express/src/middleware/sod.middleware.ts` |
 | Idempotency/audit | `backend-express/src/middlewares/idempotency.middleware.ts`, `audit.middleware.ts` |
 | Generic CRUD and terminal guard | `backend-express/src/utils/crud-factory.ts` |

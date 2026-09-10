@@ -2,7 +2,7 @@
 
 Dokumen ini adalah dokumentasi **AS-IS** database untuk backend Express dan frontend Next. Ia dibaca bersama [System Documentation](./SYSTEM_DOCUMENTATION.md). Nilai credential sengaja tidak dicantumkan.
 
-**Update 9 September 2026:** enam folder migration kini tersedia. Migration terbaru `20260907010000_reporting_views` telah dideploy pada database proyek terkonfigurasi dan membuat empat view read-only ter-scope: `view_finance_main_dashboard`, `view_project_dashboard`, `view_project_timeline_cost`, dan `view_crm_sales_dashboard`. Revisi access control 9 September adalah perubahan service/route/frontend tanpa migration schema; lihat [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md) untuk aturan runtime dan bukti Q11.
+**Update 10 September 2026:** enam folder migration kini tersedia. Migration terbaru `20260907010000_reporting_views` telah dideploy pada database proyek terkonfigurasi dan membuat empat view read-only ter-scope: `view_finance_main_dashboard`, `view_project_dashboard`, `view_project_timeline_cost`, dan `view_crm_sales_dashboard`. Revisi kontrak akses sampai `ACC-2026-09-10-04` adalah perubahan service projection/frontend tanpa migration schema: login dan `/auth/me` mengekspos `delegated_modules` yang sudah dihitung dari tabel akses yang ada. Lihat [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md) untuk aturan runtime dan bukti Q11.
 
 ## Status dan cakupan
 

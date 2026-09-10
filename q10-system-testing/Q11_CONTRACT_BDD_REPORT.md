@@ -6,6 +6,8 @@
 
 The current generated matrix contains **177/177** frontend contracts with zero findings. The 176-case counts below are the original Q11 snapshot and are retained as historical execution evidence. Current whole-backend coverage is documented in [Current Implementation Status](../docs/CURRENT_IMPLEMENTATION_STATUS.md).
 
+> **10 September 2026 clarification:** this generated report proves HTTP method/path registration and authentication boundaries. The separate Q11 System Guardrails suite now also passes 9/9 and covers the canonical Frontend Route → Module → API contract, active role, entitlement, delegation, Dashboard BFF section policy, and cancellation of known unauthorized modular requests. See [Access Control Baseline and Change Log](../docs/ACCESS_CONTROL_CHANGELOG.md).
+
 ## Result summary
 
 | Metric | Result |

@@ -831,7 +831,7 @@ Release tidak boleh mendapatkan sign-off production apabila salah satu berikut m
 | Area | Source utama |
 |---|---|
 | Runtime dan middleware | `backend-express/src/app.ts`, `backend-express/src/middlewares/**` |
-| Auth, company, role, module access | `backend-express/src/modules/accounts/**`, `core/**`, `frontend-next/contexts/AuthContext.tsx`, layout components |
+| Auth, company, role, module access | `backend-express/src/modules/accounts/**`, `core/**`, `frontend-next/lib/access/module-contract.ts`, `frontend-next/contexts/AuthContext.tsx`, layout components, shared Axios client |
 | Generic CRUD dan pagination | `backend-express/src/utils/crud-factory.ts`, pagination helpers/tests |
 | CRM/Sales | `backend-express/src/modules/crm/**`, `sales/**`, `commands/**`, `frontend-next/app/(app)/crm/**` |
 | Projects/Tasks | `backend-express/src/modules/projects/**`, `frontend-next/app/(app)/projects/**`, `tasks/**` |

@@ -113,6 +113,9 @@ Verifikasi terakhir untuk `ACC-2026-09-10-04`:
 - `backend-express/src/modules/projects/projects.service.ts` dan `projects.routes.ts`
 - `backend-express/src/modules/core/request.routes.ts` dan `request.service.ts`
 - `backend-express/src/modules/crm/crm.routes.ts`
+- `frontend-next/lib/access/module-contract.ts`
+- `frontend-next/lib/api/axios.ts`
 - `frontend-next/app/(app)/projects/ProjectsClient.tsx`
 - `frontend-next/lib/api/project.api.ts`
 - `backend-express/tests/q11-system-guardrails.ts`
+- `Q8_PRODUCTION_READINESS.md`

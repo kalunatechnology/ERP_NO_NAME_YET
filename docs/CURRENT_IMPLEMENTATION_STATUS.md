@@ -1,8 +1,8 @@
 # Current Implementation Status
 
-> **Access-control update — 9 September 2026:** `ACC-2026-09-09-01` is implemented locally and verified through backend/frontend type-check, backend build, and Q11 8/8 PASS. It introduces active-role RBAC, Project/Task row scope, strict privileged workflow gates, LPJ ownership, and fail-closed SoD. No database migration is required. See [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
+> **Access-control update — 10 September 2026:** `ACC-2026-09-10-04` is implemented locally and verified through backend/frontend type-check and Q11 9/9 PASS. Route, active role, module entitlement, delegation, Dashboard BFF section, and API preflight now share one frontend contract. The earlier active-role RBAC, Project/Task row scope, privileged workflow gates, LPJ ownership, and fail-closed SoD remain active. No database migration is required. See [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
 
-**Status date:** 7 September 2026  
+**Status date:** 10 September 2026
 **Active stack:** Node.js/Express/TypeScript/Prisma + PostgreSQL/Supabase, consumed by Next.js App Router  
 **Purpose:** concise operational baseline after the routing, security, loading-performance, and BFF resilience revisions.
 
@@ -15,7 +15,7 @@ This document is the current release summary. Historical Django/prototype docume
 | Express route inventory | 2,616 unique method/path pairs registered and exercised; 2,616/2,616 passed registration/auth-boundary execution |
 | Authenticated reads | 783/783 reached their authenticated data handler; p50 715.1 ms, p95 1,006.9 ms, p99 1,512.3 ms, max 2,010.4 ms |
 | Mutations | 1,833/1,833 passed the protected-pipeline dry-run; Prisma write firewall blocked persistence during the generated matrix |
-| Real business regression | Static contract, nine login cases, eight critical scenarios, twelve Company Admin scenarios, and runtime API contract all pass |
+| Real business regression | Static contract, nine login cases, eight Q10 critical scenarios, twelve Company Admin scenarios, runtime API contract, and nine Q11 system guardrails all pass |
 | Builds | Backend TypeScript production compile and frontend 14-route production build pass |
 | Login SLA | Nine login scenarios pass the 3,000 ms budget; latest full BDD valid-user observations were 401–887 ms |
 | Login to complete initial dashboard | Latest real Express/Supabase benchmark: 2,009 ms, including dashboard and Request Card feed |
@@ -25,7 +25,7 @@ Generated mutation coverage is intentionally a non-destructive pipeline test, no
 
 ## Initial loading architecture
 
-1. Login returns JWT, role/module access, company ID, and compact company identity in one response.
+1. Login returns JWT, active role, assigned roles, `enabled_modules`, `delegated_modules`, company ID, and compact company identity in one response.
 2. The frontend hydrates identity and company state immediately; no extra company request is required before rendering.
 3. Dashboard and Request Card requests start in parallel.
 4. Concurrent authentication checks for one user share one in-flight database snapshot. The result is discarded after the request wave, so later requests revalidate account and access state.
@@ -49,6 +49,8 @@ This design improves the current single-instance/local test path. A multi-instan
 - Every operational request remains JWT-authenticated and tenant/company scoped.
 - A forged company header is rejected with HTTP 403.
 - Module entitlement and active role are part of dashboard representation identity.
+- AppShell, Sidebar, Dashboard BFF client, modular loaders, and Axios use the canonical frontend module contract. `/tasks` resolves to `PROJECTS`, while `/reporting` remains `REPORTING`.
+- Known unauthorized modular requests are cancelled before network transmission; backend authorization remains authoritative for direct or manipulated requests.
 - Company Admin cannot cross company scope, self-escalate, or enable modules beyond the Super Admin ceiling.
 - Finance terminal records remain immutable through generic CRUD; reversal and closing workflows retain separation-of-duty and idempotency controls.
 - Reporting views are read-only and scoped by tenant/company or project.
@@ -76,6 +78,8 @@ node q10-system-testing/run-authenticated-read-route-benchmark.js
 node q10-system-testing/run-authenticated-mutation-route-smoke.js
 node q10-system-testing/run-dashboard-loading-benchmark.js
 node q10-system-testing/validate-documentation-links.js
+cd backend-express
+npm run test:q11
 ```
 
 Build checks:
@@ -99,6 +103,11 @@ The route matrix and read benchmark are safe reads except that successful login 
 - [Database documentation](./DATABASE_DOCUMENTATION.md)
 - [System documentation](./SYSTEM_DOCUMENTATION.md)
 - [Access-control baseline and changelog](./ACCESS_CONTROL_CHANGELOG.md)
+- [Production readiness](../Q8_PRODUCTION_READINESS.md)
+
+## Deployment acceptance still required
+
+The source-level contract is verified locally, but production readiness still requires a same-release frontend/backend deployment and browser verification on the Hostinger domain. After deployment, every persona must log in again so cached profile data contains `delegated_modules`. The Network panel must show no background request to a known unauthorized module; manually calling that API outside the frontend must still be rejected by backend with 403.
 
 ## User-testing baseline
 

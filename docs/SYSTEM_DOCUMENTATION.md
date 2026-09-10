@@ -644,13 +644,13 @@ Frontend menganggap feed kosong sebagai hasil valid dan tidak lagi membuat conta
 
 **Invariant keamanan:** jangan menambahkan kembali fallback contact global, filter berdasarkan pola email, atau query langsung seluruh `iam_user`. Identitas demo tetap valid; batas keamanan harus berasal dari membership company, bukan nama/email.
 
-### Access-control revision — 9 September 2026
+### Access-control revision — 10 September 2026
 
 Policy role sekarang memakai `active_role_code`, bukan gabungan seluruh role yang pernah ditugaskan. Delegasi module personal masih dapat memenuhi policy module biasa bila entitlement company mengizinkan, tetapi tidak dapat meloloskan action yang identitas aktornya merupakan kontrol bisnis: approval Request, disbursement Finance, dan CRM executive override/approval memakai `requireActiveRole`.
 
 Project Management menerapkan row-level scope melalui `accessWhere` dan service Projects: PM hanya pada project manager/membership PM aktif; Staff/Supervisor hanya pada project/member atau assignment mereka; Daily execution tetap hanya owner. PM/OM mengelola struktur/reassignment pada project sendiri, bukan progress/output Daily milik staf. Detail dan matriks endpoint ada pada [Access Control Baseline and Change Log](./ACCESS_CONTROL_CHANGELOG.md).
 
-Frontend `/tasks` adalah workspace Daily Task di bawah entitlement `PROJECTS`, bukan module `TASKS`. Route guard memetakan URL ke code entitlement secara eksplisit dan mengevaluasi role aktif ternormalisasi; sidebar dan API `/api/v1/projects/daily-tasks/*` memakai kontrak yang sama.
+Frontend `/tasks` adalah workspace Daily Task di bawah entitlement `PROJECTS`, bukan module `TASKS`. Registry terpusat `frontend-next/lib/access/module-contract.ts` memetakan route dan API prefix ke kontrak backend serta mengevaluasi active role, company entitlement, dan delegasi efektif. AppShell, Sidebar, Dashboard BFF, Data Explorer, loader lintas-module, panel global, dan Axios preflight memakai registry yang sama. Request modular yang diketahui tidak sah dibatalkan sebelum transmisi, sedangkan backend tetap menjadi enforcement authoritative.
 
 ## 7. Business Logic dan State Management
 
@@ -1035,6 +1035,7 @@ Tabel berikut mencakup file relevan di kedua aplikasi. Untuk source, exports dan
 | `frontend-next/components/ui/TopExpensesBarChart.tsx` | Komponen React client/presentational untuk UI dan interaksi pengguna. | `ExpenseItem`, `TopExpensesBarChart`, `default`, `TopExpensesBarChart({ title = "Top 5 Expenses", expenses, className, projectName, scales = DEFAULT_SCALES, }: TopExpense)` | `react`, `lucide-react`, `@/lib/utils` | Direct mount, framework discovery, script execution, or no static reverse import |
 | `frontend-next/components/ui/UserProfileSettingsModal.tsx` | Komponen React client/presentational untuk UI dan interaksi pengguna. | `UserProfileSettingsModal`, `default`, `UserProfileSettingsModal({ isOpen, onClose, }: UserProfileSettingsModalProps)` | `react`, `lucide-react`, `@/contexts/AuthContext`, `@/components/ui/Modal`, `@/lib/api/axios`, `@/lib/utils`, `react-hot-toast` | `frontend-next/components/layout/Topbar.tsx` |
 | `frontend-next/contexts/AuthContext.tsx` | React context untuk state lintas komponen. | `UserRoleType`, `detectRole`, `getRoleLabel`, `getRoleBadgeStyle`, `CompanyItem`, `AuthContextValue`, `AuthProvider`, `useAuth`, `setAuthCookie(token: string)`, `removeAuthCookie()` | `react`, `@/lib/api/auth.api` | `frontend-next/app/(app)/crm/CrmClient.tsx`, `frontend-next/components/finance/CompanyMasterWorkspace.tsx`, `frontend-next/components/layout/AppShell.tsx`, `frontend-next/components/layout/Sidebar.tsx` |
+| `frontend-next/lib/access/module-contract.ts` | Registry kontrak akses frontend yang memetakan route dan API prefix ke module backend, active role, entitlement, delegasi, strict action, dan Dashboard BFF section. | `MODULE_CODES`, `ROLE_CODES`, `ROUTE_ACCESS_CONTRACTS`, `normalizeRoleCode`, `normalizeModuleCodes`, `getRouteAccessContract`, `canAccessRoute`, `getApiAccessContract`, `canRequestApi`, `canRequestDashboardSection` | Mirror terverifikasi dari mount/middleware backend | `AppShell.tsx`, `Sidebar.tsx`, `axios.ts`, modular loaders, Dashboard, Resources, Reporting, panel global |
 | `frontend-next/lib/api/auth.api.ts` | Client API frontend; membentuk request/response contract dengan Express. | `LoginPayload`, `UserProfile`, `DEMO_PROFILES`, `loginUser`, `getMyProfile`, `changeActiveRole`, `logoutUser`, `getCompanies`, `changePassword`, `updateUserProfile` | `./axios` | `frontend-next/contexts/AuthContext.tsx`, `frontend-next/lib/api/crm.api.ts`, `frontend-next/lib/api/feed.api.ts`, `frontend-next/lib/api/finance.api.ts` |
 | `frontend-next/lib/api/axios.ts` | Client API frontend; membentuk request/response contract dengan Express. | `default`, `syncCookie(token?: string)`, `refreshTokenOnce()` | `axios` | `frontend-next/app/(app)/crm/CrmClient.tsx`, `frontend-next/components/finance/CompanyMasterWorkspace.tsx`, `frontend-next/components/finance/ExecutiveAuditReportWorkspace.tsx`, `frontend-next/components/requests/NewCardRequestModal.tsx` |
 | `frontend-next/lib/api/crm.api.ts` | Client API frontend; membentuk request/response contract dengan Express. | `CRMData`, `CRMDashboard`, `loadCRMData`, `processDealWon`, `executiveOverrideCredit`, `createOpportunity`, `deleteOpportunity`, `qualifyInquiry`, `createCustomerInquiry`, `createInquiryRequirement` | `./axios`, `./auth.api` | `frontend-next/app/(app)/crm/CrmClient.tsx` |
@@ -1208,6 +1209,7 @@ Audit mengecualikan `node_modules`, `.next`, `dist`, generated Prisma Client, lo
 | `frontend-next/components/ui/TopExpensesBarChart.tsx` | React component | Yes | Yes | Complete |
 | `frontend-next/components/ui/UserProfileSettingsModal.tsx` | React component | Yes | Yes | Complete |
 | `frontend-next/contexts/AuthContext.tsx` | Infrastructure/types | Yes | Yes | Complete |
+| `frontend-next/lib/access/module-contract.ts` | Access contract registry | Yes | Yes | Complete |
 | `frontend-next/lib/api/auth.api.ts` | API client | Yes | Yes | Complete |
 | `frontend-next/lib/api/axios.ts` | API client | Yes | Yes | Complete |
 | `frontend-next/lib/api/crm.api.ts` | API client | Yes | Yes | Complete |
