@@ -17,6 +17,9 @@
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
+const { PrismaClient } = require('@prisma/client');
+
+const RECOVERABLE_MIGRATION = '20260911090000_backfill_employee_user_mapping';
 
 /**
  * Validates that the supplied URL is the direct Supabase PostgreSQL endpoint.
@@ -47,7 +50,30 @@ function requireDirectSupabaseUrl(value) {
  * stops the deployment with a non-zero exit code rather than starting Express
  * against an unknown schema version.
  */
-function main() {
+async function recoverKnownFailedMigration(prismaCli, directUrl) {
+  const client = new PrismaClient({ datasources: { db: { url: directUrl } } });
+  try {
+    const rows = await client.$queryRawUnsafe(
+      'SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations" WHERE migration_name = $1 ORDER BY started_at DESC LIMIT 1',
+      RECOVERABLE_MIGRATION,
+    );
+    const failed = rows[0];
+    if (!failed || failed.finished_at || failed.rolled_back_at) return;
+
+    console.log(`Recovering known failed migration: ${RECOVERABLE_MIGRATION}`);
+    const recovery = spawnSync(
+      process.execPath,
+      [prismaCli, 'migrate', 'resolve', '--rolled-back', RECOVERABLE_MIGRATION],
+      { stdio: 'inherit', env: { ...process.env, DATABASE_URL: directUrl, DIRECT_URL: directUrl } },
+    );
+    if (recovery.error) throw recovery.error;
+    if (recovery.status !== 0) process.exit(recovery.status ?? 1);
+  } finally {
+    await client.$disconnect();
+  }
+}
+
+async function main() {
   if (process.env.VERCEL === '1') {
     console.log('Skipped database migration: Vercel deployment detected.');
     return;
@@ -58,6 +84,7 @@ function main() {
 
   const directUrl = requireDirectSupabaseUrl(process.env.SUPABASE_DIRECT_URL ?? process.env.DIRECT_URL);
   const prismaCli = path.join(__dirname, '..', 'node_modules', 'prisma', 'build', 'index.js');
+  await recoverKnownFailedMigration(prismaCli, directUrl);
   const result = spawnSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {
     stdio: 'inherit',
     env: { ...process.env, DATABASE_URL: directUrl, DIRECT_URL: directUrl },
@@ -67,7 +94,10 @@ function main() {
 }
 
 try {
-  main();
+  main().catch((error) => {
+    console.error(`Database deployment blocked: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  });
 } catch (error) {
   console.error(`Database deployment blocked: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;

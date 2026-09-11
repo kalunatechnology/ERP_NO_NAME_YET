@@ -347,13 +347,14 @@ async function main(): Promise<void> {
     for (const legacyGreen of ['#22C55E', '#16A34A', '#166534', '#5f8f35', 'bg-emerald-', 'text-emerald-']) {
       assert(!`${dashboardClient}${projectClient}${tasksClient}${financeClient}${feedSource}`.includes(legacyGreen), `Legacy green visual token remains: ${legacyGreen}`);
     }
-    const [timesheetForm, timesheetTable, overtimeWidget, dashboardRoutes, reportingRoutes, budgetCard] = await Promise.all([
+    const [timesheetForm, timesheetTable, overtimeWidget, dashboardRoutes, reportingRoutes, budgetCard, employeeMappingMigration] = await Promise.all([
       readFile(`${__dirname}/../../frontend-next/components/staff/StaffTimesheetForm.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/staff/StaffTimesheetTable.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/staff/StaffOvertimeSummary.tsx`, 'utf8'),
       readFile(`${__dirname}/../src/modules/dashboard/dashboard.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/reporting/reporting.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/ui/BudgetCheckStatusCard.tsx`, 'utf8'),
+      readFile(`${__dirname}/../prisma/migrations/20260911090000_backfill_employee_user_mapping/migration.sql`, 'utf8'),
     ]);
     for (const forbiddenField of ['employee_id:', 'hourly_rate:', 'amount:', 'approval_status:']) {
       assert(!timesheetForm.includes(forbiddenField), `Staff timesheet form must not send server-owned field ${forbiddenField}`);
@@ -368,6 +369,7 @@ async function main(): Promise<void> {
     assert(dashboardRoutes.includes('ts.employee_id::text IN'), 'Dashboard overtime employee identity must be normalized across legacy DB column types.');
     const staffDashboardProjection = dashboardRoutes.slice(dashboardRoutes.indexOf('if (isStaff)'), dashboardRoutes.indexOf('NON STAFF'));
     assert(!staffDashboardProjection.includes('= ${userId}::uuid'), 'Staff dashboard projection must not force mixed legacy identity columns to UUID.');
+    assert(employeeMappingMigration.includes('SET "employee_id" = employee."id"') && !employeeMappingMigration.includes('SET "employee_id" = employee."id"::text'), 'Employee mapping migration must assign UUID to UUID without a text cast.');
     assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
     assert(reportingRoutes.includes("'/operational-summary'"), 'OM operational reporting projection is missing.');
     assert(reportingClient.includes("om: ['operational', 'periodic', 'attendance']"), 'OM must not receive executive or Project P&L reporting tabs.');

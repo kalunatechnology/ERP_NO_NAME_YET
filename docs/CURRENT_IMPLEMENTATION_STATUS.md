@@ -93,6 +93,8 @@ Resolusi employee bersifat fail-closed dan aman untuk data transisi: backend men
 
 Production revealed PostgreSQL `42883 operator does not exist: text = uuid` in the Staff Dashboard BFF. The cause was mixed physical identity types, including `master_employee.user_id` introduced as `TEXT`, being compared with `${userId}::uuid` inside raw SQL. The query now compares IAM, assignment, owner, and employee identifiers through explicit text normalization. Migration `20260911090000_backfill_employee_user_mapping` first provisions the employee side only for IAM users already represented by an active project membership in the same tenant/company, links that membership, and backfills an existing exact employee relation. It never guesses from names or email. A read-only production audit confirmed `staff.dev@arsalynk.id` had one active project membership but no employee mapping before this migration.
 
+The first Hostinger attempt of this migration failed with PostgreSQL `42804` because its membership update assigned `employee.id::text` into UUID column `project_member.employee_id`. The assignment now remains UUID-to-UUID. Because Prisma records failed migrations, that deployment requires one `migrate resolve --rolled-back 20260911090000_backfill_employee_user_mapping` before retrying `migrate deploy`; editing SQL alone does not clear P3018.
+
 ## Database changes
 
 Six migration folders are present. The latest migration, `20260907010000_reporting_views`, creates these read-only projections:

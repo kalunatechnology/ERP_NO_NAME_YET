@@ -36,7 +36,7 @@ WHERE NOT EXISTS (
 -- Link active memberships to the exact employee created/found for the same
 -- tenant, company, and IAM user.
 UPDATE "project_member" AS member
-SET "employee_id" = employee."id"::text
+SET "employee_id" = employee."id"
 FROM "master_employee" AS employee
 WHERE member."employee_id" IS NULL
   AND member."user_id" IS NOT NULL
