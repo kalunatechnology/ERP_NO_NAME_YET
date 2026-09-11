@@ -56,7 +56,7 @@ Latest integration changes and unresolved release gates: [Integration hardening 
 | Backend enforcement | PASS | JWT, company, entitlement, active role, delegation, row scope, dan strict action tetap diperiksa backend |
 | Browser production smoke | PENDING DEPLOYMENT | Setelah deploy, ulangi login tiap persona dan pastikan Network tidak berisi expected-403 dari background loader |
 
-Catatan readiness: command Finance utama sudah tersedia. Production readiness tetap menunggu migrasi/status database target, deployment frontend/backend dari release yang sama, serta browser smoke Hostinger.
+Catatan readiness: log Hostinger 11 September 2026 membuktikan migration `20260910020000_billing_tax_scheme` telah diterapkan ke database target. Build yang sama kemudian berhenti pada Q11 karena test backend mengimpor dependency UI frontend yang tidak diinstal di backend; perbaikan telah dibuat di source. Production readiness tetap menunggu deployment frontend/backend dari release yang sama serta browser smoke Hostinger.
 
 Status **PASS lokal** bukan bukti bahwa build terbaru sudah aktif di Hostinger. Release baru dianggap siap setelah frontend dan backend berasal dari commit/build yang sama, user melakukan login ulang untuk menyegarkan `delegated_modules`, dan browser smoke pada domain produksi lulus.
 

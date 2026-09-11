@@ -14,7 +14,7 @@ Status: working-tree implementation, NOT production verified. This addendum supe
 
 ## Migration and production
 
-Apply `20260910020000_billing_tax_scheme` before starting the updated backend. Local Prisma generation succeeds. Both normal and escalated `prisma migrate status` against the configured Supabase direct host returned `Schema engine error`. DNS inspection found the direct Supabase hostname is IPv6-only from this environment, while the pooler resolves over IPv4 but its database port is unreachable here. This is consistent with running the direct migration from the IPv6-capable Hostinger build environment, but it is not proof that production has been migrated. No successful production migration, database change, Hostinger deployment or authenticated browser smoke is claimed. Do not mark migration applied manually.
+The Hostinger build log dated 11 September 2026 confirms that `20260910020000_billing_tax_scheme` was applied successfully through `prisma migrate deploy`. A subsequent build then failed at the backend Q11 test because it imported a frontend UI utility and Hostinger installs only backend dependencies. The gate is now dependency-isolated; redeploy the same backend release. `migrate deploy` is idempotent and will not reapply the completed migration. Authenticated browser smoke remains required before production acceptance.
 
 ## Verification limits
 

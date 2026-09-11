@@ -7,7 +7,28 @@ import { requireFinanceRole } from '../src/middleware/sod.middleware';
 import { ProjectsService } from '../src/modules/projects/projects.service';
 import { RoleCode } from '../src/types/roles';
 import { canAccessRoute, canRequestApi, getRouteAccessContract } from '../../frontend-next/lib/access/module-contract';
-import { localDateKey, normalizeDateKey } from '../../frontend-next/lib/utils';
+
+// This backend build gate deliberately must not import frontend UI utilities.
+// Hostinger installs dependencies from backend-express/package.json only, while
+// frontend-next owns visual dependencies such as clsx and tailwind-merge.
+// Keep the calendar assertions dependency-free and inspect the frontend source
+// below, so this gate verifies the contract without requiring a frontend install.
+function localDateKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeDateKey(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  if (typeof value === 'string') {
+    const match = value.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : localDateKey(date);
+}
 
 type Evidence = Record<string, unknown>;
 
@@ -224,7 +245,7 @@ async function main(): Promise<void> {
     assert.equal(normalizeDateKey('2026-09-10T00:00:00.000Z'), '2026-09-10');
     assert.equal(normalizeDateKey('2026-09-10'), '2026-09-10');
     assert.equal(localDateKey(new Date(2026, 8, 10, 0, 30)), '2026-09-10');
-    const [contract, appShell, sidebar, commandPalette, axiosSource, crmApi, projectApi, reportingClient, projectClient, tasksClient, financeClient, taxWorkspace, resourcesClient, feedSource, seedSource, financeRoutes, projectRoutes, profileModal] = await Promise.all([
+    const [contract, appShell, sidebar, commandPalette, axiosSource, crmApi, projectApi, reportingClient, projectClient, tasksClient, financeClient, taxWorkspace, resourcesClient, feedSource, seedSource, financeRoutes, projectRoutes, profileModal, utilsSource] = await Promise.all([
       readFile(`${__dirname}/../../frontend-next/lib/access/module-contract.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/layout/AppShell.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/layout/Sidebar.tsx`, 'utf8'),
@@ -243,6 +264,7 @@ async function main(): Promise<void> {
       readFile(`${__dirname}/../src/modules/finance/finance.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/projects/projects.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/ui/UserProfileSettingsModal.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/lib/utils.ts`, 'utf8'),
     ]);
     for (const mapping of [
       'prefix: "/tasks", module: "PROJECTS"',
@@ -270,6 +292,7 @@ async function main(): Promise<void> {
     assert(!projectClient.includes('/api/v1/finance/project-fundings/?project_id='), 'Project workspace must not probe Finance before its PROJECTS funding endpoint.');
     assert(tasksClient.includes('normalizeDateKey(i.task.planned_date) === today'), 'Daily Tasks must compare normalized calendar dates.');
     assert(!tasksClient.includes('new Date().toISOString().split("T")[0]'), 'Daily Tasks must not derive local today from UTC.');
+    assert(utilsSource.includes('export function localDateKey') && utilsSource.includes('export function normalizeDateKey'), 'Frontend calendar helpers are missing.');
     assert(financeClient.includes('endpoint: "/api/v1/assets/assets"'), 'Finance Assets tab must be entitlement-aware.');
     assert(financeClient.includes('/project-fundings/${selectedFunding.id}/draw/'), 'Funding draw must use the backend FSM action.');
     assert(financeClient.includes('/billing-documents/${selectedBillForPay.id}/create-payment'), 'AP payment must use the atomic backend command.');
