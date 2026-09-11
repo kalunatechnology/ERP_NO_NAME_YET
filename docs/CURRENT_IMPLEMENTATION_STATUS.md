@@ -60,6 +60,10 @@ This design improves the current single-instance/local test path. A multi-instan
 
 Frontend treats project, Weekly/Daily Task, payment, tax, and asset dates as business calendar dates. `localDateKey` creates defaults from the browser timezone and `normalizeDateKey` converts both date-only and ISO DateTime API values to the same `YYYY-MM-DD` comparison key. Daily Tasks, Project Overview, and Dashboard therefore classify the same assigned task consistently. This is a frontend normalization change and requires no database migration.
 
+## Daily Task mutation contract — 11 September 2026
+
+Daily Task update memakai command `PATCH /api/v1/projects/daily-tasks/:id/update-progress`, bukan generic CRUD. Frontend hanya mengirim status, output, catatan, serta blocker; progress, owner, dan hierarki tidak pernah dikirim karena backend menghitungnya dari checklist dan proses assignment. Alias lama (`PENDING`, `ON_PROGRESS`, `DONE`) dinormalisasi ke status canonical (`IN_PROGRESS`, `COMPLETED`). Semua mutasi menyertakan `Idempotency-Key` otomatis dari Axios; build frontend dan backend harus dirilis bersama. Jika backend menolak request, UI menampilkan `detail` respons, bukan notifikasi generik atau sukses palsu.
+
 ## Database changes
 
 Six migration folders are present. The latest migration, `20260907010000_reporting_views`, creates these read-only projections:

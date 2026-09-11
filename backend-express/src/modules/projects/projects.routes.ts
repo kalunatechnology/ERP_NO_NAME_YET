@@ -1114,6 +1114,9 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     } else if (!data.status) {
       data.status = 'IN_PROGRESS';
     }
+    if (!['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(String(data.status))) {
+      throw new ValidationError('Status Daily Task tidak valid.');
+    }
     if (data.progress === undefined) data.progress = 0;
     return data;
   },

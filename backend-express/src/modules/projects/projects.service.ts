@@ -710,13 +710,21 @@ export class ProjectsService {
     return prisma.$transaction(async (tx) => {
       const { task, projectId } = await this.assertCanOperateDailyTask(dailyTaskId, user, companyId, tx);
 
-      let status = data.status ?? task.status;
-
-      if (data.status === 'COMPLETED' || data.status === 'DONE') {
-        status = 'COMPLETED';
-      } else if (data.status === 'NOT_STARTED') {
-        status = 'NOT_STARTED';
+      const requestedStatus = data.status === undefined ? undefined : String(data.status).trim().toUpperCase();
+      const statusAliases: Record<string, string> = {
+        PENDING: 'IN_PROGRESS',
+        ON_PROGRESS: 'IN_PROGRESS',
+        'IN PROGRESS': 'IN_PROGRESS',
+        IN_PROGRESS: 'IN_PROGRESS',
+        DONE: 'COMPLETED',
+        COMPLETED: 'COMPLETED',
+        NOT_STARTED: 'NOT_STARTED',
+        BLOCKED: 'BLOCKED',
+      };
+      if (requestedStatus && !statusAliases[requestedStatus]) {
+        throw new ValidationError('Status Daily Task tidak valid.');
       }
+      let status = requestedStatus ? statusAliases[requestedStatus] : task.status;
 
       const checklist = await tx.project_control_item.findMany({
         where: { daily_task_id: dailyTaskId, company_id: companyId },
@@ -736,11 +744,15 @@ export class ProjectsService {
           : completedChecklistCount > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
       }
 
-      let isBlocked = task.is_blocked;
+      // A BLOCKED status is a single operational state, never merely a label.
+      // Accept legacy callers that send status=BLOCKED, but require a reason so
+      // the task remains actionable and the resulting record is consistent.
+      let isBlocked = data.is_blocked !== undefined
+        ? Boolean(data.is_blocked)
+        : status === 'BLOCKED' ? true : task.is_blocked;
       let blockReason = task.block_reason;
 
       if (data.is_blocked !== undefined) {
-        isBlocked = Boolean(data.is_blocked);
         if (isBlocked) {
           status = 'BLOCKED';
           blockReason = data.block_reason ?? '';
@@ -748,6 +760,10 @@ export class ProjectsService {
           if (status === 'BLOCKED') status = progress > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
           blockReason = '';
         }
+      }
+      if (isBlocked) {
+        blockReason = String(data.block_reason ?? blockReason ?? '').trim();
+        if (!blockReason) throw new ValidationError('Alasan kendala wajib diisi saat Daily Task diblokir.');
       }
 
       const updated = await tx.project_daily_task.update({

@@ -290,6 +290,8 @@ async function main(): Promise<void> {
     assert(crmApi.includes('{ decision: "ACCEPTED" }') && crmApi.includes('decision: "REJECTED"'), 'CRM customer decision payload must follow the Sales API contract.');
     assert(!projectApi.includes('api.post("/api/v1/projects/tasks/"'), 'WBS create failures must not fall back into the generic task model.');
     assert(projectApi.includes('/assign-members'), 'Main Task assignment must use the registered backend action spelling.');
+    assert(projectApi.includes('DAILY_TASK_STATUS_ALIASES'), 'Daily Task write adapter must normalize legacy UI statuses.');
+    assert(projectApi.includes('Do not spread a UI object here'), 'Daily Task update payload must be allow-listed.');
     assert(projectApi.includes('assignee: payload.assignee_id || undefined'), 'Weekly Task must send an assignee user ID, not a display name.');
     assert(!projectApi.includes('assignee_name: payload.assignee_name'), 'Weekly Task payload must not send the frontend-only assignee name.');
     assert(reportingClient.includes('canRequestApi(\'/api/v1/finance/project-cost-entries/\''));
@@ -300,6 +302,7 @@ async function main(): Promise<void> {
     assert(tasksClient.includes('{canCreateDailyTask && <button'), 'Daily Task create action must be hidden when no valid backend scope exists.');
     assert(tasksClient.includes('{canOpenReporting && <Link'), 'Daily Tasks must not advertise an unauthorized Reporting route.');
     assert(tasksClient.includes('Task Submission') && tasksClient.includes('pendingSubmissionCount'), 'Daily Task submission must be an explicit user-journey section.');
+    assert(tasksClient.includes('getApiErrorDetail(error'), 'Daily Task failures must surface the backend validation detail.');
     assert(!tasksClient.includes('new Date().toISOString().split("T")[0]'), 'Daily Tasks must not derive local today from UTC.');
     assert(utilsSource.includes('export function localDateKey') && utilsSource.includes('export function normalizeDateKey'), 'Frontend calendar helpers are missing.');
     assert(financeClient.includes('endpoint: "/api/v1/assets/assets"'), 'Finance Assets tab must be entitlement-aware.');
@@ -314,6 +317,7 @@ async function main(): Promise<void> {
     assert(financeRoutes.includes("'/party-options'"));
     assert(financeRoutes.includes("'/payments/:id/execute'"));
     assert(projectRoutes.includes("'/dashboard/financial-summary'"));
+    assert(projectRoutes.includes("Status Daily Task tidak valid."), 'Daily Task creation must reject statuses outside the command contract.');
     assert(profileModal.includes('current_password'));
     assert(profileModal.includes('api.patch("/api/v1/auth/profile"'));
     assert(projectClient.includes('"executive", "om", "pm", "finance"'), 'Project financial visibility must use the normalized executive role.');

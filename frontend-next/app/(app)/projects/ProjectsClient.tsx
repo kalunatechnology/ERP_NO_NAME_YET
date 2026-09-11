@@ -27,7 +27,7 @@ import {
   assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers,
   fetchProjectFinancialPerformance,
   fetchProjectFundingRequests, submitProjectFundingRequest,
-  fetchProjectCustomers
+  fetchProjectCustomers, getApiErrorDetail
 } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn, localDateKey } from "@/lib/utils";
@@ -153,11 +153,11 @@ export default function ProjectsClient() {
     planned_date: localDateKey(),
     output_result: "",
     notes: "",
-    status: "ON_PROGRESS"
+    status: "IN_PROGRESS"
   });
 
   const [editDailyForm, setEditDailyForm] = useState({
-    status: "COMPLETED" as "PENDING" | "ON_PROGRESS" | "COMPLETED" | "DONE" | "BLOCKED",
+    status: "COMPLETED" as "NOT_STARTED" | "IN_PROGRESS" | "PENDING" | "ON_PROGRESS" | "COMPLETED" | "DONE" | "BLOCKED",
     progress: 100,
     output_result: "",
     notes: "",
@@ -683,7 +683,7 @@ export default function ProjectsClient() {
         planned_date: localDateKey(),
         output_result: "",
         notes: "",
-        status: "ON_PROGRESS"
+        status: "IN_PROGRESS"
       });
       setIsCreateDailyOpen(false);
       fetchProjects(true);
@@ -712,8 +712,8 @@ export default function ProjectsClient() {
       toast.success("Aktivitas harian dan progres berhasil diperbarui.");
       setIsEditDailyOpen(false);
       fetchProjects(true);
-    } catch {
-      toast.error("Gagal memperbarui aktivitas harian");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal memperbarui aktivitas harian."));
     }
   };
 
@@ -1472,7 +1472,7 @@ export default function ProjectsClient() {
                                                   planned_date: localDateKey(),
                                                   output_result: "",
                                                   notes: "",
-                                                  status: "ON_PROGRESS"
+                                                  status: "IN_PROGRESS"
                                                 });
                                                 setIsCreateDailyOpen(true);
                                               }}
@@ -2461,11 +2461,9 @@ export default function ProjectsClient() {
                 onChange={e => setDailyForm({ ...dailyForm, status: e.target.value })}
                 className="input text-xs"
               >
-                <option value="ON_PROGRESS">On Progress (Sedang Dikerjakan)</option>
+                <option value="IN_PROGRESS">On Progress (Sedang Dikerjakan)</option>
                 <option value="NOT_STARTED">Not done yet (Belum Dimulai)</option>
                 <option value="COMPLETED">Selesai (Completed 100%)</option>
-                <option value="BLOCKED">Terkendala (Blocked)</option>
-                <option value="REVIEW">In Review</option>
               </select>
             </div>
             <div>

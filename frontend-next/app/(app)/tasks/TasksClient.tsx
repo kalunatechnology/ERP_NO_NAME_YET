@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useDeferredValue } from "react";
 import Link from "next/link";
 import { cn, formatDate, getStatusColor, localDateKey, normalizeDateKey } from "@/lib/utils";
-import { loadAllProjects, Project, DailyTask, updateDailyTask, createDailyTask } from "@/lib/api/project.api";
+import { loadAllProjects, Project, DailyTask, DailyTaskStatusValue, DailyTaskUpdatePayload, updateDailyTask, createDailyTask, getApiErrorDetail } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckCircle2, Search, Check, Layers, RefreshCw,
@@ -42,12 +42,13 @@ function QuickEdit({
   task, onSave, onClose,
 }: {
   task: DailyTask;
-  onSave: (id: string|number, patch: Partial<DailyTask>) => Promise<void>;
+  onSave: (id: string|number, patch: DailyTaskUpdatePayload) => Promise<void>;
   onClose: () => void;
 }) {
   const [output, setOutput] = useState(task.output_result || "");
   const [notes, setNotes] = useState(task.notes || "");
-  const [status, setStatus] = useState(task.status || "ON_PROGRESS");
+  const [status, setStatus] = useState(task.status || "IN_PROGRESS");
+  const [blockReason, setBlockReason] = useState(task.block_reason || "");
   const [saving, setSaving] = useState(false);
 
 /**
@@ -58,9 +59,20 @@ function QuickEdit({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleSave = async () => {
+    if (status === "BLOCKED" && !blockReason.trim()) {
+      toast.error("Alasan kendala wajib diisi sebelum task ditandai terblokir.");
+      return;
+    }
     setSaving(true);
     try {
-      await onSave(task.id, { output_result: output, notes, status });
+      await onSave(task.id, {
+        output_result: output,
+        notes,
+        status,
+        ...(status === "BLOCKED"
+          ? { is_blocked: true, block_reason: blockReason.trim() }
+          : task.is_blocked ? { is_blocked: false, block_reason: "" } : {}),
+      });
       onClose();
     } finally {
       setSaving(false);
@@ -113,17 +125,28 @@ function QuickEdit({
           </div>
           <div>
             <label className="text-xs font-semibold text-text-secondary mb-1.5 block">Status</label>
-            <select
+          <select
               value={status}
-              onChange={e => setStatus(e.target.value as "PENDING" | "ON_PROGRESS" | "COMPLETED" | "BLOCKED" | "DONE")}
+              onChange={e => setStatus(e.target.value as DailyTaskStatusValue)}
               className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
             >
-              <option value="PENDING">PENDING</option>
-              <option value="ON_PROGRESS">ON_PROGRESS</option>
+              <option value="IN_PROGRESS">IN_PROGRESS</option>
               <option value="COMPLETED">COMPLETED</option>
               <option value="BLOCKED">BLOCKED</option>
-            </select>
+          </select>
+        </div>
+        {status === "BLOCKED" && (
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-text-secondary mb-1.5 block">Alasan Kendala</label>
+            <textarea
+              rows={2}
+              value={blockReason}
+              onChange={e => setBlockReason(e.target.value)}
+              placeholder="Jelaskan hambatan dan kebutuhan tindak lanjut..."
+              className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green resize-none"
+            />
           </div>
+        )}
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
@@ -661,13 +684,9 @@ export default function TasksClient() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-  const handleSaveEdit = async (id: string | number, patch: Partial<DailyTask>) => {
-    // 1. Optimistic Update Local UI Immediately
-    updateLocalDailyTask(id, patch);
-    toast.success("Task berhasil diperbarui!");
-    setEditingTask(null);
-
-    // 2. Sync to Backend in Background
+  const handleSaveEdit = async (id: string | number, patch: DailyTaskUpdatePayload) => {
+    // Persist before changing the UI. A Daily Task update is a transaction and
+    // must never look successful when the backend rejected it.
     try {
       const updated = await updateDailyTask(id, patch);
       updateLocalDailyTask(id, {
@@ -675,9 +694,10 @@ export default function TasksClient() {
         status: updated.status,
         progress: Number(updated.progress ?? 0),
       });
-    } catch {
-      toast.error("Gagal menyimpan perubahan ke server.");
-      fetchTasks(true);
+      toast.success("Task berhasil diperbarui.");
+      setEditingTask(null);
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal menyimpan perubahan ke server."));
     }
   };
 

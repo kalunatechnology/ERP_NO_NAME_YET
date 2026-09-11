@@ -91,13 +91,49 @@ export interface DailyTask {
   title?: string;
   activity_input?: string;
   output_result?: string;
-  status: "PENDING" | "ON_PROGRESS" | "COMPLETED" | "DONE" | "BLOCKED";
+  status: DailyTaskStatusValue;
   progress?: number;
   notes?: string;
   owner_name?: string;
   owner_id?: string | number;
   is_blocked?: boolean;
   block_reason?: string;
+}
+
+/** Canonical states returned by the Daily Task command endpoint. */
+export type DailyTaskStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
+/** Legacy aliases are read-compatible only; write adapters normalize them. */
+export type DailyTaskStatusValue = DailyTaskStatus | "PENDING" | "ON_PROGRESS" | "DONE";
+
+/**
+ * Mutable fields accepted by the dedicated Daily Task execution command.
+ * Progress, hierarchy, and ownership are intentionally absent: those values are
+ * owned by checklist completion and the audited assignment/transfer actions.
+ */
+export type DailyTaskUpdatePayload = Pick<Partial<DailyTask>, "output_result" | "notes" | "is_blocked" | "block_reason"> & {
+  status?: DailyTaskStatusValue;
+};
+
+const DAILY_TASK_STATUS_ALIASES: Record<string, DailyTaskStatus> = {
+  PENDING: "IN_PROGRESS",
+  ON_PROGRESS: "IN_PROGRESS",
+  IN_PROGRESS: "IN_PROGRESS",
+  DONE: "COMPLETED",
+  COMPLETED: "COMPLETED",
+  NOT_STARTED: "NOT_STARTED",
+  BLOCKED: "BLOCKED",
+};
+
+/** Returns the backend's typed detail so mutation failures are actionable in the UI. */
+export function getApiErrorDetail(error: unknown, fallback: string): string {
+  const response = (error as { response?: { data?: { detail?: unknown; error?: unknown } } })?.response?.data;
+  return typeof response?.detail === "string"
+    ? response.detail
+    : typeof response?.error === "string"
+      ? response.error
+      : error instanceof Error && error.message
+        ? error.message
+        : fallback;
 }
 
 export interface Task {
@@ -636,17 +672,22 @@ export async function createDailyTask(payload: {
  * External dependency: calls the owner-only Daily Task progress action. Authentication, company scope, timeout, and idempotency are inherited from the shared Axios client.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function updateDailyTask(id: string | number, payload: Partial<DailyTask>) {
-  const normStatus = (payload.status === "ON_PROGRESS" || payload.status === "PENDING")
-    ? "IN_PROGRESS"
-    : (payload.status === "DONE" || payload.status === "COMPLETED")
-    ? "COMPLETED"
-    : payload.status;
+export async function updateDailyTask(id: string | number, payload: DailyTaskUpdatePayload) {
+  const requestedStatus = payload.status ? DAILY_TASK_STATUS_ALIASES[payload.status] : undefined;
+  if (payload.status && !requestedStatus) {
+    throw new Error("Status Daily Task tidak dikenali.");
+  }
 
-  const cleanPayload = {
-    ...payload,
-    ...(normStatus ? { status: normStatus } : {})
-  };
+  // Do not spread a UI object here. This endpoint is a domain command, not a
+  // generic CRUD endpoint. Keeping the payload allow-listed prevents old page
+  // state (such as manual `progress`, task IDs, or hierarchy fields) from
+  // leaking into the backend contract.
+  const cleanPayload: Record<string, unknown> = {};
+  if (requestedStatus) cleanPayload.status = requestedStatus;
+  if (payload.output_result !== undefined) cleanPayload.output_result = payload.output_result;
+  if (payload.notes !== undefined) cleanPayload.notes = payload.notes;
+  if (payload.is_blocked !== undefined) cleanPayload.is_blocked = payload.is_blocked;
+  if (payload.block_reason !== undefined) cleanPayload.block_reason = payload.block_reason;
   const { data } = await api.patch(`/api/v1/projects/daily-tasks/${id}/update-progress`, cleanPayload);
   return data;
 }
