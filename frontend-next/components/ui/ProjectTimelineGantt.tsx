@@ -51,23 +51,23 @@ export function ProjectTimelineGantt({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#E5E9E2] rounded-2xl p-5 sm:p-7 shadow-xs select-none",
+        "w-full bg-white border border-[#EFEFEF] rounded-2xl p-5 sm:p-7 shadow-xs select-none",
         className
       )}
     >
       {/* ── Card Header ── */}
       <div className="flex items-center justify-between gap-4 mb-5 pb-2 border-b border-gray-100/80">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-[#F0FEE0] flex items-center justify-center text-[#275433] shadow-2xs flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[#EAF6FF] flex items-center justify-center text-[#2649B3] shadow-2xs flex-shrink-0">
             <Calendar size={20} strokeWidth={2.2} />
           </div>
           <div className="min-w-0">
-            <h3 className="text-base sm:text-lg font-extrabold text-[#0E341F] tracking-tight truncate">
+            <h3 className="text-base sm:text-lg font-extrabold text-[#090909] tracking-tight truncate">
               {title}
             </h3>
             {projectName && (
-              <p className="text-2xs text-[#637566] font-medium mt-0.5 truncate">
-                Proyek: <strong className="text-[#0E341F]">{projectName}</strong> &bull; Jadwal WBS Mingguan (W1–W{totalWeeks})
+              <p className="text-2xs text-[#4F5050] font-medium mt-0.5 truncate">
+                Proyek: <strong className="text-[#090909]">{projectName}</strong> &bull; Jadwal WBS Mingguan (W1–W{totalWeeks})
               </p>
             )}
           </div>
@@ -89,11 +89,11 @@ export function ProjectTimelineGantt({
         <div className="w-full overflow-x-auto no-scrollbar">
           <div className="min-w-[620px] sm:min-w-[700px] flex flex-col">
             {/* Header Scale Grid */}
-            <div className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center pb-2.5 border-b border-[#EEF2E8]">
-              <span className="text-xs font-bold text-[#637566] uppercase tracking-wider pl-1">
+            <div className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center pb-2.5 border-b border-[#EFEFEF]">
+              <span className="text-xs font-bold text-[#4F5050] uppercase tracking-wider pl-1">
                 Paket Kerja / Task
               </span>
-              <div className="grid grid-cols-8 gap-2 text-center text-2xs sm:text-xs font-extrabold text-[#637566] px-1">
+              <div className="grid grid-cols-8 gap-2 text-center text-2xs sm:text-xs font-extrabold text-[#4F5050] px-1">
                 {weeks.map((w) => (
                   <span key={w} className="tracking-wide">
                     {w}
@@ -103,7 +103,7 @@ export function ProjectTimelineGantt({
             </div>
 
             {/* Task Rows */}
-            <div className="flex flex-col divide-y divide-[#F4F6F1] py-1">
+            <div className="flex flex-col divide-y divide-[#FDFDFD] py-1">
               {tasks.map((task) => {
                 const colStart = Math.min(Math.max(1, task.startWeek), totalWeeks);
                 const spanCount = Math.min(
@@ -118,7 +118,7 @@ export function ProjectTimelineGantt({
                     key={task.id}
                     onMouseEnter={() => setHoveredTask(task)}
                     onMouseLeave={() => setHoveredTask(null)}
-                    className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center py-2 px-2 -mx-2 rounded-xl hover:bg-[#F9FAF7] transition-all group"
+                    className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center py-2 px-2 -mx-2 rounded-xl hover:bg-[#EAF6FF] transition-all group"
                   >
                     {/* Left Column: Task Name with Indicator Dot */}
                     <div className="flex items-center gap-2.5 min-w-0 pr-2">
@@ -126,14 +126,14 @@ export function ProjectTimelineGantt({
                         className={cn(
                           "w-2.5 h-2.5 rounded-full flex-shrink-0 transition-transform group-hover:scale-125",
                           isCompleted
-                            ? "bg-[#275433]"
+                            ? "bg-[#2649B3]"
                             : task.progress > 0
-                            ? "bg-[#5A861F]"
+                            ? "bg-[#294BB2]"
                             : "bg-[#C7C7C7]"
                         )}
                       />
                       <span
-                        className="text-xs sm:text-sm font-bold text-[#0E341F] truncate group-hover:text-[#275433] transition-colors"
+                        className="text-xs sm:text-sm font-bold text-[#090909] truncate group-hover:text-[#2649B3] transition-colors"
                         title={task.name}
                       >
                         {task.name}
@@ -147,7 +147,7 @@ export function ProjectTimelineGantt({
                         {weeks.map((_, i) => (
                           <div
                             key={i}
-                            className="bg-[#F2F5EE] rounded-full h-full w-full opacity-80"
+                            className="bg-[#FDFDFD] rounded-full h-full w-full opacity-80"
                           />
                         ))}
                       </div>
@@ -162,12 +162,12 @@ export function ProjectTimelineGantt({
                           }}
                         >
                           {/* Background Bar Span */}
-                          <div className="absolute inset-0 bg-[#F0FEE0] rounded-full" />
+                          <div className="absolute inset-0 bg-[#EAF6FF] rounded-full" />
 
                           {/* Progress Fill */}
                           {task.progress > 0 ? (
                             <div
-                              className="relative h-full bg-[#275433] rounded-full flex items-center justify-end px-2.5 transition-all duration-500 shadow-2xs min-w-[34px]"
+                              className="relative h-full bg-[#2649B3] rounded-full flex items-center justify-end px-2.5 transition-all duration-500 shadow-2xs min-w-[34px]"
                               style={{ width: `${Math.min(100, Math.max(10, task.progress))}%` }}
                             >
                               <span className="text-[10px] sm:text-[11px] font-black text-white leading-none select-none tracking-tight">
@@ -177,7 +177,7 @@ export function ProjectTimelineGantt({
                           ) : (
                             /* 0% Progress Indicator */
                             <div className="relative h-full w-full flex items-center px-1.5 gap-1.5">
-                              <div className="w-3.5 h-3.5 rounded-full bg-[#275433] flex items-center justify-center flex-shrink-0 shadow-2xs">
+                              <div className="w-3.5 h-3.5 rounded-full bg-[#2649B3] flex items-center justify-center flex-shrink-0 shadow-2xs">
                                 <div className="w-1.5 h-1.5 rounded-full bg-white" />
                               </div>
                               <span className="text-[10px] font-bold text-[#2E8CFF] select-none">
@@ -198,10 +198,10 @@ export function ProjectTimelineGantt({
 
       {/* Detailed Hover Card Footer */}
       {hoveredTask && (
-        <div className="mt-4 pt-3 border-t border-[#EEF2E8] flex flex-wrap items-center justify-between gap-3 text-xs text-[#4A5D4E] animate-fadeIn">
+        <div className="mt-4 pt-3 border-t border-[#EFEFEF] flex flex-wrap items-center justify-between gap-3 text-xs text-[#4F5050] animate-fadeIn">
           <div className="flex items-center gap-2">
-            <span className="font-extrabold text-[#0E341F]">{hoveredTask.name}</span>
-            <span className="text-3xs bg-[#F0FEE0] text-[#275433] px-2 py-0.5 rounded-full font-bold border border-[#D5ECC2]">
+            <span className="font-extrabold text-[#090909]">{hoveredTask.name}</span>
+            <span className="text-3xs bg-[#EAF6FF] text-[#2649B3] px-2 py-0.5 rounded-full font-bold border border-[#9FD6FF]">
               Minggu {hoveredTask.startWeek} – Minggu {hoveredTask.endWeek}
             </span>
           </div>
@@ -212,7 +212,7 @@ export function ProjectTimelineGantt({
               </span>
             )}
             <span>
-              Progres Realisasi: <strong className="text-[#275433]">{hoveredTask.progress}%</strong>
+              Progres Realisasi: <strong className="text-[#2649B3]">{hoveredTask.progress}%</strong>
             </span>
           </div>
         </div>

@@ -177,7 +177,7 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
         label: n.title,
         sublabel: n.description || (n.actor?.full_name ? `Dari ${n.actor.full_name}` : undefined),
         time: n.formatted_time || timeAgo(n.created_at),
-        color: n.category === "ACCESS_REQUEST" ? "#EF4444" : n.category === "STATUS_UPDATE" ? "#F59E0B" : "#5A861F",
+        color: n.category === "ACCESS_REQUEST" ? "#EF4444" : n.category === "STATUS_UPDATE" ? "#F59E0B" : "#294BB2",
         category: n.category === "ACCESS_REQUEST" ? "pm" : n.category === "STATUS_UPDATE" ? "crm" : "general",
         href: n.target_url || "/dashboard",
       }));
@@ -205,13 +205,13 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
           label: `${actorName} ${actionText}`,
           sublabel: a.target_name || undefined,
           time: a.formatted_time || timeAgo(a.created_at),
-          color: "#5A861F",
+          color: "#294BB2",
           category: "general",
           href: a.target_url || "/dashboard",
         };
       });
 
-      const PASTEL_COLORS = ["#F0FEE0", "#E8F5E9", "#F3E5F5", "#E3F2FD", "#FFF9C4", "#FFECB3"];
+      const PASTEL_COLORS = ["#EAF6FF", "#EAF6FF", "#F3E5F5", "#E3F2FD", "#FFF9C4", "#FFECB3"];
 /**
  * contacts adapts a frontend operation to its HTTP API contract.
  *
@@ -362,7 +362,7 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
       label: `Proposal Termin ${formatMoney(p.amount)}`,
       sublabel: `Menunggu approval & faktur`,
       time: timeAgo(p.created_at),
-      color: "#5A861F",
+      color: "#294BB2",
       category: "fin",
       href: "/finance",
     });
@@ -374,7 +374,7 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
       label: `Deal: ${getDealLabel(d)}`,
       sublabel: `${formatMoney(d.expected_revenue || d.amount)} · ${d.stage || "PROSPECTING"}`,
       time: timeAgo(d.created_at),
-      color: "#5A861F",
+      color: "#294BB2",
       category: "crm",
       href: "/crm",
     });
@@ -388,7 +388,7 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
       label: `Menyelesaikan: ${getTaskLabel(t)}`,
       sublabel: `Proyek #${t.project}`,
       time: timeAgo(t.updated_at || t.created_at),
-      color: "#5A861F",
+      color: "#294BB2",
       category: "pm",
       href: "/projects",
     });
@@ -400,7 +400,7 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
       label: `${getCostLabel(c)}: ${formatMoney(c.amount)}`,
       sublabel: `${c.category || "OPERATIONAL"} · Proyek #${c.project}`,
       time: timeAgo(c.created_at),
-      color: "#5A861F",
+      color: "#294BB2",
       category: "fin",
       href: "/finance",
     });
@@ -412,13 +412,13 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
       label: `Proyek: ${getProjectLabel(p)}`,
       sublabel: `Lifecycle: ${p.status || "STARTED"} · ${p.progress || 0}%`,
       time: timeAgo(p.created_at),
-      color: "#5A861F",
+      color: "#294BB2",
       category: "pm",
       href: "/projects",
     });
   });
 
-  const PASTEL_COLORS = ["#F0FEE0", "#E8F5E9", "#F3E5F5", "#E3F2FD", "#FFF9C4", "#FFECB3"];
+  const PASTEL_COLORS = ["#EAF6FF", "#EAF6FF", "#F3E5F5", "#E3F2FD", "#FFF9C4", "#FFECB3"];
   const contacts: DynamicContact[] = [];
 
   // Contacts are intentionally never reconstructed from a generic user list.
@@ -506,7 +506,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
           title: n.title || "Notifikasi Baru",
           snippet: n.description || n.title,
           isHighlighted: idx === 0 && !n.is_read,
-          categoryColor: idx === 0 ? "#22C55E" : "#9CA3AF",
+          categoryColor: idx === 0 ? "#294BB2" : "#9CA3AF",
           href: n.target_url || "/projects",
         });
       });
@@ -526,7 +526,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
           title: `${p.project_name || p.name}${clientText}`,
           snippet: `Progres berjalan ${p.progress_percent || 0}% · Status: ${p.status || "STARTED"}`,
           isHighlighted: alerts.length === 0,
-          categoryColor: "#22C55E",
+          categoryColor: "#294BB2",
           href: `/projects`,
         });
       });
@@ -542,7 +542,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
         title: topCost.description || "Pengeluaran Operasional Proyek",
         snippet: `Alokasi biaya sebesar ${formatMoney(topCost.amount || 0)} tercatat pada modul keuangan.`,
         isHighlighted: false,
-        categoryColor: "#22C55E",
+        categoryColor: "#294BB2",
         href: "/finance",
       });
     }

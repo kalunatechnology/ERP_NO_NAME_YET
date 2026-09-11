@@ -129,12 +129,12 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
   return (
     <aside
       className={cn(
-        "flex flex-col bg-white border-r border-[#E5E9E2] flex-shrink-0 z-40 select-none",
+        "flex flex-col bg-white border-r border-[#EFEFEF] flex-shrink-0 z-40 select-none",
         isMobile ? "w-68 h-full shadow-2xl" : "w-68 h-screen"
       )}
     >
       {/* ── Fixed User Profile Header (Compact 68px) ── */}
-      <div className="h-[68px] px-3.5 pt-2.5 pb-2 flex flex-col justify-center border-b border-[#E5E9E2] flex-shrink-0 bg-white relative">
+      <div className="h-[68px] px-3.5 pt-2.5 pb-2 flex flex-col justify-center border-b border-[#EFEFEF] flex-shrink-0 bg-white relative">
         {/* Mobile close button */}
         {isMobile && onClose && (
           <button
@@ -148,12 +148,12 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
         <div className="flex items-center gap-2.5">
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shadow-2xs"
-            style={{ background: "linear-gradient(135deg, #7CDA24 0%, #3E9B4B 100%)" }}
+            style={{ background: "linear-gradient(135deg, #42ACFB 0%, #2649B3 100%)" }}
           >
             <span className="text-[11px] font-extrabold text-white leading-none">{initial}</span>
           </div>
           <div className="flex flex-col min-w-0 flex-1">
-            <span className="text-xs font-extrabold text-[#0E341F] truncate leading-tight">{displayName}</span>
+            <span className="text-xs font-extrabold text-[#090909] truncate leading-tight">{displayName}</span>
             <div className="mt-0.5 flex">
               <span
                 className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold leading-none"
@@ -171,7 +171,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
       <div className="flex-1 px-2.5 py-2.5 flex flex-col gap-2.5 overflow-y-auto no-scrollbar">
         {/* Navigation Section */}
         <div className="flex flex-col gap-0.5">
-          <p className="text-[10px] font-extrabold text-[#768779] uppercase tracking-wider px-2 mb-1">
+          <p className="text-[10px] font-extrabold text-[#4F5050] uppercase tracking-wider px-2 mb-1">
             Menu
           </p>
           <nav className="flex flex-col gap-0.5" role="navigation">
@@ -184,30 +184,30 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
                   className={cn(
                     "flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 relative h-8",
                     isActive
-                      ? "bg-[#F0FEE0] text-[#275433] font-bold shadow-2xs border border-[#D5ECC2]"
-                      : "text-[#4A5D4E] hover:bg-[#F0FEE0]/50 hover:text-[#275433]"
+                      ? "bg-[#EAF6FF] text-[#2649B3] font-bold shadow-2xs border border-[#9FD6FF]"
+                      : "text-[#4F5050] hover:bg-[#EAF6FF]/50 hover:text-[#2649B3]"
                   )}
                   aria-current={isActive ? "page" : undefined}
                 >
                   {isActive && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-3.5 bg-[#275433] rounded-r-full" />
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-3.5 bg-[#2649B3] rounded-r-full" />
                   )}
                   <Icon
                     size={14}
                     className={cn(
                       "flex-shrink-0 transition-colors",
-                      isActive ? "text-[#275433]" : "text-[#768779]"
+                      isActive ? "text-[#2649B3]" : "text-[#4F5050]"
                     )}
                     aria-hidden="true"
                   />
                   <span className="flex-1 truncate text-xs">{label}</span>
                   {badge && (
-                    <span className="ml-auto px-1.5 py-0.2 rounded-full bg-[#275433] text-white text-[9px] font-bold leading-none">
+                    <span className="ml-auto px-1.5 py-0.2 rounded-full bg-[#2649B3] text-white text-[9px] font-bold leading-none">
                       {badge}
                     </span>
                   )}
                   {isActive && (
-                    <ChevronRight size={11} className="text-[#275433] opacity-60 flex-shrink-0 ml-auto" />
+                    <ChevronRight size={11} className="text-[#2649B3] opacity-60 flex-shrink-0 ml-auto" />
                   )}
                 </Link>
               );
@@ -217,9 +217,9 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
 
         {/* Recently Opened Items */}
         {recentItems.length > 0 && (
-          <div className="flex flex-col gap-1 pt-2 border-t border-[#EEF2E8]">
-            <p className="text-[10px] font-extrabold text-[#768779] uppercase tracking-wider px-2 flex items-center gap-1.5 mb-0.5">
-              <Clock size={10} className="text-[#5A861F]" />
+          <div className="flex flex-col gap-1 pt-2 border-t border-[#EFEFEF]">
+            <p className="text-[10px] font-extrabold text-[#4F5050] uppercase tracking-wider px-2 flex items-center gap-1.5 mb-0.5">
+              <Clock size={10} className="text-[#294BB2]" />
               <span>Recently Opened</span>
             </p>
             <div className="flex flex-col gap-0.5">
@@ -227,9 +227,9 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
                 <Link
                   key={item.id}
                   href={item.target_url || "/dashboard"}
-                  className="flex items-center gap-2 px-2.5 py-1 rounded-md text-[11px] font-medium text-[#4A5D4E] hover:bg-[#F0FEE0]/40 hover:text-[#0E341F] transition-colors h-6"
+                  className="flex items-center gap-2 px-2.5 py-1 rounded-md text-[11px] font-medium text-[#4F5050] hover:bg-[#EAF6FF]/40 hover:text-[#090909] transition-colors h-6"
                 >
-                  <FileText size={11} className="text-[#768779] flex-shrink-0" />
+                  <FileText size={11} className="text-[#4F5050] flex-shrink-0" />
                   <span className="truncate flex-1">{item.title}</span>
                 </Link>
               ))}
@@ -239,16 +239,16 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
       </div>
 
       {/* ── Fixed Footer Section matching Screenshot Design ── */}
-      <div className="px-3 pb-3 pt-2 border-t border-[#E5E9E2] flex flex-col gap-2.5 flex-shrink-0 bg-white">
+      <div className="px-3 pb-3 pt-2 border-t border-[#EFEFEF] flex flex-col gap-2.5 flex-shrink-0 bg-white">
         {/* Chat with MarBot button */}
         <button
           type="button"
           onClick={onChatbotOpen}
-          className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#EDFBD8] hover:bg-[#E2F7C3] border border-[#D7F2AB] text-[#244E1C] font-semibold text-xs transition-all shadow-2xs cursor-pointer active:scale-98"
+          className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#EAF6FF] hover:bg-[#EAF6FF] border border-[#9FD6FF] text-[#2649B3] font-semibold text-xs transition-all shadow-2xs cursor-pointer active:scale-98"
           id="sidebar-marbot-btn"
           title="Chat with MarBot"
         >
-          <div className="w-5 h-5 rounded-full bg-[#587C29] flex items-center justify-center text-white flex-shrink-0 shadow-2xs">
+          <div className="w-5 h-5 rounded-full bg-[#294BB2] flex items-center justify-center text-white flex-shrink-0 shadow-2xs">
             <svg
               width="12"
               height="12"
@@ -272,7 +272,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
         <button
           type="button"
           onClick={() => logout()}
-          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#597F22] hover:bg-[#4D6F1D] text-white font-semibold text-xs transition-all shadow-2xs w-full cursor-pointer active:scale-98"
+          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#2649B3] hover:bg-[#2649B3] text-white font-semibold text-xs transition-all shadow-2xs w-full cursor-pointer active:scale-98"
           id="sidebar-logout-btn"
           aria-label="Log Out"
         >
@@ -291,7 +291,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
             </div>
             <span className="font-extrabold text-sm tracking-tight text-[#0F172A]">Marka+</span>
           </div>
-          <span className="text-[10px] text-[#8C9B90] mt-0.5 font-medium">By Kaluna® 2026</span>
+          <span className="text-[10px] text-[#4F5050] mt-0.5 font-medium">By Kaluna® 2026</span>
         </div>
       </div>
     </aside>

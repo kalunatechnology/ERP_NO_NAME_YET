@@ -91,15 +91,15 @@ export function AppShell({ children }: AppShellProps) {
     const loginHref = `/login?callbackUrl=${encodeURIComponent(pathname)}`;
     return (
       <main className="flex min-h-screen items-center justify-center bg-bg-lighter p-6">
-        <section className="w-full max-w-md rounded-2xl border border-[#dbe7dc] bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e9f3e8] text-[#173f2a]">
+        <section className="w-full max-w-md rounded-2xl border border-[#EAF6FF] bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EAF6FF] text-[#2649B3]">
             <LogIn size={22} />
           </div>
-          <h1 className="mt-5 text-xl font-semibold text-[#173f2a]">Sesi Anda telah berakhir</h1>
-          <p className="mt-2 text-sm leading-6 text-[#68796d]">
+          <h1 className="mt-5 text-xl font-semibold text-[#2649B3]">Sesi Anda telah berakhir</h1>
+          <p className="mt-2 text-sm leading-6 text-[#4F5050]">
             Silakan masuk kembali untuk melanjutkan. Alamat halaman ini tetap dipertahankan.
           </p>
-          <a href={loginHref} className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-[#173f2a] px-5 text-sm font-semibold text-white hover:bg-[#0f3020]">
+          <a href={loginHref} className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-[#2649B3] px-5 text-sm font-semibold text-white hover:bg-[#090909]">
             Masuk kembali
           </a>
         </section>

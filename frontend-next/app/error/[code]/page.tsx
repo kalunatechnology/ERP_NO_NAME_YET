@@ -19,35 +19,47 @@ interface ErrorConfig {
 
 const ERROR_CONFIGS: Record<string, ErrorConfig> = {
   "401": {
-    title: "Session Ended!",
-    description: "Oops! We think you need to re-login",
-    buttonText: "Back to the Homepage →",
+    title: "Sesi Berakhir",
+    description: "Sesi Anda telah berakhir. Silakan masuk kembali untuk melanjutkan.",
+    buttonText: "Masuk Kembali →",
     buttonHref: "/login",
   },
   "403": {
-    title: "Access Restricted!",
-    description: "Oops! Anda tidak memiliki izin untuk membuka modul ini.",
-    buttonText: "Back to the Workspace →",
+    title: "Akses Ditolak",
+    description: "Akun Anda tidak memiliki izin untuk membuka halaman ini pada role yang sedang aktif.",
+    buttonText: "Kembali ke Dashboard →",
     buttonHref: "/dashboard",
   },
   "404": {
-    title: "Page Not Found!",
-    description: "Oops! The page you are looking for does not exist",
-    buttonText: "Back to the Homepage →",
+    title: "Halaman Tidak Ditemukan",
+    description: "Halaman yang Anda cari tidak tersedia atau alamatnya sudah berubah.",
+    buttonText: "Kembali ke Dashboard →",
+    buttonHref: "/dashboard",
+  },
+  "429": {
+    title: "Terlalu Banyak Permintaan",
+    description: "Permintaan Anda terlalu cepat atau terlalu banyak. Tunggu sebentar, lalu coba kembali.",
+    buttonText: "Kembali ke Dashboard →",
     buttonHref: "/dashboard",
   },
   "500": {
-    title: "Internal Server Error!",
-    description: "Oops! Terjadi kesalahan pada server kami.",
-    buttonText: "Back to the Workspace →",
+    title: "Terjadi Kesalahan Server",
+    description: "Server mengalami kendala saat memproses permintaan. Silakan coba kembali.",
+    buttonText: "Kembali ke Dashboard →",
+    buttonHref: "/dashboard",
+  },
+  "503": {
+    title: "Layanan Sedang Tidak Tersedia",
+    description: "Sistem sedang diperbarui atau sementara tidak tersedia. Silakan coba beberapa saat lagi.",
+    buttonText: "Kembali ke Dashboard →",
     buttonHref: "/dashboard",
   },
 };
 
 const DEFAULT_CONFIG: ErrorConfig = {
-  title: "Something Went Wrong!",
+  title: "Terjadi Kendala",
   description: "Terjadi kendala pada sistem. Silakan coba kembali.",
-  buttonText: "Back to the Workspace →",
+  buttonText: "Kembali ke Dashboard →",
   buttonHref: "/dashboard",
 };
 
@@ -73,11 +85,11 @@ export default function DynamicErrorPage({
       style={{ backgroundImage: `url('/Background_not_found.svg')` }}
     >
       <div className="z-10 flex flex-col items-center text-center max-w-md mx-auto">
-        <h1 className="text-7xl sm:text-8xl font-black text-[#52872A] tracking-tight leading-none">
+        <h1 className="text-7xl sm:text-8xl font-black text-[#2649B3] tracking-tight leading-none">
           {code}
         </h1>
 
-        <h2 className="mt-4 text-2xl sm:text-3xl font-bold text-[#3B611D]">
+        <h2 className="mt-4 text-2xl sm:text-3xl font-bold text-[#294BB2]">
           {config.title}
         </h2>
 
@@ -87,7 +99,7 @@ export default function DynamicErrorPage({
 
         <Link
           href={config.buttonHref}
-          className="mt-6 inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-[#52872A] hover:bg-[#437021] text-white text-sm font-medium transition-colors shadow-sm active:scale-95"
+          className="mt-6 inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-[#2649B3] hover:bg-[#294BB2] text-white text-sm font-medium transition-colors shadow-sm active:scale-95"
         >
           {config.buttonText}
         </Link>

@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useDeferredValue } from "react";
+import Link from "next/link";
 import { cn, formatDate, getStatusColor, localDateKey, normalizeDateKey } from "@/lib/utils";
-import { loadAllProjects, Project, DailyTask, updateDailyTask } from "@/lib/api/project.api";
+import { loadAllProjects, Project, DailyTask, updateDailyTask, createDailyTask } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckCircle2, Search, Check, Layers, RefreshCw,
   CalendarDays, AlertTriangle, Clock, ChevronDown, ChevronRight, Pencil, X, Save,
+  Plus, FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
+import { canAccessRoute } from "@/lib/access/module-contract";
 
 /* ── Status helpers ─────────────────────────────── */
 /**
@@ -139,6 +142,208 @@ function QuickEdit({
   );
 }
 
+/* ── Modal: Create Daily Task ────────────────────── */
+function NewDailyTaskModal({
+  isOpen,
+  onClose,
+  projects,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  projects: Project[];
+  onSuccess: () => Promise<void>;
+}) {
+  const [projectId, setProjectId] = useState<string>("");
+  const [weeklyTaskId, setWeeklyTaskId] = useState<string>("");
+  const [title, setTitle] = useState("");
+  const [plannedDate, setPlannedDate] = useState(localDateKey());
+  const [timeSlot, setTimeSlot] = useState("09.00 - 12.00");
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const selectedProject = useMemo(() => {
+    return projects.find(p => String(p.id) === String(projectId));
+  }, [projects, projectId]);
+
+  const weeklyOptions = useMemo(() => {
+    if (!selectedProject) return [];
+    const list: { id: string | number; label: string }[] = [];
+    (selectedProject.main_tasks || []).forEach(m => {
+      (m.weekly_tasks || m.weekly_plans || []).forEach(w => {
+        list.push({
+          id: w.id,
+          label: `${m.name || m.title || "Main Task"} — W#${w.week_number || 1}${w.target_description ? `: ${w.target_description}` : ""}`,
+        });
+      });
+    });
+    return list;
+  }, [selectedProject]);
+
+  useEffect(() => {
+    if (weeklyOptions.length > 0 && !weeklyTaskId) {
+      setWeeklyTaskId(String(weeklyOptions[0].id));
+    }
+  }, [weeklyOptions, weeklyTaskId]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectId) {
+      toast.error("Silakan pilih proyek terlebih dahulu.");
+      return;
+    }
+    if (!weeklyTaskId) {
+      toast.error("Silakan pilih target mingguan (WBS).");
+      return;
+    }
+    if (!title.trim()) {
+      toast.error("Nama / aktivitas tugas wajib diisi.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await createDailyTask({
+        weekly_task: weeklyTaskId,
+        planned_date: plannedDate,
+        time_slot: timeSlot,
+        title: title.trim(),
+        activity_input: title.trim(),
+        notes: notes.trim(),
+        status: "ON_PROGRESS",
+      });
+      toast.success("✓ Tugas harian berhasil dibuat!");
+      setTitle("");
+      setNotes("");
+      onClose();
+      await onSuccess();
+    } catch {
+      toast.error("Gagal membuat tugas harian. Pastikan Anda memiliki wewenang pada proyek ini.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl border border-text-tertiary w-full max-w-lg z-10 p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
+        <div className="flex items-start justify-between border-b border-gray-100 pb-3">
+          <div>
+            <h3 className="text-base font-bold text-brand-deep-green">Buat Tugas Harian Baru</h3>
+            <p className="text-xs text-text-secondary mt-0.5">Entri aktivitas harian terintegrasi dengan WBS proyek</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-text-secondary"><X size={16} /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+          <div>
+            <label className="text-xs font-semibold text-text-primary block mb-1">Proyek *</label>
+            <select
+              required
+              value={projectId}
+              onChange={e => {
+                setProjectId(e.target.value);
+                setWeeklyTaskId("");
+              }}
+              className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
+            >
+              <option value="">— Pilih Proyek —</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.project_code || p.code} — {p.project_name || p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-text-primary block mb-1">Target Mingguan (WBS) *</label>
+            <select
+              required
+              disabled={!projectId || weeklyOptions.length === 0}
+              value={weeklyTaskId}
+              onChange={e => setWeeklyTaskId(e.target.value)}
+              className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white disabled:bg-gray-50 disabled:text-text-secondary"
+            >
+              <option value="">
+                {!projectId ? "Pilih proyek terlebih dahulu" : weeklyOptions.length === 0 ? "Belum ada WBS mingguan di proyek ini" : "— Pilih Target Mingguan —"}
+              </option>
+              {weeklyOptions.map(w => (
+                <option key={w.id} value={w.id}>{w.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-text-primary block mb-1">Aktivitas / Task Harian *</label>
+            <input
+              type="text"
+              required
+              placeholder="Contoh: Instalasi panel distribusi lantai 2"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-text-primary block mb-1">Tanggal Pelaksanaan *</label>
+              <input
+                type="date"
+                required
+                value={plannedDate}
+                onChange={e => setPlannedDate(e.target.value)}
+                className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-text-primary block mb-1">Slot Waktu</label>
+              <select
+                value={timeSlot}
+                onChange={e => setTimeSlot(e.target.value)}
+                className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
+              >
+                <option value="08.00 - 12.00">Pagi (08.00 - 12.00)</option>
+                <option value="09.00 - 12.00">Pagi (09.00 - 12.00)</option>
+                <option value="13.00 - 17.00">Siang (13.00 - 17.00)</option>
+                <option value="18.00 - 21.00">Malam / Lembur</option>
+                <option value="Full Day">Sepanjang Hari</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-text-secondary block mb-1">Catatan / Rincian Pekerjaan (Opsional)</label>
+            <textarea
+              rows={2}
+              placeholder="Detail teknis atau alat yang dibutuhkan..."
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+            <button type="button" onClick={onClose} className="btn-ghost py-2 px-4 text-xs">Batal</button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="btn-primary py-2 px-5 text-xs gap-1.5 font-bold"
+            >
+              {submitting ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={14} />}
+              {submitting ? "Menyimpan…" : "Buat Task"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ── Task Row ───────────────────────────────────── */
 /**
  * TaskRow coordinates the UI behavior represented by this function.
@@ -195,7 +400,7 @@ function TaskRow({
             className={cn(
               "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
               !isAllowed && "cursor-not-allowed opacity-40 bg-gray-100",
-              isAllowed && isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
+              isAllowed && isDone ? "bg-brand-green border-brand-green text-white" : "border-gray-300 hover:border-brand-green"
             )}
             title={!isAllowed ? "Hanya PIC, Owner, atau PM yang dapat mengubah status" : (isDone ? "Buka kembali" : "Tandai selesai")}
           >
@@ -214,7 +419,7 @@ function TaskRow({
 
       {/* Output */}
       <td className="py-2.5 px-4 align-top max-w-40">
-        <span className={cn("text-xs", task.output_result ? "text-emerald-800" : "text-text-secondary italic text-2xs")}>
+        <span className={cn("text-xs", task.output_result ? "text-brand-deep-green" : "text-text-secondary italic text-2xs")}>
           {task.output_result || "Belum diisi"}
         </span>
       </td>
@@ -263,6 +468,7 @@ export default function TasksClient() {
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "grouped">("grouped");
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
+  const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   /* Track recently opened Tasks */
@@ -297,6 +503,37 @@ export default function TasksClient() {
   }, [user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+  /*
+   * The backend allows operational users to create Daily Tasks only below a
+   * Main Task assigned to them. Filter the selectable hierarchy up front so
+   * the UI cannot advertise or submit a mutation that the API must reject.
+   */
+  const creatableProjects = useMemo(() => {
+    if (isPM) return projects;
+    if (userRole !== "staff" || user?.id == null) return [];
+
+    const activeUserId = String(user.id);
+    return projects
+      .map((project) => ({
+        ...project,
+        main_tasks: (project.main_tasks || []).filter((mainTask) =>
+          (mainTask.assignments || []).some((assignment) =>
+            String(assignment.assignee_id ?? assignment.assignee ?? "") === activeUserId
+          )
+        ),
+      }))
+      .filter((project) => (project.main_tasks || []).length > 0);
+  }, [isPM, projects, user?.id, userRole]);
+
+  const canCreateDailyTask = creatableProjects.length > 0;
+  const canOpenReporting = canAccessRoute({
+    pathname: "/reporting",
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === "super_admin",
+  });
 
   /* Flatten all daily tasks */
   const allTasks = useMemo(() => {
@@ -452,6 +689,9 @@ export default function TasksClient() {
   }).length;
   const doneToday     = allTasks.filter(i => normalizeDateKey(i.task.planned_date) === today && ["COMPLETED","DONE"].includes(i.task.status || "")).length;
   const activeCount   = allTasks.filter(i => ["ON_PROGRESS","PENDING"].includes(i.task.status || "")).length;
+  const pendingSubmissionCount = allTasks.filter(({ task }) =>
+    !["COMPLETED", "DONE"].includes(task.status || "") || !String(task.output_result || "").trim()
+  ).length;
   const blockedCount  = allTasks.filter(i =>
     Boolean(i.task.is_blocked) ||
     i.task.status === "BLOCKED" ||
@@ -522,10 +762,27 @@ export default function TasksClient() {
             Daftar seluruh tugas harian Anda dari semua proyek (Cross-Project Daily View)
           </p>
         </div>
-        <button onClick={() => fetchTasks(true)} disabled={refreshing} className="btn-ghost text-xs gap-1.5 flex-shrink-0">
-          <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
-          {refreshing ? "Memuat..." : "Refresh"}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {canOpenReporting && <Link
+            href="/reporting?tab=periodic"
+            className="btn-ghost text-xs gap-1.5 flex-shrink-0 border border-gray-200"
+            title="Buka Laporan Berkala (Harian, Mingguan, Bulanan)"
+          >
+            <FileText size={13} />
+            <span>Laporan Berkala</span>
+          </Link>}
+          {canCreateDailyTask && <button
+            onClick={() => setIsNewTaskOpen(true)}
+            className="btn-primary text-xs gap-1.5 flex-shrink-0 font-semibold"
+          >
+            <Plus size={14} />
+            <span>+ Buat Task Harian</span>
+          </button>}
+          <button onClick={() => fetchTasks(true)} disabled={refreshing} className="btn-ghost text-xs gap-1.5 flex-shrink-0">
+            <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
+            {refreshing ? "Memuat..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {/* ── KPI Summary Strip ──────────────── */}
@@ -547,6 +804,22 @@ export default function TasksClient() {
           <div className="text-2xs text-text-secondary mt-0.5">Sedang Berjalan</div>
         </div>
       </div>
+
+      <section className="card rounded-xl p-4 border-l-4 border-brand-green" aria-labelledby="task-submission-title">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 id="task-submission-title" className="text-sm font-bold text-text-primary flex items-center gap-2">
+              <FileText size={16} className="text-brand-green" /> Task Submission
+            </h2>
+            <p className="mt-1 text-xs text-text-secondary">
+              Lengkapi output pekerjaan, catatan atau kendala, dan status aktual melalui aksi edit pada task Anda.
+            </p>
+          </div>
+          <button type="button" onClick={() => setActiveFilter("ALL")} className="btn-secondary px-3 py-1.5 text-xs">
+            {pendingSubmissionCount} perlu dilengkapi
+          </button>
+        </div>
+      </section>
 
       {/* ── Toolbar ────────────────────────── */}
       <div className="card rounded-xl p-3 flex items-center gap-3 flex-wrap">
@@ -665,6 +938,16 @@ export default function TasksClient() {
           onClose={() => setEditingTask(null)}
         />
       )}
+
+      {/* ── New Daily Task Modal ─────────── */}
+      {canCreateDailyTask && <NewDailyTaskModal
+        isOpen={isNewTaskOpen}
+        onClose={() => setIsNewTaskOpen(false)}
+        projects={creatableProjects}
+        onSuccess={async () => {
+          await fetchTasks(true);
+        }}
+      />}
     </div>
   );
 }

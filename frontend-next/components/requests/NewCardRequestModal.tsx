@@ -257,7 +257,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
       <div
-        className="relative w-full max-w-[880px] my-auto bg-white border border-[#DCE4DA] rounded-[28px] p-6 sm:p-8 shadow-2xl flex flex-col gap-6 animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-[880px] my-auto bg-white border border-[#EAF6FF] rounded-[28px] p-6 sm:p-8 shadow-2xl flex flex-col gap-6 animate-in zoom-in-95 duration-200"
         onClick={() => setIsSearchDropdownOpen(false)}
       >
         {/* Header INSIDE Modal Card */}
@@ -265,16 +265,16 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center gap-2 text-base sm:text-lg font-bold text-[#344432] hover:text-[#1E291D] transition-colors group"
+            className="flex items-center gap-2 text-base sm:text-lg font-bold text-[#2649B3] hover:text-[#2649B3] transition-colors group"
           >
-            <ChevronLeft size={22} className="text-[#5B7E25] group-hover:-translate-x-0.5 transition-transform" />
+            <ChevronLeft size={22} className="text-[#294BB2] group-hover:-translate-x-0.5 transition-transform" />
             <span>New Card Request</span>
           </button>
           
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#7B8B78] hover:text-[#2D3A2F] hover:bg-[#F3F7EE] transition-colors"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[#4F5050] hover:text-[#4F5050] hover:bg-[#FDFDFD] transition-colors"
           >
             <X size={20} />
           </button>
@@ -284,7 +284,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8 items-stretch">
           
           {/* ════════════ LEFT COLUMN (Col 1-7) ════════════ */}
-          <div className="md:col-span-7 flex flex-col gap-4 md:pr-6 md:border-r border-[#E2E8E0]">
+          <div className="md:col-span-7 flex flex-col gap-4 md:pr-6 md:border-r border-[#EFEFEF]">
             {errorMsg && (
               <div className="p-3 text-xs font-semibold rounded-xl bg-red-50 border border-red-200 text-red-700">
                 {errorMsg}
@@ -293,7 +293,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
 
             {/* 1. Request Type */}
             <div className="relative">
-              <label className="block text-xs font-semibold text-[#485649] mb-1.5">
+              <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
                 Request Type
               </label>
               <button
@@ -302,14 +302,14 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                   e.stopPropagation();
                   setIsTypeDropdownOpen(!isTypeDropdownOpen);
                 }}
-                className="w-full rounded-[14px] border border-[#D5DCD4] bg-white px-4 py-2.5 flex items-center justify-between text-xs font-medium text-[#2F3D2C] hover:border-[#5B7E25]/60 transition-colors"
+                className="w-full rounded-[14px] border border-[#D9D9D9] bg-white px-4 py-2.5 flex items-center justify-between text-xs font-medium text-[#4F5050] hover:border-[#294BB2]/60 transition-colors"
               >
                 <span>{requestType}</span>
-                <ChevronDown size={17} className="text-[#6B7B68]" />
+                <ChevronDown size={17} className="text-[#4F5050]" />
               </button>
 
               {isTypeDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D5DCD4] rounded-[14px] shadow-xl py-1.5 z-30 animate-in fade-in-50 duration-100">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D9D9D9] rounded-[14px] shadow-xl py-1.5 z-30 animate-in fade-in-50 duration-100">
                   {["Meeting Request", "Fund Request", "Leave Request", "Other Request"].map(t => (
                     <button
                       key={t}
@@ -320,7 +320,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                       }}
                       className={cn(
                         "w-full text-left px-4 py-2 text-xs font-medium transition-colors",
-                        requestType === t ? "bg-[#F3F7EE] text-[#5B7E25] font-bold" : "text-[#2F3D2C] hover:bg-[#FAFCF8]"
+                        requestType === t ? "bg-[#FDFDFD] text-[#294BB2] font-bold" : "text-[#4F5050] hover:bg-[#FDFDFD]"
                       )}
                     >
                       {t}
@@ -332,20 +332,20 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
 
             {/* FUND REQUEST SPECIFIC FIELDS */}
             {isFundRequest && (
-              <div className="p-3.5 rounded-[18px] bg-[#FAFDF7] border border-[#D5E2D7] space-y-3 animate-in fade-in-50 duration-150">
+              <div className="p-3.5 rounded-[18px] bg-[#FDFDFD] border border-[#D9D9D9] space-y-3 animate-in fade-in-50 duration-150">
                 {/* Nominal Dana */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#1E5C22] mb-1">
+                  <label className="block text-xs font-semibold text-[#2649B3] mb-1">
                     Nominal Dana yang Diajukan (Rp)
                   </label>
-                  <div className="rounded-[12px] border border-[#5B7E25]/40 bg-white px-3.5 py-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-[#5B7E25]/30">
-                    <Coins size={16} className="text-[#5B7E25]" />
-                    <span className="text-xs font-bold text-[#2F3D2C]">Rp</span>
+                  <div className="rounded-[12px] border border-[#294BB2]/40 bg-white px-3.5 py-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-[#294BB2]/30">
+                    <Coins size={16} className="text-[#294BB2]" />
+                    <span className="text-xs font-bold text-[#4F5050]">Rp</span>
                     <input
                       type="text"
                       value={formatRupiahInput(amountRaw)}
                       onChange={e => setAmountRaw(e.target.value.replace(/\D/g, ""))}
-                      className="w-full bg-transparent focus:outline-none text-xs text-[#2F3D2C] font-bold"
+                      className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-bold"
                       placeholder="0"
                     />
                   </div>
@@ -354,13 +354,13 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                 {/* Kategori Anggaran & Rekening */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-2xs font-semibold text-[#485649] mb-1">
+                    <label className="block text-2xs font-semibold text-[#4F5050] mb-1">
                       Kategori Anggaran
                     </label>
                     <select
                       value={budgetCategory}
                       onChange={e => setBudgetCategory(e.target.value)}
-                      className="w-full rounded-[12px] border border-[#D5DCD4] bg-white px-3 py-2 text-2xs font-medium text-[#2F3D2C] focus:outline-none focus:border-[#5B7E25]"
+                      className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-2xs font-medium text-[#4F5050] focus:outline-none focus:border-[#294BB2]"
                     >
                       {BUDGET_CATEGORIES.map(c => (
                         <option key={c.id} value={c.id}>{c.label}</option>
@@ -368,7 +368,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                     </select>
                   </div>
                   <div>
-                    <label className="block text-2xs font-semibold text-[#485649] mb-1">
+                    <label className="block text-2xs font-semibold text-[#4F5050] mb-1">
                       Rekening Pencairan
                     </label>
                     <input
@@ -376,7 +376,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                       value={bankTarget}
                       onChange={e => setBankTarget(e.target.value)}
                       placeholder="BCA 123456 a.n. Toko"
-                      className="w-full rounded-[12px] border border-[#D5DCD4] bg-white px-3 py-2 text-2xs font-medium text-[#2F3D2C] focus:outline-none focus:border-[#5B7E25]"
+                      className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-2xs font-medium text-[#4F5050] focus:outline-none focus:border-[#294BB2]"
                     />
                   </div>
                 </div>
@@ -386,41 +386,41 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
             {/* 2. Time & Date (Side-by-Side) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label className="block text-xs font-semibold text-[#485649] mb-1.5">
+                <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
                   Time
                 </label>
-                <div className="rounded-[14px] border border-[#D5DCD4] bg-white px-3.5 py-2.5 flex items-center justify-between text-xs font-medium text-[#2F3D2C] focus-within:ring-2 focus-within:ring-[#5B7E25]/30 focus-within:border-[#5B7E25]">
+                <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3.5 py-2.5 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
                   <input
                     type="text"
                     value={timeRange}
                     onChange={e => setTimeRange(e.target.value)}
-                    className="w-full bg-transparent focus:outline-none text-xs text-[#2F3D2C] font-medium"
+                    className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
                     placeholder="09.00 AM - 10.00 AM"
                   />
-                  <Clock size={17} className="text-[#8D9C8A] shrink-0 ml-2" />
+                  <Clock size={17} className="text-[#4F5050] shrink-0 ml-2" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#485649] mb-1.5">
+                <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
                   Date
                 </label>
-                <div className="rounded-[14px] border border-[#D5DCD4] bg-white px-3.5 py-2.5 flex items-center justify-between text-xs font-medium text-[#2F3D2C] focus-within:ring-2 focus-within:ring-[#5B7E25]/30 focus-within:border-[#5B7E25]">
+                <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3.5 py-2.5 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
                   <input
                     type="text"
                     value={dateVal}
                     onChange={e => setDateVal(e.target.value)}
-                    className="w-full bg-transparent focus:outline-none text-xs text-[#2F3D2C] font-medium"
+                    className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
                     placeholder="28/08/2026"
                   />
-                  <Calendar size={17} className="text-[#8D9C8A] shrink-0 ml-2" />
+                  <Calendar size={17} className="text-[#4F5050] shrink-0 ml-2" />
                 </div>
               </div>
             </div>
 
             {/* 3. Attached Files */}
             <div>
-              <label className="block text-xs font-semibold text-[#485649] mb-1.5">
+              <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
                 Attached Files
               </label>
               <input
@@ -431,18 +431,18 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
               />
 
               {attachedFileName ? (
-                <div className="rounded-[14px] border border-[#D5DCD4] bg-white px-4 py-2.5 flex items-center justify-between text-xs font-medium text-[#2F3D2C]">
+                <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-4 py-2.5 flex items-center justify-between text-xs font-medium text-[#4F5050]">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <FileText size={18} className="text-[#5B7E25] shrink-0" />
-                    <span className="font-semibold text-[#2F3D2C] truncate max-w-[180px] sm:max-w-[240px]">
+                    <FileText size={18} className="text-[#294BB2] shrink-0" />
+                    <span className="font-semibold text-[#4F5050] truncate max-w-[180px] sm:max-w-[240px]">
                       {attachedFileName}
                     </span>
-                    <span className="text-[#7B8B78] text-2xs shrink-0">{attachedFileSize}</span>
+                    <span className="text-[#4F5050] text-2xs shrink-0">{attachedFileSize}</span>
                   </div>
                   <button
                     type="button"
                     onClick={handleRemoveFile}
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-[#6B7B68] hover:text-red-500 hover:bg-red-50 transition-colors"
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-[#4F5050] hover:text-red-500 hover:bg-red-50 transition-colors"
                   >
                     <X size={16} />
                   </button>
@@ -450,9 +450,9 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
               ) : (
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="rounded-[14px] border border-dashed border-[#D5DCD4] hover:border-[#5B7E25] bg-[#FDFEFD] px-4 py-2.5 flex items-center justify-center gap-2 text-xs text-[#7B8B78] cursor-pointer transition-colors"
+                  className="rounded-[14px] border border-dashed border-[#D9D9D9] hover:border-[#294BB2] bg-[#EAF6FF] px-4 py-2.5 flex items-center justify-center gap-2 text-xs text-[#4F5050] cursor-pointer transition-colors"
                 >
-                  <Upload size={14} className="text-[#8D9C8A]" />
+                  <Upload size={14} className="text-[#4F5050]" />
                   <span>Attach Document (PDF, Word, Nota, etc)</span>
                 </div>
               )}
@@ -460,7 +460,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
 
             {/* 4. Request Details */}
             <div className="flex-1 flex flex-col">
-              <label className="block text-xs font-semibold text-[#485649] mb-1.5">
+              <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
                 Request Details
               </label>
               <textarea
@@ -468,7 +468,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                 onChange={e => setRequestDetails(e.target.value)}
                 rows={3}
                 placeholder="Tuliskan rincian kebutuhan Anda..."
-                className="w-full flex-1 rounded-[14px] border border-[#D5DCD4] bg-white p-3.5 text-xs font-normal text-[#2F3D2C] placeholder:text-[#8D9C8A] leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-[#5B7E25]/30 focus:border-[#5B7E25]"
+                className="w-full flex-1 rounded-[14px] border border-[#D9D9D9] bg-white p-3.5 text-xs font-normal text-[#4F5050] placeholder:text-[#4F5050] leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2]"
               />
             </div>
           </div>
@@ -479,7 +479,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
             {/* Top: Invite People Section */}
             <div className="flex flex-col gap-3">
               <div>
-                <label className="block text-xs font-semibold text-[#485649] mb-1.5">
+                <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
                   Invite People
                 </label>
                 <div className="relative" onClick={e => e.stopPropagation()}>
@@ -492,39 +492,39 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                     }}
                     onFocus={() => setIsSearchDropdownOpen(true)}
                     placeholder="Add user account, email, etc"
-                    className="w-full rounded-[14px] border border-[#D5DCD4] bg-white px-4 py-2.5 text-xs text-[#2F3D2C] placeholder:text-[#8D9C8A] focus:outline-none focus:ring-2 focus:ring-[#5B7E25]/30 focus:border-[#5B7E25]"
+                    className="w-full rounded-[14px] border border-[#D9D9D9] bg-white px-4 py-2.5 text-xs text-[#4F5050] placeholder:text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2]"
                   />
 
                   {/* Dropdown list for search */}
                   {isSearchDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D5DCD4] rounded-[16px] shadow-xl p-1.5 z-40 max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in duration-100">
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D9D9D9] rounded-[16px] shadow-xl p-1.5 z-40 max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in duration-100">
                       {selectableResults.length > 0 ? (
                         selectableResults.map(m => (
                           <button
                             key={m.id}
                             type="button"
                             onClick={() => handleAddPerson(m)}
-                            className="w-full flex items-center justify-between p-2 rounded-xl text-left hover:bg-[#F3F7EE] text-xs transition-colors group"
+                            className="w-full flex items-center justify-between p-2 rounded-xl text-left hover:bg-[#FDFDFD] text-xs transition-colors group"
                           >
                             <div className="flex items-center gap-2.5 truncate">
                               <img
                                 src={m.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.id}`}
                                 alt={m.name}
-                                className="w-7 h-7 rounded-full object-cover border border-[#DCE4DA] shrink-0"
+                                className="w-7 h-7 rounded-full object-cover border border-[#EAF6FF] shrink-0"
                               />
                               <div className="truncate">
-                                <span className="text-xs font-semibold text-[#2F3D2C] block truncate">{m.name}</span>
-                                {m.email && <span className="text-3xs text-[#7B8B78] block truncate">{m.email}</span>}
+                                <span className="text-xs font-semibold text-[#4F5050] block truncate">{m.name}</span>
+                                {m.email && <span className="text-3xs text-[#4F5050] block truncate">{m.email}</span>}
                               </div>
                             </div>
-                            <span className="p-1 rounded-lg bg-[#EAF8D6] text-[#1E5C22] text-3xs font-bold shrink-0">
+                            <span className="p-1 rounded-lg bg-[#EAF6FF] text-[#2649B3] text-3xs font-bold shrink-0">
                               + Add
                             </span>
                           </button>
                         ))
                       ) : (
                         <div className="p-3 text-center">
-                          <p className="text-xs text-[#7B8B78] mb-1.5">
+                          <p className="text-xs text-[#4F5050] mb-1.5">
                             {inviteSearch.trim()
                               ? `Tidak ada akun dengan nama "${inviteSearch}"`
                               : "Ketik nama atau email user..."}
@@ -533,7 +533,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                             <button
                               type="button"
                               onClick={handleAddCustomGuest}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F0FEE0] text-[#1E5C22] text-xs font-bold hover:bg-[#E2F7C9] transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#EAF6FF] text-[#2649B3] text-xs font-bold hover:bg-[#EAF6FF] transition-colors"
                             >
                               <UserPlus size={13} />
                               <span>Undang "{inviteSearch.trim()}" (Tamu)</span>
@@ -549,7 +549,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
               {/* Invited People List */}
               <div className="space-y-2 pt-1 min-h-[140px] max-h-[220px] overflow-y-auto">
                 {invitedList.length === 0 ? (
-                  <div className="p-4 rounded-xl border border-dashed border-[#D5DCD4] bg-[#FDFEFD] text-center text-xs text-[#7B8B78]">
+                  <div className="p-4 rounded-xl border border-dashed border-[#D9D9D9] bg-[#EAF6FF] text-center text-xs text-[#4F5050]">
                     Belum ada anggota yang diundang.<br />
                     Ketik nama atau email pada kolom di atas untuk menambahkan.
                   </div>
@@ -557,20 +557,20 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                   invitedList.map(person => (
                     <div
                       key={person.id}
-                      className="flex items-center justify-between py-1.5 px-2.5 rounded-xl bg-[#FAFDF7] border border-[#E2E8E0] hover:border-[#5B7E25]/50 transition-colors group"
+                      className="flex items-center justify-between py-1.5 px-2.5 rounded-xl bg-[#FDFDFD] border border-[#EFEFEF] hover:border-[#294BB2]/50 transition-colors group"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <img
                           src={person.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${person.id}`}
                           alt={person.name}
-                          className="w-7 h-7 rounded-full object-cover border border-[#DCE4DA] shrink-0"
+                          className="w-7 h-7 rounded-full object-cover border border-[#EAF6FF] shrink-0"
                         />
                         <div className="min-w-0">
-                          <span className="text-xs font-semibold text-[#2F3D2C] block truncate">
+                          <span className="text-xs font-semibold text-[#4F5050] block truncate">
                             {person.name}
                           </span>
                           {person.email && (
-                            <span className="text-3xs text-[#7B8B78] block truncate">
+                            <span className="text-3xs text-[#4F5050] block truncate">
                               {person.email}
                             </span>
                           )}
@@ -579,7 +579,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                       <button
                         type="button"
                         onClick={() => handleRemovePerson(person.id)}
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[#5B7E25] hover:text-red-500 hover:bg-red-50 transition-colors"
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[#294BB2] hover:text-red-500 hover:bg-red-50 transition-colors"
                         title={`Hapus ${person.name}`}
                       >
                         <X size={16} strokeWidth={2.2} />
@@ -596,7 +596,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                 type="button"
                 onClick={() => handleSubmit(false)}
                 disabled={loading}
-                className="w-full py-3 rounded-[14px] bg-[#5B7E25] hover:bg-[#4E6D1F] text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all disabled:opacity-50"
+                className="w-full py-3 rounded-[14px] bg-[#294BB2] hover:bg-[#2649B3] text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all disabled:opacity-50"
               >
                 <span>{loading ? "Sending..." : "Send Request"}</span>
                 <ArrowRight size={16} />
@@ -606,7 +606,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                 type="button"
                 onClick={() => handleSubmit(true)}
                 disabled={loading}
-                className="w-full py-3 rounded-[14px] bg-white border border-[#5B7E25] hover:bg-[#F3F7EE] text-[#5B7E25] font-semibold text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                className="w-full py-3 rounded-[14px] bg-white border border-[#294BB2] hover:bg-[#FDFDFD] text-[#294BB2] font-semibold text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
               >
                 <span>Save Draft</span>
                 <FileText size={15} />

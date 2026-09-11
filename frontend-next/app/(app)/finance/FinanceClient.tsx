@@ -144,6 +144,7 @@ export default function FinanceClient() {
   const [ledgerAccounts, setLedgerAccounts] = useState<any[]>([]);
   const [financeProjectOptions, setFinanceProjectOptions] = useState<any[]>([]);
   const [vendorOptions, setVendorOptions] = useState<any[]>([]);
+  const [divisionOptions, setDivisionOptions] = useState<any[]>([]);
   const [costCreditAccountId, setCostCreditAccountId] = useState("");
   const [glActiveTab, setGlActiveTab] = useState<"trial" | "entries">("trial");
   const [lapkeuActiveTab, setLapkeuActiveTab] = useState<"pl" | "bs">("pl");
@@ -163,7 +164,7 @@ export default function FinanceClient() {
   const [selectedBillForMatch, setSelectedBillForMatch] = useState<any>(null);
   const [selectedBillForPay, setSelectedBillForPay] = useState<any>(null);
 
-  const [costForm, setCostForm] = useState({ project: "", category: "MATERIAL", amount: 0, description: "" });
+  const [costForm, setCostForm] = useState({ project: "", category: "MATERIAL", division_id: "", amount: 0, description: "" });
   const [fundingForm, setFundingForm] = useState({ project: "", amount: 0, purpose: "", source: "KAS_PERUSAHAAN" });
   const [billingForm, setBillingForm] = useState({
     project: "",
@@ -228,7 +229,7 @@ export default function FinanceClient() {
         }
       };
 
-      const [costRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtRes, bankRes, accountRes, projectOptionRes, vendorOptionRes] = await Promise.all([
+      const [costRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
         safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
         safeGet("/api/v1/finance/project-fundings/?page_size=50", "fundings"),
         safeGet("/api/v1/finance/billing-proposals/?page_size=50", "billing"),
@@ -244,6 +245,7 @@ export default function FinanceClient() {
         safeGet("/api/v1/finance/accounts/?page_size=300", "gl"),
         safeGet("/api/v1/finance/project-options", "costing"),
         safeGet("/api/v1/finance/party-options?role=VENDOR", "ap"),
+        api.get("/api/v1/core/organizations/?organization_type=DIVISION&page_size=200").catch(() => ({ data: [] })),
       ]);
 
       setCostEntries(normalizeList(costRes.data).rows);
@@ -284,6 +286,10 @@ export default function FinanceClient() {
       setLedgerAccounts(accountRows);
       setFinanceProjectOptions(normalizeList<any>(projectOptionRes.data).rows);
       setVendorOptions(normalizeList<any>(vendorOptionRes.data).rows);
+      setDivisionOptions(normalizeList<any>(divisionRes.data).rows.map((division) => ({
+        ...division,
+        name: division.organization_name ?? division.name ?? division.organization_code,
+      })));
       setCostCreditAccountId((current) => current || String(accountRows.find((account) => account.status === "ACTIVE" && account.account_code !== "1150")?.id || ""));
     } catch {
       toast.error("Gagal memuat data keuangan");
@@ -696,6 +702,7 @@ export default function FinanceClient() {
                 <tr>
                   <th>Deskripsi Pengeluaran</th>
                   <th>Kategori</th>
+                  <th>Divisi</th>
                   <th>Jumlah Biaya</th>
                   <th>Status Akuntansi</th>
                   <th>Aksi Posting</th>
@@ -704,8 +711,17 @@ export default function FinanceClient() {
               <tbody>
                 {costEntries.map(c => (
                 <tr key={c.id}>
-                  <td><strong>{c.description || "Pengeluaran"}</strong></td>
-                  <td><span className="badge badge-neutral">{c.category || "OPERATIONAL"}</span></td>
+                  <td><strong>{c.description || "Pengeluaran"}</strong><br/><span className="text-2xs text-text-secondary">Proyek #{c.project_id || c.project || "—"}</span></td>
+                  <td><span className="badge badge-neutral">{c.cost_element || c.category || "OPERATIONAL"}</span></td>
+                  <td>
+                    {c.division_id ? (
+                      <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200 text-2xs">
+                        {divisionOptions.find(d => String(d.id) === String(c.division_id))?.name || `Divisi #${c.division_id}`}
+                      </span>
+                    ) : (
+                      <span className="text-2xs text-text-secondary italic">—</span>
+                    )}
+                  </td>
                   <td className="font-semibold text-red-600">{formatMoney(c.total_cost ?? c.amount ?? c.cost_amount ?? 0)}</td>
                   <td><span className={cn("badge", getStatusColor(c.status || "DRAFT"))}>{c.status || "DRAFT"}</span></td>
                   <td>
@@ -719,7 +735,7 @@ export default function FinanceClient() {
                   </td>
                 </tr>
               ))}
-              {!costEntries.length && <tr><td colSpan={5} className="text-center py-6 text-xs text-text-secondary">Belum ada cost entry.</td></tr>}
+              {!costEntries.length && <tr><td colSpan={6} className="text-center py-6 text-xs text-text-secondary">Belum ada cost entry.</td></tr>}
             </tbody>
           </table>
           </div>
@@ -777,7 +793,7 @@ export default function FinanceClient() {
                 const isMatched = b.status === "VERIFIED" || b.status === "APPROVED" || b.status === "POSTED";
 
                 return (
-                  <tr key={b.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-100", isPaid && "bg-emerald-50/30")}>
+                  <tr key={b.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-100", isPaid && "bg-brand-light-green/30")}>
                     <td className="py-3 px-3">
                       <strong className="text-text-primary block font-bold">{b.supplier_name || b.party_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.display_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.legal_name || "Vendor tidak tersedia"}</strong>
                       <span className="text-2xs text-text-secondary">Jatuh Tempo: {b.due_date || "Belum ditentukan"}</span>
@@ -786,7 +802,7 @@ export default function FinanceClient() {
                       {b.invoice_number || `INV-${b.id}`}
                     </td>
                     <td className="py-3 px-3">
-                      <strong className={cn("font-bold", isPaid ? "text-emerald-700" : "text-red-600")}>
+                      <strong className={cn("font-bold", isPaid ? "text-brand-deep-green" : "text-red-600")}>
                         {formatMoney(b.total_amount ?? b.amount ?? 0)}
                       </strong>
                     </td>
@@ -796,7 +812,7 @@ export default function FinanceClient() {
                           ✓ Lunas Dibayar
                         </span>
                       ) : isMatched ? (
-                        <span className="badge text-2xs font-bold py-0.5 px-2 bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        <span className="badge text-2xs font-bold py-0.5 px-2 bg-brand-light-green text-brand-deep-green border border-brand-primary-soft">
                           ✓ Match (Siap Bayar)
                         </span>
                       ) : (
@@ -832,15 +848,15 @@ export default function FinanceClient() {
                       {b.status === "POSTED" && !isPaid && (
                         <button
                           onClick={() => handleOpenPayModal(b)}
-                          className="btn-primary py-1 px-3 text-2xs gap-1 bg-emerald-600 hover:bg-emerald-700 font-bold shadow-xs"
+                          className="btn-primary py-1 px-3 text-2xs gap-1 bg-brand-green hover:bg-brand-deep-green font-bold shadow-xs"
                         >
                           <CreditCard size={12} /> Bayar tagihan
                         </button>
                       )}
 
                       {isPaid && (
-                        <span className="text-xs text-emerald-700 font-bold flex items-center justify-end gap-1">
-                          <CheckCircle2 size={14} className="text-emerald-600" /> Selesai Dibayar
+                        <span className="text-xs text-brand-deep-green font-bold flex items-center justify-end gap-1">
+                          <CheckCircle2 size={14} className="text-brand-green" /> Selesai Dibayar
                         </span>
                       )}
                     </td>
@@ -942,7 +958,7 @@ export default function FinanceClient() {
             </div>
             <button
               onClick={() => setIsReceiptModalOpen(true)}
-              className="btn-primary py-2 px-3.5 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 shadow-sm"
+              className="btn-primary py-2 px-3.5 text-xs gap-1.5 bg-brand-green hover:bg-brand-deep-green shadow-sm"
             >
               <Plus size={14} /> Catat Uang Masuk (Customer Payment)
             </button>
@@ -950,9 +966,9 @@ export default function FinanceClient() {
 
           {/* KPI Summary Uang Masuk */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="card p-4 rounded-2xl border border-emerald-200 bg-emerald-50/50">
-              <span className="text-2xs font-bold text-emerald-800 uppercase tracking-wider block">Total Uang Masuk Diterima (Inflow)</span>
-              <span className="text-2xl font-black text-emerald-700 mt-1 block">
+            <div className="card p-4 rounded-2xl border border-brand-primary-soft bg-brand-light-green/50">
+              <span className="text-2xs font-bold text-brand-deep-green uppercase tracking-wider block">Total Uang Masuk Diterima (Inflow)</span>
+              <span className="text-2xl font-black text-brand-deep-green mt-1 block">
                 {formatMoney(customerReceipts.reduce((acc, r) => acc + Number(r.amount || 0), 0))}
               </span>
               <span className="text-2xs text-text-secondary mt-0.5 block">{customerReceipts.length} transaksi penerimaan tervalidasi</span>
@@ -989,7 +1005,7 @@ export default function FinanceClient() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {customerReceipts.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-emerald-50/30">
+                    <tr key={rec.id} className="hover:bg-brand-light-green/30">
                       <td className="py-3 px-4">
                         <strong className="text-text-primary block font-mono text-2xs">{rec.receipt_number}</strong>
                         <span className="text-2xs text-text-secondary font-mono block">{rec.payment_date}</span>
@@ -997,17 +1013,17 @@ export default function FinanceClient() {
                       <td className="py-3 px-4">
                         <strong className="text-text-primary block">{rec.customer_name}</strong>
                         <span className="text-2xs text-text-secondary block mt-0.5">Proyek: {rec.project_name}</span>
-                        <span className="text-2xs text-emerald-800 block mt-0.5">{rec.invoice_ref}</span>
+                        <span className="text-2xs text-brand-deep-green block mt-0.5">{rec.invoice_ref}</span>
                       </td>
                       <td className="py-3 px-4">
                         <span className="font-semibold text-text-primary block">{rec.bank_account.split("—")[0]}</span>
                         <span className="text-2xs text-text-secondary font-mono block">Ref: {rec.reference_number}</span>
                       </td>
-                      <td className="py-3 px-4 font-bold text-emerald-700 text-sm">
+                      <td className="py-3 px-4 font-bold text-brand-deep-green text-sm">
                         +{formatMoney(rec.amount)}
                       </td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-emerald-100 text-emerald-800">
+                        <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
                           ✓ DITERIMA & POSTED
                         </span>
                       </td>
@@ -1030,7 +1046,7 @@ export default function FinanceClient() {
               <p className="text-xs text-text-secondary">Pantau saldo real-time akun bank dan alur mutasi uang masuk vs uang keluar.</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => setIsReceiptModalOpen(true)} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-emerald-600 text-emerald-700 hover:bg-emerald-50">
+              <button onClick={() => setIsReceiptModalOpen(true)} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-brand-green text-brand-deep-green hover:bg-brand-light-green">
                 <Plus size={13} /> Catat Uang Masuk
               </button>
               <button onClick={() => setActiveTab("ap")} className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green">
@@ -1076,10 +1092,10 @@ export default function FinanceClient() {
                 <tbody className="divide-y divide-gray-100">
                   {/* Gabungan Mutasi Uang Masuk dan Uang Keluar */}
                   {customerReceipts.map((rec) => (
-                    <tr key={`in-${rec.id}`} className="hover:bg-emerald-50/20">
+                    <tr key={`in-${rec.id}`} className="hover:bg-brand-light-green/20">
                       <td className="py-3 px-4 font-mono text-2xs">{rec.payment_date}</td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-emerald-100 text-emerald-800">
+                        <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
                           🟢 Uang Masuk (Inflow)
                         </span>
                       </td>
@@ -1088,7 +1104,7 @@ export default function FinanceClient() {
                         <span className="text-text-primary block font-medium">{rec.customer_name} — {rec.invoice_ref}</span>
                         <span className="text-2xs text-text-secondary block font-mono">Ref: {rec.reference_number}</span>
                       </td>
-                      <td className="py-3 px-4 font-black text-right text-emerald-600 text-sm">
+                      <td className="py-3 px-4 font-black text-right text-brand-green text-sm">
                         +{formatMoney(rec.amount)}
                       </td>
                     </tr>
@@ -1168,7 +1184,7 @@ export default function FinanceClient() {
                   <div className={cn(
                     "flex items-center gap-3 px-5 py-3 text-xs font-semibold border-b",
                     trialBalance.is_balanced
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                      ? "bg-brand-light-green border-brand-primary-soft text-brand-deep-green"
                       : "bg-red-50 border-red-200 text-red-800"
                   )}>
                     {trialBalance.is_balanced
@@ -1313,7 +1329,7 @@ export default function FinanceClient() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* KPI Summary */}
                 <div className="lg:col-span-3 grid grid-cols-3 gap-3">
-                  <div className={cn("card rounded-2xl p-4 border-l-4", profitLoss?.is_profit ? "border-emerald-500" : "border-red-500")}>
+                  <div className={cn("card rounded-2xl p-4 border-l-4", profitLoss?.is_profit ? "border-brand-green" : "border-red-500")}>
                     <span className="text-xs text-text-secondary">Total Pendapatan</span>
                     <p className="text-xl font-black text-brand-deep-green">{formatMoney(profitLoss?.total_revenue ?? 0)}</p>
                   </div>
@@ -1331,8 +1347,8 @@ export default function FinanceClient() {
 
                 {/* Revenue Table */}
                 <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
-                  <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-200">
-                    <h4 className="text-xs font-bold text-emerald-800 flex items-center gap-1.5"><TrendingUp size={13} /> Pendapatan (Revenue)</h4>
+                  <div className="px-4 py-3 bg-brand-light-green border-b border-brand-primary-soft">
+                    <h4 className="text-xs font-bold text-brand-deep-green flex items-center gap-1.5"><TrendingUp size={13} /> Pendapatan (Revenue)</h4>
                   </div>
                   <div className="divide-y divide-gray-100">
                     {profitLoss?.revenues?.map((r: any, i: number) => (
@@ -1341,13 +1357,13 @@ export default function FinanceClient() {
                           <span className="font-mono text-brand-deep-green text-2xs">{r.account_code}</span>
                           <p className="font-medium text-text-primary">{r.account_name}</p>
                         </div>
-                        <span className="font-bold text-emerald-700">{formatMoney(r.amount)}</span>
+                        <span className="font-bold text-brand-deep-green">{formatMoney(r.amount)}</span>
                       </div>
                     ))}
                     {!profitLoss?.revenues?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data pendapatan.</p>}
                   </div>
                   {profitLoss?.total_revenue > 0 && (
-                    <div className="px-4 py-2.5 bg-emerald-50 border-t flex justify-between text-xs font-black text-emerald-800">
+                    <div className="px-4 py-2.5 bg-brand-light-green border-t flex justify-between text-xs font-black text-brand-deep-green">
                       <span>TOTAL PENDAPATAN</span>
                       <span>{formatMoney(profitLoss.total_revenue)}</span>
                     </div>
@@ -1385,7 +1401,7 @@ export default function FinanceClient() {
                   <div className="space-y-3">
                     <div className="flex justify-between text-xs">
                       <span className="text-text-secondary">Pendapatan Kotor</span>
-                      <span className="font-bold text-emerald-700">{formatMoney(profitLoss?.total_revenue ?? 0)}</span>
+                      <span className="font-bold text-brand-deep-green">{formatMoney(profitLoss?.total_revenue ?? 0)}</span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-text-secondary">HPP / COGS</span>
@@ -1478,7 +1494,7 @@ export default function FinanceClient() {
                   {/* Balance Check */}
                   <div className={cn(
                     "card rounded-xl p-4 flex items-center gap-3 text-xs font-semibold border",
-                    balanceSheet?.is_balanced ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-red-50 border-red-300 text-red-800"
+                    balanceSheet?.is_balanced ? "bg-brand-light-green border-brand-primary-soft text-brand-deep-green" : "bg-red-50 border-red-300 text-red-800"
                   )}>
                     {balanceSheet?.is_balanced
                       ? <><CheckCircle2 size={15} /> Neraca SEIMBANG: Total Aset = Total Kewajiban + Ekuitas</>
@@ -1559,7 +1575,7 @@ export default function FinanceClient() {
                           <td className="py-2.5 px-4 font-mono text-2xs">{stmt.transaction_date ? new Date(stmt.transaction_date).toLocaleDateString("id-ID") : "-"}</td>
                           <td className="py-2.5 px-4 font-mono text-2xs text-brand-deep-green">{stmt.reference_number || "-"}</td>
                           <td className="py-2.5 px-4 text-text-primary">{stmt.description}</td>
-                          <td className="py-2.5 px-4 text-right text-emerald-700 font-bold">{stmt.debit_amount > 0 ? formatMoney(stmt.debit_amount) : "-"}</td>
+                          <td className="py-2.5 px-4 text-right text-brand-deep-green font-bold">{stmt.debit_amount > 0 ? formatMoney(stmt.debit_amount) : "-"}</td>
                           <td className="py-2.5 px-4 text-right text-red-600 font-bold">{stmt.credit_amount > 0 ? formatMoney(stmt.credit_amount) : "-"}</td>
                           <td className="py-2.5 px-4 text-center">
                             <span className={cn("badge text-2xs",
@@ -1626,7 +1642,7 @@ export default function FinanceClient() {
             <button
               type="button"
               onClick={handleConfirmThreeWayMatch}
-              className="btn-primary py-2 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 font-bold"
+              className="btn-primary py-2 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold"
             >
               Konfirmasi Verifikasi Dokumen
             </button>
@@ -1651,6 +1667,7 @@ export default function FinanceClient() {
               }
               await api.post("/api/v1/finance/project-cost-entries/", {
                 project_id: costForm.project,
+                division_id: costForm.division_id || undefined,
                 source_type: "MANUAL_COST",
                 source_reference: `MANUAL-${localDateKey()}`,
                 description: costForm.description.trim(),
@@ -1663,6 +1680,7 @@ export default function FinanceClient() {
               });
               toast.success("Biaya berhasil dicatat!");
               setIsCostModalOpen(false);
+              setCostForm({ project: "", category: "MATERIAL", division_id: "", amount: 0, description: "" });
               await loadFinanceData(true);
             } catch {
               toast.error("Gagal mencatat biaya");
@@ -1693,15 +1711,28 @@ export default function FinanceClient() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-text-primary block mb-1">Jumlah Biaya (Rp) *</label>
-              <input
-                type="number"
-                required
-                value={costForm.amount}
-                onChange={e => setCostForm({ ...costForm, amount: Number(e.target.value) })}
+              <label className="text-xs font-semibold text-text-primary block mb-1">Divisi</label>
+              <select
+                value={costForm.division_id}
+                onChange={e => setCostForm({ ...costForm, division_id: e.target.value })}
                 className="input"
-              />
+              >
+                <option value="">— Pilih Divisi (Opsional)</option>
+                {divisionOptions.map(div => (
+                  <option key={div.id} value={div.id}>{div.name}</option>
+                ))}
+              </select>
             </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-text-primary block mb-1">Jumlah Biaya (Rp) *</label>
+            <input
+              type="number"
+              required
+              value={costForm.amount}
+              onChange={e => setCostForm({ ...costForm, amount: Number(e.target.value) })}
+              className="input"
+            />
           </div>
           <div>
             <label className="text-xs font-semibold text-text-primary block mb-1">Deskripsi Pengeluaran</label>
@@ -1944,9 +1975,9 @@ export default function FinanceClient() {
                   )}
                 </div>
 
-                <div className="mt-1 p-2 rounded-lg bg-emerald-50 border border-emerald-200 flex justify-between items-center">
-                  <span className="font-bold text-emerald-900 text-[11px]">Estimasi Kas Masuk ke Bank:</span>
-                  <span className="font-black text-emerald-700 text-xs">{formatMoney(net)}</span>
+                <div className="mt-1 p-2 rounded-lg bg-brand-light-green border border-brand-primary-soft flex justify-between items-center">
+                  <span className="font-bold text-brand-deep-green text-[11px]">Estimasi Kas Masuk ke Bank:</span>
+                  <span className="font-black text-brand-deep-green text-xs">{formatMoney(net)}</span>
                 </div>
               </div>
             );
@@ -1962,7 +1993,7 @@ export default function FinanceClient() {
             </button>
             <button
               type="submit"
-              className="btn-primary py-2 px-4 text-xs bg-[#275433] hover:bg-[#1E4327] font-bold cursor-pointer"
+              className="btn-primary py-2 px-4 text-xs bg-[#2649B3] hover:bg-[#2649B3] font-bold cursor-pointer"
             >
               Buat Proposal Billing
             </button>
@@ -2056,7 +2087,7 @@ export default function FinanceClient() {
               <span className="text-2xs text-text-secondary block">Total Tagihan Harus Dibayar:</span>
               <strong className="text-sm font-bold text-text-primary">{selectedBillForPay?.supplier_name}</strong>
             </div>
-            <span className="text-base font-extrabold text-emerald-700">
+            <span className="text-base font-extrabold text-brand-deep-green">
               {formatMoney(selectedBillForPay?.amount || 0)}
             </span>
           </div>
@@ -2127,7 +2158,7 @@ export default function FinanceClient() {
             <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">
               Batal
             </button>
-            <button type="submit" className="btn-primary py-2 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 font-bold">
+            <button type="submit" className="btn-primary py-2 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold">
               Konfirmasi & Eksekusi Pembayaran (Disburse)
             </button>
           </div>
@@ -2173,7 +2204,7 @@ export default function FinanceClient() {
           }}
           className="flex flex-col gap-3.5 p-1"
         >
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900">
+          <div className="p-3 rounded-xl bg-brand-light-green border border-brand-primary-soft text-xs text-brand-deep-green">
             <strong>Alur Uang Masuk Perusahaan:</strong> Dana yang diterima akan menambah saldo kas/bank perusahaan dan mengurangi piutang invoice klien terkait.
           </div>
 
@@ -2218,7 +2249,7 @@ export default function FinanceClient() {
                 min="1000"
                 value={receiptForm.amount}
                 onChange={e => setReceiptForm({ ...receiptForm, amount: Number(e.target.value) })}
-                className="input text-xs font-bold text-emerald-700"
+                className="input text-xs font-bold text-brand-deep-green"
               />
             </div>
           </div>
@@ -2288,7 +2319,7 @@ export default function FinanceClient() {
             <button type="button" onClick={() => setIsReceiptModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">
               Batal
             </button>
-            <button type="submit" className="btn-primary py-2 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 font-bold">
+            <button type="submit" className="btn-primary py-2 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold">
               Konfirmasi & Masukkan ke Kas/Bank
             </button>
           </div>
@@ -2491,7 +2522,7 @@ function TabFundingProyek({
                       <span className={cn(
                         "px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase",
                         isDisbursed ? "bg-blue-100 text-blue-800" :
-                        isApproved ? "bg-emerald-100 text-emerald-800" :
+                        isApproved ? "bg-brand-light-green text-brand-deep-green" :
                         status === "REJECTED" ? "bg-red-100 text-red-800" :
                         "bg-amber-100 text-amber-800"
                       )}>
@@ -2508,7 +2539,7 @@ function TabFundingProyek({
                                 setDecisionAction("APPROVED");
                                 setIsDecisionModalOpen(true);
                               }}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-2xs hover:bg-emerald-700 shadow-xs"
+                              className="px-2.5 py-1 rounded-lg bg-brand-green text-white font-bold text-2xs hover:bg-brand-deep-green shadow-xs"
                             >
                               ✓ Setujui
                             </button>
@@ -2620,7 +2651,7 @@ function TabFundingProyek({
                   "btn-primary text-xs py-2 px-4 font-bold shadow-xs",
                   decisionAction === "REJECTED" ? "bg-red-600 hover:bg-red-700 text-white" :
                   decisionAction === "DISBURSED" ? "bg-blue-600 hover:bg-blue-700 text-white" :
-                  "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  "bg-brand-green hover:bg-brand-deep-green text-white"
                 )}
               >
                 {isSubmitting ? "Memproses..." : decisionAction === "DISBURSED" ? "Eksekusi Pencairan" : `Konfirmasi ${decisionAction}`}

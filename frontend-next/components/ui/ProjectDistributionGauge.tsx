@@ -56,24 +56,24 @@ export function ProjectDistributionGauge({
     statusLabel.toLowerCase().includes("cautious") ||
     statusLabel.toLowerCase().includes("caution");
 
-  const badgeFill = isGood ? "#EAF8D6" : isCautious ? "#FEF3C7" : "#FEE2E2";
-  const badgeStroke = isGood ? "#B5DDA4" : isCautious ? "#FDE68A" : "#FCA5A5";
-  const badgeText = isGood ? "#275433" : isCautious ? "#92400E" : "#991B1B";
+  const badgeFill = isGood ? "#EAF6FF" : isCautious ? "#FEF3C7" : "#FEE2E2";
+  const badgeStroke = isGood ? "#9FD6FF" : isCautious ? "#FDE68A" : "#FCA5A5";
+  const badgeText = isGood ? "#2649B3" : isCautious ? "#92400E" : "#991B1B";
 
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#E5E9E2] rounded-[20px] p-5 shadow-xs flex flex-col justify-between h-full select-none transition-all hover:shadow-card-md",
+        "w-full bg-white border border-[#EFEFEF] rounded-[20px] p-5 shadow-xs flex flex-col justify-between h-full select-none transition-all hover:shadow-card-md",
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#EEF2E8] min-w-0">
+      <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#EFEFEF] min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#5A861F] animate-pulse flex-shrink-0" />
-          <h3 className="text-sm font-extrabold text-[#0E341F] truncate">Project Distribution</h3>
+          <div className="w-2.5 h-2.5 rounded-full bg-[#294BB2] animate-pulse flex-shrink-0" />
+          <h3 className="text-sm font-extrabold text-[#090909] truncate">Project Distribution</h3>
         </div>
-        <span className="text-3xs font-extrabold text-[#275433] bg-[#EAF8D6] border border-[#D5ECC2] px-2.5 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap">
+        <span className="text-3xs font-extrabold text-[#2649B3] bg-[#EAF6FF] border border-[#9FD6FF] px-2.5 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap">
           Portfolio Health
         </span>
       </div>
@@ -92,8 +92,8 @@ export function ProjectDistributionGauge({
               <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="#EF4444" />
                 <stop offset="35%" stopColor="#F59E0B" />
-                <stop offset="70%" stopColor="#5A861F" />
-                <stop offset="100%" stopColor="#275433" />
+                <stop offset="70%" stopColor="#294BB2" />
+                <stop offset="100%" stopColor="#2649B3" />
               </linearGradient>
             </defs>
 
@@ -101,7 +101,7 @@ export function ProjectDistributionGauge({
             <path
               d={arcPath}
               fill="none"
-              stroke="#EEF2E8"
+              stroke="#EFEFEF"
               strokeWidth="12"
               strokeLinecap="round"
             />
@@ -127,7 +127,7 @@ export function ProjectDistributionGauge({
               style={{
                 fontSize: "20px",
                 fontWeight: 900,
-                fill: "#0E341F",
+                fill: "#090909",
                 letterSpacing: "-0.03em",
                 fontFamily: "inherit",
               }}
@@ -167,24 +167,24 @@ export function ProjectDistributionGauge({
         {/* Legend */}
         <div className="flex flex-col gap-1.5 w-full min-w-0 sm:pl-2">
           {[
-            { color: "#275433", label: "On-track", count: onTrackCount },
+            { color: "#2649B3", label: "On-track", count: onTrackCount },
             { color: "#F59E0B", label: "Caution", count: cautiousCount },
             { color: "#EF4444", label: "Off-track", count: offTrackCount },
           ].map(({ color, label, count }) => (
             <div
               key={label}
-              className="flex items-center justify-between text-xs py-1.5 px-2 rounded-xl bg-[#F8FBF5] border border-[#EEF2E8] hover:bg-[#F0FEE0]/40 transition-colors"
+              className="flex items-center justify-between text-xs py-1.5 px-2 rounded-xl bg-[#FDFDFD] border border-[#EFEFEF] hover:bg-[#EAF6FF]/40 transition-colors"
             >
               <div className="flex items-center gap-2 min-w-0 pr-1">
                 <span
                   className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                   style={{ backgroundColor: color }}
                 />
-                <span className="font-bold text-[#0E341F] text-xs whitespace-nowrap">
+                <span className="font-bold text-[#090909] text-xs whitespace-nowrap">
                   {label}
                 </span>
               </div>
-              <span className="font-extrabold text-[#275433] bg-[#EAF8D6] border border-[#D5ECC2] px-2 py-0.5 rounded-full text-2xs tabular-nums flex-shrink-0">
+              <span className="font-extrabold text-[#2649B3] bg-[#EAF6FF] border border-[#9FD6FF] px-2 py-0.5 rounded-full text-2xs tabular-nums flex-shrink-0">
                 {count}
               </span>
             </div>
@@ -193,7 +193,7 @@ export function ProjectDistributionGauge({
       </div>
 
       {/* Footer */}
-      <p className="text-3xs text-[#768779] font-normal leading-tight pt-3 border-t border-[#EEF2E8]">
+      <p className="text-3xs text-[#4F5050] font-normal leading-tight pt-3 border-t border-[#EFEFEF]">
         *Indeks kesehatan proyek dihitung otomatis dari deviasi timeline real-time
       </p>
     </div>

@@ -51,7 +51,7 @@ export function ProjectDonutSummaryCard({
       {/* Header */}
       <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
         <div>
-          <h3 className="text-sm sm:text-base font-bold text-[#0E341F] whitespace-nowrap">Number of Projects</h3>
+          <h3 className="text-sm sm:text-base font-bold text-[#090909] whitespace-nowrap">Number of Projects</h3>
           <p className="text-[11px] text-slate-400 font-medium mt-0.5">Overall Portfolio Distribution</p>
         </div>
         <div className="w-7 h-7 rounded-full bg-slate-50 text-slate-600 border border-slate-200/60 flex items-center justify-center shadow-2xs flex-shrink-0">

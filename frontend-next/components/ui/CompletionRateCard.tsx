@@ -37,17 +37,17 @@ export function CompletionRateCard({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#E5E9E2] rounded-[20px] p-5 shadow-xs flex flex-col justify-between h-full select-none transition-all hover:shadow-card-md",
+        "w-full bg-white border border-[#EFEFEF] rounded-[20px] p-5 shadow-xs flex flex-col justify-between h-full select-none transition-all hover:shadow-card-md",
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between pb-3.5 border-b border-[#EEF2E8]">
+      <div className="flex items-center justify-between pb-3.5 border-b border-[#EFEFEF]">
         <div>
-          <h3 className="text-sm font-extrabold text-[#0E341F] whitespace-nowrap">Completion Rate</h3>
-          <p className="text-2xs text-[#637566] font-medium mt-0.5">by Project Cluster</p>
+          <h3 className="text-sm font-extrabold text-[#090909] whitespace-nowrap">Completion Rate</h3>
+          <p className="text-2xs text-[#4F5050] font-medium mt-0.5">by Project Cluster</p>
         </div>
-        <div className="w-8 h-8 rounded-xl bg-[#F0FEE0] text-[#275433] border border-[#D5ECC2] flex items-center justify-center flex-shrink-0 shadow-2xs">
+        <div className="w-8 h-8 rounded-xl bg-[#EAF6FF] text-[#2649B3] border border-[#9FD6FF] flex items-center justify-center flex-shrink-0 shadow-2xs">
           <CheckCircle2 size={16} strokeWidth={2.2} />
         </div>
       </div>
@@ -66,7 +66,7 @@ export function CompletionRateCard({
         )}
       >
         {displayRates.length === 0 ? (
-          <div className="py-6 text-center text-xs text-[#768779]">
+          <div className="py-6 text-center text-xs text-[#4F5050]">
             Belum ada data progres klaster (Proyek baru diinisiasi)
           </div>
         ) : (
@@ -75,24 +75,24 @@ export function CompletionRateCard({
             return (
               <div
                 key={item.id}
-                className="flex flex-col justify-between gap-2.5 w-full bg-[#F8FBF5] p-3.5 rounded-2xl border border-[#E5E9E2] transition-all hover:bg-[#F0FEE0]/40"
+                className="flex flex-col justify-between gap-2.5 w-full bg-[#FDFDFD] p-3.5 rounded-2xl border border-[#EFEFEF] transition-all hover:bg-[#EAF6FF]/40"
               >
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span
-                    className="font-bold text-[#0E341F] text-xs leading-snug line-clamp-1"
+                    className="font-bold text-[#090909] text-xs leading-snug line-clamp-1"
                     title={item.industry}
                   >
                     {item.industry}
                   </span>
-                  <span className="font-extrabold text-[#275433] bg-[#EAF8D6] border border-[#D5ECC2] px-2.5 py-0.5 rounded-full text-2xs tabular-nums flex-shrink-0">
+                  <span className="font-extrabold text-[#2649B3] bg-[#EAF6FF] border border-[#9FD6FF] px-2.5 py-0.5 rounded-full text-2xs tabular-nums flex-shrink-0">
                     {Math.round(val)}%
                   </span>
                 </div>
 
                 {/* Progress Bar Track */}
-                <div className="w-full h-2.5 bg-[#E5E9E2] rounded-full overflow-hidden p-0.5 shadow-2xs">
+                <div className="w-full h-2.5 bg-[#EFEFEF] rounded-full overflow-hidden p-0.5 shadow-2xs">
                   <div
-                    className="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-[#275433] to-[#5A861F]"
+                    className="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-[#2649B3] to-[#294BB2]"
                     style={{ width: `${val}%` }}
                   />
                 </div>
@@ -103,7 +103,7 @@ export function CompletionRateCard({
       </div>
 
       {/* Footnote */}
-      <p className="text-3xs text-[#768779] font-normal leading-tight pt-3 border-t border-[#EEF2E8]">
+      <p className="text-3xs text-[#4F5050] font-normal leading-tight pt-3 border-t border-[#EFEFEF]">
         *Rasio penyelesaian proyek dihitung berdasarkan realisasi progres per klaster portofolio
       </p>
     </div>

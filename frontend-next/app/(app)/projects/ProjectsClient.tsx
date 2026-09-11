@@ -40,6 +40,7 @@ import { ProjectTimelineGantt } from "@/components/ui/ProjectTimelineGantt";
 import { TopExpensesBarChart } from "@/components/ui/TopExpensesBarChart";
 import { ProjectMilestoneCard } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
+import { getCategoryStyle } from "@/lib/ui/semantic-styles";
 
 /**
  * formatRupiah coordinates the UI behavior represented by this function.
@@ -63,21 +64,6 @@ const LIFECYCLE_STEPS = [
   { key: "CLOSED", label: "STEP 5", title: "CLOSED", desc: "Serah Terima" },
 ];
 
-const CATEGORY_LABEL_STYLES: Record<string, string> = {
-  INTERNAL: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  EXTERNAL: "border-blue-200 bg-blue-50 text-blue-700",
-  OPERATIONAL: "border-lime-200 bg-lime-50 text-lime-800",
-  MATERIAL: "border-amber-200 bg-amber-50 text-amber-800",
-  LABOR: "border-violet-200 bg-violet-50 text-violet-700",
-  SUBCON: "border-indigo-200 bg-indigo-50 text-indigo-700",
-  OVERHEAD: "border-slate-200 bg-slate-100 text-slate-700",
-  EQUIPMENT: "border-orange-200 bg-orange-50 text-orange-700",
-  TRAVEL: "border-cyan-200 bg-cyan-50 text-cyan-700",
-  CREATIVE: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-  VIDEOGRAPHY: "border-green-200 bg-green-50 text-green-700",
-  RESEARCH: "border-teal-200 bg-teal-50 text-teal-700",
-};
-
 /**
  * Renders a stable semantic color for a business category.
  * Known categories have explicit colors; unknown labels use a deterministic
@@ -85,15 +71,7 @@ const CATEGORY_LABEL_STYLES: Record<string, string> = {
  */
 function CategoryLabel({ label }: { label?: string | null }) {
   if (!label) return null;
-  const normalized = label.trim().replace(/[\s-]+/g, "_").toUpperCase();
-  const fallbackStyles = [
-    "border-rose-200 bg-rose-50 text-rose-700",
-    "border-sky-200 bg-sky-50 text-sky-700",
-    "border-purple-200 bg-purple-50 text-purple-700",
-    "border-yellow-200 bg-yellow-50 text-yellow-800",
-  ];
-  const hash = Array.from(normalized).reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  const style = CATEGORY_LABEL_STYLES[normalized] ?? fallbackStyles[hash % fallbackStyles.length];
+  const style = getCategoryStyle(label);
   return <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-3xs font-bold uppercase tracking-wide", style)}>{label.replace(/_/g, " ")}</span>;
 }
 
@@ -253,6 +231,12 @@ export default function ProjectsClient() {
   /* Project Manager & Executive Role Guard */
   // Mutation controls follow the active backend role; identity names and emails are never authorization signals.
   const isPM = useMemo(() => userRole === "pm" || userRole === "om", [userRole]);
+  const canManageProject = useMemo(() => {
+    return ["super_admin", "company_admin", "executive", "om", "pm"].includes(userRole || "");
+  }, [userRole]);
+  const canViewFinancials = useMemo(() => {
+    return ["super_admin", "company_admin", "executive", "om", "pm", "finance"].includes(userRole || "");
+  }, [userRole]);
 
   const [customerOptions, setCustomerOptions] = useState<string[]>([]);
 
@@ -444,7 +428,16 @@ export default function ProjectsClient() {
     return () => clearInterval(interval);
   }, [timerDailyId]);
 
-  const mainTasks = selectedProject?.main_tasks || [];
+  const mainTasks = useMemo(() => {
+    const tasks = selectedProject?.main_tasks || [];
+    if (userRole !== "staff" || user?.id == null) return tasks;
+    const activeUserId = String(user.id);
+    return tasks.filter((mainTask) =>
+      (mainTask.assignments || []).some((assignment) =>
+        String(assignment.assignee_id ?? assignment.assignee ?? "") === activeUserId
+      )
+    );
+  }, [selectedProject?.main_tasks, user?.id, userRole]);
 
   /* 1. Real Gantt Tasks from Live Project WBS */
   const realGanttTasks = useMemo(() => {
@@ -951,37 +944,41 @@ export default function ProjectsClient() {
             })}
           </select>
 
-          <button
+          {canManageProject && <button
             onClick={() => setIsCreateProjOpen(true)}
             className="btn-primary py-1.5 px-3 text-xs gap-1.5 whitespace-nowrap"
           >
             <Plus size={14} /> Proyek Baru
-          </button>
+          </button>}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          {/* Tombol Target Finansial */}
-          <button
-            onClick={() => setIsEditFinancialsOpen(true)}
-            className="btn-secondary text-xs gap-1.5 py-1.5 px-3 border border-brand-green/30 text-brand-green hover:bg-brand-green/10 whitespace-nowrap shadow-xs font-semibold"
-          >
-            <TrendingUp size={14} /> Target Finansial Proyek
-          </button>
+          {/* Tombol Target Finansial (Hanya Manajerial/Finansial) */}
+          {canViewFinancials && (
+            <button
+              onClick={() => setIsEditFinancialsOpen(true)}
+              className="btn-secondary text-xs gap-1.5 py-1.5 px-3 border border-brand-green/30 text-brand-green hover:bg-brand-green/10 whitespace-nowrap shadow-xs font-semibold"
+            >
+              <TrendingUp size={14} /> Target Finansial Proyek
+            </button>
+          )}
 
-          {/* Tombol Funding Request / Pengajuan Dana */}
-          <button
-            onClick={() => setIsFundingRequestOpen(true)}
-            className="btn-primary text-xs gap-1.5 py-1.5 px-3 bg-brand-green text-white hover:opacity-90 whitespace-nowrap font-semibold shadow-xs"
-          >
-            <Wallet size={14} /> Funding Request / Pengajuan Dana
-          </button>
+          {/* Tombol Funding Request / Pengajuan Dana (Hanya Manajerial/Finansial) */}
+          {canViewFinancials && (
+            <button
+              onClick={() => setIsFundingRequestOpen(true)}
+              className="btn-primary text-xs gap-1.5 py-1.5 px-3 bg-brand-green text-white hover:opacity-90 whitespace-nowrap font-semibold shadow-xs"
+            >
+              <Wallet size={14} /> Funding Request / Pengajuan Dana
+            </button>
+          )}
 
-          <button
+          {canManageProject && <button
             onClick={handleRecalculateHealth}
             className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green whitespace-nowrap"
           >
             <Zap size={14} className="text-amber-500 fill-amber-500" /> Hitung Health (EVM)
-          </button>
+          </button>}
 
           <button
             onClick={() => fetchProjects(true)}
@@ -1057,30 +1054,54 @@ export default function ProjectsClient() {
             </div>
           </div>
 
-          {/* Financial summary KPIs */}
+          {/* Financial or Operational summary KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-6 border-t border-white/10">
             <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
               <span className="text-2xs text-white/70 block">Progress Fisik Rollup</span>
               <span className="text-lg font-bold text-white mt-0.5 block">{selectedProject.progress}%</span>
               <span className="text-2xs text-white/50">Agregat WBS</span>
             </div>
-            <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
-              <span className="text-2xs text-white/70 block">Total Budget Anggaran</span>
-              <span className="text-lg font-bold text-white mt-0.5 block">{formatRupiah(selectedProject.budget)}</span>
-              <span className="text-2xs text-white/50">Disetujui</span>
-            </div>
-            <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
-              <span className="text-2xs text-white/70 block">Actual Cost (Riil)</span>
-              <span className="text-lg font-bold text-white mt-0.5 block">{formatRupiah(selectedProject.actual_cost)}</span>
-              <span className="text-2xs text-white/50">Biaya terpakai</span>
-            </div>
-            <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
-              <span className="text-2xs text-white/70 block">Sisa Budget (Variance)</span>
-              <span className="text-lg font-bold text-brand-light-green mt-0.5 block">
-                {formatRupiah((selectedProject.budget || 0) - (selectedProject.actual_cost || 0))}
-              </span>
-              <span className="text-2xs text-white/50">Under Budget</span>
-            </div>
+            {canViewFinancials ? (
+              <>
+                <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
+                  <span className="text-2xs text-white/70 block">Total Budget Anggaran</span>
+                  <span className="text-lg font-bold text-white mt-0.5 block">{formatRupiah(selectedProject.budget)}</span>
+                  <span className="text-2xs text-white/50">Disetujui</span>
+                </div>
+                <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
+                  <span className="text-2xs text-white/70 block">Actual Cost (Riil)</span>
+                  <span className="text-lg font-bold text-white mt-0.5 block">{formatRupiah(selectedProject.actual_cost)}</span>
+                  <span className="text-2xs text-white/50">Biaya terpakai</span>
+                </div>
+                <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
+                  <span className="text-2xs text-white/70 block">Sisa Budget (Variance)</span>
+                  <span className="text-lg font-bold text-brand-light-green mt-0.5 block">
+                    {formatRupiah((selectedProject.budget || 0) - (selectedProject.actual_cost || 0))}
+                  </span>
+                  <span className="text-2xs text-white/50">Under Budget</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
+                  <span className="text-2xs text-white/70 block">Total Paket Kerja (WBS)</span>
+                  <span className="text-lg font-bold text-white mt-0.5 block">{mainTasks.length}</span>
+                  <span className="text-2xs text-white/50">Main Tasks</span>
+                </div>
+                <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
+                  <span className="text-2xs text-white/70 block">Tugas Personal Saya</span>
+                  <span className="text-lg font-bold text-white mt-0.5 block">{allPersonalTasks.length}</span>
+                  <span className="text-2xs text-white/50">Cross-Project Tasks</span>
+                </div>
+                <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-sm">
+                  <span className="text-2xs text-white/70 block">Health Proyek</span>
+                  <span className="text-lg font-bold text-brand-light-green mt-0.5 block">
+                    {selectedProject.health_score || "NORMAL"}
+                  </span>
+                  <span className="text-2xs text-white/50">Status Operasional</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1112,7 +1133,7 @@ export default function ProjectsClient() {
                 className={cn(
                   "p-3 rounded-xl border transition-all flex flex-col justify-between min-h-[72px]",
                   isCurrent ? "bg-brand-light-green/80 border-brand-green shadow-sm" :
-                  isPassed ? "bg-emerald-50/60 border-emerald-200 text-emerald-900" :
+                  isPassed ? "bg-brand-light-green/60 border-brand-primary-soft text-brand-deep-green" :
                   "bg-gray-50 border-gray-100 text-gray-400 opacity-60"
                 )}
               >
@@ -1135,14 +1156,16 @@ export default function ProjectsClient() {
           tasks={realGanttTasks}
         />
 
-        {/* Widget 2: Top 5 Expenses (Full Width Live Project Data) */}
-        <TopExpensesBarChart
-          projectName={selectedProject?.project_name}
-          expenses={realTopExpenses}
-        />
+        {/* Widget 2: Top 5 Expenses (Hanya untuk Role dengan Akses Finansial) */}
+        {canViewFinancials && (
+          <TopExpensesBarChart
+            projectName={selectedProject?.project_name}
+            expenses={realTopExpenses}
+          />
+        )}
 
         {/* Widget 3: Project List & Milestone Stepper (Full Width Live Project Data) */}
-        <ProjectMilestoneCard
+        {userRole !== "staff" && <ProjectMilestoneCard
           selectedProjectId={selectedId ?? ""}
           onSelectProject={(id) => setSelectedId(id)}
           milestones={realMilestones}
@@ -1152,18 +1175,20 @@ export default function ProjectsClient() {
             code: p.project_code || (p as any).code,
             status: p.status,
           }))}
-        />
+        />}
       </div>
 
       {/* ── Navigation Tabs ── */}
       <div className="flex items-center gap-2 border-b border-text-tertiary overflow-x-auto no-scrollbar pb-1">
-        {[
+        {(userRole === "staff" ? [
+          { key: "TREE", label: "Task Terkait Saya", icon: Layers, count: mainTasks.length },
+        ] : [
           { key: "TREE", label: "Hierarki Task (Full WBS Plan)", icon: Layers, count: mainTasks.length },
           { key: "WORKSPACE", label: "Workspace Personal Saya (Semua Proyek)", icon: Users, count: allPersonalTasks.length },
           { key: "TRANSFERS", label: "Transfer Requests", icon: RefreshCw, count: transfers.length },
           { key: "MILESTONES", label: "Milestones & Gates", icon: ShieldCheck, count: selectedProject?.milestones?.length },
-          { key: "FINANCIAL", label: "Biaya, Dana & Billing", icon: DollarSign },
-        ].map((tab) => (
+          ...(canViewFinancials ? [{ key: "FINANCIAL", label: "Biaya, Dana & Billing", icon: DollarSign }] : []),
+        ]).map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -1192,8 +1217,8 @@ export default function ProjectsClient() {
         <div className="flex flex-col gap-5">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <span className="badge badge-success text-xs font-bold">Hierarki WBS Proyek</span>
-              <span className="text-xs text-text-secondary">Level 1: Main Task (PM) &rarr; Level 2: Target Mingguan (Weekly Plan) &rarr; Level 3: Aktivitas Harian (Daily Task)</span>
+              <span className="badge badge-success text-xs font-bold">{userRole === "staff" ? "Task Terkait Saya" : "Hierarki WBS Proyek"}</span>
+              <span className="text-xs text-text-secondary">{userRole === "staff" ? "Hanya paket kerja dan aktivitas yang ditugaskan kepada akun aktif." : "Level 1: Main Task (PM) → Level 2: Target Mingguan (Weekly Plan) → Level 3: Aktivitas Harian (Daily Task)"}</span>
             </div>
 
             {isPM ? (
@@ -1451,7 +1476,7 @@ export default function ProjectsClient() {
                                                 });
                                                 setIsCreateDailyOpen(true);
                                               }}
-                                              className="btn-primary py-0.5 px-2.5 text-2xs gap-1 bg-emerald-600 hover:bg-emerald-700"
+                                              className="btn-primary py-0.5 px-2.5 text-2xs gap-1 bg-brand-green hover:bg-brand-deep-green"
                                             >
                                               <Plus size={11} /> + Daily Task Harian
                                             </button>
@@ -1535,7 +1560,7 @@ export default function ProjectsClient() {
                                                             className={cn(
                                                               "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
                                                               !canManageDaily && "cursor-not-allowed opacity-40 bg-gray-100",
-                                                              canManageDaily && isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
+                                                              canManageDaily && isDone ? "bg-brand-green border-brand-green text-white" : "border-gray-300 hover:border-brand-green"
                                                             )}
                                                             title={!canManageDaily ? "Hanya PIC atau assignee yang dapat mengubah status" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
                                                           >
@@ -1549,7 +1574,7 @@ export default function ProjectsClient() {
                                                           </div>
                                                         </div>
                                                       </td>
-                                                      <td className="py-2 px-3 align-top max-w-[200px] text-emerald-800 text-xs">
+                                                      <td className="py-2 px-3 align-top max-w-[200px] text-brand-deep-green text-xs">
                                                         {daily.output_result || <span className="text-text-secondary italic text-2xs">-</span>}
                                                       </td>
                                                       <td className="py-2 px-3 align-top whitespace-nowrap">
@@ -1785,7 +1810,7 @@ export default function ProjectsClient() {
                                 className={cn(
                                   "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
                                   !isDailyOwner && "cursor-not-allowed opacity-40 bg-gray-100",
-                                  isDone ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 hover:border-emerald-500"
+                                  isDone ? "bg-brand-green border-brand-green text-white" : "border-gray-300 hover:border-brand-green"
                                 )}
                                 title={!isDailyOwner ? "Hanya pemilik task yang dapat memperbarui progres" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
                               >
@@ -1802,7 +1827,7 @@ export default function ProjectsClient() {
                             </div>
                           </td>
 
-                          <td className="py-3 px-3.5 align-top max-w-[200px] text-emerald-800">
+                          <td className="py-3 px-3.5 align-top max-w-[200px] text-brand-deep-green">
                             {daily.output_result || <span className="text-text-secondary italic text-2xs">-</span>}
                           </td>
 
@@ -1899,7 +1924,7 @@ export default function ProjectsClient() {
                               toast.error("Transfer tidak dapat disetujui");
                             }
                           }}
-                          className="btn-primary py-1 px-3 text-xs bg-emerald-600"
+                          className="btn-primary py-1 px-3 text-xs bg-brand-green"
                         >
                           Setujui
                         </button>
@@ -1956,7 +1981,7 @@ export default function ProjectsClient() {
               selectedProject.milestones.map((m) => (
                 <div key={m.id} className="py-3 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <CheckCircle2 size={16} className={cn(m.is_passed ? "text-emerald-500" : "text-gray-300")} />
+                    <CheckCircle2 size={16} className={cn(m.is_passed ? "text-brand-green" : "text-gray-300")} />
                     <div>
                       <strong className="text-xs text-text-primary block">{m.name}</strong>
                       <span className="text-2xs text-text-secondary">Target: {m.target_date || "-"}</span>
@@ -1982,11 +2007,11 @@ export default function ProjectsClient() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-extrabold text-white tracking-wide flex items-center gap-2">
-                    <DollarSign size={18} className="text-emerald-400" /> Analisis Laba Rugi (P&L) & Realisasi Finansial Proyek
+                    <DollarSign size={18} className="text-brand-primary-soft" /> Analisis Laba Rugi (P&L) & Realisasi Finansial Proyek
                   </h3>
                   <span className={cn(
                     "badge text-2xs font-extrabold px-2 py-0.5 rounded-full",
-                    financialPerformance?.financial_health_status === "PROFITABLE" ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" :
+                    financialPerformance?.financial_health_status === "PROFITABLE" ? "bg-brand-light-green0/20 text-brand-primary-soft border border-brand-green/40" :
                     financialPerformance?.financial_health_status === "AT_RISK" ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" :
                     "bg-red-500/20 text-red-300 border border-red-500/40"
                   )}>
@@ -2002,14 +2027,14 @@ export default function ProjectsClient() {
                 {isPM && (
                   <button
                     onClick={() => setIsEditFinancialsOpen(true)}
-                    className="btn-outline py-1 px-3 text-xs text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/10 gap-1.5"
+                    className="btn-outline py-1 px-3 text-xs text-brand-primary-soft border-brand-green/50 hover:bg-brand-light-green0/10 gap-1.5"
                   >
                     <Edit size={12} /> Edit Target Finansial & Budget
                   </button>
                 )}
                 <button
                   onClick={() => setIsFundingRequestOpen(true)}
-                  className="btn-primary py-1 px-3 text-xs bg-emerald-600 hover:bg-emerald-500 gap-1.5 font-bold"
+                  className="btn-primary py-1 px-3 text-xs bg-brand-green hover:bg-brand-light-green0 gap-1.5 font-bold"
                 >
                   <Plus size={12} /> + Ajukan Permintaan Dana (Budgeting)
                 </button>
@@ -2022,7 +2047,7 @@ export default function ProjectsClient() {
                 <span className="text-base font-extrabold text-white mt-1 block">
                   {formatRupiah(Number(financialPerformance?.expected_revenue || (selectedProject as any)?.contract_amount || 0))}
                 </span>
-                <span className="text-3xs text-emerald-400 mt-0.5 block">
+                <span className="text-3xs text-brand-primary-soft mt-0.5 block">
                   Invoiced: {formatRupiah(Number(financialPerformance?.invoiced_revenue || 0))}
                 </span>
               </div>
@@ -2051,7 +2076,7 @@ export default function ProjectsClient() {
                 <span className="text-2xs text-white/60 block font-medium">Proyeksi Laba Bersih (Gross Margin)</span>
                 <span className={cn(
                   "text-base font-extrabold mt-1 block",
-                  Number(financialPerformance?.actual_gross_profit || 0) >= 0 ? "text-emerald-400" : "text-red-400"
+                  Number(financialPerformance?.actual_gross_profit || 0) >= 0 ? "text-brand-primary-soft" : "text-red-400"
                 )}>
                   {formatRupiah(Number(financialPerformance?.actual_gross_profit || 0))}
                 </span>
@@ -2084,7 +2109,7 @@ export default function ProjectsClient() {
                         <div className="mt-1 flex items-center gap-2"><CategoryLabel label={f.expense_type || f.category || "OPERATIONAL"} /><span className="text-2xs text-text-secondary">{f.expense_date || "-"}</span></div>
                       </div>
                       <div className="text-right">
-                        <strong className="text-emerald-700 block">{formatRupiah(Number(f.amount))}</strong>
+                        <strong className="text-brand-deep-green block">{formatRupiah(Number(f.amount))}</strong>
                         <span className={cn("badge text-3xs font-bold", f.status === "APPROVED" || f.status === "DISBURSED" ? "badge-success" : "badge-info")}>
                           {f.status || "SUBMITTED"}
                         </span>
@@ -2138,7 +2163,7 @@ export default function ProjectsClient() {
                         <span className="font-bold text-text-primary block">{b.description || "Proposal Termin"}</span>
                         <span className="text-2xs text-text-secondary">Milestone: {b.milestone_percentage || 0}%</span>
                       </div>
-                      <strong className="text-emerald-700">{formatRupiah(Number(b.amount))}</strong>
+                      <strong className="text-brand-deep-green">{formatRupiah(Number(b.amount))}</strong>
                     </div>
                   ))
                 )}
@@ -2459,7 +2484,7 @@ export default function ProjectsClient() {
 
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => setIsCreateDailyOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleAddDailyTask} className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 font-bold">
+            <button onClick={handleAddDailyTask} className="btn-primary py-1.5 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold">
               Simpan Aktivitas Harian
             </button>
           </div>
@@ -2493,8 +2518,8 @@ export default function ProjectsClient() {
               </div>
               <div className="text-sm font-semibold text-[#435247] tabular-nums">{checklistProgress}%</div>
             </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#effbdd]" role="progressbar" aria-valuenow={checklistProgress} aria-valuemin={0} aria-valuemax={100}>
-              <div className="h-full rounded-full bg-[#5f8f35] transition-all duration-300" style={{ width: `${checklistProgress}%` }} />
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#EAF6FF]" role="progressbar" aria-valuenow={checklistProgress} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full rounded-full bg-[#294BB2] transition-all duration-300" style={{ width: `${checklistProgress}%` }} />
             </div>
 
             <div className="mt-4 space-y-1">
@@ -2505,7 +2530,7 @@ export default function ProjectsClient() {
                     {done && <Check size={11} strokeWidth={3} />}
                   </span>
                   <span className={cn('min-w-0 flex-1 text-xs', done ? 'text-[#667068]' : 'text-[#435247]')}>{item.title}</span>
-                  {item.target_date && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#efffde] px-3 py-1 text-2xs font-medium text-[#54752f]">
+                  {item.target_date && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#EAF6FF] px-3 py-1 text-2xs font-medium text-[#2649B3]">
                     {new Date(item.target_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}<Clock size={11} />
                   </span>}
                 </button>;
@@ -2530,7 +2555,7 @@ export default function ProjectsClient() {
               </div>
               <span className={cn(
                 "shrink-0 rounded-full px-3 py-1 text-2xs font-semibold",
-                editDailyForm.status === "BLOCKED" ? "bg-red-100 text-red-700" : checklistProgress >= 100 ? "bg-[#dff5d2] text-[#416d28]" : "bg-[#efffde] text-[#54752f]"
+                editDailyForm.status === "BLOCKED" ? "bg-red-100 text-red-700" : checklistProgress >= 100 ? "bg-[#EAF6FF] text-[#2649B3]" : "bg-[#EAF6FF] text-[#2649B3]"
               )}>
                 {editDailyForm.status === "BLOCKED" ? "Blocked" : checklistProgress >= 100 ? "Completed" : checklistProgress > 0 ? "In Progress" : "Not Started"}
               </span>
@@ -2570,7 +2595,7 @@ export default function ProjectsClient() {
 
           <div className="flex justify-end gap-2 border-t border-[#e5e9e3] pt-4 lg:col-span-2">
             <button onClick={() => setIsEditDailyOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleSaveEditDaily} className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 font-bold">
+            <button onClick={handleSaveEditDaily} className="btn-primary py-1.5 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold">
               Simpan Perubahan Aktivitas
             </button>
           </div>
@@ -2671,7 +2696,7 @@ export default function ProjectsClient() {
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-bold text-text-secondary">Klien / Customer</label>
                 {newProjForm.customer_name.trim() && !customerOptions.includes(newProjForm.customer_name.trim()) && (
-                  <span className="text-3xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+                  <span className="text-3xs font-extrabold text-brand-deep-green bg-brand-light-green border border-brand-primary-soft px-1.5 py-0.5 rounded-md">
                     + Klien Baru (Otomatis Disimpan)
                   </span>
                 )}
@@ -2752,7 +2777,7 @@ export default function ProjectsClient() {
             </div>
             <div className="card p-3 bg-gray-50 rounded-xl">
               <span className="text-2xs text-text-secondary">Cost Performance (CPI)</span>
-              <div className="text-xl font-bold text-emerald-600 mt-1">{healthData?.cpi || "1.02"}</div>
+              <div className="text-xl font-bold text-brand-green mt-1">{healthData?.cpi || "1.02"}</div>
               <span className="text-3xs text-text-secondary mt-0.5 block">{healthData?.cv || "On Budget"}</span>
             </div>
           </div>
@@ -2925,7 +2950,7 @@ export default function ProjectsClient() {
 
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => setIsEditFinancialsOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleUpdateFinancialTargets} className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700">
+            <button onClick={handleUpdateFinancialTargets} className="btn-primary py-1.5 px-4 text-xs bg-brand-green hover:bg-brand-deep-green">
               Simpan Target Finansial
             </button>
           </div>
@@ -2941,7 +2966,7 @@ export default function ProjectsClient() {
         size="md"
       >
         <div className="flex flex-col gap-3">
-          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800">
+          <div className="p-3 bg-brand-light-green rounded-xl border border-brand-primary-soft text-xs text-brand-deep-green">
             Pengajuan ini akan diteruskan ke tab <b>Project Funding</b> pada modul Finance untuk diverifikasi dan disetujui oleh <b>Finance Approver</b>.
           </div>
           <div>
@@ -2982,7 +3007,7 @@ export default function ProjectsClient() {
 
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => setIsFundingRequestOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleCreateFundingRequest} className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 font-bold">
+            <button onClick={handleCreateFundingRequest} className="btn-primary py-1.5 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold">
               Kirim Permintaan ke Finance
             </button>
           </div>

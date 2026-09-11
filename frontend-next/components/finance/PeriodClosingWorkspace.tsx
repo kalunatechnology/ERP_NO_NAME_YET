@@ -44,7 +44,7 @@ interface YearEndResult {
 
 const statusColor = (s: string) => {
   const m: Record<string, string> = {
-    OPEN:   'bg-emerald-100 text-emerald-700',
+    OPEN:   'bg-brand-light-green text-brand-deep-green',
     CLOSED: 'bg-gray-300 text-gray-700',
     LOCKED: 'bg-red-100 text-red-700',
   };
@@ -162,7 +162,7 @@ export default function PeriodClosingWorkspace() {
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium max-w-sm
-          ${toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+          ${toast.type === 'success' ? 'bg-brand-green text-white' : 'bg-red-600 text-white'}`}>
           {toast.msg}
         </div>
       )}
@@ -177,8 +177,8 @@ export default function PeriodClosingWorkspace() {
 
       {/* Stats Bar */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-center">
-          <p className="text-3xl font-black text-emerald-400">{openPeriods.length}</p>
+        <div className="bg-brand-light-green0/10 border border-brand-green/20 rounded-xl p-4 text-center">
+          <p className="text-3xl font-black text-brand-primary-soft">{openPeriods.length}</p>
           <p className="text-xs text-text-secondary mt-1">Periode Aktif (OPEN)</p>
         </div>
         <div className="bg-gray-500/10 border border-gray-500/20 rounded-xl p-4 text-center">
@@ -291,7 +291,7 @@ export default function PeriodClosingWorkspace() {
               </div>
               <div>
                 <p className="text-xs text-text-secondary">Laba / Rugi Bersih</p>
-                <p className={`text-sm font-black ${yearEndResult.is_profit ? 'text-emerald-400' : 'text-red-400'}`}>
+                <p className={`text-sm font-black ${yearEndResult.is_profit ? 'text-brand-primary-soft' : 'text-red-400'}`}>
                   {yearEndResult.is_profit ? '+' : '-'}{formatRp(Math.abs(yearEndResult.net_profit_loss))}
                 </p>
               </div>

@@ -20,16 +20,23 @@ const config: Config = {
       /* ── Marka+ Brand Colors ──────────────────────────── */
       colors: {
         brand: {
-          "deep-green":    "#275433",
-          "green":         "#5A861F",
-          "light-green":   "#F0FEE0",
-          "gradient-from": "#7CDA24",
-          "gradient-to":   "#3E9B4B",
+          // Legacy keys are intentionally retained while the application
+          // migrates from the old green identity to the approved blue scale.
+          "deep-green":    "#2649B3",
+          "green":         "#294BB2",
+          "light-green":   "#EAF6FF",
+          "gradient-from": "#42ACFB",
+          "gradient-to":   "#2649B3",
+          primary:          "#294BB2",
+          "primary-dark":  "#2649B3",
+          "primary-soft":  "#9FD6FF",
+          "primary-pale":  "#EAF6FF",
+          muted:            "#3F528B",
         },
         text: {
-          primary:   "#0E341F",
-          secondary: "#768779",
-          tertiary:  "#E8E8E8",
+          primary:   "#090909",
+          secondary: "#4F5050",
+          tertiary:  "#D9D9D9",
         },
         bg: {
           lighter: "#FFFFFF",
@@ -86,14 +93,14 @@ const config: Config = {
       boxShadow: {
         "2xs":    "0 1px 2px rgba(0,0,0,0.03)",
         card:     "0 1px 3px rgba(0,0,0,0.04)",
-        "card-md":"0 4px 12px rgba(39,84,51,0.08)",
+        "card-md":"0 4px 12px rgba(38,73,179,0.08)",
         sidebar:  "2px 0 8px rgba(0,0,0,0.04)",
       },
 
       /* ── Gradients ───────────────────────────────────── */
       backgroundImage: {
-        "brand-gradient": "linear-gradient(180deg, #7CDA24 0%, #3E9B4B 100%)",
-        "brand-gradient-h": "linear-gradient(90deg, #7CDA24 0%, #3E9B4B 100%)",
+        "brand-gradient": "linear-gradient(180deg, #42ACFB 0%, #2649B3 100%)",
+        "brand-gradient-h": "linear-gradient(90deg, #42ACFB 0%, #2649B3 100%)",
       },
 
       /* ── Transitions ─────────────────────────────────── */

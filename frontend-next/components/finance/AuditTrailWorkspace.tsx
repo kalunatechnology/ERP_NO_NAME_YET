@@ -36,7 +36,7 @@ const actionColor = (a: string) => {
     ASSET_DISPOSED:    'bg-red-100 text-red-700',
     REVERSAL:          'bg-red-100 text-red-700',
     UPDATE:            'bg-gray-100 text-gray-600',
-    CREATE:            'bg-emerald-100 text-emerald-700',
+    CREATE:            'bg-brand-light-green text-brand-deep-green',
   };
   return m[a] ?? 'bg-gray-100 text-gray-600';
 };
@@ -60,7 +60,7 @@ function DiffViewer({ before, after }: { before: Record<string, unknown>; after:
             {JSON.stringify(before[key] ?? null)}
           </span>
           <span className="text-text-secondary">→</span>
-          <span className="text-emerald-400 truncate max-w-[140px]" title={String(after[key] ?? '—')}>
+          <span className="text-brand-primary-soft truncate max-w-[140px]" title={String(after[key] ?? '—')}>
             {JSON.stringify(after[key] ?? null)}
           </span>
         </div>
@@ -209,7 +209,7 @@ export default function AuditTrailWorkspace() {
                       </div>
                       <div>
                         <p className="text-xs font-semibold text-text-secondary mb-1">After State:</p>
-                        <pre className="text-xs font-mono text-emerald-300/80 bg-emerald-500/5 rounded p-2 overflow-auto max-h-28">
+                        <pre className="text-xs font-mono text-brand-primary-soft/80 bg-brand-light-green0/5 rounded p-2 overflow-auto max-h-28">
                           {JSON.stringify(
                             Object.fromEntries(Object.entries(event.after_data ?? {}).filter(([k]) => k !== '_description')),
                             null, 2

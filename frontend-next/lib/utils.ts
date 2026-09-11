@@ -7,6 +7,7 @@
 
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { getStatusStyle } from "@/lib/ui/semantic-styles";
 
 /**
  * cn implements this file's named function contract.
@@ -96,20 +97,6 @@ export function normalizeDateKey(value: string | Date | null | undefined): strin
 }
 
 /* ── Status color maps ─────────────────────── */
-export const STATUS_COLORS: Record<string, string> = {
-  DRAFT:       "bg-gray-100 text-gray-600",
-  ACTIVE:      "bg-blue-100 text-blue-700",
-  IN_PROGRESS: "bg-blue-100 text-blue-700",
-  PENDING:     "bg-yellow-100 text-yellow-700",
-  ON_HOLD:     "bg-orange-100 text-orange-700",
-  DONE:        "bg-brand-light-green text-brand-deep-green",
-  COMPLETED:   "bg-brand-light-green text-brand-deep-green",
-  CLOSED:      "bg-brand-light-green text-brand-deep-green",
-  BLOCKED:     "bg-red-100 text-red-700",
-  CANCELLED:   "bg-red-100 text-red-600",
-  APPROVED:    "bg-brand-light-green text-brand-green",
-};
-
 /**
  * getStatusColor implements this file's named function contract.
  *
@@ -119,5 +106,5 @@ export const STATUS_COLORS: Record<string, string> = {
  * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
  */
 export function getStatusColor(status: string): string {
-  return STATUS_COLORS[status?.toUpperCase()] ?? "bg-gray-100 text-gray-600";
+  return getStatusStyle(status);
 }

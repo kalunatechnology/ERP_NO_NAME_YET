@@ -64,7 +64,7 @@ const formatRp = (v?: number | null) =>
 
 const statusBadge = (s: string) => {
   const map: Record<string, string> = {
-    ACTIVE: 'bg-emerald-100 text-emerald-700',
+    ACTIVE: 'bg-brand-light-green text-brand-deep-green',
     DISPOSED: 'bg-red-100 text-red-600',
     DEPRECIATING: 'bg-blue-100 text-blue-700',
     IDLE: 'bg-yellow-100 text-yellow-700',
@@ -200,7 +200,7 @@ export default function FixedAssetsWorkspace() {
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all
-          ${toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+          ${toast.type === 'success' ? 'bg-brand-green text-white' : 'bg-red-600 text-white'}`}>
           {toast.msg}
         </div>
       )}
@@ -298,7 +298,7 @@ export default function FixedAssetsWorkspace() {
                               <button
                                 onClick={() => runSingleDepreciation(asset.id)}
                                 disabled={singleDepLoading && singleDepAsset === asset.id}
-                                className="px-2 py-1 text-xs rounded-md bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
+                                className="px-2 py-1 text-xs rounded-md bg-brand-light-green0/20 text-brand-primary-soft hover:bg-brand-light-green0/30 transition-colors disabled:opacity-50"
                               >
                                 {singleDepLoading && singleDepAsset === asset.id ? 'Memproses' : 'Susutkan'}
                               </button>
@@ -392,7 +392,7 @@ export default function FixedAssetsWorkspace() {
               <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
                   { label: 'Total Aset', val: batchResult.total_assets, color: 'text-text-primary' },
-                  { label: 'Diproses', val: batchResult.processed, color: 'text-emerald-400' },
+                  { label: 'Diproses', val: batchResult.processed, color: 'text-brand-primary-soft' },
                   { label: 'Di-skip (Idempotent)', val: batchResult.skipped, color: 'text-yellow-400' },
                   { label: 'Error', val: batchResult.errors, color: 'text-red-400' },
                 ].map(c => (
@@ -418,7 +418,7 @@ export default function FixedAssetsWorkspace() {
                         <td className="py-1.5 px-3 text-text-primary">{d.asset_name}</td>
                         <td className="py-1.5 px-3">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold
-                            ${d.status === 'PROCESSED' ? 'bg-emerald-100 text-emerald-700'
+                            ${d.status === 'PROCESSED' ? 'bg-brand-light-green text-brand-deep-green'
                             : d.status === 'SKIPPED' ? 'bg-yellow-100 text-yellow-700'
                             : 'bg-red-100 text-red-700'}`}>
                             {d.status}

@@ -100,7 +100,7 @@ function MetricCard({ label, value, sub, valueColor, icon: Icon, iconBg, iconCol
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function ProgressBarSimple({ value, color = "#16A34A" }: { value: number; color?: string }) {
+function ProgressBarSimple({ value, color = "#294BB2" }: { value: number; color?: string }) {
   return (
     <div className="w-full bg-gray-100 rounded-full overflow-hidden h-1.5">
       <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }} />
@@ -196,17 +196,17 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
 
       {/* KPI Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard label="Nilai Kontrak (Revenue)" value={formatMoney(revenue)} sub="Target Pendapatan" icon={DollarSign} iconBg="#F0FDF4" iconColor="#16A34A" />
+        <MetricCard label="Nilai Kontrak (Revenue)" value={formatMoney(revenue)} sub="Target Pendapatan" icon={DollarSign} iconBg="#EAF6FF" iconColor="#294BB2" />
         <MetricCard label="Total Biaya Aktual" value={formatMoney(totalCost)} sub="Cost of Goods Sold (HPP)" icon={TrendingUp} iconBg="#FEF2F2" iconColor="#DC2626" valueColor="#DC2626" />
         <MetricCard
           label="Gross Profit" value={formatMoney(grossProfit)} sub="Laba Kotor Proyek" icon={grossProfit >= 0 ? ArrowUpRight : ArrowDownRight}
-          iconBg={grossProfit >= 0 ? "#F0FDF4" : "#FEF2F2"} iconColor={grossProfit >= 0 ? "#16A34A" : "#DC2626"}
-          valueColor={grossProfit >= 0 ? "#16A34A" : "#DC2626"}
+          iconBg={grossProfit >= 0 ? "#EAF6FF" : "#FEF2F2"} iconColor={grossProfit >= 0 ? "#294BB2" : "#DC2626"}
+          valueColor={grossProfit >= 0 ? "#294BB2" : "#DC2626"}
         />
         <MetricCard
           label="Gross Margin" value={`${grossMarginPct.toFixed(1)}%`} sub={`Target: > 20%`} icon={BarChart3}
-          iconBg={grossMarginPct >= 20 ? "#F0FDF4" : "#FFFBEB"} iconColor={grossMarginPct >= 20 ? "#16A34A" : "#D97706"}
-          valueColor={grossMarginPct >= 20 ? "#16A34A" : "#D97706"}
+          iconBg={grossMarginPct >= 20 ? "#EAF6FF" : "#FFFBEB"} iconColor={grossMarginPct >= 20 ? "#294BB2" : "#D97706"}
+          valueColor={grossMarginPct >= 20 ? "#294BB2" : "#D97706"}
         />
       </div>
 
@@ -224,7 +224,7 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
                     <span className="text-text-secondary">{row.label}</span>
                     <span className="font-semibold text-text-primary">{formatMoney(row.value)} ({pct.toFixed(0)}%)</span>
                   </div>
-                  <ProgressBarSimple value={pct} color={["#16A34A","#2563EB","#7C3AED","#EA580C"][i]} />
+                  <ProgressBarSimple value={pct} color={["#294BB2","#2563EB","#7C3AED","#EA580C"][i]} />
                 </div>
               );
             })}
@@ -245,7 +245,7 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
             </div>
             <div className="flex justify-between py-1 border-b border-text-tertiary/40">
               <span className="text-text-secondary">Cost Variance:</span>
-              <span className={cn("font-semibold", revenue - totalCost >= 0 ? "text-emerald-600" : "text-red-600")}>
+              <span className={cn("font-semibold", revenue - totalCost >= 0 ? "text-brand-green" : "text-red-600")}>
                 {revenue - totalCost >= 0 ? "Under Budget (Hemat)" : "Over Budget"}
               </span>
             </div>
@@ -284,9 +284,9 @@ function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) 
     <div className="flex flex-col gap-5">
       {/* Portfolio KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard label="Total Portofolio Kontrak" value={formatMoney(totalRevenue)} sub={`${data.projects.length} Proyek Terdaftar`} icon={DollarSign} iconBg="#F0FDF4" iconColor="#16A34A" />
+        <MetricCard label="Total Portofolio Kontrak" value={formatMoney(totalRevenue)} sub={`${data.projects.length} Proyek Terdaftar`} icon={DollarSign} iconBg="#EAF6FF" iconColor="#294BB2" />
         <MetricCard label="Total Pengeluaran Riil" value={formatMoney(totalActualCost)} sub="Seluruh Proyek Aktif" icon={TrendingUp} iconBg="#FEF2F2" iconColor="#DC2626" valueColor="#DC2626" />
-        <MetricCard label="Total Laba Kotor" value={formatMoney(totalGrossProfit)} sub={`Rata-rata Margin ${avgMargin.toFixed(1)}%`} icon={ArrowUpRight} iconBg="#F0FDF4" iconColor="#16A34A" valueColor="#16A34A" />
+        <MetricCard label="Total Laba Kotor" value={formatMoney(totalGrossProfit)} sub={`Rata-rata Margin ${avgMargin.toFixed(1)}%`} icon={ArrowUpRight} iconBg="#EAF6FF" iconColor="#294BB2" valueColor="#294BB2" />
         <MetricCard label="Proyek Berjalan" value={`${activeProjects} Aktif`} sub={`${data.projects.length - activeProjects} Selesai/Draft`} icon={Layers} iconBg="#EFF6FF" iconColor="#2563EB" />
       </div>
 
@@ -323,10 +323,10 @@ function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) 
                     <td className="px-4 py-3"><StatusBadge status={p.status || "DRAFT"} /></td>
                     <td className="px-4 py-3 text-right font-medium">{formatMoney(pBudget)}</td>
                     <td className="px-4 py-3 text-right font-medium text-red-600">{formatMoney(pCost)}</td>
-                    <td className="px-4 py-3 text-right font-bold" style={{ color: pProfit >= 0 ? "#16A34A" : "#DC2626" }}>
+                    <td className="px-4 py-3 text-right font-bold" style={{ color: pProfit >= 0 ? "#294BB2" : "#DC2626" }}>
                       {formatMoney(pProfit)}
                     </td>
-                    <td className="px-4 py-3 text-right font-bold" style={{ color: pMargin >= 20 ? "#16A34A" : "#D97706" }}>
+                    <td className="px-4 py-3 text-right font-bold" style={{ color: pMargin >= 20 ? "#294BB2" : "#D97706" }}>
                       {pMargin.toFixed(1)}%
                     </td>
                   </tr>
@@ -538,12 +538,12 @@ export default function ReportingClient() {
             <head>
               <title>Laporan Finansial & Observabilitas Proyek - Marka+ ERP</title>
               <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 32px; color: #1e293b; }
-                h2 { color: #1e3a1e; border-bottom: 2px solid #3E9B4B; padding-bottom: 8px; margin-bottom: 16px; }
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 32px; color: #1E293B; }
+                h2 { color: #2649B3; border-bottom: 2px solid #2649B3; padding-bottom: 8px; margin-bottom: 16px; }
                 table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
-                th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
-                th { background-color: #f1f5f9; font-weight: bold; }
-                .card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+                th, td { border: 1px solid #CBD5E1; padding: 8px 12px; text-align: left; }
+                th { background-color: #F1F5F9; font-weight: bold; }
+                .card { border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
                 @media print {
                   button { display: none; }
                 }
@@ -551,7 +551,7 @@ export default function ReportingClient() {
             </head>
             <body>
               <h2>Marka+ ERP — Laporan Finansial Proyek</h2>
-              <p style="font-size: 12px; color: #64748b;">Tanggal Cetak: ${new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</p>
+              <p style="font-size: 12px; color: #64748B;">Tanggal Cetak: ${new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</p>
               ${reportElement.innerHTML}
             </body>
           </html>

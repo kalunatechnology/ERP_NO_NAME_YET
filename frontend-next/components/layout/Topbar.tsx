@@ -109,14 +109,14 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
       {/* Left: Hamburger (mobile) + Breadcrumb */}
       <div className="flex items-center gap-2 sm:gap-4 min-w-0">
         {/* Hamburger: always visible, activates mobile sidebar below lg */}
-        {canOpenReporting && <button
+        <button
           onClick={onMenuToggle}
           className="flex-shrink-0 p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-brand-light-green transition-colors lg:hidden"
           id="topbar-menu-btn"
           aria-label="Buka menu"
         >
           <Menu size={20} aria-hidden="true" />
-        </button>}
+        </button>
 
         <nav aria-label="Breadcrumb" className="min-w-0">
           <ol className="flex items-center gap-1.5 sm:gap-2">
@@ -216,7 +216,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
           </kbd>
         </button>
 
-        <button
+        {canOpenReporting && <button
           type="button"
           onClick={() => router.push('/reporting?tab=attendance')}
           className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/60 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
@@ -225,7 +225,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
         >
           <CalendarCheck size={19} aria-hidden="true" />
           <span className="hidden xl:inline text-xs font-semibold">Attendance</span>
-        </button>
+        </button>}
 
         {/* Notification Bell / Mobile Right Drawer Trigger */}
         <button
@@ -236,7 +236,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
           title="Buka Notifikasi & Feed Tim"
         >
           <Bell size={19} aria-hidden="true" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-500 rounded-full ring-2 ring-white" aria-hidden="true" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-light-green0 rounded-full ring-2 ring-white" aria-hidden="true" />
         </button>
 
         {/* User Avatar & Profile Pop-up */}

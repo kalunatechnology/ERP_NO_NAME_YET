@@ -133,7 +133,7 @@ function ActionBtn({ onClick, label, variant = "primary", icon: Icon, small }: A
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function KpiCard({ label, value, icon: Icon, iconBg = "#F0FDF4", iconColor = "#16A34A" }: {
+function KpiCard({ label, value, icon: Icon, iconBg = "#EAF6FF", iconColor = "#294BB2" }: {
   label: string; value: string | number;
   icon: React.ElementType; iconBg?: string; iconColor?: string;
 }) {
@@ -292,8 +292,8 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
           label="Bobot Pipeline" 
           value={formatMoney(dash?.weighted_project_value)} 
           icon={DollarSign} 
-          iconBg="#F0FDF4" 
-          iconColor="#16A34A" 
+          iconBg="#EAF6FF"
+          iconColor="#294BB2"
         />
         <KpiCard 
           label="Win Rate" 
@@ -833,7 +833,7 @@ function TabDeals({
       {resultModal?.type === "dealWon" && (
         <Modal isOpen={true} onClose={() => setResultModal(null)} title="Deal Won & Credit Assessment" size="md">
           <div className="p-4 flex flex-col gap-3">
-            <div className={cn("p-3 rounded-xl", resultModal.data?.credit_evaluation?.is_safe ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200")}>
+            <div className={cn("p-3 rounded-xl", resultModal.data?.credit_evaluation?.is_safe ? "bg-brand-light-green border border-brand-primary-soft" : "bg-amber-50 border border-amber-200")}>
               <div className="font-semibold text-sm">Keputusan: {resultModal.data?.decision || "-"}</div>
               <div className="text-xs text-text-secondary mt-1">{resultModal.data?.handoff?.note || resultModal.data?.message || ""}</div>
             </div>
@@ -1067,7 +1067,7 @@ function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefr
                     {!resolved ? (
                       <ActionBtn onClick={async () => { await checkTicketWarrantyStatus(c.id); toast.success("Status diperbarui."); onRefresh(); }} label="Periksa status" small variant="ghost" />
                     ) : (
-                      <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-2xs font-semibold">RESOLVED</span>
+                      <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">RESOLVED</span>
                     )}
                     <button onClick={async () => { if(!confirm("Hapus tiket?")) return; await deleteSupportTicket(c.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
                       <Trash2 size={13} />
@@ -1251,7 +1251,7 @@ function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRef
                   {!isQual ? (
                     <ActionBtn onClick={async () => { await qualifyInquiry(x.id); toast.success("Inquiry berhasil dikualifikasi."); onRefresh(); }} label="Jadikan opportunity" small />
                   ) : (
-                    <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-2xs font-semibold">QUALIFIED</span>
+                    <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">QUALIFIED</span>
                   )}
                   <button onClick={async () => { if(!confirm("Hapus inquiry?")) return; await deleteCustomerInquiry(x.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
                     <Trash2 size={13} />

@@ -120,3 +120,20 @@ Verifikasi terakhir untuk `ACC-2026-09-10-04`:
 - `frontend-next/lib/api/project.api.ts`
 - `backend-express/tests/q11-system-guardrails.ts`
 - `Q8_PRODUCTION_READINESS.md`
+# 2026-09-11 — Frontend action and data-contract hardening
+
+- Daily Task creation now derives its selectable Project → Main Task → Weekly Task scope from the active role and authoritative Main Task assignments. Staff without an assigned Main Task no longer see a create action that the backend would reject.
+- The Reporting shortcut on Daily Tasks and the Attendance shortcut in the top bar are now rendered only when the active role/entitlement can open `/reporting`. Mobile navigation remains available independently of Reporting permission.
+- Project-level mutations (`Proyek Baru` and EVM health recalculation) are hidden from Staff. Financial visibility now uses the normalized frontend role `executive` corresponding to backend `ROLE-DIRECTOR`.
+- Finance division selectors request `organization_type=DIVISION` and normalize the authoritative Core fields `organization_name` / `organization_code`; UI no longer assumes a non-contractual `name` field.
+- Staff dashboard wording now directs users to submit task reports instead of promising unrestricted Daily Task creation.
+- Dynamic 401/403/404/429/500/503 pages use consistent Indonesian recovery guidance and the current blue visual contract.
+- Q11 regression guards cover these role/action, route/entitlement, division-field, and error-state invariants.
+
+## Implementation guideline alignment
+
+- PM dashboard now places the personal/operational task highlight before Completion Rate, matching the approved section order.
+- Staff dashboard exposes three explicit stages: personal task summary, task list, and task submission.
+- Staff Project workspace is reduced to an assignment-scoped `Task Terkait Saya` hierarchy plus project overview/timeline; management, transfer, milestone-management, and financial tabs remain outside the Staff view.
+- Status and category presentation is centralized in `frontend-next/lib/ui/semantic-styles.ts`. Normal and successful states use the approved blue identity; red is reserved for failure/rejection/blocking and amber for pending/warning states.
+- Legacy visual green literals and Emerald/Lime utility colors were removed from application pages and shared components. Existing `brand-green` token names are compatibility aliases whose actual values are the approved blue palette.

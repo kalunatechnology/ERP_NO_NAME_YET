@@ -325,7 +325,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
           <div className="relative pl-3.5 flex flex-col gap-2 mt-0.5">
             {/* Continuous Vertical Timeline Rail */}
             <div className="absolute left-1 top-1 bottom-1 w-0.5 bg-gray-200 rounded-full overflow-hidden">
-              <div className="w-full bg-[#5A861F] h-1/3 rounded-full" />
+              <div className="w-full bg-[#294BB2] h-1/3 rounded-full" />
             </div>
 
             {alerts.length === 0 ? (
@@ -344,7 +344,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                   className={cn(
                     "p-2.5 rounded-xl transition-all flex flex-col gap-1 cursor-pointer group",
                     item.isHighlighted
-                      ? "bg-[#F0FEE0] border border-[#BBDFA0] shadow-2xs"
+                      ? "bg-[#EAF6FF] border border-[#9FD6FF] shadow-2xs"
                       : "bg-white hover:bg-neutral-50 border border-gray-100"
                   )}
                 >
@@ -354,23 +354,23 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                         style={{
                           backgroundColor:
-                            item.categoryColor || (item.isHighlighted ? "#22C55E" : "#9CA3AF"),
+                            item.categoryColor || (item.isHighlighted ? "#294BB2" : "#9CA3AF"),
                         }}
                       />
-                      <span className="font-bold text-[#0E341F] text-[10px] truncate">
+                      <span className="font-bold text-[#090909] text-[10px] truncate">
                         {item.category}
                       </span>
                     </div>
-                    <span className="text-[9px] text-[#637566] font-medium flex-shrink-0">
+                    <span className="text-[9px] text-[#4F5050] font-medium flex-shrink-0">
                       {item.time}
                     </span>
                   </div>
 
-                  <h5 className="text-[11px] font-bold text-[#0E341F] leading-snug group-hover:text-[#275433] transition-colors truncate">
+                  <h5 className="text-[11px] font-bold text-[#090909] leading-snug group-hover:text-[#2649B3] transition-colors truncate">
                     {item.title}
                   </h5>
 
-                  <p className="text-[10px] text-[#637566] leading-tight line-clamp-2">
+                  <p className="text-[10px] text-[#4F5050] leading-tight line-clamp-2">
                     {item.snippet}
                   </p>
                 </div>
@@ -485,7 +485,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                   <span
                     className={cn(
                       "absolute bottom-0 right-0 w-2 h-2 rounded-full ring-1 ring-white",
-                      contact.status === "online" ? "bg-emerald-500" :
+                      contact.status === "online" ? "bg-brand-light-green0" :
                       contact.status === "away" ? "bg-amber-400" : "bg-gray-300"
                     )}
                     title={contact.status}
@@ -529,7 +529,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                 <span
                   className={cn(
                     "w-2 h-2 rounded-full",
-                    selectedContact.status === "online" ? "bg-emerald-500" :
+                    selectedContact.status === "online" ? "bg-brand-light-green0" :
                     selectedContact.status === "away" ? "bg-amber-400" : "bg-gray-400"
                   )}
                 />

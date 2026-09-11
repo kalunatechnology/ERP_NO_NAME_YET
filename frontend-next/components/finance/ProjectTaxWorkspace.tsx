@@ -228,15 +228,15 @@ export function ProjectTaxWorkspace() {
 
       {/* ── 4 SUMMARY KPI CARDS ───────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="card p-4 rounded-2xl border border-emerald-200 bg-emerald-50/40">
+        <div className="card p-4 rounded-2xl border border-brand-primary-soft bg-brand-light-green/40">
           <div className="flex items-center justify-between">
-            <span className="text-3xs font-bold text-emerald-800 uppercase tracking-wider">Total DPP Proyek</span>
-            <Building2 size={16} className="text-emerald-600" />
+            <span className="text-3xs font-bold text-brand-deep-green uppercase tracking-wider">Total DPP Proyek</span>
+            <Building2 size={16} className="text-brand-green" />
           </div>
-          <span className="text-xl font-black text-emerald-900 mt-1.5 block">
+          <span className="text-xl font-black text-brand-deep-green mt-1.5 block">
             {formatMoney(totalDpp)}
           </span>
-          <span className="text-3xs text-emerald-700 mt-0.5 block">{transactions.length} Faktur Tagihan Terbit</span>
+          <span className="text-3xs text-brand-deep-green mt-0.5 block">{transactions.length} Faktur Tagihan Terbit</span>
         </div>
 
         <div className="card p-4 rounded-2xl border border-blue-200 bg-blue-50/40">
@@ -365,13 +365,13 @@ export function ProjectTaxWorkspace() {
         {/* Live Calculation Results: Two Phase Comparison */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
           {/* Phase 1: Uang Muka DP */}
-          <div className="p-4 rounded-xl border border-emerald-200 bg-white shadow-2xs flex flex-col gap-2">
+          <div className="p-4 rounded-xl border border-brand-primary-soft bg-white shadow-2xs flex flex-col gap-2">
             <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-3xs font-bold">1</span>
+              <span className="text-xs font-bold text-brand-deep-green flex items-center gap-1.5">
+                <span className="w-5 h-5 rounded-full bg-brand-green text-white flex items-center justify-center text-3xs font-bold">1</span>
                 Termin 1: Uang Muka (DP {simDownPaymentPct}%)
               </span>
-              <span className="text-3xs px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800">
+              <span className="text-3xs px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-brand-light-green text-brand-deep-green">
                 {simTaxScheme === "FULL_UPFRONT" ? "100% PPN Di Awal" : "Proporsional"}
               </span>
             </div>
@@ -397,9 +397,9 @@ export function ProjectTaxWorkspace() {
               )}
             </div>
 
-            <div className="mt-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex justify-between items-center text-xs">
-              <span className="font-bold text-emerald-900">Uang Masuk Bersih ke Bank:</span>
-              <span className="text-sm font-black text-emerald-700">{formatMoney(dpNetCash)}</span>
+            <div className="mt-2 p-2.5 rounded-lg bg-brand-light-green border border-brand-primary-soft flex justify-between items-center text-xs">
+              <span className="font-bold text-brand-deep-green">Uang Masuk Bersih ke Bank:</span>
+              <span className="text-sm font-black text-brand-deep-green">{formatMoney(dpNetCash)}</span>
             </div>
           </div>
 
@@ -556,14 +556,14 @@ export function ProjectTaxWorkspace() {
                     {tx.bupot_status === "VERIFIED" ? (
                       <div className="flex flex-col items-end">
                         <span className="badge badge-success text-3xs gap-1">
-                          <CheckCircle2 size={11} className="text-emerald-600" /> Bupot Verified
+                          <CheckCircle2 size={11} className="text-brand-green" /> Bupot Verified
                         </span>
                         <span className="text-3xs text-text-secondary font-mono mt-0.5">{tx.bupot_number}</span>
                       </div>
                     ) : tx.bupot_status === "RECEIVED" ? (
                       <button
                         onClick={() => handleOpenBupotModal(tx)}
-                        className="btn-outline py-1 px-2.5 text-2xs gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50 font-bold"
+                        className="btn-outline py-1 px-2.5 text-2xs gap-1 text-brand-deep-green border-brand-primary-soft hover:bg-brand-light-green font-bold"
                       >
                         <FileCheck2 size={12} /> Verifikasi Bupot
                       </button>

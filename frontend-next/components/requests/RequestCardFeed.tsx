@@ -13,7 +13,7 @@ import {
   Plus, CheckCircle2, AlertCircle, Sparkles, Filter, Coins,
   Receipt
 } from "lucide-react";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, getStatusColor } from "@/lib/utils";
 import api from "@/lib/api/axios";
 
 interface RequestCardFeedProps {
@@ -71,25 +71,14 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
  * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
  */
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "COMPLETED":
-        return <span className="px-2.5 py-0.5 rounded-full text-3xs font-extrabold bg-emerald-100 text-emerald-800">CLOSED</span>;
-      case "REGISTERED":
-        return <span className="px-2.5 py-0.5 rounded-full text-3xs font-extrabold bg-emerald-100 text-emerald-800">REGISTERED</span>;
-      case "DISBURSED":
-        return <span className="px-2.5 py-0.5 rounded-full text-3xs font-extrabold bg-cyan-100 text-cyan-800">DISBURSED</span>;
-      case "PENDING_LPJ_VERIFICATION":
-        return <span className="px-2.5 py-0.5 rounded-full text-3xs font-extrabold bg-purple-100 text-purple-800">WAITING LPJ OM</span>;
-      case "PENDING_EXEC":
-        return <span className="px-2.5 py-0.5 rounded-full text-3xs font-extrabold bg-blue-100 text-blue-800">WAITING EXEC</span>;
-      case "RE_CHECKING":
-      case "LPJ_REVISION":
-        return <span className="px-2.5 py-0.5 rounded-full text-3xs font-extrabold bg-orange-100 text-orange-800">RE-CHECKING</span>;
-      case "REJECTED":
-        return <span className="px-2.5 py-0.5 rounded-full text-3xs font-extrabold bg-red-100 text-red-800">REJECTED</span>;
-      default:
-        return <span className="px-2.5 py-0.5 rounded-full text-3xs font-extrabold bg-[#EAF8D6] text-[#1E5C22]">WAITING OM</span>;
-    }
+    const labels: Record<string, string> = {
+      COMPLETED: "CLOSED",
+      PENDING_LPJ_VERIFICATION: "WAITING LPJ OM",
+      PENDING_EXEC: "WAITING EXEC",
+      RE_CHECKING: "RE-CHECKING",
+      LPJ_REVISION: "RE-CHECKING",
+    };
+    return <span className={cn("px-2.5 py-0.5 rounded-full border text-3xs font-extrabold", getStatusColor(status))}>{labels[status] || status.replace(/_/g, " ") || "WAITING OM"}</span>;
   };
 
   return (
@@ -97,15 +86,15 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
       {/* Header & Filter Bar */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-extrabold text-[#0E341F] tracking-tight">Active Request Cards</h3>
-          <span className="px-2 py-0.5 rounded-full bg-[#EAF8D6] text-3xs font-extrabold text-[#1E5C22]">
+          <h3 className="text-sm font-extrabold text-[#090909] tracking-tight">Active Request Cards</h3>
+          <span className="px-2 py-0.5 rounded-full bg-[#EAF6FF] text-3xs font-extrabold text-[#2649B3]">
             {requests.length} Active
           </span>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* Type Filter Buttons */}
-          <div className="flex items-center p-1 rounded-xl bg-[#F0FEE0] border border-[#D5E2D7] text-2xs font-bold text-[#637566]">
+          <div className="flex items-center p-1 rounded-xl bg-[#EAF6FF] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
             {[
               { id: "ALL", label: "ALL" },
               { id: "FUND_REQUEST", label: "FUND" },
@@ -118,7 +107,7 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
                 onClick={() => setFilterType(t.id)}
                 className={cn(
                   "px-2.5 py-1 rounded-lg transition-all",
-                  filterType === t.id ? "bg-[#275433] text-white shadow-2xs font-extrabold" : "hover:text-[#0E341F]"
+                  filterType === t.id ? "bg-[#2649B3] text-white shadow-2xs font-extrabold" : "hover:text-[#090909]"
                 )}
               >
                 {t.label}
@@ -128,7 +117,7 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
 
           <button
             onClick={onOpenNewModal}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#275433] hover:bg-[#1E3A2B] text-white text-2xs font-extrabold shadow-xs transition-all"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#2649B3] hover:bg-[#2649B3] text-white text-2xs font-extrabold shadow-xs transition-all"
           >
             <Plus size={13} strokeWidth={2.5} />
             <span>Request Card</span>
@@ -140,11 +129,11 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {[1, 2].map(i => (
-            <div key={i} className="h-28 rounded-[20px] bg-[#F0FEE0]/50 border border-[#D5E2D7] animate-pulse" />
+            <div key={i} className="h-28 rounded-[20px] bg-[#EAF6FF]/50 border border-[#D9D9D9] animate-pulse" />
           ))}
         </div>
       ) : requests.length === 0 ? (
-        <div className="p-8 rounded-[20px] bg-white border border-[#D5E2D7] text-center text-xs text-[#768779]">
+        <div className="p-8 rounded-[20px] bg-white border border-[#D9D9D9] text-center text-xs text-[#4F5050]">
           Belum ada request aktif. Klik tombol <b>+ Request Card</b> untuk mengajukan dana, rapat, atau cuti baru.
         </div>
       ) : (
@@ -153,17 +142,17 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
             <div
               key={req.id}
               onClick={() => onRequestClick(req)}
-              className="p-4.5 rounded-[20px] bg-white border border-[#D5E2D7] hover:border-[#5A861F]/60 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-150 cursor-pointer flex flex-col justify-between gap-3 shadow-2xs"
+              className="p-4.5 rounded-[20px] bg-white border border-[#D9D9D9] hover:border-[#294BB2]/60 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-150 cursor-pointer flex flex-col justify-between gap-3 shadow-2xs"
             >
               {/* Card Top */}
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-[#F0FEE0] border border-[#D5E2D7] flex items-center justify-center text-[#275433] shrink-0">
+                  <div className="w-8 h-8 rounded-xl bg-[#EAF6FF] border border-[#D9D9D9] flex items-center justify-center text-[#2649B3] shrink-0">
                     {req.request_type === "FUND_REQUEST" ? <Coins size={16} /> : req.request_type === "MEETING" ? <Users size={16} /> : req.request_type === "LEAVE" ? <Coffee size={16} /> : <Briefcase size={16} />}
                   </div>
                   <div className="min-w-0 truncate">
-                    <span className="text-3xs font-mono text-[#768779] block">{req.request_number}</span>
-                    <h4 className="text-xs font-bold text-[#0E341F] truncate">{req.title}</h4>
+                    <span className="text-3xs font-mono text-[#4F5050] block">{req.request_number}</span>
+                    <h4 className="text-xs font-bold text-[#090909] truncate">{req.title}</h4>
                   </div>
                 </div>
                 {getStatusBadge(req.status)}
@@ -171,18 +160,18 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
 
               {/* Fund Request Amount Display */}
               {req.amount && (
-                <div className="px-3 py-1.5 rounded-xl bg-[#F0FEE0]/80 border border-[#D5E2D7] flex items-center justify-between">
-                  <span className="text-3xs font-bold text-[#4B6B4E]">Total Dana</span>
-                  <span className="text-xs font-black text-[#1E5C22]">
+                <div className="px-3 py-1.5 rounded-xl bg-[#EAF6FF]/80 border border-[#D9D9D9] flex items-center justify-between">
+                  <span className="text-3xs font-bold text-[#2649B3]">Total Dana</span>
+                  <span className="text-xs font-black text-[#2649B3]">
                     Rp {Number(req.amount).toLocaleString("id-ID")}
                   </span>
                 </div>
               )}
 
               {/* Card Mid: Schedule & Tagged People */}
-              <div className="flex items-center justify-between text-2xs text-[#637566] pt-2 border-t border-[#D5E2D7]/60">
+              <div className="flex items-center justify-between text-2xs text-[#4F5050] pt-2 border-t border-[#D9D9D9]/60">
                 <div className="flex items-center gap-1.5 font-medium">
-                  <Clock size={12} className="text-[#5A861F]" />
+                  <Clock size={12} className="text-[#294BB2]" />
                   <span>
                     {req.start_at ? new Date(req.start_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" }) : "Today"}
                     {req.request_type === "MEETING" && req.start_at && ` • ${new Date(req.start_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`}
@@ -202,7 +191,7 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
                       />
                     ))}
                     {req.tagged_users.length > 3 && (
-                      <span className="w-5 h-5 rounded-full bg-[#EAF8D6] text-3xs font-bold text-[#1E5C22] flex items-center justify-center border border-white">
+                      <span className="w-5 h-5 rounded-full bg-[#EAF6FF] text-3xs font-bold text-[#2649B3] flex items-center justify-center border border-white">
                         +{req.tagged_users.length - 3}
                       </span>
                     )}

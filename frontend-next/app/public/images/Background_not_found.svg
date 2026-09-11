@@ -19,7 +19,7 @@
 <feFuncA type="discrete" tableValues="1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "/>
 </feComponentTransfer>
 <feComposite operator="in" in2="effect1_foregroundBlur_320_14700" in="coloredNoise1" result="noise1Clipped" />
-<feFlood flood-color="#111D01" result="color1Flood" />
+<feFlood flood-color="#2649B3" result="color1Flood" />
 <feComposite operator="in" in2="noise1Clipped" in="color1Flood" result="color1" />
 <feMerge result="effect2_noise_320_14700">
 <feMergeNode in="effect1_foregroundBlur_320_14700" />
@@ -36,7 +36,7 @@
 <feFuncA type="discrete" tableValues="1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "/>
 </feComponentTransfer>
 <feComposite operator="in" in2="effect1_foregroundBlur_320_14700" in="coloredNoise1" result="noise1Clipped" />
-<feFlood flood-color="#AACF79" result="color1Flood" />
+<feFlood flood-color="#9FD6FF" result="color1Flood" />
 <feComposite operator="in" in2="noise1Clipped" in="color1Flood" result="color1" />
 <feMerge result="effect2_noise_320_14700">
 <feMergeNode in="effect1_foregroundBlur_320_14700" />
@@ -44,12 +44,12 @@
 </feMerge>
 </filter>
 <linearGradient id="paint0_linear_320_14700" x1="1246.07" y1="109.34" x2="36.7996" y2="-7.99195" gradientUnits="userSpaceOnUse">
-<stop stop-color="#7CA744"/>
-<stop offset="1" stop-color="#88BA1A" stop-opacity="0"/>
+<stop stop-color="#42ACFB"/>
+<stop offset="1" stop-color="#42ACFB" stop-opacity="0"/>
 </linearGradient>
 <linearGradient id="paint1_linear_320_14700" x1="297.102" y1="1021.23" x2="1474.44" y2="721.272" gradientUnits="userSpaceOnUse">
-<stop stop-color="#BDE38C"/>
-<stop offset="1" stop-color="#84B41C" stop-opacity="0"/>
+<stop stop-color="#9FD6FF"/>
+<stop offset="1" stop-color="#42ACFB" stop-opacity="0"/>
 </linearGradient>
 <clipPath id="clip0_320_14700">
 <rect width="1440" height="1024" fill="white"/>

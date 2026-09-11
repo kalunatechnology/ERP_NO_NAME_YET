@@ -95,7 +95,7 @@ export function InventoryCheckingCard({
 
   if (!data) {
     return (
-      <div className={cn("w-full bg-white border border-[#E5E9E2] rounded-2xl p-5 shadow-xs h-full", className)}>
+      <div className={cn("w-full bg-white border border-[#EFEFEF] rounded-2xl p-5 shadow-xs h-full", className)}>
         <div className="flex items-center gap-2 text-sm font-bold text-text-primary"><PackageCheck size={17} /> Pemeriksaan Inventory</div>
         <p className="mt-3 text-xs text-text-secondary">Data inventory tidak tersedia untuk module dan role aktif Anda.</p>
       </div>
@@ -107,24 +107,24 @@ export function InventoryCheckingCard({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#E5E9E2] rounded-2xl p-5 shadow-xs flex flex-col justify-between h-full select-none",
+        "w-full bg-white border border-[#EFEFEF] rounded-2xl p-5 shadow-xs flex flex-col justify-between h-full select-none",
         className
       )}
     >
       {/* Header Banner */}
-      <div className="bg-[#F0FEE0] rounded-xl px-3.5 py-2 flex items-center justify-between">
+      <div className="bg-[#EAF6FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <PackageCheck size={16} className="text-[#275433]" />
-          <span className="text-xs font-bold text-[#0E341F]">Inventory Checking</span>
+          <PackageCheck size={16} className="text-[#2649B3]" />
+          <span className="text-xs font-bold text-[#090909]">Inventory Checking</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-bold text-[#5A861F] tracking-wider">REAL TIME</span>
+          <span className="text-[10px] font-bold text-[#294BB2] tracking-wider">REAL TIME</span>
           <button
             type="button"
             onClick={loadData}
             title="Muat ulang stok"
             className={cn(
-              "p-0.5 text-[#5A861F] hover:text-[#275433] transition-colors cursor-pointer",
+              "p-0.5 text-[#294BB2] hover:text-[#2649B3] transition-colors cursor-pointer",
               loading && "animate-spin"
             )}
           >
@@ -135,10 +135,10 @@ export function InventoryCheckingCard({
 
       {/* Item & Warehouse Header */}
       <div className="flex justify-between items-center pt-3 pb-1 border-b border-gray-100/80 gap-2">
-        <span className="text-xs font-bold text-[#0E341F] truncate" title={data.itemName}>
+        <span className="text-xs font-bold text-[#090909] truncate" title={data.itemName}>
           {data.itemName}
         </span>
-        <span className="text-xs font-bold text-[#5A861F] flex-shrink-0 font-mono">
+        <span className="text-xs font-bold text-[#294BB2] flex-shrink-0 font-mono">
           {data.warehouseCode}
         </span>
       </div>
@@ -146,15 +146,15 @@ export function InventoryCheckingCard({
       {/* Stock Metrics Breakdown */}
       <div className="flex flex-col gap-2.5 text-xs py-2 my-auto">
         <div className="flex justify-between items-center gap-2">
-          <span className="text-[#637566] font-medium truncate">Sufficient stock available</span>
-          <span className="font-bold text-[#0E341F] flex-shrink-0">
+          <span className="text-[#4F5050] font-medium truncate">Sufficient stock available</span>
+          <span className="font-bold text-[#090909] flex-shrink-0">
             {data.stockAvailable.toLocaleString("id-ID")} {data.unit}
           </span>
         </div>
 
         <div className="flex justify-between items-center gap-2">
-          <span className="text-[#637566] font-medium truncate">Stocks needed</span>
-          <span className="font-bold text-[#0E341F] flex-shrink-0">
+          <span className="text-[#4F5050] font-medium truncate">Stocks needed</span>
+          <span className="font-bold text-[#090909] flex-shrink-0">
             {data.stockNeeded.toLocaleString("id-ID")} {data.unit}
           </span>
         </div>
@@ -163,15 +163,15 @@ export function InventoryCheckingCard({
 
         {/* Status Badge Row */}
         <div className="flex justify-between items-center pt-0.5 gap-2">
-          <span className="text-xs text-[#637566] font-medium">Stock status</span>
+          <span className="text-xs text-[#4F5050] font-medium">Stock status</span>
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold flex-shrink-0 ${
-              isAvailable ? "bg-[#BBF7D0] text-[#166534]" : "bg-red-100 text-red-700"
+              isAvailable ? "bg-[#9FD6FF] text-[#2649B3]" : "bg-red-100 text-red-700"
             }`}
           >
             <span>{isAvailable ? "Available" : "Shortage / PO Req"}</span>
             {isAvailable ? (
-              <CheckCircle2 size={13} className="text-[#166534]" />
+              <CheckCircle2 size={13} className="text-[#2649B3]" />
             ) : (
               <AlertTriangle size={13} className="text-red-700" />
             )}

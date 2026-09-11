@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AccessDeniedState — Inline 403 Forbidden UI Component
  * Renders an elegant, in-page access denied state instead of
  * redirecting the user away from the current page/module.
@@ -40,9 +40,9 @@ export function AccessDeniedState({
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FEF2F2] border border-[#FECACA] text-xs font-bold text-[#DC2626] mb-3">
           403 — Forbidden
         </span>
-        <h3 className="text-base font-bold text-[#0E341F] mb-1.5">{title}</h3>
+        <h3 className="text-base font-bold text-[#090909] mb-1.5">{title}</h3>
         {section && (
-          <p className="text-xs font-medium text-[#5A861F] mb-2">
+          <p className="text-xs font-medium text-[#294BB2] mb-2">
             Modul: <span className="font-bold">{section}</span>
           </p>
         )}
@@ -53,7 +53,7 @@ export function AccessDeniedState({
           {backHref && (
             <Link
               href={backHref}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#BBDFA0] bg-[#F0FEE0] text-[#275433] text-xs font-semibold hover:bg-[#E0F7C8] transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#9FD6FF] bg-[#EAF6FF] text-[#2649B3] text-xs font-semibold hover:bg-[#EAF6FF] transition-colors"
             >
               <ArrowLeft size={13} />
               {backLabel}
@@ -61,7 +61,7 @@ export function AccessDeniedState({
           )}
           <button
             onClick={() => window.history.back()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#52872A] text-white text-xs font-semibold hover:bg-[#437021] transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#294BB2] text-white text-xs font-semibold hover:bg-[#2649B3] transition-colors"
           >
             Halaman Sebelumnya
           </button>
@@ -80,9 +80,9 @@ export function AccessDeniedState({
           403
         </span>
       </div>
-      <h2 className="text-2xl font-black text-[#0E341F] mb-2">{title}</h2>
+      <h2 className="text-2xl font-black text-[#090909] mb-2">{title}</h2>
       {section && (
-        <p className="text-sm font-medium text-[#5A861F] mb-2">
+        <p className="text-sm font-medium text-[#294BB2] mb-2">
           Modul: <span className="font-bold">{section}</span>
         </p>
       )}
@@ -102,7 +102,7 @@ export function AccessDeniedState({
       <div className="flex items-center gap-3 flex-wrap justify-center">
         <button
           onClick={() => window.history.back()}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#BBDFA0] bg-[#F0FEE0] text-[#275433] text-sm font-semibold hover:bg-[#E0F7C8] transition-colors"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#9FD6FF] bg-[#EAF6FF] text-[#2649B3] text-sm font-semibold hover:bg-[#EAF6FF] transition-colors"
         >
           <ArrowLeft size={15} />
           Halaman Sebelumnya
@@ -110,7 +110,7 @@ export function AccessDeniedState({
         {backHref && (
           <Link
             href={backHref}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#52872A] text-white text-sm font-semibold hover:bg-[#437021] transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#294BB2] text-white text-sm font-semibold hover:bg-[#2649B3] transition-colors shadow-sm"
           >
             {backLabel}
           </Link>

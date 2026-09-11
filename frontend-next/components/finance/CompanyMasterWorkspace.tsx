@@ -352,7 +352,7 @@ export function CompanyMasterWorkspace() {
             <form onSubmit={handleSaveCompany} className="card rounded-2xl p-5 flex flex-col gap-4">
               <div className="flex items-center justify-between pb-3 border-b border-text-tertiary/60">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-[#F0FEE0] text-brand-deep-green flex items-center justify-center font-bold">
+                  <div className="w-8 h-8 rounded-lg bg-[#EAF6FF] text-brand-deep-green flex items-center justify-center font-bold">
                     <Building2 size={16} />
                   </div>
                   <div>
@@ -596,7 +596,7 @@ export function CompanyMasterWorkspace() {
             <div className="card rounded-2xl p-5 flex flex-col gap-3.5">
               <div className="flex items-center justify-between pb-3 border-b border-text-tertiary/60">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-[#F0FDF4] text-emerald-700 flex items-center justify-center font-bold">
+                  <div className="w-8 h-8 rounded-lg bg-[#EAF6FF] text-brand-deep-green flex items-center justify-center font-bold">
                     <Layers size={16} />
                   </div>
                   <div>

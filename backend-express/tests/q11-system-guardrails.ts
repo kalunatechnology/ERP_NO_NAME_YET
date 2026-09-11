@@ -245,10 +245,11 @@ async function main(): Promise<void> {
     assert.equal(normalizeDateKey('2026-09-10T00:00:00.000Z'), '2026-09-10');
     assert.equal(normalizeDateKey('2026-09-10'), '2026-09-10');
     assert.equal(localDateKey(new Date(2026, 8, 10, 0, 30)), '2026-09-10');
-    const [contract, appShell, sidebar, commandPalette, axiosSource, crmApi, projectApi, reportingClient, projectClient, tasksClient, financeClient, taxWorkspace, resourcesClient, feedSource, seedSource, financeRoutes, projectRoutes, profileModal, utilsSource] = await Promise.all([
+    const [contract, appShell, sidebar, topbar, commandPalette, axiosSource, crmApi, projectApi, reportingClient, projectClient, tasksClient, dashboardClient, financeClient, taxWorkspace, resourcesClient, feedSource, seedSource, financeRoutes, projectRoutes, profileModal, utilsSource, semanticStyles, errorPage] = await Promise.all([
       readFile(`${__dirname}/../../frontend-next/lib/access/module-contract.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/layout/AppShell.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/layout/Sidebar.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/layout/Topbar.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/layout/GlobalCommandPalette.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/lib/api/axios.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/lib/api/crm.api.ts`, 'utf8'),
@@ -256,6 +257,7 @@ async function main(): Promise<void> {
       readFile(`${__dirname}/../../frontend-next/app/(app)/reporting/ReportingClient.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/app/(app)/projects/ProjectsClient.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/app/(app)/tasks/TasksClient.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/app/(app)/dashboard/DashboardClient.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/app/(app)/finance/FinanceClient.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/finance/ProjectTaxWorkspace.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/app/(app)/resources/ResourcesClient.tsx`, 'utf8'),
@@ -265,6 +267,8 @@ async function main(): Promise<void> {
       readFile(`${__dirname}/../src/modules/projects/projects.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/ui/UserProfileSettingsModal.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/lib/utils.ts`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/lib/ui/semantic-styles.ts`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/app/error/[code]/page.tsx`, 'utf8'),
     ]);
     for (const mapping of [
       'prefix: "/tasks", module: "PROJECTS"',
@@ -279,6 +283,7 @@ async function main(): Promise<void> {
     assert(appShell.includes('canAccessRoute({') && !appShell.includes('MODULE_BY_ROUTE'));
     assert(sidebar.includes('canAccessRoute({') && !sidebar.includes('moduleByPath'));
     assert(commandPalette.includes('canAccessRoute({'), 'Command palette must hide routes that the active context cannot open.');
+    assert(topbar.includes('{canOpenReporting && <button') && topbar.includes("router.push('/reporting?tab=attendance')"), 'Topbar must hide Reporting shortcuts from unauthorized roles.');
     assert(axiosSource.includes('ERR_FRONTEND_MODULE_ACCESS'));
     assert(axiosSource.includes('canRequestApi(config.url || ""'));
     assert(!crmApi.includes('enabled.size === 0'), 'Empty entitlements must not be interpreted as allow-all.');
@@ -291,6 +296,10 @@ async function main(): Promise<void> {
     assert(reportingClient.includes('Laporan Aktivitas dan Kehadiran Saya'));
     assert(!projectClient.includes('/api/v1/finance/project-fundings/?project_id='), 'Project workspace must not probe Finance before its PROJECTS funding endpoint.');
     assert(tasksClient.includes('normalizeDateKey(i.task.planned_date) === today'), 'Daily Tasks must compare normalized calendar dates.');
+    assert(tasksClient.includes('const creatableProjects = useMemo') && tasksClient.includes('mainTask.assignments'), 'Daily Task create scope must follow Main Task assignment.');
+    assert(tasksClient.includes('{canCreateDailyTask && <button'), 'Daily Task create action must be hidden when no valid backend scope exists.');
+    assert(tasksClient.includes('{canOpenReporting && <Link'), 'Daily Tasks must not advertise an unauthorized Reporting route.');
+    assert(tasksClient.includes('Task Submission') && tasksClient.includes('pendingSubmissionCount'), 'Daily Task submission must be an explicit user-journey section.');
     assert(!tasksClient.includes('new Date().toISOString().split("T")[0]'), 'Daily Tasks must not derive local today from UTC.');
     assert(utilsSource.includes('export function localDateKey') && utilsSource.includes('export function normalizeDateKey'), 'Frontend calendar helpers are missing.');
     assert(financeClient.includes('endpoint: "/api/v1/assets/assets"'), 'Finance Assets tab must be entitlement-aware.');
@@ -298,6 +307,7 @@ async function main(): Promise<void> {
     assert(financeClient.includes('/billing-documents/${selectedBillForPay.id}/create-payment'), 'AP payment must use the atomic backend command.');
     assert(financeClient.includes('/project-cost-entries/${entry.id}/post-to-wip'), 'WIP posting must use the named backend command.');
     assert(financeClient.includes('/billing-proposals/${proposal.id}/issue-billing-document'), 'Billing issuance must use the named backend command.');
+    assert(financeClient.includes('organization_type=DIVISION') && financeClient.includes('division.organization_name'), 'Finance division options must use the Core organization contract.');
     assert(!financeClient.includes('PENDING_MATCH'));
     assert(!financeClient.includes('PO-2026-041'));
     assert(!financeClient.includes('GRN-2026-033'));
@@ -306,10 +316,23 @@ async function main(): Promise<void> {
     assert(projectRoutes.includes("'/dashboard/financial-summary'"));
     assert(profileModal.includes('current_password'));
     assert(profileModal.includes('api.patch("/api/v1/auth/profile"'));
+    assert(projectClient.includes('"executive", "om", "pm", "finance"'), 'Project financial visibility must use the normalized executive role.');
+    assert(projectClient.includes('{canManageProject && <button'), 'Staff Project workspace must not advertise project-level mutations.');
+    assert(projectClient.includes('userRole === "staff" ? [') && projectClient.includes('Task Terkait Saya'), 'Staff Project workspace must use its compact assigned-task view.');
+    assert(projectClient.includes('mainTask.assignments') && projectClient.includes('activeUserId'), 'Staff Project hierarchy must be assignment scoped.');
     assert(taxWorkspace.includes('/api/v1/finance/tax-transactions/projection?page_size=200'));
     assert(taxWorkspace.includes('const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [];'), 'Tax workspace must not ship production-looking local transactions.');
     assert(resourcesClient.includes('visibleResources'), 'Data Explorer must filter API resources before fetching.');
     assert(feedSource.includes('canRequestApi("/api/v1/inventory/stock-balances/"'));
+    assert(errorPage.includes('Terlalu Banyak Permintaan') && errorPage.includes('Layanan Sedang Tidak Tersedia'));
+    assert(errorPage.includes('text-[#2649B3]') && !errorPage.includes('#059669'), 'Error pages must follow the current blue visual contract.');
+    assert(utilsSource.includes('getStatusStyle(status)'), 'Status styling must delegate to the canonical presentation contract.');
+    assert(semanticStyles.includes('getCategoryStyle') && semanticStyles.includes('getStatusStyle'), 'Canonical status/category presentation registry is missing.');
+    assert(dashboardClient.indexOf('Tugas Operasional Hari Ini') < dashboardClient.indexOf('<CompletionRateCard rates={industryRates}'), 'PM dashboard order must place personal tasks before completion rate.');
+    assert(dashboardClient.includes('Task Submission') && dashboardClient.includes('pendingSubmissions'), 'Staff dashboard must expose the submission stage explicitly.');
+    for (const legacyGreen of ['#22C55E', '#16A34A', '#166534', '#5f8f35', 'bg-emerald-', 'text-emerald-']) {
+      assert(!`${dashboardClient}${projectClient}${tasksClient}${financeClient}${feedSource}`.includes(legacyGreen), `Legacy green visual token remains: ${legacyGreen}`);
+    }
     assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
     return {
       route_registry: 'centralized',

@@ -129,3 +129,12 @@ For acceptance testing, measure separately:
 - company and active-role label correctness.
 
 Record cold and repeated runs independently. The currently verified healthy-path target is complete initial content within 3,000 ms; the latest measured result is 2,009 ms.
+# Verification update — 2026-09-11
+
+- Local frontend TypeScript and optimized Next.js production build: PASS.
+- Local backend TypeScript, production build, Q11 guardrails, and integration-hardening unit suite: PASS.
+- Authenticated production baseline (`ROLE-STAFF`, `staff.dev@arsalynk.id`): login, Dashboard, Tasks, and Projects loaded successfully.
+- Production is still serving the previous frontend bundle: Staff can still see project-management and financial controls that are removed by the current workspace changes.
+- Production Reporting returned 403 for the Staff account because the active production company/account context does not currently expose the `REPORTING` entitlement. The frontend correctly remains fail-closed; company entitlement data must be reconciled before the guideline requirement “Reporting for all roles” can pass.
+- A local browser run of the new frontend against the production API was blocked by the production CORS allow-list (`Network Error` from `localhost`). This is expected security behavior and is not bypassed.
+- Final authenticated production visual smoke remains pending until this exact frontend revision is deployed and the Staff Reporting entitlement is reconciled.

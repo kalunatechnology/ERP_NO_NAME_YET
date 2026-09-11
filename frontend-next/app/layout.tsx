@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 border: "1px solid #E8E8E8",
               },
               success: {
-                iconTheme: { primary: "#5A861F", secondary: "#F0FEE0" },
+                iconTheme: { primary: "#294BB2", secondary: "#EAF6FF" },
               },
               error: {
                 iconTheme: { primary: "#EF4444", secondary: "#FEE2E2" },

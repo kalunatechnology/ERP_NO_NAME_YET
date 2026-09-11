@@ -270,7 +270,7 @@ export default function ResourcesClient() {
         size="lg"
       >
         <div className="flex flex-col gap-3">
-          <pre className="p-4 rounded-xl bg-gray-900 text-green-400 font-mono text-xs overflow-x-auto max-h-96">
+          <pre className="p-4 rounded-xl bg-gray-900 text-brand-primary-soft font-mono text-xs overflow-x-auto max-h-96">
             {JSON.stringify(selectedRecord, null, 2)}
           </pre>
           <button
