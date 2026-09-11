@@ -89,6 +89,10 @@ Resolusi employee bersifat fail-closed dan aman untuk data transisi: backend men
 - Audit endpoint memastikan dashboard PM hanya meminta BFF section `projects`; backend section tersebut tidak membaca tabel Finance dan mengembalikan collection financial sebagai array kosong. Contract-audit juga mengenali deklarasi alias route Express berbentuk array, sehingga endpoint Request `/api/v1/requests` dan assignment tidak lagi menjadi false-positive mismatch.
 - Project Page sekarang tidak menjalankan background request `financial-performance` atau `funding_requests` untuk role yang tidak memiliki surface finansial; state lama juga dikosongkan saat active role berubah. Ini mencegah expected-403 untuk Staff/CRM tanpa melemahkan pemeriksaan backend.
 
+## Staff dashboard PostgreSQL identity fix — 11 September 2026
+
+Production revealed PostgreSQL `42883 operator does not exist: text = uuid` in the Staff Dashboard BFF. The cause was mixed physical identity types, including `master_employee.user_id` introduced as `TEXT`, being compared with `${userId}::uuid` inside raw SQL. The query now compares IAM, assignment, owner, and employee identifiers through explicit text normalization. Migration `20260911090000_backfill_employee_user_mapping` first provisions the employee side only for IAM users already represented by an active project membership in the same tenant/company, links that membership, and backfills an existing exact employee relation. It never guesses from names or email. A read-only production audit confirmed `staff.dev@arsalynk.id` had one active project membership but no employee mapping before this migration.
+
 ## Database changes
 
 Six migration folders are present. The latest migration, `20260907010000_reporting_views`, creates these read-only projections:

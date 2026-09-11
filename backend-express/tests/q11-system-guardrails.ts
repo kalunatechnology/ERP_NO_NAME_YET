@@ -364,6 +364,10 @@ async function main(): Promise<void> {
     assert(tasksClient.includes('<StaffTimesheetForm') && tasksClient.includes('<StaffTimesheetTable'));
     assert(dashboardClient.includes('initialSummary={overtimeSummary}'), 'Staff dashboard must render its BFF overtime summary.');
     assert(dashboardRoutes.includes('FROM master_employee e') && dashboardRoutes.includes('UNION'), 'Dashboard overtime identity must use permanent and explicit transitional mappings.');
+    assert(dashboardRoutes.includes('e.user_id::text = ${userId}::text'), 'Dashboard raw SQL must not compare TEXT employee user_id with a UUID parameter.');
+    assert(dashboardRoutes.includes('ts.employee_id::text IN'), 'Dashboard overtime employee identity must be normalized across legacy DB column types.');
+    const staffDashboardProjection = dashboardRoutes.slice(dashboardRoutes.indexOf('if (isStaff)'), dashboardRoutes.indexOf('NON STAFF'));
+    assert(!staffDashboardProjection.includes('= ${userId}::uuid'), 'Staff dashboard projection must not force mixed legacy identity columns to UUID.');
     assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
     assert(reportingRoutes.includes("'/operational-summary'"), 'OM operational reporting projection is missing.');
     assert(reportingClient.includes("om: ['operational', 'periodic', 'attendance']"), 'OM must not receive executive or Project P&L reporting tabs.');

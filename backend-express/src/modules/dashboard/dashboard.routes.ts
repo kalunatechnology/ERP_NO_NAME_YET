@@ -138,7 +138,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
         FROM project_member pm
         WHERE pm.tenant_id = ${tenantId}::uuid
           AND pm.company_id = ${companyId}::uuid
-          AND pm.user_id = ${userId}::uuid
+          AND pm.user_id::text = ${userId}::text
           AND pm.project_id IS NOT NULL
           AND UPPER(pm.status) = 'ACTIVE'
       ),
@@ -162,7 +162,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
           AND mt.company_id = ${companyId}::uuid
           AND a.tenant_id = ${tenantId}::uuid
           AND a.company_id = ${companyId}::uuid
-          AND a.assignee_id = ${userId}::uuid
+          AND a.assignee_id::text = ${userId}::text
 
         UNION
 
@@ -176,7 +176,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
           AND mt.company_id = ${companyId}::uuid
           AND wt.tenant_id = ${tenantId}::uuid
           AND wt.company_id = ${companyId}::uuid
-          AND wt.assignee_id = ${userId}::uuid
+          AND wt.assignee_id::text = ${userId}::text
 
         UNION
 
@@ -194,7 +194,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
           AND wt.company_id = ${companyId}::uuid
           AND dt.tenant_id = ${tenantId}::uuid
           AND dt.company_id = ${companyId}::uuid
-          AND dt.owner_id = ${userId}::uuid
+          AND dt.owner_id::text = ${userId}::text
       ),
 
       /**
@@ -207,7 +207,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
         FROM project_task t
         WHERE t.tenant_id = ${tenantId}::uuid
           AND t.company_id = ${companyId}::uuid
-          AND t.assigned_to_id = ${userId}::uuid
+          AND t.assigned_to_id::text = ${userId}::text
       ),
 
       /**
@@ -240,7 +240,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
         WHERE wt.tenant_id = ${tenantId}::uuid
           AND wt.company_id = ${companyId}::uuid
           AND (
-            wt.assignee_id = ${userId}::uuid
+            wt.assignee_id::text = ${userId}::text
 
             OR EXISTS (
               SELECT 1
@@ -248,7 +248,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
               WHERE dt.weekly_task_id = wt.id
                 AND dt.tenant_id = ${tenantId}::uuid
                 AND dt.company_id = ${companyId}::uuid
-                AND dt.owner_id = ${userId}::uuid
+                AND dt.owner_id::text = ${userId}::text
             )
           )
       ),
@@ -260,19 +260,22 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
        * sementara authentication menggunakan user_id.
        */
       staff_employee_ids AS (
-        SELECT DISTINCT e.id AS employee_id
+        SELECT DISTINCT e.id::text AS employee_id
         FROM master_employee e
         WHERE e.tenant_id = ${tenantId}::uuid
           AND e.company_id = ${companyId}::uuid
-          AND e.user_id = ${userId}::uuid
+          -- master_employee.user_id is intentionally TEXT because it was
+          -- introduced as a cross-model IAM reference. Compare identities as
+          -- text instead of forcing the parameter to UUID.
+          AND e.user_id::text = ${userId}::text
 
         UNION
 
-        SELECT DISTINCT pm.employee_id
+        SELECT DISTINCT pm.employee_id::text
         FROM project_member pm
         WHERE pm.tenant_id = ${tenantId}::uuid
           AND pm.company_id = ${companyId}::uuid
-          AND pm.user_id = ${userId}::uuid
+          AND pm.user_id::text = ${userId}::text
           AND pm.employee_id IS NOT NULL
       ),
 
@@ -329,7 +332,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
         WHERE ts.tenant_id = ${tenantId}::uuid
           AND ts.company_id = ${companyId}::uuid
 
-          AND ts.employee_id IN (
+          AND ts.employee_id::text IN (
             SELECT employee_id
             FROM staff_employee_ids
           )
@@ -444,7 +447,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             WHERE a.tenant_id = ${tenantId}::uuid
               AND a.company_id = ${companyId}::uuid
-              AND a.assignee_id = ${userId}::uuid
+              AND a.assignee_id::text = ${userId}::text
 
               AND a.main_task_id IN (
                 SELECT id
@@ -523,7 +526,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             WHERE dt.tenant_id = ${tenantId}::uuid
               AND dt.company_id = ${companyId}::uuid
-              AND dt.owner_id = ${userId}::uuid
+              AND dt.owner_id::text = ${userId}::text
 
             ORDER BY
               dt.planned_date ASC NULLS LAST,
@@ -567,7 +570,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             WHERE t.tenant_id = ${tenantId}::uuid
               AND t.company_id = ${companyId}::uuid
-              AND t.assigned_to_id = ${userId}::uuid
+              AND t.assigned_to_id::text = ${userId}::text
 
             ORDER BY
               t.planned_end_at ASC NULLS LAST,
@@ -648,7 +651,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             FROM iam_user u
 
-            WHERE u.id = ${userId}::uuid
+            WHERE u.id::text = ${userId}::text
 
             LIMIT 1
           ) x
