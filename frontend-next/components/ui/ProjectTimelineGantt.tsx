@@ -51,7 +51,7 @@ export function ProjectTimelineGantt({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#E5E9E2] rounded-[24px] p-5 sm:p-7 shadow-xs select-none",
+        "w-full bg-white border border-[#E5E9E2] rounded-2xl p-5 sm:p-7 shadow-xs select-none",
         className
       )}
     >

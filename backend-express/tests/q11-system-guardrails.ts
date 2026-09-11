@@ -1,12 +1,13 @@
 /** Q11 regression suite for cross-module safety invariants. */
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { assertRecordMutable, autoFillRequiredFields } from '../src/utils/crud-factory';
+import { assertNoGenericLifecycleWrite, assertRecordMutable, autoFillRequiredFields } from '../src/utils/crud-factory';
 import { requireRole, requireActiveRole, requireCompanyAdmin } from '../src/middlewares/rbac.middleware';
 import { requireFinanceRole } from '../src/middleware/sod.middleware';
 import { ProjectsService } from '../src/modules/projects/projects.service';
 import { RoleCode } from '../src/types/roles';
 import { canAccessRoute, canRequestApi, getRouteAccessContract } from '../../frontend-next/lib/access/module-contract';
+import { localDateKey, normalizeDateKey } from '../../frontend-next/lib/utils';
 
 type Evidence = Record<string, unknown>;
 
@@ -76,6 +77,9 @@ async function main(): Promise<void> {
     assert.throws(() => assertRecordMutable('fin_billing_document', { status: 'POSTED' }), /immutable/);
     assert.throws(() => assertRecordMutable('fin_billing_document', { status: 'DRAFT', payment_status: 'PAID' }), /immutable/);
     assert.doesNotThrow(() => assertRecordMutable('fin_billing_document', { status: 'DRAFT' }));
+    assert.throws(() => assertNoGenericLifecycleWrite('fin_billing_document', { status: 'APPROVED' }, true), /lifecycle/i);
+    assert.throws(() => assertNoGenericLifecycleWrite('fin_payment', { status: 'POSTED' }), /lifecycle/i);
+    assert.doesNotThrow(() => assertNoGenericLifecycleWrite('fin_payment', { status: 'DRAFT' }, true));
     assert.doesNotThrow(() => assertRecordMutable('project_project', { status: 'CLOSED' }));
     const crudSource = await readFile(`${__dirname}/../src/utils/crud-factory.ts`, 'utf8');
     const bulkDeleteSection = crudSource.split('// 4. Bulk Delete')[1]?.split('// 5. List')[0] ?? '';
@@ -98,13 +102,17 @@ async function main(): Promise<void> {
   }));
 
   results.push(await scenario(names[4], async () => {
-    const [buildSource, seedSource] = await Promise.all([
+    const [buildSource, seedSource, layoutSource, globalCss, ganttSource] = await Promise.all([
       readFile(`${__dirname}/../scripts/build.js`, 'utf8'),
       readFile(`${__dirname}/../prisma/seed.ts`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/app/layout.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/app/globals.css`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/ui/GanttChart.tsx`, 'utf8'),
     ]);
     assert(buildSource.includes("'tests/q11-system-guardrails.ts'"), 'Q11 is not enforced by the build');
     assert(seedSource.includes("process.env.NODE_ENV === 'production'"), 'Production seed guard is missing');
-    return { q11_build_gate: true, production_demo_seed: 'blocked' };
+    assert(!`${layoutSource}${globalCss}${ganttSource}`.includes('fonts.googleapis.com'), 'Build still depends on Google Fonts');
+    return { q11_build_gate: true, production_demo_seed: 'blocked', external_font_dependency: false };
   }));
 
   results.push(await scenario(names[5], async () => {
@@ -213,18 +221,28 @@ async function main(): Promise<void> {
     assert.equal(canRequestApi('/api/v1/inventory/stock-balances/', pmAccess), false);
     assert.equal(canRequestApi('/api/v1/requests/id/disburse/', { enabledModules: ['REQUESTS'], activeRoleCode: 'ROLE-PM' }), false);
     assert.equal(canRequestApi('/api/v1/requests/id/disburse/', { enabledModules: ['REQUESTS'], activeRoleCode: 'ROLE-FINANCE' }), true);
-    const [contract, appShell, sidebar, axiosSource, crmApi, reportingClient, projectClient, financeClient, resourcesClient, feedSource, seedSource] = await Promise.all([
+    assert.equal(normalizeDateKey('2026-09-10T00:00:00.000Z'), '2026-09-10');
+    assert.equal(normalizeDateKey('2026-09-10'), '2026-09-10');
+    assert.equal(localDateKey(new Date(2026, 8, 10, 0, 30)), '2026-09-10');
+    const [contract, appShell, sidebar, commandPalette, axiosSource, crmApi, projectApi, reportingClient, projectClient, tasksClient, financeClient, taxWorkspace, resourcesClient, feedSource, seedSource, financeRoutes, projectRoutes, profileModal] = await Promise.all([
       readFile(`${__dirname}/../../frontend-next/lib/access/module-contract.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/layout/AppShell.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/layout/Sidebar.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/layout/GlobalCommandPalette.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/lib/api/axios.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/lib/api/crm.api.ts`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/lib/api/project.api.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/app/(app)/reporting/ReportingClient.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/app/(app)/projects/ProjectsClient.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/app/(app)/tasks/TasksClient.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/app/(app)/finance/FinanceClient.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/finance/ProjectTaxWorkspace.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/app/(app)/resources/ResourcesClient.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/lib/api/feed.api.ts`, 'utf8'),
       readFile(`${__dirname}/../prisma/seed.ts`, 'utf8'),
+      readFile(`${__dirname}/../src/modules/finance/finance.routes.ts`, 'utf8'),
+      readFile(`${__dirname}/../src/modules/projects/projects.routes.ts`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/ui/UserProfileSettingsModal.tsx`, 'utf8'),
     ]);
     for (const mapping of [
       'prefix: "/tasks", module: "PROJECTS"',
@@ -238,13 +256,35 @@ async function main(): Promise<void> {
     assert(contract.includes('Dashboard BFF canReadSection deliberately does not accept module delegation'));
     assert(appShell.includes('canAccessRoute({') && !appShell.includes('MODULE_BY_ROUTE'));
     assert(sidebar.includes('canAccessRoute({') && !sidebar.includes('moduleByPath'));
+    assert(commandPalette.includes('canAccessRoute({'), 'Command palette must hide routes that the active context cannot open.');
     assert(axiosSource.includes('ERR_FRONTEND_MODULE_ACCESS'));
     assert(axiosSource.includes('canRequestApi(config.url || ""'));
     assert(!crmApi.includes('enabled.size === 0'), 'Empty entitlements must not be interpreted as allow-all.');
+    assert(crmApi.includes('{ decision: "ACCEPTED" }') && crmApi.includes('decision: "REJECTED"'), 'CRM customer decision payload must follow the Sales API contract.');
+    assert(!projectApi.includes('api.post("/api/v1/projects/tasks/"'), 'WBS create failures must not fall back into the generic task model.');
+    assert(projectApi.includes('/assign-members'), 'Main Task assignment must use the registered backend action spelling.');
+    assert(projectApi.includes('assignee: payload.assignee_id || undefined'), 'Weekly Task must send an assignee user ID, not a display name.');
+    assert(!projectApi.includes('assignee_name: payload.assignee_name'), 'Weekly Task payload must not send the frontend-only assignee name.');
     assert(reportingClient.includes('canRequestApi(\'/api/v1/finance/project-cost-entries/\''));
     assert(reportingClient.includes('Laporan Aktivitas dan Kehadiran Saya'));
     assert(!projectClient.includes('/api/v1/finance/project-fundings/?project_id='), 'Project workspace must not probe Finance before its PROJECTS funding endpoint.');
+    assert(tasksClient.includes('normalizeDateKey(i.task.planned_date) === today'), 'Daily Tasks must compare normalized calendar dates.');
+    assert(!tasksClient.includes('new Date().toISOString().split("T")[0]'), 'Daily Tasks must not derive local today from UTC.');
     assert(financeClient.includes('endpoint: "/api/v1/assets/assets"'), 'Finance Assets tab must be entitlement-aware.');
+    assert(financeClient.includes('/project-fundings/${selectedFunding.id}/draw/'), 'Funding draw must use the backend FSM action.');
+    assert(financeClient.includes('/billing-documents/${selectedBillForPay.id}/create-payment'), 'AP payment must use the atomic backend command.');
+    assert(financeClient.includes('/project-cost-entries/${entry.id}/post-to-wip'), 'WIP posting must use the named backend command.');
+    assert(financeClient.includes('/billing-proposals/${proposal.id}/issue-billing-document'), 'Billing issuance must use the named backend command.');
+    assert(!financeClient.includes('PENDING_MATCH'));
+    assert(!financeClient.includes('PO-2026-041'));
+    assert(!financeClient.includes('GRN-2026-033'));
+    assert(financeRoutes.includes("'/party-options'"));
+    assert(financeRoutes.includes("'/payments/:id/execute'"));
+    assert(projectRoutes.includes("'/dashboard/financial-summary'"));
+    assert(profileModal.includes('current_password'));
+    assert(profileModal.includes('api.patch("/api/v1/auth/profile"'));
+    assert(taxWorkspace.includes('/api/v1/finance/tax-transactions/projection?page_size=200'));
+    assert(taxWorkspace.includes('const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [];'), 'Tax workspace must not ship production-looking local transactions.');
     assert(resourcesClient.includes('visibleResources'), 'Data Explorer must filter API resources before fetching.');
     assert(feedSource.includes('canRequestApi("/api/v1/inventory/stock-balances/"'));
     assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
@@ -255,6 +295,8 @@ async function main(): Promise<void> {
       invalid_entitlement: 'fail-closed',
       cross_module_loaders: 'preflight-gated',
       unauthorized_network_request: 'cancelled',
+      payload_contracts: 'aligned',
+      false_success_fallbacks: 'blocked',
     };
   }));
 

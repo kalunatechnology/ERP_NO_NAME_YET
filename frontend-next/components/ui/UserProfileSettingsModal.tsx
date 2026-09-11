@@ -45,7 +45,7 @@ export function UserProfileSettingsModal({
   isOpen,
   onClose,
 }: UserProfileSettingsModalProps) {
-  const { user, userRole, company, setActiveRole } = useAuth();
+  const { user, userRole, company, companies, setActiveRole } = useAuth();
   const [activeTab, setActiveTab] = useState<"security" | "profile">("security");
 
   // Form states
@@ -66,10 +66,8 @@ export function UserProfileSettingsModal({
 
   // Resolve human-readable company name (filter out raw UUIDs)
   const rawComp = typeof company === "object" ? (company as any)?.name : company;
-  const activeCompanyName =
-    rawComp && !UUID_REGEX.test(String(rawComp))
-      ? String(rawComp)
-      : "PT Sinergi Muda Arsa";
+  const activeCompanyName = companies.find((item) => String(item.id) === String(company))?.name
+    || (rawComp && !UUID_REGEX.test(String(rawComp)) ? String(rawComp) : "Company tidak tersedia");
 
 /**
  * handlePasswordSubmit coordinates the UI behavior represented by this function.
@@ -95,13 +93,10 @@ export function UserProfileSettingsModal({
 
     setIsSubmittingPass(true);
     try {
-      const res = await api
-        .post("/api/v1/auth/change-password/", {
-          old_password: currentPassword,
+      const res = await api.post("/api/v1/auth/change-password/", {
+          current_password: currentPassword,
           new_password: newPassword,
-        })
-        .then((r) => r.data)
-        .catch(() => null);
+        }).then((r) => r.data);
 
       toast.success(res?.message || "Password berhasil diperbarui!", { icon: "🔐" });
       setCurrentPassword("");
@@ -132,13 +127,10 @@ export function UserProfileSettingsModal({
 
     setIsSubmittingProfile(true);
     try {
-      const res = await api
-        .patch("/api/v1/auth/me/", {
+      const res = await api.patch("/api/v1/auth/profile", {
           full_name: fullName,
           email: email,
-        })
-        .then((r) => r.data)
-        .catch(() => null);
+        }).then((r) => r.data);
 
       toast.success(res?.message || "Profil berhasil diperbarui.");
       onClose();

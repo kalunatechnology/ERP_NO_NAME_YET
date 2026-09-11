@@ -402,10 +402,7 @@ export async function approveQuotation(quotationId: string | number, approvalsDa
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function sendQuotation(id: string | number) {
-  const { data } = await api.post(`/api/v1/sales/quotations/${id}/send/`, {
-    channel: "EMAIL",
-    recipient: "customer@example.com",
-  });
+  const { data } = await api.post(`/api/v1/sales/quotations/${id}/send/`);
   return data;
 }
 
@@ -418,7 +415,7 @@ export async function sendQuotation(id: string | number) {
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function acceptQuotation(id: string | number) {
-  const { data } = await api.post(`/api/v1/sales/quotations/${id}/customer-decision/`, { accepted: true });
+  const { data } = await api.post(`/api/v1/sales/quotations/${id}/customer-decision/`, { decision: "ACCEPTED" });
   return data;
 }
 
@@ -432,7 +429,7 @@ export async function acceptQuotation(id: string | number) {
  */
 export async function rejectQuotation(id: string | number, reason = "Customer menolak penawaran harga") {
   const { data } = await api.post(`/api/v1/sales/quotations/${id}/customer-decision/`, {
-    accepted: false, reason,
+    decision: "REJECTED", reason,
   });
   return data;
 }

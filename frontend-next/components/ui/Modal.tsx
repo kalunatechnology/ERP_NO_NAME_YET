@@ -87,7 +87,7 @@ export function Modal({
       {/* Modal Card */}
       <div
         className={cn(
-          "relative w-full bg-white rounded-3xl shadow-2xl border border-text-tertiary overflow-hidden z-10 flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "relative w-full bg-white rounded-2xl shadow-2xl border border-text-tertiary overflow-hidden z-10 flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
           maxWidthClasses
         )}
         role="dialog"

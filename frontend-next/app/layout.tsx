@@ -22,14 +22,6 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@400;500;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
       <body>
         <AuthProvider>
           {children}
@@ -38,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             toastOptions={{
               duration: 4000,
               style: {
-                fontFamily: "'Google Sans', Roboto, sans-serif",
+                fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
                 fontSize: "14px",
                 borderRadius: "12px",
                 border: "1px solid #E8E8E8",

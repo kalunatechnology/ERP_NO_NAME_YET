@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api/axios';
+import { localDateKey } from '@/lib/utils';
 
 // =============================================================================
 // FIXED ASSETS WORKSPACE
@@ -92,7 +93,7 @@ export default function FixedAssetsWorkspace() {
   const [singleDepLoading, setSingleDepLoading] = useState(false);
   const [disposeAssetId, setDisposeAssetId] = useState<string | null>(null);
   const [disposeProceeds, setDisposeProceeds] = useState('');
-  const [disposeDate, setDisposeDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [disposeDate, setDisposeDate] = useState(() => localDateKey());
   const [disposeLoading, setDisposeLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [activeTab, setActiveTab] = useState<'register' | 'schedule' | 'batch'>('register');

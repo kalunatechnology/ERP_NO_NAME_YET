@@ -3749,6 +3749,7 @@ model fin_journal_line {
 }
 
 model fin_billing_document {
+  tax_scheme         String?
   tenant_id          String?   @map("tenant_id")
   created_by_id      String?   @map("created_by_id")
   created_at         DateTime? @default(now())
@@ -4372,6 +4373,7 @@ model fin_project_cost_entry {
 }
 
 model fin_billing_proposal {
+  tax_scheme         String?
   created_by_id       String?   @map("created_by_id")
   id                  String    @id @default(uuid())
   tenant_id           String?   @map("tenant_id")

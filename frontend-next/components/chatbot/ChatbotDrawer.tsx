@@ -42,7 +42,7 @@ const QUICK_ACTIONS = [
   },
   {
     label: "Top 5 Expenses",
-    prompt: "Tampilkan 5 pengeluaran terbesar (Top 5 Expenses) bulan ini untuk PT Sinergi Muda Arsa.",
+    prompt: "Tampilkan 5 pengeluaran terbesar (Top 5 Expenses) bulan ini untuk company aktif.",
   },
   {
     label: "Pending projects this week",

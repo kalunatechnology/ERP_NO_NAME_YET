@@ -7,7 +7,7 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   X, Check, AlertCircle, Clock, Calendar, Users, Briefcase,
   Coffee, ShieldCheck, ArrowRight, CornerDownLeft, Coins,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import api from "@/lib/api/axios";
+import { normalizeList } from "@/lib/api/auth.api";
 
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -38,6 +39,16 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
   const [showRecheckInput, setShowRecheckInput] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [bankId, setBankId] = useState("");
+  const [bankReference, setBankReference] = useState("");
+  const [banks, setBanks] = useState<any[]>([]);
+  useEffect(() => {
+    setBankId(""); setBankReference(""); setBanks([]);
+    if (!isOpen || request?.status !== 'REGISTERED' || !['finance', 'super_admin'].includes(userRole)) return;
+    let current = true;
+    api.get('/api/v1/requests/disbursement-accounts').then(res => { if (current) setBanks(normalizeList<any>(res.data).rows); }).catch(() => { if (current) setError('Gagal memuat rekening pencairan. Tutup dan buka kembali untuk mencoba ulang.'); });
+    return () => { current = false; };
+  }, [isOpen, request?.id, request?.status, userRole]);
 
   // LPJ Submission States
   const [showLPJForm, setShowLPJForm] = useState(false);
@@ -130,12 +141,13 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
  * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
  */
   const handleDisburseAction = async () => {
+    if (!bankId || !bankReference.trim()) { setError('Pilih rekening dan isi referensi transfer aktual.'); return; }
     setLoading(true);
     setError("");
     try {
       await api.post(`/api/v1/requests/${request.id}/disburse`, {
-        disburse_account_id: "1111-BCA-OPS",
-        disburse_reference: `DISB-${Date.now().toString().slice(-6)}`,
+        disburse_account_id: bankId,
+        disburse_reference: bankReference.trim(),
       });
       onActionComplete();
       onClose();
@@ -464,14 +476,26 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
             {/* Stage 3: Finance Disburse */}
             {request.status === "REGISTERED" && request.request_type === "FUND_REQUEST" && isFinanceRole && (
+              <div className="flex flex-col gap-2 w-full">
+              <label className="text-xs">Rekening sumber
+                <select className="input" value={bankId} onChange={e => setBankId(e.target.value)}>
+                  <option value="">Pilih rekening</option>
+                  {banks.map(bank => <option key={bank.id} value={bank.id}>{bank.bank_name} · {bank.account_name} · {bank.account_number}</option>)}
+                </select>
+              </label>
+              <label className="text-xs">Referensi transfer aktual
+                <input className="input" value={bankReference} onChange={e => setBankReference(e.target.value)} />
+              </label>
+              <p className="text-xs">Catat setelah transfer dilakukan. Pencatatan ini tidak mengirim uang melalui bank.</p>
               <button
                 type="button"
                 onClick={handleDisburseAction}
                 disabled={loading}
                 className="px-4 py-2.5 rounded-[14px] bg-[#1E5C22] hover:bg-[#164419] text-white text-xs font-extrabold shadow-md transition-all"
               >
-                <span>💵 Cairkan Dana (Disburse)</span>
+                <span>Catat Pencairan Dana</span>
               </button>
+              </div>
             )}
 
             {/* Stage 4: OM Final LPJ Verification */}

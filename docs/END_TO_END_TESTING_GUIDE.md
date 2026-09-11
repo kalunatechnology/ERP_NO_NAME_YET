@@ -1,5 +1,7 @@
 # Panduan Testing End-to-End Aplikasi — AS-IS
 
+Acceptance tambahan TC-04/TC-05: [Integration hardening 10 September](INTEGRATION_HARDENING_2026_09_10.md). Uji jurnal Request, tax scheme, matching mismatch, FIFO posting, material issue, quality gate dan disposal dengan fixture database. PASS baseline lama tidak mewakili transaksi baru.
+
 **Versi:** 1.0  
 **Tanggal:** 8 September 2026  
 **Runtime yang diuji:** `frontend-next/`, `backend-express/`, dan PostgreSQL/Supabase sesuai `backend-express/prisma/`  
@@ -281,7 +283,7 @@ Menguji rantai komersial utama dan membuktikan setiap objek terhubung ke custome
 
 19. Ulangi alur minimum untuk customer HOLD lalu process deal won. Sistem seharusnya membuat credit snapshot HOLD/over-limit/overdue dan proforma `DRAFT`/`UNPAID`, bukan langsung memberi project operasional.
 20. Sebagai Technical Staff, Sales, CRM Lead, PM, dan Director, coba executive override terhadap hold. Secara bisnis hanya Director dengan approval yang sah boleh override.
-21. Periksa `crm_executive_approval`, decision metadata, actor, timestamp, dan hubungan ke opportunity. Source saat ini tidak mewajibkan Director di endpoint override dan tidak mengonsumsi approved approval record. Jika CRM/Sales/PM berhasil override, catat **P0 FAIL**.
+21. Periksa `crm_executive_approval`, decision metadata, actor, timestamp, dan hubungan ke opportunity. Endpoint override/decision harus mewajibkan active role Director dan menolak delegasi module sebagai pengganti role bisnis. Kewajiban mengonsumsi approval record yang telah approved masih perlu diverifikasi sebagai lifecycle terpisah; jika CRM/Sales/PM berhasil override, catat **P0 FAIL**.
 22. Setelah override sah oleh Director, buktikan hanya satu order/project dibuat dan hold/approval/history tetap dapat diaudit.
 23. Coba deal-won pada opportunity tanpa `customer_party_id` dan tanpa PM yang dapat dipetakan. Sistem tidak boleh memilih party aktif pertama atau PM berdasarkan username secara diam-diam. Jika hal itu terjadi, tandai **P1 FAIL** dan simpan ID customer/PM yang salah.
 
@@ -392,27 +394,28 @@ Memastikan Project Manager dapat membentuk WBS dan mendelegasikan Main Task, Sta
 
 12. Turunkan Weekly Task menjadi beberapa Daily Task. Isi owner, date, target/deliverable, dan status awal yang sesuai. Uji field wajib, referensi weekly salah, dan owner lintas company.
 13. Tambahkan checklist/control item pada satu Daily Task. Tandai sebagian item selesai, refresh, kemudian selesaikan semuanya.
-14. Verifikasi progress Daily Task dihitung dari rasio checklist bila checklist tersedia; Daily average mengubah Weekly; Weekly average mengubah Main Task; weighted Main Task mengubah `project_project.progress_percent`.
-15. Pada Daily Task tanpa checklist, update progress melalui action yang disediakan dan periksa activity log. Coba progress <0, >100, penurunan/transition ilegal, dan update oleh user bukan owner.
-16. Laporkan sebuah task sebagai blocked dengan reason. Pastikan status/reason/activity tampil di Tasks, Project workspace, feed/notification bila dibuat, dan report staff.
-17. Perbaiki blocker lalu lanjutkan hingga completed melalui action yang sah. Pastikan tidak ada false-success ketika backend gagal.
+14. Buat atau pilih Daily Task bertanggal hari kalender lokal saat ini. Pastikan task yang sama tampil pada Project Overview dan `/tasks`, dihitung pada KPI/filter **Hari Ini**, dan tidak masuk **Terlambat**. Ulangi dengan response fixture berbentuk `YYYY-MM-DD` dan ISO DateTime; hasil klasifikasi harus identik.
+15. Verifikasi progress Daily Task dihitung dari rasio checklist bila checklist tersedia; Daily average mengubah Weekly; Weekly average mengubah Main Task; weighted Main Task mengubah `project_project.progress_percent`.
+16. Pada Daily Task tanpa checklist, update progress melalui action yang disediakan dan periksa activity log. Coba progress <0, >100, penurunan/transition ilegal, dan update oleh user bukan owner.
+17. Laporkan sebuah task sebagai blocked dengan reason. Pastikan status/reason/activity tampil di Tasks, Project workspace, feed/notification bila dibuat, dan report staff.
+18. Perbaiki blocker lalu lanjutkan hingga completed melalui action yang sah. Pastikan tidak ada false-success ketika backend gagal.
 
 #### Fase D — transfer/reassignment dan personal workspace
 
-18. Sebagai owner, ajukan transfer Daily Task kepada Staff kedua dengan alasan. Pastikan request `PENDING`, task belum pindah, dan terlihat pada queue PM.
-19. Coba transfer oleh non-owner, ke user company lain, atau transfer kedua saat masih pending. Harus ditolak.
-20. Sebagai PM, reject satu fixture transfer dan approve fixture lainnya. Rejected tidak mengubah owner; approved mengubah `owner_id` dan status request ke `APPROVED`.
-21. Coba direct reassign sebagai Staff lalu sebagai PM. Hanya actor yang memang diizinkan boleh mengubah ownership; seluruh perubahan harus memiliki activity/audit evidence.
-22. Login sebagai owner lama dan baru. Verifikasi tab Today, Overdue, Active, Completed, Blocked, All, Workspace Personal, dan Transfer Requests terfilter berdasarkan user/status secara nyata.
+19. Sebagai owner, ajukan transfer Daily Task kepada Staff kedua dengan alasan. Pastikan request `PENDING`, task belum pindah, dan terlihat pada queue PM.
+20. Coba transfer oleh non-owner, ke user company lain, atau transfer kedua saat masih pending. Harus ditolak.
+21. Sebagai PM, reject satu fixture transfer dan approve fixture lainnya. Rejected tidak mengubah owner; approved mengubah `owner_id` dan status request ke `APPROVED`.
+22. Coba direct reassign sebagai Staff lalu sebagai PM. Hanya actor yang memang diizinkan boleh mengubah ownership; seluruh perubahan harus memiliki activity/audit evidence.
+23. Login sebagai owner lama dan baru. Verifikasi tab Today, Overdue, Active, Completed, Blocked, All, Workspace Personal, dan Transfer Requests terfilter berdasarkan user/status secara nyata.
 
 #### Fase E — fitur project lanjutan dan hubungan Finance
 
-23. Buat atau baca milestone, task dependency, timesheet, risk, issue/action, change request, material requirement, resource request/allocation, board position, technical brief/version, requirement/acceptance criteria, equipment usage, dan progress snapshot melalui UI bila tersedia atau Data Explorer/API bila hanya generic CRUD.
-24. Untuk setiap resource generic, uji minimal create valid, invalid relation, read/search/filter/order/pagination, update field non-lifecycle, dan delete pada fixture QA. Jangan menganggap keberadaan CRUD sebagai workflow otomatis.
-25. Dari tab `Biaya, Dana & Billing`, buat cost entry atau project expense dengan kategori/division/deskripsi yang dapat direkonsiliasi, request funding, dan billing proposal untuk project.
-26. Login Finance untuk membaca/memutuskan funding dan memproses billing pada TC-04. Staff tanpa Finance tidak boleh memperoleh write access hanya karena dapat melihat project.
-27. Jalankan EVM/financial performance. Cocokkan Planned Value, Earned Value, Actual Cost, CPI/SPI, dan project progress dengan source record. Catat bahwa Actual Cost saat ini menggunakan nilai terbesar dari `fin_project_cost_entry` dan `project_expense`, bukan penjumlahan terrekonsiliasi; bila keduanya berisi biaya berbeda, tandai **KNOWN GAP**.
-28. Gunakan project search/filter/sort/pagination dan dashboard/reporting untuk menemukan `RUN_ID`. Refresh dan login ulang untuk membuktikan persistence.
+24. Buat atau baca milestone, task dependency, timesheet, risk, issue/action, change request, material requirement, resource request/allocation, board position, technical brief/version, requirement/acceptance criteria, equipment usage, dan progress snapshot melalui UI bila tersedia atau Data Explorer/API bila hanya generic CRUD.
+25. Untuk setiap resource generic, uji minimal create valid, invalid relation, read/search/filter/order/pagination, update field non-lifecycle, dan delete pada fixture QA. Jangan menganggap keberadaan CRUD sebagai workflow otomatis.
+26. Dari tab `Biaya, Dana & Billing`, baca projection biaya/billing yang tersedia dan ajukan funding melalui endpoint workflow milik Projects. Workspace Project tidak boleh membuat cost entry atau billing langsung ke API Finance.
+27. Login dengan active role Finance untuk mencatat cost, membuat/memproses billing, serta membaca dan memutuskan funding pada TC-04. Staff atau PM tanpa active role/delegasi Finance yang sah tidak boleh memperoleh write access hanya karena dapat melihat project.
+28. Jalankan EVM/financial performance. Cocokkan Planned Value, Earned Value, Actual Cost, CPI/SPI, dan project progress dengan source record. Catat bahwa Actual Cost saat ini menggunakan nilai terbesar dari `fin_project_cost_entry` dan `project_expense`, bukan penjumlahan terrekonsiliasi; bila keduanya berisi biaya berbeda, tandai **KNOWN GAP**.
+29. Gunakan project search/filter/sort/pagination dan dashboard/reporting untuk menemukan `RUN_ID`. Refresh dan login ulang untuk membuktikan persistence.
 
 ### 5.7 Expected Result
 
@@ -504,18 +507,18 @@ Menguji dua rantai yang seharusnya bertemu di Finance: Request → OM → Direct
 8. Login kembali sebagai requester dan submit LPJ dengan realization, discrepancy, notes, serta invoice URL/metadata. OM meminta revisi pada fixture pertama lalu memverifikasi fixture utama sampai `COMPLETED`.
 9. Coba setiap privileged endpoint menggunakan Staff, CRM Lead, Company Admin, actor company lain, dan actor pada urutan status yang salah. Secara bisnis backend harus menolak 403/validation.
 10. Pastikan `validate-om`, `approve-exec`, `disburse`, `verify-lpj-om`, dan CRM executive action memakai role aktif yang tepat serta tidak dapat diloloskan oleh delegasi module. `submit-lpj` harus ditolak bila caller bukan requester. Bila actor tak berhak berhasil, catat **P0 FAIL**. Periksa juga setiap inconsistency state yang ditemukan pada urutan workflow.
-11. Cari payment, bank movement, journal, atau Finance disbursement yang dibuat oleh langkah 7. Saat ini Request menyimpan banyak data dalam `core_audit_event` JSON dan tidak membuat transaksi Finance. Ketidakhadiran accounting record adalah **KNOWN GAP**, bukan PASS.
+11. Verifikasi langkah 7 membuat tepat satu Payment `REQUEST_ADVANCE` berstatus `POSTED`, jurnal debit akun 1140 dan kredit ledger bank dengan nominal request, serta audit yang menyimpan ID Payment/jurnal. Ulangi request yang sama; tidak boleh membuat transaksi kedua. Catat bahwa aksi ini merekam transfer aktual yang sudah dilakukan, bukan mengirim dana melalui API bank. LPJ settlement/refund journal masih **KNOWN GAP**.
 
 #### Fase B — project funding, billing, receivable, dan payment
 
 12. Sebagai Finance, review funding request dari TC-03. Uji approve/reject melalui `/project-fundings/:id/decide`, lalu draw approved funding. Coba draw sebelum approve dan draw dua kali.
 13. Pastikan UI tidak menggunakan direct generic PATCH untuk mengubah status. Source memiliki direct PATCH lama dan `decideFunding` tidak memakai DocumentFSM; setiap bypass SoD/FSM dicatat sebagai **P0/P1 FAIL**.
-14. Lengkapi billing proposal/document customer untuk project. Jalankan urutan `DRAFT → SUBMITTED → VERIFIED → APPROVED → POSTED` melalui custom action, menggunakan actor yang sesuai.
+14. Buat Billing Proposal project dan jalankan `DRAFT → SUBMITTED → APPROVED → ISSUED`; pastikan issuance membuat tepat satu Billing Document `DRAFT`. Lanjutkan dokumen melalui `DRAFT → SUBMITTED → VERIFIED → APPROVED → POSTED`.
 15. Uji reject, action out-of-order, self-approval yang melanggar SoD, posting di period closed, missing account, dan duplicate post.
 16. Setelah posting customer invoice, verifikasi billing status, tax transaction, GL journal entry/lines, debit=credit, project/customer reference, fiscal period, dan outstanding yang digunakan CRM credit snapshot.
-17. Buat payment/customer receipt dan jalankan `DRAFT → SUBMITTED → APPROVED → POSTED`/execute sesuai action. Coba actor sama sebagai maker/approver, payment invalid, dan duplicate execute.
-18. Verifikasi apakah execute membentuk allocation, perubahan outstanding, bank movement, dan GL. Source saat ini hanya memperbarui status/tanggal payment; side effect yang tidak ada harus dicatat **KNOWN GAP**.
-19. Pastikan generic CRUD tidak dapat mengubah terminal Finance states (`POSTED`, `PAID`, `CLOSED`, `LOCKED`, `EXECUTED`, `REVERSED`). Uji pula state pre-terminal yang masih bisa dipatch; jika action resmi dapat dilewati, catat defect.
+17. Untuk AP, buat supplier invoice `DRAFT`, submit, verify, approve, lalu post. Buat Payment + allocation atomik dari invoice POSTED; payment harus langsung `SUBMITTED`, bukan mengubah bill menjadi PAID.
+18. Approve dan execute Payment dengan actor sesuai SoD. Verifikasi satu jurnal debit AP/kredit ledger bank, allocation, `paid_amount`, `outstanding_amount`, `payment_status`, execution reference, dan duplicate execute yang idempotent.
+19. Pastikan generic CRUD tidak dapat menulis seluruh field lifecycle Finance, termasuk state pre-terminal dan terminal (`status`, approval/posting/payment fields). Perubahan harus hanya melalui named command.
 
 #### Fase C — General Ledger, laporan, kas/bank, dan pajak
 
@@ -530,9 +533,9 @@ Menguji dua rantai yang seharusnya bertemu di Finance: Request → OM → Direct
 
 26. Buat category, asset, dan asset book dengan acquisition value, accumulated depreciation, useful life, serta account mapping yang dapat direkonsiliasi.
 27. Tampilkan depreciation schedule, jalankan satu depreciation dan batch depreciation pada open period, lalu ulangi untuk memastikan tidak double-post.
-28. Capitalize project WIP bila fixture memenuhi syarat dan pastikan project/asset/journal saling menunjuk.
+28. Validasi Project Cost lalu post ke WIP. Pastikan jurnal debit akun `1150`, kredit akun sumber terpilih, debit=credit, project reference benar, dan retry tidak membuat jurnal kedua. Capitalize WIP menjadi asset hanya bila fixture memenuhi syarat.
 29. Dispose asset dengan proceeds/gain/loss fixture. Verifikasi journal terhadap account aset biaya, accumulated depreciation, cash/receivable, serta gain/loss.
-30. Source saat ini tampak memakai account accumulated depreciation sebagai `assetAccount` untuk credit cost basis. Bila journal salah, hentikan approval UAT untuk disposal dan catat **P0 accounting defect**.
+30. Pastikan akun perolehan dan akumulasi penyusutan berasal dari kategori aset, aktif, satu company, dan berbeda. Disposal harus gagal bila mapping hilang, nilai buku tidak konsisten, period tidak OPEN, atau terjadi eksekusi bersamaan. Kredit nilai perolehan wajib memakai `asset_account_id`.
 
 #### Fase E — period/year closing, audit, dan laporan akhir
 
@@ -845,3 +848,16 @@ Release tidak boleh mendapatkan sign-off production apabila salah satu berikut m
 | Access-control baseline dan changelog | `docs/ACCESS_CONTROL_CHANGELOG.md`, `backend-express/tests/q11-system-guardrails.ts` |
 
 Panduan ini harus diperbarui ketika role gate, module entitlement, state machine, database constraint, API contract, UI route, atau cross-module side effect berubah. Lima business journey tetap dipertahankan; langkah di dalamnya disesuaikan agar QA selalu menguji hasil bisnis end-to-end, bukan komponen UI secara terpisah.
+
+### Regression tambahan: kontrak data antar-page
+
+Pada TC-02 sampai TC-05, QA juga wajib membuktikan hal berikut melalui Network dan refresh/relogin:
+
+- kegagalan create/delete Main atau Weekly Task hanya menghasilkan satu request ke aggregate WBS yang benar dan tidak membuat generic task;
+- quotation customer decision membawa `decision`, bukan `accepted`;
+- kegagalan EVM/lifecycle menampilkan error dan tidak membuka modal berisi angka contoh atau generic PATCH status;
+- progress Daily yang terlihat sesudah save sama dengan response backend/checklist, bukan nilai slider lokal;
+- Funding approval/reject memakai `/decide` dengan `remarks`, sedangkan draw memakai `/draw` dan tidak diklaim sebagai transfer bank;
+- pembayaran AP membentuk Payment + allocation + submit dan tidak langsung mengubah billing document menjadi `PAID`;
+- halaman Company Master dan Tax tetap empty/error secara jujur saat API kosong/gagal serta tidak membuat ID berbasis `Date.now()` atau record contoh;
+- command palette, attendance shortcut, sidebar, dan direct route menghasilkan route visibility yang sama untuk active role dan entitlement yang sama.

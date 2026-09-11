@@ -251,17 +251,32 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
   const canReadProjects = canRequestApi("/api/v1/projects/projects/", access);
   const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", access);
   const canReadCrm = canRequestApi("/api/v1/crm/opportunities/", access);
-  const emptyResponse = () => Promise.resolve({ data: [] });
+  const emptyResponse = () => Promise.resolve({ data: [], skipped: true });
+  let attemptedSources = 0;
+  let successfulSources = 0;
+  const sourceGet = async (url: string) => {
+    attemptedSources += 1;
+    try {
+      const response = await api.get(url);
+      successfulSources += 1;
+      return response;
+    } catch {
+      return { data: [], failed: true };
+    }
+  };
   const [
     tasksRes, projectsRes, costsRes, proposalsRes, fundingsRes, dealsRes
   ] = await Promise.all([
-    canReadProjects ? api.get("/api/v1/projects/tasks/?page_size=30").catch(() => ({ data: [] })) : emptyResponse(),
-    canReadProjects ? api.get("/api/v1/projects/projects/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
-    canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
-    canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
-    canReadFinance ? api.get("/api/v1/finance/project-fundings/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
-    canReadCrm ? api.get("/api/v1/crm/opportunities/?page_size=20").catch(() => ({ data: [] })) : emptyResponse(),
+    canReadProjects ? sourceGet("/api/v1/projects/tasks/?page_size=30") : emptyResponse(),
+    canReadProjects ? sourceGet("/api/v1/projects/projects/?page_size=20") : emptyResponse(),
+    canReadFinance ? sourceGet("/api/v1/finance/project-cost-entries/?page_size=20") : emptyResponse(),
+    canReadFinance ? sourceGet("/api/v1/finance/billing-proposals/?page_size=20") : emptyResponse(),
+    canReadFinance ? sourceGet("/api/v1/finance/project-fundings/?page_size=20") : emptyResponse(),
+    canReadCrm ? sourceGet("/api/v1/crm/opportunities/?page_size=20") : emptyResponse(),
   ]);
+  if (attemptedSources > 0 && successfulSources === 0) {
+    throw new Error('Seluruh sumber feed yang diizinkan gagal dimuat.');
+  }
 
   const tasks     = normalizeList<any>(tasksRes.data).rows;
   const projects  = normalizeList<any>(projectsRes.data).rows;
@@ -448,13 +463,25 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
     const canReadProjects = canRequestApi("/api/v1/projects/projects/", access);
     const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", access);
     const canReadCrm = canRequestApi("/api/v1/crm/opportunities/", access);
-    const emptyResponse = () => Promise.resolve({ data: [] });
+    const emptyResponse = () => Promise.resolve({ data: [], skipped: true });
+    let attemptedSources = 1;
+    let successfulSources = 0;
+    const sourceGet = async (url: string) => {
+      attemptedSources += 1;
+      try { const response = await api.get(url); successfulSources += 1; return response; }
+      catch { return { data: [], failed: true }; }
+    };
+    const feedGet = async () => {
+      try { const response = await api.get("/api/v1/core/sidebar-feed"); successfulSources += 1; return response; }
+      catch { return { data: { notifications: [], activities: [] }, failed: true }; }
+    };
     const [feedRes, projectsRes, costRes, oppsRes] = await Promise.all([
-      api.get("/api/v1/core/sidebar-feed").catch(() => ({ data: { notifications: [], activities: [] } })),
-      canReadProjects ? api.get("/api/v1/projects/projects/?page_size=10").catch(() => ({ data: [] })) : emptyResponse(),
-      canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=10").catch(() => ({ data: [] })) : emptyResponse(),
-      canReadCrm ? api.get("/api/v1/crm/opportunities/?page_size=10").catch(() => ({ data: [] })) : emptyResponse(),
+      feedGet(),
+      canReadProjects ? sourceGet("/api/v1/projects/projects/?page_size=10") : emptyResponse(),
+      canReadFinance ? sourceGet("/api/v1/finance/project-cost-entries/?page_size=10") : emptyResponse(),
+      canReadCrm ? sourceGet("/api/v1/crm/opportunities/?page_size=10") : emptyResponse(),
     ]);
+    if (attemptedSources > 0 && successfulSources === 0) throw new Error('Seluruh sumber alert gagal dimuat.');
 
     const notifs = feedRes.data?.notifications || [];
     const projects = normalizeList<any>(projectsRes.data).rows;
@@ -538,11 +565,11 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
     if (alerts.length > 0) {
       return alerts;
     }
+    return [];
   } catch (err) {
     console.error("Error loading real alerts:", err);
+    throw err;
   }
-
-  return [];
 }
 
 /**

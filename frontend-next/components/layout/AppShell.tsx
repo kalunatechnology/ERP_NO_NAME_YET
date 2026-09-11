@@ -91,7 +91,7 @@ export function AppShell({ children }: AppShellProps) {
     const loginHref = `/login?callbackUrl=${encodeURIComponent(pathname)}`;
     return (
       <main className="flex min-h-screen items-center justify-center bg-bg-lighter p-6">
-        <section className="w-full max-w-md rounded-3xl border border-[#dbe7dc] bg-white p-8 text-center shadow-sm">
+        <section className="w-full max-w-md rounded-2xl border border-[#dbe7dc] bg-white p-8 text-center shadow-sm">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e9f3e8] text-[#173f2a]">
             <LogIn size={22} />
           </div>
@@ -217,7 +217,7 @@ export function AppShell({ children }: AppShellProps) {
           id: user?.id ? String(user.id) : undefined,
           username: (user as any)?.username,
           email: user?.email,
-          companyName: (user as any)?.company?.name || "PT Sinergi Muda Arsa",
+          companyName: (user as any)?.company?.name || "Company aktif",
         }}
       />
     </div>

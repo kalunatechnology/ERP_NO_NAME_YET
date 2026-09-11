@@ -1119,4 +1119,52 @@ export class ProjectsService {
       }
     });
   }
+
+  static async getFinancialSummary(user: any, companyId: string, projectId?: string) {
+    const role = this.activeRole(user);
+    const allowedRoles: string[] = [RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR];
+    if (!allowedRoles.includes(role) && !this.hasPlatformAdmin(user)) {
+      throw new ForbiddenError('Ringkasan keuangan proyek hanya tersedia untuk PM, OM, Director, atau administrator company.');
+    }
+    const accessWhere = await this.projectAccessWhere(user, companyId);
+    const projects = await prisma.project_project.findMany({
+      where: { company_id: companyId, ...accessWhere, ...(projectId ? { id: projectId } : {}) },
+      select: { id: true, project_code: true, project_name: true, budget_amount: true, progress_percent: true },
+    });
+    if (projectId && !projects.length) throw new NotFoundError('Project');
+    const ids = projects.map((project) => project.id);
+    if (!ids.length) return { as_of: new Date(), projects: [], totals: { budget: 0, actual_cost: 0, billing_total: 0, funded_amount: 0 }, cash_trend: [], top_expenses: [] };
+
+    const [costs, billings, fundings, wipSnapshots] = await Promise.all([
+      prisma.fin_project_cost_entry.findMany({ where: { company_id: companyId, project_id: { in: ids }, status: { in: ['VALIDATED', 'APPROVED', 'POSTED_TO_WIP'] } }, select: { project_id: true, total_cost: true, cost_element: true, transaction_date: true } }),
+      prisma.fin_billing_document.findMany({ where: { company_id: companyId, project_id: { in: ids }, status: 'POSTED' }, select: { project_id: true, total_amount: true } }),
+      prisma.fin_project_funding.findMany({ where: { company_id: companyId, project_id: { in: ids }, status: 'DRAWN' }, select: { project_id: true, approved_limit: true, requested_amount: true } }),
+      prisma.fin_project_wip_snapshot.findMany({ where: { company_id: companyId, project_id: { in: ids } }, orderBy: { snapshot_date: 'desc' } }),
+    ]);
+    const latestWip = new Map<string, number>();
+    wipSnapshots.forEach((snapshot) => {
+      if (snapshot.project_id && !latestWip.has(snapshot.project_id)) latestWip.set(snapshot.project_id, Number(snapshot.wip_asset_amount ?? 0));
+    });
+    const projectRows = projects.map((project) => {
+      const actualCost = costs.filter((row) => row.project_id === project.id).reduce((sum, row) => sum + Number(row.total_cost), 0);
+      const billingTotal = billings.filter((row) => row.project_id === project.id).reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+      const fundedAmount = fundings.filter((row) => row.project_id === project.id).reduce((sum, row) => sum + Number(row.approved_limit ?? row.requested_amount ?? 0), 0);
+      const budget = Number(project.budget_amount ?? 0);
+      return { project_id: project.id, project_code: project.project_code, project_name: project.project_name, budget, actual_cost: actualCost, budget_variance: budget - actualCost, wip_balance: latestWip.get(project.id) ?? null, billing_total: billingTotal, funded_amount: fundedAmount, completion_pct: Number(project.progress_percent ?? 0) };
+    });
+    const monthMap = new Map<string, number>();
+    const categoryMap = new Map<string, number>();
+    costs.forEach((row) => {
+      const month = row.transaction_date.toISOString().slice(0, 7);
+      monthMap.set(month, (monthMap.get(month) ?? 0) + Number(row.total_cost));
+      const category = row.cost_element || 'UNSPECIFIED';
+      categoryMap.set(category, (categoryMap.get(category) ?? 0) + Number(row.total_cost));
+    });
+    return {
+      as_of: new Date(), projects: projectRows,
+      totals: { budget: projectRows.reduce((sum, row) => sum + row.budget, 0), actual_cost: projectRows.reduce((sum, row) => sum + row.actual_cost, 0), billing_total: projectRows.reduce((sum, row) => sum + row.billing_total, 0), funded_amount: projectRows.reduce((sum, row) => sum + row.funded_amount, 0) },
+      cash_trend: [...monthMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, expense]) => ({ month, expense })),
+      top_expenses: [...categoryMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([category, amount]) => ({ category, amount })),
+    };
+  }
 }

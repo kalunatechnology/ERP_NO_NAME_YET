@@ -22,7 +22,7 @@ export function ChatbotTriggerButton({ onClick, isOpen }: ChatbotTriggerButtonPr
     <button
       onClick={onClick}
       className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 px-4 py-3 rounded-full bg-gradient-to-r from-brand-deep-green to-emerald-800 text-white shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 group border border-emerald-400/30 cursor-pointer"
-      title="Tanya AI Assistant (PT Sinergi Muda Arsa)"
+      title="Tanya AI Assistant untuk company aktif"
       aria-label="Buka AI Assistant"
     >
       <div className="relative flex items-center justify-center">

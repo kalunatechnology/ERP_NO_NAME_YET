@@ -14,7 +14,7 @@ import {
   Download, CalendarDays, ChevronDown, Layers, Building2,
   ArrowUpRight, ArrowDownRight, Book, ClipboardCheck, Clock3,
 } from "lucide-react";
-import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
+import { cn, formatMoney, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import toast from "react-hot-toast";
@@ -24,8 +24,8 @@ import { canRequestApi } from "@/lib/access/module-contract";
 
 /* ── Tab Config ──────────────────────────────────── */
 const REPORT_TABS = [
-  { id: "project-pnl", label: "Project P&L",    icon: BarChart3    },
   { id: "executive",   label: "Executive View",  icon: Building2    },
+  { id: "project-pnl", label: "Project P&L",    icon: BarChart3    },
   { id: "journals",    label: "General Ledger",  icon: Book         },
   { id: "periodic",    label: "Ringkasan Berkala", icon: ClipboardCheck },
   { id: "attendance",  label: "Kehadiran", icon: Clock3 },
@@ -519,7 +519,7 @@ export default function ReportingClient() {
       const blob = new Blob([csv], { type: "text/csv" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `marka_report_${new Date().toISOString().slice(0,10)}.csv`;
+      a.download = `marka_report_${localDateKey()}.csv`;
       a.click();
       toast.success("File CSV berhasil diunduh.");
     } else if (format === "pdf") {

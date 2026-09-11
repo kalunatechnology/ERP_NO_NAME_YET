@@ -82,7 +82,7 @@ export function ProjectMilestoneCard({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#E5E9E2] rounded-[24px] overflow-hidden grid grid-cols-1 md:grid-cols-[220px_1fr] lg:grid-cols-[250px_1fr] shadow-xs select-none",
+        "w-full bg-white border border-[#E5E9E2] rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-[220px_1fr] lg:grid-cols-[250px_1fr] shadow-xs select-none",
         className
       )}
     >

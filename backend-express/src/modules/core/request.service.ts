@@ -12,6 +12,7 @@ import { ValidationError, NotFoundError, ForbiddenError } from '../../utils/erro
 import { AuditService } from './audit.service';
 import { RoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
+import { postRequestDisbursement } from '../finance/request-disbursement.service';
 
 export interface TaggedUser {
   id: string;
@@ -345,41 +346,7 @@ export class RequestService {
   }) {
     const { requestId, disburseAccountId, disburseReference, disburseUserId, companyId } = params;
 
-    const instance = await prisma.core_workflow_instance.findFirst({ where: { id: requestId, company_id: companyId } });
-    if (!instance) throw new NotFoundError('Request');
-
-    if (instance.current_state !== 'REGISTERED') {
-      throw new ValidationError(`Hanya request berstatus REGISTERED yang dapat dicairkan (Status: ${instance.current_state}).`);
-    }
-
-    const disbursementData = {
-      disbursed_at:       new Date().toISOString(),
-      disbursed_by_id:    disburseUserId,
-      account_id:         disburseAccountId ?? '1111-BCA-OPS',
-      reference_number:   disburseReference ?? `DISB-${Date.now().toString().slice(-6)}`,
-    };
-
-    await prisma.core_workflow_instance.update({
-      where: { id: requestId },
-      data:  { current_state: 'DISBURSED' },
-    });
-
-    await AuditService.logDeltaEvent({
-      entity:      'core_internal_request',
-      entityId:    requestId,
-      action:      'DISBURSE_FUND',
-      before:      { status: 'REGISTERED' },
-      after:       { status: 'DISBURSED', disbursement: disbursementData },
-      userId:      disburseUserId,
-      companyId,
-      description: `Dana permohonan berhasil dicairkan oleh Finance (Ref: ${disbursementData.reference_number})`,
-    });
-
-    return {
-      id:           requestId,
-      status:       'DISBURSED',
-      disbursement: disbursementData,
-    };
+    return postRequestDisbursement(requestId, disburseAccountId ?? '', disburseReference ?? '', disburseUserId, companyId);
   }
 
   // ---------------------------------------------------------------------------

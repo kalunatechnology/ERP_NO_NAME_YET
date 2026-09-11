@@ -225,7 +225,7 @@ export function AccessAdministration() {
           })}
         </section>
       ) : (
-        <div className="grid min-h-[590px] grid-cols-1 overflow-hidden rounded-[24px] border border-[#dfe7e0] bg-white lg:grid-cols-[310px_1fr]">
+        <div className="grid min-h-[590px] grid-cols-1 overflow-hidden rounded-2xl border border-[#dfe7e0] bg-white lg:grid-cols-[310px_1fr]">
           <aside className="border-b border-[#e4ebe5] bg-[#fbfcfb] lg:border-b-0 lg:border-r">
             <div className="border-b border-[#e4ebe5] p-5">
               <div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7c8b80]">Company members</p><p className="mt-1 text-sm text-[#355b42]">{users.length} active identities</p></div><Users size={19} className="text-[#557860]" /></div>

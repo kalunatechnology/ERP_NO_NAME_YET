@@ -112,9 +112,11 @@ export function MonthlyStackedBarChart({
       if (res && res.data && res.data.length > 0) {
         setRealData(res.data);
         setAutoComputedMax(res.maxValue || 500);
+      } else {
+        setRealData(DEFAULT_DATA);
       }
     } catch {
-      // ignore silently and maintain current data
+      toast.error("Data finansial bulanan gagal dimuat; grafik tidak menampilkan data contoh.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -268,7 +270,7 @@ export function MonthlyStackedBarChart({
     <div
       ref={containerRef}
       className={cn(
-        "w-full bg-white border border-[#E5E9E2] rounded-[24px] p-6 shadow-xs flex flex-col justify-between select-none relative",
+        "w-full bg-white border border-[#E5E9E2] rounded-2xl p-6 shadow-xs flex flex-col justify-between select-none relative",
         className
       )}
     >
@@ -322,10 +324,7 @@ export function MonthlyStackedBarChart({
           {autoFetch && (
             <button
               type="button"
-              onClick={() => {
-                loadRealFinancials(true);
-                toast.success("Data finansial bulanan telah disinkronkan.");
-              }}
+              onClick={() => loadRealFinancials(true)}
               disabled={loading || refreshing}
               className="p-1.5 rounded-lg text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors cursor-pointer"
               title="Sinkronkan data live"

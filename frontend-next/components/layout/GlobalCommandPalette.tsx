@@ -15,6 +15,8 @@ import {
   ArrowRight, ShieldCheck, Database
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessRoute } from "@/lib/access/module-contract";
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -51,6 +53,15 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const router = useRouter();
+  const { user, userRole } = useAuth();
+  const accessibleItems = COMMAND_ITEMS.filter((item) => canAccessRoute({
+    pathname: item.path,
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === "super_admin",
+  }));
+  const canSearchExplorer = accessibleItems.some((item) => item.path === "/resources");
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus on open
@@ -62,7 +73,7 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     }
   }, [isOpen]);
 
-  const filtered = COMMAND_ITEMS.filter((item) => {
+  const filtered = accessibleItems.filter((item) => {
     const q = query.toLowerCase().trim();
     if (!q) return true;
     return (
@@ -115,7 +126,7 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       />
 
       {/* Dialog container with smooth zoom-in */}
-      <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden z-10 animate-in zoom-in-95 fade-in duration-200 ease-out flex flex-col max-h-[80vh]">
+      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-10 animate-in zoom-in-95 fade-in duration-200 ease-out flex flex-col max-h-[80vh]">
         {/* Search header */}
         <div className="flex items-center px-4 py-3.5 border-b border-gray-100 bg-gray-50/50">
           <Search className="w-5 h-5 text-brand-deep-green mr-3 flex-shrink-0" />
@@ -149,7 +160,7 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             <div className="py-12 text-center text-xs text-text-secondary flex flex-col items-center gap-2">
               <Sparkles size={24} className="text-gray-300" />
               <span>Tidak ada rute atau modul yang cocok dengan &quot;{query}&quot;</span>
-              <button
+              {canSearchExplorer && <button
                 onClick={() => {
                   router.push(`/resources?search=${encodeURIComponent(query)}`);
                   onClose();
@@ -157,7 +168,7 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                 className="btn-primary py-1 px-3 text-xs mt-2"
               >
                 Cari &quot;{query}&quot; di Data Explorer &rarr;
-              </button>
+              </button>}
             </div>
           ) : (
             <div>

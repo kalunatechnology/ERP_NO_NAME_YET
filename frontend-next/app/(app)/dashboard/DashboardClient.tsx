@@ -20,7 +20,8 @@ import { loadAllProjects, Project } from "@/lib/api/project.api";
 import { loadFinanceDashboard, FinanceDashboardData } from "@/lib/api/finance.api";
 import { loadCRMData, CRMData, CRMDashboard as CRMDashType } from "@/lib/api/crm.api";
 import { loadDashboardBootstrap } from "@/lib/api/dashboard.api";
-import { formatMoney, formatDate, getStatusColor, cn } from "@/lib/utils";
+import api from "@/lib/api/axios";
+import { formatMoney, formatDate, getStatusColor, cn, localDateKey, normalizeDateKey } from "@/lib/utils";
 
 import { ProjectDistributionGauge } from "@/components/ui/ProjectDistributionGauge";
 import { CompletionRateCard, RateItem } from "@/components/ui/CompletionRateCard";
@@ -198,8 +199,23 @@ function LoadingDashboard() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function PMDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
-  const today = new Date().toISOString().split("T")[0];
+function PMDashboard({ projects, loading, role }: { projects: Project[]; loading: boolean; role: "pm" | "om" }) {
+  const today = localDateKey();
+  const [projectFinancials, setProjectFinancials] = useState<any>(null);
+  const [projectFinancialError, setProjectFinancialError] = useState(false);
+
+  useEffect(() => {
+    if (role !== "pm") return;
+    api.get("/api/v1/projects/dashboard/financial-summary")
+      .then((response) => {
+        setProjectFinancials(response.data?.data ?? response.data);
+        setProjectFinancialError(false);
+      })
+      .catch(() => {
+        setProjectFinancials(null);
+        setProjectFinancialError(true);
+      });
+  }, [role]);
 
   if (loading) return <LoadingDashboard />;
 
@@ -207,7 +223,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
   const active = projects.filter(p => ["ACTIVE", "IN_PROGRESS", "PLANNING", "STARTED"].includes((p.status || "").toUpperCase())).length;
   const completed = projects.filter(p => ["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase())).length;
   const delayed = projects.filter(p => {
-    const end = p.end_date || p.planned_end_date;
+    const end = normalizeDateKey(p.end_date || p.planned_end_date);
     return end && end < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
   }).length;
   const avgProgress = total > 0
@@ -233,8 +249,23 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
 
   const timelineTasks = buildMainTaskTimeline(projects);
 
-  // Clean empty state for expenses (fresh company setup)
-  const topExpenses: ExpenseItem[] = [];
+  const topExpenseMax = Math.max(...(projectFinancials?.top_expenses || []).map((item: any) => Number(item.amount || 0)), 1);
+  const topExpenses: ExpenseItem[] = (projectFinancials?.top_expenses || []).map((item: any, index: number) => ({
+    id: `${item.category}-${index}`,
+    label: item.category,
+    amountText: formatMoney(Number(item.amount || 0)),
+    amountValue: Number(item.amount || 0),
+    percentage: (Number(item.amount || 0) / topExpenseMax) * 100,
+    category: item.category,
+  }));
+  const projectCashTrend = (projectFinancials?.cash_trend || []).map((item: any) => ({
+    month: item.month,
+    fullDate: item.month,
+    bottomValue: 0,
+    topValue: Number(item.expense || 0) / 1_000_000,
+    hasData: true,
+    notes: "Biaya proyek tervalidasi/posting",
+  }));
 
   // Derive Real Projects & Milestones for PM
   const projectSummaries: ProjectSummary[] = projects.slice(0, 8).map(p => ({
@@ -268,7 +299,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
     { label: "Delayed", count: delayed, color: "#EF4444" },
   ];
 
-  // Industry Rates directly from real active projects of PT Sinergi Muda Arsa
+  // Completion rates are derived directly from the active company projects.
   const industryRates: RateItem[] = projects.map((p, idx) => ({
     id: p.id || idx + 1,
     industry: p.project_name || p.name || `Proyek #${idx + 1}`,
@@ -293,7 +324,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
       </section>
 
       {/* ── Section Budget Check & Status Kontrol Lapangan ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
+      {role === "pm" && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
         <div className="lg:col-span-1 h-full">
           <BudgetCheckStatusCard
             materialBudget={totalBudget}
@@ -305,7 +336,7 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
         </div>
 
         {/* ── Panel Status Kontrol & Pengadaan Lapangan (Gambar 2) ── */}
-        <div className="lg:col-span-2 bg-white border border-[#C7C7C7] rounded-[24px] p-6 shadow-xs flex flex-col justify-between h-full min-h-[220px]">
+        <div className="lg:col-span-2 bg-white border border-[#C7C7C7] rounded-2xl p-6 shadow-xs flex flex-col justify-between h-full min-h-[220px]">
           <div className="flex items-center justify-between pb-3 border-b border-gray-100">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-[#F0FEE0] flex items-center justify-center text-[#275433]">
@@ -343,11 +374,11 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
             Alokasi material terkunci sesuai baseline HPP. Seluruh pengeluaran di luar plafon akan dialihkan ke otorisasi Project Manager.
           </p>
         </div>
-      </div>
+      </div>}
 
       {/* ── Today's Task Summary Panel ──────────── */}
       <section>
-        <div className="bg-white border border-[#C7C7C7] rounded-[24px] p-6 shadow-xs flex flex-col gap-4">
+        <div className="bg-white border border-[#C7C7C7] rounded-2xl p-6 shadow-xs flex flex-col gap-4">
           <div className="flex items-center justify-between pb-2 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-[#F0FEE0] flex items-center justify-center text-[#275433]">
@@ -402,20 +433,22 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
       </div>
 
       {/* ── Visual Analytics Row 2: Tren Pendapatan & Biaya Bulanan (Run-Rate) ── */}
-      <div className="w-full">
+      {role === "pm" && <div className="w-full">
+        {projectFinancialError && <p className="mb-2 text-xs text-amber-700">Ringkasan keuangan proyek gagal dimuat. Data proyek operasional tetap tersedia.</p>}
         <MonthlyStackedBarChart
-          title="Tren Arus Kas Pendapatan & Biaya Bulanan Proyek"
-          subtitle="Distribusi pendapatan termin vs realisasi alokasi WIP/biaya proyek per bulan fiskal"
-          primaryLabel="Realisasi Kas (Jt)"
-          secondaryLabel="Alokasi WIP / Biaya Proyek (Jt)"
-          autoFetch={true}
+          title="Tren Biaya Bulanan Proyek"
+          subtitle="Realisasi biaya tervalidasi dan biaya yang telah diposting ke WIP pada project yang dikelola"
+          primaryLabel="Tidak digunakan"
+          secondaryLabel="Biaya Proyek (Jt)"
+          data={projectCashTrend}
+          autoFetch={false}
         />
-      </div>
+      </div>}
 
       {/* ── Visual Analytics Row 3: Top 5 Expenses ── */}
-      <div className="w-full">
+      {role === "pm" && <div className="w-full">
         <TopExpensesBarChart expenses={topExpenses} />
-      </div>
+      </div>}
 
       {/* ── Visual Analytics Row 3: Gantt Timeline Mingguan Portofolio (W1-W8) ── */}
       <div className="w-full">
@@ -583,9 +616,9 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
       {/* ── Operational Control (Budget & Inventory Checking) ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
         <BudgetCheckStatusCard
-          materialBudget={kpis.totalBudget ?? 56000000}
-          allocationCost={kpis.usedBudget ?? 12500000}
-          remainingBudget={kpis.totalBudget != null ? Math.max(0, kpis.totalBudget - (kpis.usedBudget ?? 0)) : 43500000}
+          materialBudget={kpis.totalBudget ?? 0}
+          allocationCost={kpis.usedBudget ?? 0}
+          remainingBudget={Math.max(0, (kpis.totalBudget ?? 0) - (kpis.usedBudget ?? 0))}
           isValid={(kpis.totalBudget ?? 0) >= (kpis.usedBudget ?? 0)}
         />
         <InventoryCheckingCard autoFetch={true} />
@@ -727,7 +760,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
   finData: FinanceDashboardData | null;
   loading: boolean;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateKey();
 
   if (loading) return <LoadingDashboard />;
 
@@ -735,7 +768,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
   const active = projects.filter(p => ["ACTIVE", "IN_PROGRESS", "PLANNING"].includes((p.status || "").toUpperCase())).length;
   const completed = projects.filter(p => ["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase())).length;
   const delayed = projects.filter(p => {
-    const end = p.end_date || p.planned_end_date;
+    const end = normalizeDateKey(p.end_date || p.planned_end_date);
     return end && end < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
   }).length;
   const avgProgress = total > 0
@@ -1169,7 +1202,7 @@ function CRMDashboard({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function StaffDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateKey();
 
   if (loading) return <LoadingDashboard />;
 
@@ -1469,7 +1502,7 @@ export default function DashboardClient() {
         </div>
       )}
       {(userRole === "pm" || userRole === "om") && (
-        <PMDashboard projects={projects} loading={loading} />
+        <PMDashboard projects={projects} loading={loading} role={userRole} />
       )}
       {userRole === "finance" && (
         <FinanceDashboard finData={finData} loading={loading} />

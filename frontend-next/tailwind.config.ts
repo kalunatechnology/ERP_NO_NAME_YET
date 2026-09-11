@@ -46,7 +46,7 @@ const config: Config = {
 
       /* ── Typography (Strictly Aligned with Implementation Guideline) ─ */
       fontFamily: {
-        sans: ["'Google Sans'", "Roboto", "Inter", "system-ui", "sans-serif"],
+        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "'Segoe UI'", "sans-serif"],
       },
       fontSize: {
         "3xs": ["9px", { lineHeight: "12px" }],

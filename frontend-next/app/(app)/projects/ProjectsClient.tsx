@@ -25,12 +25,12 @@ import {
   recalculateProjectHealth, advancePMFlow,
   createMilestone,
   assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers,
-  fetchProjectFinancialPerformance, updateProjectFinancials,
+  fetchProjectFinancialPerformance,
   fetchProjectFundingRequests, submitProjectFundingRequest,
   fetchProjectCustomers
 } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
-import { cn } from "@/lib/utils";
+import { cn, localDateKey } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
@@ -132,14 +132,14 @@ export default function ProjectsClient() {
   const [financialPerformance, setFinancialPerformance] = useState<any>(null);
   const [fundingRequestsList, setFundingRequestsList] = useState<any[]>([]);
   const [financialTargetForm, setFinancialTargetForm] = useState({
-    contract_amount: 150000000,
-    budget_amount: 100000000,
-    target_margin_percent: 25,
+    contract_amount: 0,
+    budget_amount: 0,
+    target_margin_percent: 0,
   });
   const [fundingRequestForm, setFundingRequestForm] = useState({
-    amount: 25000000,
+    amount: 0,
     category: "OPERATIONAL",
-    description: "Kebutuhan dana kas operasional tim proyek di lapangan"
+    description: ""
   });
 
   /* Team Users list for Assignment */
@@ -162,17 +162,17 @@ export default function ProjectsClient() {
 
   /* Form states */
   const [newProjForm, setNewProjForm] = useState({
-    name: "", code: "", customer_name: "", budget_amount: 100000000, description: "",
-    planned_start_date: new Date().toISOString().split("T")[0],
-    planned_end_date: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0]
+    name: "", code: "", customer_name: "", budget_amount: 0, description: "",
+    planned_start_date: localDateKey(),
+    planned_end_date: localDateKey(new Date(Date.now() + 30 * 86400000))
   });
   const [mainTaskForm, setMainTaskForm] = useState({ title: "", description: "", weight: 15, priority: "MEDIUM" });
-  const [weeklyForm, setWeeklyForm] = useState({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_name: "Assignee Tim" });
+  const [weeklyForm, setWeeklyForm] = useState({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_id: "" });
   
   const [dailyForm, setDailyForm] = useState({
     title: "",
     time_slot: "09.00 - 12.00",
-    planned_date: new Date().toISOString().split("T")[0],
+    planned_date: localDateKey(),
     output_result: "",
     notes: "",
     status: "ON_PROGRESS"
@@ -266,17 +266,26 @@ export default function ProjectsClient() {
         activeRoleCode: user?.active_role_code,
         isSuperAdmin: userRole === "super_admin",
       }).then((response) => response.projects);
-      const [data, transferList, uList, custList, divisions] = await Promise.all([
-        projectBundle.then((bundle) => loadAllProjects(user?.enabled_modules || [], bundle, {
+      const data = await projectBundle.then((bundle) => loadAllProjects(user?.enabled_modules || [], bundle, {
           delegatedModules: user?.delegated_modules,
           activeRoleCode: user?.active_role_code,
           isSuperAdmin: userRole === "super_admin",
-        })),
-        getTransferRequests().catch(() => []),
-        fetchCompanyUsers().catch(() => []),
-        fetchProjectCustomers().catch(() => []),
-        api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? []).catch(() => [])
+        }));
+      const auxiliary = await Promise.allSettled([
+        getTransferRequests(),
+        fetchCompanyUsers(),
+        fetchProjectCustomers(),
+        api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? [])
       ]);
+      const valueOrEmpty = (result: PromiseSettledResult<any>) => result.status === "fulfilled" ? result.value : [];
+      const transferList = valueOrEmpty(auxiliary[0]);
+      const uList = valueOrEmpty(auxiliary[1]);
+      const custList = valueOrEmpty(auxiliary[2]);
+      const divisions = valueOrEmpty(auxiliary[3]);
+      const failedAuxiliary = auxiliary.filter((result) => result.status === "rejected").length;
+      if (failedAuxiliary > 0) {
+        toast.error(`${failedAuxiliary} sumber data pendukung proyek gagal dimuat. Data utama proyek tetap ditampilkan.`);
+      }
       setProjects(data);
       if (custList && custList.length > 0) {
         setCustomerOptions(custList);
@@ -370,9 +379,9 @@ export default function ProjectsClient() {
   useEffect(() => {
     if (selectedProject) {
       setFinancialTargetForm({
-        contract_amount: Number((selectedProject as any).contract_amount || selectedProject.budget_amount || selectedProject.budget || 150000000),
-        budget_amount: Number(selectedProject.budget_amount || selectedProject.budget || 100000000),
-        target_margin_percent: Number((selectedProject as any).target_margin_percent || 25),
+        contract_amount: Number((selectedProject as any).contract_amount || selectedProject.budget_amount || selectedProject.budget || 0),
+        budget_amount: Number(selectedProject.budget_amount || selectedProject.budget || 0),
+        target_margin_percent: Number((selectedProject as any).target_margin_percent || 0),
       });
     }
   }, [selectedProject]);
@@ -390,12 +399,6 @@ export default function ProjectsClient() {
       await api.post(`/api/v1/projects/projects/${selectedProject.id}/update_financials/`, {
         budget_amount: Number(financialTargetForm.budget_amount),
         target_margin_percent: Number(financialTargetForm.target_margin_percent),
-      }).catch(async () => {
-        await updateProjectFinancials(selectedProject.id, {
-          contract_amount: Number(financialTargetForm.contract_amount),
-          budget_amount: Number(financialTargetForm.budget_amount),
-          target_margin_percent: Number(financialTargetForm.target_margin_percent)
-        });
       });
 
       toast.success("Target finansial dan anggaran proyek berhasil diperbarui.");
@@ -642,15 +645,14 @@ export default function ProjectsClient() {
     try {
       await createWeeklyTask({
         main_task: activeMainTask.id,
-        project: selectedProject.id,
         week_number: Number(weeklyForm.week_number),
         target_description: weeklyForm.target_description.trim(),
         start_date: weeklyForm.start_date || undefined,
         end_date: weeklyForm.end_date || undefined,
-        assignee_name: weeklyForm.assignee_name
+        assignee_id: weeklyForm.assignee_id || undefined
       });
       toast.success(`Target minggu #${weeklyForm.week_number} berhasil dibuat.`);
-      setWeeklyForm({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_name: "Assignee Tim" });
+      setWeeklyForm({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_id: "" });
       setIsCreateWeeklyOpen(false);
       fetchProjects(true);
     } catch {
@@ -673,7 +675,7 @@ export default function ProjectsClient() {
     try {
       await createDailyTask({
         weekly_task: activeWeeklyTask.id,
-        planned_date: dailyForm.planned_date || new Date().toISOString().split("T")[0],
+        planned_date: dailyForm.planned_date || localDateKey(),
         time_slot: dailyForm.time_slot || "09.00 - 12.00",
         title: dailyForm.title.trim(),
         activity_input: dailyForm.title.trim(),
@@ -685,7 +687,7 @@ export default function ProjectsClient() {
       setDailyForm({
         title: "",
         time_slot: "09.00 - 12.00",
-        planned_date: new Date().toISOString().split("T")[0],
+        planned_date: localDateKey(),
         output_result: "",
         notes: "",
         status: "ON_PROGRESS"
@@ -818,12 +820,15 @@ export default function ProjectsClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleCreateProject = async () => {
-    if (!newProjForm.name.trim()) return;
+    if (!newProjForm.name.trim() || !newProjForm.code.trim() || !newProjForm.customer_name.trim()) {
+      toast.error("Nama proyek, kode proyek, dan pelanggan wajib diisi.");
+      return;
+    }
     try {
       const res = await createProject({
         name: newProjForm.name.trim(),
-        code: newProjForm.code.trim() || `PRJ-${Date.now().toString().slice(-4)}`,
-        customer_name: newProjForm.customer_name.trim() || "PT Sinergi Muda Arsa",
+        code: newProjForm.code.trim(),
+        customer_name: newProjForm.customer_name.trim(),
         budget_amount: Number(newProjForm.budget_amount) || 0,
         planned_start_date: newProjForm.planned_start_date,
         planned_end_date: newProjForm.planned_end_date,
@@ -832,9 +837,9 @@ export default function ProjectsClient() {
       toast.success(`Proyek "${newProjForm.name}" berhasil dibuat.`);
       setIsCreateProjOpen(false);
       setNewProjForm({
-        name: "", code: "", customer_name: "", budget_amount: 100000000, description: "",
-        planned_start_date: new Date().toISOString().split("T")[0],
-        planned_end_date: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0]
+        name: "", code: "", customer_name: "", budget_amount: 0, description: "",
+        planned_start_date: localDateKey(),
+        planned_end_date: localDateKey(new Date(Date.now() + 30 * 86400000))
       });
       await fetchProjects(true);
       if (res?.id) setSelectedId(res.id);
@@ -878,15 +883,8 @@ export default function ProjectsClient() {
       toast.success("Kesehatan EVM proyek berhasil dihitung.");
       fetchProjects(true);
     } catch {
-      setHealthData({
-        spi: "0.94",
-        cpi: "1.05",
-        sv: "Rp -9.000.000 (Terlambat 4 hari)",
-        cv: "Rp +7.500.000 (Hemat Anggaran)",
-        health_status: "HEALTHY",
-        recommendation: "Eksekusi on-budget, lakukan percepatan pada target mingguan W3."
-      });
-      setIsHealthModalOpen(true);
+      setHealthData(null);
+      toast.error("Kesehatan proyek tidak dapat dihitung. Periksa data anggaran dan progres lalu coba lagi.");
     }
   };
 
@@ -906,10 +904,6 @@ export default function ProjectsClient() {
     try {
       await api.post(`/api/v1/projects/projects/${selectedProject.id}/advance-stage/`, {
         target_status: nextStage,
-      }).catch(async () => {
-        await api.patch(`/api/v1/projects/projects/${selectedProject.id}/`, {
-          status: nextStage,
-        });
       });
 
       toast.success(`Lifecycle proyek dimajukan ke ${nextStage}.`);
@@ -1012,7 +1006,7 @@ export default function ProjectsClient() {
 
       {/* ── Project Hero Banner & Financial KPIs ── */}
       {selectedProject && (
-        <div className="card bg-brand-deep-green text-white p-6 rounded-3xl relative overflow-hidden shadow-card-lg border-0">
+        <div className="card bg-brand-deep-green text-white p-6 rounded-2xl relative overflow-hidden shadow-card-lg border-0">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
             <div className="flex flex-col gap-2 max-w-2xl">
               <div className="flex items-center gap-2 flex-wrap">
@@ -1217,7 +1211,7 @@ export default function ProjectsClient() {
           </div>
 
           {mainTasks.length === 0 ? (
-            <div className="card p-12 rounded-3xl text-center border-dashed border-2">
+            <div className="card p-12 rounded-2xl text-center border-dashed border-2">
               <Layers size={36} className="text-brand-green mx-auto mb-2 opacity-60" />
               <h3 className="text-sm font-bold text-text-primary">Belum ada Paket Kerja (Main Task) pada proyek ini</h3>
               <p className="text-xs text-text-secondary mt-1 max-w-md mx-auto">
@@ -1334,15 +1328,15 @@ export default function ProjectsClient() {
                               <button
                                 onClick={() => {
                                   setActiveMainTask(main);
-                                  const defaultPic = main.assignments?.[0]?.assignee_name || user?.full_name || user?.username || "";
-                                  const today = new Date().toISOString().split("T")[0];
-                                  const nextWeek = new Date(Date.now() + 6 * 86400000).toISOString().split("T")[0];
+                                  const defaultAssigneeId = main.assignments?.[0]?.assignee || main.assignments?.[0]?.assignee_id || user?.id || "";
+                                  const today = localDateKey();
+                                  const nextWeek = localDateKey(new Date(Date.now() + 6 * 86400000));
                                   setWeeklyForm({
                                     week_number: (weeklyPlans.length + 1),
                                     target_description: "",
                                     start_date: today,
                                     end_date: nextWeek,
-                                    assignee_name: defaultPic
+                                    assignee_id: String(defaultAssigneeId)
                                   });
                                   setIsCreateWeeklyOpen(true);
                                 }}
@@ -1450,7 +1444,7 @@ export default function ProjectsClient() {
                                                 setDailyForm({
                                                   title: "",
                                                   time_slot: "09.00 - 12.00",
-                                                  planned_date: new Date().toISOString().split("T")[0],
+                                                  planned_date: localDateKey(),
                                                   output_result: "",
                                                   notes: "",
                                                   status: "ON_PROGRESS"
@@ -1983,7 +1977,7 @@ export default function ProjectsClient() {
          ══════════════════════════════════════════════════════════════ */}
       {activeTab === "FINANCIAL" && (
         <div className="flex flex-col gap-5">
-          <div className="card p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-card-lg border border-slate-700">
+          <div className="card p-5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-card-lg border border-slate-700">
             <div className="flex justify-between items-center flex-wrap gap-3 mb-4 pb-4 border-b border-white/10">
               <div>
                 <div className="flex items-center gap-2">
@@ -2311,20 +2305,21 @@ export default function ProjectsClient() {
             <div>
               <label className="text-xs font-bold text-text-primary block mb-1">Assignee / PIC Mingguan *</label>
               <select
-                value={weeklyForm.assignee_name}
-                onChange={e => setWeeklyForm({ ...weeklyForm, assignee_name: e.target.value })}
+                value={weeklyForm.assignee_id}
+                onChange={e => setWeeklyForm({ ...weeklyForm, assignee_id: e.target.value })}
                 className="input text-xs"
               >
+                <option value="">Gunakan assignee aktif</option>
                 {activeMainTask?.assignments && activeMainTask.assignments.length > 0 ? (
                   activeMainTask.assignments.map(a => (
-                    <option key={a.id} value={a.assignee_name || a.user_name}>
+                    <option key={a.id} value={String(a.assignee || a.assignee_id || "")}>
                       {a.assignee_name || a.user_name} (assignee terpilih)
                     </option>
                   ))
                 ) : null}
 
                 {companyUsers.map(u => (
-                  <option key={u.id} value={u.full_name || u.username}>
+                  <option key={u.id} value={String(u.id)}>
                     {u.full_name || u.username} ({u.role_in_project || u.department || "Member"})
                   </option>
                 ))}
@@ -2872,7 +2867,7 @@ export default function ProjectsClient() {
                 await createMilestone({
                   project: selectedProject.id,
                   name: milestoneForm.name.trim(),
-                  target_date: milestoneForm.target_date || new Date().toISOString().split("T")[0]
+                  target_date: milestoneForm.target_date || localDateKey()
                 });
                 toast.success("Milestone berhasil ditambahkan!");
                 setIsMilestoneModalOpen(false);

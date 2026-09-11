@@ -25,6 +25,7 @@ export const DEFAULT_COA = [
   { code: '1120', name: 'Bank Perusahaan', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1130', name: 'Piutang Usaha (AR)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1140', name: 'Uang Muka & Cash in Transit', type: 'ASSET', balance: 'DEBIT', parent_code: null },
+  { code: '1150', name: 'Persediaan Pekerjaan Dalam Proses (WIP)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1200', name: 'Aset Tetap (Fixed Assets)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   // 2000 - KEWAJIBAN
   { code: '2110', name: 'Hutang Usaha (AP)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
@@ -862,6 +863,8 @@ export class FinanceService {
         where: { id: billingId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
       });
       if (!doc) throw new NotFoundError('BillingDocument');
+      if (doc.status === 'POSTED') return doc;
+      if (doc.status !== 'APPROVED') throw new ValidationError('Billing document harus APPROVED sebelum diposting.');
 
       // ==== PERIOD GUARD (Defense-in-Depth) ====
       const { PeriodClosingService } = await import('./period-closing.service');
@@ -1059,8 +1062,8 @@ export class FinanceService {
 
     const coaMap    = await this.ensureStandardCOA(companyId);
     const wipAccount = await prisma.fin_account.findFirst({
-      where: { account_code: '1108', ...(companyId ? { company_id: companyId } : {}) },
-    }) ?? coaMap.get('1140'); // Fallback ke Cash in Transit jika 1108 belum ada
+      where: { account_code: '1150', ...(companyId ? { company_id: companyId } : {}) },
+    }) ?? coaMap.get('1150');
     const cogsAccount = coaMap.get('5100');
 
     if (!wipAccount || !cogsAccount) {

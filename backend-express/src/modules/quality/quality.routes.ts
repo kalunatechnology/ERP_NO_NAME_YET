@@ -10,6 +10,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError } from '../../utils/errors';
+import { completeInspection } from './inspection.service';
 
 export const qualityRouter = Router();
 
@@ -25,12 +26,7 @@ export const qualityRouter = Router();
 qualityRouter.post('/inspections/:id/complete', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses quality.');
-    const record = await prisma.qa_inspection.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { id: true } });
-    if (!record) throw new NotFoundError('Inspection');
-    const updated = await prisma.qa_inspection.update({
-      where: { id: record.id },
-      data: { status: 'COMPLETED' },
-    });
+    const updated = await completeInspection(req.params.id, req.companyId, req.user!.id);
     res.json(updated);
   } catch (err) {
     next(err);
@@ -41,6 +37,22 @@ qualityRouter.post('/inspections/:id/complete', async (req: Request, res: Respon
 qualityRouter.use('/quality-plans', createCrudRouter({ modelName: 'qa_quality_plan', searchFields: ['plan_name', 'plan_code'] }));
 qualityRouter.use('/quality-plan-points', createCrudRouter({ modelName: 'qa_quality_plan_point' }));
 qualityRouter.use('/inspections', createCrudRouter({ modelName: 'qa_inspection', searchFields: ['inspection_number'] }));
-qualityRouter.use('/inspection-results', createCrudRouter({ modelName: 'qa_inspection_result' }));
+qualityRouter.use('/inspection-results', createCrudRouter({ modelName: 'qa_inspection_result',
+  beforeCreate: async (req, data) => {
+    const inspection = await prisma.qa_inspection.findFirst({ where: { id: data.inspection_id, company_id: req.companyId } });
+    if (!inspection || inspection.status === 'COMPLETED') throw new ForbiddenError('Hasil hanya dapat dicatat pada inspection aktif di company ini.');
+    return data;
+  },
+  beforeUpdate: async (req, data, existing) => {
+    const inspection = await prisma.qa_inspection.findFirst({ where: { id: existing.inspection_id, company_id: req.companyId } });
+    if (!inspection || inspection.status === 'COMPLETED') throw new ForbiddenError('Hasil inspection yang selesai bersifat immutable.');
+    if (data.inspection_id && data.inspection_id !== existing.inspection_id) throw new ForbiddenError('Hasil tidak dapat dipindahkan ke inspection lain.');
+    return data;
+  },
+  beforeDelete: async (req, existing) => {
+    const inspection = await prisma.qa_inspection.findFirst({ where: { id: existing.inspection_id, company_id: req.companyId } });
+    if (!inspection || inspection.status === 'COMPLETED') throw new ForbiddenError('Hasil inspection yang selesai tidak dapat dihapus.');
+  },
+}));
 qualityRouter.use('/nonconformances', createCrudRouter({ modelName: 'qa_nonconformance', searchFields: ['ncr_number', 'description'] }));
 qualityRouter.use('/corrective-actions', createCrudRouter({ modelName: 'qa_corrective_action', searchFields: ['capa_number', 'description'] }));

@@ -9,9 +9,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { ForbiddenError, NotFoundError } from '../../utils/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { postStockMove } from './stock-posting.service';
 
 export const inventoryRouter = Router();
+async function assertDraftMove(req: Request, id: string) {
+  const move = await prisma.inv_stock_move.findFirst({ where: { id, company_id: req.companyId } });
+  if (!move || move.status === 'COMPLETED') throw new ValidationError('Movement tidak valid atau sudah diposting.');
+}
 
 // Custom action: complete stock-move
 /**
@@ -25,12 +30,7 @@ export const inventoryRouter = Router();
 inventoryRouter.post('/stock-moves/:id/complete', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses inventory.');
-    const record = await prisma.inv_stock_move.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { id: true } });
-    if (!record) throw new NotFoundError('StockMove');
-    const updated = await prisma.inv_stock_move.update({
-      where: { id: record.id },
-      data: { status: 'COMPLETED' },
-    });
+    const updated = await postStockMove(req.params.id, req.companyId, req.user!.id);
     res.json(updated);
   } catch (err) {
     next(err);
@@ -38,14 +38,19 @@ inventoryRouter.post('/stock-moves/:id/complete', async (req: Request, res: Resp
 });
 
 // REST ViewSets
+inventoryRouter.use('/stock-move-lines', createCrudRouter({ modelName: 'inv_stock_move_line',
+  beforeCreate: async (req, data) => { await assertDraftMove(req, data.stock_move_id); return data; },
+  beforeUpdate: async (req, data, existing) => { await assertDraftMove(req, existing.stock_move_id); if (data.stock_move_id) await assertDraftMove(req, data.stock_move_id); return data; },
+  beforeDelete: async (req, existing) => { await assertDraftMove(req, existing.stock_move_id); },
+}));
 inventoryRouter.use('/stock-moves', createCrudRouter({ modelName: 'inv_stock_move', searchFields: ['movement_number', 'movement_type'] }));
 inventoryRouter.use('/stock-movements', createCrudRouter({ modelName: 'inv_stock_move', searchFields: ['movement_number', 'movement_type'] }));
 inventoryRouter.use('/stock-reservations', createCrudRouter({ modelName: 'inv_stock_reservation' }));
 inventoryRouter.use('/reservations', createCrudRouter({ modelName: 'inv_stock_reservation' }));
-inventoryRouter.use('/stock-ledgers', createCrudRouter({ modelName: 'inv_stock_ledger_entry' }));
-inventoryRouter.use('/stock-balances', createCrudRouter({ modelName: 'inv_stock_balance' }));
+inventoryRouter.use('/stock-ledgers', createCrudRouter({ modelName: 'inv_stock_ledger_entry', readOnly: true }));
+inventoryRouter.use('/stock-balances', createCrudRouter({ modelName: 'inv_stock_balance', readOnly: true }));
 inventoryRouter.use('/stock-counts', createCrudRouter({ modelName: 'inv_stock_count', searchFields: ['count_number'] }));
 inventoryRouter.use('/stock-count-lines', createCrudRouter({ modelName: 'inv_stock_count_line' }));
-inventoryRouter.use('/valuation-layers', createCrudRouter({ modelName: 'inv_valuation_layer' }));
+inventoryRouter.use('/valuation-layers', createCrudRouter({ modelName: 'inv_valuation_layer', readOnly: true }));
 inventoryRouter.use('/lots', createCrudRouter({ modelName: 'inv_lot', searchFields: ['lot_number'] }));
 inventoryRouter.use('/serial-numbers', createCrudRouter({ modelName: 'inv_serial_number', searchFields: ['serial_number'] }));

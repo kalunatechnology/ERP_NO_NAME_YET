@@ -10,6 +10,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError } from '../../utils/errors';
+import { matchPurchaseOrder } from './three-way-match.service';
 
 export const procurementRouter = Router();
 
@@ -61,24 +62,7 @@ procurementRouter.post('/purchase-requisitions/:id/convert-to-rfq', async (req: 
 procurementRouter.post('/purchase-orders/:id/three-way-match', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses procurement.');
-    const purchaseOrder = await prisma.proc_purchase_order.findFirst({ where: { id: req.params.id, company_id: req.companyId } });
-    if (!purchaseOrder) throw new NotFoundError('PurchaseOrder');
-    const existing = await prisma.proc_three_way_match.findFirst({ where: { purchase_order_id: purchaseOrder.id, company_id: req.companyId } });
-    if (existing) {
-      res.json(existing);
-      return;
-    }
-    const match = await prisma.proc_three_way_match.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenant_id: purchaseOrder.tenant_id,
-        company_id: req.companyId,
-        created_by_id: req.user?.id,
-        purchase_order_id: purchaseOrder.id,
-        match_status: 'MATCHED',
-        reviewed_at: new Date(),
-      },
-    });
+    const match = await matchPurchaseOrder(req.params.id, String(req.body.goods_receipt_id ?? ''), String(req.body.supplier_invoice_id ?? ''), req.companyId, req.user!.id);
     res.json(match);
   } catch (err) {
     next(err);
@@ -94,4 +78,4 @@ procurementRouter.use('/purchase-orders', createCrudRouter({ modelName: 'proc_pu
 procurementRouter.use('/purchase-order-lines', createCrudRouter({ modelName: 'proc_purchase_order_line', searchFields: ['description'] }));
 procurementRouter.use('/goods-receipts', createCrudRouter({ modelName: 'proc_goods_receipt', searchFields: ['receipt_number'] }));
 procurementRouter.use('/goods-receipt-lines', createCrudRouter({ modelName: 'proc_goods_receipt_line', searchFields: ['description'] }));
-procurementRouter.use('/three-way-matches', createCrudRouter({ modelName: 'proc_three_way_match' }));
+procurementRouter.use('/three-way-matches', createCrudRouter({ modelName: 'proc_three_way_match', readOnly: true }));

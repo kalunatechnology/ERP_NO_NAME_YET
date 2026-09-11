@@ -52,6 +52,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
   const [markingRead, setMarkingRead] = useState(false);
   const [selectedContact, setSelectedContact] = useState<DynamicContact | null>(null);
   const [copiedEmail, setCopiedEmail] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
 /**
  * checkCanAccess coordinates the UI behavior represented by this function.
@@ -100,8 +101,9 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
       // Contacts are already company-scoped by the backend. Keep every member
       // returned so a valid colleague is never hidden merely by list position.
       setContacts(data.contacts || []);
+      setLoadError(null);
     } catch {
-      // ignore silently on background poll
+      setLoadError("Feed tidak dapat disinkronkan. Data lama dipertahankan; coba refresh kembali.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -183,7 +185,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
               </div>
               <div>
                 <h2 className="text-sm font-bold text-text-primary leading-tight">Panel Notifikasi &amp; Feed</h2>
-                <p className="text-2xs text-text-secondary">Aktivitas &amp; Alert Tim PT Sinergi Muda Arsa</p>
+                <p className="text-2xs text-text-secondary">Aktivitas &amp; alert untuk company aktif</p>
               </div>
             </div>
             <button
@@ -198,6 +200,11 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
         )}
 
         {/* ── Section 1: Notifications ───────────────── */}
+        {loadError && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-2xs text-amber-900" role="status">
+            {loadError}
+          </div>
+        )}
         <section className="flex flex-col gap-2.5 w-full" aria-labelledby="rp-notifications-title">
           <div className="flex items-center justify-between pb-1.5 border-b border-text-tertiary/40">
             <h2

@@ -8,6 +8,7 @@
 import api from "./axios";
 import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 import { normalizeList } from "./auth.api";
+import { localDateKey, normalizeDateKey } from "@/lib/utils";
 
 export interface Project {
   id: string | number;
@@ -269,9 +270,9 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
       dailyByWeekly[wId].push({
         id: d.id,
         weekly_task: wId,
-        planned_date: d.planned_date || d.task_date || new Date().toISOString().split("T")[0],
-        time_slot: d.time_slot || d.time || "09.00 - 12.00",
-        title: d.title || d.activity_input || d.name || "Aktivitas Harian",
+        planned_date: normalizeDateKey(d.planned_date || d.task_date),
+        time_slot: d.time_slot || d.time || "",
+        title: d.title || d.activity_input || d.name || "",
         activity_input: d.activity_input || d.title || "",
         output_result: d.output_result || d.output || "",
         status: (d.status === "DONE" || d.status === "COMPLETED") ? "COMPLETED" : (d.status || "PENDING"),
@@ -301,13 +302,13 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
         main_task: mId,
         project: pid,
         week_number: Number(w.week_number || 1),
-        target_description: w.target_description || w.target_output || w.name || `Target Minggu #${w.week_number || 1}`,
+        target_description: w.target_description || w.target_output || w.name || "",
         target_output: w.target_output || w.target_description || "",
         start_date: w.start_date || w.planned_start || "",
         end_date: w.end_date || w.planned_end || "",
         status: w.status || "PLANNED",
         progress: calcProg,
-        assignee_name: w.assignee_name || w.assignee_username || w.owner_name || "Assignee Tim",
+        assignee_name: w.assignee_name || w.assignee_username || w.owner_name || "",
         assignee_id: w.assignee_id || w.assignee || w.assigned_to,
         daily_tasks: wDailies,
       });
@@ -419,7 +420,7 @@ export async function createProject(payload: {
     ...payload,
     project_name: payload.name,
     project_code: payload.code,
-    customer_name: payload.customer_name || "PT Sinergi Muda Arsa",
+    customer_name: payload.customer_name || undefined,
   });
   return data;
 }
@@ -524,30 +525,15 @@ export async function createMainTask(payload: {
   weight?: number;
   priority?: string;
 }) {
-  // Try main-tasks endpoint first, fallback to tasks
-  try {
-    const { data } = await api.post("/api/v1/projects/main-tasks/", {
+  const { data } = await api.post("/api/v1/projects/main-tasks/", {
       project: payload.project,
       name: payload.title,
       description: payload.description || "",
       weight: payload.weight || 10,
       priority: payload.priority || "MEDIUM",
       status: "PLANNED",
-    });
-    return data;
-  } catch {
-    const { data } = await api.post("/api/v1/projects/tasks/", {
-      project: payload.project,
-      task_name: payload.title,
-      name: payload.title,
-      title: payload.title,
-      description: payload.description || "",
-      priority: payload.priority || "MEDIUM",
-      status: "PLANNED",
-      parent_task: null,
-    });
-    return data;
-  }
+  });
+  return data;
 }
 
 /**
@@ -559,11 +545,7 @@ export async function createMainTask(payload: {
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function deleteMainTask(id: string | number) {
-  try {
-    await api.delete(`/api/v1/projects/main-tasks/${id}/`);
-  } catch {
-    await api.delete(`/api/v1/projects/tasks/${id}/`);
-  }
+  await api.delete(`/api/v1/projects/main-tasks/${id}/`);
 }
 
 /* ── Level 2: Weekly Plan CRUD ───────────────────── */
@@ -577,37 +559,21 @@ export async function deleteMainTask(id: string | number) {
  */
 export async function createWeeklyTask(payload: {
   main_task: string | number;
-  project?: string | number;
   week_number: number;
   target_description: string;
   start_date?: string;
   end_date?: string;
-  assignee_name?: string;
+  assignee_id?: string | number;
 }) {
-  try {
-    const { data } = await api.post("/api/v1/projects/weekly-tasks/", {
+  const { data } = await api.post("/api/v1/projects/weekly-tasks/", {
       main_task: payload.main_task,
-      project: payload.project,
       week_number: payload.week_number,
       target_description: payload.target_description,
-      target_output: payload.target_description,
       start_date: payload.start_date || undefined,
       end_date: payload.end_date || undefined,
-      assignee_name: payload.assignee_name || "Assignee Tim",
-      status: "PLANNED",
-    });
-    return data;
-  } catch {
-    const { data } = await api.post("/api/v1/projects/tasks/", {
-      project: payload.project,
-      parent_task: payload.main_task,
-      task_name: `[W${payload.week_number}] ${payload.target_description}`,
-      name: payload.target_description,
-      title: payload.target_description,
-      status: "PLANNED",
-    });
-    return data;
-  }
+      assignee: payload.assignee_id || undefined,
+  });
+  return data;
 }
 
 /**
@@ -619,11 +585,7 @@ export async function createWeeklyTask(payload: {
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function deleteWeeklyTask(id: string | number) {
-  try {
-    await api.delete(`/api/v1/projects/weekly-tasks/${id}/`);
-  } catch {
-    await api.delete(`/api/v1/projects/tasks/${id}/`);
-  }
+  await api.delete(`/api/v1/projects/weekly-tasks/${id}/`);
 }
 
 /* ── Level 3: Daily Task CRUD ────────────────────── */
@@ -653,9 +615,9 @@ export async function createDailyTask(payload: {
 
   const cleanPayload = {
     weekly_task: payload.weekly_task,
-    planned_date: payload.planned_date || new Date().toISOString().split("T")[0],
+    planned_date: normalizeDateKey(payload.planned_date),
     time_slot: payload.time_slot || "09.00 - 12.00",
-    title: payload.title || payload.activity_input || "Aktivitas Harian",
+    title: payload.title || payload.activity_input,
     output_result: payload.output_result || "",
     notes: payload.notes || "",
     status: normStatus,
@@ -948,30 +910,17 @@ export async function createMilestone(payload: {
  *
  * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
  * @returns The typed payload or Promise produced after response normalization.
- * External dependency: calls `/api/v1/projects/main-tasks/${payload.main_task}/assign_members/`, `/api/v1/projects/task-assignments/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * External dependency: calls `/api/v1/projects/main-tasks/${payload.main_task}/assign-members`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function assignMemberToMainTask(payload: {
   main_task: string | number;
   user_ids: (string | number)[];
 }) {
-  try {
-    const { data } = await api.post(`/api/v1/projects/main-tasks/${payload.main_task}/assign_members/`, {
-      user_ids: payload.user_ids,
-    });
-    return data;
-  } catch {
-    // Fallback: iterate over task-assignments
-    const results = [];
-    for (const uid of payload.user_ids) {
-      const res = await api.post("/api/v1/projects/task-assignments/", {
-        main_task: payload.main_task,
-        assignee: uid,
-      }).catch(() => null);
-      if (res?.data) results.push(res.data);
-    }
-    return results;
-  }
+  const { data } = await api.post(`/api/v1/projects/main-tasks/${payload.main_task}/assign-members`, {
+    user_ids: payload.user_ids,
+  });
+  return data;
 }
 
 /**
@@ -983,7 +932,7 @@ export async function assignMemberToMainTask(payload: {
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function removeTaskAssignment(id: string | number) {
-  await api.delete(`/api/v1/projects/task-assignments/${id}/`).catch(() => {});
+  await api.delete(`/api/v1/projects/task-assignments/${id}/`);
 }
 
 /**
@@ -995,11 +944,15 @@ export async function removeTaskAssignment(id: string | number) {
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function fetchCompanyUsers(): Promise<any[]> {
-  try {
-    const [accRes, projMembersRes] = await Promise.all([
-      api.get("/api/v1/accounts/users/?page_size=200").catch(() => null),
-      api.get("/api/v1/projects/members/?page_size=200").catch(() => null)
+    const [accountsResult, membersResult] = await Promise.allSettled([
+      api.get("/api/v1/accounts/users/?page_size=200"),
+      api.get("/api/v1/projects/members/?page_size=200")
     ]);
+    if (accountsResult.status === "rejected" && membersResult.status === "rejected") {
+      throw accountsResult.reason;
+    }
+    const accRes = accountsResult.status === "fulfilled" ? accountsResult.value : null;
+    const projMembersRes = membersResult.status === "fulfilled" ? membersResult.value : null;
 
     let list: any[] = [];
     if (accRes?.data) {
@@ -1037,7 +990,4 @@ export async function fetchCompanyUsers(): Promise<any[]> {
     });
 
     return merged;
-  } catch {
-    return [];
-  }
 }

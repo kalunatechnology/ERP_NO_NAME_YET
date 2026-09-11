@@ -56,6 +56,10 @@ This design improves the current single-instance/local test path. A multi-instan
 - Reporting views are read-only and scoped by tenant/company or project.
 - Workflow validation/not-found/transition failures use typed 400/404 responses instead of generic 500 responses.
 
+## Operational calendar consistency
+
+Frontend treats project, Weekly/Daily Task, payment, tax, and asset dates as business calendar dates. `localDateKey` creates defaults from the browser timezone and `normalizeDateKey` converts both date-only and ISO DateTime API values to the same `YYYY-MM-DD` comparison key. Daily Tasks, Project Overview, and Dashboard therefore classify the same assigned task consistently. This is a frontend normalization change and requires no database migration.
+
 ## Database changes
 
 Six migration folders are present. The latest migration, `20260907010000_reporting_views`, creates these read-only projections:
@@ -108,6 +112,10 @@ The route matrix and read benchmark are safe reads except that successful login 
 ## Deployment acceptance still required
 
 The source-level contract is verified locally, but production readiness still requires a same-release frontend/backend deployment and browser verification on the Hostinger domain. After deployment, every persona must log in again so cached profile data contains `delegated_modules`. The Network panel must show no background request to a known unauthorized module; manually calling that API outside the frontend must still be rejected by backend with 403.
+
+## Finance hardening status — 10 September 2026
+
+Implemented in source: transactional Project Cost→WIP journal, Billing Proposal→Billing Document issuance, atomic AP Payment creation/allocation and execution, request-disbursement Payment/journal posting, persisted billing tax scheme, exact PO–accepted GRN–supplier invoice matching, controlled inventory posting, manufacturing material issue integration, quality completion gates, corrected asset-disposal accounting, PROJECTS-owned PM financial summary, generic lifecycle write protection, vendor master-data options, honest empty/fallback states, corrected profile API contract, and deterministic system-font build. Frontend/backend TypeScript, static route audit, focused integration-hardening tests, and Q11 pass locally. Production database execution, migration status, Hostinger deployment, and authenticated browser smoke remain pending and must not be inferred from source-level PASS. Detailed scope and explicit limitations are tracked in `docs/INTEGRATION_HARDENING_2026_09_10.md`.
 
 ## User-testing baseline
 

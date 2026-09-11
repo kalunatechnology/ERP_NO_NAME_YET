@@ -95,7 +95,7 @@ export function InventoryCheckingCard({
 
   if (!data) {
     return (
-      <div className={cn("w-full bg-white border border-[#E5E9E2] rounded-[24px] p-5 shadow-xs h-full", className)}>
+      <div className={cn("w-full bg-white border border-[#E5E9E2] rounded-2xl p-5 shadow-xs h-full", className)}>
         <div className="flex items-center gap-2 text-sm font-bold text-text-primary"><PackageCheck size={17} /> Pemeriksaan Inventory</div>
         <p className="mt-3 text-xs text-text-secondary">Data inventory tidak tersedia untuk module dan role aktif Anda.</p>
       </div>
@@ -107,7 +107,7 @@ export function InventoryCheckingCard({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#E5E9E2] rounded-[24px] p-5 shadow-xs flex flex-col justify-between h-full select-none",
+        "w-full bg-white border border-[#E5E9E2] rounded-2xl p-5 shadow-xs flex flex-col justify-between h-full select-none",
         className
       )}
     >

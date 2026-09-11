@@ -7,7 +7,7 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FileText,
   Calculator,
@@ -20,9 +20,11 @@ import {
   Search,
   FileCheck2,
 } from "lucide-react";
-import { cn, formatMoney, formatDate } from "@/lib/utils";
+import { cn, formatMoney, formatDate, localDateKey } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
+import api from "@/lib/api/axios";
+import { normalizeList } from "@/lib/api/auth.api";
 
 export interface TaxTransaction {
   id: string;
@@ -37,90 +39,14 @@ export interface TaxTransaction {
   pph_type: string;
   pph_rate: number;
   pph_amount: number;
-  tax_scheme: "PROPORTIONAL" | "FULL_UPFRONT" | "FINAL_SETTLEMENT";
+  tax_scheme: "PROPORTIONAL" | "FULL_UPFRONT" | "FINAL_SETTLEMENT" | null;
   client_type: "NON_WAPU" | "WAPU";
   bupot_status: "PENDING" | "RECEIVED" | "VERIFIED";
   bupot_number?: string;
   net_cash_inflow: number;
 }
 
-const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [
-  {
-    id: "tax-001",
-    invoice_number: "INV-CISCO-001",
-    tax_invoice_number: "010.002-26.88219010",
-    customer_name: "PT Cisco Systems Indonesia",
-    project_name: "Produksi Video Content Komersial PT Cisco Systems Indonesia",
-    tax_date: "2026-08-20",
-    dpp_amount: 75000000,
-    ppn_rate: 11,
-    ppn_amount: 8250000,
-    pph_type: "PPh Pasal 23 (Jasa Teknik)",
-    pph_rate: 2,
-    pph_amount: 1500000,
-    tax_scheme: "FULL_UPFRONT",
-    client_type: "NON_WAPU",
-    bupot_status: "RECEIVED",
-    bupot_number: "BP-23-CISCO-2026-088",
-    net_cash_inflow: 81750000, // DPP (75jt) + PPN (8.25jt) - PPh (1.5jt)
-  },
-  {
-    id: "tax-002",
-    invoice_number: "INV-OTO-001",
-    tax_invoice_number: "010.002-26.44910212",
-    customer_name: "PT Industri Otomasi Indonesia",
-    project_name: "Implementasi Sistem Otomasi Conveyor Line 1",
-    tax_date: "2026-08-22",
-    dpp_amount: 120000000,
-    ppn_rate: 11,
-    ppn_amount: 13200000,
-    pph_type: "PPh Final Konstruksi (Pasal 4(2))",
-    pph_rate: 2.65,
-    pph_amount: 3180000,
-    tax_scheme: "PROPORTIONAL",
-    client_type: "NON_WAPU",
-    bupot_status: "VERIFIED",
-    bupot_number: "BP-42-OTO-2026-041",
-    net_cash_inflow: 130020000,
-  },
-  {
-    id: "tax-003",
-    invoice_number: "INV-PLN-2026-01",
-    tax_invoice_number: "030.002-26.11029481",
-    customer_name: "PT PLN (Persero) Unit Distribusi",
-    project_name: "Pengadaan Panel PLC & SCADA Gardu Induk",
-    tax_date: "2026-08-25",
-    dpp_amount: 250000000,
-    ppn_rate: 11,
-    ppn_amount: 27500000,
-    pph_type: "PPh 22 / PPh 23 WAPU",
-    pph_rate: 2,
-    pph_amount: 5000000,
-    tax_scheme: "PROPORTIONAL",
-    client_type: "WAPU",
-    bupot_status: "RECEIVED",
-    bupot_number: "BUPOT-WAPU-PLN-0891",
-    net_cash_inflow: 245000000, // WAPU: Klien setor PPN langsung, kas diterima = DPP - PPh
-  },
-  {
-    id: "tax-004",
-    invoice_number: "INV-TELKOM-2026-02",
-    tax_invoice_number: "030.002-26.55102938",
-    customer_name: "PT Telkom Indonesia Tbk",
-    project_name: "Instalasi Jaringan Fiber Optic Datacenter",
-    tax_date: "2026-08-26",
-    dpp_amount: 180000000,
-    ppn_rate: 11,
-    ppn_amount: 19800000,
-    pph_type: "PPh Final Konstruksi (Pasal 4(2))",
-    pph_rate: 1.75,
-    pph_amount: 3150000,
-    tax_scheme: "FULL_UPFRONT",
-    client_type: "WAPU",
-    bupot_status: "PENDING",
-    net_cash_inflow: 176850000,
-  },
-];
+const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [];
 
 export function ProjectTaxWorkspace() {
   const [transactions, setTransactions] = useState<TaxTransaction[]>(INITIAL_TAX_TRANSACTIONS);
@@ -129,7 +55,7 @@ export function ProjectTaxWorkspace() {
   const [clientTypeFilter, setClientTypeFilter] = useState("ALL");
 
   // Simulator state
-  const [simContractValue, setSimContractValue] = useState<number>(300000000);
+  const [simContractValue, setSimContractValue] = useState<number>(0);
   const [simDownPaymentPct, setSimDownPaymentPct] = useState<number>(30);
   const [simTaxScheme, setSimTaxScheme] = useState<"PROPORTIONAL" | "FULL_UPFRONT" | "FINAL_SETTLEMENT">("FULL_UPFRONT");
   const [simClientType, setSimClientType] = useState<"NON_WAPU" | "WAPU">("NON_WAPU");
@@ -140,7 +66,7 @@ export function ProjectTaxWorkspace() {
   const [selectedTxForBupot, setSelectedTxForBupot] = useState<TaxTransaction | null>(null);
   const [bupotForm, setBupotForm] = useState({
     bupot_number: "",
-    bupot_date: new Date().toISOString().split("T")[0],
+    bupot_date: localDateKey(),
     tax_type: "PPh 23",
     notes: "",
   });
@@ -151,12 +77,39 @@ export function ProjectTaxWorkspace() {
     customer_name: "",
     project_name: "",
     invoice_number: "",
-    dpp_amount: 50000000,
+    dpp_amount: 0,
     tax_scheme: "PROPORTIONAL" as "PROPORTIONAL" | "FULL_UPFRONT" | "FINAL_SETTLEMENT",
     client_type: "NON_WAPU" as "NON_WAPU" | "WAPU",
     pph_type: "PPh 23 (2%)",
     pph_rate: 2.0,
   });
+
+  useEffect(() => {
+    api.get("/api/v1/finance/tax-transactions/projection?page_size=200")
+      .then((response) => {
+        const rows = normalizeList<any>(response.data).rows;
+        setTransactions(rows.map((item) => ({
+          id: String(item.id),
+          invoice_number: item.invoice_number || item.billing_code || item.payment_reference || "",
+          tax_invoice_number: item.ntpn || "",
+          customer_name: item.customer_name || "",
+          project_name: item.project_name || "",
+          tax_date: item.tax_date || "",
+          dpp_amount: Number(item.taxable_amount || 0),
+          ppn_rate: Number(item.tax_rate || 0),
+          ppn_amount: Number(item.tax_amount || 0),
+          pph_type: item.tax_direction || "",
+          pph_rate: 0,
+          pph_amount: 0,
+          tax_scheme: item.tax_scheme ?? null,
+          client_type: "NON_WAPU",
+          bupot_status: item.ntpn ? "VERIFIED" : "PENDING",
+          bupot_number: item.ntpn || undefined,
+          net_cash_inflow: Number(item.taxable_amount || 0) + Number(item.tax_amount || 0),
+        })));
+      })
+      .catch(() => toast.error("Transaksi pajak gagal dimuat dari server."));
+  }, []);
 
   // Calculations for Simulator
   const totalPpnContract = (simContractValue * 11) / 100;
@@ -214,19 +167,25 @@ export function ProjectTaxWorkspace() {
   const handleOpenBupotModal = (tx: TaxTransaction) => {
     setSelectedTxForBupot(tx);
     setBupotForm({
-      bupot_number: tx.bupot_number || `BP-${Date.now().toString().slice(-6)}`,
-      bupot_date: new Date().toISOString().split("T")[0],
+      bupot_number: tx.bupot_number || "",
+      bupot_date: localDateKey(),
       tax_type: tx.pph_type,
       notes: `Bukti potong atas tagihan ${tx.invoice_number}`,
     });
     setIsBupotModalOpen(true);
   };
 
-  const handleSaveBupot = (e: React.FormEvent) => {
+  const handleSaveBupot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTxForBupot) return;
 
-    setTransactions((prev) =>
+    try {
+      await api.post(`/api/v1/finance/tax-transactions/${selectedTxForBupot.id}/record-ntpn`, {
+        ntpn: bupotForm.bupot_number,
+        payment_reference: selectedTxForBupot.invoice_number,
+        paid_at: bupotForm.bupot_date,
+      });
+      setTransactions((prev) =>
       prev.map((t) =>
         t.id === selectedTxForBupot.id
           ? {
@@ -236,40 +195,17 @@ export function ProjectTaxWorkspace() {
             }
           : t
       )
-    );
-    toast.success(`Bukti Potong ${bupotForm.bupot_number} berhasil diverifikasi!`, { icon: "📜" });
-    setIsBupotModalOpen(false);
+      );
+      toast.success(`Referensi pajak ${bupotForm.bupot_number} berhasil dicatat.`);
+      setIsBupotModalOpen(false);
+    } catch {
+      toast.error("Referensi pajak gagal disimpan.");
+    }
   };
 
   const handleCreateTaxTransaction = (e: React.FormEvent) => {
     e.preventDefault();
-    const dpp = Number(newTaxForm.dpp_amount);
-    const ppn = (dpp * 11) / 100;
-    const pph = (dpp * newTaxForm.pph_rate) / 100;
-    const net = newTaxForm.client_type === "NON_WAPU" ? dpp + ppn - pph : dpp - pph;
-
-    const newTx: TaxTransaction = {
-      id: "tax-" + Date.now(),
-      invoice_number: newTaxForm.invoice_number || `INV-${Date.now().toString().slice(-4)}`,
-      tax_invoice_number: `010.002-26.${Math.floor(10000000 + Math.random() * 90000000)}`,
-      customer_name: newTaxForm.customer_name,
-      project_name: newTaxForm.project_name,
-      tax_date: new Date().toISOString().split("T")[0],
-      dpp_amount: dpp,
-      ppn_rate: 11,
-      ppn_amount: ppn,
-      pph_type: newTaxForm.pph_type,
-      pph_rate: newTaxForm.pph_rate,
-      pph_amount: pph,
-      tax_scheme: newTaxForm.tax_scheme,
-      client_type: newTaxForm.client_type,
-      bupot_status: "PENDING",
-      net_cash_inflow: net,
-    };
-
-    setTransactions([newTx, ...transactions]);
-    toast.success("Faktur pajak dan transaksi billing berhasil dicatat.");
-    setIsAddTaxModalOpen(false);
+    toast.error("Transaksi pajak harus dibentuk dari billing document terposting; penerbitan lokal dinonaktifkan agar tidak menghasilkan data palsu.");
   };
 
   return (
@@ -287,12 +223,7 @@ export function ProjectTaxWorkspace() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddTaxModalOpen(true)}
-          className="btn-primary py-2 px-3.5 text-xs gap-1.5 shadow-sm"
-        >
-          <Plus size={15} /> Terbitkan Faktur Pajak Proyek
-        </button>
+        <span className="badge badge-neutral text-xs">Dibentuk dari Billing terposting</span>
       </div>
 
       {/* ── 4 SUMMARY KPI CARDS ───────────── */}
@@ -596,7 +527,7 @@ export function ProjectTaxWorkspace() {
                   <td className="py-3 px-3.5">
                     <strong className="text-text-primary block font-bold">{formatMoney(tx.dpp_amount)}</strong>
                     <span className="text-3xs text-brand-deep-green font-semibold block mt-0.5">
-                      {tx.tax_scheme === "FULL_UPFRONT" ? "🟢 Pajak Di Awal" : "🔵 Proporsional"}
+                      {tx.tax_scheme === "FULL_UPFRONT" ? "Pajak Di Awal" : tx.tax_scheme === "PROPORTIONAL" ? "Proporsional" : tx.tax_scheme === "FINAL_SETTLEMENT" ? "Pelunasan Akhir" : "Belum ditentukan"}
                     </span>
                   </td>
 

@@ -307,6 +307,9 @@ export function normalizeRecord(record: any, modelName?: string): any {
 
 /** Prevents generic CRUD paths, including bulk operations, from bypassing finance lifecycle workflows. */
 export function assertRecordMutable(modelName: string, existing: any): void {
+  if (['inv_stock_move', 'qa_inspection', 'mfg_work_order'].includes(modelName) && existing?.status === 'COMPLETED') {
+    throw new ConflictError('Record operasional selesai bersifat immutable; diperlukan reversal atau koreksi resmi.');
+  }
   if (!modelName.startsWith('fin_')) return;
   const terminal = new Set(['POSTED', 'PAID', 'CLOSED', 'LOCKED', 'EXECUTED', 'REVERSED']);
   const terminalState = [existing?.status, existing?.payment_status, existing?.approval_status]
@@ -315,6 +318,38 @@ export function assertRecordMutable(modelName: string, existing: any): void {
   if (terminalState) {
     throw new ConflictError(
       `Record keuangan berstatus ${terminalState} bersifat immutable. Gunakan workflow reversal/storno resmi.`,
+    );
+  }
+}
+
+const LIFECYCLE_FIELDS_BY_MODEL: Record<string, Set<string>> = {
+  inv_stock_move: new Set(['status', 'completed_at']),
+  qa_inspection: new Set(['status', 'result', 'inspection_at']),
+  mfg_production_order: new Set(['status', 'material_status', 'actual_start_at', 'actual_end_at']),
+  mfg_work_order: new Set(['status', 'actual_start_at', 'actual_end_at']),
+  fin_project_cost_entry: new Set(['status', 'validation_note', 'validated_by_id', 'validated_at', 'posted_by_id', 'posted_at', 'journal_entry_id']),
+  fin_billing_proposal: new Set(['status', 'submitted_at', 'approved_by_id', 'approved_at', 'rejection_reason', 'billing_document_id']),
+  fin_billing_document: new Set(['status', 'payment_status', 'paid_amount', 'outstanding_amount', 'verified_by_id', 'verified_at', 'approved_by_id', 'approved_at', 'rejection_reason']),
+  fin_payment: new Set(['status', 'journal_entry_id', 'submitted_by_id', 'submitted_at', 'approved_by_id', 'approved_at', 'executed_by_id', 'executed_at', 'execution_reference', 'execution_note', 'failure_reason']),
+  fin_tax_transaction: new Set(['status', 'validation_note', 'validated_by_id', 'validated_at', 'payment_reference', 'paid_at', 'ntpn', 'reported_at']),
+  fin_journal_entry: new Set(['status', 'reversal_of_entry_id']),
+  fin_fiscal_period: new Set(['status']),
+  fin_fiscal_year: new Set(['status']),
+  fin_project_funding: new Set(['status', 'approved_by_id', 'approved_at']),
+};
+
+/** Rejects lifecycle mutations through generic CRUD; named domain commands own these fields. */
+export function assertNoGenericLifecycleWrite(modelName: string, payload: any, create = false): void {
+  if (['fin_billing_document', 'fin_billing_proposal'].includes(modelName) && payload?.tax_scheme != null && !['PROPORTIONAL', 'FULL_UPFRONT', 'FINAL_SETTLEMENT'].includes(payload.tax_scheme)) throw new ValidationError('tax_scheme tidak valid.');
+  const protectedFields = LIFECYCLE_FIELDS_BY_MODEL[String(modelName).toLowerCase()];
+  if (!protectedFields || !payload || typeof payload !== 'object') return;
+  const attempted = Object.keys(payload).filter((field) => {
+    if (!protectedFields.has(field)) return false;
+    return !(create && field === 'status' && String(payload[field] ?? '').toUpperCase() === 'DRAFT');
+  });
+  if (attempted.length) {
+    throw new ValidationError(
+      `Field lifecycle ${attempted.join(', ')} tidak dapat diubah melalui generic CRUD. Gunakan command workflow resmi.`,
     );
   }
 }
@@ -445,6 +480,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       const created = await prisma.$transaction(async (tx: any) => {
         const results = [];
         for (const item of req.body) {
+          assertNoGenericLifecycleWrite(modelNameStr, item, true);
           let payload = { ...item };
           if (options.beforeCreate) {
             const hookResult = await options.beforeCreate(req, payload);
@@ -485,6 +521,7 @@ export function createCrudRouter(options: CrudOptions): Router {
             throw new Error('Setiap item wajib memiliki id.');
           }
           const { id, ...itemData } = item;
+          assertNoGenericLifecycleWrite(modelNameStr, itemData);
           const existing = await tx[options.modelName].findFirst({
             where: await authorizedWhere(req, { id }),
           });
@@ -679,6 +716,7 @@ export function createCrudRouter(options: CrudOptions): Router {
  */
   router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
+      assertNoGenericLifecycleWrite(modelNameStr, req.body, true);
       let data = { ...req.body };
       const validFields = getModelFields(modelNameStr);
 
@@ -759,6 +797,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       const existing = await delegate.findFirst({ where: await authorizedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
       assertRecordMutable(modelNameStr, existing);
+      assertNoGenericLifecycleWrite(modelNameStr, req.body);
 
       let data = { ...req.body };
       const validFields = getModelFields(modelNameStr);
@@ -827,6 +866,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       const existing = await delegate.findFirst({ where: await authorizedWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
       assertRecordMutable(modelNameStr, existing);
+      assertNoGenericLifecycleWrite(modelNameStr, req.body);
 
       let data = { ...req.body };
       const validFields = getModelFields(modelNameStr);

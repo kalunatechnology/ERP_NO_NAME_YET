@@ -43,7 +43,7 @@ export class AssetService {
  */
   private static async resolveAssetAccounts(categoryId: string | null, companyId: string | null) {
     const category = categoryId
-      ? await prisma.asset_category.findUnique({ where: { id: categoryId } })
+      ? await prisma.asset_category.findFirst({ where: { id: categoryId, company_id: companyId } })
       : null;
 
 /**
@@ -56,7 +56,7 @@ export class AssetService {
  */
     const findAccount = async (accountId: string | null | undefined, fallbackCode: string) => {
       if (accountId) {
-        const acc = await prisma.fin_account.findUnique({ where: { id: accountId } });
+        const acc = await prisma.fin_account.findFirst({ where: { id: accountId, company_id: companyId, status: 'ACTIVE' } });
         if (acc) return acc;
       }
       // Fallback ke akun berdasarkan kode
@@ -440,13 +440,16 @@ export class AssetService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async disposeAsset(assetId: string, disposalDate: Date, proceedsAmount: number, userId: string, companyId: string) {
+    if (!Number.isFinite(proceedsAmount) || proceedsAmount < 0 || !Number.isFinite(disposalDate.getTime())) {
+      throw new ValidationError('Tanggal disposal dan hasil penjualan non-negatif wajib valid.');
+    }
     const asset = await prisma.asset_asset.findFirst({ where: { id: assetId, company_id: companyId } });
     if (!asset) throw new NotFoundError('Asset');
     if (asset.status !== 'ACTIVE') throw new ValidationError('Hanya aset aktif yang dapat dilepas.');
 
     await PeriodClosingService.assertPeriodOpen(disposalDate, asset.company_id);
 
-    const book = await prisma.asset_book.findFirst({ where: { asset_id: assetId } });
+    const book = await prisma.asset_book.findFirst({ where: { asset_id: assetId, company_id: companyId } });
     if (!book) throw new NotFoundError('AssetBook');
 
     const netBookValue   = new Decimal(book.net_book_value ?? 0);
@@ -454,10 +457,20 @@ export class AssetService {
     const gainOrLoss     = proceeds.minus(netBookValue); // Positif = Laba, Negatif = Rugi
     const isGain         = gainOrLoss.greaterThanOrEqualTo(0);
 
+    const category = await prisma.asset_category.findFirst({ where: { id: asset.category_id ?? '', company_id: companyId } });
+    if (!category?.asset_account_id || !category.accumulated_depreciation_account_id || category.asset_account_id === category.accumulated_depreciation_account_id) {
+      throw new AccountingError('Kategori aset harus memiliki akun perolehan dan akumulasi penyusutan yang berbeda.');
+    }
+    const accumulatedAccount = await prisma.fin_account.findFirst({ where: { id: category.accumulated_depreciation_account_id, company_id: companyId, status: 'ACTIVE' } });
+    if (!accumulatedAccount) throw new AccountingError('Akun akumulasi penyusutan tidak valid.');
+    if (!new Decimal(book.cost_basis ?? asset.acquisition_cost ?? 0).minus(book.accumulated_depreciation ?? 0).equals(netBookValue)) {
+      throw new AccountingError('Nilai buku tidak konsisten dengan perolehan dan akumulasi penyusutan.');
+    }
     // Resolve akun GL
     const assetAccount = await prisma.fin_account.findFirst({
       where: {
-        account_code: COA_ACCUMULATED_DEPRECIATION,
+        id: category.asset_account_id,
+        status: 'ACTIVE',
         ...(asset.company_id ? { company_id: asset.company_id } : {}),
       },
     });
@@ -479,12 +492,20 @@ export class AssetService {
     }
 
     const disposalRecord = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.asset_asset.updateMany({ where: { id: assetId, company_id: companyId, status: 'ACTIVE' }, data: { status: 'DISPOSED' } });
+      if (claimed.count !== 1) throw new ValidationError('Aset sudah dilepas atau berubah; muat ulang sebelum mencoba lagi.');
+      const period = await tx.fin_fiscal_period.findFirst({ where: { company_id: companyId, start_date: { lte: disposalDate }, end_date: { gte: disposalDate }, status: 'OPEN' } });
+      if (!period) throw new AccountingError('Periode fiskal OPEN wajib tersedia untuk disposal aset.');
+      const journalBook = await tx.fin_journal.findFirst({ where: { company_id: companyId, journal_code: 'GJ', status: 'ACTIVE' } })
+        ?? await tx.fin_journal.create({ data: { company_id: companyId, tenant_id: asset.tenant_id, created_by_id: userId, journal_code: 'GJ', journal_name: 'General Journal', journal_type: 'GENERAL', status: 'ACTIVE' } });
       const entryId = crypto.randomUUID();
 
       await tx.fin_journal_entry.create({
         data: {
           id:                entryId,
           entry_number:      `DISP-${asset.asset_code}-${disposalDate.getTime()}`,
+          company_id: companyId, tenant_id: asset.tenant_id, created_by_id: userId,
+          journal_id: journalBook.id, fiscal_period_id: period.id,
           description:       `Pelepasan Aset: ${asset.asset_name} — ${isGain ? 'Laba' : 'Rugi'} Rp ${Math.abs(gainOrLoss.toNumber()).toLocaleString()}`,
           status:            'POSTED',
           posting_date:      disposalDate,
@@ -512,7 +533,7 @@ export class AssetService {
           data: {
             id: crypto.randomUUID(),
             journal_entry_id: entryId,
-            account_id:  assetAccount.id,
+            account_id:  accumulatedAccount.id,
             debit_base:  accumulatedDepr,
             credit_base: null,
           },
@@ -555,8 +576,13 @@ export class AssetService {
       }
 
       // Catat disposal record
+      await tx.fin_journal_line.updateMany({
+        where: { journal_entry_id: entryId },
+        data: { company_id: companyId, tenant_id: asset.tenant_id, created_by_id: userId },
+      });
       const disposal = await tx.asset_disposal.create({
         data: {
+          company_id: companyId, tenant_id: asset.tenant_id, created_by_id: userId,
           id:                crypto.randomUUID(),
           asset_id:          assetId,
           disposal_date:     disposalDate,

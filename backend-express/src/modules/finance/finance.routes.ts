@@ -9,6 +9,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { FinanceService } from './finance.service';
+import { FinanceHardeningService } from './finance-hardening.service';
 import { PeriodClosingService } from './period-closing.service';
 import { AuditService } from '../core/audit.service';
 import { createCrudRouter } from '../../utils/crud-factory';
@@ -480,13 +481,25 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
  * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-financeRouter.post('/billing-documents/:id/post', async (req: Request, res: Response, next: NextFunction) => {
+financeRouter.post('/billing-documents/:id/post', requireFinanceRole([RoleCode.FINANCE]), enforceSoD({
+  getCreatorId: async (req) => (await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { created_by_id: true } }))?.created_by_id ?? null,
+  action: 'post-billing-document',
+}), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await FinanceService.postBillingDocument(req.params.id, req.user?.id, activeCompanyId(req));
     sendSuccess(res, updated);
   } catch (err) {
     next(err);
   }
+});
+
+financeRouter.post('/billing-documents/:id/submit', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try {
+    const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
+    if (!doc) throw new NotFoundError('BillingDocument');
+    const { nextState } = new DocumentFSM('BILLING').apply(doc.status as any, 'submit');
+    sendSuccess(res, await prisma.fin_billing_document.update({ where: { id: doc.id }, data: { status: nextState } }));
+  } catch (err) { next(err); }
 });
 
 /**
@@ -569,7 +582,7 @@ financeRouter.post(
  * Data/side effects: Uses Prisma model(s) `fin_billing_document` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-financeRouter.post('/billing-documents/:id/reject', async (req: Request, res: Response, next: NextFunction) => {
+financeRouter.post('/billing-documents/:id/reject', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
     if (!doc) return sendError(res, 'Billing document tidak ditemukan.', 404);
@@ -588,6 +601,129 @@ financeRouter.post('/billing-documents/:id/reject', async (req: Request, res: Re
 });
 
 // =============================================================================
+// PROJECT COST & BILLING PROPOSAL COMMANDS
+// =============================================================================
+
+financeRouter.get('/project-options', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const projects = await prisma.project_project.findMany({
+      where: { company_id: companyId },
+      select: { id: true, project_code: true, project_name: true, customer_party_id: true, customer_name: true },
+      orderBy: { project_name: 'asc' },
+    });
+    sendSuccess(res, projects);
+  } catch (err) { next(err); }
+});
+
+financeRouter.get('/party-options', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const requestedRole = String(req.query.role ?? '').trim().toUpperCase();
+    const roles = requestedRole
+      ? await prisma.master_party_role.findMany({
+          where: { company_id: companyId, active: true, role_type: requestedRole },
+          select: { party_id: true },
+        })
+      : [];
+    const rolePartyIds = roles.map((role) => role.party_id).filter((id): id is string => Boolean(id));
+    const parties = await prisma.master_party.findMany({
+      where: {
+        company_id: companyId,
+        status: 'ACTIVE',
+        ...(requestedRole
+          ? { OR: [{ id: { in: rolePartyIds } }, { party_type: requestedRole }] }
+          : {}),
+      },
+      select: { id: true, party_code: true, party_type: true, legal_name: true, display_name: true },
+      orderBy: { display_name: 'asc' },
+    });
+    sendSuccess(res, parties);
+  } catch (err) { next(err); }
+});
+
+financeRouter.post(
+  '/project-cost-entries/:id/validate',
+  requireFinanceRole([RoleCode.FINANCE]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      sendSuccess(res, await FinanceHardeningService.validateProjectCostEntry(req.params.id, req.user?.id ?? 'system', activeCompanyId(req)));
+    } catch (err) { next(err); }
+  },
+);
+
+financeRouter.post(
+  '/project-cost-entries/:id/post-to-wip',
+  requireFinanceRole([RoleCode.FINANCE]),
+  enforceSoD({
+    getCreatorId: async (req) => (await prisma.fin_project_cost_entry.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { created_by_id: true } }))?.created_by_id ?? null,
+    action: 'post-to-wip',
+  }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      sendSuccess(res, await FinanceHardeningService.postProjectCostEntryToWip(
+        req.params.id, String(req.body.credit_account_id ?? ''), req.user?.id ?? 'system', activeCompanyId(req),
+      ));
+    } catch (err) { next(err); }
+  },
+);
+
+financeRouter.post('/billing-proposals/:id/submit', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try {
+    const proposal = await prisma.fin_billing_proposal.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
+    if (!proposal) throw new NotFoundError('BillingProposal');
+    if (proposal.status !== 'DRAFT') throw new ValidationError('Hanya billing proposal DRAFT yang dapat disubmit.');
+    sendSuccess(res, await prisma.fin_billing_proposal.update({ where: { id: proposal.id }, data: { status: 'SUBMITTED', submitted_at: new Date() } }));
+  } catch (err) { next(err); }
+});
+
+financeRouter.post(
+  '/billing-proposals/:id/approve',
+  requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]),
+  enforceSoD({
+    getCreatorId: async (req) => (await prisma.fin_billing_proposal.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { created_by_id: true } }))?.created_by_id ?? null,
+    action: 'approve-billing-proposal',
+  }),
+  async (req, res, next) => {
+    try {
+      const proposal = await prisma.fin_billing_proposal.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
+      if (!proposal) throw new NotFoundError('BillingProposal');
+      if (proposal.status !== 'SUBMITTED') throw new ValidationError('Hanya billing proposal SUBMITTED yang dapat disetujui.');
+      sendSuccess(res, await prisma.fin_billing_proposal.update({ where: { id: proposal.id }, data: { status: 'APPROVED', approved_by_id: req.user?.id, approved_at: new Date() } }));
+    } catch (err) { next(err); }
+  },
+);
+
+financeRouter.post('/billing-proposals/:id/issue-billing-document', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try {
+    const parseDate = (value: unknown) => value ? new Date(String(value)) : undefined;
+    sendSuccess(res, await FinanceHardeningService.issueBillingDocument(req.params.id, {
+      invoice_number: req.body.invoice_number,
+      invoice_date: parseDate(req.body.invoice_date),
+      due_date: parseDate(req.body.due_date),
+      currency_id: req.body.currency_id,
+      payment_term_id: req.body.payment_term_id,
+    }, req.user?.id ?? 'system', activeCompanyId(req)));
+  } catch (err) { next(err); }
+});
+
+financeRouter.post('/billing-documents/:id/create-payment', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try {
+    sendSuccess(res, await FinanceHardeningService.createAndSubmitPayment(req.params.id, {
+      amount: Number(req.body.amount), bank_account_id: String(req.body.bank_account_id ?? ''),
+      payment_date: req.body.payment_date ? new Date(req.body.payment_date) : new Date(),
+      reference_number: String(req.body.reference_number ?? req.body.reference ?? ''),
+      payment_method: req.body.payment_method, description: req.body.description,
+    }, req.user?.id ?? 'system', activeCompanyId(req)), 201);
+  } catch (err) { next(err); }
+});
+
+financeRouter.get('/tax-transactions/projection', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await FinanceHardeningService.taxProjection(activeCompanyId(req), req.query)); }
+  catch (err) { next(err); }
+});
+
+// =============================================================================
 // PAYMENT ACTIONS (FSM Protected)
 // =============================================================================
 
@@ -599,7 +735,7 @@ financeRouter.post('/billing-documents/:id/reject', async (req: Request, res: Re
  * Data/side effects: Uses Prisma model(s) `fin_payment` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-financeRouter.post('/payments/:id/submit', async (req: Request, res: Response, next: NextFunction) => {
+financeRouter.post('/payments/:id/submit', requireFinanceRole([RoleCode.FINANCE]), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
     if (!payment) return sendError(res, 'Payment tidak ditemukan.', 404);
@@ -607,7 +743,7 @@ financeRouter.post('/payments/:id/submit', async (req: Request, res: Response, n
     const fsm = new DocumentFSM('PAYMENT');
     const { nextState } = fsm.apply(payment.status as any, 'submit');
 
-    const updated = await prisma.fin_payment.update({ where: { id: req.params.id }, data: { status: nextState } });
+    const updated = await prisma.fin_payment.update({ where: { id: req.params.id }, data: { status: nextState, submitted_by_id: req.user?.id, submitted_at: new Date() } });
     sendSuccess(res, updated);
   } catch (err) {
     next(err);
@@ -639,7 +775,7 @@ financeRouter.post(
       const fsm = new DocumentFSM('PAYMENT');
       const { nextState } = fsm.apply(payment.status as any, 'approve');
 
-      const updated = await prisma.fin_payment.update({ where: { id: req.params.id }, data: { status: nextState } });
+      const updated = await prisma.fin_payment.update({ where: { id: req.params.id }, data: { status: nextState, approved_by_id: req.user?.id, approved_at: new Date() } });
       sendSuccess(res, updated);
     } catch (err) {
       next(err);
@@ -655,19 +791,20 @@ financeRouter.post(
  * Data/side effects: Uses Prisma model(s) `fin_payment` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-financeRouter.post('/payments/:id/execute', async (req: Request, res: Response, next: NextFunction) => {
+financeRouter.post('/payments/:id/execute', requireFinanceRole([RoleCode.FINANCE]), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
-    if (!payment) return sendError(res, 'Payment tidak ditemukan.', 404);
-
-    const fsm = new DocumentFSM('PAYMENT');
-    const { nextState } = fsm.apply(payment.status as any, 'post');
-
-    const updated = await prisma.fin_payment.update({
-      where: { id: req.params.id },
-      data: { status: nextState, payment_date: new Date() },
+    const payment = await prisma.fin_payment.findFirst({
+      where: { id: req.params.id, company_id: activeCompanyId(req) },
+      select: { created_by_id: true, submitted_by_id: true, approved_by_id: true },
     });
-    sendSuccess(res, updated);
+    if (!payment) throw new NotFoundError('Payment');
+    const count = await financeUserCount(activeCompanyId(req));
+    if (count >= 2 && [payment.created_by_id, payment.submitted_by_id, payment.approved_by_id].includes(req.user?.id ?? '')) {
+      throw new ForbiddenError('Eksekutor payment harus berbeda dari pembuat, submitter, dan approver ketika tersedia minimal dua user Finance.');
+    }
+    sendSuccess(res, await FinanceHardeningService.executePayment(
+      req.params.id, String(req.body.execution_reference ?? ''), req.user?.id ?? 'system', activeCompanyId(req),
+    ));
   } catch (err) {
     next(err);
   }
@@ -929,12 +1066,19 @@ financeRouter.use('/journal-entries', createCrudRouter({ modelName: 'fin_journal
 financeRouter.use('/journal-lines', createCrudRouter({ modelName: 'fin_journal_line' }));
 financeRouter.use('/fiscal-years', createCrudRouter({ modelName: 'fin_fiscal_year' }));
 financeRouter.use('/fiscal-periods', createCrudRouter({ modelName: 'fin_fiscal_period' }));
-financeRouter.use('/billing-documents', createCrudRouter({ modelName: 'fin_billing_document', searchFields: ['invoice_number', 'billing_type'] }));
+financeRouter.use('/billing-documents', createCrudRouter({ modelName: 'fin_billing_document', searchFields: ['invoice_number', 'billing_type'], beforeCreate: (_req, data) => ({
+  ...data,
+  status: 'DRAFT',
+  payment_status: 'UNPAID',
+  paid_amount: 0,
+  outstanding_amount: Number(data.total_amount ?? 0),
+  rejection_reason: '',
+}) }));
 financeRouter.use('/billing-document-lines', createCrudRouter({ modelName: 'fin_billing_document_line', searchFields: ['description'] }));
-financeRouter.use('/billing-proposals', createCrudRouter({ modelName: 'fin_billing_proposal', searchFields: ['description'] }));
-financeRouter.use('/payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['payment_number'] }));
-financeRouter.use('/customer-receipts', createCrudRouter({ modelName: 'fin_payment', searchFields: ['payment_number'] }));
-financeRouter.use('/vendor-payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['payment_number'] }));
+financeRouter.use('/billing-proposals', createCrudRouter({ modelName: 'fin_billing_proposal', searchFields: ['description'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/customer-receipts', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/vendor-payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
 financeRouter.use('/payment-lines', createCrudRouter({ modelName: 'fin_payment_allocation' }));
 financeRouter.use('/payment-allocations', createCrudRouter({ modelName: 'fin_payment_allocation' }));
 financeRouter.use('/bank-accounts', createCrudRouter({ modelName: 'fin_bank_account', searchFields: ['account_number', 'bank_name'] }));
@@ -944,8 +1088,8 @@ financeRouter.use('/bank-reconciliations', createCrudRouter({ modelName: 'fin_ba
 financeRouter.use('/tax-transactions', createCrudRouter({ modelName: 'fin_tax_transaction' }));
 financeRouter.use('/budgets', createCrudRouter({ modelName: 'fin_budget' }));
 financeRouter.use('/budget-lines', createCrudRouter({ modelName: 'fin_budget_line' }));
-financeRouter.use('/project-cost-entries', createCrudRouter({ modelName: 'fin_project_cost_entry', searchFields: ['description'] }));
-financeRouter.use('/project-fundings', createCrudRouter({ modelName: 'fin_project_funding', searchFields: ['description'] }));
+financeRouter.use('/project-cost-entries', createCrudRouter({ modelName: 'fin_project_cost_entry', searchFields: ['description'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/project-fundings', createCrudRouter({ modelName: 'fin_project_funding', searchFields: ['description'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
 financeRouter.use('/credit-facilities', createCrudRouter({ modelName: 'fin_credit_facility' }));
 financeRouter.use('/recurring-payment-rules', createCrudRouter({ modelName: 'fin_recurring_payment_rule' }));
 financeRouter.use('/overhead-rules', createCrudRouter({ modelName: 'fin_overhead_rule' }));

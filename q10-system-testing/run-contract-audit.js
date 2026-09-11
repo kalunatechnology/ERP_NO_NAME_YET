@@ -43,6 +43,66 @@ function endpoint(method, route) {
   return `${method.toUpperCase()} ${normalizePath(route)}`;
 }
 
+/** Extract complete call bodies without relying on a fragile character limit. */
+function callBodies(source, callee) {
+  const bodies = [];
+  const marker = `${callee}(`;
+  let cursor = 0;
+  while ((cursor = source.indexOf(marker, cursor)) !== -1) {
+    const open = cursor + marker.length - 1;
+    let depth = 0;
+    let quote = null;
+    let escaped = false;
+    let lineComment = false;
+    let blockComment = false;
+    let completed = false;
+    for (let index = open; index < source.length; index += 1) {
+      const char = source[index];
+      const next = source[index + 1];
+      if (lineComment) {
+        if (char === '\n') lineComment = false;
+        continue;
+      }
+      if (blockComment) {
+        if (char === '*' && next === '/') {
+          blockComment = false;
+          index += 1;
+        }
+        continue;
+      }
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === quote) quote = null;
+        continue;
+      }
+      if (char === '/' && next === '/') {
+        lineComment = true;
+        index += 1;
+        continue;
+      }
+      if (char === '/' && next === '*') {
+        blockComment = true;
+        index += 1;
+        continue;
+      }
+      if (char === "'" || char === '"' || char === '`') {
+        quote = char;
+        continue;
+      }
+      if (char === '(') depth += 1;
+      if (char === ')' && --depth === 0) {
+        bodies.push(source.slice(open + 1, index));
+        cursor = index + 1;
+        completed = true;
+        break;
+      }
+    }
+    if (!completed) cursor = open + 1;
+  }
+  return bodies;
+}
+
 /** Expands the exact public contract registered by createCrudRouter. */
 function crudRouteRecords(base, file, kind) {
   return [
@@ -75,8 +135,10 @@ function extractRouterRoutes(file, mounts) {
     for (const match of source.matchAll(direct)) {
       for (const prefix of prefixes) routeRecords.push({ method: match[1], path: normalizePath(`${prefix}/${match[2]}`), file, kind: 'custom' });
     }
-    const generic = new RegExp(`${router}\\.use\\(\\s*['\"]([^'\"]+)['\"][\\s\\S]{0,900}?createCrudRouter`, 'g');
-    for (const match of source.matchAll(generic)) {
+    const useBodies = callBodies(source, `${router}.use`);
+    for (const body of useBodies) {
+      const match = /^\s*['"]([^'"]+)['"]/.exec(body);
+      if (!match || !/\bcreateCrudRouter\s*\(/.test(body)) continue;
       for (const prefix of prefixes) {
         const base = normalizePath(`${prefix}/${match[1]}`);
         routeRecords.push(...crudRouteRecords(base, file, 'generic'));
@@ -84,8 +146,9 @@ function extractRouterRoutes(file, mounts) {
     }
     // Some routers wrap CRUD factory creation in a local helper (for example
     // `rolesCrud()`). Resolve that indirection when the helper is local.
-    const helperUse = new RegExp(`${router}\\.use\\(\\s*['\"]([^'\"]+)['\"][\\s\\S]{0,900}?(\\w+Crud)\\(\\)`, 'g');
-    for (const match of source.matchAll(helperUse)) {
+    for (const body of useBodies) {
+      const match = /^\s*['"]([^'"]+)['"][\s\S]*?\b(\w+Crud)\s*\(\s*\)/.exec(body);
+      if (!match) continue;
       if (!new RegExp(`(?:const|function)\\s+${match[2]}[\\s\\S]{0,600}?createCrudRouter`).test(source)) continue;
       for (const prefix of prefixes) {
         const base = normalizePath(`${prefix}/${match[1]}`);
@@ -101,14 +164,13 @@ function backendRoutes() {
   const appFile = path.join(backend, 'src', 'app.ts');
   const app = fs.readFileSync(appFile, 'utf8');
   const mounts = new Map();
-  for (const match of app.matchAll(/apiV1\.use\(\s*['\"]([^'\"]+)['\"][\s\S]{0,900}?,\s*(\w+Router)\s*,?\s*\)/g)) {
-    const prefix = normalizePath(`/api/v1/${match[1]}`);
-    mounts.set(match[2], [...(mounts.get(match[2]) || []), prefix]);
-  }
-  // Routers mounted directly with a short call signature are handled as well.
-  for (const match of app.matchAll(/apiV1\.use\(\s*['\"]([^'\"]+)['\"]\s*,\s*(\w+Router)\s*,?\s*\)/g)) {
-    const prefix = normalizePath(`/api/v1/${match[1]}`);
-    mounts.set(match[2], [...(mounts.get(match[2]) || []), prefix]);
+  for (const body of callBodies(app, 'apiV1.use')) {
+    const pathMatch = /^\s*['"]([^'"]+)['"]/.exec(body);
+    const routerMatches = [...body.matchAll(/\b(\w+Router)\b/g)];
+    const routerName = routerMatches.at(-1)?.[1];
+    if (!pathMatch || !routerName) continue;
+    const prefix = normalizePath(`/api/v1/${pathMatch[1]}`);
+    mounts.set(routerName, [...(mounts.get(routerName) || []), prefix]);
   }
   const records = [{ method: 'get', path: '/health', file: appFile, kind: 'custom' }];
   for (const file of filesUnder(path.join(backend, 'src', 'modules')).filter((item) => item.endsWith('.routes.ts'))) {

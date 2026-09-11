@@ -29,10 +29,10 @@ interface BudgetCheckProps {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export function BudgetCheckStatusCard({
-  materialBudget = 56000000,
+  materialBudget = 0,
   allocationFormula = "(Total Alokasi Biaya Material PO)",
-  allocationCost = 12500000,
-  remainingBudget = 43500000,
+  allocationCost = 0,
+  remainingBudget = 0,
   isValid = true,
   className,
 }: BudgetCheckProps) {
@@ -49,7 +49,7 @@ export function BudgetCheckStatusCard({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#E5E9E2] rounded-[24px] p-5 shadow-xs flex flex-col justify-between h-full select-none",
+        "w-full bg-white border border-[#E5E9E2] rounded-2xl p-5 shadow-xs flex flex-col justify-between h-full select-none",
         className
       )}
     >

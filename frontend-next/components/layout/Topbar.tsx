@@ -12,6 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Search, Bell, CalendarCheck, Menu, ChevronDown, Check, Building2, LogOut, ShieldCheck, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { canAccessRoute } from "@/lib/access/module-contract";
 import toast from "react-hot-toast";
 
 interface TopbarProps {
@@ -48,6 +49,13 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
   const router = useRouter();
   const { user, userRole, logout, company, setCompany, companies } = useAuth();
   const crumbs = buildBreadcrumb(pathname);
+  const canOpenReporting = canAccessRoute({
+    pathname: "/reporting",
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === "super_admin",
+  });
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
@@ -72,11 +80,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) {
-      setIsCommandPaletteOpen(true);
-      return;
-    }
-    router.push(`/resources?search=${encodeURIComponent(searchQuery.trim())}`);
+    setIsCommandPaletteOpen(true);
   };
 
   // Close dropdown on outside click
@@ -105,14 +109,14 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
       {/* Left: Hamburger (mobile) + Breadcrumb */}
       <div className="flex items-center gap-2 sm:gap-4 min-w-0">
         {/* Hamburger: always visible, activates mobile sidebar below lg */}
-        <button
+        {canOpenReporting && <button
           onClick={onMenuToggle}
           className="flex-shrink-0 p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-brand-light-green transition-colors lg:hidden"
           id="topbar-menu-btn"
           aria-label="Buka menu"
         >
           <Menu size={20} aria-hidden="true" />
-        </button>
+        </button>}
 
         <nav aria-label="Breadcrumb" className="min-w-0">
           <ol className="flex items-center gap-1.5 sm:gap-2">
@@ -215,11 +219,12 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
         <button
           type="button"
           onClick={() => router.push('/reporting?tab=attendance')}
-          className="flex-shrink-0 p-2 sm:p-1.5 rounded-full text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/60 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+          className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-text-secondary hover:text-brand-deep-green hover:bg-brand-light-green/60 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
           aria-label="Buka laporan kehadiran"
           title="Laporan Kehadiran"
         >
           <CalendarCheck size={19} aria-hidden="true" />
+          <span className="hidden xl:inline text-xs font-semibold">Attendance</span>
         </button>
 
         {/* Notification Bell / Mobile Right Drawer Trigger */}

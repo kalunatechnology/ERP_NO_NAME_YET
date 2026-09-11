@@ -61,7 +61,7 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto print:p-0 print:bg-white">
-      <div className="relative w-full max-w-[820px] my-auto bg-white rounded-[24px] shadow-2xl overflow-hidden flex flex-col max-h-[94vh] print:max-h-none print:shadow-none print:rounded-none">
+      <div className="relative w-full max-w-[820px] my-auto bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] print:max-h-none print:shadow-none print:rounded-none">
         
         {/* Modal Action Header (Hidden in Print) */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E2E8E0] bg-[#FAFDF7] print:hidden">

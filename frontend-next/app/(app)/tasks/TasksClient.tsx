@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useDeferredValue } from "react";
-import { cn, formatDate, getStatusColor } from "@/lib/utils";
+import { cn, formatDate, getStatusColor, localDateKey, normalizeDateKey } from "@/lib/utils";
 import { loadAllProjects, Project, DailyTask, updateDailyTask } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -44,7 +44,6 @@ function QuickEdit({
 }) {
   const [output, setOutput] = useState(task.output_result || "");
   const [notes, setNotes] = useState(task.notes || "");
-  const [progress, setProgress] = useState(task.progress || 0);
   const [status, setStatus] = useState(task.status || "ON_PROGRESS");
   const [saving, setSaving] = useState(false);
 
@@ -58,7 +57,7 @@ function QuickEdit({
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave(task.id, { output_result: output, notes, progress, status });
+      await onSave(task.id, { output_result: output, notes, status });
       onClose();
     } finally {
       setSaving(false);
@@ -101,18 +100,12 @@ function QuickEdit({
           />
         </div>
 
-        {/* Progress & Status */}
+        {/* Progress is derived by Backend from checklist completion/status. */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-semibold text-text-secondary mb-1.5 block">Progress (%)</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="range" min={0} max={100} step={5}
-                value={progress}
-                onChange={e => { const v = Number(e.target.value); setProgress(v); if (v === 100) setStatus("COMPLETED"); else if (v > 0) setStatus("ON_PROGRESS"); }}
-                className="flex-1"
-              />
-              <span className="text-sm font-bold text-brand-green w-10 text-right">{progress}%</span>
+            <label className="text-xs font-semibold text-text-secondary mb-1.5 block">Progress Otomatis</label>
+            <div className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm bg-gray-50 text-text-secondary">
+              {Number(task.progress || 0)}% - dihitung dari checklist/status
             </div>
           </div>
           <div>
@@ -163,8 +156,9 @@ function TaskRow({
 }) {
   const isDone = ["COMPLETED","DONE"].includes(task.status || "");
   const isBlocked = task.is_blocked || task.status === "BLOCKED";
-  const today = new Date().toISOString().split("T")[0];
-  const isOverdue = task.planned_date && task.planned_date < today && !isDone;
+  const today = localDateKey();
+  const taskDate = normalizeDateKey(task.planned_date);
+  const isOverdue = Boolean(taskDate && taskDate < today && !isDone);
 
   return (
     <tr className={cn(
@@ -186,7 +180,7 @@ function TaskRow({
       {/* Date & Time */}
       <td className="py-2.5 px-4 align-top whitespace-nowrap">
         <div className={cn("text-xs font-medium", isOverdue ? "text-red-600 font-bold" : "text-text-primary")}>
-          {task.planned_date || "-"}
+          {taskDate || "-"}
           {isOverdue && <AlertTriangle size={12} className="ml-1 text-amber-600" />}
         </div>
         <div className="text-2xs text-text-secondary">{task.time_slot || "-"}</div>
@@ -335,7 +329,7 @@ export default function TasksClient() {
     return list;
   }, [projects]);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateKey();
   const deferredSearch = useDeferredValue(search);
 
   const filteredTasks = useMemo(() => {
@@ -347,10 +341,11 @@ export default function TasksClient() {
           item.projectCode.toLowerCase().includes(q)
         : true;
       if (!matchSearch) return false;
-      if (activeFilter === "TODAY") return item.task.planned_date === today;
+      const taskDate = normalizeDateKey(item.task.planned_date);
+      if (activeFilter === "TODAY") return taskDate === today;
       if (activeFilter === "ACTIVE") return ["ON_PROGRESS","PENDING"].includes(item.task.status || "");
       if (activeFilter === "COMPLETED") return ["COMPLETED","DONE"].includes(item.task.status || "");
-      if (activeFilter === "OVERDUE") return item.task.planned_date && item.task.planned_date < today && !["COMPLETED","DONE"].includes(item.task.status || "");
+      if (activeFilter === "OVERDUE") return Boolean(taskDate && taskDate < today && !["COMPLETED","DONE"].includes(item.task.status || ""));
       if (activeFilter === "BLOCKED") {
         return Boolean(item.task.is_blocked) ||
                item.task.status === "BLOCKED" ||
@@ -366,7 +361,7 @@ export default function TasksClient() {
   const groupedByDate = useMemo(() => {
     const map: Record<string, typeof filteredTasks> = {};
     filteredTasks.forEach(item => {
-      const d = item.task.planned_date || "Tanpa Tanggal";
+      const d = normalizeDateKey(item.task.planned_date) || "Tanpa Tanggal";
       if (!map[d]) map[d] = [];
       map[d].push(item);
     });
@@ -401,17 +396,20 @@ export default function TasksClient() {
   const handleToggle = async (task: DailyTask) => {
     const isDone = ["COMPLETED","DONE"].includes(task.status || "");
     const nextStatus = isDone ? "ON_PROGRESS" : "COMPLETED";
-    const nextProg = isDone ? 50 : 100;
     const prevStatus = task.status;
     const prevProg = task.progress;
 
     // 1. Optimistic Update Local UI Immediately (60fps)
-    updateLocalDailyTask(task.id, { status: nextStatus, progress: nextProg });
+    updateLocalDailyTask(task.id, { status: nextStatus });
     toast.success(isDone ? "Task dibuka kembali." : "Task selesai.");
 
     // 2. Sync to Backend in Background
     try {
-      await updateDailyTask(task.id, { status: nextStatus, progress: nextProg });
+      const updated = await updateDailyTask(task.id, { status: nextStatus });
+      updateLocalDailyTask(task.id, {
+        status: updated.status,
+        progress: Number(updated.progress ?? 0),
+      });
     } catch {
       // Rollback on error
       updateLocalDailyTask(task.id, { status: prevStatus, progress: prevProg });
@@ -434,7 +432,12 @@ export default function TasksClient() {
 
     // 2. Sync to Backend in Background
     try {
-      await updateDailyTask(id, patch);
+      const updated = await updateDailyTask(id, patch);
+      updateLocalDailyTask(id, {
+        ...patch,
+        status: updated.status,
+        progress: Number(updated.progress ?? 0),
+      });
     } catch {
       toast.error("Gagal menyimpan perubahan ke server.");
       fetchTasks(true);
@@ -442,9 +445,12 @@ export default function TasksClient() {
   };
 
   /* Counts */
-  const todayCount    = allTasks.filter(i => i.task.planned_date === today).length;
-  const overdueCount  = allTasks.filter(i => i.task.planned_date && i.task.planned_date < today && !["COMPLETED","DONE"].includes(i.task.status || "")).length;
-  const doneToday     = allTasks.filter(i => i.task.planned_date === today && ["COMPLETED","DONE"].includes(i.task.status || "")).length;
+  const todayCount    = allTasks.filter(i => normalizeDateKey(i.task.planned_date) === today).length;
+  const overdueCount  = allTasks.filter(i => {
+    const taskDate = normalizeDateKey(i.task.planned_date);
+    return Boolean(taskDate && taskDate < today && !["COMPLETED","DONE"].includes(i.task.status || ""));
+  }).length;
+  const doneToday     = allTasks.filter(i => normalizeDateKey(i.task.planned_date) === today && ["COMPLETED","DONE"].includes(i.task.status || "")).length;
   const activeCount   = allTasks.filter(i => ["ON_PROGRESS","PENDING"].includes(i.task.status || "")).length;
   const blockedCount  = allTasks.filter(i =>
     Boolean(i.task.is_blocked) ||

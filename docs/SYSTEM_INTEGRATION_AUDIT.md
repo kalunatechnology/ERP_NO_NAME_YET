@@ -1,5 +1,7 @@
 # System Integration Audit — AS-IS
 
+Latest authoritative delta: [Integration hardening 10 September](INTEGRATION_HARDENING_2026_09_10.md). This updates the earlier status-only Procurement/Request/Inventory/Manufacturing/Quality findings and documents the remaining partial workflows and unverified database behavior.
+
 **Audit date:** 8 September 2026  
 **Runtime in scope:** `backend-express/` + `frontend-next/` + PostgreSQL schema/migrations in `backend-express/prisma/`  
 **Legacy reference only:** `backend/` (Django) and `uji_prototype/` are not the active production runtime.  
@@ -727,32 +729,33 @@ Weak or split boundaries:
 | INT-P0-01 — RESOLVED 2026-09-09 | Request approval/disbursement/LPJ routes previously lacked backend actor-role enforcement. Active-role gates now protect OM validation/LPJ verification, PM-or-Director executive approval, and Finance disbursement; LPJ verifies original requester ownership. | Regressed by Q11; transaction-state and accounting completeness remain separate gaps. |
 | INT-P0-02 — PARTIALLY RESOLVED 2026-09-09 | CRM executive override and executive decisions are now Director-active-role-only. | Role bypass by CRM/Sales/PM is closed. Requirement for an approved approval record remains an independent lifecycle rule to verify before treating override as fully governed. |
 | INT-P0-03 | Almost all relationships are scalar UUIDs without Prisma relations or repository-created FKs. | Orphans, cross-company references, and unsafe deletes are possible. |
-| INT-P0-04 | Finance UI directly PATCHes funding/billing/payment-like statuses outside custom actions. | SoD, FSM validation, journal/tax effects, and audit semantics can be bypassed. |
+| INT-P0-04 — RESOLVED 2026-09-10 | Frontend direct status writers diganti named commands. Project Cost posting, Billing Proposal issuance, Billing Document lifecycle, dan AP Payment mempunyai command backend; generic CRUD menolak field lifecycle terproteksi. | Q11 menjaga source contract; runtime database tetap harus diuji pada fixture UAT. |
 | INT-P0-05 | Asset disposal appears to use the accumulated-depreciation account as both contra-asset and asset-cost account. | Disposal journal may be materially wrong. |
-| INT-P0-06 | Generic CRUD exposes approval/workflow tables and pre-terminal Finance state mutation. | Users can bypass named approval transitions before terminal-state protection applies. |
+| INT-P0-06 — PARTIALLY RESOLVED 2026-09-10 | Generic CRUD Finance terdaftar pada lifecycle-field deny-list dan create hanya menerima status awal `DRAFT`. | Model non-Finance/approval lain masih perlu dimasukkan bertahap ke registry lifecycle bila memiliki named command. |
 
 ### P1 — broken workflow or inconsistent business result
 
 | ID | Finding | Impact |
 |---|---|---|
 | INT-P1-01 | Four competing Project lifecycle vocabularies write the same status fields. | UI, API, reporting, and workflow availability disagree. |
-| INT-P1-02 | Frontend quotation decision payload does not match backend contract. | Accept/reject action returns validation error instead of changing state. |
+| INT-P1-02 — RESOLVED 2026-09-10 | Frontend quotation decisions now send backend enum `decision: ACCEPTED/REJECTED` and rejection reason. | Covered by Q11 source-contract regression. |
 | INT-P1-03 | CRM deal-won can attach the first active party and an arbitrary username-based PM. | Wrong customer/owner and synthetic project data. |
 | INT-P1-04 | CRM/Sales conversion lacks semantic duplicate guards. | Repeated requests with new idempotency keys can duplicate order/project/proforma records. |
-| INT-P1-05 | Request disbursement is not a Finance transaction. | Workflow says disbursed while cash, payment, journal, and reconciliation records remain absent. |
-| INT-P1-06 | Payment execute does not post GL/bank/allocation/outstanding effects. | Payment status can disagree with accounting and receivables/payables. |
-| INT-P1-07 | Procurement three-way match performs no three-way comparison. | Invalid invoices/receipts can be marked matched. |
-| INT-P1-08 | Inventory/manufacturing/quality actions only change status. | Stock, valuation, production cost, and QA state are not synchronized. |
+| INT-P1-05 — PARTIALLY RESOLVED 2026-09-11 | Approved Fund Request disbursement now atomically creates a posted `REQUEST_ADVANCE` Payment, debit 1140/credit bank journal, workflow state, and audit links. | LPJ settlement/reclassification/refund journal and bank API execution remain open. Runtime DB verification pending. |
+| INT-P1-06 — RESOLVED 2026-09-10 | AP Payment + allocation dibuat atomik; execution membuat jurnal AP/bank dan memperbarui outstanding/payment status dalam transaksi serializable. | Acceptance runtime harus membuktikan fiscal period, account mapping, duplicate reference, overpayment, dan SoD pada database target. |
+| INT-P1-07 — PARTIALLY RESOLVED 2026-09-11 | Exact full-order matching validates PO–accepted GRN–supplier invoice quantities, price, tax, supplier, currency, totals, and company before storing variances. | Partial invoices, tolerances, repeated-product allocation, and match consumption remain open. |
+| INT-P1-08 — PARTIALLY RESOLVED 2026-09-11 | FIFO stock posting writes ledger/balance/valuation; manufacturing issue consumes prepared stock moves and writes material cost; Quality validates plan results and gates receipt/work-order completion. | Lot/serial, reservations, adjustments, output/labor/overhead/GL, and full NCR/CAPA propagation remain open. |
 | INT-P1-09 | Reporting returns hard-coded financial and CRM KPIs. | Management reports can present false values as real data. |
 | INT-P1-10 — RESOLVED 2026-09-09 | Active-role selection and assigned-role authorization were inconsistent. | `requireRole` and Finance policy now use active role; strict sensitive actions reject module-delegation bypass. |
 | INT-P1-11 — RESOLVED 2026-09-10 | Frontend route labels, page-local maps, and background loaders could resolve or request a module that differed from the backend mount contract. | One registry now maps routes, API prefixes, active roles, entitlements, delegation, strict actions, and Dashboard BFF sections; known unauthorized requests are cancelled before transmission. |
+| INT-P1-12 — RESOLVED 2026-09-10 | Daily Task workspace compared Prisma DateTime payloads directly with a UTC-derived `YYYY-MM-DD` value. | Shared local calendar normalization now aligns Project Overview, Daily Tasks, Dashboard counters, grouping, overdue rules, and operational date defaults. |
 
 ### P2 — maintainability, UX, and auditability risk
 
 | ID | Finding | Impact |
 |---|---|---|
 | INT-P2-01 | Generic auto-fill writes empty/default values for required domain fields. | Invalid/incomplete records can look operational. |
-| INT-P2-02 — PARTIALLY RESOLVED 2026-09-10 | Module-aware loaders no longer issue expected unauthorized cross-module requests, and inventory no longer substitutes production-looking fallback rows. Other `.catch(() => null/[])` paths still exist. | Remaining paths can still hide genuine 500/timeout/data-contract failures and require a separate error-propagation audit. |
+| INT-P2-02 — PARTIALLY RESOLVED 2026-09-10 | Module-aware loaders tidak melakukan request silang unauthorized; profile mutations mempropagasi kegagalan; Right Panel mempertahankan data lama dan menampilkan degraded-state bila seluruh source yang diizinkan gagal. | Sebagian widget non-authoritative lain masih memakai fallback nullable/empty dan perlu pola degraded-state yang sama bila menjadi business-critical. |
 | INT-P2-03 | No dedicated frontend for multiple licensed backend modules. | A module may be enabled but have no usable product workflow. |
 | INT-P2-04 | Dashboard/request cache is process-local. | Multi-instance deployments can show inconsistent cached projections. |
 | INT-P2-05 | Global audit is best-effort after response. | Successful mutations may have no audit record after an audit write failure. |
@@ -771,7 +774,7 @@ The previous Phase A items for Request actor policy, LPJ ownership, Director-onl
 1. Make generic CRUD read-only for lifecycle-controlled models, or strip protected fields (`status`, decision, approval actor/date, posting fields) from generic create/update.
 2. Add backend actor policies for every Request transition and verify requester ownership on LPJ.
 3. Require Director active role and an approved `crm_executive_approval` record for CRM override.
-4. Replace Finance UI PATCH operations with named `/decide`, `/verify`, `/approve`, `/post`, `/execute`, and `/draw` actions.
+4. **RESOLVED 2026-09-10:** Frontend menggunakan named actions untuk Funding, Project Cost, Billing Proposal, Billing Document, dan Payment; generic lifecycle mutation ditolak.
 5. Correct and test Asset disposal journal account mapping before production use.
 
 ### Phase B — establish one lifecycle per aggregate
@@ -792,7 +795,7 @@ The previous Phase A items for Request actor policy, LPJ ownership, Director-onl
 
 ### Phase D — complete transaction chains
 
-1. Implement payment execution as one transaction: bank/cash journal, allocation, billing outstanding/payment status, and reconciliation reference.
+1. **RESOLVED 2026-09-10:** Payment execution atomik mencakup journal AP/bank, allocation, billing outstanding/payment status, dan execution reference. Rekonsiliasi bank tetap workflow terpisah.
 2. Implement Request disbursement through Finance Payment/Journal instead of audit JSON only.
 3. Implement Procure-to-Pay: PR/RFQ/quotation/PO/receipt/validated three-way match/AP/tax/payment/project cost.
 4. Implement Inventory posting: move lines → ledger → balance → valuation; connect manufacturing consumption/output.
@@ -821,10 +824,10 @@ Each workflow test should verify actor, entitlement, input, records written, rec
 | Weekly task by Staff | Assigned Main Task succeeds; unassigned/cross-company Main Task returns 403. |
 | Funding | Only valid FSM transitions; maker/checker enforced; direct status PATCH rejected. |
 | Billing post | Tax and balanced journal created exactly once; closed period rejected. |
-| Payment execute | Payment, allocations, bill outstanding, bank/GL all reconcile. Currently expected to fail completeness. |
-| Request disbursement | Correct Finance actor and payment/journal links. Currently expected to fail completeness. |
-| Three-way match | Quantity/value/tolerance comparison and mismatch case. Current action should not be accepted as proof. |
-| Inventory completion | Ledger, balance, valuation, reservation, and source status all agree. Currently incomplete. |
+| Payment execute | Payment, allocations, bill outstanding, dan AP/bank GL harus reconcile; retry tidak menggandakan jurnal. |
+| Request disbursement | Correct Finance actor, approved Fund Request, actual bank/reference, one Payment and balanced advance/bank journal; retry stable. LPJ settlement remains a separate gap. |
+| Three-way match | Exact full-order quantity/price/tax comparison, mismatch, cross-company rejection, accepted receipt requirement, and retry recomputation. Tolerance/partial matching remains a gap. |
+| Inventory completion | For supported FIFO non-traceable moves, ledger, balance, valuation, and source status agree atomically. Unsupported reservation/lot/serial/adjustment must fail explicitly. |
 | Asset disposal | Correct asset cost, accumulated depreciation, cash, and gain/loss accounts; balanced journal. |
 | Reporting | Every displayed KPI traces to current company data; no constants. |
 
@@ -855,11 +858,11 @@ Each workflow test should verify actor, entitlement, input, records written, rec
 
 ## 15. Final AS-IS statement
 
-The active system has a credible foundation for IAM/company isolation, CRM commercial handoff, Project work execution, selected Finance controls, Asset accounting, and read projections. It does not yet provide a consistently enforced ERP-wide integration boundary. The most important distinction for handover is:
+The active system has a credible foundation for IAM/company isolation, CRM commercial handoff, Project work execution, selected Finance controls, Asset accounting, and read projections. It does not yet provide a consistently enforced ERP-wide integration boundary. The frontend contract remediation on 10 September 2026 removed WBS cross-model fallbacks, direct Project lifecycle fallback PATCH, synthetic EVM/tax/company/bank/profitability records, the Sales customer-decision payload mismatch, and the false Funding draw/bank claim. AP now creates and submits a Payment instead of marking a bill paid directly. The most important distinction for handover is:
 
 - **real transactional integration:** selected CRM, Project roll-up, Finance journal/closing, and Asset operations;
 - **shared data/read integration:** Project–Finance dashboards and reports;
 - **logical model integration only:** much of Procurement, Inventory, Manufacturing, Quality, Logistics, Service, and Implementation;
-- **incorrect or bypassable integration:** privileged Request actions, CRM override, Finance UI state mutation, competing lifecycle writers, and hard-coded reports.
+- **remaining incomplete integration:** Request disbursement→Finance, procurement three-way comparison, inventory/manufacturing/quality side effects, asset-disposal account mapping, database FK coverage, serta bank reconciliation yang memang terpisah dari execution Payment. Project Cost posting, Billing Proposal issuance, dan AP Payment execution kini memiliki command authoritative.
 
 No feature, API, relationship, status, or automation absent from the active source should be treated as implemented merely because it appears in legacy Django code, seed data, a schema field, or prior conceptual documentation.

@@ -266,7 +266,7 @@ function LoginFormContent() {
         {/* ── CARD UTAMA LOGIN ── */}
         <div
           className={cn(
-            "mk-card w-full max-w-[1334px] h-auto lg:h-[calc(100vh-3rem)] max-h-[920px] bg-white rounded-[24px] border border-[#C7C7C7] p-3 sm:p-4 lg:p-5 flex flex-col lg:flex-row gap-5 lg:gap-10 xl:gap-12 shadow-[0_4px_24px_rgba(0,0,0,0.02)] transition-all duration-300",
+            "mk-card w-full max-w-[1334px] h-auto lg:h-[calc(100vh-3rem)] max-h-[920px] bg-white rounded-[20px] border border-[#C7C7C7] p-3 sm:p-4 lg:p-5 flex flex-col lg:flex-row gap-5 lg:gap-10 xl:gap-12 shadow-[0_4px_24px_rgba(0,0,0,0.02)] transition-all duration-300",
             isTransitioning && "opacity-40 scale-[0.99] pointer-events-none"
           )}
         >

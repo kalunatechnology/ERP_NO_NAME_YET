@@ -32,7 +32,7 @@ const COLORS = {
   border:       "#E8E8E8",
   colShade:     "rgba(0,0,0,0.02)",
 };
-const FONT = "'Google Sans', Roboto, sans-serif";
+const FONT = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif";
 
 /**
  * GanttChart coordinates the UI behavior represented by this function.

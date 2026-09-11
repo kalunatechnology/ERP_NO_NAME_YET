@@ -10,14 +10,14 @@
 import { useState, useEffect } from "react";
 import {
   DollarSign, TrendingUp, CreditCard, ArrowUpRight, ArrowDownRight,
-  FileCheck, Plus, RefreshCw, Layers, CheckCircle2, XCircle,
+  Plus, RefreshCw, Layers, CheckCircle2, XCircle,
   Building, Landmark, ShieldCheck, Scale, Zap, Trash2, ArrowRight,
   BookOpen, BarChart3, Activity, Banknote, ArrowLeftRight, TrendingDown,
   AlertTriangle, CheckSquare, Clock, Eye, LayoutDashboard, Crown, BriefcaseBusiness,
   ClipboardList, Receipt, RotateCcw, WalletCards, LibraryBig, FileBarChart,
   Link2, Calculator, CalendarRange, HardHat
 } from "lucide-react";
-import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
+import { cn, formatMoney, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import { Modal } from "@/components/ui/Modal";
@@ -59,12 +59,14 @@ const FINANCE_TABS = [
   { id: "audit_trail", label: "Audit Trail", icon: ShieldCheck },
 ];
 
-export const BANK_ACCOUNTS = [
-  { id: "bca", name: "BCA Giro Operasional — 882-019-2810", number: "882-019-2810", balance: 450000000, bank: "PT Bank Central Asia Tbk", type: "MAIN_OPERATIONAL" },
-  { id: "mandiri", name: "Bank Mandiri Escrow Proyek — 131-002-8819", number: "131-002-8819", balance: 780000000, bank: "PT Bank Mandiri (Persero) Tbk", type: "ESCROW_PROJECT" },
-  { id: "bni", name: "BNI Kas Operasional Lapangan — 028-192-3810", number: "028-192-3810", balance: 120000000, bank: "PT Bank Negara Indonesia Tbk", type: "FIELD_OPERATION" },
-  { id: "petty", name: "Kas Kecil Kasir (Petty Cash)", number: "CASH-OFFICE-01", balance: 35000000, bank: "Brankas Tunai Kantor", type: "PETTY_CASH" },
-];
+interface FinanceBankAccount {
+  id: string;
+  name: string;
+  number: string;
+  balance?: number;
+  bank: string;
+  type: string;
+}
 
 /**
  * FinanceClient coordinates the UI behavior represented by this function.
@@ -129,6 +131,7 @@ export default function FinanceClient() {
   const [proposals, setProposals] = useState<any[]>([]);
   const [vendorBills, setVendorBills] = useState<any[]>([]);
   const [customerReceipts, setCustomerReceipts] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
 
   /* Accounting / GL states */
   const [trialBalance, setTrialBalance] = useState<any>(null);
@@ -137,6 +140,11 @@ export default function FinanceClient() {
   const [journalEntries, setJournalEntries] = useState<any[]>([]);
   const [bankStatements, setBankStatements] = useState<any[]>([]);
   const [bankReconciliations, setBankReconciliations] = useState<any[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<FinanceBankAccount[]>([]);
+  const [ledgerAccounts, setLedgerAccounts] = useState<any[]>([]);
+  const [financeProjectOptions, setFinanceProjectOptions] = useState<any[]>([]);
+  const [vendorOptions, setVendorOptions] = useState<any[]>([]);
+  const [costCreditAccountId, setCostCreditAccountId] = useState("");
   const [glActiveTab, setGlActiveTab] = useState<"trial" | "entries">("trial");
   const [lapkeuActiveTab, setLapkeuActiveTab] = useState<"pl" | "bs">("pl");
   const [isReversalModalOpen, setIsReversalModalOpen] = useState(false);
@@ -155,36 +163,36 @@ export default function FinanceClient() {
   const [selectedBillForMatch, setSelectedBillForMatch] = useState<any>(null);
   const [selectedBillForPay, setSelectedBillForPay] = useState<any>(null);
 
-  const [costForm, setCostForm] = useState({ project: 1, category: "MATERIAL", amount: 15000000, description: "" });
-  const [fundingForm, setFundingForm] = useState({ project: 1, amount: 50000000, purpose: "Pengadaan Material Awal", source: "KAS_PERUSAHAAN" });
+  const [costForm, setCostForm] = useState({ project: "", category: "MATERIAL", amount: 0, description: "" });
+  const [fundingForm, setFundingForm] = useState({ project: "", amount: 0, purpose: "", source: "KAS_PERUSAHAAN" });
   const [billingForm, setBillingForm] = useState({
-    project: 1,
-    amount: 45000000,
-    description: "Termin Progres 50%",
-    milestone_percentage: 50,
+    project: "",
+    amount: 0,
+    description: "",
+    milestone_percentage: 0,
     tax_scheme: "PROPORTIONAL" as "PROPORTIONAL" | "FULL_UPFRONT" | "FINAL_SETTLEMENT",
     client_type: "NON_WAPU" as "NON_WAPU" | "WAPU",
     pph_type: "PPh 23 (2%)",
     pph_rate: 2.0,
   });
-  const [apForm, setAPForm] = useState({ supplier_name: "", invoice_number: "", amount: 25000000, due_date: "" });
+  const [apForm, setAPForm] = useState({ supplier_id: "", invoice_number: "", amount: 0, due_date: "" });
   const [paymentForm, setPaymentForm] = useState({
-    bank_account: "BCA Giro Operasional — 882-019-2810",
+    bank_account: "",
     payment_method: "BANK_TRANSFER",
-    payment_date: new Date().toISOString().split("T")[0],
+    payment_date: localDateKey(),
     reference_number: "",
-    notes: "Pelunasan tagihan pengadaan komponen vendor",
+    notes: "",
   });
   const [receiptForm, setReceiptForm] = useState({
-    customer_name: "PT Cisco Systems Indonesia",
-    project_name: "Produksi Video Content Komersial PT Cisco Systems Indonesia",
-    invoice_ref: "INV-CISCO-002 (Termin Pelunasan)",
-    amount: 75000000,
-    bank_account: "BCA Giro Operasional — 882-019-2810",
-    payment_date: new Date().toISOString().split("T")[0],
+    customer_name: "",
+    project_name: "",
+    invoice_ref: "",
+    amount: 0,
+    bank_account: "",
+    payment_date: localDateKey(),
     payment_method: "BANK_TRANSFER",
     reference_number: "",
-    notes: "Penerimaan pembayaran pelunasan termin invoice penagihan klien",
+    notes: "",
   });
 
 /**
@@ -220,17 +228,22 @@ export default function FinanceClient() {
         }
       };
 
-      const [costRes, fundRes, propRes, apRes, receiptRes, tbRes, jeRes, plRes, bsRes, stmtRes] = await Promise.all([
+      const [costRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtRes, bankRes, accountRes, projectOptionRes, vendorOptionRes] = await Promise.all([
         safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
         safeGet("/api/v1/finance/project-fundings/?page_size=50", "fundings"),
         safeGet("/api/v1/finance/billing-proposals/?page_size=50", "billing"),
         safeGet("/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50", "ap"),
         safeGet("/api/v1/finance/customer-receipts/?page_size=50", "ar"),
+        safeGet("/api/v1/finance/payments/?payment_type=OUTGOING&page_size=50", "ap"),
         safeGet("/api/v1/finance/trial-balance", "gl"),
         safeGet("/api/v1/finance/journal-entries/?page_size=30&ordering=-posting_date", "gl"),
         safeGet("/api/v1/finance/profit-and-loss", "lapkeu"),
         safeGet("/api/v1/finance/balance-sheet", "lapkeu"),
         safeGet("/api/v1/finance/bank-statements/?page_size=20", "banking_hub"),
+        safeGet("/api/v1/finance/bank-accounts/?page_size=100", "cashbank"),
+        safeGet("/api/v1/finance/accounts/?page_size=300", "gl"),
+        safeGet("/api/v1/finance/project-options", "costing"),
+        safeGet("/api/v1/finance/party-options?role=VENDOR", "ap"),
       ]);
 
       setCostEntries(normalizeList(costRes.data).rows);
@@ -238,6 +251,7 @@ export default function FinanceClient() {
       setProposals(normalizeList(propRes.data).rows);
 
       setVendorBills(normalizeList(apRes.data).rows);
+      setPayments(normalizeList(paymentRes.data).rows);
       setCustomerReceipts(normalizeList<any>(receiptRes.data).rows.map((receipt) => ({
         ...receipt,
         ...(typeof receipt.allocation_plan === "object" && receipt.allocation_plan ? receipt.allocation_plan : {}),
@@ -258,6 +272,19 @@ export default function FinanceClient() {
 
       const stmtList = normalizeList(stmtRes.data).rows;
       if (stmtList.length > 0) setBankStatements(stmtList);
+      setBankAccounts(normalizeList<any>(bankRes.data).rows.map((account) => ({
+        id: String(account.id),
+        name: account.account_name || account.bank_name || account.account_number,
+        number: account.account_number || "",
+        bank: account.bank_name || "",
+        type: account.account_type || "BANK_ACCOUNT",
+        balance: account.balance == null ? undefined : Number(account.balance),
+      })));
+      const accountRows = normalizeList<any>(accountRes.data).rows;
+      setLedgerAccounts(accountRows);
+      setFinanceProjectOptions(normalizeList<any>(projectOptionRes.data).rows);
+      setVendorOptions(normalizeList<any>(vendorOptionRes.data).rows);
+      setCostCreditAccountId((current) => current || String(accountRows.find((account) => account.status === "ACTIVE" && account.account_code !== "1150")?.id || ""));
     } catch {
       toast.error("Gagal memuat data keuangan");
     } finally {
@@ -315,55 +342,52 @@ export default function FinanceClient() {
   );
   const grossMargin = totalRevenue - totalCost;
 
-  /* Operations */
-/**
- * handlePostToWIP coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
-  const handlePostToWIP = async (entryId: number) => {
+  const handleCostLifecycle = async (entry: any) => {
     try {
-      await api.patch(`/api/v1/finance/project-cost-entries/${entryId}/`, { status: "POSTED_TO_WIP" });
-      toast.success("✓ Biaya berhasil di-post ke WIP & Jurnal Akuntansi!");
+      if (entry.status === "DRAFT") {
+        await api.post(`/api/v1/finance/project-cost-entries/${entry.id}/validate`);
+        toast.success("Cost entry berhasil divalidasi.");
+      } else if (entry.status === "VALIDATED") {
+        if (!costCreditAccountId) {
+          toast.error("Pilih akun sumber kredit sebelum posting WIP.");
+          return;
+        }
+        await api.post(`/api/v1/finance/project-cost-entries/${entry.id}/post-to-wip`, { credit_account_id: costCreditAccountId });
+        toast.success("Cost entry berhasil diposting ke WIP dan jurnal.");
+      }
       await loadFinanceData(true);
     } catch {
-      toast.error("Gagal post ke WIP");
+      toast.error("Lifecycle cost entry gagal diproses.");
     }
   };
 
-/**
- * handleDecideFunding coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
-  const handleDecideFunding = async (fundingId: number, status: "APPROVED" | "REJECTED") => {
+  const handleBillingProposalLifecycle = async (proposal: any) => {
     try {
-      await api.patch(`/api/v1/finance/project-fundings/${fundingId}/`, { status });
-      toast.success(`Funding ${status === "APPROVED" ? "Disetujui" : "Ditolak"}!`);
+      if (proposal.status === "DRAFT") await api.post(`/api/v1/finance/billing-proposals/${proposal.id}/submit`);
+      else if (proposal.status === "SUBMITTED") await api.post(`/api/v1/finance/billing-proposals/${proposal.id}/approve`);
+      else if (proposal.status === "APPROVED") await api.post(`/api/v1/finance/billing-proposals/${proposal.id}/issue-billing-document`, {});
+      else return;
       await loadFinanceData(true);
+      toast.success("Lifecycle billing proposal berhasil diperbarui.");
     } catch {
-      toast.error("Gagal memproses permohonan funding");
+      toast.error("Lifecycle billing proposal gagal diproses.");
     }
   };
 
-/**
- * handleApproveBilling coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
-  const handleApproveBilling = async (proposalId: number) => {
+  const handlePaymentLifecycle = async (payment: any) => {
     try {
-      await api.patch(`/api/v1/finance/billing-proposals/${proposalId}/`, { status: "APPROVED" });
-      toast.success("✓ Proposal Billing disetujui & Faktur Penagihan diterbitkan!");
+      if (payment.status === "SUBMITTED") {
+        await api.post(`/api/v1/finance/payments/${payment.id}/approve`);
+        toast.success("Permintaan pembayaran disetujui.");
+      } else if (payment.status === "APPROVED") {
+        await api.post(`/api/v1/finance/payments/${payment.id}/execute`, {
+          execution_reference: payment.reference_number,
+        });
+        toast.success("Pembayaran dieksekusi dan jurnal AP dibuat.");
+      }
       await loadFinanceData(true);
     } catch {
-      toast.error("Gagal memproses proposal billing");
+      toast.error("Lifecycle pembayaran gagal. Periksa role aktif, pemisahan tugas, dan periode fiskal.");
     }
   };
 
@@ -389,9 +413,9 @@ export default function FinanceClient() {
   const handleConfirmThreeWayMatch = async () => {
     if (!selectedBillForMatch) return;
     try {
-      await api.patch(`/api/v1/finance/billing-documents/${selectedBillForMatch.id}/`, { status: "MATCHED" });
+      await api.post(`/api/v1/finance/billing-documents/${selectedBillForMatch.id}/verify`);
       await loadFinanceData(true);
-      toast.success("Verifikasi 3-Way Match selesai. Tagihan siap dibayar.");
+      toast.success("Dokumen tagihan berhasil diverifikasi melalui lifecycle backend.");
       setIsMatchModalOpen(false);
     } catch {
       toast.error("Gagal memverifikasi 3-way match");
@@ -408,9 +432,9 @@ export default function FinanceClient() {
   const handleOpenPayModal = (bill: any) => {
     setSelectedBillForPay(bill);
     setPaymentForm({
-      bank_account: "BCA Giro Operasional — 882-019-2810",
+      bank_account: bankAccounts[0]?.id || "",
       payment_method: "BANK_TRANSFER",
-      payment_date: new Date().toISOString().split("T")[0],
+      payment_date: localDateKey(),
       reference_number: "",
       notes: `Pelunasan tagihan ${bill.supplier_name || 'Vendor'} (${bill.invoice_number})`,
     });
@@ -427,14 +451,22 @@ export default function FinanceClient() {
   const handleExecutePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBillForPay) return;
+    if (!paymentForm.bank_account || !paymentForm.reference_number.trim()) {
+      toast.error("Rekening bank dan nomor referensi wajib diisi.");
+      return;
+    }
     try {
-      await api.patch(`/api/v1/finance/billing-documents/${selectedBillForPay.id}/`, {
-        status: "PAID",
-        payment_status: "PAID",
-        paid_amount: selectedBillForPay.total_amount ?? selectedBillForPay.amount,
+      const amount = Number(selectedBillForPay.total_amount ?? selectedBillForPay.amount ?? 0);
+      await api.post(`/api/v1/finance/billing-documents/${selectedBillForPay.id}/create-payment`, {
+        bank_account_id: paymentForm.bank_account,
+        payment_date: paymentForm.payment_date,
+        amount,
+        payment_method: paymentForm.payment_method,
+        reference_number: paymentForm.reference_number,
+        description: paymentForm.notes,
       });
       await loadFinanceData(true);
-      toast.success(`Pembayaran ${selectedBillForPay.supplier_name} (${formatMoney(selectedBillForPay.amount)}) berhasil diproses.`);
+      toast.success(`Permintaan pembayaran ${formatMoney(amount)} berhasil diajukan dan menunggu approval.`);
       setIsPaymentModalOpen(false);
     } catch {
       toast.error("Gagal memproses pembayaran");
@@ -549,9 +581,9 @@ export default function FinanceClient() {
           <div className="flex flex-col gap-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
               <BudgetCheckStatusCard
-                materialBudget={totalRevenue ?? 56000000}
-                allocationCost={totalCost ?? 12500000}
-                remainingBudget={totalRevenue != null ? Math.max(0, (totalRevenue ?? 0) - (totalCost ?? 0)) : 43500000}
+                materialBudget={totalRevenue ?? 0}
+                allocationCost={totalCost ?? 0}
+                remainingBudget={Math.max(0, (totalRevenue ?? 0) - (totalCost ?? 0))}
                 isValid={(totalRevenue ?? 0) >= (totalCost ?? 0)}
               />
               <InventoryCheckingCard autoFetch={true} />
@@ -621,12 +653,9 @@ export default function FinanceClient() {
                 </thead>
                 <tbody>
                   <tr>
-                    <td><strong>Implementasi Smart Automation Line</strong></td>
-                    <td>{formatMoney(150000000)}</td>
-                    <td className="text-red-600 font-semibold">{formatMoney(totalCost || 12000000)}</td>
-                    <td className="text-emerald-700 font-bold">{formatMoney(150000000 - (totalCost || 12000000))}</td>
-                    <td><span className="font-bold text-brand-deep-green">92%</span></td>
-                    <td><span className="badge badge-success">✓ Sangat Sehat (CPI &gt; 1.1)</span></td>
+                    <td colSpan={6} className="text-center text-text-secondary py-8">
+                      Belum ada proyeksi profitabilitas per proyek dari kontrak API Finance.
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -652,6 +681,15 @@ export default function FinanceClient() {
               <Plus size={14} /> Catat Biaya
             </button>
           </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-text-secondary">Akun sumber kredit posting WIP</label>
+            <select className="input text-xs max-w-sm" value={costCreditAccountId} onChange={(event) => setCostCreditAccountId(event.target.value)}>
+              <option value="">Pilih akun sumber</option>
+              {ledgerAccounts.filter((account) => account.status === "ACTIVE" && account.account_code !== "1150").map((account) => (
+                <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>
+              ))}
+            </select>
+          </div>
           <div className="table-scroll-wrapper">
             <table className="w-full data-table min-w-[560px]">
               <thead>
@@ -671,12 +709,9 @@ export default function FinanceClient() {
                   <td className="font-semibold text-red-600">{formatMoney(c.total_cost ?? c.amount ?? c.cost_amount ?? 0)}</td>
                   <td><span className={cn("badge", getStatusColor(c.status || "DRAFT"))}>{c.status || "DRAFT"}</span></td>
                   <td>
-                    {c.status !== "POSTED_TO_WIP" ? (
-                      <button
-                        onClick={() => handlePostToWIP(c.id)}
-                        className="btn-primary py-1 px-2.5 text-2xs gap-1"
-                      >
-                        <Zap size={12} /> Post ke WIP & Jurnal
+                    {["DRAFT", "VALIDATED"].includes(c.status) ? (
+                      <button onClick={() => handleCostLifecycle(c)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
+                        <Zap size={12} /> {c.status === "DRAFT" ? "Validasi" : "Post ke WIP"}
                       </button>
                     ) : (
                       <span className="text-2xs text-brand-deep-green font-bold">✓ Terposting</span>
@@ -717,8 +752,8 @@ export default function FinanceClient() {
         <div className="card rounded-2xl p-5 flex flex-col gap-4">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary">Accounts Payable & Verifikasi 3-Way Match</h3>
-              <p className="text-2xs text-text-secondary">Pencocokan PO (Purchase Order) vs GRN (Penerimaan Barang) vs Invoice Supplier dan Eksekusi Pembayaran AP</p>
+              <h3 className="text-sm font-semibold text-text-primary">Accounts Payable & Verifikasi Dokumen</h3>
+              <p className="text-2xs text-text-secondary">Lifecycle invoice supplier dan pembayaran AP. Pencocokan PO/GRN hanya ditampilkan jika backend menyediakan referensinya.</p>
             </div>
             <button onClick={() => setIsAPModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
               <Plus size={14} /> + Tagihan Vendor Baru
@@ -739,21 +774,20 @@ export default function FinanceClient() {
             <tbody>
               {vendorBills.map(b => {
                 const isPaid = b.status === "PAID" || b.payment_status === "PAID" || b.status === "LUNAS";
-                const isMatched = b.status === "MATCHED" || b.status === "VERIFIED" || b.status === "APPROVED";
-                const isPending = !isPaid && !isMatched;
+                const isMatched = b.status === "VERIFIED" || b.status === "APPROVED" || b.status === "POSTED";
 
                 return (
                   <tr key={b.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-100", isPaid && "bg-emerald-50/30")}>
                     <td className="py-3 px-3">
-                      <strong className="text-text-primary block font-bold">{b.supplier_name || "PT. Supplier Otomasi"}</strong>
-                      <span className="text-2xs text-text-secondary">Jatuh Tempo: {b.due_date || "30 Hari"}</span>
+                      <strong className="text-text-primary block font-bold">{b.supplier_name || b.party_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.display_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.legal_name || "Vendor tidak tersedia"}</strong>
+                      <span className="text-2xs text-text-secondary">Jatuh Tempo: {b.due_date || "Belum ditentukan"}</span>
                     </td>
                     <td className="py-3 px-3 font-mono font-semibold text-text-secondary">
                       {b.invoice_number || `INV-${b.id}`}
                     </td>
                     <td className="py-3 px-3">
                       <strong className={cn("font-bold", isPaid ? "text-emerald-700" : "text-red-600")}>
-                        {formatMoney(b.amount || 25000000)}
+                        {formatMoney(b.total_amount ?? b.amount ?? 0)}
                       </strong>
                     </td>
                     <td className="py-3 px-3">
@@ -767,21 +801,35 @@ export default function FinanceClient() {
                         </span>
                       ) : (
                         <span className="badge badge-warning text-2xs font-bold py-0.5 px-2">
-                          Menunggu 3-Way Match
+                          {b.status || "DRAFT"}
                         </span>
                       )}
                     </td>
                     <td className="py-3 px-3 text-right">
-                      {isPending && (
+                      {b.status === "DRAFT" && (
+                        <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/submit`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
+                          Submit
+                        </button>
+                      )}
+                      {b.status === "SUBMITTED" && (
                         <button
                           onClick={() => handleVerifyThreeWayMatch(b)}
                           className="btn-outline py-1 px-3 text-2xs gap-1 text-brand-deep-green border-brand-green/50 hover:bg-brand-light-green font-bold"
                         >
-                          <ShieldCheck size={12} /> Verifikasi 3-Way Match
+                          <ShieldCheck size={12} /> Verifikasi Dokumen
                         </button>
                       )}
-
-                      {isMatched && !isPaid && (
+                      {b.status === "VERIFIED" && (
+                        <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/approve`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
+                          Setujui
+                        </button>
+                      )}
+                      {b.status === "APPROVED" && (
+                        <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/post`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
+                          Posting
+                        </button>
+                      )}
+                      {b.status === "POSTED" && !isPaid && (
                         <button
                           onClick={() => handleOpenPayModal(b)}
                           className="btn-primary py-1 px-3 text-2xs gap-1 bg-emerald-600 hover:bg-emerald-700 font-bold shadow-xs"
@@ -801,6 +849,29 @@ export default function FinanceClient() {
               })}
             </tbody>
           </table>
+          </div>
+
+          <div className="border-t border-gray-100 pt-4">
+            <h4 className="text-xs font-bold text-text-primary mb-2">Permintaan Pembayaran AP</h4>
+            {payments.length === 0 ? (
+              <p className="text-xs text-text-secondary">Belum ada permintaan pembayaran.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {payments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 p-3 text-xs">
+                    <div>
+                      <strong>{payment.reference_number}</strong>
+                      <span className="ml-2 text-text-secondary">{formatMoney(payment.amount ?? 0)} · {payment.status}</span>
+                    </div>
+                    {['SUBMITTED', 'APPROVED'].includes(payment.status) && (
+                      <button onClick={() => handlePaymentLifecycle(payment)} className="btn-outline py-1 px-3 text-2xs">
+                        {payment.status === 'SUBMITTED' ? 'Setujui Payment' : 'Eksekusi Payment'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         )
@@ -842,15 +913,12 @@ export default function FinanceClient() {
                   <td className="font-semibold text-brand-deep-green">{formatMoney(p.total_amount ?? p.amount ?? p.subtotal ?? 0)}</td>
                   <td><span className={cn("badge", getStatusColor(p.status))}>{p.status}</span></td>
                   <td>
-                    {p.status !== "APPROVED" ? (
-                      <button
-                        onClick={() => handleApproveBilling(p.id)}
-                        className="btn-primary py-1 px-2.5 text-2xs gap-1 bg-emerald-700 hover:bg-emerald-800"
-                      >
-                        <FileCheck size={12} /> Approve & Buat Faktur
+                    {["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
+                      <button onClick={() => handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
+                        {p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
                       </button>
                     ) : (
-                      <span className="text-2xs text-brand-deep-green font-bold">✓ Faktur Terbit</span>
+                      <span className="text-2xs text-brand-deep-green font-bold">Billing diterbitkan</span>
                     )}
                   </td>
                 </tr>
@@ -965,15 +1033,15 @@ export default function FinanceClient() {
               <button onClick={() => setIsReceiptModalOpen(true)} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-emerald-600 text-emerald-700 hover:bg-emerald-50">
                 <Plus size={13} /> Catat Uang Masuk
               </button>
-              <button onClick={() => setIsPaymentModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green">
-                <CreditCard size={13} /> Pengeluaran Kas
+              <button onClick={() => setActiveTab("ap")} className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green">
+                <CreditCard size={13} /> Bayar dari Tagihan AP
               </button>
             </div>
           </div>
 
           {/* 4 Kartu Rekening Bank */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            {BANK_ACCOUNTS.map((b) => (
+            {bankAccounts.map((b) => (
               <div key={b.id} className="card p-4 rounded-2xl border border-text-tertiary bg-white flex flex-col justify-between min-h-[120px] shadow-xs">
                 <div>
                   <div className="flex items-center justify-between text-2xs font-bold text-text-secondary uppercase">
@@ -985,7 +1053,7 @@ export default function FinanceClient() {
                 </div>
                 <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex justify-between items-baseline">
                   <span className="text-2xs text-text-secondary">Saldo Tersedia:</span>
-                  <strong className="text-sm font-black text-brand-deep-green">{formatMoney(b.balance)}</strong>
+                  <strong className="text-sm font-black text-brand-deep-green">{b.balance == null ? "Belum tersedia" : formatMoney(b.balance)}</strong>
                 </div>
               </div>
             ))}
@@ -1027,13 +1095,13 @@ export default function FinanceClient() {
                   ))}
                   {vendorBills.filter(b => b.status === "PAID").map((b) => (
                     <tr key={`out-${b.id}`} className="hover:bg-red-50/20">
-                      <td className="py-3 px-4 font-mono text-2xs">{b.due_date || "2026-08-23"}</td>
+                      <td className="py-3 px-4 font-mono text-2xs">{b.due_date || "-"}</td>
                       <td className="py-3 px-4">
                         <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-red-100 text-red-800">
                           🔴 Uang Keluar (Outflow)
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-semibold text-text-primary">BCA Giro Operasional</td>
+                      <td className="py-3 px-4 font-semibold text-text-primary">{b.bank_account_name || "-"}</td>
                       <td className="py-3 px-4">
                         <span className="text-text-primary block font-medium">Pembayaran Tagihan Vendor: {b.supplier_name}</span>
                         <span className="text-2xs text-text-secondary block font-mono">Inv: {b.invoice_number}</span>
@@ -1442,7 +1510,7 @@ export default function FinanceClient() {
 
             {/* Ringkasan Saldo Real-Time */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-              {BANK_ACCOUNTS.map((b) => (
+              {bankAccounts.map((b) => (
                 <div key={b.id} className="card p-4 rounded-2xl border border-text-tertiary bg-white flex flex-col justify-between shadow-xs">
                   <div className="flex items-center justify-between text-2xs font-bold text-text-secondary uppercase">
                     <span>{b.type.replace(/_/g, " ")}</span>
@@ -1452,7 +1520,7 @@ export default function FinanceClient() {
                   <span className="text-2xs text-text-secondary font-mono mt-0.5">{b.number}</span>
                   <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex justify-between items-baseline">
                     <span className="text-2xs text-text-secondary">Saldo Buku:</span>
-                    <strong className="text-sm font-black text-brand-deep-green">{formatMoney(b.balance)}</strong>
+                    <strong className="text-sm font-black text-brand-deep-green">{b.balance == null ? "Belum tersedia" : formatMoney(b.balance)}</strong>
                   </div>
                 </div>
               ))}
@@ -1543,31 +1611,12 @@ export default function FinanceClient() {
       <Modal
         isOpen={isMatchModalOpen}
         onClose={() => setIsMatchModalOpen(false)}
-        title="Verifikasi 3-Way Match"
-        subtitle={`Vendor: ${selectedBillForMatch?.supplier_name || "Supplier"}`}
+        title="Verifikasi Dokumen Invoice"
+        subtitle={`Invoice: ${selectedBillForMatch?.invoice_number || "Tidak tersedia"}`}
       >
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="p-3 rounded-xl bg-gray-50 border border-text-tertiary">
-              <span className="text-2xs text-text-secondary block">1. Purchase Order</span>
-              <strong className="text-brand-deep-green">{selectedBillForMatch?.po_number || "PO-2026-041"}</strong>
-              <p className="mt-1 font-semibold">{formatMoney(selectedBillForMatch?.amount || 25000000)}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-gray-50 border border-text-tertiary">
-              <span className="text-2xs text-text-secondary block">2. Goods Receipt (GRN)</span>
-              <strong className="text-brand-deep-green">{selectedBillForMatch?.grn_number || "GRN-2026-033"}</strong>
-              <p className="mt-1 font-semibold text-emerald-700">✓ 100% Diterima</p>
-            </div>
-            <div className="p-3 rounded-xl bg-gray-50 border border-text-tertiary">
-              <span className="text-2xs text-text-secondary block">3. Invoice Vendor</span>
-              <strong className="text-brand-deep-green">{selectedBillForMatch?.invoice_number || "INV-01"}</strong>
-              <p className="mt-1 font-semibold">{formatMoney(selectedBillForMatch?.amount || 25000000)}</p>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl bg-brand-light-green border border-brand-green/30 text-xs text-brand-deep-green flex items-center gap-2">
-            <CheckCircle2 size={16} />
-            <span>Kesesuaian kuantitas, harga satuan, dan penerimaan fisik barang: <b>MATCH (Cocok 100%)</b></span>
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+            Verifikasi ini hanya mengubah lifecycle dokumen dari SUBMITTED menjadi VERIFIED. Sistem belum memiliki relasi PO dan GRN pada kontrak invoice ini, sehingga tidak mengklaim 3-way match.
           </div>
 
           <div className="flex justify-end gap-2 mt-2">
@@ -1579,7 +1628,7 @@ export default function FinanceClient() {
               onClick={handleConfirmThreeWayMatch}
               className="btn-primary py-2 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 font-bold"
             >
-              Konfirmasi Match & Setujui Pembayaran (AP)
+              Konfirmasi Verifikasi Dokumen
             </button>
           </div>
         </div>
@@ -1596,7 +1645,22 @@ export default function FinanceClient() {
           onSubmit={async (e) => {
             e.preventDefault();
             try {
-              await api.post("/api/v1/finance/project-cost-entries/", costForm);
+              if (!costForm.project || costForm.amount <= 0 || !costForm.description.trim()) {
+                toast.error("Project, jumlah biaya, dan deskripsi wajib diisi.");
+                return;
+              }
+              await api.post("/api/v1/finance/project-cost-entries/", {
+                project_id: costForm.project,
+                source_type: "MANUAL_COST",
+                source_reference: `MANUAL-${localDateKey()}`,
+                description: costForm.description.trim(),
+                cost_element: costForm.category,
+                transaction_date: localDateKey(),
+                quantity: 1,
+                unit_cost: costForm.amount,
+                total_cost: costForm.amount,
+                status: "DRAFT",
+              });
               toast.success("Biaya berhasil dicatat!");
               setIsCostModalOpen(false);
               await loadFinanceData(true);
@@ -1606,6 +1670,13 @@ export default function FinanceClient() {
           }}
           className="flex flex-col gap-4"
         >
+          <div>
+            <label className="text-xs font-semibold text-text-primary block mb-1">Project *</label>
+            <select required value={costForm.project} onChange={e => setCostForm({ ...costForm, project: e.target.value })} className="input">
+              <option value="">Pilih project</option>
+              {financeProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-text-primary block mb-1">Kategori Biaya</label>
@@ -1718,16 +1789,22 @@ export default function FinanceClient() {
               } else if (billingForm.tax_scheme === "PROPORTIONAL") {
                 ppn = (dpp * 11) / 100;
               }
-              const pph = (dpp * billingForm.pph_rate) / 100;
-              const netCash = billingForm.client_type === "NON_WAPU" ? dpp + ppn - pph : dpp - pph;
-
+              const selectedProject = financeProjectOptions.find((project) => String(project.id) === String(billingForm.project));
+              if (!selectedProject?.customer_party_id) {
+                toast.error("Project harus memiliki customer party sebelum proposal billing dibuat.");
+                return;
+              }
               await api.post("/api/v1/finance/billing-proposals/", {
-                ...billingForm,
-                dpp_amount: dpp,
-                ppn_amount: ppn,
-                pph_amount: pph,
+                project_id: selectedProject.id,
+                customer_id: selectedProject.customer_party_id,
+                tax_scheme: billingForm.tax_scheme,
+                trigger_type: "MANUAL_MILESTONE",
+                description: billingForm.description.trim(),
+                subtotal: dpp,
+                tax_rate: 11,
+                tax_amount: ppn,
                 total_amount: dpp + ppn,
-                net_cash_amount: netCash,
+                status: "DRAFT",
               });
               toast.success("Proposal billing dan skema pajak berhasil diajukan.");
               setIsBillingModalOpen(false);
@@ -1738,6 +1815,13 @@ export default function FinanceClient() {
           }}
           className="flex flex-col gap-3.5 p-1 text-xs"
         >
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1">Project *</label>
+            <select required value={billingForm.project} onChange={e => setBillingForm({ ...billingForm, project: e.target.value })} className="input text-xs">
+              <option value="">Pilih project</option>
+              {financeProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1">Nilai Tagihan DPP (Rp) *</label>
@@ -1891,7 +1975,7 @@ export default function FinanceClient() {
         isOpen={isAPModalOpen}
         onClose={() => setIsAPModalOpen(false)}
         title="Daftarkan Tagihan Vendor (AP)"
-        subtitle="Entri invoice supplier masuk untuk diproses 3-way match"
+        subtitle="Entri invoice supplier dimulai sebagai DRAFT dan mengikuti lifecycle backend"
       >
         <form
           onSubmit={async (e) => {
@@ -1899,22 +1983,18 @@ export default function FinanceClient() {
             try {
               await api.post("/api/v1/finance/billing-documents/", {
               billing_type: "SUPPLIER_INVOICE",
+              party_id: apForm.supplier_id,
               invoice_number: apForm.invoice_number,
               invoice_date: new Date().toISOString(),
               due_date: apForm.due_date || null,
               subtotal: Number(apForm.amount),
               tax_amount: 0,
               total_amount: Number(apForm.amount),
-              paid_amount: 0,
-              outstanding_amount: Number(apForm.amount),
-              payment_status: "UNPAID",
-              status: "PENDING_MATCH",
-              rejection_reason: "",
             });
               await loadFinanceData(true);
-              toast.success("✓ Tagihan vendor berhasil didaftarkan & Menunggu 3-Way Match!");
+              toast.success("Tagihan vendor berhasil disimpan sebagai DRAFT.");
               setIsAPModalOpen(false);
-              setAPForm({ supplier_name: "", invoice_number: "", amount: 25000000, due_date: "" });
+              setAPForm({ supplier_id: "", invoice_number: "", amount: 0, due_date: "" });
             } catch {
               toast.error("Gagal mendaftarkan tagihan vendor");
             }
@@ -1923,14 +2003,15 @@ export default function FinanceClient() {
         >
           <div>
             <label className="text-xs font-semibold text-text-primary block mb-1">Nama Supplier / Vendor *</label>
-            <input
-              type="text"
+            <select
               required
-              placeholder="PT. Schneider Electric Automation"
-              value={apForm.supplier_name}
-              onChange={e => setAPForm({ ...apForm, supplier_name: e.target.value })}
+              value={apForm.supplier_id}
+              onChange={e => setAPForm({ ...apForm, supplier_id: e.target.value })}
               className="input"
-            />
+            >
+              <option value="">Pilih vendor dari master data</option>
+              {vendorOptions.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.display_name || vendor.legal_name}</option>)}
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1987,9 +2068,10 @@ export default function FinanceClient() {
               onChange={e => setPaymentForm({ ...paymentForm, bank_account: e.target.value })}
               className="input text-xs"
             >
-              <option value="BCA Giro Operasional — 882-019-2810">BCA Giro Operasional (IDR) — 882-019-2810</option>
-              <option value="Mandiri Payroll & Vendor — 132-009-8812">Mandiri Giro Bisnis — 132-009-8812</option>
-              <option value="Kas Tunai Operasional Perusahaan">Kas Kecil (Petty Cash Operasional)</option>
+              <option value="">Pilih rekening</option>
+              {bankAccounts.map((account) => (
+                <option key={account.id} value={account.id}>{account.bank} — {account.number}</option>
+              ))}
             </select>
           </div>
 
@@ -2148,7 +2230,7 @@ export default function FinanceClient() {
               onChange={e => setReceiptForm({ ...receiptForm, bank_account: e.target.value })}
               className="input text-xs font-semibold"
             >
-              {BANK_ACCOUNTS.map(b => (
+              {bankAccounts.map(b => (
                 <option key={b.id} value={b.name}>
                   {b.name} (Saldo: {formatMoney(b.balance)})
                 </option>
@@ -2279,12 +2361,6 @@ function TabFundingProyek({
   const [decisionAction, setDecisionAction] = useState<"APPROVED" | "REJECTED" | "DISBURSED">("APPROVED");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  /* State Pencairan Kas Bank */
-  const [selectedBankAccount, setSelectedBankAccount] = useState("BCA Giro Operasional — 882-019-2810");
-  const [paymentMethod, setPaymentMethod] = useState("BANK_TRANSFER");
-  const [voucherNumber, setVoucherNumber] = useState("");
-  const [disburseDate, setDisburseDate] = useState(new Date().toISOString().split("T")[0]);
-
   // Helper resolusi nominal dana yang aman dari berbagai kemungkinan nama field backend
 /**
  * getFundingAmount coordinates the UI behavior represented by this function.
@@ -2306,27 +2382,16 @@ function TabFundingProyek({
  */
   const handleDecision = async () => {
     if (!selectedFunding) return;
-    if (decisionAction === "DISBURSED" && !voucherNumber.trim()) {
-      toast.error("Nomor voucher pencairan wajib diisi.");
-      return;
-    }
     setIsSubmitting(true);
     try {
-      const payloadNote = decisionAction === "DISBURSED"
-        ? `[CAIR via ${selectedBankAccount.split("—")[0]} | Ref: ${voucherNumber}] ${decisionNotes}`
-        : decisionNotes;
-
-      // Panggil endpoint action backend keputusan finance
-      await api.post(`/api/v1/finance/project-fundings/${selectedFunding.id}/decide/`, {
-        decision: decisionAction,
-        notes: payloadNote,
-        bank_account: selectedBankAccount,
-        voucher_number: voucherNumber,
-      });
-
       if (decisionAction === "DISBURSED") {
-        toast.success(`Dana berhasil dicairkan dari ${selectedBankAccount.split("—")[0]}. Saldo kas telah diperbarui.`);
+        await api.post(`/api/v1/finance/project-fundings/${selectedFunding.id}/draw/`);
+        toast.success("Funding ditandai telah ditarik sesuai lifecycle backend.");
       } else {
+        await api.post(`/api/v1/finance/project-fundings/${selectedFunding.id}/decide/`, {
+          decision: decisionAction,
+          remarks: decisionNotes,
+        });
         toast.success(`Pengajuan dana berhasil diubah ke status: ${decisionAction}`);
       }
 
@@ -2465,18 +2530,17 @@ function TabFundingProyek({
                             onClick={() => {
                               setSelectedFunding(f);
                               setDecisionAction("DISBURSED");
-                              setVoucherNumber("");
                               setIsDecisionModalOpen(true);
                             }}
                             className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold text-2xs hover:bg-blue-700 shadow-xs flex items-center gap-1"
                           >
-                            <Zap size={11} /> Cairkan Kas
+                            <Zap size={11} /> Tandai Drawn
                           </button>
                         )}
 
                         {isDisbursed && (
                           <span className="text-2xs text-blue-700 font-bold flex items-center gap-1">
-                            <CheckCircle2 size={13} className="text-blue-600" /> Kas Dicairkan
+                            <CheckCircle2 size={13} className="text-blue-600" /> Funding Drawn
                           </span>
                         )}
 
@@ -2527,64 +2591,11 @@ function TabFundingProyek({
               </div>
             </div>
 
-            {/* Khusus Form Pencairan Dana: Pemilihan Rekening Bank */}
+            {/* Draw advances the funding lifecycle; it is not a bank transfer API. */}
             {decisionAction === "DISBURSED" && (
-              <>
-                <div>
-                  <label className="text-xs font-bold text-text-primary block mb-1">
-                    Rekening Kas / Bank Sumber Pengeluaran Dana *
-                  </label>
-                  <select
-                    value={selectedBankAccount}
-                    onChange={e => setSelectedBankAccount(e.target.value)}
-                    className="w-full border border-text-tertiary rounded-lg p-2 text-xs font-semibold bg-white focus:outline-none focus:border-brand-green"
-                  >
-                    {BANK_ACCOUNTS.map(b => (
-                      <option key={b.id} value={b.name}>
-                        {b.name} (Saldo: {formatMoney(b.balance)})
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-3xs text-text-secondary mt-0.5 block">
-                    Dana akan dipotong langsung dari saldo rekening yang dipilih.
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-text-primary block mb-1">Metode Pencairan</label>
-                    <select
-                      value={paymentMethod}
-                      onChange={e => setPaymentMethod(e.target.value)}
-                      className="w-full border border-text-tertiary rounded-lg p-2 text-xs bg-white"
-                    >
-                      <option value="BANK_TRANSFER">Transfer Bank / RTGS</option>
-                      <option value="GIRO_CEK">Bilyet Giro / Cek</option>
-                      <option value="CASH">Kas Tunai Kasir</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-text-primary block mb-1">Tanggal Transfer *</label>
-                    <input
-                      type="date"
-                      value={disburseDate}
-                      onChange={e => setDisburseDate(e.target.value)}
-                      className="w-full border border-text-tertiary rounded-lg p-2 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-text-primary block mb-1">Nomor Voucher Pengeluaran Kas / Bank *</label>
-                  <input
-                    type="text"
-                    required={decisionAction === "DISBURSED"}
-                    value={voucherNumber}
-                    onChange={e => setVoucherNumber(e.target.value)}
-                    className="w-full border border-text-tertiary rounded-lg p-2 text-xs font-mono font-bold"
-                  />
-                </div>
-              </>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                Aksi ini hanya mengubah lifecycle funding menjadi drawn. Transfer bank dan saldo tidak diklaim berubah oleh halaman ini.
+              </div>
             )}
 
             <div>

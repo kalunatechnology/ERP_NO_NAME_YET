@@ -64,93 +64,40 @@ export function CompanyMasterWorkspace() {
   const [activeSubTab, setActiveSubTab] = useState<"financial" | "operational">("financial");
 
   const canEditFinancial = userRole === "finance";
-  const canEditOperational = userRole === "finance";
+  const canEditCompany = userRole === "super_admin";
+  const canEditOperational = userRole === "company_admin";
 
   const [companyData, setCompanyData] = useState({
-    id: "10000000-0000-0000-0000-000000000001",
-    company_code: "SMA",
-    legal_name: "PT Sinergi Muda Arsa",
-    tax_number: "03.881.992.1-512.000",
-    kpp_name: "KPP Pratama Semarang Candisari",
-    pkp_status: "PKP Aktif (Pengusaha Kena Pajak)",
-    status: "ACTIVE",
-    fiscal_year_start: "2026-01-01",
-    office_address: "Jl. Pemuda No. 118, Sekayu, Kec. Semarang Tengah, Kota Semarang, Jawa Tengah 50132",
-    workshop_address: "Studio & Creative Hub Arsa, Jl. Pahlawan No. 45, Semarang",
-    phone: "(024) 841-9920 / +62 812-3456-7890",
-    email: "corporate@sinergimudaarsa.co.id",
-    business_hours: "Senin - Jumat: 08:30 - 17:30 WIB",
+    id: "",
+    company_code: "",
+    legal_name: "",
+    tax_number: "",
+    kpp_name: "",
+    pkp_status: "",
+    status: "",
+    fiscal_year_start: "",
+    office_address: "",
+    workshop_address: "",
+    phone: "",
+    email: "",
+    business_hours: "",
   });
 
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([
-    {
-      id: "bank-1",
-      bank_name: "Bank Central Asia (BCA) - KCP Pemuda Semarang",
-      account_number: "882-019-2810",
-      account_name: "PT SINERGI MUDA ARSA",
-      type: "Rekening Giro Operasional Utama",
-      status: "ACTIVE",
-    },
-    {
-      id: "bank-2",
-      bank_name: "Bank Mandiri (Persero) - KC Semarang Pahlawan",
-      account_number: "131-002-8819-201",
-      account_name: "PT SINERGI MUDA ARSA",
-      type: "Rekening Escrow & Penampungan Proyek",
-      status: "ACTIVE",
-    },
-    {
-      id: "bank-3",
-      bank_name: "Bank Negara Indonesia (BNI) - KC Semarang",
-      account_number: "028-192-3810-100",
-      account_name: "PT SINERGI MUDA ARSA",
-      type: "Kas Operasional Lapangan & Petty Cash",
-      status: "ACTIVE",
-    },
-  ]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
 
-  const [creditFacilities, setCreditFacilities] = useState<CreditFacility[]>([
-    {
-      id: "cf-1",
-      facility_type: "KREDIT_MODAL_KERJA_KMK",
-      facility_number: "KMK-BCA-2026-004",
-      credit_limit: 500000000,
-      utilized_amount: 150000000,
-      available_amount: 350000000,
-      status: "ACTIVE",
-    },
-    {
-      id: "cf-2",
-      facility_type: "BANK_GARANSI_PELAKSANAAN",
-      facility_number: "BG-MDR-2026-012",
-      credit_limit: 250000000,
-      utilized_amount: 80000000,
-      available_amount: 170000000,
-      status: "ACTIVE",
-    },
-  ]);
+  const [creditFacilities, setCreditFacilities] = useState<CreditFacility[]>([]);
 
-  const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([
-    { id: "org-1", code: "DIV-OPS", name: "Divisi Operasional & Manajemen Proyek", type: "DIVISION", status: "ACTIVE" },
-    { id: "org-2", code: "DIV-FIN", name: "Divisi Keuangan, Akuntansi & Perpajakan", type: "DIVISION", status: "ACTIVE" },
-    { id: "org-3", code: "DIV-CREATIVE", name: "Divisi Produksi Media & Creative Studio", type: "DIVISION", status: "ACTIVE" },
-    { id: "org-4", code: "DIV-ENG", name: "Divisi Engineering, R&D & Lapangan", type: "DIVISION", status: "ACTIVE" },
-  ]);
+  const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
 
-  const [workAssets, setWorkAssets] = useState<WorkAsset[]>([
-    { id: "ast-1", code: "EQ-CAM-01", name: "Kamera Sony Cinema Line FX3 + Lensa G-Master", serial: "SN-SNY-881920", cost: 65000000, status: "TERSEDIA" },
-    { id: "ast-2", code: "EQ-DRN-01", name: "Drone DJI Mavic 3 Cine Enterprise Edition", serial: "SN-DJI-449102", cost: 48000000, status: "DIGUNAKAN_PROYEK" },
-    { id: "ast-3", code: "EQ-SRV-01", name: "GPS Geodetic RTK GNSS Receiver System", serial: "SN-TRM-102938", cost: 120000000, status: "TERSEDIA" },
-    { id: "ast-4", code: "EQ-WRK-01", name: "Workstation Editing Pro AMD Threadripper 64-Core", serial: "SN-WRK-552910", cost: 55000000, status: "DI_STUDIO" },
-  ]);
+  const [workAssets] = useState<WorkAsset[]>([]);
 
   // Modals
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
   const [bankForm, setBankForm] = useState({
-    bank_name: "Bank Central Asia (BCA) - KCP Pemuda Semarang",
+    bank_name: "",
     account_number: "",
-    account_name: "PT SINERGI MUDA ARSA",
-    type: "Rekening Giro Operasional Utama",
+    account_name: "",
+    type: "",
     status: "ACTIVE",
   });
 
@@ -158,7 +105,7 @@ export function CompanyMasterWorkspace() {
   const [creditForm, setCreditForm] = useState({
     facility_type: "KREDIT_MODAL_KERJA_KMK",
     facility_number: "",
-    credit_limit: 500000000,
+    credit_limit: 0,
     utilized_amount: 0,
     status: "ACTIVE",
   });
@@ -176,46 +123,71 @@ export function CompanyMasterWorkspace() {
     code: "",
     name: "",
     serial: "",
-    cost: 15000000,
+    cost: 0,
     status: "TERSEDIA",
   });
 
   const loadMasterData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Fetch Company Profile
-      const compRes = await api.get("/api/v1/core/companies/").catch(() => null);
-      if (compRes?.data?.data?.length || compRes?.data?.results?.length) {
-        const list = compRes.data.data || compRes.data.results;
-        const sma = list.find((c: any) => c.company_code === "SMA") || list[0];
-        if (sma) {
+      const requests = await Promise.allSettled([
+        api.get("/api/v1/core/companies/"),
+        api.get("/api/v1/finance/bank-accounts/"),
+        api.get("/api/v1/finance/credit-facilities/"),
+        api.get("/api/v1/core/organizations/?page_size=200"),
+      ]);
+      const rows = (payload: any): any[] => {
+        const raw = payload?.data?.results ?? payload?.data?.data ?? payload?.data ?? [];
+        return Array.isArray(raw) ? raw : [];
+      };
+
+      if (requests[0].status === "fulfilled") {
+        const company = rows(requests[0].value)[0];
+        if (company) {
           setCompanyData(prev => ({
             ...prev,
-            id: sma.id,
-            legal_name: sma.legal_name || prev.legal_name,
-            tax_number: sma.tax_number || prev.tax_number,
-            company_code: sma.company_code || prev.company_code,
+            id: company.id,
+            legal_name: company.legal_name ?? "",
+            tax_number: company.tax_number ?? "",
+            company_code: company.company_code ?? "",
+            fiscal_year_start: company.fiscal_year_start?.slice?.(0, 10) ?? "",
+            status: company.status ?? "",
           }));
         }
       }
-
-      // 2. Fetch Bank Accounts
-      const bankRes = await api.get("/api/v1/finance/bank-accounts/").catch(() => null);
-      if (bankRes?.data) {
-        const raw = bankRes.data.data || bankRes.data.results || bankRes.data;
-        if (Array.isArray(raw) && raw.length > 0) {
-          setBankAccounts(raw.map((b: any) => ({
+      if (requests[1].status === "fulfilled") {
+        setBankAccounts(rows(requests[1].value).map((b: any) => ({
             id: b.id,
-            bank_name: b.bank_name,
-            account_number: b.account_number,
-            account_name: b.account_name,
-            type: b.account_type || "Rekening Operasional",
-            status: b.status || "ACTIVE",
+            bank_name: b.bank_name ?? "",
+            account_number: b.account_number ?? "",
+            account_name: b.account_name ?? "",
+            status: b.status ?? "",
           })));
-        }
       }
+      if (requests[2].status === "fulfilled") {
+        setCreditFacilities(rows(requests[2].value).map((item: any) => ({
+          id: item.id,
+          facility_type: item.facility_type ?? "",
+          facility_number: item.facility_number ?? "",
+          credit_limit: Number(item.credit_limit ?? 0),
+          utilized_amount: Number(item.utilized_amount ?? 0),
+          available_amount: Number(item.available_amount ?? 0),
+          status: item.status ?? "",
+        })));
+      }
+      if (requests[3].status === "fulfilled") {
+        setOrgUnits(rows(requests[3].value).map((item: any) => ({
+          id: item.id,
+          code: item.organization_code ?? "",
+          name: item.organization_name ?? "",
+          type: item.organization_type ?? "",
+          status: item.status ?? "",
+        })));
+      }
+      const failed = requests.filter((request) => request.status === "rejected").length;
+      if (failed > 0) toast.error(`${failed} sumber data master gagal dimuat; data contoh tidak digunakan.`);
     } catch {
-      // Keep defaults
+      toast.error("Gagal memuat data master perusahaan.");
     } finally {
       setLoading(false);
     }
@@ -227,13 +199,19 @@ export function CompanyMasterWorkspace() {
 
   const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEditFinancial) {
+    if (!canEditCompany) {
       toast.error("Anda tidak memiliki izin mengubah data master finansial");
       return;
     }
     setSavingCompany(true);
     try {
-      await api.patch(`/api/v1/core/companies/${companyData.id}/`, companyData).catch(() => null);
+      await api.patch(`/api/v1/core/companies/${companyData.id}/`, {
+        company_code: companyData.company_code,
+        legal_name: companyData.legal_name,
+        tax_number: companyData.tax_number,
+        fiscal_year_start: companyData.fiscal_year_start || null,
+        status: companyData.status,
+      });
       toast.success("Data legalitas perusahaan berhasil disimpan.");
     } catch {
       toast.error("Gagal menyimpan data perusahaan");
@@ -245,13 +223,23 @@ export function CompanyMasterWorkspace() {
   const handleCreateBankAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post("/api/v1/finance/bank-accounts/", {
+      const response = await api.post("/api/v1/finance/bank-accounts/", {
         company_id: companyData.id,
-        ...bankForm,
-      }).catch(() => null);
+        bank_name: bankForm.bank_name,
+        account_number: bankForm.account_number,
+        account_name: bankForm.account_name,
+        status: bankForm.status,
+      });
+      const created = response.data?.data ?? response.data;
       toast.success("Rekening bank perusahaan berhasil ditambahkan.");
       setIsBankModalOpen(false);
-      setBankAccounts(prev => [...prev, { id: "bank-" + Date.now(), ...bankForm }]);
+      setBankAccounts(prev => [...prev, {
+        id: created.id,
+        bank_name: created.bank_name,
+        account_number: created.account_number,
+        account_name: created.account_name,
+        status: created.status,
+      }]);
     } catch {
       toast.error("Gagal menambahkan rekening bank");
     }
@@ -261,14 +249,20 @@ export function CompanyMasterWorkspace() {
     e.preventDefault();
     try {
       const avail = Number(creditForm.credit_limit) - Number(creditForm.utilized_amount);
-      await api.post("/api/v1/finance/credit-facilities/", {
+      const response = await api.post("/api/v1/finance/credit-facilities/", {
         company_id: companyData.id,
         ...creditForm,
         available_amount: avail,
-      }).catch(() => null);
+      });
+      const created = response.data?.data ?? response.data;
       toast.success("Fasilitas kredit bank berhasil dicatat.");
       setIsCreditModalOpen(false);
-      setCreditFacilities(prev => [...prev, { id: "cf-" + Date.now(), ...creditForm, available_amount: avail }]);
+      setCreditFacilities(prev => [...prev, {
+        ...created,
+        credit_limit: Number(created.credit_limit ?? 0),
+        utilized_amount: Number(created.utilized_amount ?? 0),
+        available_amount: Number(created.available_amount ?? 0),
+      }]);
     } catch {
       toast.error("Gagal mencatat fasilitas kredit");
     }
@@ -277,16 +271,23 @@ export function CompanyMasterWorkspace() {
   const handleCreateOrgUnit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post("/api/v1/core/organizations/", {
+      const response = await api.post("/api/v1/core/organizations/", {
         company_id: companyData.id,
         organization_code: orgForm.code,
         organization_name: orgForm.name,
         organization_type: orgForm.type,
         status: orgForm.status,
-      }).catch(() => null);
+      });
+      const created = response.data?.data ?? response.data;
       toast.success("Unit organisasi berhasil ditambahkan.");
       setIsOrgModalOpen(false);
-      setOrgUnits(prev => [...prev, { id: "org-" + Date.now(), ...orgForm }]);
+      setOrgUnits(prev => [...prev, {
+        id: created.id,
+        code: created.organization_code,
+        name: created.organization_name,
+        type: created.organization_type,
+        status: created.status,
+      }]);
     } catch {
       toast.error("Gagal menambahkan unit organisasi");
     }
@@ -294,9 +295,7 @@ export function CompanyMasterWorkspace() {
 
   const handleCreateAsset = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success("Aset peralatan kerja operasional berhasil dicatat!", { icon: "🎥" });
-    setIsAssetModalOpen(false);
-    setWorkAssets(prev => [...prev, { id: "ast-" + Date.now(), ...assetForm }]);
+    toast.error("Pencatatan aset tersedia di modul Assets dan tidak dijalankan dari workspace Finance.");
   };
 
   return (
@@ -361,7 +360,7 @@ export function CompanyMasterWorkspace() {
                     <p className="text-2xs text-text-secondary">Identitas badan usaha dan administrasi pajak resmi</p>
                   </div>
                 </div>
-                {!canEditFinancial && (
+                {!canEditCompany && (
                   <span className="badge badge-neutral text-2xs gap-1">
                     <Lock size={10} /> Read Only
                   </span>
@@ -373,7 +372,7 @@ export function CompanyMasterWorkspace() {
                   <label className="text-xs font-semibold text-text-primary block mb-1">Nama Legal Perusahaan *</label>
                   <input
                     type="text"
-                    disabled={!canEditFinancial}
+                    disabled={!canEditCompany}
                     value={companyData.legal_name}
                     onChange={e => setCompanyData({ ...companyData, legal_name: e.target.value })}
                     className="input text-xs font-medium"
@@ -385,7 +384,7 @@ export function CompanyMasterWorkspace() {
                   <label className="text-xs font-semibold text-text-primary block mb-1">Kode Singkat Entitas</label>
                   <input
                     type="text"
-                    disabled={!canEditFinancial}
+                    disabled={!canEditCompany}
                     value={companyData.company_code}
                     onChange={e => setCompanyData({ ...companyData, company_code: e.target.value })}
                     className="input text-xs font-semibold uppercase"
@@ -396,7 +395,7 @@ export function CompanyMasterWorkspace() {
                   <label className="text-xs font-semibold text-text-primary block mb-1">NPWP Perusahaan (16 Digit) *</label>
                   <input
                     type="text"
-                    disabled={!canEditFinancial}
+                    disabled={!canEditCompany}
                     value={companyData.tax_number}
                     onChange={e => setCompanyData({ ...companyData, tax_number: e.target.value })}
                     className="input text-xs font-mono font-medium"
@@ -408,9 +407,9 @@ export function CompanyMasterWorkspace() {
                   <label className="text-xs font-semibold text-text-primary block mb-1">KPP Terdaftar</label>
                   <input
                     type="text"
-                    disabled={!canEditFinancial}
+                    disabled
                     value={companyData.kpp_name}
-                    onChange={e => setCompanyData({ ...companyData, kpp_name: e.target.value })}
+                    title="Field KPP belum tersedia pada kontrak backend company."
                     className="input text-xs"
                   />
                 </div>
@@ -419,9 +418,9 @@ export function CompanyMasterWorkspace() {
                   <label className="text-xs font-semibold text-text-primary block mb-1">Status Pengukuhan PKP</label>
                   <input
                     type="text"
-                    disabled={!canEditFinancial}
+                    disabled
                     value={companyData.pkp_status}
-                    onChange={e => setCompanyData({ ...companyData, pkp_status: e.target.value })}
+                    title="Field status PKP belum tersedia pada kontrak backend company."
                     className="input text-xs"
                   />
                 </div>
@@ -430,7 +429,7 @@ export function CompanyMasterWorkspace() {
                   <label className="text-xs font-semibold text-text-primary block mb-1">Awal Tahun Fiskal</label>
                   <input
                     type="date"
-                    disabled={!canEditFinancial}
+                    disabled={!canEditCompany}
                     value={companyData.fiscal_year_start}
                     onChange={e => setCompanyData({ ...companyData, fiscal_year_start: e.target.value })}
                     className="input text-xs"
@@ -438,7 +437,7 @@ export function CompanyMasterWorkspace() {
                 </div>
               </div>
 
-              {canEditFinancial && (
+              {canEditCompany && (
                 <div className="flex justify-end pt-3 border-t border-text-tertiary/60">
                   <button
                     type="submit"
@@ -649,26 +648,8 @@ export function CompanyMasterWorkspace() {
               </div>
 
               <div className="divide-y divide-text-tertiary/50">
-                <div className="py-2.5 flex items-center justify-between">
-                  <div>
-                    <strong className="text-xs text-text-primary block">Melika Citra Tania</strong>
-                    <span className="text-3xs text-text-secondary">Project Manager & Operations Lead</span>
-                  </div>
-                  <span className="badge badge-success text-3xs">Lead PM</span>
-                </div>
-                <div className="py-2.5 flex items-center justify-between">
-                  <div>
-                    <strong className="text-xs text-text-primary block">Arof Fudding</strong>
-                    <span className="text-3xs text-text-secondary">Project Manager & Research Lead</span>
-                  </div>
-                  <span className="badge badge-success text-3xs">Lead PM</span>
-                </div>
-                <div className="py-2.5 flex items-center justify-between">
-                  <div>
-                    <strong className="text-xs text-text-primary block">Tim Lapangan & Studio Specialist</strong>
-                    <span className="text-3xs text-text-secondary">Field Engineers, Videographers & Surveyors</span>
-                  </div>
-                  <span className="badge badge-neutral text-3xs">Field Squad</span>
+                <div className="py-6 text-center text-xs text-text-secondary">
+                  Roster personel belum menjadi bagian kontrak data workspace ini. Gunakan User &amp; Access untuk data anggota yang sebenarnya.
                 </div>
               </div>
             </div>
@@ -687,15 +668,7 @@ export function CompanyMasterWorkspace() {
                     <p className="text-2xs text-text-secondary">Inventaris perangkat keras dan armada produksi</p>
                   </div>
                 </div>
-                {canEditOperational && (
-                  <button
-                    type="button"
-                    onClick={() => setIsAssetModalOpen(true)}
-                    className="btn-primary py-1.5 px-3 text-xs gap-1"
-                  >
-                    <Plus size={13} /> Tambah Aset
-                  </button>
-                )}
+                <span className="badge badge-neutral text-3xs">Dikelola di modul Assets</span>
               </div>
 
               <div className="table-scroll-wrapper">

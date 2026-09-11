@@ -1,5 +1,7 @@
 # Q8 — Production Readiness & Frontend Stabilization
 
+Latest integration changes and unresolved release gates: [Integration hardening 10 September](docs/INTEGRATION_HARDENING_2026_09_10.md). Historical PASS counts below are not acceptance evidence for the new transactional code. New tax-scheme migration is pending target verification; production readiness remains blocked.
+
 **Status diperbarui 10 September 2026.** Route registration 2.616/2.616, authenticated GET 783/783, mutation pipeline dry-run 1.833/1.833, full BDD, backend compile, dan frontend 14-route production build pada baseline terakhir semuanya lulus. Q11 System Guardrails terbaru lulus 9/9 termasuk kontrak Frontend Route → Module → API. Benchmark terakhir login sampai seluruh data dashboard awal adalah 2.009 ms. Rincian: [Current Implementation Status](docs/CURRENT_IMPLEMENTATION_STATUS.md).
 
 ## Status verifikasi
@@ -37,6 +39,9 @@
 - `/tasks` menggunakan module backend `PROJECTS`; module tidak lagi diturunkan dari nama URL.
 - Axios membatalkan request modular yang diketahui tidak sah sebelum transmisi. Data Explorer, Reporting, dashboard, panel global, Inventory, dan tab Assets hanya memuat source yang diizinkan kontrak aktif.
 - Login dan `/auth/me` menyediakan `delegated_modules` agar delegasi frontend identik dengan access context backend.
+- Weekly Task mengirim `assignee` berupa user ID sesuai model backend, bukan nama PIC atau field ekstra yang tidak dikenal.
+- Project Cost → WIP/journal, Billing Proposal → Billing Document, dan AP Payment kini memakai command backend transaksional; frontend tidak menulis status lifecycle melalui CRUD generik.
+- Nomor bukti pajak dan identitas proyek tidak lagi dibuat secara sintetis oleh frontend; input wajib harus berasal dari pengguna atau record backend.
 
 ## Readiness kontrak Frontend → Backend
 
@@ -47,8 +52,11 @@
 | Company entitlement | PASS | Module kosong/tidak valid fail-closed; company-disabled module tidak dapat dibuka oleh delegasi |
 | Cross-module loader | PASS | Project/Finance/CRM/Reporting/Inventory/Assets diperiksa sebelum request |
 | API preflight | PASS | Request yang diketahui unauthorized dibatalkan dengan `ERR_FRONTEND_MODULE_ACCESS` |
+| Tanggal operasional | PASS | Date/DateTime API dinormalisasi ke calendar key; “hari ini” memakai timezone browser, bukan UTC |
 | Backend enforcement | PASS | JWT, company, entitlement, active role, delegation, row scope, dan strict action tetap diperiksa backend |
 | Browser production smoke | PENDING DEPLOYMENT | Setelah deploy, ulangi login tiap persona dan pastikan Network tidak berisi expected-403 dari background loader |
+
+Catatan readiness: command Finance utama sudah tersedia. Production readiness tetap menunggu migrasi/status database target, deployment frontend/backend dari release yang sama, serta browser smoke Hostinger.
 
 Status **PASS lokal** bukan bukti bahwa build terbaru sudah aktif di Hostinger. Release baru dianggap siap setelah frontend dan backend berasal dari commit/build yang sama, user melakukan login ulang untuk menyegarkan `delegated_modules`, dan browser smoke pada domain produksi lulus.
 
@@ -88,4 +96,33 @@ Frontend:
 
 ## Catatan font
 
-Production build lokal berhasil. Optimisasi Google Fonts dilewati ketika jaringan build dibatasi; browser tetap memakai fallback Roboto/Inter/system-ui. Untuk build yang sepenuhnya deterministik, font sebaiknya di-host lokal pada iterasi berikutnya.
+Frontend tidak lagi mengunduh Google Fonts saat build. Font memakai system stack sehingga build tidak bergantung pada jaringan font eksternal.
+
+## Audit integrasi antar-page 10 September 2026
+
+Baseline frontend terbaru menutup fallback yang sebelumnya membuat kegagalan API tampak berhasil atau menulis aggregate yang berbeda:
+
+- Main Task dan Weekly Task tidak lagi dialihkan ke generic `project_task` ketika endpoint WBS gagal.
+- Assignment memakai action backend `/main-tasks/:id/assign-members`; delete assignment tidak lagi menelan error.
+- Project lifecycle tidak lagi melakukan generic PATCH status setelah command gagal, dan kalkulasi EVM gagal tidak lagi menampilkan angka contoh.
+- Keputusan customer quotation mengirim `decision=ACCEPTED|REJECTED` sesuai kontrak Sales.
+- Command palette dan tombol attendance disaring dengan registry route/role/module yang sama.
+- Progress Daily Task tidak dapat diedit sebagai persentase manual; response backend berbasis checklist/status menjadi nilai authoritative.
+- Funding draw memakai action `/draw`, bukan menyisipkan `DISBURSED` ke endpoint `/decide`; UI tidak lagi mengklaim transfer bank atau perubahan saldo yang tidak dilakukan backend.
+- AP payment membentuk Payment dan allocation lalu menjalankan `/submit`; bill tidak lagi diubah langsung menjadi `PAID`.
+- Company master, rekening, fasilitas kredit, pajak, health, profitabilitas, dan bank tidak lagi diawali record/angka produksi sintetis.
+- Static route audit sekarang mem-parsing call router secara utuh dan tidak lagi gagal ketika middleware mount lebih panjang dari 900 karakter.
+
+Verifikasi lokal setelah hardening Finance: frontend TypeScript PASS, backend TypeScript PASS, static Express-Next contract audit 176 call terhadap 2.648 route record tanpa finding/dynamic call unresolved, serta Q11 9/9 PASS. Browser, database aktual, dan deployment production belum diuji, sehingga status smoke Hostinger tetap `PENDING DEPLOYMENT`.
+
+## Finance hardening — 10 September 2026
+
+- Project Cost: `DRAFT → VALIDATED → POSTED_TO_WIP`; posting membuat jurnal seimbang debit akun WIP `1150` dan kredit akun sumber yang dipilih.
+- Billing Proposal: `DRAFT → SUBMITTED → APPROVED → ISSUED`; issuance atomik membuat satu Billing Document `DRAFT` dan menautkan `billing_document_id` sebagai idempotency bisnis.
+- Billing Document customer/supplier tetap melalui `DRAFT → SUBMITTED → VERIFIED → APPROVED → POSTED`; posting customer invoice adalah titik pembuatan tax dan jurnal.
+- AP Payment dibuat sekaligus dengan allocation dalam satu transaksi melalui `/billing-documents/:id/create-payment`, berstatus `SUBMITTED`. Approval dan execution terpisah menurut SoD; execution membuat jurnal AP/bank dan memperbarui outstanding invoice secara atomik.
+- Tax workspace memakai `/tax-transactions/projection`; `tax_scheme` kini disimpan pada proposal dan Billing Document lalu diteruskan ke proyeksi. Record historis yang belum diklasifikasikan tetap `null`.
+- Dashboard PM memakai projection milik module `PROJECTS`, bukan request silang ke `FINANCE`.
+- CRUD generik menolak penulisan field lifecycle untuk model Finance terproteksi; status awal dipaksakan ke `DRAFT` oleh backend.
+- UI AP tidak lagi mengarang vendor, PO, GRN, nominal, atau hasil “match 100%”. Karena kontrak Billing Document belum memiliki relasi GRN authoritative, UI menyebut aksinya “Verifikasi Dokumen”, bukan bukti three-way match.
+- Profile mutation tidak menelan error; Right Panel menampilkan degraded-state dan mempertahankan data terakhir bila seluruh source feed yang diizinkan gagal.

@@ -72,7 +72,6 @@ const NAV_BY_ROLE: Record<UserRoleType, NavItem[]> = {
   // 4. Staff - Lean execution flow
   staff: [
     { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
-    { href: "/projects",   label: "Project Overview", icon: FolderKanban },
     { href: "/tasks",      label: "Daily Tasks", icon: CheckSquare     },
     { href: "/reporting",  label: "Report",      icon: FileText        },
   ],

@@ -652,6 +652,8 @@ Project Management menerapkan row-level scope melalui `accessWhere` dan service 
 
 Frontend `/tasks` adalah workspace Daily Task di bawah entitlement `PROJECTS`, bukan module `TASKS`. Registry terpusat `frontend-next/lib/access/module-contract.ts` memetakan route dan API prefix ke kontrak backend serta mengevaluasi active role, company entitlement, dan delegasi efektif. AppShell, Sidebar, Dashboard BFF, Data Explorer, loader lintas-module, panel global, dan Axios preflight memakai registry yang sama. Request modular yang diketahui tidak sah dibatalkan sebelum transmisi, sedangkan backend tetap menjadi enforcement authoritative.
 
+Field `planned_date` Daily Task tersimpan sebagai Prisma `DateTime`, tetapi secara bisnis dipakai sebagai tanggal kalender. Frontend menormalisasi response tanggal-only maupun ISO DateTime melalui `normalizeDateKey`, sedangkan default “hari ini” dibuat oleh `localDateKey` berdasarkan timezone browser. Perbandingan langsung ISO/UTC dilarang untuk filter Hari Ini, overdue, grouping, dan default tanggal transaksi operasional.
+
 ## 7. Business Logic dan State Management
 
 ### CRM

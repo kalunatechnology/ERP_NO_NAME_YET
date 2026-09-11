@@ -1167,6 +1167,16 @@ projectsRouter.use('/task-transfers', createCrudRouter({
 // 8. OTHER DOMAIN CRUD VIEWSETS
 // =============================================================================
 
+projectsRouter.get('/dashboard/financial-summary', async (req: Request, res: Response, next: NextFunction) => {
+  try { res.json(await ProjectsService.getFinancialSummary(req.user, activeCompanyId(req))); }
+  catch (err) { next(err); }
+});
+
+projectsRouter.get('/:id/financial-summary', async (req: Request, res: Response, next: NextFunction) => {
+  try { res.json(await ProjectsService.getFinancialSummary(req.user, activeCompanyId(req), req.params.id)); }
+  catch (err) { next(err); }
+});
+
 projectsRouter.use('/projects', createCrudRouter({
   modelName: 'project_project',
   searchFields: ['project_name', 'project_code', 'status', 'customer_name'],

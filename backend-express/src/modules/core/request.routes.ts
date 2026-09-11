@@ -13,8 +13,15 @@ import { ForbiddenError } from '../../utils/errors';
 import { ReadThroughCache } from '../../utils/read-through-cache';
 import { requireActiveRole } from '../../middlewares/rbac.middleware';
 import { RoleCode } from '../../types/roles';
+import prisma from '../../config/database';
 
 export const requestRouter = Router();
+requestRouter.get('/disbursement-accounts', requireActiveRole(RoleCode.FINANCE), async (req, res, next) => {
+  try {
+    const accounts = await prisma.fin_bank_account.findMany({ where: { company_id: activeCompanyId(req), status: 'ACTIVE', ledger_account_id: { not: null } }, select: { id: true, account_name: true, bank_name: true, account_number: true } });
+    sendSuccess(res, accounts);
+  } catch (error) { next(error); }
+});
 const requestFeedCache = new ReadThroughCache<Awaited<ReturnType<typeof RequestService.getRequests>>>(250);
 
 // A successful request mutation invalidates all compact feed projections. The
