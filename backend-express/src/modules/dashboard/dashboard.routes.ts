@@ -277,65 +277,6 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
           AND pm.company_id = ${companyId}::uuid
           AND pm.user_id::text = ${userId}::text
           AND pm.employee_id IS NOT NULL
-      ),
-
-      /**
-       * Aggregate lembur Staff.
-       */
-      staff_overtime AS (
-        SELECT
-
-          COALESCE(
-            SUM(ts.overtime_hours) FILTER (
-              WHERE ts.work_date >= date_trunc(
-                'week',
-                CURRENT_DATE
-              )
-            ),
-            0
-          ) AS this_week_hours,
-
-          COALESCE(
-            SUM(ts.overtime_hours) FILTER (
-              WHERE ts.work_date >= date_trunc(
-                'month',
-                CURRENT_DATE
-              )
-            ),
-            0
-          ) AS this_month_hours,
-
-          COALESCE(
-            SUM(ts.overtime_hours) FILTER (
-              WHERE UPPER(ts.approval_status) IN (
-                'PENDING',
-                'SUBMITTED',
-                'WAITING_APPROVAL'
-              )
-            ),
-            0
-          ) AS pending_hours,
-
-          COALESCE(
-            SUM(ts.overtime_hours) FILTER (
-              WHERE UPPER(ts.approval_status) = 'APPROVED'
-            ),
-            0
-          ) AS approved_hours,
-
-          MAX(ts.work_date) FILTER (
-            WHERE ts.overtime_hours > 0
-          ) AS last_overtime_date
-
-        FROM project_timesheet ts
-
-        WHERE ts.tenant_id = ${tenantId}::uuid
-          AND ts.company_id = ${companyId}::uuid
-
-          AND ts.employee_id::text IN (
-            SELECT employee_id
-            FROM staff_employee_ids
-          )
       )
 
       SELECT jsonb_build_object(
@@ -663,37 +604,18 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
          * ========================================================
          */
         'overtimeSummary',
-        COALESCE((
-          SELECT jsonb_build_object(
-            'thisWeekHours',
-            COALESCE(so.this_week_hours, 0),
-
-            'thisMonthHours',
-            COALESCE(so.this_month_hours, 0),
-
-            'pendingHours',
-            COALESCE(so.pending_hours, 0),
-
-            'approvedHours',
-            COALESCE(so.approved_hours, 0),
-
-            'lastOvertimeDate',
-            so.last_overtime_date
-          )
-
-          FROM staff_overtime so
-        ), jsonb_build_object(
+        jsonb_build_object(
           'thisWeekHours', 0,
           'thisMonthHours', 0,
           'pendingHours', 0,
           'approvedHours', 0,
           'lastOvertimeDate', NULL
-        ))
+        )
 
       ) AS bundle
     `);
 
-    return rows[0]?.bundle ?? {
+    const bundle = rows[0]?.bundle ?? {
       projects: [],
       mainTasks: [],
       assignments: [],
@@ -706,7 +628,6 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
       proposals: [],
       fundings: [],
       users: [],
-
       overtimeSummary: {
         thisWeekHours: 0,
         thisMonthHours: 0,
@@ -715,6 +636,57 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
         lastOvertimeDate: null,
       },
     };
+
+    try {
+      const otRows = await prisma.$queryRaw<
+        Array<{
+          this_week_hours: number;
+          this_month_hours: number;
+          pending_hours: number;
+          approved_hours: number;
+          last_overtime_date: Date | null;
+        }>
+      >(Prisma.sql`
+        WITH staff_employee_ids AS (
+          SELECT DISTINCT e.id::text AS employee_id
+          FROM master_employee e
+          WHERE e.tenant_id = ${tenantId}::uuid
+            AND e.company_id = ${companyId}::uuid
+            AND e.user_id = ${userId}::text
+          UNION
+          SELECT DISTINCT pm.employee_id::text
+          FROM project_member pm
+          WHERE pm.tenant_id = ${tenantId}::uuid
+            AND pm.company_id = ${companyId}::uuid
+            AND pm.user_id::text = ${userId}::text
+            AND pm.employee_id IS NOT NULL
+        )
+        SELECT
+          COALESCE(SUM(ts.overtime_hours) FILTER (WHERE ts.work_date >= date_trunc('week', CURRENT_DATE)), 0)::float AS this_week_hours,
+          COALESCE(SUM(ts.overtime_hours) FILTER (WHERE ts.work_date >= date_trunc('month', CURRENT_DATE)), 0)::float AS this_month_hours,
+          COALESCE(SUM(ts.overtime_hours) FILTER (WHERE UPPER(ts.approval_status) IN ('PENDING', 'SUBMITTED', 'WAITING_APPROVAL')), 0)::float AS pending_hours,
+          COALESCE(SUM(ts.overtime_hours) FILTER (WHERE UPPER(ts.approval_status) = 'APPROVED'), 0)::float AS approved_hours,
+          MAX(ts.work_date) FILTER (WHERE ts.overtime_hours > 0) AS last_overtime_date
+        FROM project_timesheet ts
+        WHERE ts.tenant_id = ${tenantId}::uuid
+          AND ts.company_id = ${companyId}::uuid
+          AND ts.employee_id::text IN (SELECT employee_id FROM staff_employee_ids)
+      `);
+
+      if (otRows?.[0]) {
+        bundle.overtimeSummary = {
+          thisWeekHours: Number(otRows[0].this_week_hours || 0),
+          thisMonthHours: Number(otRows[0].this_month_hours || 0),
+          pendingHours: Number(otRows[0].pending_hours || 0),
+          approvedHours: Number(otRows[0].approved_hours || 0),
+          lastOvertimeDate: otRows[0].last_overtime_date ? new Date(otRows[0].last_overtime_date).toISOString().split('T')[0] : null,
+        };
+      }
+    } catch {
+      // Graceful fallback jika kolom overtime_hours belum termigrasi di database
+    }
+
+    return bundle;
   }
 
   /**

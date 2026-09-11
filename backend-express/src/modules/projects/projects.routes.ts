@@ -2080,7 +2080,14 @@ projectsRouter.get(
           null,
       });
     } catch (err) {
-      return next(err);
+      console.warn('[timesheets] Fallback overtime summary (mungkin kolom belum ada di DB):', err);
+      return res.json({
+        thisWeekHours: 0,
+        thisMonthHours: 0,
+        pendingHours: 0,
+        approvedHours: 0,
+        lastOvertimeDate: null,
+      });
     }
   },
 );
