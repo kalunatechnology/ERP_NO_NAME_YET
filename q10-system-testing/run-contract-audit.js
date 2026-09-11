@@ -135,6 +135,14 @@ function extractRouterRoutes(file, mounts) {
     for (const match of source.matchAll(direct)) {
       for (const prefix of prefixes) routeRecords.push({ method: match[1], path: normalizePath(`${prefix}/${match[2]}`), file, kind: 'custom' });
     }
+    // Express also accepts an array of equivalent paths. Parse every literal
+    // alias so the audit does not report valid frontend calls as mismatches.
+    const arrayRoutes = new RegExp(`${router}\\.(get|post|put|patch|delete)\\(\\s*\\[([^\\]]+)\\]`, 'g');
+    for (const match of source.matchAll(arrayRoutes)) {
+      for (const pathMatch of match[2].matchAll(/['\"]([^'\"]+)['\"]/g)) {
+        for (const prefix of prefixes) routeRecords.push({ method: match[1], path: normalizePath(`${prefix}/${pathMatch[1]}`), file, kind: 'custom-alias' });
+      }
+    }
     const useBodies = callBodies(source, `${router}.use`);
     for (const body of useBodies) {
       const match = /^\s*['"]([^'"]+)['"]/.exec(body);

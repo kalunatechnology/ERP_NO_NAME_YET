@@ -64,6 +64,31 @@ Frontend treats project, Weekly/Daily Task, payment, tax, and asset dates as bus
 
 Daily Task update memakai command `PATCH /api/v1/projects/daily-tasks/:id/update-progress`, bukan generic CRUD. Frontend hanya mengirim status, output, catatan, serta blocker; progress, owner, dan hierarki tidak pernah dikirim karena backend menghitungnya dari checklist dan proses assignment. Alias lama (`PENDING`, `ON_PROGRESS`, `DONE`) dinormalisasi ke status canonical (`IN_PROGRESS`, `COMPLETED`). Semua mutasi menyertakan `Idempotency-Key` otomatis dari Axios; build frontend dan backend harus dirilis bersama. Jika backend menolak request, UI menampilkan `detail` respons, bukan notifikasi generik atau sukses palsu.
 
+## Staff timesheet and overtime — 11 September 2026
+
+Halaman Daily Tasks untuk active role Staff kini menyediakan input timesheet, riwayat berpaginasi, dan ringkasan lembur minggu/bulan/pending/approved. Submit hanya mengirim project, optional assigned legacy project task, tanggal, total jam, jam lembur, dan alasan; employee identity, hourly rate, amount, serta approval status tetap server-owned. Submit berhasil memicu refresh riwayat dan summary. Dashboard Staff memakai summary dari Dashboard BFF tanpa fan-out tambahan bila projection tersedia.
+
+Resolusi employee bersifat fail-closed dan aman untuk data transisi: backend mengutamakan `master_employee.user_id = current user`, lalu menerima `project_member.employee_id` hanya bila mapping tersebut sudah tersimpan pada membership aktif dalam tenant/company yang sama. Tidak ada inferensi berdasarkan nama, username, employee number, atau kesamaan ID, dan tidak ada mass update production dalam perubahan ini.
+
+## Role-focused operational surfaces — 11 September 2026
+
+- Operations Manager memakai tab Reporting `Operasional`, `Ringkasan Berkala`, dan `Kehadiran`; tab Executive dan Project P&L tidak lagi dipromosikan untuk role ini.
+- `GET /api/v1/reporting/operational-summary` adalah projection read-only dan company-scoped untuk jumlah proyek, Daily Task berjalan/terhambat, serta milestone jatuh tempo. Kegagalan projection ini diisolasi sebagai empty/degraded panel dan tidak menggagalkan laporan lain.
+- Dashboard OM mempertahankan ringkasan operasional tetapi tidak menampilkan tabel panjang “Daftar Proyek”; tabel tersebut tetap menjadi workspace PM.
+- Project workspace OM tidak menampilkan Top Expenses. Finance tetap memakai ringkasan anggaran proyek yang netral dan tidak melakukan background request ke Inventory dari dashboard Finance.
+- Request assignment tidak dibuat ulang: create, feed, review, assign/reassign, active-role check, dan cache identity sudah tersedia pada kontrak Request yang ada.
+- Seed UAT baru memakai konteks implementasi software dan layanan digital Arsalynk; istilah contoh industri conveyor, gardu, PLC/SCADA, motor servo, dan crane telah dihapus dari source seed. Perubahan seed tidak menimpa record production yang sudah ada dan hanya berlaku saat seed dijalankan secara eksplisit pada lingkungan aman.
+
+## Project Manager surface revision — 11 September 2026
+
+- Dashboard PM dimulai dari `Overview Proyek Saya`, langsung diikuti Project Distribution dan jumlah/status proyek.
+- Budget Check, Status Kontrol/Pengadaan, Tren Biaya Bulanan, Top 5 Expenses, dan tabel Daftar Proyek dihapus dari dashboard PM. Penghapusan financial widgets juga menghapus request `/api/v1/projects/dashboard/financial-summary` dari journey dashboard PM.
+- Daftar dan pemilihan proyek tetap tersedia pada `/projects`. Top 5 Expenses dihapus dari Project Page agar analitik biaya hanya dimiliki surface Finance; timeline, milestone, WBS, assignment, Daily Task, transfer, lifecycle, dan kontrol proyek lain dipertahankan.
+- Tombol Daily Task menggunakan satu ikon plus dan label `Buat Task Harian`. Kontrak create/update tetap memakai endpoint PROJECTS serta assignment scope backend yang sudah ada.
+- CRM tidak diubah oleh revisi tampilan PM. Seed UAT yang sudah tersedia tetap menjadi sumber sample customer/opportunity; ticket baru harus dibuat melalui workflow Request agar menguji persistence dan permission aktual.
+- Audit endpoint memastikan dashboard PM hanya meminta BFF section `projects`; backend section tersebut tidak membaca tabel Finance dan mengembalikan collection financial sebagai array kosong. Contract-audit juga mengenali deklarasi alias route Express berbentuk array, sehingga endpoint Request `/api/v1/requests` dan assignment tidak lagi menjadi false-positive mismatch.
+- Project Page sekarang tidak menjalankan background request `financial-performance` atau `funding_requests` untuk role yang tidak memiliki surface finansial; state lama juga dikosongkan saat active role berubah. Ini mencegah expected-403 untuk Staff/CRM tanpa melemahkan pemeriksaan backend.
+
 ## Database changes
 
 Six migration folders are present. The latest migration, `20260907010000_reporting_views`, creates these read-only projections:

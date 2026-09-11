@@ -52,35 +52,947 @@ function canReadSection(req: Request, section: DashboardSection): boolean {
 }
 
 /** Loads project dashboard source records using the same limits as the former browser fan-out. */
+/** Loads project dashboard source records using the same limits as the former browser fan-out. */
 async function loadProjectBundle(req: Request, includeFinance: boolean) {
   const companyId = req.companyId!;
   const tenantId = req.user?.tenant_id;
-  if (!tenantId) throw new ForbiddenError('Tenant user tidak tersedia untuk dashboard proyek.');
+  const userId = req.user?.id;
+  const activeRole = req.user?.active_role_code;
+
+  if (!tenantId) {
+    throw new ForbiddenError(
+      'Tenant user tidak tersedia untuk dashboard proyek.',
+    );
+  }
+
+  if (!userId) {
+    throw new ForbiddenError(
+      'User tidak tersedia untuk dashboard proyek.',
+    );
+  }
+
+  if (includeFinance) {
+    throw new ValidationError(
+      'Finance harus dimuat melalui section finance.',
+    );
+  }
+
+  const isStaff = activeRole === RoleCode.STAFF;
+
+  /**
+   * ============================================================
+   * STAFF PROJECTION
+   * ============================================================
+   *
+   * Staff hanya menerima:
+   * - project yang memang terkait dengan dirinya
+   * - main task yang assigned
+   * - weekly task yang assigned
+   * - daily task miliknya
+   * - project_task yang assigned_to_id = current user
+   * - milestone project terkait
+   * - summary lembur dirinya
+   *
+   * Staff TIDAK menerima:
+   * - budget_amount
+   * - contract_amount
+   * - customer sensitive information
+   * - finance records
+   * - user company lainnya
+   */
+  if (isStaff) {
+    type StaffOvertimeSummary = {
+      thisWeekHours: number;
+      thisMonthHours: number;
+      pendingHours: number;
+      approvedHours: number;
+      lastOvertimeDate: string | null;
+    };
+
+    type StaffProjectBundle = {
+      projects: unknown[];
+      mainTasks: unknown[];
+      assignments: unknown[];
+      weeklyTasks: unknown[];
+      dailyTasks: unknown[];
+      tasks: unknown[];
+      milestones: unknown[];
+      stages: unknown[];
+      costEntries: unknown[];
+      proposals: unknown[];
+      fundings: unknown[];
+      users: unknown[];
+      overtimeSummary: StaffOvertimeSummary;
+    };
+
+    const rows = await prisma.$queryRaw<
+      Array<{ bundle: StaffProjectBundle }>
+    >(Prisma.sql`
+      WITH
+
+      /**
+       * Project tempat Staff tercatat sebagai project member.
+       */
+      staff_member_projects AS (
+        SELECT DISTINCT pm.project_id
+        FROM project_member pm
+        WHERE pm.tenant_id = ${tenantId}::uuid
+          AND pm.company_id = ${companyId}::uuid
+          AND pm.user_id = ${userId}::uuid
+          AND pm.project_id IS NOT NULL
+          AND UPPER(pm.status) = 'ACTIVE'
+      ),
+
+      /**
+       * Main task yang memiliki hubungan dengan Staff.
+       *
+       * Hubungan dianggap valid jika:
+       * 1. Staff mendapat assignment langsung di main task
+       * 2. Staff menjadi assignee weekly task
+       * 3. Staff menjadi owner daily task
+       */
+      staff_main_tasks AS (
+        SELECT DISTINCT
+          mt.id,
+          mt.project_id
+        FROM project_main_task mt
+        INNER JOIN project_task_assignment a
+          ON a.main_task_id = mt.id
+        WHERE mt.tenant_id = ${tenantId}::uuid
+          AND mt.company_id = ${companyId}::uuid
+          AND a.tenant_id = ${tenantId}::uuid
+          AND a.company_id = ${companyId}::uuid
+          AND a.assignee_id = ${userId}::uuid
+
+        UNION
+
+        SELECT DISTINCT
+          mt.id,
+          mt.project_id
+        FROM project_main_task mt
+        INNER JOIN project_weekly_task wt
+          ON wt.main_task_id = mt.id
+        WHERE mt.tenant_id = ${tenantId}::uuid
+          AND mt.company_id = ${companyId}::uuid
+          AND wt.tenant_id = ${tenantId}::uuid
+          AND wt.company_id = ${companyId}::uuid
+          AND wt.assignee_id = ${userId}::uuid
+
+        UNION
+
+        SELECT DISTINCT
+          mt.id,
+          mt.project_id
+        FROM project_main_task mt
+        INNER JOIN project_weekly_task wt
+          ON wt.main_task_id = mt.id
+        INNER JOIN project_daily_task dt
+          ON dt.weekly_task_id = wt.id
+        WHERE mt.tenant_id = ${tenantId}::uuid
+          AND mt.company_id = ${companyId}::uuid
+          AND wt.tenant_id = ${tenantId}::uuid
+          AND wt.company_id = ${companyId}::uuid
+          AND dt.tenant_id = ${tenantId}::uuid
+          AND dt.company_id = ${companyId}::uuid
+          AND dt.owner_id = ${userId}::uuid
+      ),
+
+      /**
+       * project_task model lama juga memiliki assigned_to_id.
+       */
+      staff_direct_tasks AS (
+        SELECT DISTINCT
+          t.id,
+          t.project_id
+        FROM project_task t
+        WHERE t.tenant_id = ${tenantId}::uuid
+          AND t.company_id = ${companyId}::uuid
+          AND t.assigned_to_id = ${userId}::uuid
+      ),
+
+      /**
+       * Semua project yang boleh terlihat oleh Staff.
+       */
+      staff_projects AS (
+        SELECT DISTINCT project_id
+        FROM staff_member_projects
+        WHERE project_id IS NOT NULL
+
+        UNION
+
+        SELECT DISTINCT project_id
+        FROM staff_main_tasks
+        WHERE project_id IS NOT NULL
+
+        UNION
+
+        SELECT DISTINCT project_id
+        FROM staff_direct_tasks
+        WHERE project_id IS NOT NULL
+      ),
+
+      /**
+       * Weekly task Staff.
+       */
+      staff_weekly_tasks AS (
+        SELECT DISTINCT wt.id
+        FROM project_weekly_task wt
+        WHERE wt.tenant_id = ${tenantId}::uuid
+          AND wt.company_id = ${companyId}::uuid
+          AND (
+            wt.assignee_id = ${userId}::uuid
+
+            OR EXISTS (
+              SELECT 1
+              FROM project_daily_task dt
+              WHERE dt.weekly_task_id = wt.id
+                AND dt.tenant_id = ${tenantId}::uuid
+                AND dt.company_id = ${companyId}::uuid
+                AND dt.owner_id = ${userId}::uuid
+            )
+          )
+      ),
+
+      /**
+       * Mapping authenticated user -> employee.
+       *
+       * project_timesheet menggunakan employee_id,
+       * sementara authentication menggunakan user_id.
+       */
+      staff_employee_ids AS (
+        SELECT DISTINCT e.id AS employee_id
+        FROM master_employee e
+        WHERE e.tenant_id = ${tenantId}::uuid
+          AND e.company_id = ${companyId}::uuid
+          AND e.user_id = ${userId}::uuid
+
+        UNION
+
+        SELECT DISTINCT pm.employee_id
+        FROM project_member pm
+        WHERE pm.tenant_id = ${tenantId}::uuid
+          AND pm.company_id = ${companyId}::uuid
+          AND pm.user_id = ${userId}::uuid
+          AND pm.employee_id IS NOT NULL
+      ),
+
+      /**
+       * Aggregate lembur Staff.
+       */
+      staff_overtime AS (
+        SELECT
+
+          COALESCE(
+            SUM(ts.overtime_hours) FILTER (
+              WHERE ts.work_date >= date_trunc(
+                'week',
+                CURRENT_DATE
+              )
+            ),
+            0
+          ) AS this_week_hours,
+
+          COALESCE(
+            SUM(ts.overtime_hours) FILTER (
+              WHERE ts.work_date >= date_trunc(
+                'month',
+                CURRENT_DATE
+              )
+            ),
+            0
+          ) AS this_month_hours,
+
+          COALESCE(
+            SUM(ts.overtime_hours) FILTER (
+              WHERE UPPER(ts.approval_status) IN (
+                'PENDING',
+                'SUBMITTED',
+                'WAITING_APPROVAL'
+              )
+            ),
+            0
+          ) AS pending_hours,
+
+          COALESCE(
+            SUM(ts.overtime_hours) FILTER (
+              WHERE UPPER(ts.approval_status) = 'APPROVED'
+            ),
+            0
+          ) AS approved_hours,
+
+          MAX(ts.work_date) FILTER (
+            WHERE ts.overtime_hours > 0
+          ) AS last_overtime_date
+
+        FROM project_timesheet ts
+
+        WHERE ts.tenant_id = ${tenantId}::uuid
+          AND ts.company_id = ${companyId}::uuid
+
+          AND ts.employee_id IN (
+            SELECT employee_id
+            FROM staff_employee_ids
+          )
+      )
+
+      SELECT jsonb_build_object(
+
+        /**
+         * ========================================================
+         * PROJECTS
+         * ========================================================
+         *
+         * Tidak ada:
+         * budget_amount
+         * contract_amount
+         * target_margin_percent
+         * customer_name
+         * manager_name
+         * project_manager_id
+         */
+        'projects',
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(x))
+          FROM (
+            SELECT
+              p.id,
+              p.project_code,
+              p.project_name,
+              p.planned_start_date,
+              p.planned_end_date,
+              p.actual_start_date,
+              p.actual_end_date,
+              p.progress_percent,
+              p.status,
+              p.lifecycle_status,
+              p.health_status
+
+            FROM project_project p
+
+            WHERE p.tenant_id = ${tenantId}::uuid
+              AND p.company_id = ${companyId}::uuid
+
+              AND p.id IN (
+                SELECT project_id
+                FROM staff_projects
+              )
+
+            ORDER BY
+              p.planned_end_date ASC NULLS LAST,
+              p.id ASC
+
+            LIMIT 100
+          ) x
+        ), '[]'::jsonb),
+
+        /**
+         * ========================================================
+         * MAIN TASK
+         * ========================================================
+         */
+        'mainTasks',
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(x))
+          FROM (
+            SELECT
+              mt.id,
+              mt.project_id,
+              mt.name,
+              mt.description,
+              mt.priority,
+              mt.start_date,
+              mt.due_date,
+              mt.weight,
+              mt.progress,
+              mt.status
+
+            FROM project_main_task mt
+
+            WHERE mt.tenant_id = ${tenantId}::uuid
+              AND mt.company_id = ${companyId}::uuid
+
+              AND mt.id IN (
+                SELECT id
+                FROM staff_main_tasks
+              )
+
+            ORDER BY
+              mt.due_date ASC NULLS LAST,
+              mt.id ASC
+
+            LIMIT 300
+          ) x
+        ), '[]'::jsonb),
+
+        /**
+         * ========================================================
+         * ASSIGNMENTS
+         * ========================================================
+         *
+         * Hanya assignment Staff saat ini.
+         */
+        'assignments',
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(x))
+          FROM (
+            SELECT
+              a.id,
+              a.main_task_id,
+              a.assignee_id
+
+            FROM project_task_assignment a
+
+            WHERE a.tenant_id = ${tenantId}::uuid
+              AND a.company_id = ${companyId}::uuid
+              AND a.assignee_id = ${userId}::uuid
+
+              AND a.main_task_id IN (
+                SELECT id
+                FROM staff_main_tasks
+              )
+
+            LIMIT 500
+          ) x
+        ), '[]'::jsonb),
+
+        /**
+         * ========================================================
+         * WEEKLY TASK
+         * ========================================================
+         */
+        'weeklyTasks',
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(x))
+          FROM (
+            SELECT
+              wt.id,
+              wt.main_task_id,
+              wt.assignee_id,
+              wt.week_number,
+              wt.start_date,
+              wt.end_date,
+              wt.target_description,
+              wt.progress,
+              wt.status
+
+            FROM project_weekly_task wt
+
+            WHERE wt.tenant_id = ${tenantId}::uuid
+              AND wt.company_id = ${companyId}::uuid
+
+              AND wt.id IN (
+                SELECT id
+                FROM staff_weekly_tasks
+              )
+
+            ORDER BY
+              wt.start_date ASC NULLS LAST,
+              wt.id ASC
+
+            LIMIT 500
+          ) x
+        ), '[]'::jsonb),
+
+        /**
+         * ========================================================
+         * DAILY TASK
+         * ========================================================
+         *
+         * Hanya daily task milik Staff.
+         */
+        'dailyTasks',
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(x))
+          FROM (
+            SELECT
+              dt.id,
+              dt.weekly_task_id,
+              dt.owner_id,
+              dt.title,
+              dt.description,
+              dt.planned_date,
+              dt.time_slot,
+              dt.output_result,
+              dt.notes,
+              dt.progress,
+              dt.status,
+              dt.is_blocked,
+              dt.block_reason
+
+            FROM project_daily_task dt
+
+            WHERE dt.tenant_id = ${tenantId}::uuid
+              AND dt.company_id = ${companyId}::uuid
+              AND dt.owner_id = ${userId}::uuid
+
+            ORDER BY
+              dt.planned_date ASC NULLS LAST,
+              dt.id ASC
+
+            LIMIT 1000
+          ) x
+        ), '[]'::jsonb),
+
+        /**
+         * ========================================================
+         * LEGACY PROJECT TASK
+         * ========================================================
+         *
+         * project_task sebenarnya sudah memiliki assigned_to_id.
+         * Jadi sekarang aman untuk mengirim task yang memang
+         * assigned ke Staff.
+         */
+        'tasks',
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(x))
+          FROM (
+            SELECT
+              t.id,
+              t.project_id,
+              t.parent_task_id,
+              t.task_code,
+              t.task_name,
+              t.description,
+              t.priority,
+              t.planned_start_at,
+              t.planned_end_at,
+              t.actual_start_at,
+              t.actual_end_at,
+              t.planned_hours,
+              t.actual_hours,
+              t.progress_percent,
+              t.status
+
+            FROM project_task t
+
+            WHERE t.tenant_id = ${tenantId}::uuid
+              AND t.company_id = ${companyId}::uuid
+              AND t.assigned_to_id = ${userId}::uuid
+
+            ORDER BY
+              t.planned_end_at ASC NULLS LAST,
+              t.id ASC
+
+            LIMIT 500
+          ) x
+        ), '[]'::jsonb),
+
+        /**
+         * ========================================================
+         * MILESTONE / TIMELINE
+         * ========================================================
+         *
+         * Staff boleh melihat timeline project yang terkait.
+         */
+        'milestones',
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(x))
+          FROM (
+            SELECT
+              m.id,
+              m.project_id,
+              m.milestone_name,
+              m.planned_date,
+              m.actual_date,
+              m.weight_percent,
+              m.status
+
+            FROM project_milestone m
+
+            WHERE m.tenant_id = ${tenantId}::uuid
+              AND m.company_id = ${companyId}::uuid
+
+              AND m.project_id IN (
+                SELECT project_id
+                FROM staff_projects
+              )
+
+            ORDER BY
+              m.planned_date ASC NULLS LAST,
+              m.id ASC
+
+            LIMIT 300
+          ) x
+        ), '[]'::jsonb),
+
+        /**
+         * Readiness/status kontrol internal tidak dikirim ke Staff.
+         */
+        'stages',
+        '[]'::jsonb,
+
+        /**
+         * Tidak ada data Finance untuk Staff.
+         */
+        'costEntries',
+        '[]'::jsonb,
+
+        'proposals',
+        '[]'::jsonb,
+
+        'fundings',
+        '[]'::jsonb,
+
+        /**
+         * Staff tidak membutuhkan daftar semua user company.
+         *
+         * Current user saja.
+         */
+        'users',
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(x))
+          FROM (
+            SELECT
+              u.id,
+              u.full_name
+
+            FROM iam_user u
+
+            WHERE u.id = ${userId}::uuid
+
+            LIMIT 1
+          ) x
+        ), '[]'::jsonb),
+
+        /**
+         * ========================================================
+         * OVERTIME SUMMARY
+         * ========================================================
+         */
+        'overtimeSummary',
+        COALESCE((
+          SELECT jsonb_build_object(
+            'thisWeekHours',
+            COALESCE(so.this_week_hours, 0),
+
+            'thisMonthHours',
+            COALESCE(so.this_month_hours, 0),
+
+            'pendingHours',
+            COALESCE(so.pending_hours, 0),
+
+            'approvedHours',
+            COALESCE(so.approved_hours, 0),
+
+            'lastOvertimeDate',
+            so.last_overtime_date
+          )
+
+          FROM staff_overtime so
+        ), jsonb_build_object(
+          'thisWeekHours', 0,
+          'thisMonthHours', 0,
+          'pendingHours', 0,
+          'approvedHours', 0,
+          'lastOvertimeDate', NULL
+        ))
+
+      ) AS bundle
+    `);
+
+    return rows[0]?.bundle ?? {
+      projects: [],
+      mainTasks: [],
+      assignments: [],
+      weeklyTasks: [],
+      dailyTasks: [],
+      tasks: [],
+      milestones: [],
+      stages: [],
+      costEntries: [],
+      proposals: [],
+      fundings: [],
+      users: [],
+
+      overtimeSummary: {
+        thisWeekHours: 0,
+        thisMonthHours: 0,
+        pendingHours: 0,
+        approvedHours: 0,
+        lastOvertimeDate: null,
+      },
+    };
+  }
+
+  /**
+   * ============================================================
+   * NON STAFF
+   * ============================================================
+   *
+   * PM / OM / Director / role lain tetap memakai projection
+   * seperti sebelumnya.
+   */
   type ProjectBundle = {
-    projects: unknown[]; mainTasks: unknown[]; assignments: unknown[]; weeklyTasks: unknown[];
-    dailyTasks: unknown[]; tasks: unknown[]; milestones: unknown[]; stages: unknown[];
-    costEntries: unknown[]; proposals: unknown[]; fundings: unknown[]; users: unknown[];
+    projects: unknown[];
+    mainTasks: unknown[];
+    assignments: unknown[];
+    weeklyTasks: unknown[];
+    dailyTasks: unknown[];
+    tasks: unknown[];
+    milestones: unknown[];
+    stages: unknown[];
+    costEntries: unknown[];
+    proposals: unknown[];
+    fundings: unknown[];
+    users: unknown[];
   };
-  const rows = await prisma.$queryRaw<Array<{ bundle: ProjectBundle }>>(Prisma.sql`
+
+  const rows = await prisma.$queryRaw<
+    Array<{ bundle: ProjectBundle }>
+  >(Prisma.sql`
     SELECT jsonb_build_object(
-      'projects', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id, project_code, project_name, customer_name, manager_name, description, planned_start_date, planned_end_date, actual_start_date, actual_end_date, budget_amount, contract_amount, progress_percent, status, lifecycle_status, health_status, project_manager_id FROM project_project WHERE tenant_id = ${tenantId}::uuid AND company_id = ${companyId}::uuid LIMIT 100) x), '[]'::jsonb),
-      'mainTasks', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id, project_id, name, description, priority, start_date, due_date, weight, status FROM project_main_task WHERE tenant_id = ${tenantId}::uuid AND company_id = ${companyId}::uuid LIMIT 300) x), '[]'::jsonb),
-      'assignments', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id, main_task_id, assignee_id FROM project_task_assignment WHERE tenant_id = ${tenantId}::uuid AND company_id = ${companyId}::uuid LIMIT 500) x), '[]'::jsonb),
-      'weeklyTasks', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id, main_task_id, assignee_id, week_number, start_date, end_date, target_description, status FROM project_weekly_task WHERE tenant_id = ${tenantId}::uuid AND company_id = ${companyId}::uuid LIMIT 500) x), '[]'::jsonb),
-      'dailyTasks', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id, weekly_task_id, owner_id, title, planned_date, time_slot, output_result, notes, progress, status, is_blocked, block_reason FROM project_daily_task WHERE tenant_id = ${tenantId}::uuid AND company_id = ${companyId}::uuid LIMIT 1000) x), '[]'::jsonb),
-      'tasks', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id, project_id, parent_task_id, task_name, description, priority, progress_percent, status FROM project_task WHERE tenant_id = ${tenantId}::uuid AND company_id = ${companyId}::uuid LIMIT 500) x), '[]'::jsonb),
-      'milestones', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id, project_id, milestone_name, planned_date, actual_date, weight_percent, status FROM project_milestone WHERE tenant_id = ${tenantId}::uuid AND company_id = ${companyId}::uuid LIMIT 300) x), '[]'::jsonb),
-      'stages', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id, project_id, check_type, status, message, blocking, checked_at FROM project_readiness_check WHERE tenant_id = ${tenantId}::uuid AND company_id = ${companyId}::uuid LIMIT 200) x), '[]'::jsonb),
-      'costEntries', '[]'::jsonb, 'proposals', '[]'::jsonb, 'fundings', '[]'::jsonb,
-      'users', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT DISTINCT u.id, u.full_name, u.email, u.username FROM iam_user u JOIN iam_user_role ur ON ur.user_id = u.id WHERE ur.tenant_id = ${tenantId}::uuid AND ur.company_id = ${companyId}::uuid LIMIT 200) x), '[]'::jsonb)
+
+      'projects',
+      COALESCE((
+        SELECT jsonb_agg(to_jsonb(x))
+        FROM (
+          SELECT
+            id,
+            project_code,
+            project_name,
+            customer_name,
+            manager_name,
+            description,
+            planned_start_date,
+            planned_end_date,
+            actual_start_date,
+            actual_end_date,
+            budget_amount,
+            contract_amount,
+            progress_percent,
+            status,
+            lifecycle_status,
+            health_status,
+            project_manager_id
+
+          FROM project_project
+
+          WHERE tenant_id = ${tenantId}::uuid
+            AND company_id = ${companyId}::uuid
+
+          LIMIT 100
+        ) x
+      ), '[]'::jsonb),
+
+      'mainTasks',
+      COALESCE((
+        SELECT jsonb_agg(to_jsonb(x))
+        FROM (
+          SELECT
+            id,
+            project_id,
+            name,
+            description,
+            priority,
+            start_date,
+            due_date,
+            weight,
+            progress,
+            status
+
+          FROM project_main_task
+
+          WHERE tenant_id = ${tenantId}::uuid
+            AND company_id = ${companyId}::uuid
+
+          LIMIT 300
+        ) x
+      ), '[]'::jsonb),
+
+      'assignments',
+      COALESCE((
+        SELECT jsonb_agg(to_jsonb(x))
+        FROM (
+          SELECT
+            id,
+            main_task_id,
+            assignee_id
+
+          FROM project_task_assignment
+
+          WHERE tenant_id = ${tenantId}::uuid
+            AND company_id = ${companyId}::uuid
+
+          LIMIT 500
+        ) x
+      ), '[]'::jsonb),
+
+      'weeklyTasks',
+      COALESCE((
+        SELECT jsonb_agg(to_jsonb(x))
+        FROM (
+          SELECT
+            id,
+            main_task_id,
+            assignee_id,
+            week_number,
+            start_date,
+            end_date,
+            target_description,
+            progress,
+            status
+
+          FROM project_weekly_task
+
+          WHERE tenant_id = ${tenantId}::uuid
+            AND company_id = ${companyId}::uuid
+
+          LIMIT 500
+        ) x
+      ), '[]'::jsonb),
+
+      'dailyTasks',
+      COALESCE((
+        SELECT jsonb_agg(to_jsonb(x))
+        FROM (
+          SELECT
+            id,
+            weekly_task_id,
+            owner_id,
+            title,
+            description,
+            planned_date,
+            time_slot,
+            output_result,
+            notes,
+            progress,
+            status,
+            is_blocked,
+            block_reason
+
+          FROM project_daily_task
+
+          WHERE tenant_id = ${tenantId}::uuid
+            AND company_id = ${companyId}::uuid
+
+          LIMIT 1000
+        ) x
+      ), '[]'::jsonb),
+
+      'tasks',
+      COALESCE((
+        SELECT jsonb_agg(to_jsonb(x))
+        FROM (
+          SELECT
+            id,
+            project_id,
+            parent_task_id,
+            assigned_to_id,
+            task_code,
+            task_name,
+            description,
+            priority,
+            planned_start_at,
+            planned_end_at,
+            actual_start_at,
+            actual_end_at,
+            planned_hours,
+            actual_hours,
+            progress_percent,
+            status
+
+          FROM project_task
+
+          WHERE tenant_id = ${tenantId}::uuid
+            AND company_id = ${companyId}::uuid
+
+          LIMIT 500
+        ) x
+      ), '[]'::jsonb),
+
+      'milestones',
+      COALESCE((
+        SELECT jsonb_agg(to_jsonb(x))
+        FROM (
+          SELECT
+            id,
+            project_id,
+            milestone_name,
+            planned_date,
+            actual_date,
+            weight_percent,
+            status
+
+          FROM project_milestone
+
+          WHERE tenant_id = ${tenantId}::uuid
+            AND company_id = ${companyId}::uuid
+
+          LIMIT 300
+        ) x
+      ), '[]'::jsonb),
+
+      'stages',
+      COALESCE((
+        SELECT jsonb_agg(to_jsonb(x))
+        FROM (
+          SELECT
+            id,
+            project_id,
+            check_type,
+            status,
+            message,
+            blocking,
+            checked_at
+
+          FROM project_readiness_check
+
+          WHERE tenant_id = ${tenantId}::uuid
+            AND company_id = ${companyId}::uuid
+
+          LIMIT 200
+        ) x
+      ), '[]'::jsonb),
+
+      'costEntries',
+      '[]'::jsonb,
+
+      'proposals',
+      '[]'::jsonb,
+
+      'fundings',
+      '[]'::jsonb,
+
+      'users',
+      COALESCE((
+        SELECT jsonb_agg(to_jsonb(x))
+        FROM (
+          SELECT DISTINCT
+            u.id,
+            u.full_name,
+            u.email,
+            u.username
+
+          FROM iam_user u
+
+          JOIN iam_user_role ur
+            ON ur.user_id = u.id
+
+          WHERE ur.tenant_id = ${tenantId}::uuid
+            AND ur.company_id = ${companyId}::uuid
+
+          LIMIT 200
+        ) x
+      ), '[]'::jsonb)
+
     ) AS bundle
   `);
-  // Finance owns its projection in the bootstrap route. Keep the legacy flag
-  // explicit so a future standalone caller cannot silently receive raw data.
-  if (includeFinance) throw new ValidationError('Finance harus dimuat melalui section finance.');
-  return rows[0].bundle;
-}
 
+  return rows[0]?.bundle ?? {
+    projects: [],
+    mainTasks: [],
+    assignments: [],
+    weeklyTasks: [],
+    dailyTasks: [],
+    tasks: [],
+    milestones: [],
+    stages: [],
+    costEntries: [],
+    proposals: [],
+    fundings: [],
+    users: [],
+  };
+}
 /** Computes complete Finance KPIs in PostgreSQL and returns only visible preview rows. */
 async function loadFinanceBundle(req: Request, includeProjects: boolean) {
   const companyId = req.companyId!;

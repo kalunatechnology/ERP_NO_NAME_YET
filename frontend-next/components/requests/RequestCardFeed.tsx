@@ -168,6 +168,20 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
                 </div>
               )}
 
+              {/* Assignee Information */}
+              <div className="flex items-center justify-between text-2xs">
+                {req.assignee_user ? (
+                  <div className="flex items-center gap-1.5 text-3xs text-[#4F5050]">
+                    <span>Assigned to</span>
+                    <span className="font-bold text-[#2649B3] px-1.5 py-0.5 rounded-md bg-[#EAF6FF]">
+                      {req.assignee_user.name}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-3xs text-[#4F5050] italic">Belum di-assign</span>
+                )}
+              </div>
+
               {/* Card Mid: Schedule & Tagged People */}
               <div className="flex items-center justify-between text-2xs text-[#4F5050] pt-2 border-t border-[#D9D9D9]/60">
                 <div className="flex items-center gap-1.5 font-medium">

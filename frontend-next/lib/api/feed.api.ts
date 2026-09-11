@@ -81,6 +81,139 @@ export interface DynamicContact {
   avatar_url?: string;
 }
 
+export interface TaggedUser {
+  id: string;
+  name: string;
+  avatar_url?: string;
+  email?: string;
+  role?: string;
+}
+
+export interface RequestAssignee {
+  id: string;
+  name: string;
+  email?: string | null;
+  username?: string | null;
+}
+
+export interface RequestApproval {
+  level: string;
+  decision: string;
+  remarks?: string;
+  decided_at?: string | null;
+  decided_by?: string | null;
+}
+
+export type RequestType =
+  | 'MEETING'
+  | 'LEAVE'
+  | 'OTHER'
+  | 'FUND_REQUEST';
+
+export interface RequestCard {
+  id: string;
+
+  request_number: string;
+  request_type: RequestType;
+
+  title: string;
+  description: string;
+
+  amount?: number | null;
+  budget_category?: string | null;
+  bank_target?: string | null;
+
+  project_id?: string | null;
+
+  /**
+   * NEW
+   */
+  assignee_user_id?: string | null;
+
+  /**
+   * NEW
+   *
+   * Sudah dikembalikan backend agar FE tidak perlu
+   * lookup nama user lagi.
+   */
+  assignee_user?: RequestAssignee | null;
+
+  start_at?: string | null;
+  end_at?: string | null;
+
+  tagged_users?: TaggedUser[];
+
+  attachment_url?: string | null;
+
+  status: string;
+
+  created_by_id?: string | null;
+  company_id?: string | null;
+
+  created_at: string;
+
+  approvals?: RequestApproval[];
+}
+
+export interface CreateRequestPayload {
+  request_type: RequestType;
+
+  title: string;
+
+  description?: string;
+
+  amount?: number;
+
+  budget_category?: string;
+
+  bank_target?: string;
+
+  project_id?: string;
+
+  /**
+   * NEW
+   */
+  assignee_user_id?: string;
+
+  start_at?: string;
+
+  end_at?: string;
+
+  tagged_users?: TaggedUser[];
+
+  attachment_url?: string;
+
+  is_draft?: boolean;
+}
+
+export interface RequestFeedResponse {
+  total: number;
+
+  page: number;
+
+  page_size: number;
+
+  total_pages: number;
+
+  rows: RequestCard[];
+}
+
+export interface TeamMember {
+  id: string;
+
+  name: string;
+
+  email?: string;
+
+  role?: string;
+
+  avatar_url?: string;
+}
+
+export interface AssignRequestPayload {
+  assignee_user_id: string;
+}
+
 /**
  * timeAgo adapts a frontend operation to its HTTP API contract.
  *
@@ -668,4 +801,119 @@ export async function fetchRealInventoryCheckingData(access: FrontendAccessConte
   }
 
   return null;
+}
+
+export interface RequestAssignee {
+  id: string;
+  name: string;
+  email?: string | null;
+  username?: string | null;
+}
+
+export interface RequestApproval {
+  level: string;
+  decision: string;
+  remarks?: string;
+  decided_at?: string | null;
+  decided_by?: string | null;
+}
+
+export interface TaggedUser {
+  id: string;
+  name: string;
+  avatar_url?: string;
+  email?: string;
+  role?: string;
+}
+
+export interface InternalRequest {
+  id: string;
+  request_number: string;
+  request_type:
+    | 'MEETING'
+    | 'LEAVE'
+    | 'OTHER'
+    | 'FUND_REQUEST';
+  title: string;
+  description: string;
+  amount?: number | null;
+  budget_category?: string | null;
+  bank_target?: string | null;
+  project_id?: string | null;
+  assignee_user_id?: string | null;
+  assignee_user?: RequestAssignee | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  tagged_users?: TaggedUser[];
+  attachment_url?: string | null;
+  status: string;
+  created_by_id?: string | null;
+  company_id?: string | null;
+  created_at: string;
+  approvals?: RequestApproval[];
+}
+
+export interface CreateRequestPayload {
+  request_type:
+    | 'MEETING'
+    | 'LEAVE'
+    | 'OTHER'
+    | 'FUND_REQUEST';
+  title: string;
+  description?: string;
+  amount?: number;
+  budget_category?: string;
+  bank_target?: string;
+  project_id?: string;
+  assignee_user_id?: string;
+  start_at?: string;
+  end_at?: string;
+  tagged_users?: TaggedUser[];
+  attachment_url?: string;
+  is_draft?: boolean;
+}
+
+export interface AssignRequestResponse {
+  id: string;
+  assignee_user_id: string;
+  assignee_user: {
+    id: string;
+    name: string;
+    email?: string | null;
+  };
+  previous_assignee_user_id?: string | null;
+  reassigned: boolean;
+  assigned_by_id?: string;
+  assigned_at?: string;
+}
+
+export async function getRequests(params?: {
+  type?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const response = await api.get('/api/v1/requests', {
+    params: {
+      type: params?.type,
+      status: params?.status,
+      page: params?.page ?? 1,
+      page_size: params?.pageSize ?? 20,
+    },
+  });
+
+  return response.data?.data ?? response.data;
+}
+export async function assignRequest(
+  requestId: string,
+  assigneeUserId: string,
+): Promise<AssignRequestResponse> {
+  const response = await api.patch(
+    `/api/v1/requests/${requestId}/assignee`,
+    {
+      assignee_user_id: assigneeUserId,
+    },
+  );
+
+  return response.data?.data ?? response.data;
 }

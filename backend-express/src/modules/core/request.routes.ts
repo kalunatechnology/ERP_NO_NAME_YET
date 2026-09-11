@@ -6,31 +6,65 @@
  * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
-import { Router, Request, Response, NextFunction } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
+
 import { RequestService } from './request.service';
-import { sendSuccess, sendError } from '../../utils/response';
-import { ForbiddenError } from '../../utils/errors';
 import { ReadThroughCache } from '../../utils/read-through-cache';
-import { requireActiveRole } from '../../middlewares/rbac.middleware';
+import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
+import { requireActiveRole } from '../../middlewares/rbac.middleware';
+import { sendSuccess, sendError } from '../../utils/response';
 import prisma from '../../config/database';
 
 export const requestRouter = Router();
+
 requestRouter.get('/disbursement-accounts', requireActiveRole(RoleCode.FINANCE), async (req, res, next) => {
   try {
-    const accounts = await prisma.fin_bank_account.findMany({ where: { company_id: activeCompanyId(req), status: 'ACTIVE', ledger_account_id: { not: null } }, select: { id: true, account_name: true, bank_name: true, account_number: true } });
+    const accounts = await prisma.fin_bank_account.findMany({
+      where: { company_id: activeCompanyId(req), status: 'ACTIVE', ledger_account_id: { not: null } },
+      select: { id: true, account_name: true, bank_name: true, account_number: true }
+    });
     sendSuccess(res, accounts);
   } catch (error) { next(error); }
 });
-const requestFeedCache = new ReadThroughCache<Awaited<ReturnType<typeof RequestService.getRequests>>>(250);
 
-// A successful request mutation invalidates all compact feed projections. The
-// collection is bounded and small, so full invalidation is safer than risking
-// a missed filter-specific key.
+/**
+ * Cache feed request.
+ */
+const requestFeedCache =
+  new ReadThroughCache<Record<string, unknown>>(250);
+
+const REQUEST_FEED_CACHE_OPTIONS = {
+  ttlMs: 15_000,
+  staleMs: 45_000,
+  timeoutMs: 1_500,
+};
+
+/**
+ * Revision digunakan sebagai cache-buster.
+ *
+ * Setiap request berubah:
+ * - create
+ * - assign
+ * - reassign
+ * - approval
+ * - LPJ
+ *
+ * revision dinaikkan sehingga cache lama tidak digunakan lagi.
+ */
+let requestFeedCacheRevision = 0;
+
+function invalidateRequestFeedCache() {
+  requestFeedCacheRevision += 1;
+}
+
 requestRouter.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.once('finish', () => {
-      if (res.statusCode >= 200 && res.statusCode < 400) requestFeedCache.clear();
+      if (res.statusCode >= 200 && res.statusCode < 400) {
+        invalidateRequestFeedCache();
+        requestFeedCache.clear();
+      }
     });
   }
   next();
@@ -52,59 +86,232 @@ function activeUserId(req: Request): string {
 
 // List request cards with filters
 /**
- * GET route handler: `/`.
- *
- * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
- * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
- * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
- * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ * GET route handler: `/` and `/requests`.
  */
-requestRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const companyId = activeCompanyId(req);
-    const status = req.query.status as string | undefined;
-    const type = req.query.type as string | undefined;
-    const page = req.query.page ? Number(req.query.page) : 1;
-    const pageSize = req.query.page_size ? Number(req.query.page_size) : 30;
-    const key = [companyId, status ?? '', type ?? '', page, pageSize].join('|');
-    const cached = await requestFeedCache.get(key, () => RequestService.getRequests({
-      status, type, companyId, page, pageSize,
-    }), { ttlMs: 10_000, staleMs: 50_000, timeoutMs: 1_000 });
-    res.setHeader('X-Request-Cache', cached.state);
-    sendSuccess(res, cached.value);
-  } catch (err) { next(err); }
-});
+requestRouter.get(
+  ['/', '/requests'],
+  async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const companyId = req.companyId;
+
+      const userId =
+        req.user?.id;
+
+      const activeRole =
+        req.user?.active_role_code;
+
+      if (!companyId) {
+        throw new ForbiddenError(
+          'Company aktif diperlukan untuk memuat request.',
+        );
+      }
+
+      if (!userId) {
+        throw new ForbiddenError(
+          'User aktif tidak tersedia untuk memuat request.',
+        );
+      }
+
+      if (!activeRole) {
+        throw new ForbiddenError(
+          'Role aktif tidak tersedia untuk memuat request.',
+        );
+      }
+
+      const type =
+        typeof req.query.type === 'string'
+          ? req.query.type
+          : undefined;
+
+      const status =
+        typeof req.query.status === 'string'
+          ? req.query.status
+          : undefined;
+
+      const page = Math.max(
+        1,
+        Math.trunc(
+          Number(req.query.page) || 1,
+        ),
+      );
+
+      const pageSize = Math.min(
+        100,
+        Math.max(
+          1,
+          Math.trunc(
+            Number(
+              req.query.page_size ??
+                req.query.pageSize,
+            ) || 20,
+          ),
+        ),
+      );
+
+      /**
+       * PENTING:
+       *
+       * Cache harus user-aware dan role-aware.
+       *
+       * Staff A:
+       * company|staff-a|STAFF
+       *
+       * Staff B:
+       * company|staff-b|STAFF
+       *
+       * sehingga tidak mungkin memakai feed satu sama lain.
+       */
+      const cacheKey = [
+        'request-feed',
+
+        /**
+         * invalidate version
+         */
+        requestFeedCacheRevision,
+
+        /**
+         * Tenant isolation.
+         */
+        req.user?.tenant_id ?? 'no-tenant',
+
+        /**
+         * Company isolation.
+         */
+        companyId,
+
+        /**
+         * User isolation.
+         */
+        userId,
+
+        /**
+         * Role isolation.
+         */
+        activeRole,
+
+        /**
+         * Query projection.
+         */
+        type ?? 'ALL',
+        status ?? 'ALL',
+        page,
+        pageSize,
+      ].join('|');
+
+      const cached =
+        await requestFeedCache.get(
+          cacheKey,
+
+          async () => {
+            return RequestService.getRequests({
+              type,
+              status,
+
+              page,
+              pageSize,
+
+              companyId,
+
+              /**
+               * NEW
+               *
+               * Dipakai service untuk:
+               *
+               * Staff:
+               * assignee_user_id = current user
+               */
+              requesterUserId:
+                userId,
+
+              /**
+               * NEW
+               */
+              activeRole,
+            }) as unknown as Record<string, unknown>;
+          },
+
+          REQUEST_FEED_CACHE_OPTIONS,
+        );
+
+      /**
+       * Response berbeda berdasarkan Authorization
+       * dan company.
+       */
+      res.vary('Authorization');
+      res.vary('X-Company-ID');
+
+      res.setHeader(
+        'Cache-Control',
+        'private, max-age=15',
+      );
+
+      res.setHeader(
+        'X-Request-Feed-Cache',
+        cached.state,
+      );
+
+      return res.json({
+        success: true,
+        data: cached.value,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
 
 // Create new card request (Meeting, Leave, Fund Request, Other)
 /**
- * POST route handler: `/`.
- *
- * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
- * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
- * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
- * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
+ * POST route handler: `/` and `/requests`.
  */
-requestRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const result = await RequestService.createRequest(
-      req.body,
-      activeUserId(req),
-      activeCompanyId(req),
-      req.user?.tenant_id,
-    );
-    sendSuccess(res, result, 201);
-  } catch (err) { next(err); }
-});
+requestRouter.post(
+  ['/', '/requests'],
+  async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      if (!req.companyId) {
+        throw new ForbiddenError(
+          'Company aktif diperlukan untuk membuat request.',
+        );
+      }
+
+      if (!req.user?.id) {
+        throw new ForbiddenError(
+          'User aktif tidak tersedia.',
+        );
+      }
+
+      const result =
+        await RequestService.createRequest(
+          req.body,
+          req.user.id,
+          req.companyId,
+          req.user.tenant_id,
+        );
+
+      /**
+       * CREATE_REQUEST mengubah feed.
+       */
+      invalidateRequestFeedCache();
+
+      return res.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
 
 // List team members for "Who's inside" selector with search
-/**
- * GET route handler: `/team-members`.
- *
- * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
- * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
- * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
- * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
- */
 requestRouter.get('/team-members', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const search = req.query.search as string | undefined;
@@ -114,14 +321,6 @@ requestRouter.get('/team-members', async (req: Request, res: Response, next: Nex
 });
 
 // Level 1: OM Validation (APPROVE or RE_CHECK)
-/**
- * POST route handler: `/:id/validate-om`.
- *
- * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
- * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
- * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
- * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
- */
 requestRouter.post('/:id/validate-om', requireActiveRole(RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
@@ -135,19 +334,12 @@ requestRouter.post('/:id/validate-om', requireActiveRole(RoleCode.OPERATIONAL_MA
       omUserId:  activeUserId(req),
       companyId: activeCompanyId(req),
     });
+    invalidateRequestFeedCache();
     sendSuccess(res, result);
   } catch (err) { next(err); }
 });
 
 // Level 2: Executive/PM Approval (APPROVE or REJECT)
-/**
- * POST route handler: `/:id/approve-exec`.
- *
- * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
- * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
- * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
- * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
- */
 requestRouter.post('/:id/approve-exec', requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
@@ -161,19 +353,12 @@ requestRouter.post('/:id/approve-exec', requireActiveRole(RoleCode.PROJECT_MANAG
       execUserId: activeUserId(req),
       companyId: activeCompanyId(req),
     });
+    invalidateRequestFeedCache();
     sendSuccess(res, result);
   } catch (err) { next(err); }
 });
 
 // Level 3: Finance Disbursement
-/**
- * POST route handler: `/:id/disburse`.
- *
- * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
- * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
- * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
- * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
- */
 requestRouter.post('/:id/disburse', requireActiveRole(RoleCode.FINANCE), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { disburse_account_id, disburse_reference } = req.body;
@@ -184,19 +369,12 @@ requestRouter.post('/:id/disburse', requireActiveRole(RoleCode.FINANCE), async (
       disburseUserId:     activeUserId(req),
       companyId:          activeCompanyId(req),
     });
+    invalidateRequestFeedCache();
     sendSuccess(res, result);
   } catch (err) { next(err); }
 });
 
 // Level 4: Requester Submit LPJ / Nota Belanja
-/**
- * POST route handler: `/:id/submit-lpj`.
- *
- * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
- * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
- * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
- * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
- */
 requestRouter.post('/:id/submit-lpj', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { realization_amount, discrepancy_amount, discrepancy_type, notes, invoices } = req.body;
@@ -213,19 +391,12 @@ requestRouter.post('/:id/submit-lpj', async (req: Request, res: Response, next: 
       requesterUserId:    activeUserId(req),
       companyId:          activeCompanyId(req),
     });
+    invalidateRequestFeedCache();
     sendSuccess(res, result);
   } catch (err) { next(err); }
 });
 
 // Level 5: OM Final Verification of LPJ (Closes Ticket)
-/**
- * POST route handler: `/:id/verify-lpj-om`.
- *
- * Contract: Receives the authenticated/scoped Express request according to the middleware mounted before this router, validates route-specific input, and writes the HTTP response.
- * Authorization: Inherits authentication, tenant, entitlement, RBAC, idempotency, and audit rules from `app.ts` plus any middleware passed to this registration.
- * Data/side effects: Delegates to the referenced service or performs the operation shown in the handler.
- * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
- */
 requestRouter.post('/:id/verify-lpj-om', requireActiveRole(RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
@@ -239,6 +410,145 @@ requestRouter.post('/:id/verify-lpj-om', requireActiveRole(RoleCode.OPERATIONAL_
       omUserId:  activeUserId(req),
       companyId: activeCompanyId(req),
     });
+    invalidateRequestFeedCache();
     sendSuccess(res, result);
   } catch (err) { next(err); }
 });
+
+// Assign / Reassign Request to a Staff
+/**
+ * PATCH /requests/:requestId/assignee
+ *
+ * Assign pertama dan reassign menggunakan endpoint yang sama.
+ *
+ * Backend service menentukan:
+ *
+ * belum ada assignee
+ *   -> ASSIGN_REQUEST
+ *
+ * sudah ada assignee
+ *   -> REASSIGN_REQUEST
+ */
+requestRouter.patch(
+  [
+    '/:requestId/assignee',
+    '/:id/assignee',
+    '/requests/:requestId/assignee',
+    '/requests/:id/assignee',
+  ],
+  async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const companyId =
+        req.companyId;
+
+      const assignedByUserId =
+        req.user?.id;
+
+      const activeRole =
+        req.user?.active_role_code;
+
+      const requestId =
+        String(
+          req.params.requestId ?? req.params.id ?? '',
+        ).trim();
+
+      const assigneeUserId =
+        typeof req.body?.assignee_user_id ===
+        'string'
+          ? req.body.assignee_user_id.trim()
+          : '';
+
+      if (!companyId) {
+        throw new ForbiddenError(
+          'Company aktif diperlukan untuk assign request.',
+        );
+      }
+
+      if (!assignedByUserId) {
+        throw new ForbiddenError(
+          'User aktif tidak tersedia untuk assign request.',
+        );
+      }
+
+      if (!activeRole) {
+        throw new ForbiddenError(
+          'Role aktif tidak tersedia untuk assign request.',
+        );
+      }
+
+      if (!requestId) {
+        throw new ValidationError(
+          'Request ID wajib diisi.',
+        );
+      }
+
+      if (!assigneeUserId) {
+        throw new ValidationError(
+          'assignee_user_id wajib diisi.',
+        );
+      }
+
+      /**
+       * Staff tidak boleh assign/reassign request.
+       *
+       * Assignment merupakan fungsi koordinasi /
+       * managerial.
+       */
+      const allowedRoles =
+        new Set<string>([
+          RoleCode.PROJECT_MANAGER,
+          RoleCode.OPERATIONAL_MANAGER,
+          RoleCode.DIRECTOR,
+          RoleCode.SUPERVISOR,
+          RoleCode.SUPER_ADMIN,
+          RoleCode.COMPANY_ADMIN,
+        ]);
+
+      if (
+        !allowedRoles.has(activeRole)
+      ) {
+        throw new ForbiddenError(
+          'Role aktif tidak memiliki akses untuk assign atau reassign request.',
+        );
+      }
+
+      const result =
+        await RequestService.assignRequest({
+          requestId,
+          assigneeUserId,
+          assignedByUserId,
+          companyId,
+        });
+
+      /**
+       * Assignment mengubah hasil GET /requests.
+       *
+       * Increment revision agar:
+       *
+       * Staff lama
+       * Staff baru
+       * PM
+       * OM
+       *
+       * semuanya tidak menerima snapshot lama.
+       */
+      invalidateRequestFeedCache();
+
+      return res.json({
+        success: true,
+        message:
+          result.reassigned
+            ? 'Request berhasil di-reassign.'
+            : 'Request berhasil di-assign.',
+        data:
+          result,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);

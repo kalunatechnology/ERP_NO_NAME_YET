@@ -29,6 +29,7 @@ const REPORT_TABS = [
   { id: "journals",    label: "General Ledger",  icon: Book         },
   { id: "periodic",    label: "Ringkasan Berkala", icon: ClipboardCheck },
   { id: "attendance",  label: "Kehadiran", icon: Clock3 },
+  { id: "operational", label: "Operasional", icon: Layers },
 ];
 
 const ROLE_REPORT_TABS: Record<UserRoleType, string[]> = {
@@ -36,7 +37,7 @@ const ROLE_REPORT_TABS: Record<UserRoleType, string[]> = {
   company_admin: ['executive', 'periodic', 'attendance'],
   executive: ['executive', 'project-pnl', 'periodic', 'attendance'],
   pm: ['executive', 'project-pnl', 'journals', 'periodic', 'attendance'],
-  om: ['executive', 'project-pnl', 'periodic', 'attendance'],
+  om: ['operational', 'periodic', 'attendance'],
   finance: ['executive', 'project-pnl', 'journals', 'periodic', 'attendance'],
   crm: ['executive', 'periodic', 'attendance'],
   staff: ['periodic', 'attendance'],
@@ -50,21 +51,24 @@ const ROLE_REPORT_TABS: Record<UserRoleType, string[]> = {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
  */
-async function loadReportingData({ canReadProjects, canReadFinance }: { canReadProjects: boolean; canReadFinance: boolean }) {
+async function loadReportingData({ canReadProjects, canReadFinance, includeOperational }: { canReadProjects: boolean; canReadFinance: boolean; includeOperational: boolean }) {
   // Do not use Reporting as a backdoor to Finance. Staff only need the two
   // reporting projections below; finance/project sources are fetched solely
   // when the company has granted their owning module.
   const emptyRows = Promise.resolve<any[]>([]);
-  const [projects, costEntries, billings, journals, periodic, attendance] = await Promise.all([
+  const [projects, costEntries, billings, journals, periodic, attendance, operational] = await Promise.all([
     canReadProjects ? api.get("/api/v1/projects/projects/?page_size=100").then(r => normalizeList<any>(r.data).rows) : emptyRows,
     canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=500").then(r => normalizeList<any>(r.data).rows) : emptyRows,
     canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=200").then(r => normalizeList<any>(r.data).rows) : emptyRows,
     canReadFinance ? api.get("/api/v1/finance/journal-entries/?page_size=200").then(r => normalizeList<any>(r.data).rows) : emptyRows,
     api.get('/api/v1/reporting/periodic-project-summary?period_type=MONTHLY').then(r => r.data),
     api.get('/api/v1/reporting/attendance-summary').then(r => r.data),
+    includeOperational
+      ? api.get('/api/v1/reporting/operational-summary').then(r => r.data).catch(() => null)
+      : Promise.resolve(null),
   ]);
 
-  return { projects, costEntries, billings, orders: [], journals, periodic, attendance };
+  return { projects, costEntries, billings, orders: [], journals, periodic, attendance, operational };
 }
 
 /* ── Shared Components ───────────────────────────── */
@@ -402,7 +406,24 @@ function TabJournals({ data }: { data: ReturnType<typeof createDefaultData> }) {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function createDefaultData() {
-  return { projects: [] as any[], costEntries: [] as any[], billings: [] as any[], orders: [] as any[], journals: [] as any[], periodic: null as any, attendance: null as any };
+  return { projects: [] as any[], costEntries: [] as any[], billings: [] as any[], orders: [] as any[], journals: [] as any[], periodic: null as any, attendance: null as any, operational: null as any };
+}
+
+function TabOperational({ data }: { data: ReturnType<typeof createDefaultData> }) {
+  const value = data.operational;
+  const metrics = [
+    ['Proyek Aktif', value?.projects?.active ?? 0],
+    ['Task Berjalan', value?.tasks?.in_progress ?? 0],
+    ['Task Terhambat', value?.tasks?.blocked ?? 0],
+    ['Milestone Jatuh Tempo', value?.milestones?.overdue ?? 0],
+  ];
+  return <div className="card rounded-xl p-5">
+    <h2 className="font-bold text-text-primary">Ringkasan Operasional</h2>
+    <p className="text-xs text-text-secondary mt-1">Kondisi proyek, task, dan milestone perusahaan berdasarkan data operasional aktual.</p>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+      {metrics.map(([label, metric]) => <div key={String(label)} className="rounded-lg border border-text-tertiary/50 p-3"><div className="text-2xs text-text-secondary">{label}</div><div className="text-lg font-bold">{metric}</div></div>)}
+    </div>
+  </div>;
 }
 
 function TabPeriodic({ data }: { data: ReturnType<typeof createDefaultData> }) {
@@ -468,7 +489,7 @@ export default function ReportingClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const d = await loadReportingData({ canReadProjects, canReadFinance });
+      const d = await loadReportingData({ canReadProjects, canReadFinance, includeOperational: userRole === 'om' });
       setData(d);
     } catch {
       toast.error("Gagal memuat data laporan.");
@@ -476,7 +497,7 @@ export default function ReportingClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [canReadFinance, canReadProjects]);
+  }, [canReadFinance, canReadProjects, userRole]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -626,6 +647,7 @@ export default function ReportingClient() {
             {activeTab === "journals"    && <TabJournals data={data} />}
             {activeTab === "periodic"    && <TabPeriodic data={data} />}
             {activeTab === "attendance"  && <TabAttendance data={data} />}
+            {activeTab === "operational" && <TabOperational data={data} />}
           </>
         )}
       </div>

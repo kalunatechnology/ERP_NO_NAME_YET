@@ -149,19 +149,28 @@ model core_audit_event {
   created_by_id String?   @map("created_by_id")
   created_at    DateTime? @default(now())
   updated_at    DateTime? @updatedAt
-  id            String    @id @default(uuid())
-  tenant_id     String?   @map("tenant_id")
-  company_id    String?   @map("company_id")
-  document_id   String?   @map("document_id")
-  user_id       String?   @map("user_id")
-  entity_name   String
-  entity_id     String?
-  event_type    String
-  before_data   Json
-  after_data    Json
-  occurred_at   DateTime?
+
+  id String @id @default(uuid())
+
+  tenant_id  String? @map("tenant_id")
+  company_id String? @map("company_id")
+
+  document_id String? @map("document_id")
+  user_id     String? @map("user_id")
+
+  entity_name String
+  entity_id   String?
+  event_type  String
+
+  before_data Json
+  after_data  Json
+
+  occurred_at DateTime?
 
   @@index([tenant_id, company_id])
+  @@index([tenant_id, company_id, entity_name, entity_id, event_type])
+  @@index([company_id, entity_name, event_type, occurred_at])
+  @@index([company_id, entity_name, entity_id, event_type, occurred_at])
   @@map("core_audit_event")
 }
 
@@ -959,19 +968,26 @@ model master_department {
 }
 
 model master_employee {
-  company_id           String?   @map("company_id")
-  created_by_id        String?   @map("created_by_id")
-  created_at           DateTime? @default(now())
-  updated_at           DateTime? @updatedAt
-  id                   String    @id @default(uuid())
-  tenant_id            String?   @map("tenant_id")
-  party_id             String?   @map("party_id")
-  department_id        String?   @map("department_id")
+  company_id    String?   @map("company_id")
+  created_by_id String?   @map("created_by_id")
+  created_at    DateTime? @default(now())
+  updated_at    DateTime? @updatedAt
+  id            String    @id @default(uuid())
+  tenant_id     String?   @map("tenant_id")
+
+  // NEW:
+  // Permanent mapping IAM user -> employee.
+  user_id String? @map("user_id")
+
+  party_id             String?  @map("party_id")
+  department_id        String?  @map("department_id")
   employee_number      String
   employment_status    String
   standard_hourly_rate Decimal?
 
+  @@unique([company_id, user_id])
   @@index([tenant_id, company_id])
+  @@index([tenant_id, company_id, user_id])
   @@map("master_employee")
 }
 
@@ -2152,22 +2168,54 @@ model project_budget_line {
 }
 
 model project_timesheet {
-  tenant_id       String?   @map("tenant_id")
-  company_id      String?   @map("company_id")
-  created_by_id   String?   @map("created_by_id")
-  created_at      DateTime? @default(now())
-  updated_at      DateTime? @updatedAt
-  id              String    @id @default(uuid())
-  project_id      String?   @map("project_id")
-  task_id         String?   @map("task_id")
-  employee_id     String?   @map("employee_id")
-  work_date       DateTime?
-  hours           Decimal?
-  hourly_rate     Decimal?
-  amount          Decimal?
+  tenant_id     String?   @map("tenant_id")
+  company_id    String?   @map("company_id")
+  created_by_id String?   @map("created_by_id")
+  created_at    DateTime? @default(now())
+  updated_at    DateTime? @updatedAt
+  id            String    @id @default(uuid())
+
+  project_id  String? @map("project_id")
+  task_id     String? @map("task_id")
+  employee_id String? @map("employee_id")
+
+  work_date DateTime?
+
+  // Total jam kerja yang dicatat dalam timesheet.
+  hours Decimal?
+
+  // Jam lembur adalah bagian dari total hours.
+  //
+  // Contoh:
+  // hours          = 10
+  // overtime_hours = 2
+  //
+  // Artinya:
+  // jam kerja normal = 8
+  // lembur            = 2
+  overtime_hours Decimal @default(0)
+
+  // Alasan/keterangan lembur.
+  overtime_reason String?
+
+  hourly_rate Decimal?
+  amount      Decimal?
+
+  // Digunakan juga untuk menentukan status overtime:
+  //
+  // PENDING
+  // SUBMITTED
+  // APPROVED
+  // REJECTED
+  //
+  // Tidak perlu membuat overtime_approval_status terpisah selama
+  // approval timesheet dan lembur masih satu workflow.
   approval_status String
 
   @@index([tenant_id, company_id])
+  @@index([tenant_id, company_id, employee_id, work_date])
+  @@index([tenant_id, company_id, project_id, employee_id])
+  @@index([tenant_id, company_id, approval_status])
   @@map("project_timesheet")
 }
 
@@ -4373,7 +4421,7 @@ model fin_project_cost_entry {
 }
 
 model fin_billing_proposal {
-  tax_scheme         String?
+  tax_scheme          String?
   created_by_id       String?   @map("created_by_id")
   id                  String    @id @default(uuid())
   tenant_id           String?   @map("tenant_id")

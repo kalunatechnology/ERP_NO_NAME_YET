@@ -16,6 +16,7 @@ import {
 import { cn, formatDate, getStatusColor } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
+import { assignRequest } from "@/lib/api/feed.api";
 
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -42,6 +43,12 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
   const [bankId, setBankId] = useState("");
   const [bankReference, setBankReference] = useState("");
   const [banks, setBanks] = useState<any[]>([]);
+
+  // Assignee states
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>(request?.assignee_user_id || "");
+  const [assigning, setAssigning] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+
   useEffect(() => {
     setBankId(""); setBankReference(""); setBanks([]);
     if (!isOpen || request?.status !== 'REGISTERED' || !['finance', 'super_admin'].includes(userRole)) return;
@@ -49,6 +56,19 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
     api.get('/api/v1/requests/disbursement-accounts').then(res => { if (current) setBanks(normalizeList<any>(res.data).rows); }).catch(() => { if (current) setError('Gagal memuat rekening pencairan. Tutup dan buka kembali untuk mencoba ulang.'); });
     return () => { current = false; };
   }, [isOpen, request?.id, request?.status, userRole]);
+
+  useEffect(() => {
+    if (!isOpen || !request) return;
+    setSelectedAssigneeId(request.assignee_user_id || "");
+    let current = true;
+    api.get("/api/v1/requests/team-members").then(res => {
+      if (current) {
+        const data = res.data?.data ?? res.data ?? [];
+        setTeamMembers(Array.isArray(data) ? data : []);
+      }
+    }).catch(() => {});
+    return () => { current = false; };
+  }, [isOpen, request?.id, request?.assignee_user_id]);
 
   // LPJ Submission States
   const [showLPJForm, setShowLPJForm] = useState(false);
@@ -231,6 +251,23 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
     }
   };
 
+  const handleAssign = async () => {
+    if (!selectedAssigneeId) {
+      setError("Pilih staff yang akan di-assign.");
+      return;
+    }
+    setAssigning(true);
+    setError("");
+    try {
+      await assignRequest(request.id, selectedAssigneeId);
+      onActionComplete();
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || "Gagal meng-assign request.");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-[560px] bg-[#FDFDFD] border border-[#D9D9D9] rounded-[26px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -304,6 +341,45 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
             {request.description && (
               <p className="text-xs text-[#4F5050] leading-relaxed whitespace-pre-wrap">{request.description}</p>
             )}
+          </div>
+
+          {/* Assigned Staff (PIC) Section */}
+          <div className="p-4 rounded-[18px] bg-white border border-[#D9D9D9] shadow-2xs space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-2xs font-bold text-[#4F5050] uppercase tracking-wider">
+                Staff Penanggung Jawab (PIC)
+              </span>
+              {request.assignee_user ? (
+                <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-[#EAF6FF] text-[#2649B3]">
+                  {request.assignee_user.name}
+                </span>
+              ) : (
+                <span className="text-2xs text-[#4F5050] italic">Belum di-assign</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <select
+                value={selectedAssigneeId}
+                onChange={(e) => setSelectedAssigneeId(e.target.value)}
+                className="flex-1 rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2]"
+              >
+                <option value="">-- Pilih Staff --</option>
+                {teamMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} {m.role ? `(${m.role})` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAssign}
+                disabled={assigning || !selectedAssigneeId || selectedAssigneeId === request.assignee_user_id}
+                className="px-3.5 py-2 rounded-[12px] bg-[#2649B3] hover:bg-[#2649B3] text-white text-xs font-bold transition-all disabled:opacity-40 shrink-0"
+              >
+                {assigning ? "Menyimpan..." : request.assignee_user_id ? "Reassign" : "Assign"}
+              </button>
+            </div>
           </div>
 
           {/* Tagged People */}

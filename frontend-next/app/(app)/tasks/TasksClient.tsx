@@ -13,6 +13,9 @@ import {
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
 import { canAccessRoute } from "@/lib/access/module-contract";
+import { StaffTimesheetForm } from "@/components/staff/StaffTimesheetForm";
+import { StaffTimesheetTable } from "@/components/staff/StaffTimesheetTable";
+import { StaffOvertimeSummary } from "@/components/staff/StaffOvertimeSummary";
 
 /* ── Status helpers ─────────────────────────────── */
 /**
@@ -305,7 +308,7 @@ function NewDailyTaskModal({
             <input
               type="text"
               required
-              placeholder="Contoh: Instalasi panel distribusi lantai 2"
+              placeholder="Contoh: Review kebutuhan klien dan siapkan hasil pekerjaan"
               value={title}
               onChange={e => setTitle(e.target.value)}
               className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green"
@@ -493,6 +496,7 @@ export default function TasksClient() {
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [timesheetRefreshKey, setTimesheetRefreshKey] = useState(0);
 
   /* Track recently opened Tasks */
   useEffect(() => {
@@ -796,7 +800,7 @@ export default function TasksClient() {
             className="btn-primary text-xs gap-1.5 flex-shrink-0 font-semibold"
           >
             <Plus size={14} />
-            <span>+ Buat Task Harian</span>
+            <span>Buat Task Harian</span>
           </button>}
           <button onClick={() => fetchTasks(true)} disabled={refreshing} className="btn-ghost text-xs gap-1.5 flex-shrink-0">
             <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
@@ -840,6 +844,18 @@ export default function TasksClient() {
           </button>
         </div>
       </section>
+
+      {userRole === "staff" && (
+        <section className="flex flex-col gap-4" aria-labelledby="timesheet-workspace-title">
+          <div>
+            <h2 id="timesheet-workspace-title" className="text-base font-bold text-text-primary">Timesheet & Lembur Saya</h2>
+            <p className="mt-1 text-xs text-text-secondary">Catat jam aktual pada proyek yang ditugaskan dan pantau proses persetujuannya.</p>
+          </div>
+          <StaffOvertimeSummary refreshKey={timesheetRefreshKey} />
+          <StaffTimesheetForm projects={projects} userId={user?.id == null ? undefined : String(user.id)} onCreated={() => setTimesheetRefreshKey((value) => value + 1)} />
+          <StaffTimesheetTable projects={projects} refreshKey={timesheetRefreshKey} />
+        </section>
+      )}
 
       {/* ── Toolbar ────────────────────────── */}
       <div className="card rounded-xl p-3 flex items-center gap-3 flex-wrap">

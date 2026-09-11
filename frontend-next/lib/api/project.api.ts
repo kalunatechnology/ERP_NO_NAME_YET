@@ -143,6 +143,7 @@ export interface Task {
   status: string;
   priority?: string;
   assigned_to?: string | number;
+  assigned_to_id?: string | number;
   parent_task?: string | number | null;
   due_date?: string;
   progress?: number;
@@ -390,6 +391,8 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
         priority: t.priority || "MEDIUM",
         progress: Number(t.progress_percent || t.progress || 0),
         parent_task: t.parent_task || t.parent_task_id,
+        assigned_to: t.assigned_to || t.assigned_to_id,
+        assigned_to_id: t.assigned_to_id || t.assigned_to,
       }));
 
     const calcBudget = Number(p.budget_amount || p.total_budget || 0);
@@ -1031,4 +1034,69 @@ export async function fetchCompanyUsers(): Promise<any[]> {
     });
 
     return merged;
+}
+
+// =============================================================================
+// STAFF TIMESHEET & OVERTIME CONTRACTS
+// =============================================================================
+
+export interface StaffTimesheet {
+  id: string;
+  project_id: string | null;
+  task_id: string | null;
+  work_date: string | null;
+  hours: number;
+  overtime_hours: number;
+  overtime_reason?: string | null;
+  approval_status: string;
+}
+
+export interface CreateStaffTimesheetPayload {
+  project_id: string;
+  task_id?: string;
+  work_date: string;
+  hours: number;
+  overtime_hours?: number;
+  overtime_reason?: string;
+}
+
+export interface StaffOvertimeSummary {
+  thisWeekHours: number;
+  thisMonthHours: number;
+  pendingHours: number;
+  approvedHours: number;
+  lastOvertimeDate: string | null;
+}
+
+export interface StaffProjectOverview {
+  projects: any[];
+  mainTasks: any[];
+  weeklyTasks: any[];
+  dailyTasks: any[];
+  milestones: any[];
+}
+
+export async function getStaffProjectOverview(): Promise<StaffProjectOverview> {
+  const res = await api.get("/api/v1/projects/staff/project-overview");
+  return res.data?.data ?? res.data;
+}
+
+export async function getStaffTimesheets(params?: {
+  page?: number;
+  page_size?: number;
+}): Promise<{ rows: StaffTimesheet[]; count: number }> {
+  const res = await api.get("/api/v1/projects/timesheets", { params });
+  return normalizeList<StaffTimesheet>(res.data);
+}
+
+export async function createStaffTimesheet(
+  payload: CreateStaffTimesheetPayload
+): Promise<StaffTimesheet> {
+  const res = await api.post("/api/v1/projects/timesheets", payload);
+  return res.data?.data ?? res.data;
+}
+
+export async function getStaffOvertimeSummary(): Promise<StaffOvertimeSummary> {
+  const res = await api.get("/api/v1/projects/timesheets/me/overtime-summary");
+  return res.data?.data ?? res.data;
 }

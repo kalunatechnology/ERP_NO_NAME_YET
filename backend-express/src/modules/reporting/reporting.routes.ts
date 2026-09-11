@@ -214,6 +214,34 @@ reportingRouter.get('/attendance-summary', async (req: Request, res: Response, n
   }
 });
 
+/** Company-scoped operational projection for Operations Management. */
+reportingRouter.get('/operational-summary', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const now = new Date();
+    const projectWhere = { company_id: companyId };
+    const taskWhere = { company_id: companyId };
+    const milestoneWhere = { company_id: companyId };
+    const [projectsTotal, projectsActive, tasksTotal, tasksInProgress, tasksBlocked, milestonesTotal, milestonesOverdue] = await Promise.all([
+      prisma.project_project.count({ where: projectWhere }),
+      prisma.project_project.count({ where: { ...projectWhere, status: { in: ['ACTIVE', 'IN_PROGRESS'] } } }),
+      prisma.project_daily_task.count({ where: taskWhere }),
+      prisma.project_daily_task.count({ where: { ...taskWhere, status: 'IN_PROGRESS' } }),
+      prisma.project_daily_task.count({ where: { ...taskWhere, OR: [{ is_blocked: true }, { status: 'BLOCKED' }] } }),
+      prisma.project_milestone.count({ where: milestoneWhere }),
+      prisma.project_milestone.count({ where: { ...milestoneWhere, planned_date: { lt: now }, status: { notIn: ['COMPLETED', 'DONE'] } } }),
+    ]);
+    return res.json({
+      generated_at: now,
+      projects: { total: projectsTotal, active: projectsActive },
+      tasks: { total: tasksTotal, in_progress: tasksInProgress, blocked: tasksBlocked },
+      milestones: { total: milestonesTotal, overdue: milestonesOverdue },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // REST ViewSets
 reportingRouter.use('/finance-main-dashboards', createCrudRouter({ modelName: 'view_finance_main_dashboard', lookupField: 'company_id', readOnly: true }));
 reportingRouter.use('/project-dashboards', createCrudRouter({ modelName: 'view_project_dashboard', lookupField: 'project_id', readOnly: true }));

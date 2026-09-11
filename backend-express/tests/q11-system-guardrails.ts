@@ -318,6 +318,8 @@ async function main(): Promise<void> {
     assert(financeRoutes.includes("'/payments/:id/execute'"));
     assert(projectRoutes.includes("'/dashboard/financial-summary'"));
     assert(projectRoutes.includes("Status Daily Task tidak valid."), 'Daily Task creation must reject statuses outside the command contract.');
+    assert(projectRoutes.includes('existingProjectMember?.employee_id'), 'Timesheet identity must retain the explicit project-member migration fallback.');
+    assert(projectRoutes.includes("'Akun user belum terhubung dengan data employee.'"), 'Missing employee identity must fail closed with an actionable message.');
     assert(profileModal.includes('current_password'));
     assert(profileModal.includes('api.patch("/api/v1/auth/profile"'));
     assert(projectClient.includes('"executive", "om", "pm", "finance"'), 'Project financial visibility must use the normalized executive role.');
@@ -333,11 +335,42 @@ async function main(): Promise<void> {
     assert(utilsSource.includes('getStatusStyle(status)'), 'Status styling must delegate to the canonical presentation contract.');
     assert(semanticStyles.includes('getCategoryStyle') && semanticStyles.includes('getStatusStyle'), 'Canonical status/category presentation registry is missing.');
     assert(dashboardClient.indexOf('Tugas Operasional Hari Ini') < dashboardClient.indexOf('<CompletionRateCard rates={industryRates}'), 'PM dashboard order must place personal tasks before completion rate.');
+    const pmDashboardSource = dashboardClient.slice(dashboardClient.indexOf('function PMDashboard'), dashboardClient.indexOf('function FinanceDashboard'));
+    assert(!pmDashboardSource.includes('/dashboard/financial-summary'), 'PM dashboard must not request Finance-style cost projections.');
+    assert(!pmDashboardSource.includes('BudgetCheckStatusCard'), 'PM dashboard must not render the Finance budget widget.');
+    assert(!pmDashboardSource.includes('TopExpensesBarChart') && !pmDashboardSource.includes('Tren Biaya Bulanan Proyek'), 'PM dashboard must not render Finance analytics.');
+    assert(!pmDashboardSource.includes('Daftar Proyek'), 'PM dashboard project list belongs on the Project page only.');
+    assert(pmDashboardSource.indexOf('Overview Proyek Saya') < pmDashboardSource.indexOf('ProjectDistributionGauge'), 'Project distribution must follow the PM overview.');
+    assert(!projectClient.includes('<TopExpensesBarChart'), 'Project workspace must not duplicate Finance expense analytics.');
+    assert(projectClient.includes('if (!selectedId || !canViewFinancials)'), 'Project financial background requests must be suppressed for non-financial roles.');
     assert(dashboardClient.includes('Task Submission') && dashboardClient.includes('pendingSubmissions'), 'Staff dashboard must expose the submission stage explicitly.');
     for (const legacyGreen of ['#22C55E', '#16A34A', '#166534', '#5f8f35', 'bg-emerald-', 'text-emerald-']) {
       assert(!`${dashboardClient}${projectClient}${tasksClient}${financeClient}${feedSource}`.includes(legacyGreen), `Legacy green visual token remains: ${legacyGreen}`);
     }
+    const [timesheetForm, timesheetTable, overtimeWidget, dashboardRoutes, reportingRoutes, budgetCard] = await Promise.all([
+      readFile(`${__dirname}/../../frontend-next/components/staff/StaffTimesheetForm.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/staff/StaffTimesheetTable.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/staff/StaffOvertimeSummary.tsx`, 'utf8'),
+      readFile(`${__dirname}/../src/modules/dashboard/dashboard.routes.ts`, 'utf8'),
+      readFile(`${__dirname}/../src/modules/reporting/reporting.routes.ts`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/ui/BudgetCheckStatusCard.tsx`, 'utf8'),
+    ]);
+    for (const forbiddenField of ['employee_id:', 'hourly_rate:', 'amount:', 'approval_status:']) {
+      assert(!timesheetForm.includes(forbiddenField), `Staff timesheet form must not send server-owned field ${forbiddenField}`);
+    }
+    assert(timesheetForm.includes('createStaffTimesheet({') && timesheetForm.includes('overtime_hours: overtime'));
+    assert(timesheetTable.includes('getStaffTimesheets({ page, page_size: PAGE_SIZE })'));
+    assert(overtimeWidget.includes('getStaffOvertimeSummary()'));
+    assert(tasksClient.includes('<StaffTimesheetForm') && tasksClient.includes('<StaffTimesheetTable'));
+    assert(dashboardClient.includes('initialSummary={overtimeSummary}'), 'Staff dashboard must render its BFF overtime summary.');
+    assert(dashboardRoutes.includes('FROM master_employee e') && dashboardRoutes.includes('UNION'), 'Dashboard overtime identity must use permanent and explicit transitional mappings.');
     assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
+    assert(reportingRoutes.includes("'/operational-summary'"), 'OM operational reporting projection is missing.');
+    assert(reportingClient.includes("om: ['operational', 'periodic', 'attendance']"), 'OM must not receive executive or Project P&L reporting tabs.');
+    assert(reportingClient.includes("includeOperational: userRole === 'om'"), 'Operational projection must only be requested for the OM journey.');
+    assert(!projectClient.includes('<TopExpensesBarChart'), 'Project workspace must not render project expense analytics for PM or OM.');
+    assert(!tasksClient.includes('<span>+ Buat Task Harian</span>'), 'Daily Task action must not render duplicate plus symbols.');
+    assert(budgetCard.includes('Anggaran Proyek') && !budgetCard.includes('Material Budget'), 'Shared Finance budget card must use module-neutral labels.');
     return {
       route_registry: 'centralized',
       tasks_module: 'PROJECTS',

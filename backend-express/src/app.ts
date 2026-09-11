@@ -144,6 +144,7 @@ export function createApp(): Express {
   // ERP Domain Modules
   apiV1.use('/core', coreRouter);
   apiV1.use('/requests', requireModuleAccess('REQUESTS'), requestRouter);
+  apiV1.use('/request', requireModuleAccess('REQUESTS'), requestRouter);
   apiV1.use('/master-data', masterDataRouter);
   apiV1.use(
     '/crm',

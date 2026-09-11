@@ -60,6 +60,10 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
   const [budgetCategory, setBudgetCategory] = useState<string>("PROJECT_MATERIAL");
   const [bankTarget, setBankTarget] = useState<string>("BCA 883019281 a.n. Toko Bangunan Jaya");
 
+  // Assignee state
+  const [teamMembers, setTeamMembers] = useState<InvitedPerson[]>([]);
+  const [assigneeUserId, setAssigneeUserId] = useState<string>("");
+
   // Invite People states
   const [inviteSearch, setInviteSearch] = useState("");
   const [invitedList, setInvitedList] = useState<InvitedPerson[]>([]);
@@ -87,7 +91,11 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
         params: searchQuery.trim() ? { search: searchQuery.trim() } : {},
       });
       const data = res.data?.data ?? res.data ?? [];
-      setSearchResults(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setSearchResults(list);
+      if (!searchQuery.trim()) {
+        setTeamMembers(list);
+      }
     } catch {
       setSearchResults([]);
     } finally {
@@ -96,7 +104,10 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
   };
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setAssigneeUserId("");
+      return;
+    }
     fetchMembers();
   }, [isOpen]);
 
@@ -239,6 +250,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
         tagged_users: invitedList,
         attachment_url: attachedFileName ? `https://storage.marka.id/docs/${attachedFileName}` : undefined,
         is_draft: isDraft,
+        assignee_user_id: assigneeUserId || undefined,
       });
 
       const responseData = res.data?.data ?? res.data;
@@ -476,8 +488,28 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
           {/* ════════════ RIGHT COLUMN (Invite People & Actions) ════════════ */}
           <div className="md:col-span-5 flex flex-col justify-between gap-6">
             
-            {/* Top: Invite People Section */}
-            <div className="flex flex-col gap-3">
+            {/* Top: Assign & Invite People Section */}
+            <div className="flex flex-col gap-4">
+              {/* Assign ke Staff */}
+              <div>
+                <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
+                  Assign ke Staff (PIC)
+                </label>
+                <select
+                  value={assigneeUserId}
+                  onChange={(e) => setAssigneeUserId(e.target.value)}
+                  className="w-full rounded-[14px] border border-[#D9D9D9] bg-white px-3.5 py-2.5 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2]"
+                >
+                  <option value="">-- Pilih Staff (Opsional) --</option>
+                  {teamMembers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} {m.role ? `(${m.role})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Invite People */}
               <div>
                 <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
                   Invite People

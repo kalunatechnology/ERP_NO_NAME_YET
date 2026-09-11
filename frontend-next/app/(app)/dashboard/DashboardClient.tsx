@@ -19,7 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { loadAllProjects, Project } from "@/lib/api/project.api";
 import { loadFinanceDashboard, FinanceDashboardData } from "@/lib/api/finance.api";
 import { loadCRMData, CRMData, CRMDashboard as CRMDashType } from "@/lib/api/crm.api";
-import { loadDashboardBootstrap } from "@/lib/api/dashboard.api";
+import { loadDashboardBootstrap, StaffOvertimeSummary as StaffOvertimeSummaryData } from "@/lib/api/dashboard.api";
 import api from "@/lib/api/axios";
 import { formatMoney, formatDate, getStatusColor, cn, localDateKey, normalizeDateKey } from "@/lib/utils";
 
@@ -31,13 +31,13 @@ import { ProjectTimelineGantt, GanttTaskItem } from "@/components/ui/ProjectTime
 import { buildMainTaskTimeline } from "@/lib/dashboard/project-timeline";
 import { ProjectMilestoneCard, ProjectSummary, MilestoneItem } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
-import { InventoryCheckingCard } from "@/components/ui/InventoryCheckingCard";
 import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
 import { NewCardRequestModal } from "@/components/requests/NewCardRequestModal";
 import { RequestSuccessModal } from "@/components/requests/RequestSuccessModal";
 import { RequestReviewModal } from "@/components/requests/RequestReviewModal";
 import { RequestCardFeed } from "@/components/requests/RequestCardFeed";
 import { Sparkles, Plus } from "lucide-react";
+import { StaffOvertimeSummary } from "@/components/staff/StaffOvertimeSummary";
 
 /* ═══════════════════════════════════════════════════════════════
    SHARED COMPONENTS
@@ -199,23 +199,8 @@ function LoadingDashboard() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function PMDashboard({ projects, loading, role }: { projects: Project[]; loading: boolean; role: "pm" | "om" }) {
+function PMDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
   const today = localDateKey();
-  const [projectFinancials, setProjectFinancials] = useState<any>(null);
-  const [projectFinancialError, setProjectFinancialError] = useState(false);
-
-  useEffect(() => {
-    if (role !== "pm") return;
-    api.get("/api/v1/projects/dashboard/financial-summary")
-      .then((response) => {
-        setProjectFinancials(response.data?.data ?? response.data);
-        setProjectFinancialError(false);
-      })
-      .catch(() => {
-        setProjectFinancials(null);
-        setProjectFinancialError(true);
-      });
-  }, [role]);
 
   if (loading) return <LoadingDashboard />;
 
@@ -243,29 +228,7 @@ function PMDashboard({ projects, loading, role }: { projects: Project[]; loading
   });
   const completedToday = todayTasks.filter(d => ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase())).length;
 
-  // Budget calculations from real PM projects
-  const totalBudget = projects.reduce((acc, p) => acc + Number(p.budget_amount || (p as any).budget || 0), 0);
-  const totalAllocated = 0; // Proyek baru diinisiasi, belum ada realisasi beban
-
   const timelineTasks = buildMainTaskTimeline(projects);
-
-  const topExpenseMax = Math.max(...(projectFinancials?.top_expenses || []).map((item: any) => Number(item.amount || 0)), 1);
-  const topExpenses: ExpenseItem[] = (projectFinancials?.top_expenses || []).map((item: any, index: number) => ({
-    id: `${item.category}-${index}`,
-    label: item.category,
-    amountText: formatMoney(Number(item.amount || 0)),
-    amountValue: Number(item.amount || 0),
-    percentage: (Number(item.amount || 0) / topExpenseMax) * 100,
-    category: item.category,
-  }));
-  const projectCashTrend = (projectFinancials?.cash_trend || []).map((item: any) => ({
-    month: item.month,
-    fullDate: item.month,
-    bottomValue: 0,
-    topValue: Number(item.expense || 0) / 1_000_000,
-    hasData: true,
-    notes: "Biaya proyek tervalidasi/posting",
-  }));
 
   // Derive Real Projects & Milestones for PM
   const projectSummaries: ProjectSummary[] = projects.slice(0, 8).map(p => ({
@@ -323,59 +286,6 @@ function PMDashboard({ projects, loading, role }: { projects: Project[]; loading
         </div>
       </section>
 
-      {/* ── Section Budget Check & Status Kontrol Lapangan ── */}
-      {role === "pm" && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
-        <div className="lg:col-span-1 h-full">
-          <BudgetCheckStatusCard
-            materialBudget={totalBudget}
-            allocationFormula="(Total Alokasi Biaya Material PO)"
-            allocationCost={totalAllocated}
-            remainingBudget={Math.max(0, totalBudget - totalAllocated)}
-            isValid={totalBudget >= totalAllocated}
-          />
-        </div>
-
-        {/* ── Panel Status Kontrol & Pengadaan Lapangan (Gambar 2) ── */}
-        <div className="lg:col-span-2 bg-white border border-[#C7C7C7] rounded-2xl p-6 shadow-xs flex flex-col justify-between h-full min-h-[220px]">
-          <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-[#EAF6FF] flex items-center justify-center text-[#2649B3]">
-                <FolderKanban size={18} />
-              </div>
-              <h3 className="text-base font-bold text-[#090909]">Status Kontrol &amp; Pengadaan Lapangan</h3>
-            </div>
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#EAF6FF] text-[#2649B3] border border-[#9FD6FF]">
-              Active Control
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 my-auto py-2">
-            <div className="p-4 rounded-[16px] bg-[#FAFAFA] border border-gray-100">
-              <span className="text-xs text-[#4F5050] block uppercase font-bold tracking-wider">PROYEK TERDAFTAR</span>
-              <span className="text-lg font-bold text-[#090909] mt-1 block">
-                {projects.length} Proyek
-              </span>
-            </div>
-            <div className="p-4 rounded-[16px] bg-[#FAFAFA] border border-gray-100">
-              <span className="text-xs text-[#4F5050] block uppercase font-bold tracking-wider">TERVERIFIKASI QC</span>
-              <span className="text-lg font-bold text-[#294BB2] mt-1 block">
-                {delayed === 0 ? "On Schedule" : `${active} Berjalan`}
-              </span>
-            </div>
-            <div className="p-4 rounded-[16px] bg-[#FAFAFA] border border-gray-100">
-              <span className="text-xs text-[#4F5050] block uppercase font-bold tracking-wider">TOTAL NILAI PROYEK</span>
-              <span className="text-lg font-bold text-amber-600 mt-1 block truncate">
-                {formatMoney(totalBudget)}
-              </span>
-            </div>
-          </div>
-
-          <p className="text-xs text-[#4F5050] pt-2 border-t border-gray-100">
-            Alokasi material terkunci sesuai baseline HPP. Seluruh pengeluaran di luar plafon akan dialihkan ke otorisasi Project Manager.
-          </p>
-        </div>
-      </div>}
-
       {/* ── Visual Analytics Row 1: Gauges & Distribusi Portofolio (2 Kolom) ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
         <ProjectDistributionGauge
@@ -432,24 +342,6 @@ function PMDashboard({ projects, loading, role }: { projects: Project[]; loading
         <CompletionRateCard rates={industryRates} />
       </div>
 
-      {/* ── Visual Analytics Row 2: Tren Pendapatan & Biaya Bulanan (Run-Rate) ── */}
-      {role === "pm" && <div className="w-full">
-        {projectFinancialError && <p className="mb-2 text-xs text-amber-700">Ringkasan keuangan proyek gagal dimuat. Data proyek operasional tetap tersedia.</p>}
-        <MonthlyStackedBarChart
-          title="Tren Biaya Bulanan Proyek"
-          subtitle="Realisasi biaya tervalidasi dan biaya yang telah diposting ke WIP pada project yang dikelola"
-          primaryLabel="Tidak digunakan"
-          secondaryLabel="Biaya Proyek (Jt)"
-          data={projectCashTrend}
-          autoFetch={false}
-        />
-      </div>}
-
-      {/* ── Visual Analytics Row 3: Top 5 Expenses ── */}
-      {role === "pm" && <div className="w-full">
-        <TopExpensesBarChart expenses={topExpenses} />
-      </div>}
-
       {/* ── Visual Analytics Row 3: Gantt Timeline Mingguan Portofolio (W1-W8) ── */}
       <div className="w-full">
         <ProjectTimelineGantt tasks={timelineTasks} totalWeeks={8} />
@@ -483,78 +375,6 @@ function PMDashboard({ projects, loading, role }: { projects: Project[]; loading
         </section>
       )}
 
-      {/* ── Project list table ────────────── */}
-      <section>
-        <SectionHeader title="Daftar Proyek" actionLabel="Kelola proyek" actionHref="/projects" />
-        <div className="card rounded-xl overflow-hidden">
-          {projects.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <FolderKanban size={40} className="text-text-secondary opacity-40" />
-              <p className="text-sm text-text-secondary">Belum ada proyek. Mulai dengan membuat proyek baru.</p>
-              <Link href="/projects" className="btn-primary">+ Tambah Proyek</Link>
-            </div>
-          ) : (
-            <div className="table-scroll-wrapper">
-              <table className="w-full text-sm min-w-[520px]">
-                <thead>
-                  <tr className="border-b border-text-tertiary bg-bg-lighter">
-                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Nama Proyek</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Progress</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Status</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Deadline</th>
-                    <th className="text-left text-xs font-semibold text-text-secondary px-3 py-2.5">Task</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {projects.map((p, i) => {
-                    const progress = p.progress_percentage || p.progress || 0;
-                    const deadline = p.end_date || p.planned_end_date;
-                    const isDelayed = deadline && deadline < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
-/**
- * taskCount coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-                    const taskCount = (p.main_tasks || []).reduce((acc, mt) => acc + (mt.weekly_tasks || mt.weekly_plans || []).reduce((a2, wt) => a2 + (wt.daily_tasks || []).length, 0), 0);
-                    return (
-                      <tr key={p.id} className={cn("border-b border-text-tertiary/50 hover:bg-bg-lighter/50 transition-colors", i % 2 === 0 && "bg-white")}>
-                        <td className="px-4 py-3">
-                          <Link href="/projects" className="font-medium text-brand-deep-green hover:underline">
-                            {p.project_name || p.name || `Project #${p.id}`}
-                          </Link>
-                          {p.project_manager_name && (
-                            <div className="text-2xs text-text-secondary">PM: {p.project_manager_name}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 min-w-24">
-                            <ProgressBar value={progress} color={progress >= 80 ? "#294BB2" : progress >= 40 ? "#D97706" : "#DC2626"} />
-                            <span className="text-xs font-medium text-text-primary w-9 text-right">{Math.round(progress)}%</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <StatusBadge status={p.status || "DRAFT"} />
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={cn("text-xs", isDelayed ? "text-red-600 font-semibold" : "text-text-secondary")}>
-                            {deadline ? formatDate(deadline) : "-"}
-                            {isDelayed && " · Terlambat"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs text-text-secondary">{taskCount} task</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
     </div>
   );
 }
@@ -613,15 +433,14 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
         />
       </div>
 
-      {/* ── Operational Control (Budget & Inventory Checking) ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
+      {/* Finance reads the project budget aggregate; inventory remains owned by Inventory. */}
+      <div className="grid grid-cols-1 gap-5 items-stretch">
         <BudgetCheckStatusCard
           materialBudget={kpis.totalBudget ?? 0}
           allocationCost={kpis.usedBudget ?? 0}
           remainingBudget={Math.max(0, (kpis.totalBudget ?? 0) - (kpis.usedBudget ?? 0))}
           isValid={(kpis.totalBudget ?? 0) >= (kpis.usedBudget ?? 0)}
         />
-        <InventoryCheckingCard autoFetch={true} />
       </div>
 
       {/* ── Need Action Panel ──────────── */}
@@ -1201,7 +1020,7 @@ function CRMDashboard({
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function StaffDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
+function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Project[]; loading: boolean; overtimeSummary: StaffOvertimeSummaryData | null }) {
   const today = localDateKey();
 
   if (loading) return <LoadingDashboard />;
@@ -1269,6 +1088,11 @@ function StaffDashboard({ projects, loading }: { projects: Project[]; loading: b
             iconColor="#7E22CE"
           />
         </div>
+      </section>
+
+      <section>
+        <SectionHeader title="Ringkasan Lembur Saya" actionLabel="Catat timesheet" actionHref="/tasks" />
+        <StaffOvertimeSummary initialSummary={overtimeSummary} />
       </section>
 
       {/* ── Today's Tasks List ── */}
@@ -1379,6 +1203,7 @@ export default function DashboardClient() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [staffOvertimeSummary, setStaffOvertimeSummary] = useState<StaffOvertimeSummaryData | null>(null);
 
   // Marka+ Request Card & Ticketing States
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
@@ -1412,7 +1237,10 @@ export default function DashboardClient() {
       // the underlying reads concurrently while preserving tenant and RBAC scope.
       const primary = await loadDashboardBootstrap(primarySections, { ...apiAccessContext, enabledModules: user?.enabled_modules });
       const primaryTasks: Promise<void>[] = [];
-      if (primary.projects) primaryTasks.push(loadAllProjects(user?.enabled_modules || [], primary.projects, apiAccessContext).then(setProjects));
+      if (primary.projects) {
+        if (userRole === "staff") setStaffOvertimeSummary(primary.projects.overtimeSummary ?? null);
+        primaryTasks.push(loadAllProjects(user?.enabled_modules || [], primary.projects, apiAccessContext).then(setProjects));
+      }
       else if (!canUseProjects || !mayReadProjectDashboard) setProjects([]);
       if (primary.finance) primaryTasks.push(loadFinanceDashboard(user?.enabled_modules || [], primary.finance, apiAccessContext).then(setFinData));
       if (primary.crm) primaryTasks.push(loadCRMData(user?.enabled_modules || [], primary.crm, apiAccessContext).then((crm) => {
@@ -1527,7 +1355,7 @@ export default function DashboardClient() {
         </div>
       )}
       {(userRole === "pm" || userRole === "om") && (
-        <PMDashboard projects={projects} loading={loading} role={userRole} />
+        <PMDashboard projects={projects} loading={loading} />
       )}
       {userRole === "finance" && (
         <FinanceDashboard finData={finData} loading={loading} />
@@ -1541,7 +1369,7 @@ export default function DashboardClient() {
         />
       )}
       {userRole === "staff" && (
-        <StaffDashboard projects={projects} loading={loading} />
+        <StaffDashboard projects={projects} loading={loading} overtimeSummary={staffOvertimeSummary} />
       )}
 
       {/* ── Marka+ Active Request Cards Feed ── */}

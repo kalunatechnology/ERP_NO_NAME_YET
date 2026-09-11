@@ -500,8 +500,8 @@ async function main() {
 
   // Products
   const productsData = [
-    { code: 'PROD-SRV-001', name: 'Motor Servo Industrial 5.5kW' },
-    { code: 'PROD-PLC-001', name: 'PLC Logic Controller FX5U' },
+    { code: 'SERV-UX-001', name: 'Paket UX Research dan Interface Design' },
+    { code: 'SERV-DEV-001', name: 'Paket Implementasi Aplikasi Web' },
     { code: 'PROD-OPT-001', name: 'Optical Photoelectric Sensor D12' },
   ];
   for (const pr of productsData) {
@@ -573,7 +573,7 @@ async function main() {
   const customer2 = partyMap.get('CUST-002');
   const adminUser = userMap.get('admin');
 
-  let opp1 = await prisma.crm_opportunity.findFirst({ where: { opportunity_name: 'Implementasi Sistem Otomasi Conveyor Line 1' } });
+  let opp1 = await prisma.crm_opportunity.findFirst({ where: { opportunity_name: 'Implementasi Portal Operasional Terintegrasi' } });
   if (!opp1) {
     opp1 = await prisma.crm_opportunity.create({
       data: {
@@ -581,7 +581,7 @@ async function main() {
         tenant_id: tenant.id,
         company_id: company.id,
         customer_party_id: customer1.id,
-        opportunity_name: 'Implementasi Sistem Otomasi Conveyor Line 1',
+        opportunity_name: 'Implementasi Portal Operasional Terintegrasi',
         expected_amount: 850000000,
         probability_percent: 100,
         pipeline_stage: 'WON',
@@ -593,7 +593,7 @@ async function main() {
     });
   }
 
-  let opp2 = await prisma.crm_opportunity.findFirst({ where: { opportunity_name: 'Pembangunan Gardu Induk 150kV Cikarang' } });
+  let opp2 = await prisma.crm_opportunity.findFirst({ where: { opportunity_name: 'Pengembangan Dashboard Eksekutif dan Pelaporan' } });
   if (!opp2) {
     opp2 = await prisma.crm_opportunity.create({
       data: {
@@ -601,7 +601,7 @@ async function main() {
         tenant_id: tenant.id,
         company_id: company.id,
         customer_party_id: customer2.id,
-        opportunity_name: 'Pembangunan Gardu Induk 150kV Cikarang',
+        opportunity_name: 'Pengembangan Dashboard Eksekutif dan Pelaporan',
         expected_amount: 1250000000,
         probability_percent: 85,
         pipeline_stage: 'PROPOSAL_SENT',
@@ -629,11 +629,11 @@ async function main() {
         company_id: company.id,
         customer_party_id: customer1.id,
         customer_name: customer1.display_name,
-        description: 'Pemasangan Conveyor Otomatis, Motor Servo, dan SCADA Integration',
+        description: 'Implementasi portal CRM, manajemen proyek, pelaporan, dan integrasi operasional',
         project_manager_id: pmUser?.id,
         manager_name: pmUser?.full_name ?? 'Rina Sari PM',
         project_code: 'PRJ-2026-001',
-        project_name: 'Implementasi Sistem Otomasi Conveyor Line 1',
+        project_name: 'Implementasi Portal Operasional Terintegrasi',
         budget_amount: 850000000,
         contract_amount: 943500000,
         target_margin_percent: 25.0,
@@ -651,9 +651,9 @@ async function main() {
 
   // Milestones for Project 1
   const milestonesData = [
-    { name: 'Site Assessment & Engineering Design', weight: 20, status: 'COMPLETED' },
-    { name: 'Pabrikasi Struktur & Instalasi Motor Servo', weight: 45, status: 'COMPLETED' },
-    { name: 'Integrasi PLC SCADA & Quality Gate Handover', weight: 35, status: 'PENDING' },
+    { name: 'Discovery Kebutuhan & Solution Design', weight: 20, status: 'COMPLETED' },
+    { name: 'Implementasi Modul Inti & Integrasi Data', weight: 45, status: 'COMPLETED' },
+    { name: 'UAT, Quality Gate & Production Handover', weight: 35, status: 'PENDING' },
   ];
   for (const m of milestonesData) {
     const existing = await prisma.project_milestone.findFirst({
@@ -675,9 +675,9 @@ async function main() {
 
   // Main Tasks for Project 1
   const mainTasksData = [
-    { name: 'L1: Fabrikasi Rangka Conveyor & Mekanikal', weight: 40, progress: 100, status: 'COMPLETED' },
-    { name: 'L1: Instalasi Motor Servo & Wiring Elektrikal', weight: 35, progress: 60, status: 'IN_PROGRESS' },
-    { name: 'L1: Pemrograman PLC SCADA & Commissioning', weight: 25, progress: 0, status: 'PLANNED' },
+    { name: 'L1: Analisis Proses Bisnis & Arsitektur', weight: 40, progress: 100, status: 'COMPLETED' },
+    { name: 'L1: Implementasi Frontend, API & Database', weight: 35, progress: 60, status: 'IN_PROGRESS' },
+    { name: 'L1: UAT, Deployment & Knowledge Transfer', weight: 25, progress: 0, status: 'PLANNED' },
   ];
 
   for (let i = 0; i < mainTasksData.length; i++) {
@@ -749,7 +749,7 @@ async function main() {
     }
   }
 
-  // Project 2: Pembangunan Gardu Induk
+  // Project 2: Dashboard eksekutif dan pelaporan
   let project2 = await prisma.project_project.findFirst({ where: { project_code: 'PRJ-2026-002' } });
   if (!project2) {
     project2 = await prisma.project_project.create({
@@ -759,11 +759,11 @@ async function main() {
         company_id: company.id,
         customer_party_id: customer2.id,
         customer_name: customer2.display_name,
-        description: 'Pekerjaan pondasi tapak gardu, transformator 150kV dan panel proteksi',
+        description: 'Pengembangan dashboard KPI, workflow approval, dan laporan lintas modul',
         project_manager_id: pmUser?.id,
         manager_name: pmUser?.full_name ?? 'Rina Sari PM',
         project_code: 'PRJ-2026-002',
-        project_name: 'Pembangunan Gardu Induk 150kV Cikarang',
+        project_name: 'Pengembangan Dashboard Eksekutif dan Pelaporan',
         budget_amount: 1250000000,
         contract_amount: 1420000000,
         target_margin_percent: 22.0,
@@ -784,9 +784,9 @@ async function main() {
   // ===========================================================================
   console.log('  -> [7/7] Seeding Financial Expenses & Funding Requests...');
   const expensesData = [
-    { desc: 'Pengadaan Motor Servo & Optical Sensors', elem: 'Material Pengadaan', amt: 280000000 },
-    { desc: 'Upah Direct Labor & Teknisi Lapangan Sprint 1', elem: 'Upah Tenaga Kerja', amt: 95000000 },
-    { desc: 'Sewa Alat Crane & Logistik Staging', elem: 'Logistik & Alat Berat', amt: 25000000 },
+    { desc: 'Lisensi Infrastruktur dan Layanan Cloud', elem: 'Infrastruktur Teknologi', amt: 280000000 },
+    { desc: 'Tenaga Implementasi dan Quality Assurance Sprint 1', elem: 'Jasa Profesional', amt: 95000000 },
+    { desc: 'Workshop UAT dan Dukungan Deployment', elem: 'Operasional Proyek', amt: 25000000 },
   ];
 
   for (const c of expensesData) {

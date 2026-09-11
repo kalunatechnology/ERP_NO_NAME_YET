@@ -37,7 +37,6 @@ import api from "@/lib/api/axios";
 import { feedApi } from "@/lib/api/feed.api";
 import { loadDashboardBootstrap } from "@/lib/api/dashboard.api";
 import { ProjectTimelineGantt } from "@/components/ui/ProjectTimelineGantt";
-import { TopExpensesBarChart } from "@/components/ui/TopExpensesBarChart";
 import { ProjectMilestoneCard } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { getCategoryStyle } from "@/lib/ui/semantic-styles";
@@ -350,7 +349,11 @@ export default function ProjectsClient() {
   }, [fetchProjects]);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || !canViewFinancials) {
+      setFinancialPerformance(null);
+      setFundingRequestsList([]);
+      return;
+    }
     Promise.allSettled([
       fetchProjectFinancialPerformance(selectedId),
       fetchProjectFundingRequests(selectedId)
@@ -358,7 +361,7 @@ export default function ProjectsClient() {
       if (perfRes.status === "fulfilled") setFinancialPerformance(perfRes.value);
       if (fundingRes.status === "fulfilled") setFundingRequestsList(Array.isArray(fundingRes.value) ? fundingRes.value : []);
     });
-  }, [selectedId]);
+  }, [canViewFinancials, selectedId]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -477,51 +480,6 @@ export default function ProjectsClient() {
       };
     });
   }, [mainTasks, selectedProject]);
-
-  /* 2. Real Top 5 Expenses from Live Cost Entries, Funding Requests & Financials */
-  const realTopExpenses = useMemo(() => {
-/**
- * rawCostEntries coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-    const rawCostEntries = (selectedProject as any)?.cost_entries || [];
-    const costMap: Record<string, number> = {};
-
-    // Sum from cost entries
-    rawCostEntries.forEach((c: any) => {
-      const cat = c.category || c.description || "Lain-lain";
-      costMap[cat] = (costMap[cat] || 0) + Number(c.amount || 0);
-    });
-
-    // Sum from funding requests
-    (fundingRequestsList || []).forEach((f: any) => {
-      const cat = f.category || f.expense_type || f.purpose || "Operasional Lapangan";
-      costMap[cat] = (costMap[cat] || 0) + Number(f.amount || 0);
-    });
-
-    // If cost entries exist, format top 5
-    const entries = Object.entries(costMap).filter(([_, amount]) => amount > 0);
-    if (entries.length > 0) {
-      entries.sort((a, b) => b[1] - a[1]);
-      const top5 = entries.slice(0, 5);
-      const maxAmt = Math.max(...top5.map(([_, amt]) => amt), 1);
-
-      return top5.map(([label, amt], idx) => ({
-        id: idx + 1,
-        label: label.charAt(0).toUpperCase() + label.slice(1),
-        amountText: formatRupiah(amt),
-        amountValue: amt,
-        percentage: Math.round((amt / maxAmt) * 100),
-        category: label,
-      }));
-    }
-
-    // If no cost entries exist, return empty array (clean fresh-start state)
-    return [];
-  }, [selectedProject, fundingRequestsList, financialPerformance]);
 
   /* 3. Real Milestones from Live Project Data */
   const realMilestones = useMemo(() => {
@@ -1155,14 +1113,6 @@ export default function ProjectsClient() {
           projectName={selectedProject?.project_name}
           tasks={realGanttTasks}
         />
-
-        {/* Widget 2: Top 5 Expenses (Hanya untuk Role dengan Akses Finansial) */}
-        {canViewFinancials && (
-          <TopExpensesBarChart
-            projectName={selectedProject?.project_name}
-            expenses={realTopExpenses}
-          />
-        )}
 
         {/* Widget 3: Project List & Milestone Stepper (Full Width Live Project Data) */}
         {userRole !== "staff" && <ProjectMilestoneCard

@@ -20,6 +20,132 @@ function activeCompanyId(req: Request): string {
   return req.companyId;
 }
 
+function activeTenantId(req: Request): string {
+  const tenantId = req.user?.tenant_id;
+
+  if (!tenantId) {
+    throw new ForbiddenError(
+      'Tenant aktif tidak tersedia.',
+    );
+  }
+
+  return tenantId;
+}
+
+function activeUserId(req: Request): string {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    throw new ForbiddenError(
+      'User aktif tidak tersedia.',
+    );
+  }
+
+  return userId;
+}
+
+function isStaff(req: Request): boolean {
+  return (
+    req.user?.active_role_code ===
+    RoleCode.STAFF
+  );
+}
+
+/**
+ * Identity mapping:
+ *
+ * iam_user
+ *     ↓
+ * master_employee.user_id
+ *     ↓
+ * project_timesheet.employee_id
+ */
+async function currentEmployee(req: Request) {
+  const companyId =
+    activeCompanyId(req);
+
+  const tenantId =
+    activeTenantId(req);
+
+  const userId =
+    activeUserId(req);
+
+  const employee =
+    await prisma.master_employee.findFirst({
+      where: {
+        tenant_id:
+          tenantId,
+
+        company_id:
+          companyId,
+
+        user_id:
+          userId,
+      },
+
+      select: {
+        id:
+          true,
+
+        user_id:
+          true,
+
+        employee_number:
+          true,
+
+        employment_status:
+          true,
+
+        standard_hourly_rate:
+          true,
+      },
+    });
+
+  if (employee) {
+    return employee;
+  }
+
+  // Backward-compatible transition path. Only use an explicit employee_id
+  // already stored on an active project membership; never infer identity from
+  // names, usernames, employee numbers, or coincidentally equal IDs.
+  const existingProjectMember =
+    await prisma.project_member.findFirst({
+      where: {
+        tenant_id: tenantId,
+        company_id: companyId,
+        user_id: userId,
+        employee_id: { not: null },
+        status: 'ACTIVE',
+      },
+      select: { employee_id: true },
+      orderBy: { assigned_at: 'desc' },
+    });
+
+  if (existingProjectMember?.employee_id) {
+    const mappedEmployee =
+      await prisma.master_employee.findFirst({
+        where: {
+          id: existingProjectMember.employee_id,
+          tenant_id: tenantId,
+          company_id: companyId,
+        },
+        select: {
+          id: true,
+          user_id: true,
+          employee_number: true,
+          employment_status: true,
+          standard_hourly_rate: true,
+        },
+      });
+
+    if (mappedEmployee) return mappedEmployee;
+  }
+
+  throw new ForbiddenError(
+    'Akun user belum terhubung dengan data employee.',
+  );
+}
+
 // =============================================================================
 // 0. CUSTOMERS / CLIENTS LIST (Strict Company & Tenant Isolated)
 // =============================================================================
@@ -1180,6 +1306,429 @@ projectsRouter.get('/:id/financial-summary', async (req: Request, res: Response,
   catch (err) { next(err); }
 });
 
+// =============================================================================
+// STAFF PROJECT OVERVIEW
+// =============================================================================
+
+projectsRouter.get(
+  '/staff/project-overview',
+
+  async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      if (
+        req.user?.active_role_code !==
+        RoleCode.STAFF
+      ) {
+        throw new ForbiddenError(
+          'Endpoint ini hanya tersedia untuk Staff.',
+        );
+      }
+
+      const companyId =
+        activeCompanyId(req);
+
+      const tenantId =
+        activeTenantId(req);
+
+      const userId =
+        activeUserId(req);
+
+      /**
+       * Gunakan resource scope project yang sudah
+       * dimiliki ProjectsService.
+       */
+      const projectWhere =
+        await ProjectsService.projectAccessWhere(
+          req.user,
+          companyId,
+        );
+
+      /**
+       * SAFE STAFF PROJECT PROJECTION.
+       *
+       * Tidak ada:
+       * - customer_name
+       * - description internal
+       * - budget_amount
+       * - contract_amount
+       * - margin
+       * - PM financial fields
+       */
+      const projects =
+        await prisma.project_project.findMany({
+          where:
+            projectWhere,
+
+          select: {
+            id:
+              true,
+
+            project_code:
+              true,
+
+            project_name:
+              true,
+
+            planned_start_date:
+              true,
+
+            planned_end_date:
+              true,
+
+            actual_start_date:
+              true,
+
+            actual_end_date:
+              true,
+
+            progress_percent:
+              true,
+
+            status:
+              true,
+
+            lifecycle_status:
+              true,
+
+            health_status:
+              true,
+          },
+
+          orderBy: [
+            {
+              planned_end_date:
+                'asc',
+            },
+
+            {
+              id:
+                'asc',
+            },
+          ],
+        });
+
+      const projectIds =
+        projects.map(
+          (project) =>
+            project.id,
+        );
+
+      if (
+        projectIds.length === 0
+      ) {
+        return res.json({
+          projects:
+            [],
+
+          mainTasks:
+            [],
+
+          weeklyTasks:
+            [],
+
+          dailyTasks:
+            [],
+
+          milestones:
+            [],
+        });
+      }
+
+      /**
+       * Main Task assignment Staff.
+       */
+      const assignments =
+        await prisma.project_task_assignment.findMany({
+          where: {
+            tenant_id:
+              tenantId,
+
+            company_id:
+              companyId,
+
+            assignee_id:
+              userId,
+          },
+
+          select: {
+            main_task_id:
+              true,
+          },
+        });
+
+      const mainTaskIds = Array.from(
+        new Set(
+          assignments
+            .map(
+              (assignment) =>
+                assignment.main_task_id,
+            )
+            .filter(
+              (
+                id,
+              ): id is string =>
+                Boolean(id),
+            ),
+        ),
+      );
+
+      const [
+        mainTasks,
+        weeklyTasks,
+        dailyTasks,
+        milestones,
+      ] =
+        await Promise.all([
+          /**
+           * Only assigned Main Tasks.
+           */
+          mainTaskIds.length
+            ? prisma.project_main_task.findMany({
+                where: {
+                  tenant_id:
+                    tenantId,
+
+                  company_id:
+                    companyId,
+
+                  project_id: {
+                    in:
+                      projectIds,
+                  },
+
+                  id: {
+                    in:
+                      mainTaskIds,
+                  },
+                },
+
+                select: {
+                  id:
+                    true,
+
+                  project_id:
+                    true,
+
+                  name:
+                    true,
+
+                  description:
+                    true,
+
+                  priority:
+                    true,
+
+                  start_date:
+                    true,
+
+                  due_date:
+                    true,
+
+                  progress:
+                    true,
+
+                  status:
+                    true,
+                },
+
+                orderBy: {
+                  due_date:
+                    'asc',
+                },
+              })
+            : Promise.resolve(
+                [],
+              ),
+
+          /**
+           * Only weekly tasks assigned to Staff.
+           */
+          prisma.project_weekly_task.findMany({
+            where: {
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+
+              assignee_id:
+                userId,
+
+              ...(mainTaskIds.length
+                ? {
+                    main_task_id: {
+                      in:
+                        mainTaskIds,
+                    },
+                  }
+                : {}),
+            },
+
+            select: {
+              id:
+                true,
+
+              main_task_id:
+                true,
+
+              assignee_id:
+                true,
+
+              week_number:
+                true,
+
+              start_date:
+                true,
+
+              end_date:
+                true,
+
+              target_description:
+                true,
+
+              progress:
+                true,
+
+              status:
+                true,
+            },
+
+            orderBy: {
+              start_date:
+                'asc',
+            },
+          }),
+
+          /**
+           * Only Daily Tasks owned by Staff.
+           */
+          prisma.project_daily_task.findMany({
+            where: {
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+
+              owner_id:
+                userId,
+            },
+
+            select: {
+              id:
+                true,
+
+              weekly_task_id:
+                true,
+
+              owner_id:
+                true,
+
+              title:
+                true,
+
+              description:
+                true,
+
+              planned_date:
+                true,
+
+              time_slot:
+                true,
+
+              output_result:
+                true,
+
+              notes:
+                true,
+
+              progress:
+                true,
+
+              status:
+                true,
+
+              is_blocked:
+                true,
+
+              block_reason:
+                true,
+            },
+
+            orderBy: {
+              planned_date:
+                'asc',
+            },
+          }),
+
+          /**
+           * Timeline project yang memang bisa dilihat Staff.
+           */
+          prisma.project_milestone.findMany({
+            where: {
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+
+              project_id: {
+                in:
+                  projectIds,
+              },
+            },
+
+            select: {
+              id:
+                true,
+
+              project_id:
+                true,
+
+              milestone_name:
+                true,
+
+              planned_date:
+                true,
+
+              actual_date:
+                true,
+
+              weight_percent:
+                true,
+
+              status:
+                true,
+            },
+
+            orderBy: {
+              planned_date:
+                'asc',
+            },
+          }),
+        ]);
+
+      return res.json({
+        projects,
+
+        mainTasks,
+
+        weeklyTasks,
+
+        dailyTasks,
+
+        milestones,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
+
 projectsRouter.use('/projects', createCrudRouter({
   modelName: 'project_project',
   searchFields: ['project_name', 'project_code', 'status', 'customer_name'],
@@ -1311,7 +1860,800 @@ projectsRouter.use('/task-dependencies', createCrudRouter({ modelName: 'project_
 projectsRouter.use('/milestones', createCrudRouter({ modelName: 'project_milestone', searchFields: ['milestone_name'] }));
 projectsRouter.use('/material-requirements', createCrudRouter({ modelName: 'project_material_requirement' }));
 projectsRouter.use('/budget-lines', createCrudRouter({ modelName: 'project_budget_line' }));
-projectsRouter.use('/timesheets', createCrudRouter({ modelName: 'project_timesheet' }));
+// =============================================================================
+// PERSONAL OVERTIME SUMMARY
+// =============================================================================
+
+projectsRouter.get(
+  '/timesheets/me/overtime-summary',
+
+  async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const companyId =
+        activeCompanyId(req);
+
+      const tenantId =
+        activeTenantId(req);
+
+      const employee =
+        await currentEmployee(
+          req,
+        );
+
+      const now =
+        new Date();
+
+      const monthStart =
+        new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          1,
+        );
+
+      const weekStart =
+        new Date(now);
+
+      const day =
+        weekStart.getDay();
+
+      const diff =
+        day === 0
+          ? 6
+          : day - 1;
+
+      weekStart.setDate(
+        weekStart.getDate() -
+          diff,
+      );
+
+      weekStart.setHours(
+        0,
+        0,
+        0,
+        0,
+      );
+
+      const [
+        week,
+        month,
+        pending,
+        approved,
+        last,
+      ] =
+        await Promise.all([
+          prisma.project_timesheet.aggregate({
+            where: {
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+
+              employee_id:
+                employee.id,
+
+              work_date: {
+                gte:
+                  weekStart,
+              },
+            },
+
+            _sum: {
+              overtime_hours:
+                true,
+            },
+          }),
+
+          prisma.project_timesheet.aggregate({
+            where: {
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+
+              employee_id:
+                employee.id,
+
+              work_date: {
+                gte:
+                  monthStart,
+              },
+            },
+
+            _sum: {
+              overtime_hours:
+                true,
+            },
+          }),
+
+          prisma.project_timesheet.aggregate({
+            where: {
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+
+              employee_id:
+                employee.id,
+
+              approval_status: {
+                in: [
+                  'PENDING',
+                  'SUBMITTED',
+                  'WAITING_APPROVAL',
+                ],
+              },
+            },
+
+            _sum: {
+              overtime_hours:
+                true,
+            },
+          }),
+
+          prisma.project_timesheet.aggregate({
+            where: {
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+
+              employee_id:
+                employee.id,
+
+              approval_status:
+                'APPROVED',
+            },
+
+            _sum: {
+              overtime_hours:
+                true,
+            },
+          }),
+
+          prisma.project_timesheet.findFirst({
+            where: {
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+
+              employee_id:
+                employee.id,
+
+              overtime_hours: {
+                gt: 0,
+              },
+            },
+
+            orderBy: {
+              work_date:
+                'desc',
+            },
+
+            select: {
+              work_date:
+                true,
+            },
+          }),
+        ]);
+
+      return res.json({
+        thisWeekHours:
+          Number(
+            week._sum
+              .overtime_hours ??
+              0,
+          ),
+
+        thisMonthHours:
+          Number(
+            month._sum
+              .overtime_hours ??
+              0,
+          ),
+
+        pendingHours:
+          Number(
+            pending._sum
+              .overtime_hours ??
+              0,
+          ),
+
+        approvedHours:
+          Number(
+            approved._sum
+              .overtime_hours ??
+              0,
+          ),
+
+        lastOvertimeDate:
+          last?.work_date ??
+          null,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
+
+// =============================================================================
+// SECURED PROJECT TIMESHEETS / OVERTIME
+// =============================================================================
+
+projectsRouter.use(
+  '/timesheets',
+
+  createCrudRouter({
+    modelName:
+      'project_timesheet',
+
+    searchFields: [
+      'approval_status',
+      'overtime_reason',
+    ],
+
+    /**
+     * READ SCOPE
+     *
+     * Staff:
+     * hanya timesheet dirinya sendiri.
+     *
+     * Role managerial:
+     * hanya project yang memang dapat mereka akses.
+     */
+    accessWhere: async (
+      req,
+    ) => {
+      const companyId =
+        activeCompanyId(req);
+
+      const tenantId =
+        activeTenantId(req);
+
+      if (isStaff(req)) {
+        const employee =
+          await currentEmployee(
+            req,
+          );
+
+        return {
+          tenant_id:
+            tenantId,
+
+          company_id:
+            companyId,
+
+          employee_id:
+            employee.id,
+        };
+      }
+
+      /**
+       * Non-Staff juga tidak otomatis menerima
+       * seluruh timesheet company.
+       *
+       * Scope mengikuti project access.
+       */
+      const projectWhere =
+        await ProjectsService.projectAccessWhere(
+          req.user,
+          companyId,
+        );
+
+      const accessibleProjects =
+        await prisma.project_project.findMany({
+          where:
+            projectWhere,
+
+          select: {
+            id:
+              true,
+          },
+        });
+
+      return {
+        tenant_id:
+          tenantId,
+
+        company_id:
+          companyId,
+
+        project_id: {
+          in:
+            accessibleProjects.map(
+              (project) =>
+                project.id,
+            ),
+        },
+      };
+    },
+
+    /**
+     * CREATE
+     */
+    beforeCreate: async (
+      req,
+      data,
+    ) => {
+      const companyId =
+        activeCompanyId(req);
+
+      const tenantId =
+        activeTenantId(req);
+
+      const userId =
+        activeUserId(req);
+
+      const projectId =
+        String(
+          data.project_id ??
+            req.body.project_id ??
+            '',
+        );
+
+      if (!projectId) {
+        throw new ValidationError(
+          'Project wajib dipilih untuk membuat timesheet.',
+        );
+      }
+
+      const project =
+        await prisma.project_project.findFirst({
+          where: {
+            id:
+              projectId,
+
+            tenant_id:
+              tenantId,
+
+            company_id:
+              companyId,
+          },
+
+          select: {
+            id:
+              true,
+          },
+        });
+
+      if (!project) {
+        throw new ValidationError(
+          'Project tidak valid atau berada di luar company aktif.',
+        );
+      }
+
+      /**
+       * Staff boleh submit jam kerja,
+       * bukan mengelola project.
+       */
+      if (isStaff(req)) {
+        await ProjectsService.assertCanViewProject(
+          req.user,
+          projectId,
+          companyId,
+        );
+
+        const employee =
+          await currentEmployee(
+            req,
+          );
+
+        /**
+         * employee_id tidak pernah dipercaya dari FE.
+         */
+        data.employee_id =
+          employee.id;
+
+        /**
+         * Staff tidak boleh mengirim financial rate/cost.
+         */
+        delete data.hourly_rate;
+        delete data.amount;
+
+        /**
+         * Approval selalu mulai dari PENDING.
+         */
+        data.approval_status =
+          'PENDING';
+      } else {
+        await ProjectsService.assertCanManageProject(
+          req.user,
+          projectId,
+          companyId,
+        );
+
+        if (!data.employee_id) {
+          throw new ValidationError(
+            'Employee wajib dipilih.',
+          );
+        }
+
+        const employee =
+          await prisma.master_employee.findFirst({
+            where: {
+              id:
+                String(
+                  data.employee_id,
+                ),
+
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+            },
+
+            select: {
+              id:
+                true,
+            },
+          });
+
+        if (!employee) {
+          throw new ValidationError(
+            'Employee tidak valid atau berada di luar company aktif.',
+          );
+        }
+
+        if (
+          !data.approval_status
+        ) {
+          data.approval_status =
+            'PENDING';
+        }
+      }
+
+      /**
+       * Optional project_task validation.
+       */
+      if (data.task_id) {
+        const task =
+          await prisma.project_task.findFirst({
+            where: {
+              id:
+                String(
+                  data.task_id,
+                ),
+
+              tenant_id:
+                tenantId,
+
+              company_id:
+                companyId,
+
+              project_id:
+                projectId,
+            },
+
+            select: {
+              id:
+                true,
+
+              assigned_to_id:
+                true,
+            },
+          });
+
+        if (!task) {
+          throw new ValidationError(
+            'Task timesheet tidak valid.',
+          );
+        }
+
+        /**
+         * Staff tidak boleh mencatat waktu
+         * atas task Staff lain.
+         */
+        if (
+          isStaff(req) &&
+          task.assigned_to_id !==
+            userId
+        ) {
+          throw new ForbiddenError(
+            'Anda hanya dapat mencatat timesheet pada task yang ditugaskan kepada Anda.',
+          );
+        }
+      }
+
+      /**
+       * Work date.
+       */
+      if (!data.work_date) {
+        data.work_date =
+          new Date();
+      } else if (
+        typeof data.work_date ===
+        'string'
+      ) {
+        data.work_date =
+          new Date(
+            data.work_date,
+          );
+      }
+
+      const hours =
+        Number(
+          data.hours ?? 0,
+        );
+
+      const overtimeHours =
+        Number(
+          data.overtime_hours ??
+            0,
+        );
+
+      if (
+        !Number.isFinite(hours) ||
+        hours <= 0 ||
+        hours > 24
+      ) {
+        throw new ValidationError(
+          'Total jam kerja harus lebih dari 0 dan maksimal 24 jam.',
+        );
+      }
+
+      if (
+        !Number.isFinite(
+          overtimeHours,
+        ) ||
+        overtimeHours < 0
+      ) {
+        throw new ValidationError(
+          'Jam lembur tidak valid.',
+        );
+      }
+
+      if (
+        overtimeHours >
+        hours
+      ) {
+        throw new ValidationError(
+          'Jam lembur tidak boleh lebih besar dari total jam kerja.',
+        );
+      }
+
+      data.hours =
+        hours;
+
+      data.overtime_hours =
+        overtimeHours;
+
+      data.project_id =
+        projectId;
+
+      data.tenant_id =
+        tenantId;
+
+      data.company_id =
+        companyId;
+
+      data.created_by_id =
+        userId;
+
+      if (
+        data.overtime_reason ===
+        undefined
+      ) {
+        data.overtime_reason =
+          '';
+      }
+
+      return data;
+    },
+
+    /**
+     * UPDATE
+     */
+    beforeUpdate: async (
+      req,
+      data,
+      existing,
+    ) => {
+      const companyId =
+        activeCompanyId(req);
+
+      if (
+        isStaff(req)
+      ) {
+        const employee =
+          await currentEmployee(
+            req,
+          );
+
+        if (
+          existing.employee_id !==
+          employee.id
+        ) {
+          throw new ForbiddenError(
+            'Anda tidak dapat memperbarui timesheet milik user lain.',
+          );
+        }
+
+        /**
+         * Setelah approval Staff tidak boleh edit.
+         */
+        if (
+          String(
+            existing.approval_status ??
+              '',
+          ).toUpperCase() ===
+          'APPROVED'
+        ) {
+          throw new ForbiddenError(
+            'Timesheet yang sudah disetujui tidak dapat diubah.',
+          );
+        }
+
+        /**
+         * Immutable / server-owned fields.
+         */
+        delete data.employee_id;
+
+        delete data.project_id;
+
+        delete data.task_id;
+
+        delete data.approval_status;
+
+        delete data.hourly_rate;
+
+        delete data.amount;
+
+        delete data.tenant_id;
+
+        delete data.company_id;
+
+        delete data.created_by_id;
+      } else {
+        await ProjectsService.assertCanManageProject(
+          req.user,
+          existing.project_id,
+          companyId,
+        );
+
+        /**
+         * Hierarchy/ownership tidak boleh diganti
+         * melalui PATCH timesheet biasa.
+         */
+        delete data.employee_id;
+        delete data.project_id;
+        delete data.task_id;
+
+        delete data.tenant_id;
+        delete data.company_id;
+        delete data.created_by_id;
+      }
+
+      if (
+        data.work_date &&
+        typeof data.work_date ===
+          'string'
+      ) {
+        data.work_date =
+          new Date(
+            data.work_date,
+          );
+      }
+
+      const nextHours =
+        data.hours !==
+        undefined
+          ? Number(
+              data.hours,
+            )
+          : Number(
+              existing.hours ??
+                0,
+            );
+
+      const nextOvertime =
+        data.overtime_hours !==
+        undefined
+          ? Number(
+              data.overtime_hours,
+            )
+          : Number(
+              existing.overtime_hours ??
+                0,
+            );
+
+      if (
+        nextHours <= 0 ||
+        nextHours > 24
+      ) {
+        throw new ValidationError(
+          'Total jam kerja harus lebih dari 0 dan maksimal 24 jam.',
+        );
+      }
+
+      if (
+        nextOvertime < 0 ||
+        nextOvertime >
+          nextHours
+      ) {
+        throw new ValidationError(
+          'Jam lembur harus berada antara 0 dan total jam kerja.',
+        );
+      }
+
+      if (
+        data.hours !==
+        undefined
+      ) {
+        data.hours =
+          nextHours;
+      }
+
+      if (
+        data.overtime_hours !==
+        undefined
+      ) {
+        data.overtime_hours =
+          nextOvertime;
+      }
+
+      return data;
+    },
+
+    /**
+     * DELETE
+     */
+    beforeDelete: async (
+      req,
+      existing,
+    ) => {
+      const companyId =
+        activeCompanyId(req);
+
+      if (
+        isStaff(req)
+      ) {
+        const employee =
+          await currentEmployee(
+            req,
+          );
+
+        if (
+          existing.employee_id !==
+          employee.id
+        ) {
+          throw new ForbiddenError(
+            'Anda tidak dapat menghapus timesheet milik user lain.',
+          );
+        }
+
+        if (
+          String(
+            existing.approval_status ??
+              '',
+          ).toUpperCase() !==
+          'PENDING'
+        ) {
+          throw new ForbiddenError(
+            'Hanya timesheet berstatus PENDING yang dapat dihapus.',
+          );
+        }
+
+        return;
+      }
+
+      await ProjectsService.assertCanManageProject(
+        req.user,
+        existing.project_id,
+        companyId,
+      );
+    },
+  }),
+);
 projectsRouter.use('/change-requests', createCrudRouter({ modelName: 'project_change_request' }));
 projectsRouter.use('/change-request-materials', createCrudRouter({ modelName: 'project_change_request_material' }));
 projectsRouter.use('/boards', createCrudRouter({ modelName: 'project_board' }));

@@ -30,7 +30,7 @@ interface BudgetCheckProps {
  */
 export function BudgetCheckStatusCard({
   materialBudget = 0,
-  allocationFormula = "(Total Alokasi Biaya Material PO)",
+  allocationFormula = "(Total biaya proyek tercatat)",
   allocationCost = 0,
   remainingBudget = 0,
   isValid = true,
@@ -62,13 +62,13 @@ export function BudgetCheckStatusCard({
       {/* Metric Breakdown */}
       <div className="flex flex-col gap-2.5 text-xs py-2 my-auto">
         <div className="flex justify-between items-center gap-2">
-          <span className="text-[#4F5050] font-medium truncate">Material Budget</span>
+          <span className="text-[#4F5050] font-medium truncate">Anggaran Proyek</span>
           <span className="font-bold text-[#090909] flex-shrink-0">{formatVal(materialBudget)}</span>
         </div>
 
         <div className="flex justify-between items-start gap-2">
           <div className="flex flex-col min-w-0 pr-1">
-            <span className="text-[#4F5050] font-medium truncate">Current Allocation Cost:</span>
+            <span className="text-[#4F5050] font-medium truncate">Biaya Teralokasi:</span>
             <span className="text-[10px] text-[#4F5050] truncate">{allocationFormula}</span>
           </div>
           <span className="font-bold text-[#090909] flex-shrink-0">{formatVal(allocationCost)}</span>
