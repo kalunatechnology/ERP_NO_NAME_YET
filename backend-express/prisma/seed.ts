@@ -725,21 +725,34 @@ async function main() {
       });
     }
 
-    // Daily Tasks
-    let dt = await prisma.project_daily_task.findFirst({ where: { weekly_task_id: wt.id } });
-    if (!dt) {
+    // Three deterministic, searchable sample tasks per seeded weekly target.
+    // findFirst + create keeps repeated seed runs idempotent without requiring
+    // a database-specific compound unique constraint.
+    const sampleTasks = [
+      { title: `Sample Task 1 - Persiapan ${m.name}`, description: 'Menyiapkan kebutuhan, akses, dan checklist awal pekerjaan.', progress: m.status === 'COMPLETED' ? 100 : Math.min(m.progress, 25) },
+      { title: `Sample Task 2 - Eksekusi ${m.name}`, description: 'Melaksanakan pekerjaan utama sesuai target mingguan dan standar QA.', progress: m.status === 'COMPLETED' ? 100 : m.progress },
+      { title: `Sample Task 3 - Review ${m.name}`, description: 'Melakukan review hasil, dokumentasi, dan tindak lanjut pekerjaan.', progress: m.status === 'COMPLETED' ? 100 : 0 },
+    ];
+
+    for (let sampleIndex = 0; sampleIndex < sampleTasks.length; sampleIndex++) {
+      const sample = sampleTasks[sampleIndex];
+      const existingSample = await prisma.project_daily_task.findFirst({
+        where: { weekly_task_id: wt.id, title: sample.title },
+      });
+      if (existingSample) continue;
+
       await prisma.project_daily_task.create({
         data: {
           id: crypto.randomUUID(),
           weekly_task_id: wt.id,
           owner_id: supervisorUser?.id ?? '00000000-0000-0000-0000-000000000001',
-          title: `Aktivitas Harian Lapangan (${m.name})`,
-          description: 'Pengerjaan sesuai instruksi kerja safety & QA',
-          time_slot: '09.00 - 16.00',
-          output_result: m.status === 'COMPLETED' ? 'Selesai 100%' : 'Sedang berjalan',
-          notes: '',
-          progress: m.progress,
-          status: m.status === 'COMPLETED' ? 'COMPLETED' : m.progress > 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+          title: sample.title,
+          description: sample.description,
+          time_slot: `${String(9 + sampleIndex * 2).padStart(2, '0')}.00 - ${String(11 + sampleIndex * 2).padStart(2, '0')}.00`,
+          output_result: sample.progress === 100 ? 'Selesai 100%' : sample.progress > 0 ? 'Sedang berjalan' : '',
+          notes: 'Data contoh untuk pencarian dan pengujian task Staff.',
+          progress: sample.progress,
+          status: sample.progress === 100 ? 'COMPLETED' : sample.progress > 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
           is_blocked: false,
           block_reason: '',
           created_at: new Date(),

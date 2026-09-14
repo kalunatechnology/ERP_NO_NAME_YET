@@ -152,11 +152,7 @@ export function createApp(): Express {
     requireRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
-      allowedMutationPaths: [
-        /\/api\/v1\/crm\/opportunities\/[^/]+\/executive-override$/,
-        /\/api\/v1\/crm\/executive-approvals\/[^/]+\/(decide|approve|reject)$/,
-      ],
-      message: 'Role Director memiliki akses preview CRM; hanya aksi governance eksekutif yang dapat dimutasi.',
+      message: 'Role Director memiliki akses preview CRM; seluruh mutasi operasional dinonaktifkan.',
     }),
     crmRouter,
   );
@@ -190,12 +186,7 @@ export function createApp(): Express {
     requireRole(RoleCode.FINANCE, RoleCode.DIRECTOR),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
-      allowedMutationPaths: [
-        /\/api\/v1\/finance\/period-closings\/[^/]+\/execute$/,
-        /\/api\/v1\/finance\/journal-entries\/[^/]+\/reverse$/,
-        /\/api\/v1\/finance\/(billing-documents|payments|fund-requests)\/[^/]+\/(verify|approve|reject)$/,
-      ],
-      message: 'Role Director memiliki akses preview Finance; hanya aksi approval/governance Q7 yang dapat dimutasi.',
+      message: 'Role Director memiliki akses preview Finance; seluruh mutasi operasional dinonaktifkan.',
     }),
     financeRouter,
   );

@@ -609,7 +609,9 @@ financeRouter.get('/project-options', requireFinanceRole([RoleCode.FINANCE, Role
     const companyId = activeCompanyId(req);
     const projects = await prisma.project_project.findMany({
       where: { company_id: companyId },
-      select: { id: true, project_code: true, project_name: true, customer_party_id: true, customer_name: true },
+      // Finance uses this option list for both selectors and procurement-budget
+      // monitoring, so include the approved project budget in the same scoped read.
+      select: { id: true, project_code: true, project_name: true, budget_amount: true, customer_party_id: true, customer_name: true },
       orderBy: { project_name: 'asc' },
     });
     sendSuccess(res, projects);

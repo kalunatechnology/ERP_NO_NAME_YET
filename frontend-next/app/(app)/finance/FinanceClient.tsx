@@ -31,6 +31,7 @@ import { CompanyMasterWorkspace } from "@/components/finance/CompanyMasterWorksp
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 import { useAuth } from "@/contexts/AuthContext";
 import { canRequestApi } from "@/lib/access/module-contract";
+import { canPerform } from "@/lib/access/capability-contract";
 import dynamic from "next/dynamic";
 
 const FixedAssetsWorkspace          = dynamic(() => import("@/components/finance/FixedAssetsWorkspace"),          { ssr: false });
@@ -84,6 +85,7 @@ export default function FinanceClient() {
     isSuperAdmin: Boolean(user?.is_superuser),
   };
   const canUseAssets = canRequestApi("/api/v1/assets/assets", requestAccess);
+  const canOperateFinance = canPerform("finance:operate", userRole);
   const visibleTabs = FINANCE_TABS.filter((tab) => !tab.endpoint || canUseAssets);
   const [activeTab, setActiveTab] = useState(userRole === "executive" ? "executive_report" : "overview");
   const [loading, setLoading] = useState(true);
@@ -346,6 +348,10 @@ export default function FinanceClient() {
     (acc, curr) => acc + Number(curr.amount ?? curr.funding_amount ?? curr.requested_amount ?? curr.approved_limit ?? curr.total_amount ?? 0),
     0
   );
+  const totalProcurementBudget = financeProjectOptions.reduce(
+    (sum, project) => sum + Number(project.budget_amount ?? project.budget ?? 0),
+    0,
+  );
   const grossMargin = totalRevenue - totalCost;
 
   const handleCostLifecycle = async (entry: any) => {
@@ -503,7 +509,7 @@ export default function FinanceClient() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {userRole !== "executive" ? (
+          {canOperateFinance ? (
             <>
               <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
                 <Plus size={14} /> Catat Biaya
@@ -517,7 +523,7 @@ export default function FinanceClient() {
             </>
           ) : (
             <span className="px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold flex items-center gap-1.5">
-              <Crown size={13} /> Mode Eksekutif · Read only
+              <Crown size={13} /> Finance Overseer · View Only
             </span>
           )}
           <button
@@ -587,10 +593,18 @@ export default function FinanceClient() {
           <div className="flex flex-col gap-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
               <BudgetCheckStatusCard
-                materialBudget={totalRevenue ?? 0}
+                title="Status Pengadaan Anggaran Proyek"
+                statusLabel="PROJECT FUNDING"
+                budgetLabel="Anggaran Pengadaan Disetujui"
+                allocationLabel="Realisasi Pengadaan & Jasa:"
+                allocationFormula="Biaya vendor, layanan, dan kebutuhan operasional proyek"
+                remainingLabel="Sisa Anggaran Pengadaan"
+                validLabel="Pengadaan masih dalam anggaran"
+                invalidLabel="Pengadaan melebihi anggaran"
+                materialBudget={totalProcurementBudget}
                 allocationCost={totalCost ?? 0}
-                remainingBudget={Math.max(0, (totalRevenue ?? 0) - (totalCost ?? 0))}
-                isValid={(totalRevenue ?? 0) >= (totalCost ?? 0)}
+                remainingBudget={Math.max(0, totalProcurementBudget - (totalCost ?? 0))}
+                isValid={totalProcurementBudget >= (totalCost ?? 0)}
               />
               <InventoryCheckingCard autoFetch={true} />
             </div>
@@ -683,19 +697,23 @@ export default function FinanceClient() {
               <h3 className="text-sm font-semibold text-text-primary">Costing & Work In Progress (WIP)</h3>
               <p className="text-2xs text-text-secondary">Post pengeluaran riil proyek ke dalam akun persediaan WIP dan buku besar akuntansi</p>
             </div>
-            <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-              <Plus size={14} /> Catat Biaya
-            </button>
+            {canOperateFinance && (
+              <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                <Plus size={14} /> Catat Biaya
+              </button>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-text-secondary">Akun sumber kredit posting WIP</label>
-            <select className="input text-xs max-w-sm" value={costCreditAccountId} onChange={(event) => setCostCreditAccountId(event.target.value)}>
-              <option value="">Pilih akun sumber</option>
-              {ledgerAccounts.filter((account) => account.status === "ACTIVE" && account.account_code !== "1150").map((account) => (
-                <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>
-              ))}
-            </select>
-          </div>
+          {canOperateFinance && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-text-secondary">Akun sumber kredit posting WIP</label>
+              <select className="input text-xs max-w-sm" value={costCreditAccountId} onChange={(event) => setCostCreditAccountId(event.target.value)}>
+                <option value="">Pilih akun sumber</option>
+                {ledgerAccounts.filter((account) => account.status === "ACTIVE" && account.account_code !== "1150").map((account) => (
+                  <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="table-scroll-wrapper">
             <table className="w-full data-table min-w-[560px]">
               <thead>
@@ -705,7 +723,7 @@ export default function FinanceClient() {
                   <th>Divisi</th>
                   <th>Jumlah Biaya</th>
                   <th>Status Akuntansi</th>
-                  <th>Aksi Posting</th>
+                  <th>{canOperateFinance ? "Aksi Posting" : "Status Posting"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -725,12 +743,14 @@ export default function FinanceClient() {
                   <td className="font-semibold text-red-600">{formatMoney(c.total_cost ?? c.amount ?? c.cost_amount ?? 0)}</td>
                   <td><span className={cn("badge", getStatusColor(c.status || "DRAFT"))}>{c.status || "DRAFT"}</span></td>
                   <td>
-                    {["DRAFT", "VALIDATED"].includes(c.status) ? (
+                    {canOperateFinance && ["DRAFT", "VALIDATED"].includes(c.status) ? (
                       <button onClick={() => handleCostLifecycle(c)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
                         <Zap size={12} /> {c.status === "DRAFT" ? "Validasi" : "Post ke WIP"}
                       </button>
-                    ) : (
+                    ) : c.status === "POSTED" ? (
                       <span className="text-2xs text-brand-deep-green font-bold">✓ Terposting</span>
+                    ) : (
+                      <span className="text-2xs text-text-secondary italic">{c.status || "—"}</span>
                     )}
                   </td>
                 </tr>
@@ -754,6 +774,7 @@ export default function FinanceClient() {
             fundings={fundings}
             onRefresh={() => loadFinanceData(true)}
             onRequestModalOpen={() => setIsFundingModalOpen(true)}
+            readOnly={!canOperateFinance}
           />
         )
       )}
@@ -771,9 +792,11 @@ export default function FinanceClient() {
               <h3 className="text-sm font-semibold text-text-primary">Accounts Payable & Verifikasi Dokumen</h3>
               <p className="text-2xs text-text-secondary">Lifecycle invoice supplier dan pembayaran AP. Pencocokan PO/GRN hanya ditampilkan jika backend menyediakan referensinya.</p>
             </div>
-            <button onClick={() => setIsAPModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-              <Plus size={14} /> + Tagihan Vendor Baru
-            </button>
+            {canOperateFinance && (
+              <button onClick={() => setIsAPModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                <Plus size={14} /> + Tagihan Vendor Baru
+              </button>
+            )}
           </div>
 
           <div className="table-scroll-wrapper">
@@ -784,7 +807,7 @@ export default function FinanceClient() {
                 <th className="py-2.5 px-3">Nomor Faktur</th>
                 <th className="py-2.5 px-3">Jumlah Tagihan</th>
                 <th className="py-2.5 px-3">Status Verifikasi</th>
-                <th className="py-2.5 px-3 text-right">Aksi Workflow</th>
+                <th className="py-2.5 px-3 text-right">{canOperateFinance ? "Aksi Workflow" : "Status Workflow"}</th>
               </tr>
             </thead>
             <tbody>
@@ -822,41 +845,49 @@ export default function FinanceClient() {
                       )}
                     </td>
                     <td className="py-3 px-3 text-right">
-                      {b.status === "DRAFT" && (
-                        <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/submit`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
-                          Submit
-                        </button>
-                      )}
-                      {b.status === "SUBMITTED" && (
-                        <button
-                          onClick={() => handleVerifyThreeWayMatch(b)}
-                          className="btn-outline py-1 px-3 text-2xs gap-1 text-brand-deep-green border-brand-green/50 hover:bg-brand-light-green font-bold"
-                        >
-                          <ShieldCheck size={12} /> Verifikasi Dokumen
-                        </button>
-                      )}
-                      {b.status === "VERIFIED" && (
-                        <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/approve`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
-                          Setujui
-                        </button>
-                      )}
-                      {b.status === "APPROVED" && (
-                        <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/post`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
-                          Posting
-                        </button>
-                      )}
-                      {b.status === "POSTED" && !isPaid && (
-                        <button
-                          onClick={() => handleOpenPayModal(b)}
-                          className="btn-primary py-1 px-3 text-2xs gap-1 bg-brand-green hover:bg-brand-deep-green font-bold shadow-xs"
-                        >
-                          <CreditCard size={12} /> Bayar tagihan
-                        </button>
-                      )}
+                      {canOperateFinance ? (
+                        <>
+                          {b.status === "DRAFT" && (
+                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/submit`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
+                              Submit
+                            </button>
+                          )}
+                          {b.status === "SUBMITTED" && (
+                            <button
+                              onClick={() => handleVerifyThreeWayMatch(b)}
+                              className="btn-outline py-1 px-3 text-2xs gap-1 text-brand-deep-green border-brand-green/50 hover:bg-brand-light-green font-bold"
+                            >
+                              <ShieldCheck size={12} /> Verifikasi Dokumen
+                            </button>
+                          )}
+                          {b.status === "VERIFIED" && (
+                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/approve`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
+                              Setujui
+                            </button>
+                          )}
+                          {b.status === "APPROVED" && (
+                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/post`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
+                              Posting
+                            </button>
+                          )}
+                          {b.status === "POSTED" && !isPaid && (
+                            <button
+                              onClick={() => handleOpenPayModal(b)}
+                              className="btn-primary py-1 px-3 text-2xs gap-1 bg-brand-green hover:bg-brand-deep-green font-bold shadow-xs"
+                            >
+                              <CreditCard size={12} /> Bayar tagihan
+                            </button>
+                          )}
 
-                      {isPaid && (
-                        <span className="text-xs text-brand-deep-green font-bold flex items-center justify-end gap-1">
-                          <CheckCircle2 size={14} className="text-brand-green" /> Selesai Dibayar
+                          {isPaid && (
+                            <span className="text-xs text-brand-deep-green font-bold flex items-center justify-end gap-1">
+                              <CheckCircle2 size={14} className="text-brand-green" /> Selesai Dibayar
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-2xs text-text-secondary font-medium">
+                          {isPaid ? "Lunas Dibayar" : isMatched ? "Match (Siap Bayar)" : b.status || "DRAFT"}
                         </span>
                       )}
                     </td>
@@ -879,7 +910,7 @@ export default function FinanceClient() {
                       <strong>{payment.reference_number}</strong>
                       <span className="ml-2 text-text-secondary">{formatMoney(payment.amount ?? 0)} · {payment.status}</span>
                     </div>
-                    {['SUBMITTED', 'APPROVED'].includes(payment.status) && (
+                    {canOperateFinance && ['SUBMITTED', 'APPROVED'].includes(payment.status) && (
                       <button onClick={() => handlePaymentLifecycle(payment)} className="btn-outline py-1 px-3 text-2xs">
                         {payment.status === 'SUBMITTED' ? 'Setujui Payment' : 'Eksekusi Payment'}
                       </button>
@@ -906,9 +937,11 @@ export default function FinanceClient() {
               <h3 className="text-sm font-semibold text-text-primary">Proposal Billing Termin Klien</h3>
               <p className="text-2xs text-text-secondary">Approve proposal dan terbitkan faktur penagihan resmi beserta pajak (PPN)</p>
             </div>
-            <button onClick={() => setIsBillingModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-              <Plus size={14} /> Buat Proposal
-            </button>
+            {canOperateFinance && (
+              <button onClick={() => setIsBillingModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                <Plus size={14} /> Buat Proposal
+              </button>
+            )}
           </div>
           <div className="table-scroll-wrapper">
             <table className="w-full data-table min-w-[560px]">
@@ -918,7 +951,7 @@ export default function FinanceClient() {
                 <th>Bobot Capaian</th>
                 <th>Nilai Tagihan</th>
                 <th>Status Proposal</th>
-                <th>Aksi Penagihan</th>
+                <th>{canOperateFinance ? "Aksi Penagihan" : "Status Penagihan"}</th>
               </tr>
             </thead>
             <tbody>
@@ -929,12 +962,14 @@ export default function FinanceClient() {
                   <td className="font-semibold text-brand-deep-green">{formatMoney(p.total_amount ?? p.amount ?? p.subtotal ?? 0)}</td>
                   <td><span className={cn("badge", getStatusColor(p.status))}>{p.status}</span></td>
                   <td>
-                    {["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
+                    {canOperateFinance && ["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
                       <button onClick={() => handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
                         {p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
                       </button>
                     ) : (
-                      <span className="text-2xs text-brand-deep-green font-bold">Billing diterbitkan</span>
+                      <span className="text-2xs text-brand-deep-green font-bold">
+                        {p.status === "APPROVED" || p.status === "INVOICED" ? "Billing diterbitkan" : p.status}
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -2381,10 +2416,12 @@ function TabFundingProyek({
   fundings,
   onRefresh,
   onRequestModalOpen,
+  readOnly = false,
 }: {
   fundings: any[];
   onRefresh: () => void;
   onRequestModalOpen: () => void;
+  readOnly?: boolean;
 }) {
   const [selectedFunding, setSelectedFunding] = useState<any>(null);
   const [isDecisionModalOpen, setIsDecisionModalOpen] = useState(false);
@@ -2462,9 +2499,11 @@ function TabFundingProyek({
           <p className="text-xs text-text-secondary">Keputusan pencairan modal kerja tim proyek dari kas/bank perusahaan.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={onRequestModalOpen} className="btn-primary py-1.5 px-3 text-xs gap-1.5 shadow-xs">
-            <Plus size={14} /> Request Dana
-          </button>
+          {!readOnly && (
+            <button onClick={onRequestModalOpen} className="btn-primary py-1.5 px-3 text-xs gap-1.5 shadow-xs">
+              <Plus size={14} /> Request Dana
+            </button>
+          )}
           <button onClick={onRefresh} className="btn-ghost text-xs gap-1 py-1.5 px-3">
             <RefreshCw size={13} /> Refresh Data
           </button>
@@ -2479,7 +2518,7 @@ function TabFundingProyek({
               <th className="py-3 px-4 font-bold">Sumber Dana</th>
               <th className="py-3 px-4 font-bold">Jumlah Dana</th>
               <th className="py-3 px-4 font-bold">Status Approval</th>
-              <th className="py-3 px-4 font-bold text-right">Keputusan Finance</th>
+              <th className="py-3 px-4 font-bold text-right">{readOnly ? "Status Lifecycle" : "Keputusan Finance"}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -2530,63 +2569,69 @@ function TabFundingProyek({
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {isPending && (
-                          <>
-                            <button
-                              onClick={() => {
-                                setSelectedFunding(f);
-                                setDecisionAction("APPROVED");
-                                setIsDecisionModalOpen(true);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-brand-green text-white font-bold text-2xs hover:bg-brand-deep-green shadow-xs"
-                            >
-                              ✓ Setujui
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedFunding(f);
-                                setDecisionAction("REJECTED");
-                                setIsDecisionModalOpen(true);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-red-50 text-red-600 font-bold text-2xs hover:bg-red-100 border border-red-200"
-                            >
-                              ✕ Tolak
-                            </button>
-                          </>
-                        )}
+                      {readOnly ? (
+                        <span className="text-2xs text-text-secondary font-medium">
+                          {isDisbursed ? "Funding Disbursed" : isApproved ? "Disetujui" : status}
+                        </span>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isPending && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setSelectedFunding(f);
+                                  setDecisionAction("APPROVED");
+                                  setIsDecisionModalOpen(true);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-brand-green text-white font-bold text-2xs hover:bg-brand-deep-green shadow-xs"
+                              >
+                                ✓ Setujui
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedFunding(f);
+                                  setDecisionAction("REJECTED");
+                                  setIsDecisionModalOpen(true);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-red-50 text-red-600 font-bold text-2xs hover:bg-red-100 border border-red-200"
+                              >
+                                ✕ Tolak
+                              </button>
+                            </>
+                          )}
 
-                        {isApproved && (
+                          {isApproved && (
+                            <button
+                              onClick={() => {
+                                setSelectedFunding(f);
+                                setDecisionAction("DISBURSED");
+                                setIsDecisionModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold text-2xs hover:bg-blue-700 shadow-xs flex items-center gap-1"
+                            >
+                              <Zap size={11} /> Tandai Drawn
+                            </button>
+                          )}
+
+                          {isDisbursed && (
+                            <span className="text-2xs text-blue-700 font-bold flex items-center gap-1">
+                              <CheckCircle2 size={13} className="text-blue-600" /> Funding Drawn
+                            </span>
+                          )}
+
+                          {!isPending && !isApproved && !isDisbursed && (
+                            <span className="text-2xs text-text-secondary italic">Selesai ({status})</span>
+                          )}
+
                           <button
-                            onClick={() => {
-                              setSelectedFunding(f);
-                              setDecisionAction("DISBURSED");
-                              setIsDecisionModalOpen(true);
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold text-2xs hover:bg-blue-700 shadow-xs flex items-center gap-1"
+                            onClick={() => handleDeleteFunding(f.id)}
+                            className="p-1 rounded text-text-secondary hover:text-red-600 hover:bg-red-50"
+                            title="Hapus Pengajuan"
                           >
-                            <Zap size={11} /> Tandai Drawn
+                            <Trash2 size={13} />
                           </button>
-                        )}
-
-                        {isDisbursed && (
-                          <span className="text-2xs text-blue-700 font-bold flex items-center gap-1">
-                            <CheckCircle2 size={13} className="text-blue-600" /> Funding Drawn
-                          </span>
-                        )}
-
-                        {!isPending && !isApproved && !isDisbursed && (
-                          <span className="text-2xs text-text-secondary italic">Selesai ({status})</span>
-                        )}
-
-                        <button
-                          onClick={() => handleDeleteFunding(f.id)}
-                          className="p-1 rounded text-text-secondary hover:text-red-600 hover:bg-red-50"
-                          title="Hapus Pengajuan"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

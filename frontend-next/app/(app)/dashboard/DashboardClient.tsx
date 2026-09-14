@@ -32,6 +32,7 @@ import { buildMainTaskTimeline } from "@/lib/dashboard/project-timeline";
 import { ProjectMilestoneCard, ProjectSummary, MilestoneItem } from "@/components/ui/ProjectMilestoneCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
+import { TeamAttendanceWidget } from "@/components/ui/TeamAttendanceWidget";
 import { NewCardRequestModal } from "@/components/requests/NewCardRequestModal";
 import { RequestSuccessModal } from "@/components/requests/RequestSuccessModal";
 import { RequestReviewModal } from "@/components/requests/RequestReviewModal";
@@ -436,6 +437,14 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
       {/* Finance reads the project budget aggregate; inventory remains owned by Inventory. */}
       <div className="grid grid-cols-1 gap-5 items-stretch">
         <BudgetCheckStatusCard
+          title="Status Pengadaan Anggaran Proyek"
+          statusLabel="PROJECT FUNDING"
+          budgetLabel="Anggaran Pengadaan Disetujui"
+          allocationLabel="Realisasi Pengadaan & Jasa:"
+          allocationFormula="Biaya vendor, layanan, dan kebutuhan operasional proyek"
+          remainingLabel="Sisa Anggaran Pengadaan"
+          validLabel="Pengadaan masih dalam anggaran"
+          invalidLabel="Pengadaan melebihi anggaran"
           materialBudget={kpis.totalBudget ?? 0}
           allocationCost={kpis.usedBudget ?? 0}
           remainingBudget={Math.max(0, (kpis.totalBudget ?? 0) - (kpis.usedBudget ?? 0))}
@@ -701,14 +710,9 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         <TopExpensesBarChart expenses={topExpenses} />
       </div>
 
-      {/* ── Baris 3: Gantt Timeline Mingguan Portofolio ── */}
+      {/* ── Pemantauan Kehadiran & Utilisasi Tim (Team Attendance & Monitoring) ── */}
       <div className="w-full">
-        <ProjectTimelineGantt tasks={timelineTasks} totalWeeks={8} />
-      </div>
-
-      {/* ── Baris 4: Milestones Stepper & Project Selector ── */}
-      <div className="w-full">
-        <ProjectMilestoneCard projects={projectSummaries} milestones={projectMilestones} />
+        <TeamAttendanceWidget />
       </div>
 
       {/* ── Secondary KPI Row ─────────────── */}

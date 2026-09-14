@@ -33,6 +33,7 @@ import api from "@/lib/api/axios";
 import { feedApi } from "@/lib/api/feed.api";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
 import { canAccessRoute } from "@/lib/access/module-contract";
+import { canPerform } from "@/lib/access/capability-contract";
 
 /* ── Tabs Configuration ──────────────────────────── */
 const CRM_TABS = [
@@ -381,13 +382,15 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
  */
 function TabDeals({
   data, approvals, isNewOppOpen, setIsNewOppOpen, onRefresh,
-  onOpportunityCreated, onOpportunityDeleted, onPartyCreated
+  onOpportunityCreated, onOpportunityDeleted, onPartyCreated,
+  readOnly = false,
 }: {
   data: CRMData; approvals: any[]; isNewOppOpen: boolean;
   setIsNewOppOpen: (v: boolean) => void; onRefresh: () => void;
   onOpportunityCreated?: (newOpp: any) => void;
   onOpportunityDeleted?: (id: string | number) => void;
   onPartyCreated?: (newParty: any) => void;
+  readOnly?: boolean;
 }) {
   const [form, setForm] = useState({ 
     opportunity_name: "", 
@@ -572,9 +575,11 @@ function TabDeals({
             <p className="text-2xs text-text-secondary">Kelola prospek penjualan dan pipeline deal aktif</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsNewOppOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1 shadow-xs">
-              <Plus size={12} /> Buat Opportunity
-            </button>
+            {!readOnly && (
+              <button onClick={() => setIsNewOppOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1 shadow-xs">
+                <Plus size={12} /> Buat Opportunity
+              </button>
+            )}
           </div>
         </div>
 
@@ -672,19 +677,27 @@ function TabDeals({
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {!isCancelled && (
-                      <ActionBtn onClick={() => handleDealWon(o)} label="Deal Won" small />
+                    {!readOnly ? (
+                      <>
+                        {!isCancelled && (
+                          <ActionBtn onClick={() => handleDealWon(o)} label="Deal Won" small />
+                        )}
+                        {isWon && !isCancelled && (
+                          <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small />
+                        )}
+                        <button 
+                          onClick={() => handleDelete(o.id)} 
+                          title={isCancelled ? "Hapus permanen / bersihkan" : "Batalkan opportunity"}
+                          className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-2xs text-text-secondary italic">
+                        {isCancelled ? "Dibatalkan" : isWon ? "Deal Closed Won" : o.pipeline_stage || "In Pipeline"}
+                      </span>
                     )}
-                    {isWon && !isCancelled && (
-                      <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small />
-                    )}
-                    <button 
-                      onClick={() => handleDelete(o.id)} 
-                      title={isCancelled ? "Hapus permanen / bersihkan" : "Batalkan opportunity"}
-                      className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 size={13} />
-                    </button>
                   </div>
                 </div>
               );
@@ -703,13 +716,6 @@ function TabDeals({
         {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada customer terdaftar." /> : (
           <div className="flex flex-col gap-2 max-h-[520px] overflow-y-auto">
             {(data.parties||[]).map(p => {
-/**
- * snap coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
               const snap = (data.credit||[]).find(c => String(c.customer_party) === String(p.id));
               const limit = snap?.credit_limit || 0;
               const outstanding = snap?.outstanding_receivable || 0;
@@ -729,10 +735,12 @@ function TabDeals({
                     <span>Sisa: <b className={available >= 0 ? "text-brand-green" : "text-red-600"}>{formatMoney(available)}</b></span>
                     <span>Overdue: <b className={overdue > 0 ? "text-red-600" : ""}>{formatMoney(overdue)}</b></span>
                   </div>
-                  <div className="flex gap-1.5">
-                    <ActionBtn onClick={() => handleCreditLimit(p.id, limit)} label="Atur Limit" small variant="ghost" />
-                    <ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" />
-                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-1.5">
+                      <ActionBtn onClick={() => handleCreditLimit(p.id, limit)} label="Atur Limit" small variant="ghost" />
+                      <ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -861,7 +869,7 @@ function TabDeals({
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals: any[]; onRefresh: () => void }) {
+function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; readOnly?: boolean }) {
   const [isEstModal, setIsEstModal] = useState(false);
   const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: 100000000, overhead_cost: 30000000, markup_percent: 30, description: "" });
 
@@ -909,7 +917,9 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
           <h3 className="text-sm font-bold">Cost Estimating (HPP & Margin)</h3>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.estimates||[]).length} Estimate</span>
-            <button onClick={() => setIsEstModal(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Estimasi HPP</button>
+            {!readOnly && (
+              <button onClick={() => setIsEstModal(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Estimasi HPP</button>
+            )}
           </div>
         </div>
         {(data.estimates||[]).length === 0 ? <EmptyState msg="Belum ada kalkulasi biaya." /> : (
@@ -923,13 +933,15 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
                   </div>
                   <StatusBadge status={e.status || "DRAFT"} />
                 </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <ActionBtn onClick={async () => { await calculateCostEstimate(e.id); toast.success("HPP dihitung."); onRefresh(); }} label="Hitung HPP" small variant="ghost" />
-                  <ActionBtn onClick={async () => { await createQuotationFromEstimate(e.id); toast.success("Quotation dibuat!"); onRefresh(); }} label="📄 Buat Quotation" small />
-                  <button onClick={async () => { if(!confirm("Hapus?")) return; await deleteCostEstimate(e.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors">
-                    <Trash2 size={13} />
-                  </button>
-                </div>
+                {!readOnly && (
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <ActionBtn onClick={async () => { await calculateCostEstimate(e.id); toast.success("HPP dihitung."); onRefresh(); }} label="Hitung HPP" small variant="ghost" />
+                    <ActionBtn onClick={async () => { await createQuotationFromEstimate(e.id); toast.success("Quotation dibuat!"); onRefresh(); }} label="📄 Buat Quotation" small />
+                    <button onClick={async () => { if(!confirm("Hapus?")) return; await deleteCostEstimate(e.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -951,7 +963,9 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
                   <div className="text-xs text-text-secondary">Total: <b>{formatMoney(q.total_amount)}</b></div>
                   <StatusBadge status={q.status || "DRAFT"} />
                 </div>
-                <div className="flex-shrink-0">{getQuotActions(q)}</div>
+                <div className="flex-shrink-0">
+                  {readOnly ? <StatusBadge status={q.status || "DRAFT"} /> : getQuotActions(q)}
+                </div>
               </div>
             ))}
           </div>
@@ -1014,7 +1028,7 @@ function TabEstimate({ data, approvals, onRefresh }: { data: CRMData; approvals:
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void }) {
+function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", case_type: "WARRANTY_CLAIM", description: "" });
@@ -1039,7 +1053,9 @@ function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefr
           <h3 className="text-sm font-bold">Tiket Support & Klaim Garansi</h3>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-2xs font-bold">{(data.cases||[]).length} Tiket</span>
-            <button onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Tiket Baru</button>
+            {!readOnly && (
+              <button onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Tiket Baru</button>
+            )}
           </div>
         </div>
         {(data.cases||[]).length === 0 ? <EmptyState msg="Belum ada tiket support." /> : (
@@ -1064,14 +1080,22 @@ function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefr
                     <StatusBadge status={c.status || "OPEN"} />
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {!resolved ? (
-                      <ActionBtn onClick={async () => { await checkTicketWarrantyStatus(c.id); toast.success("Status diperbarui."); onRefresh(); }} label="Periksa status" small variant="ghost" />
+                    {!readOnly ? (
+                      <>
+                        {!resolved ? (
+                          <ActionBtn onClick={async () => { await checkTicketWarrantyStatus(c.id); toast.success("Status diperbarui."); onRefresh(); }} label="Periksa status" small variant="ghost" />
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">RESOLVED</span>
+                        )}
+                        <button onClick={async () => { if(!confirm("Hapus tiket?")) return; await deleteSupportTicket(c.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
+                          <Trash2 size={13} />
+                        </button>
+                      </>
                     ) : (
-                      <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">RESOLVED</span>
+                      <span className="text-2xs text-text-secondary italic">
+                        {resolved ? "RESOLVED" : c.status || "OPEN"}
+                      </span>
                     )}
-                    <button onClick={async () => { if(!confirm("Hapus tiket?")) return; await deleteSupportTicket(c.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
-                      <Trash2 size={13} />
-                    </button>
                   </div>
                 </div>
               );
@@ -1172,7 +1196,7 @@ function TabTickets({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefr
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void }) {
+function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_party: "", description: "" });
@@ -1216,7 +1240,9 @@ function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRef
         <h3 className="text-sm font-bold">Incoming Customer Inquiries</h3>
         <div className="flex items-center gap-2">
           <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.inquiries||[]).length} Inquiry</span>
-          <button onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Inquiry Baru</button>
+          {!readOnly && (
+            <button onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Inquiry Baru</button>
+          )}
         </div>
       </div>
       {(data.inquiries||[]).length === 0 ? <EmptyState msg="Belum ada incoming inquiry." /> : (
@@ -1248,14 +1274,22 @@ function TabIncoming({ data, onRefresh, onPartyCreated }: { data: CRMData; onRef
                   <StatusBadge status={x.status || "NEW"} />
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {!isQual ? (
-                    <ActionBtn onClick={async () => { await qualifyInquiry(x.id); toast.success("Inquiry berhasil dikualifikasi."); onRefresh(); }} label="Jadikan opportunity" small />
+                  {!readOnly ? (
+                    <>
+                      {!isQual ? (
+                        <ActionBtn onClick={async () => { await qualifyInquiry(x.id); toast.success("Inquiry berhasil dikualifikasi."); onRefresh(); }} label="Jadikan opportunity" small />
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">QUALIFIED</span>
+                      )}
+                      <button onClick={async () => { if(!confirm("Hapus inquiry?")) return; await deleteCustomerInquiry(x.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
+                        <Trash2 size={13} />
+                      </button>
+                    </>
                   ) : (
-                    <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">QUALIFIED</span>
+                    <span className="text-2xs text-text-secondary italic">
+                      {isQual ? "QUALIFIED" : x.status || "NEW"}
+                    </span>
                   )}
-                  <button onClick={async () => { if(!confirm("Hapus inquiry?")) return; await deleteCustomerInquiry(x.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
-                    <Trash2 size={13} />
-                  </button>
                 </div>
               </div>
             );
@@ -1472,6 +1506,7 @@ function TabEngagement({ data }: { data: CRMData }) {
  */
 export default function CrmClient() {
   const { user, userRole, isLoading: authLoading } = useAuth();
+  const canOperateCrm = canPerform("crm:operate", userRole);
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -1624,14 +1659,21 @@ export default function CrmClient() {
             Inquiry → Opportunity → Quotation → Order & Service
           </p>
         </div>
-        <button
-          onClick={() => loadData(true)}
-          disabled={refreshing}
-          className="btn-ghost gap-1.5 text-xs flex-shrink-0"
-        >
-          <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
-          {refreshing ? "Memuat..." : "Refresh Data CRM"}
-        </button>
+        <div className="flex items-center gap-2">
+          {!canOperateCrm && (
+            <span className="px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold flex items-center gap-1.5">
+              <ShieldCheck size={13} /> CRM Overseer · View Only
+            </span>
+          )}
+          <button
+            onClick={() => loadData(true)}
+            disabled={refreshing}
+            className="btn-ghost gap-1.5 text-xs flex-shrink-0"
+          >
+            <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
+            {refreshing ? "Memuat..." : "Refresh Data CRM"}
+          </button>
+        </div>
       </div>
 
       {/* ── Tab Navigation ───────────────────── */}
@@ -1676,11 +1718,12 @@ export default function CrmClient() {
               onOpportunityCreated={handleOpportunityCreated}
               onOpportunityDeleted={handleOpportunityDeleted}
               onPartyCreated={handlePartyCreated}
+              readOnly={!canOperateCrm}
             />
           )}
-          {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} />}
-          {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} />}
-          {activeTab === "incoming"   && <TabIncoming data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} />}
+          {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} />}
+          {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
+          {activeTab === "incoming"   && <TabIncoming data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "accounts"   && <TabAccounts data={data} />}
           {activeTab === "contracts"  && <TabContracts data={data} />}
           {activeTab === "engagement" && <TabEngagement data={data} />}

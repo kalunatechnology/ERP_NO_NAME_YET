@@ -13,6 +13,13 @@ import { CheckCircle2, AlertTriangle } from "lucide-react";
 import { formatMoney, cn } from "@/lib/utils";
 
 interface BudgetCheckProps {
+  title?: string;
+  statusLabel?: string;
+  budgetLabel?: string;
+  allocationLabel?: string;
+  remainingLabel?: string;
+  validLabel?: string;
+  invalidLabel?: string;
   materialBudget?: number | string;
   allocationFormula?: string;
   allocationCost?: number | string;
@@ -29,6 +36,13 @@ interface BudgetCheckProps {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export function BudgetCheckStatusCard({
+  title = "Budget Check Status",
+  statusLabel = "REAL TIME",
+  budgetLabel = "Anggaran Proyek",
+  allocationLabel = "Biaya Teralokasi:",
+  remainingLabel = "Remaining Budget",
+  validLabel = "Budget is acceptable",
+  invalidLabel = "Budget perlu penyesuaian",
   materialBudget = 0,
   allocationFormula = "(Total biaya proyek tercatat)",
   allocationCost = 0,
@@ -55,20 +69,20 @@ export function BudgetCheckStatusCard({
     >
       {/* Header Banner */}
       <div className="bg-[#EAF6FF] rounded-xl px-3.5 py-2 flex items-center justify-between">
-        <span className="text-xs font-bold text-[#090909]">Budget Check Status</span>
-        <span className="text-[10px] font-bold text-[#294BB2] tracking-wider">REAL TIME</span>
+        <span className="text-xs font-bold text-[#090909]">{title}</span>
+        <span className="text-[10px] font-bold text-[#294BB2] tracking-wider">{statusLabel}</span>
       </div>
 
       {/* Metric Breakdown */}
       <div className="flex flex-col gap-2.5 text-xs py-2 my-auto">
         <div className="flex justify-between items-center gap-2">
-          <span className="text-[#4F5050] font-medium truncate">Anggaran Proyek</span>
+          <span className="text-[#4F5050] font-medium truncate">{budgetLabel}</span>
           <span className="font-bold text-[#090909] flex-shrink-0">{formatVal(materialBudget)}</span>
         </div>
 
         <div className="flex justify-between items-start gap-2">
           <div className="flex flex-col min-w-0 pr-1">
-            <span className="text-[#4F5050] font-medium truncate">Biaya Teralokasi:</span>
+            <span className="text-[#4F5050] font-medium truncate">{allocationLabel}</span>
             <span className="text-[10px] text-[#4F5050] truncate">{allocationFormula}</span>
           </div>
           <span className="font-bold text-[#090909] flex-shrink-0">{formatVal(allocationCost)}</span>
@@ -77,14 +91,14 @@ export function BudgetCheckStatusCard({
         <hr className="border-gray-100 my-0.5" />
 
         <div className="flex justify-between items-center gap-2">
-          <span className="text-[#4F5050] font-medium truncate">Remaining Budget</span>
+          <span className="text-[#4F5050] font-medium truncate">{remainingLabel}</span>
           <span className="font-bold text-[#090909] flex-shrink-0">{formatVal(remainingBudget)}</span>
         </div>
 
         <hr className="border-gray-100 my-0.5" />
 
         <div className="flex justify-between items-center pt-0.5 gap-2">
-          <span className="text-xs text-[#4F5050] font-medium">Budget is acceptable</span>
+          <span className="text-xs text-[#4F5050] font-medium">{isValid ? validLabel : invalidLabel}</span>
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold flex-shrink-0 ${
               isValid
