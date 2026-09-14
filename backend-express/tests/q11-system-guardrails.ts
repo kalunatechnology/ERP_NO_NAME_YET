@@ -212,18 +212,21 @@ async function main(): Promise<void> {
       /role aktif/i,
     );
 
-    const [requestRoutes, requestService, crmRoutes, projectsClient] = await Promise.all([
+    const [requestRoutes, requestService, crmRoutes, projectWbsNode] = await Promise.all([
       readFile(`${__dirname}/../src/modules/core/request.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/core/request.service.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/crm/crm.routes.ts`, 'utf8'),
-      readFile(`${__dirname}/../../frontend-next/app/(app)/projects/ProjectsClient.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/components/projects/ProjectWbsNode.tsx`, 'utf8'),
     ]);
     assert(requestRoutes.includes("'/:id/validate-om', requireActiveRole(RoleCode.OPERATIONAL_MANAGER)"));
     assert(requestRoutes.includes("'/:id/disburse', requireActiveRole(RoleCode.FINANCE)"));
     assert(requestRoutes.includes("'/:id/verify-lpj-om', requireActiveRole(RoleCode.OPERATIONAL_MANAGER)"));
     assert(crmRoutes.includes("'/opportunities/:id/executive-override', requireActiveRole(RoleCode.DIRECTOR)"));
     assert(requestService.includes('instance.created_by_id !== requesterUserId'));
-    assert(projectsClient.includes('const canCreateDaily = isPM || isWeeklyPic;'));
+    assert(
+      projectWbsNode.includes('const canCreateDaily = canUpdateProject && (isPM || isWeeklyPic);'),
+      'Daily Task create UI must require project update access and PM/weekly-PIC authority',
+    );
     return {
       delegated_sensitive_action: 'blocked',
       request_approvals: 'active-role-gated',
@@ -323,12 +326,22 @@ async function main(): Promise<void> {
     assert(profileModal.includes('current_password'));
     assert(profileModal.includes('api.patch("/api/v1/auth/profile"'));
     assert(projectClient.includes('"executive", "om", "pm", "finance"'), 'Project financial visibility must use the normalized executive role.');
-    assert(projectClient.includes('{canManageProject && <button'), 'Staff Project workspace must not advertise project-level mutations.');
+    assert(
+      projectClient.includes('canPerform("project:create", userRole)')
+        && projectClient.includes('canPerform("project:update", userRole)')
+        && projectClient.includes('{canCreateProject && (')
+        && projectClient.includes('{canUpdateProject && ('),
+      'Staff Project workspace must gate project-level mutations through the canonical role policy.',
+    );
     assert(projectClient.includes('userRole === "staff" ? [') && projectClient.includes('Task Terkait Saya'), 'Staff Project workspace must use its compact assigned-task view.');
     assert(projectClient.includes('mainTask.assignments') && projectClient.includes('activeUserId'), 'Staff Project hierarchy must be assignment scoped.');
     assert(taxWorkspace.includes('/api/v1/finance/tax-transactions/projection?page_size=200'));
     assert(taxWorkspace.includes('const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [];'), 'Tax workspace must not ship production-looking local transactions.');
-    assert(resourcesClient.includes('visibleResources'), 'Data Explorer must filter API resources before fetching.');
+    assert(
+      resourcesClient.includes('const visibleEntities = useMemo')
+        && resourcesClient.includes('canRequestApi(entity.endpoint, accessContext)'),
+      'Data Explorer must filter API resources before fetching.',
+    );
     assert(feedSource.includes('canRequestApi("/api/v1/inventory/stock-balances/"'));
     assert(errorPage.includes('Terlalu Banyak Permintaan') && errorPage.includes('Layanan Sedang Tidak Tersedia'));
     assert(errorPage.includes('text-[#2649B3]') && !errorPage.includes('#059669'), 'Error pages must follow the current blue visual contract.');

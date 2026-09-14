@@ -595,7 +595,7 @@ export default function FinanceClient() {
             </div>
             <div className="kpi-card">
               <span className="text-xs text-text-secondary">Gross Margin Proyek</span>
-              <span className={cn("text-2xl font-bold", grossMargin < 0 ? "text-red-600" : grossMargin === 0 ? "text-slate-700" : "text-emerald-700")}>{formatMoney(grossMargin)}</span>
+              <span className={cn("text-2xl font-bold", grossMargin < 0 ? "text-red-600" : grossMargin === 0 ? "text-slate-700" : "text-brand-deep-green")}>{formatMoney(grossMargin)}</span>
             </div>
             <div className="kpi-card">
               <span className="text-xs text-text-secondary">Dana Terdistribusi (Funding)</span>
@@ -707,9 +707,9 @@ export default function FinanceClient() {
                         </td>
                         <td>{formatMoney(revenue)}</td>
                         <td>{formatMoney(actualCost)}</td>
-                        <td className={margin < 0 ? "font-bold text-red-600" : "font-bold text-emerald-700"}>{formatMoney(margin)}</td>
+                        <td className={margin < 0 ? "font-bold text-red-600" : "font-bold text-brand-deep-green"}>{formatMoney(margin)}</td>
                         <td>{marginPercent.toFixed(1)}%</td>
-                        <td><span className={cn("rounded-full px-2 py-1 text-2xs font-bold", margin < 0 ? "bg-red-50 text-red-700" : marginPercent < 15 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")}>{margin < 0 ? "Perlu tindakan" : marginPercent < 15 ? "Waspada" : "Sehat"}</span></td>
+                        <td><span className={cn("rounded-full px-2 py-1 text-2xs font-bold", margin < 0 ? "bg-red-50 text-red-700" : marginPercent < 15 ? "bg-amber-50 text-amber-700" : "bg-brand-light-green text-brand-deep-green")}>{margin < 0 ? "Perlu tindakan" : marginPercent < 15 ? "Waspada" : "Sehat"}</span></td>
                       </tr>
                     );
                   })}
