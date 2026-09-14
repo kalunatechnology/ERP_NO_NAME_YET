@@ -105,9 +105,9 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
  */
-  const handleOMAction = async (decision: "APPROVE" | "RE_CHECK") => {
-    if (decision === "RE_CHECK" && !remarks.trim()) {
-      setError("Catatan perbaikan (alasan Re-checking) wajib diisi untuk pemohon.");
+  const handleOMAction = async (decision: "APPROVE" | "RE_CHECK" | "REJECT") => {
+    if (decision !== "APPROVE" && !remarks.trim()) {
+      setError(decision === "REJECT" ? "Alasan penolakan wajib diisi untuk pemohon." : "Catatan perbaikan (alasan Re-checking) wajib diisi untuk pemohon.");
       return;
     }
 
@@ -465,7 +465,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
           {(showRecheckInput || isExecStage || isOMLPJStage) && (
             <div className="space-y-1.5 animate-in fade-in duration-150">
               <label className="text-2xs font-bold text-[#4F5050] uppercase tracking-wider block">
-                {isOMLPJStage ? "Catatan Verifikasi LPJ oleh OM:" : isOMStage ? "Catatan Re-checking untuk Pemohon:" : "Catatan Persetujuan / Penolakan:"}
+                {isOMLPJStage ? "Catatan Verifikasi LPJ oleh OM:" : isOMStage ? "Catatan keputusan OM untuk pemohon:" : "Catatan Persetujuan / Penolakan:"}
               </label>
               <textarea
                 value={remarks}
@@ -492,6 +492,17 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
             {/* Stage 1: OM Controls */}
             {isOMStage && (
               <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!showRecheckInput) { setShowRecheckInput(true); setError(""); return; }
+                    handleOMAction("REJECT");
+                  }}
+                  disabled={loading}
+                  className="px-4 py-2.5 rounded-[14px] bg-red-50 border border-red-200 text-red-700 text-xs font-bold hover:bg-red-100 transition-colors"
+                >
+                  Tolak Permohonan
+                </button>
                 {!showRecheckInput ? (
                   <button
                     type="button"

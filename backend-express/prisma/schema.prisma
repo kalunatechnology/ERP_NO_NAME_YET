@@ -2200,6 +2200,10 @@ model project_timesheet {
   overtime_reason String?
 
   // Timer dan bukti penyelesaian membuat durasi lembur dapat diaudit.
+  work_started_at     DateTime?
+  work_ended_at       DateTime?
+  last_activity_at    DateTime?
+  attendance_source   String?   @default("WEB")
   overtime_started_at DateTime?
   overtime_ended_at   DateTime?
   evidence_url        String?

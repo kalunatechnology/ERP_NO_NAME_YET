@@ -2,13 +2,14 @@
  * Hostinger database deployment gate.
  *
  * This script is the only deployment command that invokes `prisma migrate
- * deploy`. It runs exclusively when `DEPLOYMENT_TARGET=hostinger`, connects
+ * deploy`. It runs only when `DEPLOYMENT_TARGET` is `hostinger` or `docker`, connects
  * only to Supabase's direct PostgreSQL endpoint, and refuses to run when
  * Vercel is detected. Prisma migrations therefore never run inside a Vercel
  * serverless build or request lifecycle.
  *
  * Consumers:
- * - Hostinger build command: `npm run deploy:hostinger`
+ * - Hostinger build/start command: `npm run deploy:hostinger` / `npm start`
+ * - Docker container start: `node server.js`
  *
  * Side effects:
  * - Applies committed Prisma migrations to the database named by
@@ -78,8 +79,8 @@ async function main() {
     console.log('Skipped database migration: Vercel deployment detected.');
     return;
   }
-  if (process.env.DEPLOYMENT_TARGET !== 'hostinger') {
-    throw new Error('Refusing database migration: DEPLOYMENT_TARGET must be exactly "hostinger".');
+  if (!['hostinger', 'docker'].includes(process.env.DEPLOYMENT_TARGET)) {
+    throw new Error('Refusing database migration: DEPLOYMENT_TARGET must be "hostinger" or "docker".');
   }
 
   const directUrl = requireDirectSupabaseUrl(process.env.SUPABASE_DIRECT_URL ?? process.env.DIRECT_URL);

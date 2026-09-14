@@ -393,17 +393,17 @@ export function MonthlyStackedBarChart({
                 >
                   {/* The Stacked Bar Column */}
                   <div className="w-full max-w-[44px] sm:max-w-[52px] flex flex-col items-center justify-end h-full relative transition-transform duration-150 group-hover:scale-y-[1.02] origin-bottom">
-                    {/* Censored / No Data State Bar */}
+                    {/* Branded empty state: neutral information, not an error. */}
                     {isZero ? (
                       <div
-                        className="w-full h-28 rounded-[14px] border border-dashed border-gray-300/80 flex flex-col items-center justify-center relative overflow-hidden transition-all duration-200 group-hover:border-gray-400 shadow-2xs"
+                        className="w-full h-28 rounded-[14px] border border-dashed border-[#9FD6FF] flex flex-col items-center justify-center relative overflow-hidden transition-all duration-200 group-hover:border-[#42ACFB] shadow-2xs"
                         style={{
-                          background: "repeating-linear-gradient(45deg, #F9FAFB, #F9FAFB 6px, #ECEFF1 6px, #ECEFF1 12px)",
+                          background: "repeating-linear-gradient(45deg, #F8FBFF, #F8FBFF 6px, #EAF6FF 6px, #EAF6FF 12px)",
                         }}
                         title={`${item.month}: Belum ada transaksi tercatat`}
                       >
-                        <span className="text-[9px] font-extrabold text-gray-400/90 tracking-tighter uppercase select-none rotate-[-90deg] sm:rotate-0">
-                          Belum Ada
+                        <span className="text-[9px] font-extrabold text-[#2649B3]/70 tracking-tighter uppercase select-none rotate-[-90deg] sm:rotate-0">
+                          Belum tercatat
                         </span>
                       </div>
                     ) : (

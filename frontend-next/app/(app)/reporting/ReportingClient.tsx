@@ -443,20 +443,23 @@ function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> })
   const entries = attendance?.entries ?? attendance?.rows ?? attendance?.timesheets ?? [];
   return <div className="card rounded-xl p-5">
     <h2 className="font-bold text-text-primary">Laporan Kehadiran</h2>
-    <p className="text-xs text-text-secondary mt-1">Disusun dari timesheet proyek yang menjadi bukti aktivitas kerja aktual.</p>
+    <p className="text-xs text-text-secondary mt-1">Kehadiran dicatat melalui timer kerja di browser desktop maupun mobile. Jam selesai dan aktivitas terakhir tersimpan otomatis.</p>
     <div className="grid grid-cols-3 gap-3 mt-4">
       {[['Hari Kerja', attendance?.work_days ?? 0], ['Total Jam', attendance?.total_hours ?? 0], ['Entri', attendance?.entry_count ?? 0]].map(([label, value]) =>
         <div key={String(label)} className="rounded-lg border border-text-tertiary/50 p-3"><div className="text-2xs text-text-secondary">{label}</div><div className="text-lg font-bold">{value}</div></div>)}
     </div>
     <div className="table-scroll-wrapper mt-5">
-      <table className="data-table w-full min-w-[620px]">
-        <thead><tr><th>Tanggal</th><th>Nama</th><th>Proyek</th><th>Mulai</th><th>Selesai</th><th>Total Jam</th></tr></thead>
+      <table className="data-table w-full min-w-[820px]">
+        <thead><tr><th>Tanggal</th><th>Nama</th><th>Proyek</th><th>Mulai</th><th>Selesai</th><th>Aktivitas Terakhir</th><th>Sumber</th><th>Total Jam</th></tr></thead>
         <tbody>
-          {entries.length === 0 ? <tr><td colSpan={6} className="py-6 text-center text-text-secondary">Belum ada rincian kehadiran pada periode ini.</td></tr> : entries.map((entry: any, index: number) => (
+          {entries.length === 0 ? <tr><td colSpan={8} className="py-8 text-center text-[#2649B3] bg-[#F8FBFF]">Belum ada aktivitas kerja tercatat pada periode ini.</td></tr> : entries.map((entry: any, index: number) => (
             <tr key={entry.id ?? index}>
               <td>{formatDate(entry.work_date ?? entry.date)}</td><td>{entry.user_name ?? entry.employee_name ?? entry.staff_name ?? "-"}</td>
               <td>{entry.project_name ?? "-"}</td><td>{entry.started_at ? new Date(entry.started_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"}</td>
-              <td>{entry.ended_at ? new Date(entry.ended_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"}</td><td>{entry.total_hours ?? entry.hours ?? 0}</td>
+              <td>{entry.ended_at ? new Date(entry.ended_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"}</td>
+              <td>{entry.last_activity_at ? new Date(entry.last_activity_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"}</td>
+              <td><span className="rounded-full bg-[#EAF6FF] px-2 py-1 text-3xs font-bold text-[#2649B3]">{entry.attendance_source === 'MOBILE_WEB' ? 'Mobile' : 'Web'}</span></td>
+              <td>{entry.total_hours ?? entry.hours ?? 0}</td>
             </tr>
           ))}
         </tbody>

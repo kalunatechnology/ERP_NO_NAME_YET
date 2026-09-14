@@ -31,14 +31,17 @@ RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
 ENV PORT=8001
+ENV DEPLOYMENT_TARGET=docker
 
 # Install production dependencies only
 COPY package*.json ./
 RUN npm ci --only=production --ignore-scripts
 
-# Copy Prisma schema and generated engines
+# Copy Prisma schema, generated engines, and Prisma CLI for the startup migration gate.
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/prisma ./prisma
 
 # Copy compiled JavaScript output

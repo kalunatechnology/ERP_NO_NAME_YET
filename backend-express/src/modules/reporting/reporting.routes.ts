@@ -207,8 +207,26 @@ reportingRouter.get('/attendance-summary', async (req: Request, res: Response, n
       take: take + 1 }), prisma.project_timesheet.aggregate({ where, _sum: { hours: true }, _count: { _all: true } })]);
 
     const visibleEntries = entries.slice(0, take);
+    const projectIds = [...new Set(visibleEntries.map((entry) => entry.project_id).filter(Boolean))] as string[];
+    const employeeIds = [...new Set(visibleEntries.map((entry) => entry.employee_id).filter(Boolean))] as string[];
+    const [projects, employees] = await Promise.all([
+      prisma.project_project.findMany({ where: { company_id: activeCompanyId(req), id: { in: projectIds } }, select: { id: true, project_name: true } }),
+      prisma.master_employee.findMany({ where: { company_id: activeCompanyId(req), id: { in: employeeIds } }, select: { id: true, employee_number: true } }),
+    ]);
+    const projectNames = new Map(projects.map((project) => [project.id, project.project_name]));
+    const employeeNames = new Map(employees.map((employee) => [employee.id, employee.employee_number]));
+    const normalizedEntries = visibleEntries.map((entry) => ({
+      ...entry,
+      employee_name: entry.employee_id ? employeeNames.get(entry.employee_id) ?? 'Staff' : 'Staff',
+      project_name: entry.project_id ? projectNames.get(entry.project_id) ?? '-' : '-',
+      started_at: entry.work_started_at,
+      ended_at: entry.work_ended_at,
+      last_activity_at: entry.last_activity_at,
+      attendance_source: entry.attendance_source ?? 'WEB',
+      total_hours: entry.hours,
+    }));
     const workDays = new Set(visibleEntries.filter((entry) => entry.work_date).map((entry) => entry.work_date!.toISOString().slice(0, 10))).size;
-    res.json({ start_date: start, end_date: end, total_hours: totals._sum.hours ?? 0, work_days: workDays, entry_count: totals._count._all, entries: visibleEntries, has_more: entries.length > take });
+    res.json({ start_date: start, end_date: end, total_hours: totals._sum.hours ?? 0, work_days: workDays, entry_count: totals._count._all, entries: normalizedEntries, has_more: entries.length > take });
   } catch (err) {
     next(err);
   }

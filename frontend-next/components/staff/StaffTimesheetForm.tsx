@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, Link2, Play, Send, Square } from "lucide-react";
+import { Clock3, Link2, MonitorSmartphone, Play, Send, Square } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   createStaffTimesheet,
@@ -20,7 +20,9 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
   const [projectId, setProjectId] = useState("");
   const [taskId, setTaskId] = useState("");
   const [workDate, setWorkDate] = useState(localDateKey());
-  const [hours, setHours] = useState("8");
+  const [hours, setHours] = useState("0");
+  const [workStartedAt, setWorkStartedAt] = useState<string | null>(null);
+  const [workEndedAt, setWorkEndedAt] = useState<string | null>(null);
   const [overtimeHours, setOvertimeHours] = useState("0");
   const [overtimeReason, setOvertimeReason] = useState("");
   const [overtimeStartedAt, setOvertimeStartedAt] = useState<string | null>(null);
@@ -38,18 +40,38 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
   );
 
   const timerRunning = Boolean(overtimeStartedAt && !overtimeEndedAt);
+  const workTimerRunning = Boolean(workStartedAt && !workEndedAt);
+  const workElapsedMilliseconds = workStartedAt
+    ? Math.max(0, new Date(workEndedAt || Date.now()).getTime() - new Date(workStartedAt).getTime())
+    : 0;
+  const workElapsedLabel = new Date(workElapsedMilliseconds).toISOString().slice(11, 19);
   const elapsedMilliseconds = overtimeStartedAt
     ? Math.max(0, new Date(overtimeEndedAt || Date.now()).getTime() - new Date(overtimeStartedAt).getTime())
     : 0;
   const elapsedLabel = new Date(elapsedMilliseconds).toISOString().slice(11, 19);
 
   useEffect(() => {
-    if (!timerRunning) return;
+    if (!timerRunning && !workTimerRunning) return;
     const timer = window.setInterval(() => setTimerTick((tick) => tick + 1), 1000);
     return () => window.clearInterval(timer);
-  }, [timerRunning]);
+  }, [timerRunning, workTimerRunning]);
+
+  const startWork = () => {
+    setWorkStartedAt(new Date().toISOString());
+    setWorkEndedAt(null);
+    setHours("0");
+  };
+
+  const stopWork = () => {
+    if (!workStartedAt) return;
+    const endedAt = new Date().toISOString();
+    const duration = Math.max(0.01, (new Date(endedAt).getTime() - new Date(workStartedAt).getTime()) / 3_600_000);
+    setWorkEndedAt(endedAt);
+    setHours(duration.toFixed(2));
+  };
 
   const startOvertime = () => {
+    if (!workEndedAt) return toast.error("Selesaikan timer kerja reguler sebelum memulai lembur.");
     setOvertimeStartedAt(new Date().toISOString());
     setOvertimeEndedAt(null);
     setOvertimeHours("0");
@@ -61,7 +83,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
     const duration = Math.max(0.01, (new Date(endedAt).getTime() - new Date(overtimeStartedAt).getTime()) / 3_600_000);
     setOvertimeEndedAt(endedAt);
     setOvertimeHours(duration.toFixed(2));
-    setHours(Math.min(24, Math.max(Number(hours) || 8, 8 + duration)).toFixed(2));
+    setHours(Math.min(24, (Math.max(0, Number(hours) || 0) + duration)).toFixed(2));
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -70,6 +92,8 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
     const overtime = Number(overtimeHours || 0);
     if (!projectId) return toast.error("Pilih proyek terlebih dahulu.");
     if (!workDate) return toast.error("Tanggal kerja wajib diisi.");
+    if (!workStartedAt || !workEndedAt) return toast.error("Jam kerja wajib dicatat melalui timer mulai dan selesai.");
+    if (workTimerRunning) return toast.error("Selesaikan timer kerja sebelum mengirim timesheet.");
     if (!Number.isFinite(total) || total <= 0 || total > 24) {
       return toast.error("Total jam kerja harus lebih dari 0 dan maksimal 24 jam.");
     }
@@ -88,6 +112,10 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
         ...(taskId ? { task_id: taskId } : {}),
         work_date: workDate,
         hours: total,
+        work_started_at: workStartedAt,
+        work_ended_at: workEndedAt,
+        last_activity_at: overtimeEndedAt || workEndedAt,
+        attendance_source: window.innerWidth < 768 ? "MOBILE_WEB" : "WEB",
         overtime_hours: overtime,
         ...(overtimeReason.trim() ? { overtime_reason: overtimeReason.trim() } : {}),
         ...(overtimeStartedAt ? { overtime_started_at: overtimeStartedAt } : {}),
@@ -96,7 +124,9 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
       });
       toast.success("Timesheet berhasil dikirim dan menunggu persetujuan.");
       setTaskId("");
-      setHours("8");
+      setHours("0");
+      setWorkStartedAt(null);
+      setWorkEndedAt(null);
       setOvertimeHours("0");
       setOvertimeReason("");
       setOvertimeStartedAt(null);
@@ -139,16 +169,30 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
           Tanggal kerja *
           <input type="date" value={workDate} max={localDateKey()} onChange={(event) => setWorkDate(event.target.value)} className="input mt-1 text-xs" required />
         </label>
+        <div className="text-xs font-semibold text-text-secondary">
+          Kehadiran &amp; timer kerja
+          <div className="mt-1 flex h-10 items-center justify-between rounded-xl border border-[#9FD6FF] bg-[#F8FBFF] px-2">
+            <span className="font-mono text-sm font-bold text-text-primary">{workElapsedLabel}</span>
+            {!workTimerRunning ? (
+              <button type="button" onClick={workStartedAt ? undefined : startWork} disabled={Boolean(workEndedAt)} className="inline-flex items-center gap-1 rounded-lg bg-[#EAF6FF] px-2.5 py-1.5 text-2xs font-bold text-[#2649B3] disabled:opacity-60">
+                <Play size={12} /> {workEndedAt ? "Selesai" : "Mulai Kerja"}
+              </button>
+            ) : (
+              <button type="button" onClick={stopWork} className="inline-flex items-center gap-1 rounded-lg bg-[#2649B3] px-2.5 py-1.5 text-2xs font-bold text-white"><Square size={12} /> Akhiri Kerja</button>
+            )}
+          </div>
+          <span className="mt-1 flex items-center gap-1 text-3xs font-normal text-[#4F5050]"><MonitorSmartphone size={11} /> Tersedia melalui browser desktop dan mobile.</span>
+        </div>
         <label className="text-xs font-semibold text-text-secondary">
-          Total jam kerja *
-          <input type="number" min="0.25" max="24" step="0.25" value={hours} onChange={(event) => setHours(event.target.value)} className="input mt-1 text-xs" required />
+          Total jam terverifikasi
+          <input type="number" value={hours} className="input mt-1 text-xs bg-[#F8FBFF]" readOnly aria-readonly="true" />
         </label>
         <div className="text-xs font-semibold text-text-secondary">
           Timer lembur terverifikasi
           <div className="mt-1 flex h-10 items-center justify-between rounded-xl border border-text-tertiary bg-white px-2">
             <span className="font-mono text-sm font-bold text-text-primary">{elapsedLabel}</span>
             {!timerRunning ? (
-              <button type="button" onClick={startOvertime} className="inline-flex items-center gap-1 rounded-lg bg-[#EAF6FF] px-2.5 py-1.5 text-2xs font-bold text-[#2649B3]"><Play size={12} /> Mulai Lembur</button>
+              <button type="button" onClick={startOvertime} disabled={!workEndedAt || Boolean(overtimeEndedAt)} className="inline-flex items-center gap-1 rounded-lg bg-[#EAF6FF] px-2.5 py-1.5 text-2xs font-bold text-[#2649B3] disabled:opacity-50"><Play size={12} /> {overtimeEndedAt ? "Terkunci" : "Mulai Lembur"}</button>
             ) : (
               <button type="button" onClick={stopOvertime} className="inline-flex items-center gap-1 rounded-lg bg-[#FF9946]/15 px-2.5 py-1.5 text-2xs font-bold text-[#B45309]"><Square size={12} /> Selesai &amp; Kunci</button>
             )}
@@ -164,7 +208,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
             <Link2 size={14} className="shrink-0 text-[#2649B3]" />
             <input type="url" value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Tempel link dokumen, Drive, hasil kerja, atau tiket" className="h-10 w-full bg-transparent text-xs outline-none" required={Number(overtimeHours) > 0} />
           </span>
-          <span className="mt-1 block text-3xs font-normal">Timestamp mulai dan selesai dikirim bersama bukti sehingga jam lembur tidak dapat diisi manual.</span>
+          <span className="mt-1 block text-3xs font-normal">Timestamp kerja, aktivitas terakhir, dan bukti lembur dikirim otomatis sehingga durasi tidak dapat diisi manual.</span>
         </label>
       </div>
 

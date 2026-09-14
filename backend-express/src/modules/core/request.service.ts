@@ -344,7 +344,7 @@ static async createRequest(
  */
   static async validateByOM(params: {
     requestId: string;
-    decision:  'APPROVE' | 'RE_CHECK';
+    decision:  'APPROVE' | 'RE_CHECK' | 'REJECT';
     remarks?:  string;
     omUserId:  string;
     companyId: string;
@@ -358,7 +358,7 @@ static async createRequest(
       throw new ValidationError(`Request tidak dalam status validasi OM (Status saat ini: ${instance.current_state}).`);
     }
 
-    const nextState = decision === 'APPROVE' ? 'PENDING_EXEC' : 'RE_CHECKING';
+    const nextState = decision === 'APPROVE' ? 'PENDING_EXEC' : decision === 'REJECT' ? 'REJECTED' : 'RE_CHECKING';
 
     await prisma.$transaction(async (tx) => {
       await tx.core_workflow_instance.update({
@@ -375,7 +375,7 @@ static async createRequest(
           workflow_instance_id: requestId,
           approver_user_id:     omUserId,
           approval_level:       'OM',
-          decision:             decision === 'APPROVE' ? 'APPROVED' : 'RE_CHECK',
+          decision:             decision === 'APPROVE' ? 'APPROVED' : decision === 'REJECT' ? 'REJECTED' : 'RE_CHECK',
           remarks:              remarks,
           decided_at:           new Date(),
         },
@@ -390,7 +390,7 @@ static async createRequest(
       after:       { status: nextState, om_remarks: remarks, om_user_id: omUserId },
       userId:      omUserId,
       companyId,
-      description: `OM ${decision === 'APPROVE' ? 'menyetujui & meneruskan ke Executive' : 'meminta Re-checking'}: ${remarks}`,
+      description: `OM ${decision === 'APPROVE' ? 'memvalidasi & meneruskan ke PM' : decision === 'REJECT' ? 'menolak permohonan' : 'meminta Re-checking'}: ${remarks}`,
     });
 
     // Notifikasi
@@ -404,13 +404,23 @@ static async createRequest(
         recipient_role_id:  'PROJECT_MANAGER',
         company_id:         companyId,
       });
-    } else {
+    } else if (decision === 'RE_CHECK') {
       await this.createNotification({
         title:              `Permohonan Membutuhkan Perbaikan (Re-checking)`,
         message:            `OM meminta perbaikan: "${remarks}". Silakan perbarui dan kirim ulang.`,
         action_url:         `/dashboard?tab=requests&id=${requestId}`,
         notification_type:  'REVISION_REQUESTED',
         priority:           'MEDIUM',
+        company_id:         companyId,
+      });
+    } else {
+      await this.createNotification({
+        title:              'Permohonan Ditolak Operations Manager',
+        message:            `Permohonan #${requestId.slice(0, 8)} ditolak OM: "${remarks}".`,
+        action_url:         `/dashboard?tab=requests&id=${requestId}`,
+        notification_type:  'REQUEST_REJECTED',
+        priority:           'HIGH',
+        recipient_user_id:  instance.created_by_id ?? undefined,
         company_id:         companyId,
       });
     }

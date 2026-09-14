@@ -1048,6 +1048,10 @@ export interface StaffTimesheet {
   hours: number;
   overtime_hours: number;
   overtime_reason?: string | null;
+  work_started_at?: string | null;
+  work_ended_at?: string | null;
+  last_activity_at?: string | null;
+  attendance_source?: "WEB" | "MOBILE_WEB" | string | null;
   overtime_started_at?: string | null;
   overtime_ended_at?: string | null;
   evidence_url?: string | null;
@@ -1061,6 +1065,10 @@ export interface CreateStaffTimesheetPayload {
   hours: number;
   overtime_hours?: number;
   overtime_reason?: string;
+  work_started_at: string;
+  work_ended_at: string;
+  last_activity_at: string;
+  attendance_source: "WEB" | "MOBILE_WEB";
   overtime_started_at?: string;
   overtime_ended_at?: string;
   evidence_url?: string;

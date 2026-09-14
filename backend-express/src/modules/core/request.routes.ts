@@ -320,12 +320,15 @@ requestRouter.get('/team-members', async (req: Request, res: Response, next: Nex
   } catch (err) { next(err); }
 });
 
-// Level 1: OM Validation (APPROVE or RE_CHECK)
+// Level 1: OM Decision (APPROVE, RE_CHECK, or REJECT)
 requestRouter.post('/:id/validate-om', requireActiveRole(RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
-    if (!decision || !['APPROVE', 'RE_CHECK'].includes(decision)) {
-      return sendError(res, 'decision wajib diisi (APPROVE atau RE_CHECK).', 400);
+    if (!decision || !['APPROVE', 'RE_CHECK', 'REJECT'].includes(decision)) {
+      return sendError(res, 'decision wajib diisi (APPROVE, RE_CHECK, atau REJECT).', 400);
+    }
+    if (decision !== 'APPROVE' && !String(remarks || '').trim()) {
+      return sendError(res, 'Catatan wajib diisi untuk pemeriksaan ulang atau penolakan.', 400);
     }
     const result = await RequestService.validateByOM({
       requestId: req.params.id,

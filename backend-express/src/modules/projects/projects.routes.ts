@@ -2387,16 +2387,42 @@ projectsRouter.use(
           );
       }
 
-      const hours =
+      let hours =
         Number(
           data.hours ?? 0,
         );
 
-      const overtimeHours =
+      let overtimeHours =
         Number(
           data.overtime_hours ??
             0,
         );
+
+      if (!data.work_started_at || !data.work_ended_at) {
+        throw new ValidationError('Jam kerja harus dicatat menggunakan timer mulai dan selesai.');
+      }
+
+      const workStartedAt = new Date(data.work_started_at);
+      const workEndedAt = new Date(data.work_ended_at);
+      const serverNow = new Date();
+      if (
+        !Number.isFinite(workStartedAt.getTime()) ||
+        !Number.isFinite(workEndedAt.getTime()) ||
+        workEndedAt <= workStartedAt ||
+        workEndedAt.getTime() > serverNow.getTime() + 120_000
+      ) {
+        throw new ValidationError('Timestamp timer kerja tidak valid.');
+      }
+
+      const regularHours = Math.round(((workEndedAt.getTime() - workStartedAt.getTime()) / 3_600_000) * 100) / 100;
+      if (regularHours <= 0 || regularHours > 24) {
+        throw new ValidationError('Durasi kerja terverifikasi harus lebih dari 0 dan maksimal 24 jam.');
+      }
+
+      data.work_started_at = workStartedAt;
+      data.work_ended_at = workEndedAt;
+      data.last_activity_at = serverNow;
+      data.attendance_source = /mobile|android|iphone|ipad/i.test(String(req.headers['user-agent'] || '')) ? 'MOBILE_WEB' : 'WEB';
 
       if (
         !Number.isFinite(hours) ||
@@ -2460,7 +2486,13 @@ projectsRouter.use(
         }
         const startedAt = new Date(data.overtime_started_at);
         const endedAt = new Date(data.overtime_ended_at);
-        if (!Number.isFinite(startedAt.getTime()) || !Number.isFinite(endedAt.getTime()) || endedAt <= startedAt) {
+        if (
+          !Number.isFinite(startedAt.getTime()) ||
+          !Number.isFinite(endedAt.getTime()) ||
+          endedAt <= startedAt ||
+          startedAt < workEndedAt ||
+          endedAt.getTime() > serverNow.getTime() + 120_000
+        ) {
           throw new ValidationError('Timestamp timer lembur tidak valid.');
         }
         if (!String(data.evidence_url || '').trim()) {
@@ -2468,8 +2500,16 @@ projectsRouter.use(
         }
         data.overtime_started_at = startedAt;
         data.overtime_ended_at = endedAt;
+        overtimeHours = Math.round(((endedAt.getTime() - startedAt.getTime()) / 3_600_000) * 100) / 100;
         data.evidence_url = String(data.evidence_url).trim();
       }
+
+      hours = Math.round((regularHours + overtimeHours) * 100) / 100;
+      if (hours > 24) {
+        throw new ValidationError('Total durasi kerja dan lembur tidak boleh melebihi 24 jam.');
+      }
+      data.hours = hours;
+      data.overtime_hours = overtimeHours;
 
       return data;
     },
@@ -2531,6 +2571,11 @@ projectsRouter.use(
         delete data.hourly_rate;
 
         delete data.amount;
+
+        delete data.work_started_at;
+        delete data.work_ended_at;
+        delete data.last_activity_at;
+        delete data.attendance_source;
 
         delete data.tenant_id;
 
