@@ -28,6 +28,8 @@ interface RequestSuccessModalProps {
  */
 export function RequestSuccessModal({ isOpen, onClose, requestData }: RequestSuccessModalProps) {
   if (!isOpen) return null;
+  const type = String(requestData?.request_type || "").toUpperCase();
+  const successTitle = type.includes("MEETING") ? "Meeting Request Sent" : type.includes("LEAVE") ? "Leave Request Sent" : type.includes("FUND") ? "Funding Request Sent" : "Request Sent";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -39,7 +41,7 @@ export function RequestSuccessModal({ isOpen, onClose, requestData }: RequestSuc
 
         {/* Title & Subtitle matching Marka+ Mockup */}
         <h2 className="text-xl font-black text-[#090909] tracking-tight mb-1.5">
-          Request Sent
+          {successTitle}
         </h2>
         <p className="text-xs text-[#4F5050] font-medium leading-relaxed max-w-[260px] mb-6">
           Your request has been submitted for validation

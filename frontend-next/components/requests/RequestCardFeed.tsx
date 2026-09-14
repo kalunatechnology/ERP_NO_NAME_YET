@@ -86,7 +86,7 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
       {/* Header & Filter Bar */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-extrabold text-[#090909] tracking-tight">Active Request Cards</h3>
+          <h3 className="text-sm font-extrabold text-[#090909] tracking-tight">Kartu Permintaan Aktif (Active Request Cards)</h3>
           <span className="px-2 py-0.5 rounded-full bg-[#EAF6FF] text-3xs font-extrabold text-[#2649B3]">
             {requests.length} Active
           </span>
@@ -120,7 +120,7 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#2649B3] hover:bg-[#2649B3] text-white text-2xs font-extrabold shadow-xs transition-all"
           >
             <Plus size={13} strokeWidth={2.5} />
-            <span>Request Card</span>
+            <span>Tambahkan Kartu</span>
           </button>
         </div>
       </div>
@@ -134,7 +134,7 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
         </div>
       ) : requests.length === 0 ? (
         <div className="p-8 rounded-[20px] bg-white border border-[#D9D9D9] text-center text-xs text-[#4F5050]">
-          Belum ada request aktif. Klik tombol <b>+ Request Card</b> untuk mengajukan dana, rapat, atau cuti baru.
+          Belum ada request aktif. Klik tombol <b>Tambahkan Kartu</b> untuk mengajukan dana, rapat, atau cuti baru.
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

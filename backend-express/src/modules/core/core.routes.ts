@@ -14,6 +14,14 @@ import { requireAdminForWrite, requireSuperAdminForWrite, requireSuperuser } fro
 import { isCompanyAdmin, isSuperAdmin } from '../../types/roles';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
 
+const requireFinanceOrAdminForCompanyWrite = (req: Request, _res: Response, next: NextFunction): void => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (!req.user) return next(new ForbiddenError('Autentikasi diperlukan.'));
+  const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
+  if (isSuperAdmin(req.user.roles) || isCompanyAdmin(req.user.roles) || activeRole === 'FINANCE') return next();
+  return next(new ForbiddenError('Profil perusahaan hanya dapat diubah oleh Finance, Company Admin, atau Super Admin.'));
+};
+
 export const coreRouter = Router();
 export const feedShortcutRouter = Router();
 
@@ -278,7 +286,7 @@ coreRouter.patch('/companies/:id/modules/:moduleCode', authenticate, handleSetCo
 coreRouter.put('/companies/:id/modules/:moduleCode', authenticate, handleSetCompanyModule);
 
 // REST ViewSets
-coreRouter.use('/companies', requireSuperAdminForWrite, createCrudRouter({ modelName: 'core_company', searchFields: ['company_code', 'legal_name'] }));
+coreRouter.use('/companies', requireFinanceOrAdminForCompanyWrite, createCrudRouter({ modelName: 'core_company', searchFields: ['company_code', 'legal_name'] }));
 coreRouter.use('/tenants', requireSuperAdminForWrite, createCrudRouter({ modelName: 'core_tenant', searchFields: ['code', 'name'] }));
 coreRouter.use('/organizations', requireAdminForWrite, createCrudRouter({ modelName: 'core_organization', searchFields: ['organization_code', 'organization_name'] }));
 coreRouter.use('/documents', createCrudRouter({ modelName: 'core_business_document', searchFields: ['document_number', 'document_type'] }));

@@ -1048,6 +1048,9 @@ export interface StaffTimesheet {
   hours: number;
   overtime_hours: number;
   overtime_reason?: string | null;
+  overtime_started_at?: string | null;
+  overtime_ended_at?: string | null;
+  evidence_url?: string | null;
   approval_status: string;
 }
 
@@ -1058,6 +1061,9 @@ export interface CreateStaffTimesheetPayload {
   hours: number;
   overtime_hours?: number;
   overtime_reason?: string;
+  overtime_started_at?: string;
+  overtime_ended_at?: string;
+  evidence_url?: string;
 }
 
 export interface StaffOvertimeSummary {

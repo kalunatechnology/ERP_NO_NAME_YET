@@ -31,16 +31,16 @@ export function StaffOvertimeSummary({ refreshKey = 0, initialSummary }: StaffOv
 
   const values = summary || { thisWeekHours: 0, thisMonthHours: 0, pendingHours: 0, approvedHours: 0, lastOvertimeDate: null };
   const cards = [
-    { label: "Lembur Minggu Ini", value: values.thisWeekHours, icon: Clock3 },
-    { label: "Lembur Bulan Ini", value: values.thisMonthHours, icon: CalendarClock },
-    { label: "Menunggu Persetujuan", value: values.pendingHours, icon: Hourglass },
-    { label: "Lembur Disetujui", value: values.approvedHours, icon: CheckCircle2 },
+    { label: "Lembur Minggu Ini", value: values.thisWeekHours, icon: Clock3, iconBg: "#EAF6FF", iconColor: "#2649B3" },
+    { label: "Lembur Bulan Ini", value: values.thisMonthHours, icon: CalendarClock, iconBg: "#F3E8FF", iconColor: "#7E22CE" },
+    { label: "Menunggu Persetujuan", value: values.pendingHours, icon: Hourglass, iconBg: "#FFF7D6", iconColor: "#B45309" },
+    { label: "Lembur Disetujui", value: values.approvedHours, icon: CheckCircle2, iconBg: "#DCFCE7", iconColor: "#15803D" },
   ];
 
   return <section aria-label="Ringkasan lembur Staff">
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {cards.map(({ label, value, icon: Icon }) => <div key={label} className="card rounded-xl p-3">
-        <div className="flex items-center justify-between gap-2"><span className="text-2xs font-semibold text-text-secondary">{label}</span><Icon size={15} className="text-[#294BB2]" /></div>
+      {cards.map(({ label, value, icon: Icon, iconBg, iconColor }) => <div key={label} className="card rounded-xl p-3">
+        <div className="flex items-center justify-between gap-2"><span className="text-2xs font-semibold text-text-secondary">{label}</span><span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: iconBg }}><Icon size={15} style={{ color: iconColor }} /></span></div>
         <div className="mt-2 text-xl font-bold text-text-primary">{Number(value || 0)} <span className="text-xs font-medium text-text-secondary">jam</span></div>
       </div>)}
     </div>

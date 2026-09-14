@@ -189,7 +189,7 @@ export function AppShell({ children }: AppShellProps) {
           {/* ── Right Panel (visible on lg and xl) ── */}
           <div
             className="hidden lg:flex flex-shrink-0 flex-col border-l border-text-tertiary bg-bg-light transition-all duration-200 overflow-hidden relative h-full"
-            style={{ width: rightPanelOpen ? "280px" : "36px" }}
+            style={{ width: rightPanelOpen ? "260px" : "36px" }}
           >
             {rightPanelOpen ? (
               <RightPanel onToggleCollapse={toggleRightPanel} />

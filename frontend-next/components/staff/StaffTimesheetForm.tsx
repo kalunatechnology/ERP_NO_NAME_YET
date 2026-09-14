@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Clock3, Send } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Clock3, Link2, Play, Send, Square } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   createStaffTimesheet,
@@ -23,6 +23,10 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
   const [hours, setHours] = useState("8");
   const [overtimeHours, setOvertimeHours] = useState("0");
   const [overtimeReason, setOvertimeReason] = useState("");
+  const [overtimeStartedAt, setOvertimeStartedAt] = useState<string | null>(null);
+  const [overtimeEndedAt, setOvertimeEndedAt] = useState<string | null>(null);
+  const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [, setTimerTick] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
   const selectedProject = useMemo(
@@ -32,6 +36,33 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
   const tasks = (selectedProject?.tasks || []).filter((task) =>
     userId ? String(task.assigned_to_id ?? task.assigned_to ?? "") === userId : false
   );
+
+  const timerRunning = Boolean(overtimeStartedAt && !overtimeEndedAt);
+  const elapsedMilliseconds = overtimeStartedAt
+    ? Math.max(0, new Date(overtimeEndedAt || Date.now()).getTime() - new Date(overtimeStartedAt).getTime())
+    : 0;
+  const elapsedLabel = new Date(elapsedMilliseconds).toISOString().slice(11, 19);
+
+  useEffect(() => {
+    if (!timerRunning) return;
+    const timer = window.setInterval(() => setTimerTick((tick) => tick + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [timerRunning]);
+
+  const startOvertime = () => {
+    setOvertimeStartedAt(new Date().toISOString());
+    setOvertimeEndedAt(null);
+    setOvertimeHours("0");
+  };
+
+  const stopOvertime = () => {
+    if (!overtimeStartedAt) return;
+    const endedAt = new Date().toISOString();
+    const duration = Math.max(0.01, (new Date(endedAt).getTime() - new Date(overtimeStartedAt).getTime()) / 3_600_000);
+    setOvertimeEndedAt(endedAt);
+    setOvertimeHours(duration.toFixed(2));
+    setHours(Math.min(24, Math.max(Number(hours) || 8, 8 + duration)).toFixed(2));
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -45,6 +76,10 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
     if (!Number.isFinite(overtime) || overtime < 0 || overtime > total) {
       return toast.error("Jam lembur harus berada antara 0 dan total jam kerja.");
     }
+    if (timerRunning) return toast.error("Hentikan timer lembur sebelum mengirim timesheet.");
+    if (overtime > 0 && (!overtimeStartedAt || !overtimeEndedAt || !evidenceUrl.trim())) {
+      return toast.error("Timer selesai dan link bukti pekerjaan wajib tersedia untuk lembur.");
+    }
 
     setSubmitting(true);
     try {
@@ -55,12 +90,18 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
         hours: total,
         overtime_hours: overtime,
         ...(overtimeReason.trim() ? { overtime_reason: overtimeReason.trim() } : {}),
+        ...(overtimeStartedAt ? { overtime_started_at: overtimeStartedAt } : {}),
+        ...(overtimeEndedAt ? { overtime_ended_at: overtimeEndedAt } : {}),
+        ...(evidenceUrl.trim() ? { evidence_url: evidenceUrl.trim() } : {}),
       });
       toast.success("Timesheet berhasil dikirim dan menunggu persetujuan.");
       setTaskId("");
       setHours("8");
       setOvertimeHours("0");
       setOvertimeReason("");
+      setOvertimeStartedAt(null);
+      setOvertimeEndedAt(null);
+      setEvidenceUrl("");
       await onCreated();
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Timesheet gagal dikirim."));
@@ -102,13 +143,28 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
           Total jam kerja *
           <input type="number" min="0.25" max="24" step="0.25" value={hours} onChange={(event) => setHours(event.target.value)} className="input mt-1 text-xs" required />
         </label>
-        <label className="text-xs font-semibold text-text-secondary">
-          Jam lembur
-          <input type="number" min="0" max="24" step="0.25" value={overtimeHours} onChange={(event) => setOvertimeHours(event.target.value)} className="input mt-1 text-xs" />
-        </label>
+        <div className="text-xs font-semibold text-text-secondary">
+          Timer lembur terverifikasi
+          <div className="mt-1 flex h-10 items-center justify-between rounded-xl border border-text-tertiary bg-white px-2">
+            <span className="font-mono text-sm font-bold text-text-primary">{elapsedLabel}</span>
+            {!timerRunning ? (
+              <button type="button" onClick={startOvertime} className="inline-flex items-center gap-1 rounded-lg bg-[#EAF6FF] px-2.5 py-1.5 text-2xs font-bold text-[#2649B3]"><Play size={12} /> Mulai Lembur</button>
+            ) : (
+              <button type="button" onClick={stopOvertime} className="inline-flex items-center gap-1 rounded-lg bg-[#FF9946]/15 px-2.5 py-1.5 text-2xs font-bold text-[#B45309]"><Square size={12} /> Selesai &amp; Kunci</button>
+            )}
+          </div>
+        </div>
         <label className="text-xs font-semibold text-text-secondary">
           Alasan lembur
           <input value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} placeholder="Opsional, isi bila ada lembur" className="input mt-1 text-xs" />
+        </label>
+        <label className="text-xs font-semibold text-text-secondary md:col-span-2 xl:col-span-3">
+          Bukti penyelesaian lembur {Number(overtimeHours) > 0 ? "*" : "(opsional)"}
+          <span className="mt-1 flex items-center gap-2 rounded-xl border border-text-tertiary bg-white px-3">
+            <Link2 size={14} className="shrink-0 text-[#2649B3]" />
+            <input type="url" value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Tempel link dokumen, Drive, hasil kerja, atau tiket" className="h-10 w-full bg-transparent text-xs outline-none" required={Number(overtimeHours) > 0} />
+          </span>
+          <span className="mt-1 block text-3xs font-normal">Timestamp mulai dan selesai dikirim bersama bukti sehingga jam lembur tidak dapat diisi manual.</span>
         </label>
       </div>
 

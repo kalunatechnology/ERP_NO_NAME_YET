@@ -400,10 +400,10 @@ export function MonthlyStackedBarChart({
                         style={{
                           background: "repeating-linear-gradient(45deg, #F9FAFB, #F9FAFB 6px, #ECEFF1 6px, #ECEFF1 12px)",
                         }}
-                        title={`${item.month}: No Data (Belum ada transaksi)`}
+                        title={`${item.month}: Belum ada transaksi tercatat`}
                       >
                         <span className="text-[9px] font-extrabold text-gray-400/90 tracking-tighter uppercase select-none rotate-[-90deg] sm:rotate-0">
-                          No Data
+                          Belum Ada
                         </span>
                       </div>
                     ) : (
@@ -476,7 +476,7 @@ export function MonthlyStackedBarChart({
       {/* Floating Tooltip Detail on Hover */}
       {hoveredItem && (
         <div
-          className="fixed z-50 bg-[#090909] text-white text-xs px-3.5 py-2.5 rounded-xl shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full -mt-2 flex flex-col gap-1 min-w-[190px]"
+          className="fixed z-50 bg-[#2649B3] text-white text-xs px-3.5 py-2.5 rounded-xl border border-[#4F70D8] shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full -mt-2 flex flex-col gap-1 min-w-[190px]"
           style={{
             left: hoveredItem.x,
             top: hoveredItem.y,
@@ -487,7 +487,7 @@ export function MonthlyStackedBarChart({
               <div className="flex items-center justify-between border-b border-white/20 pb-1 font-bold text-gray-200">
                 <span>Bulan {hoveredItem.item.month}</span>
                 <span className="text-amber-300 font-semibold text-[10px] px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-500/40">
-                  No Data
+                  Belum ada transaksi
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 text-[11px] pt-1">

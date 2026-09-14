@@ -589,7 +589,7 @@ function TabDeals({
             type="button"
             onClick={() => setOppFilter("ACTIVE")}
             className={cn(
-              "px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+              "min-h-8 min-w-[104px] justify-center px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
               oppFilter === "ACTIVE"
                 ? "bg-white text-brand-deep-green shadow-xs"
                 : "text-text-secondary hover:text-text-primary"
@@ -604,7 +604,7 @@ function TabDeals({
             type="button"
             onClick={() => setOppFilter("CANCELLED")}
             className={cn(
-              "px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+              "min-h-8 min-w-[104px] justify-center px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
               oppFilter === "CANCELLED"
                 ? "bg-white text-red-600 shadow-xs"
                 : "text-text-secondary hover:text-text-primary"
@@ -621,13 +621,13 @@ function TabDeals({
             type="button"
             onClick={() => setOppFilter("ALL")}
             className={cn(
-              "px-3 py-1 rounded-lg text-xs font-semibold transition-all",
+              "min-h-8 min-w-[104px] justify-center px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
               oppFilter === "ALL"
                 ? "bg-white text-text-primary shadow-xs"
                 : "text-text-secondary hover:text-text-primary"
             )}
           >
-            Semua ({allOpps.length})
+            <span>Semua</span><span className="rounded-full bg-blue-100 px-1.5 text-2xs font-bold text-blue-700">{allOpps.length}</span>
           </button>
         </div>
 
@@ -710,12 +710,12 @@ function TabDeals({
       <div className="lg:col-span-2 card rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-text-primary">Credit Management</h3>
-          <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-2xs font-bold">{(data.parties||[]).length} Customer</span>
+          <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-bold", (data.parties||[]).length >= 20 ? "bg-emerald-100 text-emerald-700" : (data.parties||[]).length >= 5 ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}><Users size={11} />{(data.parties||[]).length}</span>
         </div>
         <p className="text-xs text-text-secondary mb-3">Kontrol plafon kredit, outstanding AR, dan kelayakan approval transaksi klien.</p>
         {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada customer terdaftar." /> : (
           <div className="flex flex-col gap-2 max-h-[520px] overflow-y-auto">
-            {(data.parties||[]).map(p => {
+            {(data.parties||[]).map((p, customerIndex) => {
               const snap = (data.credit||[]).find(c => String(c.customer_party) === String(p.id));
               const limit = snap?.credit_limit || 0;
               const outstanding = snap?.outstanding_receivable || 0;
@@ -726,7 +726,7 @@ function TabDeals({
               return (
                 <div key={p.id} className={cn("p-3 rounded-xl border", isBlocked ? "border-red-200 bg-red-50" : "border-text-tertiary/60")}>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-semibold text-text-primary truncate">{p.display_name || p.legal_name}</span>
+                    <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-text-primary"><span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-black", ["bg-blue-100 text-blue-700", "bg-violet-100 text-violet-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700"][customerIndex % 4])}>{String(p.display_name || p.legal_name || "C").slice(0, 2).toUpperCase()}</span><span className="truncate">{p.display_name || p.legal_name}</span></span>
                     <StatusBadge status={status} />
                   </div>
                   <div className="grid grid-cols-2 gap-1 text-xs text-text-secondary mb-2">
@@ -1647,7 +1647,7 @@ export default function CrmClient() {
   return (
     <div className="flex flex-col gap-5">
       {loadError && (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
+        <div role="alert" className="rounded-[14px] border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
           Data CRM tidak dapat dimuat lengkap: {loadError}
         </div>
       )}

@@ -8,6 +8,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DollarSign, TrendingUp, CreditCard, ArrowUpRight, ArrowDownRight,
   Plus, RefreshCw, Layers, CheckCircle2, XCircle,
@@ -32,6 +33,7 @@ import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDenie
 import { useAuth } from "@/contexts/AuthContext";
 import { canRequestApi } from "@/lib/access/module-contract";
 import { canPerform } from "@/lib/access/capability-contract";
+import { FinanceModuleSidebar } from "@/components/finance/FinanceModuleSidebar";
 import dynamic from "next/dynamic";
 
 const FixedAssetsWorkspace          = dynamic(() => import("@/components/finance/FixedAssetsWorkspace"),          { ssr: false });
@@ -77,6 +79,8 @@ interface FinanceBankAccount {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function FinanceClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, userRole } = useAuth();
   const requestAccess = {
     enabledModules: user?.enabled_modules,
@@ -87,7 +91,11 @@ export default function FinanceClient() {
   const canUseAssets = canRequestApi("/api/v1/assets/assets", requestAccess);
   const canOperateFinance = canPerform("finance:operate", userRole);
   const visibleTabs = FINANCE_TABS.filter((tab) => !tab.endpoint || canUseAssets);
-  const [activeTab, setActiveTab] = useState(userRole === "executive" ? "executive_report" : "overview");
+  const requestedTab = searchParams.get("tab");
+  const defaultTab = userRole === "executive" ? "executive_report" : "overview";
+  const [activeTab, setActiveTab] = useState(
+    visibleTabs.some((tab) => tab.id === requestedTab) ? requestedTab! : defaultTab
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   // Tracks which tabs received a 403 response — shows inline AccessDeniedState instead of redirecting
@@ -115,8 +123,20 @@ export default function FinanceClient() {
 
   /* Track recently opened finance */
   useEffect(() => {
+    if (requestedTab && visibleTabs.some((tab) => tab.id === requestedTab)) {
+      if (requestedTab !== activeTab) setActiveTab(requestedTab);
+      return;
+    }
     if (!visibleTabs.some((tab) => tab.id === activeTab)) setActiveTab("overview");
-  }, [activeTab, canUseAssets]);
+  }, [activeTab, canUseAssets, requestedTab]);
+
+  const selectFinanceTab = (tabId: string) => {
+    if (!visibleTabs.some((tab) => tab.id === tabId)) return;
+    setActiveTab(tabId);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tabId);
+    router.replace(`/finance?${params.toString()}`, { scroll: false });
+  };
 
   useEffect(() => {
     feedApi.trackRecentItem({
@@ -145,6 +165,7 @@ export default function FinanceClient() {
   const [bankAccounts, setBankAccounts] = useState<FinanceBankAccount[]>([]);
   const [ledgerAccounts, setLedgerAccounts] = useState<any[]>([]);
   const [financeProjectOptions, setFinanceProjectOptions] = useState<any[]>([]);
+  const [selectedBudgetProjectId, setSelectedBudgetProjectId] = useState("");
   const [vendorOptions, setVendorOptions] = useState<any[]>([]);
   const [divisionOptions, setDivisionOptions] = useState<any[]>([]);
   const [costCreditAccountId, setCostCreditAccountId] = useState("");
@@ -353,6 +374,12 @@ export default function FinanceClient() {
     0,
   );
   const grossMargin = totalRevenue - totalCost;
+  const selectedBudgetProject = financeProjectOptions.find((project) => String(project.id) === selectedBudgetProjectId)
+    ?? financeProjectOptions[0];
+  const selectedProjectBudget = Number(selectedBudgetProject?.budget_amount ?? selectedBudgetProject?.budget ?? 0);
+  const selectedProjectCost = costEntries
+    .filter((entry) => String(entry.project_id ?? entry.project ?? entry.project?.id ?? "") === String(selectedBudgetProject?.id ?? ""))
+    .reduce((sum, entry) => sum + Number(entry.total_cost ?? entry.amount ?? entry.cost_amount ?? entry.total_amount ?? 0), 0);
 
   const handleCostLifecycle = async (entry: any) => {
     try {
@@ -512,13 +539,13 @@ export default function FinanceClient() {
           {canOperateFinance ? (
             <>
               <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-                <Plus size={14} /> Catat Biaya
+                <Plus size={14} /> New Entry
               </button>
               <button onClick={() => setIsFundingModalOpen(true)} className="btn-outline py-1.5 px-3 text-xs gap-1.5">
-                <Plus size={14} /> Request Dana
+                <Plus size={14} /> Request Funding
               </button>
               <button onClick={() => setIsBillingModalOpen(true)} className="btn-outline py-1.5 px-3 text-xs gap-1.5">
-                <Plus size={14} /> Proposal Billing
+                <Plus size={14} /> Create Billing
               </button>
             </>
           ) : (
@@ -550,22 +577,9 @@ export default function FinanceClient() {
         </div>
       )}
 
-      {/* 11 Subtabs navigation */}
-      <div className="flex border-b border-text-tertiary overflow-x-auto no-scrollbar gap-1">
-        {visibleTabs.map(tab => {
-          const TabIcon = tab.icon;
-          return (
-          <button
-            key={tab.id}
-            className={cn("tab-btn", activeTab === tab.id && "active")}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <TabIcon size={14} aria-hidden="true" />
-            {tab.label}
-          </button>
-          );
-        })}
-      </div>
+      <div className="flex min-w-0 items-start gap-5">
+        <FinanceModuleSidebar items={visibleTabs} activeId={activeTab} onSelect={selectFinanceTab} />
+        <div className="min-w-0 flex-1">
 
       {/* ── TAB 1: OVERVIEW ────────────────────── */}
       {activeTab === "overview" && (
@@ -577,11 +591,11 @@ export default function FinanceClient() {
             </div>
             <div className="kpi-card">
               <span className="text-xs text-text-secondary">Total Project Costs (WIP)</span>
-              <span className="text-2xl font-bold text-red-600">{formatMoney(totalCost)}</span>
+              <span className={cn("text-2xl font-bold", totalCost > totalRevenue && totalRevenue > 0 ? "text-red-600" : totalCost > 0 ? "text-amber-600" : "text-slate-700")}>{formatMoney(totalCost)}</span>
             </div>
             <div className="kpi-card">
               <span className="text-xs text-text-secondary">Gross Margin Proyek</span>
-              <span className="text-2xl font-bold text-brand-deep-green">{formatMoney(grossMargin)}</span>
+              <span className={cn("text-2xl font-bold", grossMargin < 0 ? "text-red-600" : grossMargin === 0 ? "text-slate-700" : "text-emerald-700")}>{formatMoney(grossMargin)}</span>
             </div>
             <div className="kpi-card">
               <span className="text-xs text-text-secondary">Dana Terdistribusi (Funding)</span>
@@ -601,10 +615,13 @@ export default function FinanceClient() {
                 remainingLabel="Sisa Anggaran Pengadaan"
                 validLabel="Pengadaan masih dalam anggaran"
                 invalidLabel="Pengadaan melebihi anggaran"
-                materialBudget={totalProcurementBudget}
-                allocationCost={totalCost ?? 0}
-                remainingBudget={Math.max(0, totalProcurementBudget - (totalCost ?? 0))}
-                isValid={totalProcurementBudget >= (totalCost ?? 0)}
+                projects={financeProjectOptions}
+                selectedProjectId={String(selectedBudgetProject?.id ?? "")}
+                onProjectChange={setSelectedBudgetProjectId}
+                materialBudget={selectedProjectBudget}
+                allocationCost={selectedProjectCost}
+                remainingBudget={selectedProjectBudget - selectedProjectCost}
+                isValid={selectedProjectBudget >= selectedProjectCost}
               />
               <InventoryCheckingCard autoFetch={true} />
             </div>
@@ -672,11 +689,30 @@ export default function FinanceClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td colSpan={6} className="text-center text-text-secondary py-8">
-                      Belum ada proyeksi profitabilitas per proyek dari kontrak API Finance.
-                    </td>
-                  </tr>
+                  {financeProjectOptions.length === 0 ? (
+                    <tr><td colSpan={6} className="text-center text-text-secondary py-8">Belum ada proyek untuk dianalisis.</td></tr>
+                  ) : financeProjectOptions.map((project) => {
+                    const revenue = Number(project.contract_amount ?? project.revenue ?? project.budget_amount ?? 0);
+                    const actualCost = costEntries
+                      .filter((entry) => String(entry.project_id ?? entry.project ?? entry.project?.id ?? "") === String(project.id))
+                      .reduce((sum, entry) => sum + Number(entry.total_cost ?? entry.amount ?? entry.cost_amount ?? entry.total_amount ?? 0), 0);
+                    const margin = revenue - actualCost;
+                    const marginPercent = revenue > 0 ? (margin / revenue) * 100 : 0;
+                    return (
+                      <tr key={project.id}>
+                        <td>
+                          <a href={`/projects?project=${project.id}&tab=FINANCE`} className="font-bold text-brand-blue hover:underline">
+                            {project.project_name || project.name || `Proyek #${project.id}`} <ArrowUpRight size={12} className="inline" />
+                          </a>
+                        </td>
+                        <td>{formatMoney(revenue)}</td>
+                        <td>{formatMoney(actualCost)}</td>
+                        <td className={margin < 0 ? "font-bold text-red-600" : "font-bold text-emerald-700"}>{formatMoney(margin)}</td>
+                        <td>{marginPercent.toFixed(1)}%</td>
+                        <td><span className={cn("rounded-full px-2 py-1 text-2xs font-bold", margin < 0 ? "bg-red-50 text-red-700" : marginPercent < 15 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")}>{margin < 0 ? "Perlu tindakan" : marginPercent < 15 ? "Waspada" : "Sehat"}</span></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1084,7 +1120,7 @@ export default function FinanceClient() {
               <button onClick={() => setIsReceiptModalOpen(true)} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-brand-green text-brand-deep-green hover:bg-brand-light-green">
                 <Plus size={13} /> Catat Uang Masuk
               </button>
-              <button onClick={() => setActiveTab("ap")} className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green">
+              <button onClick={() => selectFinanceTab("ap")} className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green">
                 <CreditCard size={13} /> Bayar dari Tagihan AP
               </button>
             </div>
@@ -1656,6 +1692,9 @@ export default function FinanceClient() {
         </div>
       )}
 
+        </div>
+      </div>
+
       {/* ── MODALS ───────────────────────────────── */}
 
       {/* Modal: 3-Way Match Verification */}
@@ -1822,12 +1861,27 @@ export default function FinanceClient() {
           </div>
           <div>
             <label className="text-xs font-semibold text-text-primary block mb-1">Keperluan</label>
+            <select
+              value={fundingForm.purpose}
+              onChange={e => setFundingForm({ ...fundingForm, purpose: e.target.value })}
+              className="input mb-2"
+              required
+            >
+              <option value="">Pilih jenis kebutuhan</option>
+              <option value="Pengeluaran Modal Usaha">Pengeluaran Modal Usaha</option>
+              <option value="Pengadaan Fasilitas Karyawan">Pengadaan Fasilitas Karyawan</option>
+              <option value="Pengadaan Vendor dan Mitra Proyek">Pengadaan Vendor dan Mitra Proyek</option>
+              <option value="Operasional dan Perjalanan Proyek">Operasional dan Perjalanan Proyek</option>
+              <option value="Perangkat Lunak dan Infrastruktur Digital">Perangkat Lunak dan Infrastruktur Digital</option>
+              <option value="Lainnya">Lainnya</option>
+            </select>
             <input
               type="text"
               required
               value={fundingForm.purpose}
               onChange={e => setFundingForm({ ...fundingForm, purpose: e.target.value })}
               className="input"
+              placeholder="Detail kebutuhan pendanaan"
             />
           </div>
           <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-2">

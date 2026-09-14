@@ -64,13 +64,14 @@ export function CompanyMasterWorkspace() {
   const [activeSubTab, setActiveSubTab] = useState<"financial" | "operational">("financial");
 
   const canEditFinancial = userRole === "finance";
-  const canEditCompany = userRole === "super_admin";
+  const canEditCompany = ["super_admin", "company_admin", "finance"].includes(userRole);
   const canEditOperational = userRole === "company_admin";
 
   const [companyData, setCompanyData] = useState({
     id: "",
     company_code: "",
     legal_name: "",
+    business_category: "CONSULTING_DIGITAL",
     tax_number: "",
     kpp_name: "",
     pkp_status: "",
@@ -148,6 +149,7 @@ export function CompanyMasterWorkspace() {
             ...prev,
             id: company.id,
             legal_name: company.legal_name ?? "",
+            business_category: company.business_category ?? "CONSULTING_DIGITAL",
             tax_number: company.tax_number ?? "",
             company_code: company.company_code ?? "",
             fiscal_year_start: company.fiscal_year_start?.slice?.(0, 10) ?? "",
@@ -208,6 +210,7 @@ export function CompanyMasterWorkspace() {
       await api.patch(`/api/v1/core/companies/${companyData.id}/`, {
         company_code: companyData.company_code,
         legal_name: companyData.legal_name,
+        business_category: companyData.business_category,
         tax_number: companyData.tax_number,
         fiscal_year_start: companyData.fiscal_year_start || null,
         status: companyData.status,
@@ -401,6 +404,17 @@ export function CompanyMasterWorkspace() {
                     className="input text-xs font-mono font-medium"
                     required
                   />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-text-primary block mb-1">Kategori Bisnis & Preset Pajak</label>
+                  <select disabled={!canEditCompany} value={companyData.business_category} onChange={e => setCompanyData({ ...companyData, business_category: e.target.value })} className="input text-xs font-medium">
+                    <option value="CONSULTING_DIGITAL">Konsultansi, Riset & Layanan Digital</option>
+                    <option value="CREATIVE_MEDIA">Media Kreatif & Produksi Konten</option>
+                    <option value="CONSTRUCTION">Pelaksana Konstruksi</option>
+                    <option value="GENERAL_SERVICES">Jasa Umum & Manajemen</option>
+                  </select>
+                  <p className="mt-1 text-[10px] text-text-secondary">Digunakan otomatis untuk menentukan pilihan PPh awal.</p>
                 </div>
 
                 <div>

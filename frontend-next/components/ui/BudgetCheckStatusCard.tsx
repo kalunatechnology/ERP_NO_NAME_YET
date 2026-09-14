@@ -13,6 +13,9 @@ import { CheckCircle2, AlertTriangle } from "lucide-react";
 import { formatMoney, cn } from "@/lib/utils";
 
 interface BudgetCheckProps {
+  projects?: Array<{ id: string | number; project_code?: string; project_name?: string; name?: string }>;
+  selectedProjectId?: string;
+  onProjectChange?: (projectId: string) => void;
   title?: string;
   statusLabel?: string;
   budgetLabel?: string;
@@ -36,6 +39,9 @@ interface BudgetCheckProps {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export function BudgetCheckStatusCard({
+  projects = [],
+  selectedProjectId = "",
+  onProjectChange,
   title = "Budget Check Status",
   statusLabel = "REAL TIME",
   budgetLabel = "Anggaran Proyek",
@@ -72,6 +78,24 @@ export function BudgetCheckStatusCard({
         <span className="text-xs font-bold text-[#090909]">{title}</span>
         <span className="text-[10px] font-bold text-[#294BB2] tracking-wider">{statusLabel}</span>
       </div>
+
+      {projects.length > 0 && (
+        <label className="mt-3 block text-[10px] font-bold uppercase tracking-wide text-[#4F5050]">
+          Proyek yang diperiksa
+          <select
+            value={selectedProjectId || String(projects[0]?.id ?? "")}
+            onChange={(event) => onProjectChange?.(event.target.value)}
+            className="input mt-1.5 w-full bg-white text-xs normal-case"
+            aria-label="Pilih proyek untuk pemeriksaan anggaran"
+          >
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.project_code ? `${project.project_code} — ` : ""}{project.project_name || project.name || `Proyek #${project.id}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {/* Metric Breakdown */}
       <div className="flex flex-col gap-2.5 text-xs py-2 my-auto">

@@ -9,8 +9,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Bell, CalendarCheck, Menu, ChevronDown, Check, Building2, LogOut, ShieldCheck, Lock } from "lucide-react";
+import { Search, Bell, CalendarCheck, Menu, ChevronDown, Check, Building2, LogOut, ShieldCheck, Lock, Globe2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import toast from "react-hot-toast";
@@ -47,7 +48,8 @@ import { User, KeyRound, Sparkles } from "lucide-react";
 export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, userRole, logout, company, setCompany, companies } = useAuth();
+  const { user, userRole, logout, company, setCompany, companies, setActiveRole } = useAuth();
+  const { language, setLanguage } = useLanguage();
   const crumbs = buildBreadcrumb(pathname);
   const canOpenReporting = canAccessRoute({
     pathname: "/reporting",
@@ -62,6 +64,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [switchingRole, setSwitchingRole] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const compRef = useRef<HTMLDivElement>(null);
@@ -151,6 +154,8 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
           const activeCompanyName =
             companies.find((c) => String(c.id) === String(company))?.name || (userRole === "super_admin" ? "Global" : "Company tidak tersedia");
 
+          if (["staff", "om"].includes(userRole)) return null;
+
           return userRole === "super_admin" ? (
             /* Only Super Admin can select a company context for global read/governance. */
             <div className="relative hidden md:block" ref={compRef}>
@@ -200,6 +205,33 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
             </div>
           );
         })()}
+
+        {/* Global bilingual control, positioned beside the company context. */}
+        <div
+          className="hidden sm:flex items-center gap-0.5 rounded-full border border-[#D9D9D9] bg-white p-0.5 shadow-2xs"
+          data-no-translate
+          role="group"
+          aria-label="Language / Bahasa"
+        >
+          <Globe2 size={13} className="ml-1.5 text-[#2649B3]" aria-hidden="true" />
+          {(["id", "en"] as const).map((locale) => (
+            <button
+              key={locale}
+              type="button"
+              onClick={() => setLanguage(locale)}
+              className={cn(
+                "min-w-7 rounded-full px-1.5 py-1 text-[10px] font-extrabold uppercase transition-all",
+                language === locale
+                  ? "bg-[#2649B3] text-white shadow-2xs"
+                  : "text-[#4F5050] hover:bg-[#EAF6FF] hover:text-[#2649B3]"
+              )}
+              aria-pressed={language === locale}
+              title={locale === "id" ? "Bahasa Indonesia" : "English"}
+            >
+              {locale}
+            </button>
+          ))}
+        </div>
 
         {/* Search Input / Command Palette Trigger */}
         <button
@@ -274,6 +306,40 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
 
               {/* Menu Actions */}
               <div className="p-1.5 flex flex-col gap-0.5">
+                {(user?.roles || []).length > 1 && (
+                  <div className="mb-1 border-b border-text-tertiary/60 pb-2">
+                    <div className="px-3 pb-1.5 text-3xs font-bold uppercase tracking-wider text-text-secondary">Ganti akses aktif</div>
+                    <div className="flex flex-col gap-1">
+                      {user?.roles?.map((role) => {
+                        const code = role.role_code || role.role || "";
+                        const active = code === user.active_role_code;
+                        return (
+                          <button
+                            key={`${code}-${role.company_id || "company"}`}
+                            type="button"
+                            disabled={switchingRole || active || !code}
+                            onClick={async () => {
+                              try {
+                                setSwitchingRole(true);
+                                await setActiveRole(code);
+                                setIsUserMenuOpen(false);
+                                toast.success(`Akses aktif: ${role.role_name || code}`);
+                              } catch {
+                                toast.error("Gagal mengganti akses aktif.");
+                              } finally {
+                                setSwitchingRole(false);
+                              }
+                            }}
+                            className={cn("flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition-colors", active ? "bg-[#EAF6FF] font-bold text-[#2649B3]" : "text-text-primary hover:bg-bg-light", switchingRole && "opacity-60")}
+                          >
+                            <span>{role.role_name || code}</span>
+                            {active && <Check size={13} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={() => {
                     setIsUserMenuOpen(false);

@@ -10,10 +10,11 @@
 import { useState, useEffect, useRef } from "react";
 import {
   ChevronLeft, ChevronDown, Clock, Calendar, FileText,
-  X, ArrowRight, Upload, Plus, UserPlus, Coins, CreditCard, Tag
+  X, ArrowRight, Upload, Plus, UserPlus, Coins, CreditCard, Tag, Link2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api/axios";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface InvitedPerson {
   id: string;
@@ -45,12 +46,14 @@ const BUDGET_CATEGORIES = [
  * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
  */
 export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardRequestModalProps) {
+  const { userRole } = useAuth();
   const [requestType, setRequestType] = useState<string>("Meeting Request");
   const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
   const [timeRange, setTimeRange] = useState("09.00 AM - 10.00 AM");
   const [dateVal, setDateVal] = useState("28/08/2026");
-  const [attachedFileName, setAttachedFileName] = useState<string | null>("Meeting Inquiries.pdf");
-  const [attachedFileSize, setAttachedFileSize] = useState<string>("120KB");
+  const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
+  const [attachedFileSize, setAttachedFileSize] = useState<string>("");
+  const [attachmentLink, setAttachmentLink] = useState("");
   const [requestDetails, setRequestDetails] = useState(
     "I want to schedule a meeting with people from the IT and Design Division this afternoon"
   );
@@ -248,7 +251,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
         bank_target: isFundRequest ? bankTarget : undefined,
         start_at: new Date().toISOString(),
         tagged_users: invitedList,
-        attachment_url: attachedFileName ? `https://storage.marka.id/docs/${attachedFileName}` : undefined,
+        attachment_url: attachmentLink.trim() || undefined,
         is_draft: isDraft,
         assignee_user_id: assigneeUserId || undefined,
       });
@@ -397,7 +400,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
 
             {/* 2. Time & Date (Side-by-Side) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              <div>
+              {["super_admin", "company_admin", "executive", "om", "pm"].includes(userRole) && <div>
                 <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
                   Time
                 </label>
@@ -411,7 +414,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                   />
                   <Clock size={17} className="text-[#4F5050] shrink-0 ml-2" />
                 </div>
-              </div>
+              </div>}
 
               <div>
                 <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
@@ -468,6 +471,11 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                   <span>Attach Document (PDF, Word, Nota, etc)</span>
                 </div>
               )}
+              <div className="relative mt-2">
+                <Link2 size={15} className="absolute left-3 top-3 text-[#4F5050]" />
+                <input type="url" value={attachmentLink} onChange={(event) => setAttachmentLink(event.target.value)} className="w-full rounded-[14px] border border-[#D9D9D9] bg-white py-2.5 pl-9 pr-3 text-xs" placeholder="Atau tempel tautan Google Drive / dokumen" />
+              </div>
+              {attachedFileName && !attachmentLink && <p className="mt-1 text-[10px] text-amber-700">File lokal dipilih. Tambahkan tautan dokumen agar reviewer dapat membukanya.</p>}
             </div>
 
             {/* 4. Request Details */}
@@ -546,7 +554,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                               />
                               <div className="truncate">
                                 <span className="text-xs font-semibold text-[#4F5050] block truncate">{m.name}</span>
-                                {m.email && <span className="text-3xs text-[#4F5050] block truncate">{m.email}</span>}
+                                <span className="text-3xs text-[#4F5050] block truncate">{m.role || "Anggota tim"}{m.email ? ` · ${m.email}` : ""}</span>
                               </div>
                             </div>
                             <span className="p-1 rounded-lg bg-[#EAF6FF] text-[#2649B3] text-3xs font-bold shrink-0">

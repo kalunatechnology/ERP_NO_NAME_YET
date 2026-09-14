@@ -111,6 +111,18 @@ export function ProjectTaxWorkspace() {
       .catch(() => toast.error("Transaksi pajak gagal dimuat dari server."));
   }, []);
 
+  useEffect(() => {
+    api.get('/api/v1/core/companies/?page_size=1').then((response) => {
+      const company = normalizeList<any>(response.data).rows[0];
+      const category = String(company?.business_category || 'CONSULTING_DIGITAL').toUpperCase();
+      const construction = category === 'CONSTRUCTION';
+      const pphRate = construction ? 2.65 : 2;
+      const pphType = construction ? 'PPh Final Pelaksana Konstruksi (2.65%)' : 'PPh 23 Jasa Konsultansi, Riset & Digital (2%)';
+      setSimPphRate(pphRate);
+      setNewTaxForm((current) => ({ ...current, pph_rate: pphRate, pph_type: pphType }));
+    }).catch(() => undefined);
+  }, []);
+
   // Calculations for Simulator
   const totalPpnContract = (simContractValue * 11) / 100;
   const dpDpp = (simContractValue * simDownPaymentPct) / 100;
@@ -761,7 +773,7 @@ export function ProjectTaxWorkspace() {
               }}
               className="input text-xs font-semibold"
             >
-              <option value={2.0}>PPh 23 Jasa Teknik & Konsultansi (2%)</option>
+              <option value={2.0}>PPh 23 Konsultansi, Riset, Digital & Media (2%)</option>
               <option value={1.75}>PPh Final Jasa Pelaksana Konstruksi Kualifikasi Kecil (1.75%)</option>
               <option value={2.65}>PPh Final Jasa Pelaksana Konstruksi Kualifikasi Menengah/Besar (2.65%)</option>
               <option value={4.0}>PPh Final Jasa Konsultansi Konstruksi (4%)</option>

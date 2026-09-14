@@ -440,12 +440,27 @@ function TabPeriodic({ data }: { data: ReturnType<typeof createDefaultData> }) {
 
 function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> }) {
   const attendance = data.attendance;
+  const entries = attendance?.entries ?? attendance?.rows ?? attendance?.timesheets ?? [];
   return <div className="card rounded-xl p-5">
     <h2 className="font-bold text-text-primary">Laporan Kehadiran</h2>
     <p className="text-xs text-text-secondary mt-1">Disusun dari timesheet proyek yang menjadi bukti aktivitas kerja aktual.</p>
     <div className="grid grid-cols-3 gap-3 mt-4">
       {[['Hari Kerja', attendance?.work_days ?? 0], ['Total Jam', attendance?.total_hours ?? 0], ['Entri', attendance?.entry_count ?? 0]].map(([label, value]) =>
         <div key={String(label)} className="rounded-lg border border-text-tertiary/50 p-3"><div className="text-2xs text-text-secondary">{label}</div><div className="text-lg font-bold">{value}</div></div>)}
+    </div>
+    <div className="table-scroll-wrapper mt-5">
+      <table className="data-table w-full min-w-[620px]">
+        <thead><tr><th>Tanggal</th><th>Nama</th><th>Proyek</th><th>Mulai</th><th>Selesai</th><th>Total Jam</th></tr></thead>
+        <tbody>
+          {entries.length === 0 ? <tr><td colSpan={6} className="py-6 text-center text-text-secondary">Belum ada rincian kehadiran pada periode ini.</td></tr> : entries.map((entry: any, index: number) => (
+            <tr key={entry.id ?? index}>
+              <td>{formatDate(entry.work_date ?? entry.date)}</td><td>{entry.user_name ?? entry.employee_name ?? entry.staff_name ?? "-"}</td>
+              <td>{entry.project_name ?? "-"}</td><td>{entry.started_at ? new Date(entry.started_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"}</td>
+              <td>{entry.ended_at ? new Date(entry.ended_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"}</td><td>{entry.total_hours ?? entry.hours ?? 0}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   </div>;
 }
@@ -484,6 +499,18 @@ export default function ReportingClient() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState(createDefaultData());
+  const [showArchive, setShowArchive] = useState(false);
+  const [reportHistory, setReportHistory] = useState<Array<{ id: string; title: string; format: string; createdAt: string }>>([]);
+
+  useEffect(() => {
+    try { setReportHistory(JSON.parse(localStorage.getItem('arsalynk-report-history') || '[]')); } catch { setReportHistory([]); }
+  }, []);
+
+  const recordReport = (format: string) => {
+    const next = [{ id: crypto.randomUUID(), title: REPORT_TABS.find(tab => tab.id === activeTab)?.label || 'Laporan Finansial', format, createdAt: new Date().toISOString() }, ...reportHistory].slice(0, 25);
+    setReportHistory(next);
+    localStorage.setItem('arsalynk-report-history', JSON.stringify(next));
+  };
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -542,38 +569,40 @@ export default function ReportingClient() {
       a.href = URL.createObjectURL(blob);
       a.download = `marka_report_${localDateKey()}.csv`;
       a.click();
+      recordReport('CSV');
       toast.success("File CSV berhasil diunduh.");
     } else if (format === "pdf") {
       toast("Membuka dialog cetak PDF...");
-      const reportElement = document.getElementById("printable-report-area");
-      if (!reportElement) {
-        window.print();
-        return;
-      }
-
       const printWindow = window.open("", "_blank");
       if (printWindow) {
+        const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char] || char));
+        const projectRows = data.projects.map((project) => {
+          const cost = data.costEntries.filter(entry => String(entry.project ?? entry.project_id) === String(project.id)).reduce((sum, entry) => sum + Number(entry.total_cost ?? entry.amount ?? 0), 0);
+          const budget = Number(project.budget_amount ?? project.budget ?? 0);
+          return `<tr><td>${escapeHtml(project.project_code ?? '-')}</td><td>${escapeHtml(project.project_name ?? project.name ?? '-')}</td><td>Rp ${budget.toLocaleString('id-ID')}</td><td>Rp ${cost.toLocaleString('id-ID')}</td><td>Rp ${(budget - cost).toLocaleString('id-ID')}</td></tr>`;
+        }).join('') || '<tr><td colspan="5">Belum ada data proyek.</td></tr>';
         printWindow.document.write(`
           <!DOCTYPE html>
           <html>
             <head>
               <title>Laporan Finansial & Observabilitas Proyek - Marka+ ERP</title>
               <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 32px; color: #1E293B; }
-                h2 { color: #2649B3; border-bottom: 2px solid #2649B3; padding-bottom: 8px; margin-bottom: 16px; }
+                @page { size: A4; margin: 18mm; }
+                body { font-family: Georgia, 'Times New Roman', serif; color: #1E293B; line-height: 1.5; }
+                header { border-bottom: 3px solid #2649B3; padding-bottom: 16px; margin-bottom: 28px; }
+                h1 { color: #17358F; margin: 0; font-size: 26px; } h2 { color: #2649B3; margin-top: 28px; }
                 table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
                 th, td { border: 1px solid #CBD5E1; padding: 8px 12px; text-align: left; }
                 th { background-color: #F1F5F9; font-weight: bold; }
-                .card { border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-                @media print {
-                  button { display: none; }
-                }
+                footer { margin-top: 36px; padding-top: 12px; border-top: 1px solid #CBD5E1; color: #64748B; font-size: 10px; }
               </style>
             </head>
             <body>
-              <h2>Marka+ ERP — Laporan Finansial Proyek</h2>
-              <p style="font-size: 12px; color: #64748B;">Tanggal Cetak: ${new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</p>
-              ${reportElement.innerHTML}
+              <header><h1>Laporan Finansial Tahunan</h1><div>Arsalynk · Dokumen Manajemen</div><p>Periode sampai ${new Date().toLocaleDateString('id-ID', { dateStyle: 'long' })}</p></header>
+              <h2>Ringkasan Portofolio Proyek</h2>
+              <p>Laporan ini dihasilkan dari transaksi proyek dan pembukuan yang tercatat pada sistem.</p>
+              <table><thead><tr><th>Kode</th><th>Proyek</th><th>Anggaran</th><th>Biaya Aktual</th><th>Sisa / Margin</th></tr></thead><tbody>${projectRows}</tbody></table>
+              <footer>Dihasilkan oleh Arsalynk ERP · ${new Date().toLocaleString('id-ID')}</footer>
             </body>
           </html>
         `);
@@ -583,6 +612,7 @@ export default function ReportingClient() {
           printWindow.print();
           printWindow.close();
         }, 300);
+        recordReport('PDF');
       } else {
         window.print();
       }
@@ -597,14 +627,15 @@ export default function ReportingClient() {
       {/* ── Header ─────────────────────────── */}
       <div className="card rounded-2xl p-5 flex items-center justify-between flex-wrap gap-4 border border-text-tertiary bg-white">
         <div>
-          <div className="text-2xs font-bold text-brand-green uppercase tracking-wider mb-1">{isPersonalReport ? "Pelaporan Operasional Personal" : "Executive & Financial Intelligence"}</div>
-          <h1 className="text-xl font-bold text-text-primary">{isPersonalReport ? "Laporan Aktivitas dan Kehadiran Saya" : "Pelaporan Laba/Rugi Proyek & Observabilitas Finansial"}</h1>
+          <div className="text-2xs font-bold text-brand-green uppercase tracking-wider mb-1">{isPersonalReport ? "Pelaporan Operasional Personal" : "Finance Reporting"}</div>
+          <h1 className="text-xl font-bold text-text-primary">{isPersonalReport ? "Laporan Aktivitas dan Kehadiran Saya" : "Pelaporan Finansial"}</h1>
           <p className="text-xs text-text-secondary mt-0.5">{isPersonalReport ? "Ringkasan aktivitas tugas dan kehadiran yang tercatat atas nama Anda." : "Visibilitas real-time: Revenue, Biaya Aktual (Labor/Material), Gross Margin, dan General Ledger."}</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => handleExport("pdf")} className="btn-outline text-xs gap-1.5 border-brand-green/40 text-brand-deep-green hover:bg-brand-light-green">
             <FileText size={13} /> Cetak / PDF
           </button>
+          <button onClick={() => setShowArchive(value => !value)} className="btn-ghost text-xs gap-1.5"><Book size={13} /> View Other Reports</button>
           {canExportFinancialCsv && <button onClick={() => handleExport("csv")} className="btn-ghost text-xs gap-1.5 text-text-secondary hover:text-text-primary">
             <Download size={13} /> Export CSV
           </button>}
@@ -614,6 +645,13 @@ export default function ReportingClient() {
           </button>
         </div>
       </div>
+
+      {showArchive && <div className="card rounded-2xl p-5 border border-text-tertiary">
+        <h2 className="font-bold text-text-primary">Arsip Laporan</h2>
+        <div className="table-scroll-wrapper mt-3"><table className="data-table w-full"><thead><tr><th>Nama Laporan</th><th>Format</th><th>Dibuat</th></tr></thead><tbody>
+          {reportHistory.length === 0 ? <tr><td colSpan={3} className="py-6 text-center text-text-secondary">Belum ada laporan yang dibuat.</td></tr> : reportHistory.map(item => <tr key={item.id}><td>{item.title}</td><td>{item.format}</td><td>{new Date(item.createdAt).toLocaleString('id-ID')}</td></tr>)}
+        </tbody></table></div>
+      </div>}
 
       {/* ── Tabs ───────────────────────────── */}
       <div className="flex gap-1.5 p-1.5 bg-bg-lighter rounded-xl border border-text-tertiary/50">

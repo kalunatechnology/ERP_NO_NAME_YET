@@ -8,6 +8,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   FolderKanban, Plus, RefreshCw, Trash2, CheckCircle2,
   TrendingUp, Users, Calendar, AlertTriangle, ShieldCheck,
@@ -85,6 +86,9 @@ function CategoryLabel({ label }: { label?: string | null }) {
  */
 export default function ProjectsClient() {
   const { user, userRole } = useAuth();
+  const searchParams = useSearchParams();
+  const requestedProjectId = searchParams.get("project");
+  const requestedProjectTab = searchParams.get("tab");
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [activeTab, setActiveTab] = useState("TREE");
@@ -277,13 +281,16 @@ export default function ProjectsClient() {
         setCustomerOptions(custList);
       }
 
-      const targetId = selectedId && data.some(p => String(p.id) === String(selectedId))
+      const targetId = requestedProjectId && data.some(p => String(p.id) === requestedProjectId)
+        ? requestedProjectId
+        : selectedId && data.some(p => String(p.id) === String(selectedId))
         ? selectedId
         : data[0]?.id ?? null;
 
       if (targetId) {
         setSelectedId(targetId);
       }
+      if (requestedProjectTab) setActiveTab(requestedProjectTab);
 
       setTransfers(transferList);
       setCompanyUsers(uList);

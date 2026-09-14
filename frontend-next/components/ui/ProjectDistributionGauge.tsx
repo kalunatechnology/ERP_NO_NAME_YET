@@ -90,8 +90,8 @@ export function ProjectDistributionGauge({
           >
             <defs>
               <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#EF4444" />
-                <stop offset="35%" stopColor="#F59E0B" />
+                <stop offset="0%" stopColor="#FF9946" />
+                <stop offset="35%" stopColor="#FFE17F" />
                 <stop offset="70%" stopColor="#294BB2" />
                 <stop offset="100%" stopColor="#2649B3" />
               </linearGradient>
@@ -168,8 +168,8 @@ export function ProjectDistributionGauge({
         <div className="flex flex-col gap-1.5 w-full min-w-0 sm:pl-2">
           {[
             { color: "#2649B3", label: "On-track", count: onTrackCount },
-            { color: "#F59E0B", label: "Caution", count: cautiousCount },
-            { color: "#EF4444", label: "Off-track", count: offTrackCount },
+            { color: "#FFE17F", label: "Caution", count: cautiousCount },
+            { color: "#FF9946", label: "Off-track", count: offTrackCount },
           ].map(({ color, label, count }) => (
             <div
               key={label}

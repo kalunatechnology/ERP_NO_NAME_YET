@@ -13,7 +13,7 @@ import {
   FolderKanban, CheckSquare, TrendingUp, DollarSign, AlertTriangle,
   Clock, Users, ArrowRight, RefreshCw, Activity, Target,
   ChevronUp, ChevronDown, Zap, ShieldAlert, CheckCircle2,
-  XCircle, BarChart3, Building2, CalendarDays, Layers, FileText,
+  XCircle, BarChart3, Building2, Layers, FileText,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadAllProjects, Project } from "@/lib/api/project.api";
@@ -401,7 +401,7 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
     <div className="flex flex-col gap-6 pb-8">
       {/* ── KPI Row ──────────────────────── */}
       <section>
-        <SectionHeader title="Financial Overview" actionLabel="Detail keuangan" actionHref="/finance" />
+        <SectionHeader title="Finance Overview" actionLabel="Lihat Detail" actionHref="/finance" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             label="Total Anggaran" value={formatMoney(kpis.totalBudget)}
@@ -426,8 +426,8 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
       {/* ── Monthly Financial Run-Rate Chart ── */}
       <div className="w-full">
         <MonthlyStackedBarChart
-          title="Monthly Financial Run-Rate (Pendapatan vs Beban Proyek)"
-          subtitle="Arus kas pendapatan termin riil (Realized Revenue) vs alokasi biaya WIP/material per bulan fiskal"
+          title="Status Arus Kas (Financial Run-Rate)"
+          subtitle="Pantau Realized Value dan Project Cost Allocation Arsalynk"
           primaryLabel="Realisasi Kas (Jt)"
           secondaryLabel="Alokasi WIP / Biaya Proyek (Jt)"
           autoFetch={true}
@@ -526,7 +526,7 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
 
       {/* ── Recent Transactions ──────────── */}
       <section>
-        <SectionHeader title="Transaksi Terbaru" actionLabel="Lihat semua" actionHref="/finance" />
+        <SectionHeader title="Transaksi Terbaru (Latest Transaction)" actionLabel="Lihat Detail" actionHref="/finance" />
         <div className="card rounded-xl overflow-hidden">
           {recentTransactions.length === 0 ? (
             <div className="py-10 text-center text-sm text-text-secondary">Belum ada transaksi.</div>
@@ -710,30 +710,43 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         <TopExpensesBarChart expenses={topExpenses} />
       </div>
 
-      {/* ── Pemantauan Kehadiran & Utilisasi Tim (Team Attendance & Monitoring) ── */}
-      <div className="w-full">
-        <TeamAttendanceWidget />
-      </div>
-
-      {/* ── Secondary KPI Row ─────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="card rounded-xl p-4 text-center">
-          <div className="text-xl font-bold text-brand-green">{completed}</div>
-          <div className="text-xs text-text-secondary mt-0.5">Selesai</div>
+      {/* ── Portfolio status — mengikuti komposisi kartu pada referensi SVG ── */}
+      <section aria-label="Status portofolio proyek">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+          <KpiCard
+            label="Selesai"
+            value={completed}
+            subLabel="proyek telah selesai"
+            icon={CheckCircle2}
+            iconBg="#DDF4E8"
+            iconColor="#16835B"
+          />
+          <KpiCard
+            label="Berjalan"
+            value={active}
+            subLabel="proyek sedang aktif"
+            icon={Activity}
+            iconBg="#DCEEFF"
+            iconColor="#2649B3"
+          />
+          <KpiCard
+            label="Terlambat"
+            value={delayed}
+            subLabel="perlu perhatian"
+            icon={AlertTriangle}
+            iconBg="#FEE2E2"
+            iconColor="#DC2626"
+          />
+          <KpiCard
+            label="Lainnya"
+            value={notStarted}
+            subLabel="draft atau belum dimulai"
+            icon={Layers}
+            iconBg="#FFFFFF"
+            iconColor="#4F5050"
+          />
         </div>
-        <div className="card rounded-xl p-4 text-center">
-          <div className="text-xl font-bold text-blue-600">{active}</div>
-          <div className="text-xs text-text-secondary mt-0.5">Berjalan</div>
-        </div>
-        <div className="card rounded-xl p-4 text-center">
-          <div className="text-xl font-bold text-red-600">{delayed}</div>
-          <div className="text-xs text-text-secondary mt-0.5">Terlambat</div>
-        </div>
-        <div className="card rounded-xl p-4 text-center">
-          <div className="text-xl font-bold text-text-primary">{total - completed - active - delayed}</div>
-          <div className="text-xs text-text-secondary mt-0.5">Lainnya</div>
-        </div>
-      </div>
+      </section>
 
       {/* ── Action Required ───────────────── */}
       {pendingCount > 0 && finData && (
@@ -766,60 +779,21 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         </section>
       )}
 
-      {/* ── Project Performance Grid ──────── */}
+      {/* ── Project performance timeline — menggantikan grid kartu proyek ── */}
       <section>
         <SectionHeader title="Performance Proyek" actionLabel="Kelola semua proyek" actionHref="/projects" />
-        {projects.length === 0 ? (
-          <div className="card rounded-xl py-12 text-center">
-            <FolderKanban size={40} className="mx-auto text-text-secondary opacity-30 mb-2" />
-            <p className="text-sm text-text-secondary">Belum ada proyek.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {projects.slice(0, 8).map(p => {
-              const progress = p.progress_percentage || p.progress || 0;
-              const deadline = p.end_date || p.planned_end_date;
-              const isDelayed = deadline && deadline < today && !["COMPLETED", "CLOSED", "DONE"].includes((p.status || "").toUpperCase());
-              const budget = p.budget_amount || p.total_budget || p.budget || 0;
-              const finSum = finData?.projectSummaries.find(ps => String(ps.projectId) === String(p.id));
-              return (
-                <div key={p.id} className={cn("card rounded-xl p-4", isDelayed && "border-l-2 border-red-400")}>
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-text-primary truncate">
-                        {p.project_name || p.name || `Project #${p.id}`}
-                      </div>
-                      {p.project_manager_name && (
-                        <div className="text-2xs text-text-secondary">PM: {p.project_manager_name}</div>
-                      )}
-                    </div>
-                    <StatusBadge status={p.status || "DRAFT"} />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary">Progress</span>
-                        <span className="font-semibold text-text-primary">{Math.round(progress)}%</span>
-                      </div>
-                      <ProgressBar value={progress} color={progress >= 80 ? "#294BB2" : progress >= 40 ? "#D97706" : "#DC2626"} />
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-text-secondary">
-                      <span className={cn("flex items-center gap-0.5", isDelayed && "text-red-600 font-medium")}>
-                        <CalendarDays size={11} />
-                        {deadline ? formatDate(deadline) : "Belum ada deadline"}
-                        {isDelayed && " · Terlambat"}
-                      </span>
-                      {budget > 0 && (
-                        <span>{finSum ? `${finSum.utilization}% budget` : formatMoney(budget)}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <ProjectTimelineGantt
+          title="Timeline Eksekusi Proyek"
+          tasks={timelineTasks}
+          totalWeeks={8}
+          className="border-[#D9D9D9] rounded-2xl sm:rounded-[24px]"
+        />
       </section>
+
+      {/* ── Pemantauan Kehadiran & Utilisasi Tim ── */}
+      <div className="w-full">
+        <TeamAttendanceWidget />
+      </div>
 
       {/* ── Financial Summary ─────────────── */}
       {kpis && (
@@ -1100,7 +1074,7 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
       </section>
 
       {/* ── Today's Tasks List ── */}
-      <div className="card rounded-xl p-4 flex flex-col gap-3">
+      <section className="card rounded-xl p-4 flex flex-col gap-3 border border-[#D9D9D9]">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-sm font-bold text-text-primary">Daftar Aktivitas Terjadwal Hari Ini</h3>
           <div className="flex items-center gap-2">
@@ -1168,10 +1142,7 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
             </table>
           </div>
         )}
-      </div>
-
-      <section className="card rounded-xl p-4 border-l-4 border-brand-green">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center justify-between gap-4 flex-wrap border-t border-[#D9D9D9] pt-3">
           <div>
             <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
               <FileText size={15} className="text-brand-green" /> Task Submission
@@ -1308,7 +1279,7 @@ export default function DashboardClient() {
   return (
     <div className="flex flex-col gap-5">
       {loadError && (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
+        <div role="alert" className="rounded-[14px] border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
           Data dashboard tidak dapat dimuat lengkap: {loadError}
         </div>
       )}
@@ -1317,7 +1288,7 @@ export default function DashboardClient() {
         <div>
           <h1 className="text-xl font-bold text-brand-deep-green">{title}</h1>
           <p className="text-xs text-text-secondary mt-0.5">
-            Selamat datang, <span className="font-medium">{displayName}</span> · {subtitle}
+            Selamat {new Date().getHours() < 11 ? "pagi" : new Date().getHours() < 15 ? "siang" : new Date().getHours() < 19 ? "sore" : "malam"}, <span className="font-medium">{displayName}</span>! Lihat update terbaru di sektor {title.replace(" Dashboard", "")} hari ini.
           </p>
         </div>
         <div className="flex items-center gap-2">

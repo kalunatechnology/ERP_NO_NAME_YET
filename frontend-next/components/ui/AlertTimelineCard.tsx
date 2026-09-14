@@ -122,7 +122,7 @@ export function AlertTimelineCard({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#EFEFEF] rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col justify-between select-none",
+        "w-full bg-white border border-[#EFEFEF] rounded-[14px] p-5 sm:p-6 shadow-xs flex flex-col justify-between select-none",
         className
       )}
     >
@@ -171,7 +171,7 @@ export function AlertTimelineCard({
             key={item.id}
             onClick={() => handleItemClick(item)}
             className={cn(
-              "p-3.5 rounded-[16px] transition-all flex flex-col gap-1 relative cursor-pointer group",
+              "p-3.5 rounded-[14px] transition-all flex flex-col gap-1 relative cursor-pointer group",
               item.isHighlighted
                 ? "bg-[#EAF6FF] border border-[#9FD6FF] shadow-2xs"
                 : "bg-white hover:bg-neutral-50 border border-transparent hover:border-gray-200"

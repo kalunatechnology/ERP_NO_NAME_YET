@@ -47,6 +47,7 @@ model core_company {
   tenant_id         String?   @map("tenant_id")
   company_code      String
   legal_name        String
+  business_category String?
   tax_number        String
   base_currency_id  String?   @map("base_currency_id")
   fiscal_year_start DateTime?
@@ -2197,6 +2198,11 @@ model project_timesheet {
 
   // Alasan/keterangan lembur.
   overtime_reason String?
+
+  // Timer dan bukti penyelesaian membuat durasi lembur dapat diaudit.
+  overtime_started_at DateTime?
+  overtime_ended_at   DateTime?
+  evidence_url        String?
 
   hourly_rate Decimal?
   amount      Decimal?

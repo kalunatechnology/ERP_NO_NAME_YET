@@ -8,6 +8,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 import { Toaster } from "react-hot-toast";
 
 export const metadata: Metadata = {
@@ -23,16 +24,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="id" suppressHydrationWarning>
       <body>
-        <AuthProvider>
-          {children}
-          <Toaster
+        <LanguageProvider>
+          <AuthProvider>
+            {children}
+            <Toaster
             position="top-right"
             toastOptions={{
               duration: 4000,
               style: {
                 fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
                 fontSize: "14px",
-                borderRadius: "12px",
+                borderRadius: "14px",
                 border: "1px solid #E8E8E8",
               },
               success: {
@@ -42,8 +44,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 iconTheme: { primary: "#EF4444", secondary: "#FEE2E2" },
               },
             }}
-          />
-        </AuthProvider>
+            />
+          </AuthProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

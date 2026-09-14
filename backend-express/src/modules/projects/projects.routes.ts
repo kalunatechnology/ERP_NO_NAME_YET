@@ -2454,6 +2454,23 @@ projectsRouter.use(
           '';
       }
 
+      if (overtimeHours > 0) {
+        if (!data.overtime_started_at || !data.overtime_ended_at) {
+          throw new ValidationError('Lembur harus dicatat menggunakan timer mulai dan selesai.');
+        }
+        const startedAt = new Date(data.overtime_started_at);
+        const endedAt = new Date(data.overtime_ended_at);
+        if (!Number.isFinite(startedAt.getTime()) || !Number.isFinite(endedAt.getTime()) || endedAt <= startedAt) {
+          throw new ValidationError('Timestamp timer lembur tidak valid.');
+        }
+        if (!String(data.evidence_url || '').trim()) {
+          throw new ValidationError('Bukti penyelesaian berupa link atau dokumen wajib dilampirkan untuk lembur.');
+        }
+        data.overtime_started_at = startedAt;
+        data.overtime_ended_at = endedAt;
+        data.evidence_url = String(data.evidence_url).trim();
+      }
+
       return data;
     },
 
