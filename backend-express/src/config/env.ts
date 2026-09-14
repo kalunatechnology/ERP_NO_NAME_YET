@@ -20,7 +20,7 @@ const envSchema = z.object({
 
   // The target is explicit so a persistent Hostinger process never
   // accidentally inherits Vercel's transaction-pooler behavior.
-  DEPLOYMENT_TARGET: z.enum(['local', 'hostinger', 'vercel']).optional(),
+  DEPLOYMENT_TARGET: z.enum(['local', 'hostinger', 'docker', 'vercel']).optional(),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   DIRECT_URL: z.string().min(1, 'DIRECT_URL is required for schema migrations'),

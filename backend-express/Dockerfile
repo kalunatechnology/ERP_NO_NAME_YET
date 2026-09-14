@@ -50,4 +50,4 @@ COPY --from=builder /app/server.js ./server.js
 
 EXPOSE 8001
 
-CMD ["node", "server.js"]
+CMD ["node", "scripts/start-production.js"]

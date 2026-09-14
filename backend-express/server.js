@@ -6,6 +6,8 @@
  * Integration: Consumers reach this file through static imports, framework conventions, or an explicit script entry point.
  * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
  */
-// Entry point for Node.js hosting environments (Hostinger / cPanel / Passenger).
-// It runs the deployment migration gate before Express can accept traffic.
-require('./scripts/start-production.js');
+// Entry point for Hostinger / cPanel / Passenger. Database migrations are
+// executed once by the Hostinger deployment build, never on every process
+// restart; this keeps temporary database/migration failures from causing a
+// permanent 503 restart loop.
+require('./dist/server.js');

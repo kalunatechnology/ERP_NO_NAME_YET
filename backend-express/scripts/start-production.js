@@ -1,14 +1,14 @@
 /**
  * Production process entry point.
  *
- * A release must finish committed Prisma migrations before Express accepts
- * traffic. The migration runner is deliberately restricted to known
- * long-lived backend targets: Vercel functions never call this file.
+ * Docker release entry point. A container must finish committed Prisma
+ * migrations before Express accepts traffic. Hostinger runs migrations once
+ * in scripts/build.js and starts through server.js, avoiding restart loops.
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
-const MIGRATION_TARGETS = new Set(['hostinger', 'docker']);
+const MIGRATION_TARGETS = new Set(['docker']);
 
 function run() {
   const target = process.env.DEPLOYMENT_TARGET;

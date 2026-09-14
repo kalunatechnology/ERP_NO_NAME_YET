@@ -8,7 +8,7 @@
     "build": "node scripts/build.js",
     "build:compile": "prisma generate && tsc",
     "postinstall": "prisma generate",
-    "start": "node scripts/start-production.js",
+    "start": "node dist/server.js",
     "seed": "ts-node prisma/seed.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
