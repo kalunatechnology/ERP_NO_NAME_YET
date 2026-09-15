@@ -31,6 +31,7 @@ function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
     finance:    "Finance",
     crm:        "CRM & Sales",
     resources:  "Data Explorer",
+    administration: "Company & Access",
     reporting:  "Reporting",
     settings:   "Settings",
   };

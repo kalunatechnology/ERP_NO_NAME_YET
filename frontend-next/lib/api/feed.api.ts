@@ -238,12 +238,18 @@ function timeAgo(dateString?: string | Date): string {
   return `${diffDays} hari lalu`;
 }
 
+function routeUnavailable(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  return status === 404 || status === 405;
+}
+
 export const feedApi = {
   getSidebarFeed: async (): Promise<SidebarFeedResponse> => {
     try {
       const res = await api.get<SidebarFeedResponse>("/api/v1/sidebar-feed/");
       return res.data;
-    } catch {
+    } catch (error) {
+      if (!routeUnavailable(error)) throw error;
       const res = await api.get<SidebarFeedResponse>("/api/v1/core/sidebar-feed/");
       return res.data;
     }
@@ -251,7 +257,8 @@ export const feedApi = {
   markNotificationsRead: async () => {
     try {
       return await api.post("/api/v1/sidebar-feed/mark-read/");
-    } catch {
+    } catch (error) {
+      if (!routeUnavailable(error)) throw error;
       return await api.post("/api/v1/core/sidebar-feed/mark-read/");
     }
   },
@@ -261,20 +268,11 @@ export const feedApi = {
     title: string;
     target_url: string;
   }) => {
-    try {
-      return await api.post("/api/v1/recent-items/track/", data);
-    } catch {
-      return await api.post("/api/v1/core/recent-items/track/", data);
-    }
+    return api.post("/api/v1/core/recent-items/track/", data);
   },
   getRecentItems: async (): Promise<UserRecentItemDto[]> => {
-    try {
-      const res = await api.get("/api/v1/recent-items/");
-      return normalizeList<UserRecentItemDto>(res.data).rows;
-    } catch {
-      const res = await api.get("/api/v1/core/recent-items/");
-      return normalizeList<UserRecentItemDto>(res.data).rows;
-    }
+    const res = await api.get("/api/v1/core/recent-items/");
+    return normalizeList<UserRecentItemDto>(res.data).rows;
   }
 };
 

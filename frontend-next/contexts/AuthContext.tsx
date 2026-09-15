@@ -254,27 +254,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     const user = await getMyProfile();
-    const activeCompany = user.company_id || user.roles?.[0]?.company_id || state.company;
+    const userRole = detectRole(user);
+    const assignedCompany = user.company_id || user.roles?.[0]?.company_id || null;
+    const activeCompany = userRole === "super_admin" ? state.company : assignedCompany;
+    if (userRole !== "super_admin") {
+      if (activeCompany) {
+        localStorage.setItem("erp.company", String(activeCompany));
+        localStorage.setItem("active_company_id", String(activeCompany));
+      } else {
+        localStorage.removeItem("erp.company");
+        localStorage.removeItem("active_company_id");
+      }
+    }
     dispatch({
       type: "LOGIN_SUCCESS",
       user,
       company: activeCompany ? String(activeCompany) : null,
       companies: state.companies,
       isAdmin: checkIsAdmin(user),
-      userRole: detectRole(user),
+      userRole,
     });
   }, [state.companies, state.company]);
 
   const setActiveRole = useCallback(async (roleCode: string) => {
     const user = await changeActiveRole(roleCode);
-    const activeCompany = user.company_id || user.roles?.[0]?.company_id || state.company;
+    const userRole = detectRole(user);
+    const assignedCompany = user.company_id || user.roles?.[0]?.company_id || null;
+    const activeCompany = userRole === "super_admin" ? state.company : assignedCompany;
+    if (userRole !== "super_admin") {
+      if (activeCompany) {
+        localStorage.setItem("erp.company", String(activeCompany));
+        localStorage.setItem("active_company_id", String(activeCompany));
+      } else {
+        localStorage.removeItem("erp.company");
+        localStorage.removeItem("active_company_id");
+      }
+    }
     dispatch({
       type: "LOGIN_SUCCESS",
       user,
       company: activeCompany ? String(activeCompany) : null,
       companies: state.companies,
       isAdmin: checkIsAdmin(user),
-      userRole: detectRole(user),
+      userRole,
     });
   }, [state.companies, state.company]);
 
@@ -294,12 +316,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const isAdmin = checkIsAdmin(user);
         const userRole = detectRole(user);
 
-        // Langsung ambil dari relasi foreign key user_role yang dikirim backend
-        const activeCompany = user.company_id || user?.roles?.[0]?.company_id || null;
+        // The assigned company is authoritative for ordinary users. Super
+        // Admin may restore an explicitly selected company across reloads.
+        const assignedCompany = user.company_id || user?.roles?.[0]?.company_id || null;
+        const storedCompany = localStorage.getItem("erp.company");
+        const activeCompany = userRole === "super_admin" && storedCompany && UUID_REGEX.test(storedCompany)
+          ? storedCompany : assignedCompany;
 
         if (activeCompany) {
           localStorage.setItem("erp.company", String(activeCompany));
           localStorage.setItem("active_company_id", String(activeCompany));
+        } else {
+          localStorage.removeItem("erp.company");
+          localStorage.removeItem("active_company_id");
         }
 
         dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: assignedCompanyItems(user), isAdmin, userRole });

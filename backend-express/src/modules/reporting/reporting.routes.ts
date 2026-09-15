@@ -10,6 +10,8 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
+import { requireActiveRole } from '../../middlewares/rbac.middleware';
+import { RoleCode } from '../../types/roles';
 
 export const reportingRouter = Router();
 
@@ -20,6 +22,37 @@ function activeCompanyId(req: Request): string {
 
 function reportLimit(req: Request, fallback = 100): number {
   return Math.min(200, Math.max(1, Math.trunc(Number(req.query.page_size) || fallback)));
+}
+
+function personalOnly(req: Request): boolean {
+  return req.user?.active_role_code === RoleCode.STAFF
+    || req.user?.active_role_code === RoleCode.SUPERVISOR;
+}
+
+/** Resolve timesheet identity from an explicit user↔employee link only. */
+async function personalEmployeeId(req: Request): Promise<string> {
+  const companyId = activeCompanyId(req);
+  const tenantId = req.user?.tenant_id;
+  const userId = req.user?.id;
+  if (!tenantId || !userId) throw new ForbiddenError('Identitas tenant atau user tidak tersedia.');
+  const employee = await prisma.master_employee.findFirst({
+    where: { tenant_id: tenantId, company_id: companyId, user_id: userId },
+    select: { id: true },
+  });
+  if (employee) return employee.id;
+  const member = await prisma.project_member.findFirst({
+    where: { tenant_id: tenantId, company_id: companyId, user_id: userId, status: 'ACTIVE', employee_id: { not: null } },
+    select: { employee_id: true },
+    orderBy: { assigned_at: 'desc' },
+  });
+  if (member?.employee_id) {
+    const mapped = await prisma.master_employee.findFirst({
+      where: { id: member.employee_id, tenant_id: tenantId, company_id: companyId },
+      select: { id: true },
+    });
+    if (mapped) return mapped.id;
+  }
+  throw new ForbiddenError('Akun user belum terhubung dengan data employee.');
 }
 
 // Reporting is a projection boundary: reports may be read/exported, but source
@@ -148,7 +181,7 @@ reportingRouter.get('/periodic-project-summary', async (req: Request, res: Respo
     const end = req.query.end_date ? new Date(String(req.query.end_date)) : now;
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) throw new ValidationError('Rentang tanggal laporan tidak valid.');
     end.setHours(23, 59, 59, 999);
-    const staffOnly = req.user?.active_role_code === 'STAFF';
+    const staffOnly = personalOnly(req);
 
     const take = reportLimit(req);
     const baseWhere = {
@@ -195,12 +228,13 @@ reportingRouter.get('/attendance-summary', async (req: Request, res: Response, n
     const end = req.query.end_date ? new Date(String(req.query.end_date)) : now;
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) throw new ValidationError('Rentang tanggal laporan tidak valid.');
     end.setHours(23, 59, 59, 999);
-    const staffOnly = req.user?.active_role_code === 'STAFF';
+    const staffOnly = personalOnly(req);
     const take = reportLimit(req);
+    const employeeId = staffOnly ? await personalEmployeeId(req) : null;
     const where = {
         company_id: activeCompanyId(req),
         work_date: { gte: start, lte: end },
-        ...(staffOnly ? { employee_id: req.user!.id } : {}),
+        ...(employeeId ? { employee_id: employeeId } : {}),
     };
     const [entries, totals] = await Promise.all([prisma.project_timesheet.findMany({ where,
       orderBy: { work_date: 'desc' },
@@ -233,7 +267,7 @@ reportingRouter.get('/attendance-summary', async (req: Request, res: Response, n
 });
 
 /** Company-scoped operational projection for Operations Management. */
-reportingRouter.get('/operational-summary', async (req: Request, res: Response, next: NextFunction) => {
+reportingRouter.get('/operational-summary', requireActiveRole(RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = activeCompanyId(req);
     const now = new Date();

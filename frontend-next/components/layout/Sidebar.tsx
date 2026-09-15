@@ -15,10 +15,13 @@ import {
   DollarSign, Users, BarChart3, TrendingUp, Building2,
   LogOut, ChevronRight, Clock, FileText, X
 } from "lucide-react";
-import { useAuth, UserRoleType, getRoleLabel, getRoleBadgeStyle } from "@/contexts/AuthContext";
+import { useAuth, getRoleLabel, getRoleBadgeStyle } from "@/contexts/AuthContext";
 import { feedApi, UserRecentItemDto } from "@/lib/api/feed.api";
 import { cn } from "@/lib/utils";
-import { canAccessRoute } from "@/lib/access/module-contract";
+import { canAccessRoute, canRequestApi } from "@/lib/access/module-contract";
+import { getResourceEntity } from "@/lib/access/resource-catalog";
+import { canOpenReportTab } from "@/lib/access/report-tab-access";
+import { getNavigationEntries } from "@/lib/access/navigation-contract";
 
 interface SidebarProps {
   isMobile?: boolean;
@@ -26,105 +29,61 @@ interface SidebarProps {
   onChatbotOpen?: () => void;
 }
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ElementType;
-  badge?: string;
-}
-
-/* ── Role-specific nav configs (Strict Role-Based Page Flow) ─── */
-const NAV_BY_ROLE: Record<UserRoleType, NavItem[]> = {
-  super_admin: [
-    { href: "/dashboard", label: "Governance Dashboard", icon: LayoutDashboard },
-    { href: "/resources", label: "Company & Access", icon: Building2 },
-    { href: "/reporting", label: "Global Reports", icon: BarChart3 },
-  ],
-  company_admin: [
-    { href: "/dashboard", label: "Company Dashboard", icon: LayoutDashboard },
-    { href: "/resources", label: "User & Access", icon: Building2 },
-    { href: "/reporting", label: "Reports", icon: BarChart3 },
-  ],
-  // 1. Executive (Direksi)
-  executive: [
-    { href: "/dashboard",  label: "Executive Dashboard", icon: LayoutDashboard },
-    { href: "/projects",   label: "All Project",         icon: FolderKanban    },
-    { href: "/finance",    label: "Finance Preview",    icon: DollarSign      },
-    { href: "/crm",        label: "CRM Preview",        icon: Building2       },
-    { href: "/reporting",  label: "Performance",         icon: TrendingUp      },
-    { href: "/resources",  label: "Data Explorer",       icon: BarChart3       },
-  ],
-  // 2. Project Manager (PM)
-  pm: [
-    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
-    { href: "/projects",   label: "Projects",    icon: FolderKanban    },
-    { href: "/tasks",      label: "Daily Tasks", icon: CheckSquare     },
-    { href: "/crm",        label: "CRM",         icon: Users           },
-    { href: "/reporting",  label: "Reports",     icon: BarChart3       },
-  ],
-  // 3. Operational Manager (OM) - Focused on Technical & Ops, No CRM
-  om: [
-    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
-    { href: "/projects",   label: "Projects",    icon: FolderKanban    },
-    { href: "/tasks",      label: "Daily Tasks", icon: CheckSquare     },
-    { href: "/reporting",  label: "Reports",     icon: BarChart3       },
-  ],
-  // 4. Staff - Lean execution flow
-  staff: [
-    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
-    { href: "/tasks",      label: "Daily Tasks", icon: CheckSquare     },
-    { href: "/reporting",  label: "Report",      icon: FileText        },
-  ],
-  // 5. Finance Controller
-  finance: [
-    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
-    { href: "/finance",    label: "Finance",     icon: DollarSign      },
-    { href: "/reporting",  label: "Reports",     icon: BarChart3       },
-  ],
-  // 6. CRM & Sales Lead
-  crm: [
-    { href: "/dashboard",  label: "Dashboard",   icon: LayoutDashboard },
-    { href: "/crm",        label: "CRM & Sales", icon: Building2       },
-    { href: "/reporting",  label: "Reports",     icon: BarChart3       },
-  ],
-};
-
-const DELEGATED_MODULE_NAV: Record<string, NavItem[]> = {
-  PROJECTS: [
-    { href: "/projects", label: "Projects", icon: FolderKanban },
-    { href: "/tasks", label: "Daily Tasks", icon: CheckSquare },
-  ],
-  CRM: [{ href: "/crm", label: "CRM & Sales", icon: Building2 }],
-  FINANCE: [{ href: "/finance", label: "Finance", icon: DollarSign }],
-  REPORTING: [{ href: "/reporting", label: "Reports", icon: BarChart3 }],
-  ANALYTICS: [{ href: "/resources", label: "Data Explorer", icon: BarChart3 }],
+const NAV_ICONS: Record<string, React.ElementType> = {
+  "/dashboard": LayoutDashboard,
+  "/administration": Building2,
+  "/projects": FolderKanban,
+  "/tasks": CheckSquare,
+  "/crm": Users,
+  "/finance": DollarSign,
+  "/reporting": BarChart3,
+  "/resources": FileText,
 };
 
 export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarProps = {}) {
   const pathname = usePathname();
-  const { user, userRole, logout } = useAuth();
+  const { user, userRole, company, logout } = useAuth();
   const [recentItems, setRecentItems] = useState<UserRecentItemDto[]>([]);
+  const [recentCompany, setRecentCompany] = useState<string | null>(null);
 
   const initial = user?.full_name?.[0] ?? user?.email?.[0]?.toUpperCase() ?? "U";
   const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
   const roleLabel = getRoleLabel(userRole);
   const badgeStyle = getRoleBadgeStyle(userRole);
-  const delegatedItems = (user?.delegated_modules ?? []).flatMap((module) => DELEGATED_MODULE_NAV[module.toUpperCase()] ?? []);
-  const candidateItems = [...(NAV_BY_ROLE[userRole] ?? NAV_BY_ROLE.staff), ...delegatedItems]
-    .filter((item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index);
-  const navItems = candidateItems.filter((item) => canAccessRoute({
-    pathname: item.href,
+  const navItems = getNavigationEntries({
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
-  }));
+  }).map((entry) => ({ ...entry, icon: NAV_ICONS[entry.href] ?? FileText }));
+  const recentAccess = {
+    enabledModules: user?.enabled_modules,
+    delegatedModules: user?.delegated_modules,
+    activeRoleCode: user?.active_role_code,
+    isSuperAdmin: userRole === "super_admin",
+  };
+  const visibleRecentItems = (recentCompany === company ? recentItems : []).filter((item) => {
+    if (!canAccessRoute({ pathname: item.target_url || "/dashboard", ...recentAccess })) return false;
+    if (item.item_type === "RESOURCE") {
+      const resource = getResourceEntity(item.object_id);
+      return Boolean(resource && canRequestApi(resource.endpoint, recentAccess));
+    }
+    if (item.item_type === "REPORT" && item.object_id.startsWith("rep-")) {
+      return canOpenReportTab(item.object_id.slice(4), userRole, recentAccess);
+    }
+    return true;
+  }).slice(0, 3);
 
   useEffect(() => {
+    let current = true;
     feedApi.getRecentItems().then((items) => {
-      if (items && items.length) setRecentItems(items.slice(0, 3));
+      if (current) {
+        setRecentItems(items ?? []);
+        setRecentCompany(company);
+      }
     }).catch(() => {});
-  }, [pathname]);
+    return () => { current = false; };
+  }, [pathname, company]);
 
   return (
     <aside
@@ -175,7 +134,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
             Menu
           </p>
           <nav className="flex flex-col gap-0.5" role="navigation">
-            {navItems.map(({ href, label, icon: Icon, badge }) => {
+            {navItems.map(({ href, label, icon: Icon }) => {
               const isActive = pathname === href || pathname.startsWith(href + "/");
               return (
                 <Link
@@ -201,11 +160,6 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
                     aria-hidden="true"
                   />
                   <span className="flex-1 truncate text-xs">{label}</span>
-                  {badge && (
-                    <span className="ml-auto px-1.5 py-0.2 rounded-full bg-[#2649B3] text-white text-[9px] font-bold leading-none">
-                      {badge}
-                    </span>
-                  )}
                   {isActive && (
                     <ChevronRight size={11} className="text-[#2649B3] opacity-60 flex-shrink-0 ml-auto" />
                   )}
@@ -216,14 +170,14 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
         </div>
 
         {/* Recently Opened Items */}
-        {recentItems.length > 0 && (
+        {visibleRecentItems.length > 0 && (
           <div className="flex flex-col gap-1 pt-2 border-t border-[#EFEFEF]">
             <p className="text-[10px] font-extrabold text-[#4F5050] uppercase tracking-wider px-2 flex items-center gap-1.5 mb-0.5">
               <Clock size={10} className="text-[#294BB2]" />
               <span>Recently Opened</span>
             </p>
             <div className="flex flex-col gap-0.5">
-              {recentItems.map((item) => (
+              {visibleRecentItems.map((item) => (
                 <Link
                   key={item.id}
                   href={item.target_url || "/dashboard"}

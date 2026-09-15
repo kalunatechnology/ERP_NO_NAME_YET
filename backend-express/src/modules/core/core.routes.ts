@@ -11,14 +11,14 @@ import { CoreService } from './core.service';
 import { authenticate } from '../../middlewares/auth.middleware';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { requireAdminForWrite, requireSuperAdminForWrite, requireSuperuser } from '../../middlewares/rbac.middleware';
-import { isCompanyAdmin, isSuperAdmin } from '../../types/roles';
+import { isSuperAdmin, RoleCode } from '../../types/roles';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
 
 const requireFinanceOrAdminForCompanyWrite = (req: Request, _res: Response, next: NextFunction): void => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   if (!req.user) return next(new ForbiddenError('Autentikasi diperlukan.'));
   const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
-  if (isSuperAdmin(req.user.roles) || isCompanyAdmin(req.user.roles) || activeRole === 'FINANCE') return next();
+  if (isSuperAdmin(req.user.roles) || activeRole === RoleCode.COMPANY_ADMIN || activeRole === RoleCode.FINANCE) return next();
   return next(new ForbiddenError('Profil perusahaan hanya dapat diubah oleh Finance, Company Admin, atau Super Admin.'));
 };
 
@@ -229,7 +229,7 @@ const handleSetCompanyModule = async (req: Request, res: Response, next: NextFun
   try {
     const roles = req.user?.roles ?? [];
     const superAdmin = isSuperAdmin(roles);
-    const companyAdmin = isCompanyAdmin(roles);
+    const companyAdmin = req.user?.active_role_code === RoleCode.COMPANY_ADMIN;
     if (!superAdmin && !companyAdmin) {
       throw new ForbiddenError('Hanya Super Admin atau Company Admin yang dapat mengatur akses modul.');
     }

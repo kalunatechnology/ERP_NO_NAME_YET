@@ -54,10 +54,14 @@ api.interceptors.request.use(
         localStorage.getItem("erp.company") ||
         localStorage.getItem("active_company_id");
 
-      if (company && company !== "all" && UUID_REGEX.test(company.trim()) && config.headers) {
+      // An explicit request scope (including `all` or an empty header used to
+      // resolve the authenticated assignment) must win over browser selection.
+      // Governance screens otherwise silently read/write the wrong company.
+      const explicitCompany = config.headers?.["X-Company-ID"];
+      if (explicitCompany !== undefined && explicitCompany !== null) {
+        if (!String(explicitCompany).trim()) delete config.headers["X-Company-ID"];
+      } else if (company && company !== "all" && UUID_REGEX.test(company.trim()) && config.headers) {
         config.headers["X-Company-ID"] = company.trim();
-      } else if (config.headers && config.headers["X-Company-ID"]) {
-        delete config.headers["X-Company-ID"];
       }
 
       // Local fail-closed preflight. Backend remains authoritative, but known

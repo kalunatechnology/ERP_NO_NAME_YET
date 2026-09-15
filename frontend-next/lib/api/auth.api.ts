@@ -83,7 +83,9 @@ export async function loginUser(email: string, password: string): Promise<LoginP
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function getMyProfile(): Promise<UserProfile> {
-  const res = await api.get<any>("/api/v1/auth/me/");
+  // Profile is the source of truth for company assignment. Never scope it with
+  // a possibly stale company saved by a prior login or role transition.
+  const res = await api.get<any>("/api/v1/auth/me/", { headers: { "X-Company-ID": "" } });
   const raw = res.data?.data || res.data;
   const userObj: UserProfile | null = raw?.user
     ? {
@@ -111,7 +113,7 @@ export async function getMyProfile(): Promise<UserProfile> {
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function changeActiveRole(roleCode: string): Promise<UserProfile> {
-  await api.patch("/api/v1/auth/active-role/", { role_code: roleCode });
+  await api.patch("/api/v1/auth/active-role/", { role_code: roleCode }, { headers: { "X-Company-ID": "" } });
   return getMyProfile();
 }
 
@@ -146,7 +148,7 @@ export async function logoutUser(): Promise<void> {
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function getCompanies() {
-  const { data } = await api.get("/api/v1/core/companies/");
+  const { data } = await api.get("/api/v1/core/companies/?page_size=100", { headers: { "X-Company-ID": "all" } });
   const normalized = normalizeList<Record<string, unknown>>(data);
   return {
     count: normalized.count,

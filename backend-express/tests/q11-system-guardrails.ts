@@ -2,11 +2,13 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { assertNoGenericLifecycleWrite, assertRecordMutable, autoFillRequiredFields } from '../src/utils/crud-factory';
-import { requireRole, requireActiveRole, requireCompanyAdmin } from '../src/middlewares/rbac.middleware';
+import { requireRole, requireActiveRole, requireCompanyAdmin, enforceSuperAdminReadOnly } from '../src/middlewares/rbac.middleware';
 import { requireFinanceRole } from '../src/middleware/sod.middleware';
 import { ProjectsService } from '../src/modules/projects/projects.service';
 import { RoleCode } from '../src/types/roles';
 import { canAccessRoute, canRequestApi, getRouteAccessContract } from '../../frontend-next/lib/access/module-contract';
+import { getNavigationEntries } from '../../frontend-next/lib/access/navigation-contract';
+import { canPerform } from '../../frontend-next/lib/access/capability-contract';
 
 // This backend build gate deliberately must not import frontend UI utilities.
 // Hostinger installs dependencies from backend-express/package.json only, while
@@ -38,10 +40,10 @@ async function scenario(name: string, run: () => Evidence | Promise<Evidence>): 
   return evidence;
 }
 
-function invokeMiddleware(middleware: any, user: Record<string, unknown>, moduleAccess?: Record<string, unknown>): Promise<unknown> {
+function invokeMiddleware(middleware: any, user: Record<string, unknown>, moduleAccess?: Record<string, unknown>, path = '/test', method = 'POST'): Promise<unknown> {
   return new Promise((resolve) => {
     middleware(
-      { user, moduleAccess, method: 'POST', originalUrl: '/test', path: '/test' },
+      { user, moduleAccess, method, originalUrl: path, path },
       {},
       (error?: unknown) => resolve(error ?? null),
     );
@@ -211,6 +213,11 @@ async function main(): Promise<void> {
       String((await invokeMiddleware(requireActiveRole(RoleCode.DIRECTOR), delegatedStaff, delegatedModule) as Error)?.message),
       /role aktif/i,
     );
+    const superAdmin = { id: 'admin', roles: [RoleCode.SUPER_ADMIN], active_role_code: RoleCode.SUPER_ADMIN };
+    assert.equal(await invokeMiddleware(enforceSuperAdminReadOnly, superAdmin, undefined, '/core/recent-items/track/'), null);
+    assert.equal(await invokeMiddleware(enforceSuperAdminReadOnly, superAdmin, undefined, '/core/sidebar-feed/mark-read/'), null);
+    assert.match(String((await invokeMiddleware(enforceSuperAdminReadOnly, superAdmin, undefined, '/projects/projects/') as Error)?.message), /hanya memiliki akses baca/i);
+    assert.match(String((await invokeMiddleware(enforceSuperAdminReadOnly, superAdmin, undefined, '/core/recent-items/track/', 'DELETE') as Error)?.message), /hanya memiliki akses baca/i);
 
     const [requestRoutes, requestService, crmRoutes, projectWbsNode] = await Promise.all([
       readFile(`${__dirname}/../src/modules/core/request.routes.ts`, 'utf8'),
@@ -245,6 +252,41 @@ async function main(): Promise<void> {
     assert.equal(canRequestApi('/api/v1/inventory/stock-balances/', pmAccess), false);
     assert.equal(canRequestApi('/api/v1/requests/id/disburse/', { enabledModules: ['REQUESTS'], activeRoleCode: 'ROLE-PM' }), false);
     assert.equal(canRequestApi('/api/v1/requests/id/disburse/', { enabledModules: ['REQUESTS'], activeRoleCode: 'ROLE-FINANCE' }), true);
+    const adminRoles = ['ROLE-SUPER-ADMIN', 'ROLE-COMPANY-ADMIN'];
+    const operationalRoles = ['ROLE-DIRECTOR', 'ROLE-OM', 'ROLE-PM', 'ROLE-SUPERVISOR', 'ROLE-CRM-LEAD', 'ROLE-SALES', 'ROLE-FINANCE', 'ROLE-STAFF'];
+    assert.equal(getRouteAccessContract('/administration')?.module, null);
+    for (const activeRoleCode of adminRoles) {
+      assert.equal(canAccessRoute({ pathname: '/administration', activeRoleCode, enabledModules: [] }), true, `${activeRoleCode} must reach administration without an operational module`);
+    }
+    for (const activeRoleCode of operationalRoles) {
+      assert.equal(canAccessRoute({ pathname: '/administration', activeRoleCode, enabledModules: ['ANALYTICS', 'CORE', 'PROJECTS'], delegatedModules: ['ANALYTICS'] }), false, `${activeRoleCode} must not receive an admin page through delegation`);
+    }
+    const allEnabled = ['ANALYTICS', 'PROJECTS', 'CRM', 'FINANCE', 'REPORTING'];
+    const expectedBase: Record<string, string[]> = {
+      'ROLE-SUPER-ADMIN': ['/dashboard', '/administration', '/reporting', '/resources'],
+      'ROLE-COMPANY-ADMIN': ['/dashboard', '/administration', '/reporting', '/resources'],
+      'ROLE-DIRECTOR': ['/dashboard', '/projects', '/finance', '/crm', '/reporting', '/resources'],
+      'ROLE-OM': ['/dashboard', '/projects', '/tasks', '/reporting'],
+      'ROLE-PM': ['/dashboard', '/projects', '/tasks', '/crm', '/reporting'],
+      'ROLE-SUPERVISOR': ['/dashboard', '/projects', '/tasks', '/reporting'],
+      'ROLE-STAFF': ['/dashboard', '/projects', '/tasks', '/reporting'],
+      'ROLE-FINANCE': ['/dashboard', '/finance', '/reporting'],
+      'ROLE-CRM-LEAD': ['/dashboard', '/crm', '/reporting'],
+      'ROLE-SALES': ['/dashboard', '/crm', '/reporting'],
+    };
+    for (const [activeRoleCode, expected] of Object.entries(expectedBase)) {
+      const access = { activeRoleCode, enabledModules: allEnabled, isSuperAdmin: activeRoleCode === 'ROLE-SUPER-ADMIN' };
+      const actual = getNavigationEntries(access).map((item) => item.href);
+      assert.deepEqual(actual, expected, `${activeRoleCode}: navigation must match enabled page contracts`);
+      actual.forEach((pathname) => assert.equal(canAccessRoute({ pathname, ...access }), true));
+    }
+    assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['REPORTING'] }).map((item) => item.href), ['/dashboard', '/reporting']);
+    assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['FINANCE'], delegatedModules: ['FINANCE'] }).map((item) => item.href), ['/dashboard', '/finance']);
+    assert(!getNavigationEntries({ activeRoleCode: 'ROLE-PM', enabledModules: ['PROJECTS'], delegatedModules: ['PROJECTS'] }).some((item) => item.href === '/administration'));
+    assert.equal(canPerform('finance:operate', 'ROLE-SUPER-ADMIN'), false);
+    assert.equal(canPerform('finance:operate', 'ROLE-FINANCE'), true);
+    assert.equal(canPerform('project:create', 'ROLE-SUPER-ADMIN'), false);
+    assert.equal(canPerform('project:create', 'ROLE-PM'), true);
     assert.equal(normalizeDateKey('2026-09-10T00:00:00.000Z'), '2026-09-10');
     assert.equal(normalizeDateKey('2026-09-10'), '2026-09-10');
     assert.equal(localDateKey(new Date(2026, 8, 10, 0, 30)), '2026-09-10');
@@ -273,6 +315,13 @@ async function main(): Promise<void> {
       readFile(`${__dirname}/../../frontend-next/lib/ui/semantic-styles.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/app/error/[code]/page.tsx`, 'utf8'),
     ]);
+    const reportTabAccess = await readFile(`${__dirname}/../../frontend-next/lib/access/report-tab-access.ts`, 'utf8');
+    const administrationPage = await readFile(`${__dirname}/../../frontend-next/app/(app)/administration/page.tsx`, 'utf8');
+    const navigationContract = await readFile(`${__dirname}/../../frontend-next/lib/access/navigation-contract.ts`, 'utf8');
+    const administrationClient = await readFile(`${__dirname}/../../frontend-next/components/administration/AccessAdministration.tsx`, 'utf8');
+    const authApi = await readFile(`${__dirname}/../../frontend-next/lib/api/auth.api.ts`, 'utf8');
+    const coreRoutes = await readFile(`${__dirname}/../src/modules/core/core.routes.ts`, 'utf8');
+    const reportingAccessRoutes = await readFile(`${__dirname}/../src/modules/reporting/reporting.routes.ts`, 'utf8');
     for (const mapping of [
       'prefix: "/tasks", module: "PROJECTS"',
       'prefix: "/reporting", module: "REPORTING"',
@@ -285,6 +334,16 @@ async function main(): Promise<void> {
     assert(contract.includes('Dashboard BFF canReadSection deliberately does not accept module delegation'));
     assert(appShell.includes('canAccessRoute({') && !appShell.includes('MODULE_BY_ROUTE'));
     assert(sidebar.includes('canAccessRoute({') && !sidebar.includes('moduleByPath'));
+    assert(sidebar.includes('getNavigationEntries({') && navigationContract.includes('{ href: "/administration", label: "Company & Access"') && navigationContract.includes('{ href: "/administration", label: "User & Access"'), 'Admin navigation must open administration, not the repository.');
+    assert(administrationPage.includes('<AccessAdministration />') && !resourcesClient.includes('<AccessAdministration />'), 'Administration and repository must be separate pages.');
+    assert(administrationClient.includes('"X-Company-ID": "all"') && administrationClient.includes('"X-Company-ID": contextCompany'), 'Super Admin company catalog and module actions must use explicit scopes.');
+    assert(axiosSource.includes('const explicitCompany = config.headers?.["X-Company-ID"]'), 'An explicit company scope must not be overwritten by localStorage.');
+    assert(authApi.includes('"/api/v1/auth/me/", { headers: { "X-Company-ID": "" } }'), 'Profile refresh must not inherit a stale company header.');
+    assert(coreRoutes.includes('req.user?.active_role_code === RoleCode.COMPANY_ADMIN'), 'Company Admin module mutation must require the active role.');
+    assert(reportingAccessRoutes.includes('req.user?.active_role_code === RoleCode.SUPERVISOR') && reportingAccessRoutes.includes('const staffOnly = personalOnly(req);'), 'Supervisor and Staff must share personal reporting scope.');
+    assert(reportingAccessRoutes.includes('user_id: userId') && reportingAccessRoutes.includes('employee_id: employeeId'), 'Attendance projection must use an explicit user-to-employee identity.');
+    assert(reportingAccessRoutes.includes("'/operational-summary', requireActiveRole(RoleCode.OPERATIONAL_MANAGER)"), 'Company-wide operational report must require OM active role.');
+    assert(reportingClient.includes('sectionErrors: { attendance: attendanceResult.error') && reportingClient.includes('if (data.sectionErrors.attendance)'), 'Attendance failure must not masquerade as zero activity or blank the periodic report.');
     assert(commandPalette.includes('canAccessRoute({'), 'Command palette must hide routes that the active context cannot open.');
     assert(topbar.includes('{canOpenReporting && <button') && topbar.includes("router.push('/reporting?tab=attendance')"), 'Topbar must hide Reporting shortcuts from unauthorized roles.');
     assert(axiosSource.includes('ERR_FRONTEND_MODULE_ACCESS'));
@@ -338,8 +397,10 @@ async function main(): Promise<void> {
     assert(taxWorkspace.includes('/api/v1/finance/tax-transactions/projection?page_size=200'));
     assert(taxWorkspace.includes('const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [];'), 'Tax workspace must not ship production-looking local transactions.');
     assert(
-      resourcesClient.includes('const visibleEntities = useMemo')
-        && resourcesClient.includes('canRequestApi(entity.endpoint, accessContext)'),
+      resourcesClient.includes('const accessibleEntities = useMemo')
+        && resourcesClient.includes('canRequestApi(entity.endpoint, accessContext)')
+        && resourcesClient.includes('visibleEntities.find((entity) => entity.id === selectedEntityId) ?? visibleEntities[0]')
+        && !resourcesClient.includes('REPOSITORY_ENTITIES[0]'),
       'Data Explorer must filter API resources before fetching.',
     );
     assert(feedSource.includes('canRequestApi("/api/v1/inventory/stock-balances/"'));
@@ -357,6 +418,7 @@ async function main(): Promise<void> {
     assert(!projectClient.includes('<TopExpensesBarChart'), 'Project workspace must not duplicate Finance expense analytics.');
     assert(projectClient.includes('if (!selectedId || !canViewFinancials)'), 'Project financial background requests must be suppressed for non-financial roles.');
     assert(dashboardClient.includes('Task Submission') && dashboardClient.includes('pendingSubmissions'), 'Staff dashboard must expose the submission stage explicitly.');
+    assert(dashboardClient.includes('label="User & Role"') && !dashboardClient.includes("window.location.assign('/resources')"), 'Company Admin dashboard actions must open Administration, not Data Explorer.');
     for (const legacyGreen of ['#22C55E', '#16A34A', '#166534', '#5f8f35', 'bg-emerald-', 'text-emerald-']) {
       assert(!`${dashboardClient}${projectClient}${tasksClient}${financeClient}${feedSource}`.includes(legacyGreen), `Legacy green visual token remains: ${legacyGreen}`);
     }
@@ -385,7 +447,9 @@ async function main(): Promise<void> {
     assert(employeeMappingMigration.includes('SET "employee_id" = employee."id"') && !employeeMappingMigration.includes('SET "employee_id" = employee."id"::text'), 'Employee mapping migration must assign UUID to UUID without a text cast.');
     assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
     assert(reportingRoutes.includes("'/operational-summary'"), 'OM operational reporting projection is missing.');
-    assert(reportingClient.includes("om: ['operational', 'periodic', 'attendance']"), 'OM must not receive executive or Project P&L reporting tabs.');
+    assert(reportTabAccess.includes('om: ["operational", "periodic", "attendance"]')
+      && reportingClient.includes('canOpenReportTab(tab.id, userRole, requestAccess)'),
+      'OM must not receive executive or Project P&L reporting tabs.');
     assert(reportingClient.includes("includeOperational: userRole === 'om'"), 'Operational projection must only be requested for the OM journey.');
     assert(!projectClient.includes('<TopExpensesBarChart'), 'Project workspace must not render project expense analytics for PM or OM.');
     assert(!tasksClient.includes('<span>+ Buat Task Harian</span>'), 'Daily Task action must not render duplicate plus symbols.');

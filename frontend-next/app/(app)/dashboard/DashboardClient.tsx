@@ -1319,13 +1319,13 @@ export default function DashboardClient() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <KpiCard label="Akses Global" value="Read-only" subLabel="Data operasional lintas company" icon={ShieldAlert} />
           <KpiCard label="Module Governance" value="Per Company" subLabel="Aktivasi read/write terpisah" icon={Layers} />
-          <KpiCard label="Kelola Company" value="Open" subLabel="Buka Company & Access" icon={Building2} onClick={() => window.location.assign('/resources')} />
+          <KpiCard label="Kelola Company" value="Open" subLabel="Buka Company & Access" icon={Building2} onClick={() => window.location.assign('/administration')} />
         </div>
       )}
       {userRole === "company_admin" && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <KpiCard label="User & Role" value="Kelola" subLabel="Atur user dan akses personal company" icon={Users} onClick={() => window.location.assign('/resources')} />
-          <KpiCard label="Company Modules" value="Delegasi" subLabel="Hanya modul yang telah disetujui Super Admin" icon={Layers} onClick={() => window.location.assign('/resources')} />
+          <KpiCard label="User & Role" value="Kelola" subLabel="Atur user dan akses personal company" icon={Users} onClick={() => window.location.assign('/administration')} />
+          <KpiCard label="Company Modules" value="Delegasi" subLabel="Hanya modul yang telah disetujui Super Admin" icon={Layers} onClick={() => window.location.assign('/administration')} />
           <KpiCard label="Operational Data" value="Scoped" subLabel="Gunakan role operasional terpisah bila diperlukan" icon={ShieldAlert} />
         </div>
       )}

@@ -8,7 +8,7 @@
  */
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2, Check, ChevronRight, Eye, KeyRound, LockKeyhole, Mail,
   Pencil, RefreshCw, Search, ShieldCheck, UserPlus, Users,
@@ -61,47 +61,55 @@ function accessMode(access?: UserModuleAccess): AccessMode {
 
 /** Renders and orchestrates company entitlement and per-user delegation flows. */
 export function AccessAdministration() {
-  const { user, userRole, company, refreshProfile } = useAuth();
+  const { user, userRole, company, setCompany, refreshProfile } = useAuth();
   const isSuper = userRole === "super_admin";
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState(company || "");
+  const [selectedCompany, setSelectedCompany] = useState(company && company !== "all" ? company : "");
   const [modules, setModules] = useState<ModuleAccess[]>([]);
+  const [loadedContextCompany, setLoadedContextCompany] = useState("");
+  const contextSequence = useRef(0);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [overrides, setOverrides] = useState<UserModuleAccess[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [baseError, setBaseError] = useState("");
+  const [contextError, setContextError] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [invite, setInvite] = useState({ name: "", email: "", password: "", role_code: "ROLE-STAFF" });
+  const contextCompany = isSuper ? selectedCompany : (company || "");
 
   /** Loads company and role catalogs used by both administration modes. */
   const loadBase = useCallback(async () => {
     setLoading(true);
     try {
       const [companyResponse, roleResponse] = await Promise.all([
-        api.get("/api/v1/core/companies/?page_size=100"),
+        isSuper ? api.get("/api/v1/core/companies/?page_size=100", { headers: { "X-Company-ID": "all" } }) : Promise.resolve(null),
         api.get("/api/v1/accounts/roles/?page_size=100"),
       ]);
-      const companyRows = normalizeList<Company>(companyResponse.data).rows;
+      const companyRows = companyResponse ? normalizeList<Company>(companyResponse.data).rows : [];
       setCompanies(companyRows);
       setRoles(normalizeList<Role>(roleResponse.data).rows.filter((role) => role.role_code !== "ROLE-SUPER-ADMIN"));
-      setSelectedCompany((current) => current || company || companyRows[0]?.id || "");
+      if (isSuper) setSelectedCompany((current) => companyRows.find((item) => item.id === company)?.id || (companyRows.some((item) => item.id === current) ? current : (companyRows[0]?.id || "")));
+      setBaseError("");
     } catch (error: any) {
-      toast.error(errorMessage(error, "Gagal memuat konfigurasi akses."));
+      setBaseError(errorMessage(error, "Gagal memuat konfigurasi akses."));
     } finally {
       setLoading(false);
     }
-  }, [company]);
+  }, [company, isSuper]);
 
   /** Reloads the active company so saved access remains visible after refresh. */
   const loadCompanyContext = useCallback(async () => {
-    if (!selectedCompany) return;
+    if (!contextCompany) return;
+    const sequence = ++contextSequence.current;
     setLoading(true);
     try {
       if (isSuper) {
-        const response = await api.get(`/api/v1/core/companies/${selectedCompany}/modules`);
+        const response = await api.get(`/api/v1/core/companies/${contextCompany}/modules`, { headers: { "X-Company-ID": contextCompany } });
+        if (sequence !== contextSequence.current) return;
         setModules(response.data?.results || []);
         setUsers([]);
         setOverrides([]);
@@ -111,36 +119,51 @@ export function AccessAdministration() {
           api.get("/api/v1/core/company-modules/my-modules"),
           api.get("/api/v1/accounts/user-module-access"),
         ]);
+        if (sequence !== contextSequence.current) return;
         const rows = normalizeList<UserRow>(userResponse.data).rows;
         setUsers(rows);
         setSelectedUserId((current) => rows.some((item) => item.id === current) ? current : (rows.find((item) => item.id !== user?.id)?.id || rows[0]?.id || ""));
         setModules(moduleResponse.data?.results || []);
         setOverrides(accessResponse.data?.results || []);
       }
+      setLoadedContextCompany(contextCompany);
+      setContextError("");
     } catch (error: any) {
-      toast.error(errorMessage(error, "Gagal memuat akses company."));
+      if (sequence !== contextSequence.current) return;
+      setModules([]);
+      setUsers([]);
+      setOverrides([]);
+      setLoadedContextCompany("");
+      setContextError(errorMessage(error, "Gagal memuat akses company."));
     } finally {
-      setLoading(false);
+      if (sequence === contextSequence.current) setLoading(false);
     }
-  }, [isSuper, selectedCompany, user?.id]);
+  }, [isSuper, contextCompany, user?.id]);
 
   useEffect(() => { void loadBase(); }, [loadBase]);
-  useEffect(() => { void loadCompanyContext(); }, [loadCompanyContext]);
+  useEffect(() => {
+    void loadCompanyContext();
+    return () => { contextSequence.current += 1; };
+  }, [loadCompanyContext]);
 
-  const approvedModules = useMemo(() => modules.filter((item) => item.enabled), [modules]);
-  const selectedUser = users.find((item) => item.id === selectedUserId);
+  const displayedModules = loadedContextCompany === contextCompany ? modules : [];
+  const displayedUsers = loadedContextCompany === contextCompany ? users : [];
+  const displayedOverrides = loadedContextCompany === contextCompany ? overrides : [];
+  const loadError = baseError || contextError;
+  const approvedModules = useMemo(() => displayedModules.filter((item) => item.enabled), [displayedModules]);
+  const selectedUser = displayedUsers.find((item) => item.id === selectedUserId);
   const visibleUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return users.filter((item) => !query || `${item.full_name || ""} ${item.email}`.toLowerCase().includes(query));
-  }, [search, users]);
+    return displayedUsers.filter((item) => !query || `${item.full_name || ""} ${item.email}`.toLowerCase().includes(query));
+  }, [search, displayedUsers]);
 
   /** Super Admin updates the commercial module ceiling for one company. */
   async function updateCompanyModule(module: ModuleAccess, enabled: boolean) {
     setSavingKey(`company:${module.module_code}`);
     try {
-      await api.patch(`/api/v1/core/companies/${selectedCompany}/modules/${module.module_code}`, {
+      await api.patch(`/api/v1/core/companies/${contextCompany}/modules/${module.module_code}`, {
         enabled, allow_read: enabled, allow_write: module.module_code === 'MARBOT' ? false : enabled,
-      });
+      }, { headers: { "X-Company-ID": contextCompany } });
       await loadCompanyContext();
       toast.success(`${module.module_code} ${enabled ? "diaktifkan" : "dinonaktifkan"}.`);
     } catch (error: any) {
@@ -207,10 +230,12 @@ export function AccessAdministration() {
         </div>
       </header>
 
+      {loadError && <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{loadError} <button onClick={() => { void loadBase(); void loadCompanyContext(); }} className="ml-2 font-semibold underline">Coba lagi</button></div>}
+
       {isSuper && (
         <section className="rounded-2xl border border-[#EFEFEF] bg-white p-5">
           <label className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[.14em] text-[#4F5050]"><Building2 size={14} /> Selected company</label>
-          <select className="h-11 w-full max-w-xl rounded-xl border border-[#EFEFEF] bg-white px-3 text-sm text-[#2649B3] outline-none focus:border-[#42ACFB]" value={selectedCompany} disabled={loading} onChange={(event) => setSelectedCompany(event.target.value)}>
+          <select className="h-11 w-full max-w-xl rounded-xl border border-[#EFEFEF] bg-white px-3 text-sm text-[#2649B3] outline-none focus:border-[#42ACFB]" value={selectedCompany} disabled={loading} onChange={(event) => { setSelectedCompany(event.target.value); setCompany(event.target.value); }}>
             {companies.map((item) => <option key={item.id} value={item.id}>{item.legal_name || item.name} · {item.company_code || "No code"}</option>)}
           </select>
         </section>
@@ -218,7 +243,7 @@ export function AccessAdministration() {
 
       {isSuper ? (
         <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {modules.map((module) => {
+          {displayedModules.map((module) => {
             const meta = MODULE_LABELS[module.module_code] || { name: module.module_code, description: "System module" };
             return <article key={module.module_code} className="rounded-2xl border border-[#EFEFEF] bg-white p-5 transition hover:border-[#9FD6FF]">
               <div className="flex items-start justify-between gap-4"><div><p className="font-semibold text-[#2649B3]">{meta.name}</p><p className="mt-1 text-xs leading-5 text-[#4F5050]">{meta.description}</p></div><button disabled={savingKey === `company:${module.module_code}`} onClick={() => updateCompanyModule(module, !module.enabled)} className={`relative h-6 w-11 rounded-full transition ${module.enabled ? "bg-[#2649B3]" : "bg-[#D9D9D9]"}`} aria-label={`${module.enabled ? "Disable" : "Enable"} ${meta.name}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${module.enabled ? "left-6" : "left-1"}`} /></button></div>
@@ -230,7 +255,7 @@ export function AccessAdministration() {
         <div className="grid min-h-[590px] grid-cols-1 overflow-hidden rounded-2xl border border-[#EFEFEF] bg-white lg:grid-cols-[310px_1fr]">
           <aside className="border-b border-[#EFEFEF] bg-[#EFEFEF] lg:border-b-0 lg:border-r">
             <div className="border-b border-[#EFEFEF] p-5">
-              <div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#4F5050]">Company members</p><p className="mt-1 text-sm text-[#2649B3]">{users.length} active identities</p></div><Users size={19} className="text-[#42ACFB]" /></div>
+              <div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#4F5050]">Company members</p><p className="mt-1 text-sm text-[#2649B3]">{displayedUsers.length} active identities</p></div><Users size={19} className="text-[#42ACFB]" /></div>
               <div className="relative mt-4"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4F5050]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search team member" className="h-10 w-full rounded-xl border border-[#EFEFEF] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#42ACFB]" /></div>
             </div>
             <div className="max-h-[510px] overflow-y-auto p-2">
@@ -259,7 +284,7 @@ export function AccessAdministration() {
                 <div className="space-y-2">
                   {approvedModules.map((module) => {
                     const meta = MODULE_LABELS[module.module_code] || { name: module.module_code, description: "System module" };
-                    const explicit = overrides.find((item) => item.user_id === selectedUserId && item.module_code === module.module_code);
+                    const explicit = displayedOverrides.find((item) => item.user_id === selectedUserId && item.module_code === module.module_code);
                     const current = accessMode(explicit);
                     const saving = savingKey === `${selectedUserId}:${module.module_code}`;
                     const choices: Array<{ mode: AccessMode; label: string; icon: typeof Check }> = [

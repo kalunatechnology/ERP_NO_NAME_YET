@@ -8,8 +8,9 @@
  */
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   Search, RefreshCw, FolderArchive, ChevronRight, Eye, Layers, Filter,
   FileText, ShieldCheck, Database, Building, DollarSign, Briefcase, Users,
@@ -19,70 +20,32 @@ import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
-import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
 import { useAuth } from "@/contexts/AuthContext";
-import { AccessAdministration } from "@/components/administration/AccessAdministration";
-import { canRequestApi } from "@/lib/access/module-contract";
-import { canPerform } from "@/lib/access/capability-contract";
-
-interface ResourceEntity {
-  id: string;
-  name: string;
-  endpoint: string;
-  category: "Project" | "Finance" | "CRM" | "Master" | "Core";
-  description: string;
-  moduleLink?: string;
-}
-
-const REPOSITORY_ENTITIES: ResourceEntity[] = [
-  /* ── Projects ────────── */
-  { id: "projects",      name: "Daftar Portofolio Proyek", endpoint: "/api/v1/projects/projects/", category: "Project", description: "Master project, timeline, kontrak & target penyelesaian", moduleLink: "/projects" },
-  { id: "main-tasks",    name: "WBS Level 1 (Main Tasks)", endpoint: "/api/v1/projects/main-tasks/", category: "Project", description: "Deliverable struktural utama dan fase pengerjaan proyek", moduleLink: "/projects" },
-  { id: "weekly-tasks",  name: "WBS Level 2 (Weekly Tasks)", endpoint: "/api/v1/projects/weekly-tasks/", category: "Project", description: "Paket kerja mingguan dan progres capaian berkala", moduleLink: "/projects" },
-  { id: "daily-tasks",   name: "WBS Level 3 (Daily Tasks)", endpoint: "/api/v1/projects/daily-tasks/", category: "Project", description: "Aktivitas harian lapangan, checklist dan issue blocking", moduleLink: "/projects" },
-  { id: "milestones",    name: "Project Milestones", endpoint: "/api/v1/projects/milestones/", category: "Project", description: "Titik capaian krusial dan dasar termin penagihan klien", moduleLink: "/projects" },
-
-  /* ── Finance ─────────── */
-  { id: "costs",         name: "Cost Entries (Beban WIP)", endpoint: "/api/v1/finance/project-cost-entries/", category: "Finance", description: "Realisasi pengeluaran dan akumulasi persediaan WIP", moduleLink: "/finance" },
-  { id: "fundings",      name: "Funding Proyek", endpoint: "/api/v1/finance/project-fundings/", category: "Finance", description: "Pencairan modal kerja dan drawdown kas proyek", moduleLink: "/finance" },
-  { id: "proposals",     name: "Proposal Billing Termin", endpoint: "/api/v1/finance/billing-proposals/", category: "Finance", description: "Pengajuan penagihan termin dan sertifikasi milestone", moduleLink: "/finance" },
-  { id: "journals",      name: "Buku Jurnal Umum", endpoint: "/api/v1/finance/journal-entries/", category: "Finance", description: "Pencatatan double-entry GL akuntansi perusahaan", moduleLink: "/finance" },
-
-  /* ── CRM & Commercial ─ */
-  { id: "inquiries",     name: "Incoming Inquiries", endpoint: "/api/v1/crm/customer-inquiries/", category: "CRM", description: "Prospek masuk, brief kebutuhan dan inquiry klien", moduleLink: "/crm" },
-  { id: "opportunities", name: "Deals & Opportunities", endpoint: "/api/v1/crm/opportunities/", category: "CRM", description: "Pipeline komersial, probabilitas dan estimasi deal", moduleLink: "/crm" },
-  { id: "estimates",     name: "Cost Estimates (HPP)", endpoint: "/api/v1/crm/cost-estimates/", category: "CRM", description: "Kalkulasi HPP, breakdown overhead, dan target margin", moduleLink: "/crm" },
-  { id: "quotations",    name: "Sales Quotations", endpoint: "/api/v1/sales/quotations/", category: "CRM", description: "Surat penawaran harga resmi dan status persetujuan", moduleLink: "/crm" },
-  { id: "orders",        name: "Sales Orders / Kontrak", endpoint: "/api/v1/sales/orders/", category: "CRM", description: "Pesanan terbit dan kontrak pengerjaan aktif", moduleLink: "/crm" },
-  { id: "tickets",       name: "Support & Klaim Garansi", endpoint: "/api/v1/service/cases/", category: "CRM", description: "Tiket penanganan purnajual, SLA dan klaim garansi", moduleLink: "/crm" },
-  { id: "credit",        name: "Credit Limit Snapshots", endpoint: "/api/v1/crm/credit-status-snapshots/", category: "CRM", description: "Plafon kredit, limit piutang, dan status AR customer", moduleLink: "/crm" },
-
-  /* ── Master Data ─────── */
-  { id: "parties",       name: "Katalog Klien & Vendor", endpoint: "/api/v1/master-data/parties/", category: "Master", description: "Database rekanan, principal, vendor, dan pelanggan", moduleLink: "/administration" },
-  { id: "products",      name: "Master Produk & Jasa", endpoint: "/api/v1/master-data/products/", category: "Master", description: "Daftar layanan jasa dan material operasional", moduleLink: "/administration" },
-  { id: "companies",     name: "Profil Entitas Bisnis", endpoint: "/api/v1/core/companies/", category: "Core", description: "Legalitas entitas dan unit bisnis terdaftar", moduleLink: "/administration" },
-];
+import { canAccessRoute, canRequestApi } from "@/lib/access/module-contract";
+import { REPOSITORY_ENTITIES, ResourceEntity } from "@/lib/access/resource-catalog";
 
 const CATEGORIES = ["ALL", "Project", "Finance", "CRM", "Master", "Core"] as const;
 
 export default function ResourcesClient() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, company } = useAuth();
   const searchParams = useSearchParams();
   const initialQuery = searchParams?.get("search") || "";
 
-  const canAccessTechnical = canPerform("repository:technical", userRole);
-  const isSuperAdmin = userRole === "super_admin";
+  const canManageAccess = userRole === "super_admin" || userRole === "company_admin";
 
   const [activeCategory, setActiveCategory] = useState<string>("ALL");
-  const [selectedEntity, setSelectedEntity] = useState<ResourceEntity>(REPOSITORY_ENTITIES[0]);
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const requestSequence = useRef(0);
   const [rows, setRows] = useState<any[]>([]);
+  const [loadedRowsKey, setLoadedRowsKey] = useState("");
+  const [loadError, setLoadError] = useState<{ key: string; status: number; message: string } | null>(null);
+  const lastTrackedKey = useRef("");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(initialQuery);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [showJsonRaw, setShowJsonRaw] = useState(false);
-  const [adminView, setAdminView] = useState(false);
 
   const accessContext = {
     enabledModules: user?.enabled_modules,
@@ -91,88 +54,84 @@ export default function ResourcesClient() {
     isSuperAdmin: Boolean(user?.is_superuser),
   };
 
-  const visibleEntities = useMemo(() => {
-    return REPOSITORY_ENTITIES.filter((entity) => {
-      const allowedByRbac = canRequestApi(entity.endpoint, accessContext);
-      const matchesCategory = activeCategory === "ALL" || entity.category === activeCategory;
-      return allowedByRbac && matchesCategory;
-    });
-  }, [activeCategory, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, user?.is_superuser]);
+  const accessibleEntities = useMemo(() => REPOSITORY_ENTITIES.filter((entity) => canRequestApi(entity.endpoint, accessContext)),
+    [user?.active_role_code, user?.delegated_modules, user?.enabled_modules, user?.is_superuser]);
+  const effectiveCategory = activeCategory === "ALL" || accessibleEntities.some((entity) => entity.category === activeCategory)
+    ? activeCategory : "ALL";
+  const visibleEntities = accessibleEntities.filter((entity) => effectiveCategory === "ALL" || entity.category === effectiveCategory);
 
-  // Keep selected entity valid within filtered list
-  useEffect(() => {
-    if (visibleEntities.length > 0 && !visibleEntities.some((e) => e.id === selectedEntity.id)) {
-      setSelectedEntity(visibleEntities[0]);
-    }
-  }, [visibleEntities, selectedEntity.id]);
+  const selectedEntity = visibleEntities.find((entity) => entity.id === selectedEntityId) ?? visibleEntities[0];
+  const accessKey = JSON.stringify([
+    user?.id, company, user?.active_role_code,
+    [...(user?.enabled_modules ?? [])].sort(), [...(user?.delegated_modules ?? [])].sort(), user?.is_superuser,
+  ]);
+  const selectedRowsKey = `${accessKey}:${selectedEntity?.id ?? ""}`;
+  const visibleRows = loadedRowsKey === selectedRowsKey ? rows : [];
+  const visibleLoadError = loadError?.key === selectedRowsKey ? loadError : null;
 
   useEffect(() => {
     if (initialQuery) setSearch(initialQuery);
   }, [initialQuery]);
 
   const fetchRows = async (entity = selectedEntity) => {
-    if (adminView) return;
-    if (!canRequestApi(entity.endpoint, accessContext)) {
-      toast.error(`Akses ke data ${entity.name} dibatasi.`);
+    if (!entity || !visibleEntities.some((item) => item.id === entity.id)) {
       setRows([]);
+      setLoading(false);
       return;
     }
+    const sequence = ++requestSequence.current;
     setLoading(true);
+    setRows([]);
+    setLoadError(null);
     try {
       const q = new URLSearchParams();
       q.set("page_size", "50");
       if (search) q.set("search", search);
       const resp = await api.get(`${entity.endpoint}?${q.toString()}`);
-      setRows(normalizeList(resp.data).rows);
-    } catch {
-      toast.error(`Gagal memuat arsip data ${entity.name}`);
-      setRows([]);
+      if (sequence === requestSequence.current) {
+        setRows(normalizeList(resp.data).rows);
+        setLoadedRowsKey(`${accessKey}:${entity.id}`);
+        const recentKey = `${accessKey}:${entity.id}`;
+        if (lastTrackedKey.current !== recentKey) {
+          lastTrackedKey.current = recentKey;
+          void feedApi.trackRecentItem({
+            item_type: "RESOURCE", object_id: entity.id,
+            title: `Repository — ${entity.name}`, target_url: "/resources",
+          }).catch(() => {});
+        }
+      }
+    } catch (error) {
+      if (sequence === requestSequence.current) {
+        const response = (error as { response?: { status?: number; data?: { detail?: string; error?: string } } })?.response;
+        const status = response?.status ?? 0;
+        const message = status === 403
+          ? response?.data?.detail || `Akses ke data ${entity.name} dibatasi untuk role atau company aktif.`
+          : `Arsip data ${entity.name} belum dapat dimuat. Coba Refresh.`;
+        setLoadError({ key: `${accessKey}:${entity.id}`, status, message });
+        setRows([]);
+      }
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!adminView && selectedEntity) {
+    if (selectedEntity) {
       void fetchRows(selectedEntity);
+    } else {
+      requestSequence.current += 1;
+      setRows([]);
+      setLoading(false);
     }
-  }, [adminView, selectedEntity.id]);
+    return () => { requestSequence.current += 1; };
+  }, [selectedEntity?.id, accessKey]);
 
-  // Track recent visits
-  useEffect(() => {
-    if (!adminView && selectedEntity) {
-      feedApi.trackRecentItem({
-        item_type: "RESOURCE",
-        object_id: selectedEntity.id,
-        title: `Repository — ${selectedEntity.name}`,
-        target_url: "/resources",
-      }).catch(() => {});
-    }
-  }, [adminView, selectedEntity.id]);
-
-  // If super admin has switched to administration view
-  if (adminView && isSuperAdmin) {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-gray-100">
-          <div className="flex items-center gap-2">
-            <ShieldCheck size={18} className="text-purple-600" />
-            <span className="text-xs font-bold text-gray-800">Admin Workspace Aktif</span>
-          </div>
-          <button
-            onClick={() => setAdminView(false)}
-            className="btn-outline py-1.5 px-3 text-xs gap-1.5"
-          >
-            ← Kembali ke Enterprise Repository
-          </button>
-        </div>
-        <AccessAdministration />
-      </div>
-    );
+  if (!selectedEntity) {
+    return <div className="card p-8 text-center text-sm text-text-secondary">Tidak ada katalog yang tersedia untuk akses aktif Anda.</div>;
   }
 
   // Extract displayable preview columns
-  const sample = rows[0] || {};
+  const sample = visibleRows[0] || {};
   const allKeys = Object.keys(sample);
   const previewColumns = allKeys.filter(k => !k.startsWith("_") && !["password", "token"].includes(k)).slice(0, 5);
 
@@ -193,14 +152,14 @@ export default function ResourcesClient() {
           <span className="px-3 py-1.5 rounded-xl bg-brand-light-green border border-brand-green/20 text-brand-deep-green text-xs font-bold flex items-center gap-1.5">
             <ShieldCheck size={13} /> Enterprise Archive · Single Source of Truth
           </span>
-          {canAccessTechnical && (
-            <button
-              onClick={() => setAdminView(true)}
+          {canManageAccess && (
+            <Link
+              href="/administration"
               className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-purple-700 border-purple-200 hover:bg-purple-50"
-              title="Akses pengaturan administrasi teknis & IAM"
+              title="Kelola company, modul, dan akses user"
             >
-              <Code size={13} /> Developer & Admin Tools
-            </button>
+              <Code size={13} /> {userRole === "super_admin" ? "Company & Access" : "User & Access"}
+            </Link>
           )}
           <button
             onClick={() => fetchRows(selectedEntity)}
@@ -214,13 +173,13 @@ export default function ResourcesClient() {
 
       {/* ── Category Tabs ───────────────────────────── */}
       <div className="flex gap-2 border-b border-gray-200 pb-2 overflow-x-auto no-scrollbar">
-        {CATEGORIES.map((cat) => (
+        {CATEGORIES.filter((cat) => cat === "ALL" || accessibleEntities.some((entity) => entity.category === cat)).map((cat) => (
           <button
             key={cat}
             onClick={() => setActiveCategory(cat)}
             className={cn(
               "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
-              activeCategory === cat
+              effectiveCategory === cat
                 ? "bg-slate-900 text-white shadow-xs"
                 : "bg-white text-text-secondary border border-gray-200 hover:bg-gray-50"
             )}
@@ -236,7 +195,7 @@ export default function ResourcesClient() {
           <button
             key={entity.id}
             onClick={() => {
-              setSelectedEntity(entity);
+              setSelectedEntityId(entity.id);
               setSearch("");
             }}
             className={cn(
@@ -282,7 +241,7 @@ export default function ResourcesClient() {
           <button onClick={() => fetchRows()} className="btn-primary py-2 px-3 text-xs gap-1">
             Cari
           </button>
-          {selectedEntity.moduleLink && (
+          {selectedEntity.moduleLink && canAccessRoute({ pathname: selectedEntity.moduleLink, ...accessContext }) && (
             <a
               href={selectedEntity.moduleLink}
               className="btn-ghost p-2 text-text-secondary hover:text-brand-green rounded-xl"
@@ -298,7 +257,7 @@ export default function ResourcesClient() {
       <div className="card rounded-2xl overflow-hidden p-1 border border-gray-100 shadow-xs">
         <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center text-xs text-text-secondary font-medium">
           <span>Menampilkan catatan aktif dari katalog <b>{selectedEntity.name}</b></span>
-          <span className="badge badge-info text-2xs font-bold">{rows.length} Dokumen / Record</span>
+          <span className="badge badge-info text-2xs font-bold">{visibleRows.length} Dokumen / Record</span>
         </div>
 
         {loading ? (
@@ -306,7 +265,13 @@ export default function ResourcesClient() {
             <RefreshCw size={24} className="animate-spin text-brand-green opacity-40" />
             <span>Memuat arsip data dari server...</span>
           </div>
-        ) : rows.length === 0 ? (
+        ) : visibleLoadError ? (
+          <div className="p-12 text-center text-sm text-text-secondary flex flex-col items-center gap-2" role="alert">
+            <FolderArchive size={32} className="text-gray-300" />
+            <span className="font-semibold text-slate-700">{visibleLoadError.message}</span>
+            {visibleLoadError.status !== 403 && <button type="button" onClick={() => fetchRows()} className="btn-outline py-2 px-3 text-xs">Coba lagi</button>}
+          </div>
+        ) : visibleRows.length === 0 ? (
           <div className="p-12 text-center text-xs text-text-secondary flex flex-col items-center gap-2">
             <FolderArchive size={32} className="text-gray-300" />
             <span className="font-semibold text-slate-700">Belum ada dokumen atau entri tersimpan pada katalog ini.</span>
@@ -327,7 +292,7 @@ export default function ResourcesClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((row, idx) => (
+                {visibleRows.map((row, idx) => (
                   <tr key={row.id || idx} className="hover:bg-brand-light-green/20 transition-colors">
                     <td className="py-2.5 px-3 font-mono font-bold text-text-secondary whitespace-nowrap">
                       #{String(row.id || idx + 1).slice(0, 10)}

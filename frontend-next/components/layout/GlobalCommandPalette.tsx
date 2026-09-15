@@ -40,6 +40,7 @@ const COMMAND_ITEMS: CommandItem[] = [
   { id: "crm",      label: "CRM & Sales Pipeline",         desc: "Deals, quotation, & customer support",   path: "/crm",        category: "CRM", icon: Building2 },
   { id: "reports",  label: "Laporan & Observabilitas",     desc: "Ekspor P&L proyek & jurnal umum",         path: "/reporting",  category: "Finansial", icon: TrendingUp },
   { id: "explorer", label: "OpenAPI Data Explorer",        desc: "Raw REST resources & inspector data",     path: "/resources",  category: "Navigasi", icon: Database },
+  { id: "access",   label: "Company & User Access",        desc: "Aktivasi modul dan pengaturan akses user", path: "/administration", category: "Navigasi", icon: ShieldCheck },
 ];
 
 /**

@@ -218,12 +218,20 @@ export function requireSuperAdminForWrite(req: Request, res: Response, next: Nex
  * Data/side effects: May mutate request metadata or the response, as shown in the implementation.
  */
 export function enforceSuperAdminReadOnly(req: Request, _res: Response, next: NextFunction): void {
-  if (!req.user || !isSuperAdmin(req.user.roles) || ['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+  const method = req.method.toUpperCase();
+  if (!req.user || !isSuperAdmin(req.user.roles) || ['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     return next();
   }
 
+  const requestPath = req.path.replace(/\/+$/, '') || '/';
+  const personalUtilityPosts = new Set([
+    '/recent-items/track', '/core/recent-items/track', '/core/track-recent',
+    '/sidebar-feed/mark-read', '/core/sidebar-feed/mark-read',
+  ]);
+  if (method === 'POST' && personalUtilityPosts.has(requestPath)) return next();
+
   const governancePrefixes = ['/auth/', '/accounts/', '/core/companies', '/core/tenants'];
-  if (governancePrefixes.some((prefix) => req.path.startsWith(prefix))) {
+  if (governancePrefixes.some((prefix) => requestPath.startsWith(prefix))) {
     return next();
   }
 

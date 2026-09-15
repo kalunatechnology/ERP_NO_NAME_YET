@@ -60,6 +60,7 @@ export interface RouteAccessContract {
 
 /** Route contracts are ordered from the most specific route to the broadest. */
 export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
+  { prefix: "/administration", module: null, roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/resources", module: "ANALYTICS", roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin, ROLE_CODES.director], moduleBypassRoles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/reporting", module: "REPORTING", roles: null },
   { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff] },
@@ -128,6 +129,8 @@ const API_ACCESS_CONTRACTS: readonly ApiAccessContract[] = [
   { prefix: "/api/v1/commands/projects", module: "PROJECTS", roles: PROJECT_ROLES },
   { prefix: "/api/v1/commands/finance", module: "FINANCE", roles: FINANCE_ROLES },
   { prefix: "/api/v1/requests", module: "REQUESTS" },
+  { prefix: "/api/v1/request", module: "REQUESTS" },
+  { prefix: "/api/v1/marbot", module: "MARBOT" },
   { prefix: "/api/v1/crm", module: "CRM", roles: CRM_ROLES },
   { prefix: "/api/v1/sales", module: "SALES", roles: CRM_ROLES },
   { prefix: "/api/v1/projects", module: "PROJECTS", roles: PROJECT_ROLES },

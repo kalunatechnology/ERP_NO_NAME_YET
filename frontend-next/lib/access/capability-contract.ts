@@ -66,26 +66,27 @@ export function canPerform(
 
     case "project:create":
       // Executive is an overseer - CANNOT create projects!
-      return ["super_admin", "company_admin", "om", "pm"].includes(role);
+      // Super Admin is operationally read-only even though it can open the page.
+      return ["company_admin", "om", "pm"].includes(role);
 
     case "project:update":
     case "project:delete":
       // Executive is an overseer - CANNOT modify or delete projects!
-      return ["super_admin", "company_admin", "om", "pm"].includes(role);
+      return ["company_admin", "om", "pm"].includes(role);
 
     case "finance:view":
       return ["super_admin", "company_admin", "executive", "finance", "om", "pm"].includes(role);
 
     case "finance:operate":
       // Executive is view-only in Finance (cannot create cost entries, fund requests, approve, post to WIP, billing)
-      return ["super_admin", "finance"].includes(role);
+      return role === "finance";
 
     case "crm:view":
       return ["super_admin", "company_admin", "executive", "crm", "pm"].includes(role);
 
     case "crm:operate":
       // Executive is view-only in CRM (cannot create deals, edit limits, estimates, tickets, inquiries)
-      return ["super_admin", "company_admin", "crm"].includes(role);
+      return ["company_admin", "crm"].includes(role);
 
     case "attendance:view-team":
       // Executive, PM, OM, Super Admin can view team attendance

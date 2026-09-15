@@ -7,7 +7,7 @@
  */
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   RefreshCw, BarChart3, TrendingUp, DollarSign, FileText,
@@ -19,8 +19,9 @@ import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
-import { useAuth, UserRoleType } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { canRequestApi } from "@/lib/access/module-contract";
+import { canOpenReportTab } from "@/lib/access/report-tab-access";
 
 /* ── Tab Config ──────────────────────────────────── */
 const REPORT_TABS = [
@@ -31,17 +32,6 @@ const REPORT_TABS = [
   { id: "attendance",  label: "Kehadiran", icon: Clock3 },
   { id: "operational", label: "Operasional", icon: Layers },
 ];
-
-const ROLE_REPORT_TABS: Record<UserRoleType, string[]> = {
-  super_admin: ['executive', 'periodic', 'attendance'],
-  company_admin: ['executive', 'periodic', 'attendance'],
-  executive: ['executive', 'project-pnl', 'periodic', 'attendance'],
-  pm: ['executive', 'project-pnl', 'journals', 'periodic', 'attendance'],
-  om: ['operational', 'periodic', 'attendance'],
-  finance: ['executive', 'project-pnl', 'journals', 'periodic', 'attendance'],
-  crm: ['executive', 'periodic', 'attendance'],
-  staff: ['periodic', 'attendance'],
-};
 
 /* ── Data Loading ────────────────────────────────── */
 /**
@@ -56,19 +46,26 @@ async function loadReportingData({ canReadProjects, canReadFinance, includeOpera
   // reporting projections below; finance/project sources are fetched solely
   // when the company has granted their owning module.
   const emptyRows = Promise.resolve<any[]>([]);
-  const [projects, costEntries, billings, journals, periodic, attendance, operational] = await Promise.all([
+  const readOptionalProjection = (path: string) => api.get(path)
+    .then((response) => ({ value: response.data, error: "" }))
+    .catch((error) => ({ value: null, error: error?.response?.data?.detail || error?.response?.data?.error?.message || "Laporan belum dapat dimuat." }));
+  const [projects, costEntries, billings, journals, periodic, attendanceResult, operationalResult] = await Promise.all([
     canReadProjects ? api.get("/api/v1/projects/projects/?page_size=100").then(r => normalizeList<any>(r.data).rows) : emptyRows,
     canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=500").then(r => normalizeList<any>(r.data).rows) : emptyRows,
     canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=200").then(r => normalizeList<any>(r.data).rows) : emptyRows,
     canReadFinance ? api.get("/api/v1/finance/journal-entries/?page_size=200").then(r => normalizeList<any>(r.data).rows) : emptyRows,
     api.get('/api/v1/reporting/periodic-project-summary?period_type=MONTHLY').then(r => r.data),
-    api.get('/api/v1/reporting/attendance-summary').then(r => r.data),
+    readOptionalProjection('/api/v1/reporting/attendance-summary'),
     includeOperational
-      ? api.get('/api/v1/reporting/operational-summary').then(r => r.data).catch(() => null)
-      : Promise.resolve(null),
+      ? readOptionalProjection('/api/v1/reporting/operational-summary')
+      : Promise.resolve({ value: null, error: "" }),
   ]);
 
-  return { projects, costEntries, billings, orders: [], journals, periodic, attendance, operational };
+  return {
+    projects, costEntries, billings, orders: [], journals, periodic,
+    attendance: attendanceResult.value, operational: operationalResult.value,
+    sectionErrors: { attendance: attendanceResult.error, operational: operationalResult.error },
+  };
 }
 
 /* ── Shared Components ───────────────────────────── */
@@ -406,11 +403,12 @@ function TabJournals({ data }: { data: ReturnType<typeof createDefaultData> }) {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function createDefaultData() {
-  return { projects: [] as any[], costEntries: [] as any[], billings: [] as any[], orders: [] as any[], journals: [] as any[], periodic: null as any, attendance: null as any, operational: null as any };
+  return { projects: [] as any[], costEntries: [] as any[], billings: [] as any[], orders: [] as any[], journals: [] as any[], periodic: null as any, attendance: null as any, operational: null as any, sectionErrors: { attendance: "", operational: "" } };
 }
 
 function TabOperational({ data }: { data: ReturnType<typeof createDefaultData> }) {
   const value = data.operational;
+  if (data.sectionErrors.operational) return <div role="alert" className="card rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">{data.sectionErrors.operational}</div>;
   const metrics = [
     ['Proyek Aktif', value?.projects?.active ?? 0],
     ['Task Berjalan', value?.tasks?.in_progress ?? 0],
@@ -440,6 +438,7 @@ function TabPeriodic({ data }: { data: ReturnType<typeof createDefaultData> }) {
 
 function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> }) {
   const attendance = data.attendance;
+  if (data.sectionErrors.attendance) return <div role="alert" className="card rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">{data.sectionErrors.attendance}</div>;
   const entries = attendance?.entries ?? attendance?.rows ?? attendance?.timesheets ?? [];
   return <div className="card rounded-xl p-5">
     <h2 className="font-bold text-text-primary">Laporan Kehadiran</h2>
@@ -479,7 +478,7 @@ function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> })
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function ReportingClient() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, company } = useAuth();
   const searchParams = useSearchParams();
   const requestAccess = {
     enabledModules: user?.enabled_modules,
@@ -489,19 +488,19 @@ export default function ReportingClient() {
   };
   const canReadProjects = canRequestApi('/api/v1/projects/projects/', requestAccess);
   const canReadFinance = canRequestApi('/api/v1/finance/project-cost-entries/', requestAccess);
-  const allowedTabs = useMemo(() => REPORT_TABS.filter((tab) => {
-    if (!ROLE_REPORT_TABS[userRole].includes(tab.id)) return false;
-    if (tab.id === 'project-pnl') return canReadProjects && canReadFinance;
-    if (tab.id === 'executive') return canReadProjects;
-    if (tab.id === 'journals') return canReadFinance;
-    return true;
-  }), [canReadFinance, canReadProjects, userRole]);
+  const allowedTabs = useMemo(() => REPORT_TABS.filter((tab) => canOpenReportTab(tab.id, userRole, requestAccess)),
+    [canReadFinance, canReadProjects, userRole]);
   const requestedTab = searchParams.get('tab');
-  const initialTab = requestedTab && ROLE_REPORT_TABS[userRole].includes(requestedTab) ? requestedTab : allowedTabs[0]?.id ?? 'periodic';
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const initialTab = requestedTab && allowedTabs.some((tab) => tab.id === requestedTab) ? requestedTab : allowedTabs[0]?.id ?? 'periodic';
+  const [chosenTab, setActiveTab] = useState(initialTab);
+  const activeTab = allowedTabs.some((tab) => tab.id === chosenTab) ? chosenTab : allowedTabs[0]?.id ?? 'periodic';
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState(createDefaultData());
+  const [loadedDataKey, setLoadedDataKey] = useState("");
+  const requestSequence = useRef(0);
+  const contextKey = JSON.stringify([user?.id, company, user?.active_role_code, canReadProjects, canReadFinance]);
+  const displayData = loadedDataKey === contextKey ? data : createDefaultData();
   const [showArchive, setShowArchive] = useState(false);
   const [reportHistory, setReportHistory] = useState<Array<{ id: string; title: string; format: string; createdAt: string }>>([]);
 
@@ -516,35 +515,44 @@ export default function ReportingClient() {
   };
 
   const loadData = useCallback(async (silent = false) => {
+    const sequence = ++requestSequence.current;
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
       const d = await loadReportingData({ canReadProjects, canReadFinance, includeOperational: userRole === 'om' });
-      setData(d);
+      if (sequence === requestSequence.current) {
+        setData(d);
+        setLoadedDataKey(contextKey);
+      }
     } catch {
-      toast.error("Gagal memuat data laporan.");
+      if (sequence === requestSequence.current) toast.error("Gagal memuat data laporan.");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (sequence === requestSequence.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [canReadFinance, canReadProjects, userRole]);
-
-  useEffect(() => { loadData(); }, [loadData]);
+  }, [canReadFinance, canReadProjects, userRole, contextKey]);
 
   useEffect(() => {
-    const nextTab = requestedTab && ROLE_REPORT_TABS[userRole].includes(requestedTab) ? requestedTab : allowedTabs[0]?.id;
-    if (nextTab && !allowedTabs.some((tab) => tab.id === activeTab)) setActiveTab(nextTab);
-  }, [activeTab, allowedTabs, requestedTab, userRole]);
+    void loadData();
+    return () => { requestSequence.current += 1; };
+  }, [loadData]);
+
+  useEffect(() => {
+    if (requestedTab && allowedTabs.some((tab) => tab.id === requestedTab)) setActiveTab(requestedTab);
+  }, [allowedTabs, requestedTab]);
 
   /* Track recently opened Reporting */
   useEffect(() => {
+    if (!allowedTabs.some((tab) => tab.id === activeTab)) return;
     feedApi.trackRecentItem({
       item_type: "REPORT",
       object_id: `rep-${activeTab}`,
       title: `Laporan — ${REPORT_TABS.find(t => t.id === activeTab)?.label || "Executive"}`,
       target_url: "/reporting",
     }).catch(() => {});
-  }, [activeTab]);
+  }, [activeTab, allowedTabs]);
 
 /**
  * handleExport coordinates the UI behavior represented by this function.
@@ -558,8 +566,8 @@ export default function ReportingClient() {
       toast("Mengunduh laporan CSV...");
       const rows = [
         ["Proyek", "Budget", "Actual Cost", "Gross Profit", "Margin %"],
-        ...data.projects.map(p => {
-          const pCost = data.costEntries.filter(c => String(c.project) === String(p.id)).reduce((s, c) => s + Number(c.total_cost || 0), 0);
+        ...displayData.projects.map(p => {
+          const pCost = displayData.costEntries.filter(c => String(c.project) === String(p.id)).reduce((s, c) => s + Number(c.total_cost || 0), 0);
           const budget = Number(p.budget_amount || p.budget || 0);
           const gp = budget - pCost;
           const mgn = budget > 0 ? ((gp / budget) * 100).toFixed(1) : "0";
@@ -579,8 +587,8 @@ export default function ReportingClient() {
       const printWindow = window.open("", "_blank");
       if (printWindow) {
         const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char] || char));
-        const projectRows = data.projects.map((project) => {
-          const cost = data.costEntries.filter(entry => String(entry.project ?? entry.project_id) === String(project.id)).reduce((sum, entry) => sum + Number(entry.total_cost ?? entry.amount ?? 0), 0);
+        const projectRows = displayData.projects.map((project) => {
+          const cost = displayData.costEntries.filter(entry => String(entry.project ?? entry.project_id) === String(project.id)).reduce((sum, entry) => sum + Number(entry.total_cost ?? entry.amount ?? 0), 0);
           const budget = Number(project.budget_amount ?? project.budget ?? 0);
           return `<tr><td>${escapeHtml(project.project_code ?? '-')}</td><td>${escapeHtml(project.project_name ?? project.name ?? '-')}</td><td>Rp ${budget.toLocaleString('id-ID')}</td><td>Rp ${cost.toLocaleString('id-ID')}</td><td>Rp ${(budget - cost).toLocaleString('id-ID')}</td></tr>`;
         }).join('') || '<tr><td colspan="5">Belum ada data proyek.</td></tr>';
@@ -683,12 +691,12 @@ export default function ReportingClient() {
           </div>
         ) : (
           <>
-            {activeTab === "project-pnl" && <TabProjectPnL data={data} />}
-            {activeTab === "executive"   && <TabExecutive data={data} />}
-            {activeTab === "journals"    && <TabJournals data={data} />}
-            {activeTab === "periodic"    && <TabPeriodic data={data} />}
-            {activeTab === "attendance"  && <TabAttendance data={data} />}
-            {activeTab === "operational" && <TabOperational data={data} />}
+            {activeTab === "project-pnl" && <TabProjectPnL data={displayData} />}
+            {activeTab === "executive"   && <TabExecutive data={displayData} />}
+            {activeTab === "journals"    && <TabJournals data={displayData} />}
+            {activeTab === "periodic"    && <TabPeriodic data={displayData} />}
+            {activeTab === "attendance"  && <TabAttendance data={displayData} />}
+            {activeTab === "operational" && <TabOperational data={displayData} />}
           </>
         )}
       </div>
