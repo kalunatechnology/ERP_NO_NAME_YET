@@ -9,6 +9,27 @@
 import prisma from '../../config/database';
 import { ValidationError } from '../../utils/errors';
 import { toExternalRoleCode } from '../../types/roles';
+import { RoleCode } from '@prisma/client';
+
+// Defaults are installed once when a company first activates Marbot. Existing
+// explicit role grants (including denials) are never overwritten.
+const MARBOT_ROLE_READS: Partial<Record<RoleCode, string[]>> = {
+  DIRECTOR: ['READ_PROJECT', 'READ_TASK', 'READ_FINANCE_SUMMARY', 'READ_TICKET'],
+  OPERATIONAL_MANAGER: ['READ_PROJECT', 'READ_TASK'],
+  PROJECT_MANAGER: ['READ_PROJECT', 'READ_TASK'],
+  SUPERVISOR: ['READ_PROJECT', 'READ_TASK'],
+  STAFF: ['READ_PROJECT', 'READ_TASK'],
+  FINANCE: ['READ_PROJECT', 'READ_FINANCE_SUMMARY'],
+  CRM_LEAD: ['READ_TICKET'],
+  SALES: ['READ_TICKET'],
+};
+const MARBOT_PERMISSIONS: Record<string, { module: string; resource: string }> = {
+  USE_MARBOT: { module: 'MARBOT', resource: 'assistant' },
+  READ_PROJECT: { module: 'PROJECTS', resource: 'project' },
+  READ_TASK: { module: 'PROJECTS', resource: 'task' },
+  READ_FINANCE_SUMMARY: { module: 'FINANCE', resource: 'finance_summary' },
+  READ_TICKET: { module: 'CRM', resource: 'service_case' },
+};
 
 export class CoreService {
 /**
@@ -237,6 +258,7 @@ export class CoreService {
     'ANALYTICS',
     'IMPLEMENTATION',
     'REPORTING',
+    'MARBOT',
   ];
 
 /**
@@ -302,11 +324,38 @@ export class CoreService {
     const tenantId = company.tenant_id;
     if (!tenantId) throw new ValidationError('Company tidak memiliki tenant yang valid.');
 
-    const enabled = data.enabled ?? false;
-    const allowRead = data.allow_read ?? (enabled ? true : false);
-    const allowWrite = data.allow_write ?? (enabled ? true : false);
-
-    return prisma.iam_company_module_access.upsert({
+    return prisma.$transaction(async (tx) => {
+      const previous = await tx.iam_company_module_access.findUnique({
+        where: { company_id_module_code: { company_id: companyId, module_code: cleanCode } },
+        select: { enabled: true, allow_read: true, allow_write: true },
+      });
+      const enabled = data.enabled ?? previous?.enabled ?? false;
+      const allowRead = data.allow_read ?? previous?.allow_read ?? enabled;
+      const allowWrite = cleanCode === 'MARBOT' ? false : data.allow_write ?? previous?.allow_write ?? enabled;
+      if (cleanCode === 'MARBOT' && enabled) {
+        let config: any;
+        try { config = JSON.parse(process.env.MARBOT_TENANT_CONFIG_JSON || '{}')[tenantId]; } catch { /* reject below */ }
+        if (!config?.externalTenantId || !config?.chatbotUrl || !config?.chatbotApiKey ||
+            !config?.inboundContextSecret || !config?.outboundToolSecret) {
+          throw new ValidationError('Koneksi MarBot untuk tenant ini belum dikonfigurasi di server ERP.');
+        }
+        const tenant = await tx.core_tenant.findUnique({ where: { id: tenantId }, select: { code: true } });
+        if (!tenant || config.externalTenantId !== tenant.code) {
+          throw new ValidationError('ID tenant eksternal MarBot tidak cocok dengan kode tenant ERP.');
+        }
+        if (config.inboundContextSecret === config.outboundToolSecret) {
+          throw new ValidationError('Kunci konteks dan kunci tool MarBot harus berbeda.');
+        }
+        let url: URL;
+        try { url = new URL(config.chatbotUrl); } catch { throw new ValidationError('URL chatbot MarBot tidak valid.'); }
+        if (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.hostname === 'localhost')) {
+          throw new ValidationError('Koneksi chatbot MarBot harus menggunakan HTTPS.');
+        }
+        try { await tx.marbot_request.count(); } catch {
+          throw new ValidationError('Migrasi audit MarBot belum diterapkan pada database ERP.');
+        }
+      }
+      const result = await tx.iam_company_module_access.upsert({
       where: {
         company_id_module_code: {
           company_id: companyId,
@@ -329,6 +378,37 @@ export class CoreService {
         allow_write: allowWrite,
         enabled_by_id: data.enabledById ?? null,
       },
+    });
+      if (cleanCode === 'MARBOT' && enabled && !previous?.enabled) {
+        const roles = await tx.iam_role.findMany({ where: {
+          tenant_id: tenantId, OR: [{ company_id: null }, { company_id: companyId }],
+          role_code: { in: Object.keys(MARBOT_ROLE_READS) as RoleCode[] },
+        }, select: { id: true, role_code: true } });
+        const permissionByCode = new Map<string, string>();
+        for (const [code, details] of Object.entries(MARBOT_PERMISSIONS)) {
+          const permission = await tx.iam_permission.upsert({
+            where: { permission_code: code },
+            create: { id: crypto.randomUUID(), permission_code: code, module_code: details.module, resource_name: details.resource, action_name: code === 'USE_MARBOT' ? 'USE' : 'READ' },
+            update: {},
+            select: { id: true },
+          });
+          permissionByCode.set(code, permission.id);
+        }
+        for (const role of roles) {
+          const codes = ['USE_MARBOT', ...(MARBOT_ROLE_READS[role.role_code] || [])];
+          for (const code of codes) {
+            const permissionId = permissionByCode.get(code)!;
+            const existing = await tx.iam_role_permission.findFirst({ where: {
+              tenant_id: tenantId, company_id: companyId, role_id: role.id, permission_id: permissionId,
+            }, select: { id: true } });
+            if (!existing) await tx.iam_role_permission.create({ data: {
+              id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+              role_id: role.id, permission_id: permissionId, allowed: true,
+            } });
+          }
+        }
+      }
+      return result;
     });
   }
 }

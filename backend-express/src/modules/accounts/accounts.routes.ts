@@ -495,6 +495,7 @@ async function setUserModuleAccess(req: Request, res: Response, next: NextFuncti
       throw new ForbiddenError(`Modul ${moduleCode} belum disetujui aktif oleh Super Admin untuk company ini.`);
     }
     const allowWrite = Boolean(req.body.allow_write);
+    if (moduleCode === 'MARBOT' && allowWrite) throw new ValidationError('MarBot saat ini hanya mendukung akses baca.');
     const allowRead = allowWrite || Boolean(req.body.allow_read);
     const result = await prisma.iam_user_module_access.upsert({
       where: { user_id_module_code: { user_id: userId, module_code: moduleCode } },

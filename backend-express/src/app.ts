@@ -45,6 +45,7 @@ import { implementationRouter } from './modules/implementation/implementation.ro
 import { reportingRouter } from './modules/reporting/reporting.routes';
 import { commandsRouter } from './modules/commands/commands.routes';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes';
+import { marbotInternalRouter, marbotUserRouter } from './modules/marbot/marbot.routes';
 
 // Initialize Workflows
 import './workflows';
@@ -122,6 +123,10 @@ export function createApp(): Express {
   });
 
   // 3. API v1 Router Pipeline
+  // The chatbot has no ERP JWT. Its internal tools use request-bound HMAC;
+  // the browser chat proxy uses the ordinary ERP JWT and company membership.
+  app.use('/internal/marbot', marbotInternalRouter);
+  app.use('/api/v1/marbot', marbotUserRouter);
   const apiV1 = express.Router();
 
   // Public authentication endpoints are explicitly allow-listed.

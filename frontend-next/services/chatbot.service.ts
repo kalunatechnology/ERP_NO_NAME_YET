@@ -16,8 +16,8 @@ import {
 
 export const DEFAULT_CALLER_CONFIG = {
   callerName: 'PT Sinergi Muda Arsa',
-  callerId: 'cmtiauhom0003118377iv7pk9',
-  callerToken: 'cb_live_0080c942f880b04ad7f3fba231432c1de43aefb24b201bd7',
+  callerId: '',
+  callerToken: '',
 };
 
 /**
@@ -38,11 +38,9 @@ const getBaseUrl = (): string => {
 export interface StreamChatOptions {
   message: string;
   conversationId?: string | null;
-  externalUserId?: string;
-  callerToken?: string;
   signal?: AbortSignal;
   onChunk: (delta: string) => void;
-  onDone?: (meta: { model?: string; latencyMs?: number; totalTokens?: number }) => void;
+  onDone?: (meta: { model?: string; latencyMs?: number; totalTokens?: number; conversationId?: string }) => void;
   onError?: (error: Error) => void;
 }
 
@@ -52,24 +50,20 @@ export interface StreamChatOptions {
 export async function streamChatCompletion({
   message,
   conversationId,
-  externalUserId,
-  callerToken = DEFAULT_CALLER_CONFIG.callerToken,
   signal,
   onChunk,
   onDone,
   onError,
 }: StreamChatOptions): Promise<void> {
-  const url = `${getBaseUrl()}/api/v1/chat/completions`;
+  const url = `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8001'}/api/v1/marbot/chat/completions`;
 
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${callerToken}`,
+      'Authorization': `Bearer ${localStorage.getItem('erp.access') || localStorage.getItem('access_token') || ''}`,
     };
-
-    if (externalUserId) {
-      headers['X-External-User-Id'] = externalUserId;
-    }
+    const companyId = localStorage.getItem('erp.company') || localStorage.getItem('active_company_id');
+    if (companyId) headers['X-Company-ID'] = companyId;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -121,20 +115,14 @@ export async function streamChatCompletion({
             continue;
           }
 
-          try {
-            const parsed = JSON.parse(rawData);
-            if (parsed.event === 'chunk' && parsed.data?.delta) {
-              onChunk(parsed.data.delta);
-            } else if (parsed.event === 'done') {
-              onDone?.(parsed.data || {});
-            } else if (parsed.event === 'error') {
-              throw new Error(parsed.data?.message || 'Chatbot streaming error');
-            }
-          } catch (e) {
-            // If raw text is not JSON, check if it's direct delta
-            if (rawData && rawData !== '[DONE]') {
-              onChunk(rawData);
-            }
+          let parsed: any;
+          try { parsed = JSON.parse(rawData); } catch { parsed = null; }
+          if (parsed?.event === 'chunk' && parsed.data?.delta) {
+            onChunk(parsed.data.delta);
+          } else if (parsed?.event === 'done') {
+            onDone?.(parsed.data || {});
+          } else if (parsed?.event === 'error') {
+            throw new Error(parsed.data?.message || 'Chatbot streaming error');
           }
         }
       }

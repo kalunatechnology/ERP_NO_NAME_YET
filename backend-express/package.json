@@ -25,6 +25,8 @@
     "test:q10:access": "ts-node --files tests/q10-company-admin-access.bdd.ts",
     "test:q11": "ts-node --files tests/q11-system-guardrails.ts",
     "test:pagination": "ts-node --files tests/pagination.unit.ts",
+    "test:marbot-signature": "ts-node --files tests/marbot-signature.unit.ts",
+    "test:marbot-deployment": "ts-node --files tests/marbot-deployment.smoke.ts",
     "reconcile:q9": "ts-node scripts/reconcile_q9_access.ts",
     "reconcile:q10": "ts-node scripts/reconcile_q10_test_baseline.ts",
     "audit:project-progress": "ts-node scripts/audit_project_progress.ts",

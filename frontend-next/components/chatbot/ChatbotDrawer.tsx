@@ -17,9 +17,7 @@ import {
   ChatMessage,
 } from "@/types/chatbot";
 import {
-  DEFAULT_CALLER_CONFIG,
   streamChatCompletion,
-  createConversation,
 } from "@/services/chatbot.service";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -37,20 +35,20 @@ interface ChatbotDrawerProps {
 
 const QUICK_ACTIONS = [
   {
-    label: "Running projects this week",
-    prompt: "Tolong tampilkan daftar proyek yang sedang berjalan (running projects) minggu ini berserta status progresnya.",
+    label: "Task terlambat",
+    prompt: "Berapa task proyek yang overdue untuk akses saya?",
   },
   {
-    label: "Top 5 Expenses",
-    prompt: "Tampilkan 5 pengeluaran terbesar (Top 5 Expenses) bulan ini untuk company aktif.",
+    label: "Biaya proyek",
+    prompt: "Berapa total biaya proyek yang sudah diposting bulan ini untuk company aktif?",
   },
   {
-    label: "Pending projects this week",
-    prompt: "Ada proyek apa saja yang berstatus pending atau butuh approval minggu ini?",
+    label: "Task berjalan",
+    prompt: "Berapa task proyek yang masih in progress untuk akses saya?",
   },
   {
-    label: "Mails from client",
-    prompt: "Ringkas pesan dan permintaan terbaru dari klien yang masuk ke sistem.",
+    label: "Tiket terbuka",
+    prompt: "Berapa tiket support yang masih terbuka untuk akses saya?",
   },
 ];
 
@@ -110,8 +108,6 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const externalUserId = currentUser?.id ? String(currentUser.id) : "user_erp_session";
 
   // Set formatted time
   useEffect(() => {
@@ -197,30 +193,10 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
     abortControllerRef.current = controller;
 
     try {
-      // 1. Pastikan conversationId sudah ada atau dibuat terlebih dahulu agar Prisma tidak error
-      let convId = currentConversationId;
-      if (!convId) {
-        try {
-          const newConv = await createConversation(
-            query.slice(0, 40) || "Percakapan MarBot",
-            externalUserId,
-            DEFAULT_CALLER_CONFIG.callerToken
-          );
-          if (newConv?.id) {
-            convId = newConv.id;
-            setCurrentConversationId(newConv.id);
-          }
-        } catch (convErr) {
-          console.warn("Auto create conversation warning:", convErr);
-        }
-      }
-
-      // 2. Stream AI completion dengan valid conversationId
+      // The signed enterprise chat endpoint creates an owned conversation.
       await streamChatCompletion({
         message: query,
-        conversationId: convId,
-        externalUserId,
-        callerToken: DEFAULT_CALLER_CONFIG.callerToken,
+        conversationId: currentConversationId,
         signal: controller.signal,
         onChunk: (delta) => {
           setMessages((prev) =>
@@ -231,7 +207,8 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
             )
           );
         },
-        onDone: () => {
+        onDone: (meta) => {
+          if (meta.conversationId) setCurrentConversationId(meta.conversationId);
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMsgId ? { ...msg, isStreaming: false } : msg

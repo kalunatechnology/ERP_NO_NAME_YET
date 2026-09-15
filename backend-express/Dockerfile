@@ -18,6 +18,9 @@ RUN npm ci
 
 COPY tsconfig.json ./
 COPY src ./src
+COPY server.js ./server.js
+COPY scripts ./scripts
+COPY tests ./tests
 
 RUN npx prisma generate
 RUN npm run build
@@ -47,6 +50,7 @@ COPY --from=builder /app/prisma ./prisma
 # Copy compiled JavaScript output
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.js ./server.js
+COPY --from=builder /app/scripts ./scripts
 
 EXPOSE 8001
 

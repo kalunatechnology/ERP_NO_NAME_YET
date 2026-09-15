@@ -241,7 +241,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
       {/* ── Fixed Footer Section matching Screenshot Design ── */}
       <div className="px-3 pb-3 pt-2 border-t border-[#EFEFEF] flex flex-col gap-2.5 flex-shrink-0 bg-white">
         {/* Chat with MarBot button */}
-        <button
+        {user?.enabled_modules?.includes('MARBOT') && userRole !== 'super_admin' && <button
           type="button"
           onClick={onChatbotOpen}
           className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#EAF6FF] hover:bg-[#EAF6FF] border border-[#9FD6FF] text-[#2649B3] font-semibold text-xs transition-all shadow-2xs cursor-pointer active:scale-98"
@@ -266,7 +266,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
             </svg>
           </div>
           <span className="font-bold tracking-tight">Chat with MarBot</span>
-        </button>
+        </button>}
 
         {/* Log Out button */}
         <button

@@ -366,11 +366,13 @@ async function main() {
     'ANALYTICS',
     'IMPLEMENTATION',
     'REPORTING',
+    'MARBOT',
   ];
 
   // PT Sinergi Muda Arsa: all modules are readable by default. Write access is
   // fail-closed and is granted per module by the Company Admin when required.
   for (const moduleCode of allModules) {
+    const isEnabled = moduleCode !== 'MARBOT';
     await prisma.iam_company_module_access.upsert({
       where: {
         company_id_module_code: {
@@ -379,8 +381,8 @@ async function main() {
         },
       },
       update: {
-        enabled: true,
-        allow_read: true,
+        enabled: isEnabled,
+        allow_read: isEnabled,
         allow_write: false,
       },
       create: {
@@ -388,8 +390,8 @@ async function main() {
         tenant_id: tenantSMA.id,
         company_id: compSMA.id,
         module_code: moduleCode,
-        enabled: true,
-        allow_read: true,
+        enabled: isEnabled,
+        allow_read: isEnabled,
         allow_write: false,
       },
     });

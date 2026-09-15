@@ -56,6 +56,22 @@ model core_company {
   @@map("core_company")
 }
 
+// Replay protection and minimal technical audit for the ERP-owned Marbot gateway.
+model marbot_request {
+  id          String   @id @default(uuid())
+  nonce       String   @unique
+  tenant_id   String
+  company_id  String
+  user_id     String
+  tool_name   String
+  request_id  String
+  outcome     String
+  created_at  DateTime @default(now())
+
+  @@index([tenant_id, company_id, created_at])
+  @@map("marbot_request")
+}
+
 model core_organization {
   created_by_id     String?   @map("created_by_id")
   created_at        DateTime? @default(now())

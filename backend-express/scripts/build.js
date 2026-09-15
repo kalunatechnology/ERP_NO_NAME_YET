@@ -33,6 +33,7 @@ function main() {
   run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);
   run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/q11-system-guardrails.ts']);
   run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/integration-hardening.unit.ts']);
+  run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/marbot-signature.unit.ts']);
 }
 
 try {

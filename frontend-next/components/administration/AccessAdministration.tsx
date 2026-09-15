@@ -43,6 +43,7 @@ const MODULE_LABELS: Record<string, { name: string; description: string }> = {
   ANALYTICS: { name: "Analytics", description: "Analisis lintas modul" },
   IMPLEMENTATION: { name: "Implementation", description: "Implementasi dan handover" },
   REPORTING: { name: "Reporting", description: "Laporan operasional dan eksekutif" },
+  MARBOT: { name: "MarBot Assistant", description: "Asisten ERP dengan akses baca sesuai modul, role, dan scope data user" },
 };
 
 /** Extracts the backend's stable error detail across validation/error shapes. */
@@ -138,7 +139,7 @@ export function AccessAdministration() {
     setSavingKey(`company:${module.module_code}`);
     try {
       await api.patch(`/api/v1/core/companies/${selectedCompany}/modules/${module.module_code}`, {
-        enabled, allow_read: enabled, allow_write: enabled,
+        enabled, allow_read: enabled, allow_write: module.module_code === 'MARBOT' ? false : enabled,
       });
       await loadCompanyContext();
       toast.success(`${module.module_code} ${enabled ? "diaktifkan" : "dinonaktifkan"}.`);
@@ -152,6 +153,7 @@ export function AccessAdministration() {
   /** Saves one explicit user override, or removes it for role-default behavior. */
   async function setUserAccess(moduleCode: string, mode: AccessMode) {
     if (!selectedUserId || selectedUserId === user?.id) return;
+    if (moduleCode === 'MARBOT' && mode === 'write') return;
     const key = `${selectedUserId}:${moduleCode}`;
     setSavingKey(key);
     try {
@@ -263,8 +265,8 @@ export function AccessAdministration() {
                     const choices: Array<{ mode: AccessMode; label: string; icon: typeof Check }> = [
                       { mode: "inherit", label: "Role default", icon: KeyRound },
                       { mode: "blocked", label: "No access", icon: LockKeyhole },
-                      { mode: "read", label: "View only", icon: Eye },
-                      { mode: "write", label: "View & manage", icon: Pencil },
+                      { mode: "read", label: module.module_code === 'MARBOT' ? "Use MarBot" : "View only", icon: Eye },
+                      ...(module.module_code === 'MARBOT' ? [] : [{ mode: "write" as AccessMode, label: "View & manage", icon: Pencil }]),
                     ];
                     return <div key={module.module_code} className="grid gap-3 rounded-2xl border border-[#EFEFEF] p-4 xl:grid-cols-[minmax(210px,1fr)_auto] xl:items-center">
                       <div><div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EAF6FF] text-[10px] font-bold text-[#2649B3]">{module.module_code.slice(0, 2)}</span><p className="text-sm font-semibold text-[#2649B3]">{meta.name}</p></div><p className="ml-9 mt-1 text-xs text-[#4F5050]">{meta.description}</p></div>
