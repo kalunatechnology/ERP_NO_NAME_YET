@@ -1168,6 +1168,20 @@ projectsRouter.use('/main-tasks', createCrudRouter({
   },
   beforeDelete: async (req, existing) => {
     await ProjectsService.assertCanManageProject(req.user, existing.project_id, activeCompanyId(req));
+    const companyId = activeCompanyId(req);
+    const [weeklyTaskCount, assignmentCount] = await Promise.all([
+      prisma.project_weekly_task.count({
+        where: { main_task_id: existing.id, company_id: companyId },
+      }),
+      prisma.project_task_assignment.count({
+        where: { main_task_id: existing.id, company_id: companyId },
+      }),
+    ]);
+    if (weeklyTaskCount > 0 || assignmentCount > 0) {
+      throw new ConflictError(
+        `Main Task tidak dapat dihapus karena masih memiliki ${weeklyTaskCount} Weekly Task dan ${assignmentCount} assignment. Hapus child task dan assignment terlebih dahulu.`,
+      );
+    }
   },
   afterCreate: async (req, rec) => {
     await ProjectsService.recalculateTaskTree({ mainTaskId: rec.id, companyId: activeCompanyId(req) });
@@ -1241,6 +1255,14 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
       select: { project_id: true },
     });
     await ProjectsService.assertCanManageProject(req.user, mainTask?.project_id, activeCompanyId(req));
+    const dailyTaskCount = await prisma.project_daily_task.count({
+      where: { weekly_task_id: existing.id, company_id: activeCompanyId(req) },
+    });
+    if (dailyTaskCount > 0) {
+      throw new ConflictError(
+        `Weekly Task tidak dapat dihapus karena masih memiliki ${dailyTaskCount} Daily Task. Hapus Daily Task terlebih dahulu.`,
+      );
+    }
   },
   afterCreate: async (req, rec) => {
     await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id, companyId: activeCompanyId(req) });

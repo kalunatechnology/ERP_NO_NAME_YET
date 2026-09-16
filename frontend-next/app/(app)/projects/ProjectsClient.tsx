@@ -1287,10 +1287,29 @@ export default function ProjectsClient() {
             setIsCreateWeeklyOpen(true);
           }}
           onDeleteMainTask={async (mainId, name) => {
-            if (confirm(`Hapus Main Task "${name}" beserta target di dalamnya?`)) {
+            const mainTask = (selectedProject?.main_tasks || []).find(
+              (item) => String(item.id) === String(mainId),
+            );
+            const weeklyTaskCount = (mainTask?.weekly_tasks || mainTask?.weekly_plans || []).length;
+            const assignmentCount = (mainTask?.assignments || []).length;
+            if (weeklyTaskCount > 0 || assignmentCount > 0) {
+              toast.error(
+                `Main Task masih memiliki ${weeklyTaskCount} Weekly Task dan ${assignmentCount} assignment. Hapus relasi tersebut terlebih dahulu.`,
+              );
+              return;
+            }
+            if (!confirm(`Hapus Main Task "${name}"? Tindakan ini tidak dapat dibatalkan.`)) return;
+            try {
               await deleteMainTask(mainId);
               toast.success("Main Task dihapus");
-              fetchProjects(true);
+            } catch (error: any) {
+              if (error?.response?.status === 404) {
+                toast.error("Main Task sudah tidak tersedia. Data proyek sedang disegarkan.");
+              } else {
+                toast.error(getApiErrorDetail(error, "Main Task tidak dapat dihapus."));
+              }
+            } finally {
+              await fetchProjects(true);
             }
           }}
           onCreateDailyClick={(weekly) => {
@@ -1306,10 +1325,28 @@ export default function ProjectsClient() {
             setIsCreateDailyOpen(true);
           }}
           onDeleteWeeklyTask={async (weeklyId, weekNum) => {
-            if (confirm(`Hapus Target Mingguan #${weekNum}?`)) {
+            const weeklyTask = (selectedProject?.main_tasks || [])
+              .flatMap((main) => main.weekly_tasks || main.weekly_plans || [])
+              .find((item) => String(item.id) === String(weeklyId));
+            const dailyTaskCount = (weeklyTask?.daily_tasks || []).length;
+            if (dailyTaskCount > 0) {
+              toast.error(
+                `Weekly Task masih memiliki ${dailyTaskCount} Daily Task. Hapus Daily Task terlebih dahulu.`,
+              );
+              return;
+            }
+            if (!confirm(`Hapus Target Mingguan #${weekNum}? Tindakan ini tidak dapat dibatalkan.`)) return;
+            try {
               await deleteWeeklyTask(weeklyId);
               toast.success("Weekly Task dihapus");
-              fetchProjects(true);
+            } catch (error: any) {
+              if (error?.response?.status === 404) {
+                toast.error("Weekly Task sudah tidak tersedia. Data proyek sedang disegarkan.");
+              } else {
+                toast.error(getApiErrorDetail(error, "Weekly Task tidak dapat dihapus."));
+              }
+            } finally {
+              await fetchProjects(true);
             }
           }}
           onToggleDailyStatus={(daily, canManage) => handleQuickToggleDaily(daily, canManage)}
@@ -1331,10 +1368,18 @@ export default function ProjectsClient() {
             setIsTransferModalOpen(true);
           }}
           onDeleteDailyTask={async (dailyId, title) => {
-            if (confirm(`Hapus aktivitas "${title}"?`)) {
+            if (!confirm(`Hapus aktivitas "${title}"? Tindakan ini tidak dapat dibatalkan.`)) return;
+            try {
               await deleteDailyTask(dailyId);
               toast.success("Aktivitas harian dihapus");
-              fetchProjects(true);
+            } catch (error: any) {
+              if (error?.response?.status === 404) {
+                toast.error("Daily Task sudah tidak tersedia. Data proyek sedang disegarkan.");
+              } else {
+                toast.error(getApiErrorDetail(error, "Daily Task tidak dapat dihapus."));
+              }
+            } finally {
+              await fetchProjects(true);
             }
           }}
         />
