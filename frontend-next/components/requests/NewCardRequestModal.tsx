@@ -8,11 +8,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import {
   ChevronLeft, ChevronDown, Clock, Calendar, FileText,
-  X, ArrowRight, Upload, Plus, UserPlus, Coins, CreditCard, Tag, Link2
+  X, ArrowRight, Upload, UserPlus, Coins, Link2, Loader2
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, localDateKey, extractApiError, parseFormDateTime } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -49,19 +50,18 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
   const { userRole } = useAuth();
   const [requestType, setRequestType] = useState<string>("Meeting Request");
   const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
-  const [timeRange, setTimeRange] = useState("09.00 AM - 10.00 AM");
-  const [dateVal, setDateVal] = useState("28/08/2026");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:00");
+  const [dateVal, setDateVal] = useState(() => localDateKey());
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedFileSize, setAttachedFileSize] = useState<string>("");
   const [attachmentLink, setAttachmentLink] = useState("");
-  const [requestDetails, setRequestDetails] = useState(
-    "I want to schedule a meeting with people from the IT and Design Division this afternoon"
-  );
+  const [requestDetails, setRequestDetails] = useState("");
 
   // Fund Request Specific States
-  const [amountRaw, setAmountRaw] = useState<string>("5000000");
+  const [amountRaw, setAmountRaw] = useState<string>("");
   const [budgetCategory, setBudgetCategory] = useState<string>("PROJECT_MATERIAL");
-  const [bankTarget, setBankTarget] = useState<string>("BCA 883019281 a.n. Toko Bangunan Jaya");
+  const [bankTarget, setBankTarget] = useState<string>("");
 
   // Assignee state
   const [teamMembers, setTeamMembers] = useState<InvitedPerson[]>([]);
@@ -106,21 +106,48 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     }
   };
 
+  // Reset entire form when modal opens (not closes) so each session starts fresh
   useEffect(() => {
-    if (!isOpen) {
-      setAssigneeUserId("");
-      return;
-    }
+    if (!isOpen) return;
+    setRequestType("Meeting Request");
+    setIsTypeDropdownOpen(false);
+    setStartTime("09:00");
+    setEndTime("10:00");
+    setDateVal(localDateKey());
+    setAttachedFileName(null);
+    setAttachedFileSize("");
+    setAttachmentLink("");
+    setRequestDetails("");
+    setAmountRaw("");
+    setBudgetCategory("PROJECT_MATERIAL");
+    setBankTarget("");
+    setAssigneeUserId("");
+    setInviteSearch("");
+    setInvitedList([]);
+    setSearchResults([]);
+    setIsSearchDropdownOpen(false);
+    setErrorMsg("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    // Fetch all team members once on open (for Assign dropdown + initial invite list)
     fetchMembers();
   }, [isOpen]);
 
+  // Debounced search for team members:
+  // Only calls the backend if there is an active search query (avoids redundant duplicate fetch on open).
+  // If search query is cleared, immediately restores searchResults from cached teamMembers without network request.
   useEffect(() => {
     if (!isOpen) return;
+    const query = inviteSearch.trim();
+    if (!query) {
+      setSearchResults(teamMembers);
+      return;
+    }
     const timer = setTimeout(() => {
-      fetchMembers(inviteSearch);
+      fetchMembers(query);
     }, 200);
     return () => clearTimeout(timer);
-  }, [inviteSearch, isOpen]);
+  }, [inviteSearch, isOpen, teamMembers]);
+
 
   if (!isOpen) return null;
 
@@ -230,6 +257,37 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
       return;
     }
 
+    if (!dateVal || !dateVal.trim()) {
+      setErrorMsg("Tanggal pelaksanaan wajib diisi.");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateVal.trim())) {
+      setErrorMsg("Format tanggal pelaksanaan tidak valid (YYYY-MM-DD).");
+      return;
+    }
+
+    const hasTimePermission = ["super_admin", "company_admin", "executive", "om", "pm"].includes(userRole);
+    if (hasTimePermission) {
+      if (!startTime) {
+        setErrorMsg("Waktu mulai wajib diisi.");
+        return;
+      }
+      if (!/^\d{2}:\d{2}$/.test(startTime)) {
+        setErrorMsg("Format waktu mulai tidak valid (gunakan format JJ:MM).");
+        return;
+      }
+      if (endTime) {
+        if (!/^\d{2}:\d{2}$/.test(endTime)) {
+          setErrorMsg("Format waktu selesai tidak valid (gunakan format JJ:MM).");
+          return;
+        }
+        if (endTime <= startTime) {
+          setErrorMsg("Waktu selesai harus lebih besar dari waktu mulai.");
+          return;
+        }
+      }
+    }
+
     setLoading(true);
     setErrorMsg("");
 
@@ -242,6 +300,10 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
         ? "LEAVE"
         : "OTHER";
 
+      // Parse user-supplied date and structured time inputs into ISO timestamps
+      const startAt = parseFormDateTime(dateVal, startTime);
+      const endAt = endTime ? parseFormDateTime(dateVal, endTime) : undefined;
+
       const res = await api.post("/api/v1/requests", {
         request_type: typeCode,
         title: requestDetails.slice(0, 60) || requestType,
@@ -249,7 +311,8 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
         amount: isFundRequest ? cleanNum : undefined,
         budget_category: isFundRequest ? budgetCategory : undefined,
         bank_target: isFundRequest ? bankTarget : undefined,
-        start_at: new Date().toISOString(),
+        start_at: startAt,
+        end_at: endAt,
         tagged_users: invitedList,
         attachment_url: attachmentLink.trim() || undefined,
         is_draft: isDraft,
@@ -258,8 +321,9 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
 
       const responseData = res.data?.data ?? res.data;
       onSuccess(responseData);
-    } catch (err: any) {
-      setErrorMsg(err.response?.data?.message || err.message || "Gagal memproses request");
+      onClose();
+    } catch (err: unknown) {
+      setErrorMsg(extractApiError(err, "Gagal memproses request"));
     } finally {
       setLoading(false);
     }
@@ -400,21 +464,36 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
 
             {/* 2. Time & Date (Side-by-Side) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {["super_admin", "company_admin", "executive", "om", "pm"].includes(userRole) && <div>
-                <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
-                  Time
-                </label>
-                <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3.5 py-2.5 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
-                  <input
-                    type="text"
-                    value={timeRange}
-                    onChange={e => setTimeRange(e.target.value)}
-                    className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
-                    placeholder="09.00 AM - 10.00 AM"
-                  />
-                  <Clock size={17} className="text-[#4F5050] shrink-0 ml-2" />
+              {["super_admin", "company_admin", "executive", "om", "pm"].includes(userRole) && (
+                <div>
+                  <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
+                    Waktu (Mulai – Selesai)
+                  </label>
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
+                    <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3 py-2 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
+                      <input
+                        type="time"
+                        value={startTime}
+                        onChange={e => setStartTime(e.target.value)}
+                        className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
+                        aria-label="Waktu Mulai"
+                      />
+                      <Clock size={15} className="text-[#4F5050] shrink-0 ml-1 pointer-events-none" />
+                    </div>
+                    <span className="text-xs font-semibold text-[#4F5050] text-center px-0.5">–</span>
+                    <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3 py-2 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
+                      <input
+                        type="time"
+                        value={endTime}
+                        onChange={e => setEndTime(e.target.value)}
+                        className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
+                        aria-label="Waktu Selesai"
+                      />
+                      <Clock size={15} className="text-[#4F5050] shrink-0 ml-1 pointer-events-none" />
+                    </div>
+                  </div>
                 </div>
-              </div>}
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
@@ -422,13 +501,13 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                 </label>
                 <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3.5 py-2.5 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
                   <input
-                    type="text"
+                    type="date"
                     value={dateVal}
                     onChange={e => setDateVal(e.target.value)}
                     className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
-                    placeholder="28/08/2026"
+                    placeholder="YYYY-MM-DD"
                   />
-                  <Calendar size={17} className="text-[#4F5050] shrink-0 ml-2" />
+                  <Calendar size={17} className="text-[#4F5050] shrink-0 ml-2 pointer-events-none" />
                 </div>
               </div>
             </div>
@@ -532,8 +611,13 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                     }}
                     onFocus={() => setIsSearchDropdownOpen(true)}
                     placeholder="Add user account, email, etc"
-                    className="w-full rounded-[14px] border border-[#D9D9D9] bg-white px-4 py-2.5 text-xs text-[#4F5050] placeholder:text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2]"
+                    className="w-full rounded-[14px] border border-[#D9D9D9] bg-white px-4 py-2.5 text-xs text-[#4F5050] placeholder:text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2] pr-9"
                   />
+                  {isSearching && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <Loader2 size={14} className="animate-spin text-[#294BB2]" />
+                    </div>
+                  )}
 
                   {/* Dropdown list for search */}
                   {isSearchDropdownOpen && (
@@ -547,9 +631,12 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                             className="w-full flex items-center justify-between p-2 rounded-xl text-left hover:bg-[#FDFDFD] text-xs transition-colors group"
                           >
                             <div className="flex items-center gap-2.5 truncate">
-                              <img
+                              <Image
                                 src={m.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.id}`}
                                 alt={m.name}
+                                width={28}
+                                height={28}
+                                unoptimized
                                 className="w-7 h-7 rounded-full object-cover border border-[#EAF6FF] shrink-0"
                               />
                               <div className="truncate">
@@ -576,7 +663,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#EAF6FF] text-[#2649B3] text-xs font-bold hover:bg-[#EAF6FF] transition-colors"
                             >
                               <UserPlus size={13} />
-                              <span>Undang "{inviteSearch.trim()}" (Tamu)</span>
+                              <span>Undang &quot;{inviteSearch.trim()}&quot; (Tamu)</span>
                             </button>
                           )}
                         </div>
@@ -600,9 +687,12 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                       className="flex items-center justify-between py-1.5 px-2.5 rounded-xl bg-[#FDFDFD] border border-[#EFEFEF] hover:border-[#294BB2]/50 transition-colors group"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <img
+                        <Image
                           src={person.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${person.id}`}
                           alt={person.name}
+                          width={28}
+                          height={28}
+                          unoptimized
                           className="w-7 h-7 rounded-full object-cover border border-[#EAF6FF] shrink-0"
                         />
                         <div className="min-w-0">
@@ -638,8 +728,17 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                 disabled={loading}
                 className="w-full py-3 rounded-[14px] bg-[#294BB2] hover:bg-[#2649B3] text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all disabled:opacity-50"
               >
-                <span>{loading ? "Sending..." : "Send Request"}</span>
-                <ArrowRight size={16} />
+                {loading ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    <span>Mengirim...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Send Request</span>
+                    <ArrowRight size={16} />
+                  </>
+                )}
               </button>
 
               <button
@@ -648,8 +747,17 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                 disabled={loading}
                 className="w-full py-3 rounded-[14px] bg-white border border-[#294BB2] hover:bg-[#FDFDFD] text-[#294BB2] font-semibold text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
               >
-                <span>Save Draft</span>
-                <FileText size={15} />
+                {loading ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin text-[#294BB2]" />
+                    <span>Menyimpan Draft...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Save Draft</span>
+                    <FileText size={15} />
+                  </>
+                )}
               </button>
             </div>
 

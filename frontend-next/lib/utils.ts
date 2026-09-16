@@ -108,3 +108,94 @@ export function normalizeDateKey(value: string | Date | null | undefined): strin
 export function getStatusColor(status: string): string {
   return getStatusStyle(status);
 }
+
+/**
+ * Extracts a user-readable error message from an Axios error response.
+ *
+ * Backend (Express) sends human-readable errors in `detail` from `sendError()`,
+ * while `error` contains technical codes (e.g. 'FORBIDDEN', 'VALIDATION_ERROR').
+ * Therefore, `detail` is prioritized over `error` so users see actionable business messages.
+ *
+ * @returns A localized, user-friendly string describing the failure.
+ */
+export function extractApiError(err: unknown, fallback = "Terjadi kesalahan. Coba lagi."): string {
+  if (!err) return fallback;
+  const data = (err as any)?.response?.data;
+  if (data) {
+    // 1. DRF / Express { detail: "..." } - prioritized for clear business explanations
+    if (typeof data.detail === "string" && data.detail.trim()) return data.detail.trim();
+    // 2. Generic { message: "..." }
+    if (typeof data.message === "string" && data.message.trim()) return data.message.trim();
+    // 3. Validation errors array: { errors: [...] }
+    if (Array.isArray(data.errors) && data.errors.length > 0) {
+      const first = data.errors[0];
+      if (typeof first === "string" && first.trim()) return first.trim();
+      if (first && typeof first.message === "string" && first.message.trim()) return first.message.trim();
+    }
+    // 4. Backend { error: "..." } fallback (if detail is absent)
+    if (typeof data.error === "string" && data.error.trim()) return data.error.trim();
+    // 5. DRF validation errors: { non_field_errors: ["..."] }
+    if (Array.isArray(data.non_field_errors) && data.non_field_errors.length > 0) {
+      return data.non_field_errors.join(", ");
+    }
+    // 6. DRF field errors: { field_name: ["error"] }
+    if (typeof data === "object") {
+      const firstField = Object.keys(data).find(k => Array.isArray(data[k]) && k !== "errors");
+      if (firstField) return `${firstField}: ${(data[firstField] as string[]).join(", ")}`;
+    }
+  }
+  // Axios network error
+  if ((err as any)?.message) return (err as any).message;
+  return fallback;
+}
+
+/**
+ * Parses user-supplied date (YYYY-MM-DD or DD/MM/YYYY) and optional time range
+ * (e.g. "02.00 PM - 03.00 PM", "14:00", "09.00 AM") into a valid ISO timestamp string.
+ * Accurately converts 12-hour AM/PM to 24-hour time to avoid saving wrong hours.
+ */
+export function parseFormDateTime(dateStr?: string, timeRangeStr?: string): string {
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth(); // 0-indexed
+  let day = now.getDate();
+
+  if (dateStr && typeof dateStr === "string") {
+    const s = dateStr.trim();
+    const ymd = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (ymd) {
+      year = parseInt(ymd[1], 10);
+      month = parseInt(ymd[2], 10) - 1;
+      day = parseInt(ymd[3], 10);
+    } else if (dmy) {
+      day = parseInt(dmy[1], 10);
+      month = parseInt(dmy[2], 10) - 1;
+      year = parseInt(dmy[3], 10);
+    }
+  }
+
+  let hours = 9;
+  let minutes = 0;
+
+  if (timeRangeStr && typeof timeRangeStr === "string") {
+    const startPart = timeRangeStr.split("-")[0].trim();
+    const match = startPart.match(/^(\d{1,2})(?:[:.](\d{2}))?(?:\s*(AM|PM))?$/i);
+    if (match) {
+      let h = parseInt(match[1], 10);
+      const m = match[2] ? parseInt(match[2], 10) : 0;
+      const mer = match[3] ? match[3].toUpperCase() : null;
+
+      if (mer === "PM" && h < 12) h += 12;
+      else if (mer === "AM" && h === 12) h = 0;
+
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+        hours = h;
+        minutes = m;
+      }
+    }
+  }
+
+  const d = new Date(year, month, day, hours, minutes, 0, 0);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}

@@ -7,13 +7,13 @@
  */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import {
-  Calendar, Clock, Users, Coffee, Briefcase, ChevronRight,
-  Plus, CheckCircle2, AlertCircle, Sparkles, Filter, Coins,
-  Receipt
+  Clock, Users, Coffee, Briefcase,
+  Plus, Coins, RefreshCw, AlertTriangle
 } from "lucide-react";
-import { cn, formatDate, getStatusColor } from "@/lib/utils";
+import { cn, getStatusColor } from "@/lib/utils";
 import api from "@/lib/api/axios";
 
 interface RequestCardFeedProps {
@@ -31,8 +31,21 @@ interface RequestCardFeedProps {
  */
 export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger }: RequestCardFeedProps) {
   const [requests, setRequests] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  /**
+   * initialLoading = true only on the very first load or filter change (shows skeleton).
+   * refreshing = true during silent background refresh (keeps existing cards visible, shows subtle indicator).
+   */
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>("ALL");
+
+  // Track whether we've ever successfully loaded for this filter
+  const hasLoadedRef = useRef(false);
+  // Abort controller and request version to prevent stale responses from overwriting fresh data
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestVersionRef = useRef(0);
+  const hasObservedRefreshTriggerRef = useRef(false);
 
 /**
  * fetchRequests owns the local UI behavior described by its typed signature.
@@ -41,27 +54,83 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
  * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
  * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
  */
-  const fetchRequests = async () => {
-    setLoading(true);
+  const fetchRequests = async (silent = false) => {
+    // Abort any in-flight request before starting a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Snapshot version: if another fetch starts before this one finishes, the stale response is discarded
+    const version = ++requestVersionRef.current;
+
+    if (silent && hasLoadedRef.current) {
+      // Silent refresh: keep current data visible, just show tiny spinner
+      setRefreshing(true);
+    } else {
+      // Initial load or filter change: show full skeleton
+      setInitialLoading(true);
+      hasLoadedRef.current = false;
+    }
+    setFetchError(null);
+
     try {
       const res = await api.get("/api/v1/requests", {
         params: {
           page_size: 25,
           ...(filterType !== "ALL" ? { type: filterType } : {}),
         },
+        signal: controller.signal,
       });
+
+      // Discard response if a newer request already started
+      if (version !== requestVersionRef.current) return;
+
       const data = res.data?.data?.rows ?? res.data?.rows ?? res.data ?? [];
       setRequests(Array.isArray(data) ? data : []);
-    } catch {
-      setRequests([]);
+      hasLoadedRef.current = true;
+    } catch (err: unknown) {
+      // Ignore abort errors — they are intentional
+      if ((err as any)?.name === "CanceledError" || (err as any)?.code === "ERR_CANCELED") return;
+      if (version !== requestVersionRef.current) return;
+      if (!silent) {
+        // Only show error state on hard load failures; silent refresh failures are non-destructive
+        setFetchError("Gagal memuat data request. Periksa koneksi dan coba lagi.");
+      }
+      // On silent refresh failure: keep existing data intact (no state change to requests)
     } finally {
-      setLoading(false);
+      if (version === requestVersionRef.current) {
+        setInitialLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
+  // Filter change: full reload with skeleton
   useEffect(() => {
-    fetchRequests();
-  }, [filterType, refreshTrigger]);
+    hasLoadedRef.current = false;
+    fetchRequests(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterType]);
+
+  // refreshTrigger change (after action complete): silent refresh to avoid skeleton flicker
+  useEffect(() => {
+    if (!hasObservedRefreshTriggerRef.current) {
+      hasObservedRefreshTriggerRef.current = true;
+      return;
+    }
+    if (refreshTrigger === undefined) return;
+    fetchRequests(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTrigger]);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      requestVersionRef.current += 1;
+    };
+  }, []);
 
 /**
  * getStatusBadge owns the local UI behavior described by its typed signature.
@@ -90,6 +159,10 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
           <span className="px-2 py-0.5 rounded-full bg-[#EAF6FF] text-3xs font-extrabold text-[#2649B3]">
             {requests.length} Active
           </span>
+          {/* Subtle refresh indicator: shown during silent background refresh */}
+          {refreshing && (
+            <RefreshCw size={12} className="text-[#2649B3] animate-spin ml-1" />
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -126,11 +199,25 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
       </div>
 
       {/* Cards Grid */}
-      {loading ? (
+      {initialLoading ? (
+        /* Full skeleton on first load or filter change */
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {[1, 2].map(i => (
+          {[1, 2, 3, 4].map(i => (
             <div key={i} className="h-28 rounded-[20px] bg-[#EAF6FF]/50 border border-[#D9D9D9] animate-pulse" />
           ))}
+        </div>
+      ) : fetchError ? (
+        /* Error state with retry */
+        <div className="p-8 rounded-[20px] bg-white border border-red-100 text-center space-y-3">
+          <AlertTriangle size={24} className="text-red-400 mx-auto" />
+          <p className="text-xs text-red-600 font-semibold">{fetchError}</p>
+          <button
+            onClick={() => fetchRequests(false)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#EAF6FF] text-[#2649B3] text-xs font-bold hover:bg-[#9FD6FF] transition-colors"
+          >
+            <RefreshCw size={13} />
+            Coba Lagi
+          </button>
         </div>
       ) : requests.length === 0 ? (
         <div className="p-8 rounded-[20px] bg-white border border-[#D9D9D9] text-center text-xs text-[#4F5050]">
@@ -188,7 +275,7 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
                   <Clock size={12} className="text-[#294BB2]" />
                   <span>
                     {req.start_at ? new Date(req.start_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" }) : "Today"}
-                    {req.request_type === "MEETING" && req.start_at && ` • ${new Date(req.start_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`}
+                    {req.request_type === "MEETING" && req.start_at && ` • ${new Date(req.start_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}${req.end_at ? ` - ${new Date(req.end_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : ""}`}
                   </span>
                 </div>
 
@@ -196,11 +283,14 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
                 {req.tagged_users && req.tagged_users.length > 0 && (
                   <div className="flex items-center -space-x-1.5">
                     {req.tagged_users.slice(0, 3).map((u: any, idx: number) => (
-                      <img
+                      <Image
                         key={idx}
                         src={u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.id || idx)}`}
                         alt={u.name}
                         title={u.name}
+                        width={20}
+                        height={20}
+                        unoptimized
                         className="w-5 h-5 rounded-full object-cover border border-white shadow-2xs"
                       />
                     ))}

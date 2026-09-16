@@ -8,6 +8,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import {
@@ -22,6 +23,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import markaIcon from "../icon.svg";
 
 /* ── Minimalist CSS Animations ── */
 const ANIM_STYLES = `
@@ -122,7 +124,6 @@ const CAT_COLOR: Record<string, string> = {
 };
 
 interface LoginForm {
-  name?: string;
   email: string;
   password: string;
 }
@@ -167,17 +168,14 @@ function LoginFormContent() {
     register,
     handleSubmit,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<LoginForm>({
     defaultValues: {
-      name: "",
       email: "",
       password: "",
     },
   });
 
-  const watchedName = watch("name");
 
   useEffect(() => {
     if (!authLoading && isAuthenticated && !isTransitioning) {
@@ -223,7 +221,6 @@ function LoginFormContent() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const quickGhostLogin = (user: typeof ALL_LOGIN_ACCOUNTS[0]) => {
-    setValue("name", user.name);
     setValue("email", user.email);
     setValue("password", user.password);
     handleSubmit(onSubmit)();
@@ -285,25 +282,12 @@ function LoginFormContent() {
             </div>
 
             <div className="flex flex-col gap-0.5 mt-auto z-10">
-              {watchedName?.trim() ? (
-                <>
-                  <span className="text-xs sm:text-sm text-white/85 font-normal tracking-wide">
-                    Welcome back,
-                  </span>
-                  <span className="text-2xl sm:text-3xl lg:text-[40px] font-bold text-white tracking-tight leading-tight truncate">
-                    {watchedName.trim()}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="text-xs sm:text-sm text-white/85 font-normal tracking-wide">
-                    Welcome back to
-                  </span>
-                  <span className="text-2xl sm:text-3xl lg:text-[40px] font-bold text-white tracking-tight leading-tight">
-                    Marka+
-                  </span>
-                </>
-              )}
+              <span className="text-xs sm:text-sm text-white/85 font-normal tracking-wide">
+                Welcome back to
+              </span>
+              <span className="text-2xl sm:text-3xl lg:text-[40px] font-bold text-white tracking-tight leading-tight">
+                Marka+
+              </span>
             </div>
 
             <div className="absolute -top-24 -left-24 w-80 h-80 bg-[#3F528B]/30 rounded-full blur-3xl pointer-events-none" />
@@ -313,41 +297,16 @@ function LoginFormContent() {
           {/* ── SISI KANAN: FORM LOGIN & LOGO ASTERISK ── */}
           <div className="flex-1 flex flex-col justify-between py-1 lg:py-2 pr-0 lg:pr-4">
             
-            {/* Top Right: Asterisk Badge */}
+            {/* Top Right: existing app/icon.svg */}
             <div className="mk-fade-up-1 flex justify-end w-full">
-              <div
-                className="w-12 h-12 sm:w-14 sm:h-14 lg:w-[60px] lg:h-[60px] rounded-full flex items-center justify-center shadow-xs shrink-0"
-                style={{
-                  background: "linear-gradient(180deg, #2649B3 0%, #9FD6FF 100%)",
-                }}
-              >
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M12 2V22"
-                    stroke="white"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M3.34 7L20.66 17"
-                    stroke="white"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M3.34 17L20.66 7"
-                    stroke="white"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
+              <Image
+                src={markaIcon}
+                alt="Marka+"
+                width={60}
+                height={60}
+                priority
+                className="w-12 h-12 sm:w-14 sm:h-14 lg:w-[60px] lg:h-[60px] object-contain shrink-0"
+              />
             </div>
 
             {/* Bottom Area: Full Width Form */}
@@ -361,22 +320,8 @@ function LoginFormContent() {
                 className="flex flex-col gap-3 lg:gap-3.5"
                 noValidate
               >
-                {/* Field 1: Your Name */}
+                {/* Field 1: Your Email */}
                 <div className="mk-fade-up-3 flex flex-col gap-1">
-                  <label className="text-xs font-medium text-[#2649B3]">
-                    Your Name
-                  </label>
-                  <input
-                    type="text"
-                    {...register("name")}
-                    placeholder="Nama (opsional)"
-                    autoComplete="name"
-                    className="mk-input w-full h-[42px] lg:h-[44px] rounded-[11px] bg-[#FDFDFD] border border-[#294BB2] px-3.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none shadow-2xs"
-                  />
-                </div>
-
-                {/* Field 2: Your Email */}
-                <div className="mk-fade-up-4 flex flex-col gap-1">
                   <label className="text-xs font-medium text-[#2649B3]">
                     Your Email
                   </label>
@@ -394,8 +339,8 @@ function LoginFormContent() {
                   )}
                 </div>
 
-                {/* Field 3: Password */}
-                <div className="mk-fade-up-5 flex flex-col gap-1">
+                {/* Field 2: Password */}
+                <div className="mk-fade-up-4 flex flex-col gap-1">
                   <label className="text-xs font-medium text-[#2649B3]">
                     Password
                   </label>
@@ -426,7 +371,7 @@ function LoginFormContent() {
                 </div>
 
                 {/* Submit Button (Minimalist active pill indicator - matching reference) */}
-                <div className="mk-fade-up-6 flex flex-col gap-3">
+                <div className="mk-fade-up-5 flex flex-col gap-3">
                   <button
                     type="submit"
                     disabled={submitting || isTransitioning}

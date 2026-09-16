@@ -7,14 +7,13 @@
  */
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  FolderKanban, Plus, RefreshCw, Trash2, CheckCircle2,
-  TrendingUp, Users, Calendar, AlertTriangle, ShieldCheck,
-  ChevronDown, ChevronRight, Activity, ArrowRight, Play,
-  DollarSign, FileText, CheckSquare, Layers, Clock, Zap,
-  Edit, ArrowUpRight, Lock, UserCheck, Search, Check, Wallet
+  Plus, RefreshCw, Trash2, CheckCircle2,
+  TrendingUp, Users, ShieldCheck, Play,
+  DollarSign, Layers, Clock, Zap,
+  Edit, Search, Check, Wallet
 } from "lucide-react";
 import {
   Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, TaskAssignment,
@@ -23,7 +22,7 @@ import {
   createWeeklyTask, deleteWeeklyTask,
   createDailyTask, updateDailyTask, deleteDailyTask,
   requestTaskTransfer, directReassignDailyTask, getTransferRequests, approveTransfer, rejectTransfer,
-  recalculateProjectHealth, advancePMFlow,
+  recalculateProjectHealth,
   createMilestone,
   assignMemberToMainTask, fetchCompanyUsers,
   fetchProjectFinancialPerformance,
@@ -39,7 +38,6 @@ import { feedApi } from "@/lib/api/feed.api";
 import { loadDashboardBootstrap } from "@/lib/api/dashboard.api";
 import { ProjectTimelineGantt } from "@/components/ui/ProjectTimelineGantt";
 import { ProjectMilestoneCard } from "@/components/ui/ProjectMilestoneCard";
-import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
 import { getCategoryStyle } from "@/lib/ui/semantic-styles";
 import { canPerform } from "@/lib/access/capability-contract";
 import { ProjectWbsTree } from "@/components/projects/ProjectWbsTree";
@@ -111,8 +109,6 @@ export default function ProjectsClient() {
   const [isLifecycleModalOpen, setIsLifecycleModalOpen] = useState(false);
   const [isEditFinancialsOpen, setIsEditFinancialsOpen] = useState(false);
   const [isFundingRequestOpen, setIsFundingRequestOpen] = useState(false);
-  const [collapsedMainTasks, setCollapsedMainTasks] = useState<Record<string, boolean>>({});
-  const [collapsedWeeklyTasks, setCollapsedWeeklyTasks] = useState<Record<string, boolean>>({});
 
   /* Real-time Project Financial Performance & Budgeting */
   const [financialPerformance, setFinancialPerformance] = useState<any>(null);
@@ -224,17 +220,24 @@ export default function ProjectsClient() {
     await fetchProjects(true);
   };
 
-  /* Track recently opened project */
+  /* Track a project once when the active project actually changes. */
+  const lastTrackedProjectIdRef = useRef<string | null>(null);
+  const selectedProjectId = selectedProject?.id != null ? String(selectedProject.id) : "";
+  const selectedProjectTitle = selectedProject
+    ? selectedProject.project_name || (selectedProject as any).name || `Proyek #${selectedProject.id}`
+    : "";
+
   useEffect(() => {
-    if (selectedProject) {
-      feedApi.trackRecentItem({
-        item_type: "PROJECT",
-        object_id: String(selectedProject.id),
-        title: selectedProject.project_name || (selectedProject as any).name || `Proyek #${selectedProject.id}`,
-        target_url: `/projects`,
-      }).catch(() => {});
-    }
-  }, [selectedProject?.id]);
+    if (!selectedProjectId || lastTrackedProjectIdRef.current === selectedProjectId) return;
+
+    lastTrackedProjectIdRef.current = selectedProjectId;
+    feedApi.trackRecentItem({
+      item_type: "PROJECT",
+      object_id: selectedProjectId,
+      title: selectedProjectTitle,
+      target_url: "/projects",
+    }).catch(() => {});
+  }, [selectedProjectId, selectedProjectTitle]);
 
   /* Project Manager & Executive Role Guard */
   // Mutation controls follow the active backend role; identity names and emails are never authorization signals.
@@ -242,14 +245,21 @@ export default function ProjectsClient() {
   const isExecutive = useMemo(() => userRole === "executive", [userRole]);
   const canCreateProject = useMemo(() => canPerform("project:create", userRole), [userRole]);
   const canUpdateProject = useMemo(() => canPerform("project:update", userRole), [userRole]);
-  const canManageProject = canUpdateProject;
   const canViewFinancials = useMemo(() => {
     return ["super_admin", "company_admin", "executive", "om", "pm", "finance"].includes(userRole || "");
   }, [userRole]);
 
   const [customerOptions, setCustomerOptions] = useState<string[]>([]);
 
+  // Stable ref to the current selectedId so fetchProjects can read it without being in its deps
+  const selectedIdRef = useRef<string | number | null>(null);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+
+  // Request-version counter: prevents a slow response from overwriting a newer one.
+  const fetchVersionRef = useRef(0);
+
   const fetchProjects = useCallback(async (silent = false) => {
+    const version = ++fetchVersionRef.current;
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
@@ -270,6 +280,10 @@ export default function ProjectsClient() {
         fetchProjectCustomers(),
         api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? [])
       ]);
+
+      // Guard against race conditions: if a newer fetch was initiated, discard this stale response completely!
+      if (version !== fetchVersionRef.current) return;
+
       const valueOrEmpty = (result: PromiseSettledResult<any>) => result.status === "fulfilled" ? result.value : [];
       const transferList = valueOrEmpty(auxiliary[0]);
       const uList = valueOrEmpty(auxiliary[1]);
@@ -284,10 +298,12 @@ export default function ProjectsClient() {
         setCustomerOptions(custList);
       }
 
+      // Read current selectedId via ref (not dep) to preserve selection across silent refreshes
+      const currentSelectedId = selectedIdRef.current;
       const targetId = requestedProjectId && data.some(p => String(p.id) === requestedProjectId)
         ? requestedProjectId
-        : selectedId && data.some(p => String(p.id) === String(selectedId))
-        ? selectedId
+        : currentSelectedId && data.some(p => String(p.id) === String(currentSelectedId))
+        ? currentSelectedId
         : data[0]?.id ?? null;
 
       if (targetId) {
@@ -299,12 +315,17 @@ export default function ProjectsClient() {
       setCompanyUsers(uList);
       setDivisionOptions(Array.isArray(divisions) ? divisions : []);
     } catch {
-      toast.error("Gagal menyinkronkan data proyek");
+      if (version === fetchVersionRef.current) {
+        toast.error("Gagal menyinkronkan data proyek");
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (version === fetchVersionRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [isPM, selectedId, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
+    // selectedId intentionally excluded: read via ref to avoid re-creating this callback on selection change
+  }, [isPM, requestedProjectId, requestedProjectTab, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
 /**
  * openAssignModal coordinates the UI behavior represented by this function.
@@ -1424,7 +1445,7 @@ export default function ProjectsClient() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPersonalTasks.map(({ projectId, projectName, projectCode, mainTaskName, weekNumber, daily }) => {
+                    {filteredPersonalTasks.map(({ projectName, projectCode, mainTaskName, weekNumber, daily }) => {
                       const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
                       const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
                       const isDailyOwner = String(daily.owner_id || (daily as any).owner || "") === String(user?.id);

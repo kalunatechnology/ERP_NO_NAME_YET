@@ -1,12 +1,8 @@
 /**
  * File: frontend-next/app/layout.tsx
  *
- * Purpose: Defines the Next App Router root layout and global typography
- * responsibility in the Marka+/Arsalynk frontend.
- * Integration: Called by Next routing; shared providers and global UI are
- * mounted here.
- * Boundary: This file owns application-wide presentation setup only and
- * relies on shared context modules for identity, language, and persistence.
+ * Purpose: Root layout with global Fira Sans typography and a single Marka+
+ * icon source shared by the browser tab and login page.
  */
 import type { Metadata } from "next";
 import { Fira_Sans, Fira_Sans_Condensed } from "next/font/google";
@@ -42,7 +38,14 @@ export const metadata: Metadata = {
   },
   description:
     "Sistem ERP terintegrasi: Project Management, Finance, CRM — Marka+",
-  icons: { icon: "/favicon.ico" },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -56,11 +59,15 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${firaSans.variable} ${firaSansCondensed.variable}`}
     >
+      <head>
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
+      </head>
       <body>
         <LanguageProvider>
           <AuthProvider>
             {children}
-
             <Toaster
               position="top-right"
               toastOptions={{

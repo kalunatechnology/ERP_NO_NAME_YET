@@ -8,12 +8,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import {
-  X, Check, AlertCircle, Clock, Calendar, Users, Briefcase,
-  Coffee, ShieldCheck, ArrowRight, CornerDownLeft, Coins,
-  Receipt, Upload, CheckCircle2, RefreshCw
+  X, Check, AlertCircle, Users, Briefcase,
+  Coffee, ShieldCheck, Coins,
+  Receipt, CheckCircle2, Loader2
 } from "lucide-react";
-import { cn, formatDate, getStatusColor } from "@/lib/utils";
+import { cn, getStatusColor, extractApiError } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import { assignRequest } from "@/lib/api/feed.api";
@@ -35,7 +36,7 @@ interface RequestReviewModalProps {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export function RequestReviewModal({ isOpen, onClose, request, onActionComplete }: RequestReviewModalProps) {
-  const { user, userRole } = useAuth();
+  const { userRole } = useAuth();
   const [remarks, setRemarks] = useState("");
   const [showRecheckInput, setShowRecheckInput] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -48,18 +49,57 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>(request?.assignee_user_id || "");
   const [assigning, setAssigning] = useState(false);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  // Optimistic local assignee display (so UI updates immediately after assign without closing modal)
+  const [localAssignee, setLocalAssignee] = useState<{ id: string; name: string } | null>(
+    request?.assignee_user ? { id: request.assignee_user.id, name: request.assignee_user.name } : null
+  );
+
+  // LPJ Submission States
+  const [showLPJForm, setShowLPJForm] = useState(false);
+  const [lpjRealization, setLpjRealization] = useState("");
+  const [lpjNotes, setLpjNotes] = useState("");
+  const [lpjInvoiceUrl, setLpjInvoiceUrl] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const requestId = request?.id;
+  const requestStatus = request?.status;
+  const requestAssigneeId = request?.assignee_user_id || "";
+  const requestAssigneeName = request?.assignee_user?.name || "";
+
+  /**
+   * Reset all transient local state whenever the modal opens for a (possibly different) request.
+   * This prevents stale state from a previous review session bleeding into the new one.
+   */
+  useEffect(() => {
+    if (!isOpen || !requestId) return;
+    setRemarks("");
+    setShowRecheckInput(false);
+    setError("");
+    setShowLPJForm(false);
+    setLpjRealization("");
+    setLpjNotes("");
+    setLpjInvoiceUrl("");
+    setSelectedAssigneeId(requestAssigneeId);
+    setLocalAssignee(
+      requestAssigneeId && requestAssigneeName
+        ? { id: requestAssigneeId, name: requestAssigneeName }
+        : null
+    );
+  }, [isOpen, requestId, requestAssigneeId, requestAssigneeName]);
 
   useEffect(() => {
     setBankId(""); setBankReference(""); setBanks([]);
-    if (!isOpen || request?.status !== 'REGISTERED' || !['finance', 'super_admin'].includes(userRole)) return;
+    if (!isOpen || requestStatus !== 'REGISTERED' || !['finance', 'super_admin'].includes(userRole)) return;
     let current = true;
-    api.get('/api/v1/requests/disbursement-accounts').then(res => { if (current) setBanks(normalizeList<any>(res.data).rows); }).catch(() => { if (current) setError('Gagal memuat rekening pencairan. Tutup dan buka kembali untuk mencoba ulang.'); });
+    api.get('/api/v1/requests/disbursement-accounts').then(res => {
+      if (current) setBanks(normalizeList<any>(res.data).rows);
+    }).catch(() => {
+      if (current) setError('Gagal memuat rekening pencairan. Tutup dan buka kembali untuk mencoba ulang.');
+    });
     return () => { current = false; };
-  }, [isOpen, request?.id, request?.status, userRole]);
+  }, [isOpen, requestId, requestStatus, userRole]);
 
   useEffect(() => {
-    if (!isOpen || !request) return;
-    setSelectedAssigneeId(request.assignee_user_id || "");
+    if (!isOpen || !requestId) return;
     let current = true;
     api.get("/api/v1/requests/team-members").then(res => {
       if (current) {
@@ -68,43 +108,46 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
       }
     }).catch(() => {});
     return () => { current = false; };
-  }, [isOpen, request?.id, request?.assignee_user_id]);
-
-  // LPJ Submission States
-  const [showLPJForm, setShowLPJForm] = useState(false);
-  const [lpjRealization, setLpjRealization] = useState("");
-  const [lpjNotes, setLpjNotes] = useState("");
-  const [lpjInvoiceUrl, setLpjInvoiceUrl] = useState("");
+  }, [isOpen, requestId]);
 
   if (!isOpen || !request) return null;
 
-  // Role permissions
+  // ─── Role Guards ──────────────────────────────────────────────────────────
+  // These must mirror the backend's requireActiveRole() checks exactly.
+  // Backend role codes (from Prisma enum) map to frontend active_role_code strings:
+  //   OPERATIONAL_MANAGER  → "om"
+  //   PROJECT_MANAGER      → "pm"
+  //   DIRECTOR             → "executive"
+  //   FINANCE              → "finance"
+  //   SUPER_ADMIN          → "super_admin"  (backend bypass via isSuperAdmin())
+  //
+  // NOTE: super_admin passes all backend requireActiveRole() checks because
+  // isSuperAdmin() returns true before the role check. So showing all buttons
+  // for super_admin is CORRECT — they will not get 403.
   const isSuperAdmin = userRole === "super_admin";
-  const isOMRole = isSuperAdmin || userRole === "om";
-  const isPMRole = isSuperAdmin || userRole === "pm" || userRole === "executive";
-  const isFinanceRole = isSuperAdmin || userRole === "finance";
-  const isCreatorOrTagged = user?.id === request.created_by_id || (request.tagged_users || []).some((u: any) => u.id === user?.id);
 
-/**
- * isOMStage coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
+  // validate-om & verify-lpj-om: requireActiveRole(OPERATIONAL_MANAGER)
+  const isOMRole = isSuperAdmin || userRole === "om";
+
+  // approve-exec: requireActiveRole(PROJECT_MANAGER, DIRECTOR)
+  const isExecRole = isSuperAdmin || userRole === "pm" || userRole === "executive";
+
+  // disburse & disbursement-accounts: requireActiveRole(FINANCE)
+  const isFinanceRole = isSuperAdmin || userRole === "finance";
+
+  // Stage gating: which action section to show
   const isOMStage = (request.status === "PENDING_OM" || request.status === "RE_CHECKING") && isOMRole;
-  const isExecStage = request.status === "PENDING_EXEC" && isPMRole;
+  const isExecStage = request.status === "PENDING_EXEC" && isExecRole;
   const isDisbursedOrRegistered = request.status === "REGISTERED" || request.status === "DISBURSED" || request.status === "LPJ_REVISION";
   const isOMLPJStage = request.status === "PENDING_LPJ_VERIFICATION" && isOMRole;
-  const isCompleted = request.status === "COMPLETED";
 
-/**
- * handleOMAction coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleOMAction coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleOMAction = async (decision: "APPROVE" | "RE_CHECK" | "REJECT") => {
     if (decision !== "APPROVE" && !remarks.trim()) {
       setError(decision === "REJECT" ? "Alasan penolakan wajib diisi untuk pemohon." : "Catatan perbaikan (alasan Re-checking) wajib diisi untuk pemohon.");
@@ -121,20 +164,20 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
       onActionComplete();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.message || err.message || "Gagal memvalidasi permohonan");
+    } catch (err: unknown) {
+      setError(extractApiError(err, "Gagal memvalidasi permohonan"));
     } finally {
       setLoading(false);
     }
   };
 
-/**
- * handleExecAction coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleExecAction coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleExecAction = async (decision: "APPROVE" | "REJECT") => {
     setLoading(true);
     setError("");
@@ -146,20 +189,20 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
       onActionComplete();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.message || err.message || "Gagal memproses persetujuan");
+    } catch (err: unknown) {
+      setError(extractApiError(err, "Gagal memproses persetujuan"));
     } finally {
       setLoading(false);
     }
   };
 
-/**
- * handleDisburseAction coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleDisburseAction coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleDisburseAction = async () => {
     if (!bankId || !bankReference.trim()) { setError('Pilih rekening dan isi referensi transfer aktual.'); return; }
     setLoading(true);
@@ -171,20 +214,20 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
       });
       onActionComplete();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.message || err.message || "Gagal mencairkan dana");
+    } catch (err: unknown) {
+      setError(extractApiError(err, "Gagal mencairkan dana"));
     } finally {
       setLoading(false);
     }
   };
 
-/**
- * handleSubmitLPJ coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleSubmitLPJ coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleSubmitLPJ = async () => {
     const cleanNum = parseFloat(lpjRealization.replace(/\./g, "").replace(/,/g, ".")) || 0;
     if (cleanNum <= 0) {
@@ -192,7 +235,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
       return;
     }
 
-    setLoading(true);
+    setEditSaving(true);
     setError("");
     try {
       const requestedAmt = Number(request.amount || 0);
@@ -214,20 +257,20 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
       onActionComplete();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.message || err.message || "Gagal menyetor LPJ");
+    } catch (err: unknown) {
+      setError(extractApiError(err, "Gagal menyetor LPJ"));
     } finally {
-      setLoading(false);
+      setEditSaving(false);
     }
   };
 
-/**
- * handleVerifyLPJByOM coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
- */
+  /**
+   * handleVerifyLPJByOM coordinates the UI behavior represented by this function.
+   *
+   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
+   * @returns The rendered React node, callback result, or Promise declared by the implementation.
+   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
+   */
   const handleVerifyLPJByOM = async (decision: "APPROVE" | "REVISE") => {
     if (decision === "REVISE" && !remarks.trim()) {
       setError("Catatan alasan revisi LPJ wajib diisi untuk pemohon.");
@@ -244,8 +287,8 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
 
       onActionComplete();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.message || err.message || "Gagal memverifikasi LPJ");
+    } catch (err: unknown) {
+      setError(extractApiError(err, "Gagal memverifikasi LPJ"));
     } finally {
       setLoading(false);
     }
@@ -259,14 +302,26 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
     setAssigning(true);
     setError("");
     try {
-      await assignRequest(request.id, selectedAssigneeId);
+      const result = await assignRequest(request.id, selectedAssigneeId);
+      // Optimistic update: reflect new assignee in modal UI immediately without closing
+      const assignedMember = teamMembers.find(m => m.id === selectedAssigneeId);
+      if (assignedMember) {
+        setLocalAssignee({ id: assignedMember.id, name: assignedMember.name });
+      } else if (result?.assignee_user) {
+        setLocalAssignee({ id: result.assignee_user.id, name: result.assignee_user.name });
+      }
+      // Notify parent to silently refresh the feed list
       onActionComplete();
-    } catch (err: any) {
-      setError(err.response?.data?.message || err.message || "Gagal meng-assign request.");
+    } catch (err: unknown) {
+      setError(extractApiError(err, "Gagal meng-assign request."));
     } finally {
       setAssigning(false);
     }
   };
+
+  const isAnySaving = loading || assigning || editSaving;
+  // Displayed assignee: prefer local optimistic state over original prop
+  const displayedAssignee = localAssignee ?? (request.assignee_user ? { id: request.assignee_user.id, name: request.assignee_user.name } : null);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -284,7 +339,8 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#4F5050] hover:text-[#090909] hover:bg-[#D9D9D9]/50"
+            disabled={isAnySaving}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[#4F5050] hover:text-[#090909] hover:bg-[#D9D9D9]/50 disabled:opacity-40 transition-colors"
           >
             <X size={18} />
           </button>
@@ -293,8 +349,9 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
         {/* Content */}
         <div className="p-6 space-y-4 overflow-y-auto flex-1 text-[#090909]">
           {error && (
-            <div className="p-3 text-xs font-semibold rounded-xl bg-red-50 border border-red-200 text-red-700">
-              {error}
+            <div className="p-3 text-xs font-semibold rounded-xl bg-red-50 border border-red-200 text-red-700 flex items-start gap-2">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -349,9 +406,10 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
               <span className="text-2xs font-bold text-[#4F5050] uppercase tracking-wider">
                 Staff Penanggung Jawab (PIC)
               </span>
-              {request.assignee_user ? (
-                <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-[#EAF6FF] text-[#2649B3]">
-                  {request.assignee_user.name}
+              {displayedAssignee ? (
+                <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-[#EAF6FF] text-[#2649B3] flex items-center gap-1">
+                  <Check size={11} />
+                  {displayedAssignee.name}
                 </span>
               ) : (
                 <span className="text-2xs text-[#4F5050] italic">Belum di-assign</span>
@@ -362,7 +420,8 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
               <select
                 value={selectedAssigneeId}
                 onChange={(e) => setSelectedAssigneeId(e.target.value)}
-                className="flex-1 rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2]"
+                disabled={assigning}
+                className="flex-1 rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2] disabled:opacity-60"
               >
                 <option value="">-- Pilih Staff --</option>
                 {teamMembers.map((m) => (
@@ -374,10 +433,17 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
               <button
                 type="button"
                 onClick={handleAssign}
-                disabled={assigning || !selectedAssigneeId || selectedAssigneeId === request.assignee_user_id}
-                className="px-3.5 py-2 rounded-[12px] bg-[#2649B3] hover:bg-[#2649B3] text-white text-xs font-bold transition-all disabled:opacity-40 shrink-0"
+                disabled={assigning || !selectedAssigneeId || selectedAssigneeId === (localAssignee?.id ?? request.assignee_user_id)}
+                className="px-3.5 py-2 rounded-[12px] bg-[#2649B3] text-white text-xs font-bold transition-all disabled:opacity-40 shrink-0 flex items-center gap-1.5 min-w-[80px] justify-center"
               >
-                {assigning ? "Menyimpan..." : request.assignee_user_id ? "Reassign" : "Assign"}
+                {assigning ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <span>{displayedAssignee ? "Reassign" : "Assign"}</span>
+                )}
               </button>
             </div>
           </div>
@@ -386,14 +452,17 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
           {request.tagged_users && request.tagged_users.length > 0 && (
             <div>
               <span className="text-2xs font-bold text-[#4F5050] uppercase tracking-wider block mb-1.5">
-                Who's inside ({request.tagged_users.length} Orang)
+                Who&apos;s inside ({request.tagged_users.length} Orang)
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {request.tagged_users.map((u: any, i: number) => (
                   <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EAF6FF] border border-[#D9D9D9] text-2xs font-semibold text-[#090909]">
-                    <img
+                    <Image
                       src={u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.id || i)}`}
                       alt={u.name}
+                      width={16}
+                      height={16}
+                      unoptimized
                       className="w-4 h-4 rounded-full object-cover"
                     />
                     <span>{u.name}</span>
@@ -415,15 +484,15 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   <button
                     type="button"
                     onClick={() => setShowLPJForm(true)}
-                    className="px-3 py-1 rounded-lg bg-[#EAF6FF] text-[#2649B3] text-2xs font-bold hover:bg-[#9FD6FF]"
+                    className="px-3 py-1 rounded-lg bg-[#EAF6FF] text-[#2649B3] text-2xs font-bold hover:bg-[#9FD6FF] transition-colors"
                   >
-                    + Input LPJ & Nota
+                    + Input LPJ &amp; Nota
                   </button>
                 )}
               </div>
 
               {showLPJForm && (
-                <div className="space-y-3 pt-2 border-t border-[#EFEFEF]">
+                <div className="space-y-3 pt-2 border-t border-[#EFEFEF] animate-in fade-in duration-150">
                   <div>
                     <label className="block text-2xs font-bold text-[#4F5050] mb-1">
                       Total Realisasi Belanja Riil (Rp)
@@ -433,28 +502,37 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                       value={lpjRealization}
                       onChange={e => setLpjRealization(e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, "."))}
                       placeholder="Contoh: 4.850.000"
-                      className="w-full px-3 py-2 rounded-xl border border-[#D9D9D9] text-xs font-bold text-[#4F5050] focus:outline-none focus:border-[#294BB2]"
+                      disabled={editSaving}
+                      className="w-full px-3 py-2 rounded-xl border border-[#D9D9D9] text-xs font-bold text-[#4F5050] focus:outline-none focus:border-[#294BB2] disabled:opacity-60"
                     />
                   </div>
                   <div>
                     <label className="block text-2xs font-bold text-[#4F5050] mb-1">
-                      Catatan Penggunaan & Selisih
+                      Catatan Penggunaan &amp; Selisih
                     </label>
                     <textarea
                       value={lpjNotes}
                       onChange={e => setLpjNotes(e.target.value)}
                       placeholder="Keterangan pengeluaran dan informasi sisa dana..."
                       rows={2}
-                      className="w-full px-3 py-2 rounded-xl border border-[#D9D9D9] text-xs text-[#4F5050] focus:outline-none focus:border-[#294BB2] resize-none"
+                      disabled={editSaving}
+                      className="w-full px-3 py-2 rounded-xl border border-[#D9D9D9] text-xs text-[#4F5050] focus:outline-none focus:border-[#294BB2] resize-none disabled:opacity-60"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleSubmitLPJ}
-                    disabled={loading}
-                    className="w-full py-2.5 rounded-xl bg-[#294BB2] hover:bg-[#2649B3] text-white text-xs font-bold transition-all disabled:opacity-50"
+                    disabled={editSaving}
+                    className="w-full py-2.5 rounded-xl bg-[#294BB2] hover:bg-[#2649B3] text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                   >
-                    {loading ? "Menyimpan LPJ..." : "Kirim LPJ ke OM untuk Verifikasi"}
+                    {editSaving ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        <span>Menyimpan LPJ...</span>
+                      </>
+                    ) : (
+                      "Kirim LPJ ke OM untuk Verifikasi"
+                    )}
                   </button>
                 </div>
               )}
@@ -472,7 +550,8 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                 onChange={e => setRemarks(e.target.value)}
                 placeholder="Tuliskan catatan evaluasi atau alasan revisi..."
                 rows={2}
-                className="w-full px-3.5 py-2 rounded-[14px] bg-white border border-[#D9D9D9] text-xs font-medium text-[#090909] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/40 resize-none"
+                disabled={loading}
+                className="w-full px-3.5 py-2 rounded-[14px] bg-white border border-[#D9D9D9] text-xs font-medium text-[#090909] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/40 resize-none disabled:opacity-60"
               />
             </div>
           )}
@@ -483,7 +562,8 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-[14px] text-xs font-bold text-[#4F5050] hover:bg-[#EAF6FF]"
+            disabled={isAnySaving}
+            className="px-4 py-2.5 rounded-[14px] text-xs font-bold text-[#4F5050] hover:bg-[#EAF6FF] disabled:opacity-40 transition-colors"
           >
             Tutup
           </button>
@@ -499,15 +579,16 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                     handleOMAction("REJECT");
                   }}
                   disabled={loading}
-                  className="px-4 py-2.5 rounded-[14px] bg-red-50 border border-red-200 text-red-700 text-xs font-bold hover:bg-red-100 transition-colors"
+                  className="px-4 py-2.5 rounded-[14px] bg-red-50 border border-red-200 text-red-700 text-xs font-bold hover:bg-red-100 transition-colors disabled:opacity-50"
                 >
                   Tolak Permohonan
                 </button>
                 {!showRecheckInput ? (
                   <button
                     type="button"
-                    onClick={() => setShowRecheckInput(true)}
-                    className="px-4 py-2.5 rounded-[14px] bg-orange-50 border border-orange-200 text-orange-800 text-xs font-bold hover:bg-orange-100 transition-colors"
+                    onClick={() => { setShowRecheckInput(true); setError(""); }}
+                    disabled={loading}
+                    className="px-4 py-2.5 rounded-[14px] bg-orange-50 border border-orange-200 text-orange-800 text-xs font-bold hover:bg-orange-100 transition-colors disabled:opacity-50"
                   >
                     Minta pemeriksaan ulang
                   </button>
@@ -516,8 +597,9 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                     type="button"
                     onClick={() => handleOMAction("RE_CHECK")}
                     disabled={loading}
-                    className="px-4 py-2.5 rounded-[14px] bg-orange-600 hover:bg-orange-700 text-white text-xs font-extrabold shadow-sm transition-all"
+                    className="px-4 py-2.5 rounded-[14px] bg-orange-600 hover:bg-orange-700 text-white text-xs font-extrabold shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
                   >
+                    {loading ? <Loader2 size={13} className="animate-spin" /> : null}
                     {loading ? "Menyimpan..." : "Kirim Re-checking"}
                   </button>
                 )}
@@ -525,9 +607,10 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   type="button"
                   onClick={() => handleOMAction("APPROVE")}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-[14px] bg-[#2649B3] hover:bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5"
+                  className="px-5 py-2.5 rounded-[14px] bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  <span>✓ Validasi & Teruskan ke PM</span>
+                  {loading ? <Loader2 size={13} className="animate-spin" /> : null}
+                  <span>✓ Validasi &amp; Teruskan ke PM</span>
                 </button>
               </>
             )}
@@ -539,7 +622,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   type="button"
                   onClick={() => handleExecAction("REJECT")}
                   disabled={loading}
-                  className="px-4 py-2.5 rounded-[14px] bg-red-50 border border-red-200 text-red-700 text-xs font-bold hover:bg-red-100 transition-colors"
+                  className="px-4 py-2.5 rounded-[14px] bg-red-50 border border-red-200 text-red-700 text-xs font-bold hover:bg-red-100 transition-colors disabled:opacity-50"
                 >
                   ✕ Tolak
                 </button>
@@ -547,8 +630,9 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   type="button"
                   onClick={() => handleExecAction("APPROVE")}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-[14px] bg-[#2649B3] hover:bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5"
+                  className="px-5 py-2.5 rounded-[14px] bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
                 >
+                  {loading ? <Loader2 size={13} className="animate-spin" /> : null}
                   <span>🎉 Setujui (Register Ticket)</span>
                 </button>
               </>
@@ -557,24 +641,44 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
             {/* Stage 3: Finance Disburse */}
             {request.status === "REGISTERED" && request.request_type === "FUND_REQUEST" && isFinanceRole && (
               <div className="flex flex-col gap-2 w-full">
-              <label className="text-xs">Rekening sumber
-                <select className="input" value={bankId} onChange={e => setBankId(e.target.value)}>
+                <label className="text-2xs font-bold text-[#4F5050]">
+                  Rekening sumber pencairan
+                </label>
+                <select
+                  className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2] disabled:opacity-60"
+                  value={bankId}
+                  onChange={e => setBankId(e.target.value)}
+                  disabled={loading}
+                >
                   <option value="">Pilih rekening</option>
-                  {banks.map(bank => <option key={bank.id} value={bank.id}>{bank.bank_name} · {bank.account_name} · {bank.account_number}</option>)}
+                  {banks.map(bank => (
+                    <option key={bank.id} value={bank.id}>
+                      {bank.bank_name} · {bank.account_name} · {bank.account_number}
+                    </option>
+                  ))}
                 </select>
-              </label>
-              <label className="text-xs">Referensi transfer aktual
-                <input className="input" value={bankReference} onChange={e => setBankReference(e.target.value)} />
-              </label>
-              <p className="text-xs">Catat setelah transfer dilakukan. Pencatatan ini tidak mengirim uang melalui bank.</p>
-              <button
-                type="button"
-                onClick={handleDisburseAction}
-                disabled={loading}
-                className="px-4 py-2.5 rounded-[14px] bg-[#2649B3] hover:bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all"
-              >
-                <span>Catat Pencairan Dana</span>
-              </button>
+                <label className="text-2xs font-bold text-[#4F5050]">
+                  Referensi transfer aktual
+                </label>
+                <input
+                  className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2] disabled:opacity-60"
+                  value={bankReference}
+                  onChange={e => setBankReference(e.target.value)}
+                  placeholder="Nomor referensi transfer bank"
+                  disabled={loading}
+                />
+                <p className="text-2xs text-[#4F5050]">
+                  Catat setelah transfer dilakukan. Pencatatan ini tidak mengirim uang melalui bank.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDisburseAction}
+                  disabled={loading || !bankId || !bankReference.trim()}
+                  className="px-4 py-2.5 rounded-[14px] bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {loading ? <Loader2 size={13} className="animate-spin" /> : null}
+                  <span>Catat Pencairan Dana</span>
+                </button>
               </div>
             )}
 
@@ -585,7 +689,7 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   type="button"
                   onClick={() => handleVerifyLPJByOM("REVISE")}
                   disabled={loading}
-                  className="px-4 py-2.5 rounded-[14px] bg-orange-50 border border-orange-200 text-orange-800 text-xs font-bold hover:bg-orange-100 transition-colors"
+                  className="px-4 py-2.5 rounded-[14px] bg-orange-50 border border-orange-200 text-orange-800 text-xs font-bold hover:bg-orange-100 transition-colors disabled:opacity-50"
                 >
                   Minta revisi LPJ
                 </button>
@@ -593,10 +697,10 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                   type="button"
                   onClick={() => handleVerifyLPJByOM("APPROVE")}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-[14px] bg-[#2649B3] hover:bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5"
+                  className="px-5 py-2.5 rounded-[14px] bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  <CheckCircle2 size={15} />
-                  <span>✓ Verifikasi LPJ & Tutup Tiket (Closed)</span>
+                  {loading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                  <span>✓ Verifikasi LPJ &amp; Tutup Tiket (Closed)</span>
                 </button>
               </>
             )}
