@@ -179,6 +179,9 @@ async function main(): Promise<void> {
     assert.deepEqual(await ProjectsService.projectAccessWhere(pm, 'company-a', pmDb), {
       id: { in: ['project-a'] },
     });
+    assert.deepEqual(await ProjectsService.taskAssignmentAccessWhere(pm, 'company-a', pmDb), {
+      main_task_id: { in: ['main-a'] },
+    });
 
     const superAdmin = { id: 'root', roles: [RoleCode.SUPER_ADMIN], active_role_code: RoleCode.SUPER_ADMIN };
     assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(superAdmin, 'company-a', pmDb), {});
@@ -193,13 +196,20 @@ async function main(): Promise<void> {
       /hanya dapat diperbarui oleh pemilik/i,
     );
 
-    const [appSource, routesSource] = await Promise.all([
+    const [appSource, routesSource, schemaSource, assignmentMigration] = await Promise.all([
       readFile(`${__dirname}/../src/app.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/projects/projects.routes.ts`, 'utf8'),
+      readFile(`${__dirname}/../prisma/schema.prisma`, 'utf8'),
+      readFile(`${__dirname}/../prisma/migrations/20260916120000_project_assignment_contract/migration.sql`, 'utf8'),
     ]);
     assert(appSource.includes("methods: ['POST']"), 'Staff Daily Task create allow-list is missing');
-    assert(appSource.includes("methods: ['PUT', 'PATCH']"), 'Staff update methods must exclude DELETE');
+    assert(appSource.includes("methods: ['PUT', 'PATCH', 'DELETE']"), 'Staff must retain full CRUD for owned Daily Tasks');
+    assert(!appSource.includes("{ path: /\\/api\\/v1\\/projects\\/weekly-tasks\\/?$/, methods: ['POST'] }"), 'Staff must not create Weekly Tasks');
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.dailyTaskAccessWhere'));
+    assert(routesSource.includes('accessWhere: async (req) => ProjectsService.taskAssignmentAccessWhere'));
+    assert(routesSource.includes('Assignment harus dibuat melalui aksi assign-members'), 'Generic assignment create bypass must remain closed.');
+    assert(schemaSource.includes('@@unique([company_id, main_task_id, assignee_id])'));
+    assert(assignmentMigration.includes('CREATE UNIQUE INDEX "project_task_assignment_company_id_main_task_id_assignee_id_key"'));
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.projectAccessWhere'));
     assert(routesSource.includes("projectsRouter.use('/projects/:id', enforceProjectBoundary)"));
     assert(routesSource.includes("readOnly: true"), 'Generic task-transfer mutation bypass remains enabled');
@@ -231,8 +241,8 @@ async function main(): Promise<void> {
     assert(crmRoutes.includes("'/opportunities/:id/executive-override', requireActiveRole(RoleCode.DIRECTOR)"));
     assert(requestService.includes('instance.created_by_id !== requesterUserId'));
     assert(
-      projectWbsNode.includes('const canCreateDaily = canUpdateProject && (isPM || isWeeklyPic);'),
-      'Daily Task create UI must require project update access and PM/weekly-PIC authority',
+      projectWbsNode.includes('const canCreateDaily = !isPM && isWeeklyPic;'),
+      'Daily Task create UI must be restricted to the Weekly Task owner',
     );
     return {
       delegated_sensitive_action: 'blocked',
@@ -349,13 +359,15 @@ async function main(): Promise<void> {
     assert(reportingAccessRoutes.includes("'/operational-summary', requireActiveRole(RoleCode.OPERATIONAL_MANAGER)"), 'Company-wide operational report must require OM active role.');
     assert(reportingClient.includes('sectionErrors: { attendance: attendanceResult.error') && reportingClient.includes('if (data.sectionErrors.attendance)'), 'Attendance failure must not masquerade as zero activity or blank the periodic report.');
     assert(commandPalette.includes('canAccessRoute({'), 'Command palette must hide routes that the active context cannot open.');
-    assert(topbar.includes('{canOpenReporting && <button') && topbar.includes("router.push('/reporting?tab=attendance')"), 'Topbar must hide Reporting shortcuts from unauthorized roles.');
+    assert(topbar.includes('{canOpenReporting && (') && topbar.includes("router.push('/reporting?tab=attendance')"), 'Topbar must hide Reporting shortcuts from unauthorized roles.');
     assert(axiosSource.includes('ERR_FRONTEND_MODULE_ACCESS'));
     assert(axiosSource.includes('canRequestApi(config.url || ""'));
     assert(!crmApi.includes('enabled.size === 0'), 'Empty entitlements must not be interpreted as allow-all.');
     assert(crmApi.includes('{ decision: "ACCEPTED" }') && crmApi.includes('decision: "REJECTED"'), 'CRM customer decision payload must follow the Sales API contract.');
     assert(!projectApi.includes('api.post("/api/v1/projects/tasks/"'), 'WBS create failures must not fall back into the generic task model.');
     assert(projectApi.includes('/assign-members'), 'Main Task assignment must use the registered backend action spelling.');
+    assert(projectApi.includes('/api/v1/projects/assignable-users/'), 'Project Assignment must use the PM-scoped assignee catalog, not the admin Accounts API.');
+    assert(!projectApi.includes('/api/v1/accounts/users/?page_size=200'), 'PM assignment must not depend on an admin-only Accounts endpoint.');
     assert(projectApi.includes('DAILY_TASK_STATUS_ALIASES'), 'Daily Task write adapter must normalize legacy UI statuses.');
     assert(projectApi.includes('Do not spread a UI object here'), 'Daily Task update payload must be allow-listed.');
     assert(projectApi.includes('assignee: payload.assignee_id || undefined'), 'Weekly Task must send an assignee user ID, not a display name.');

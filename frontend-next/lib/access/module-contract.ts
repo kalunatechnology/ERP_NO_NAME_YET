@@ -158,6 +158,10 @@ function requestPath(url: string): string {
 /** Resolves the module enforced by Backend for a concrete API endpoint. */
 export function getApiAccessContract(url: string): ApiAccessContract | undefined {
   const path = requestPath(url);
+  if (/^\/api\/v1\/projects\/assignable-users\/?$/i.test(path)
+      || /^\/api\/v1\/projects\/main-tasks\/[^/]+\/assign[-_]members\/?$/i.test(path)) {
+    return { prefix: path, module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager], allowDelegation: false };
+  }
   if (/^\/api\/v1\/requests\/[^/]+\/(?:validate-om|verify-lpj-om)\/?$/i.test(path)) {
     return { prefix: path, module: "REQUESTS", roles: [ROLE_CODES.operationalManager], allowDelegation: false };
   }

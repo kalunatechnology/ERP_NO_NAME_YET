@@ -25,7 +25,7 @@ import {
   requestTaskTransfer, directReassignDailyTask, getTransferRequests, approveTransfer, rejectTransfer,
   recalculateProjectHealth, advancePMFlow,
   createMilestone,
-  assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers,
+  assignMemberToMainTask, fetchCompanyUsers,
   fetchProjectFinancialPerformance,
   fetchProjectFundingRequests, submitProjectFundingRequest,
   fetchProjectCustomers, getApiErrorDetail
@@ -94,6 +94,9 @@ export default function ProjectsClient() {
   const [activeTab, setActiveTab] = useState("TREE");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [weeklySaving, setWeeklySaving] = useState(false);
+  const [dailySaving, setDailySaving] = useState(false);
 
   /* Modals */
   const [isCreateProjOpen, setIsCreateProjOpen] = useState(false);
@@ -263,7 +266,7 @@ export default function ProjectsClient() {
         }));
       const auxiliary = await Promise.allSettled([
         getTransferRequests(),
-        fetchCompanyUsers(),
+        isPM ? fetchCompanyUsers() : Promise.resolve([]),
         fetchProjectCustomers(),
         api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? [])
       ]);
@@ -301,7 +304,7 @@ export default function ProjectsClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedId, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
+  }, [isPM, selectedId, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
 /**
  * openAssignModal coordinates the UI behavior represented by this function.
@@ -323,7 +326,9 @@ export default function ProjectsClient() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-    const currentAssigned = (main.assignments || []).map(a => a.assignee || a.assignee_id || a.id);
+    const currentAssigned = (main.assignments || [])
+      .map(a => a.assignee || a.assignee_id)
+      .filter((id): id is string | number => id !== null && id !== undefined && id !== "");
     setSelectedAssigneeIds(currentAssigned);
     setIsAssignModalOpen(true);
   };
@@ -341,6 +346,8 @@ export default function ProjectsClient() {
       return;
     }
     if (!activeMainTask) return;
+    if (assignmentSaving) return;
+    setAssignmentSaving(true);
     try {
       await assignMemberToMainTask({
         main_task: activeMainTask.id,
@@ -349,8 +356,10 @@ export default function ProjectsClient() {
       toast.success("Penugasan anggota tim berhasil disimpan.");
       setIsAssignModalOpen(false);
       fetchProjects(true);
-    } catch {
-      toast.error("Gagal menyimpan penugasan anggota");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal menyimpan penugasan anggota."));
+    } finally {
+      setAssignmentSaving(false);
     }
   };
 
@@ -603,6 +612,12 @@ export default function ProjectsClient() {
  */
   const handleAddWeeklyPlan = async () => {
     if (!selectedProject || !activeMainTask || !weeklyForm.target_description.trim()) return;
+    if (!weeklyForm.assignee_id) {
+      toast.error("Pilih Staff yang sudah ditugaskan pada Main Task ini.");
+      return;
+    }
+    if (weeklySaving) return;
+    setWeeklySaving(true);
     try {
       await createWeeklyTask({
         main_task: activeMainTask.id,
@@ -616,8 +631,10 @@ export default function ProjectsClient() {
       setWeeklyForm({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_id: "" });
       setIsCreateWeeklyOpen(false);
       fetchProjects(true);
-    } catch {
-      toast.error("Gagal membuat target mingguan");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal membuat target mingguan."));
+    } finally {
+      setWeeklySaving(false);
     }
   };
 
@@ -633,6 +650,8 @@ export default function ProjectsClient() {
       toast.error("Mohon isi judul task / aktivitas");
       return;
     }
+    if (dailySaving) return;
+    setDailySaving(true);
     try {
       await createDailyTask({
         weekly_task: activeWeeklyTask.id,
@@ -655,8 +674,10 @@ export default function ProjectsClient() {
       });
       setIsCreateDailyOpen(false);
       fetchProjects(true);
-    } catch {
-      toast.error("Gagal mencatat aktivitas harian");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal mencatat aktivitas harian."));
+    } finally {
+      setDailySaving(false);
     }
   };
 
@@ -693,7 +714,7 @@ export default function ProjectsClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleQuickToggleDaily = async (daily: DailyTask, isAllowed = true) => {
-    if (!isAllowed && !isPM) {
+    if (!isAllowed) {
       toast.error("Akses Ditolak: Anda tidak memiliki wewenang pada task ini!");
       return;
     }
@@ -1217,14 +1238,22 @@ export default function ProjectsClient() {
           userRole={userRole}
           onCreateMainTaskClick={() => setIsCreateMainTaskOpen(true)}
           onAssignClick={(main) => openAssignModal(main)}
-          onRemoveAssignment={async (assignmentId) => {
-            await removeTaskAssignment(assignmentId);
-            toast.success("Penugasan dihapus");
-            fetchProjects(true);
+          onRemoveAssignment={async (main, assignmentId) => {
+            const remainingIds = (main.assignments || [])
+              .filter((assignment: TaskAssignment) => String(assignment.id) !== String(assignmentId))
+              .map((assignment: TaskAssignment) => assignment.assignee_id ?? assignment.assignee)
+              .filter((id: unknown): id is string | number => id !== null && id !== undefined && id !== "");
+            try {
+              await assignMemberToMainTask({ main_task: main.id, user_ids: remainingIds });
+              toast.success("Penugasan dihapus");
+              fetchProjects(true);
+            } catch (error) {
+              toast.error(getApiErrorDetail(error, "Gagal menghapus penugasan."));
+            }
           }}
           onCreateWeeklyClick={(main) => {
             setActiveMainTask(main);
-            const defaultAssigneeId = main.assignments?.[0]?.assignee || main.assignments?.[0]?.assignee_id || user?.id || "";
+            const defaultAssigneeId = main.assignments?.[0]?.assignee || main.assignments?.[0]?.assignee_id || "";
             const today = localDateKey();
             const nextWeek = localDateKey(new Date(Date.now() + 6 * 86400000));
             setWeeklyForm({
@@ -1874,6 +1903,9 @@ export default function ProjectsClient() {
           </p>
 
           <div className="max-h-60 overflow-y-auto border border-text-tertiary rounded-xl p-2 flex flex-col gap-2 bg-gray-50/60">
+            {companyUsers.length === 0 && (
+              <p className="p-3 text-center text-xs text-text-secondary">Belum ada anggota aktif yang dapat ditugaskan pada company ini.</p>
+            )}
             {companyUsers.map((u) => {
               const uId = String(u.id);
               const isChecked = selectedAssigneeIds.map(String).includes(uId);
@@ -1915,8 +1947,8 @@ export default function ProjectsClient() {
 
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => setIsAssignModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleAssignMember} className="btn-primary py-1.5 px-4 text-xs bg-brand-deep-green hover:bg-brand-green">
-              Simpan Penugasan ({selectedAssigneeIds.length} Anggota)
+            <button disabled={assignmentSaving} onClick={handleAssignMember} className="btn-primary py-1.5 px-4 text-xs bg-brand-deep-green hover:bg-brand-green disabled:opacity-60 disabled:cursor-not-allowed">
+              {assignmentSaving ? "Menyimpan..." : `Simpan Penugasan (${selectedAssigneeIds.length} Anggota)`}
             </button>
           </div>
         </div>
@@ -1949,7 +1981,7 @@ export default function ProjectsClient() {
                 onChange={e => setWeeklyForm({ ...weeklyForm, assignee_id: e.target.value })}
                 className="input text-xs"
               >
-                <option value="">Gunakan assignee aktif</option>
+                <option value="">— Pilih assignee Main Task —</option>
                 {activeMainTask?.assignments && activeMainTask.assignments.length > 0 ? (
                   activeMainTask.assignments.map(a => (
                     <option key={a.id} value={String(a.assignee || a.assignee_id || "")}>
@@ -1958,12 +1990,10 @@ export default function ProjectsClient() {
                   ))
                 ) : null}
 
-                {companyUsers.map(u => (
-                  <option key={u.id} value={String(u.id)}>
-                    {u.full_name || u.username} ({u.role_in_project || u.department || "Member"})
-                  </option>
-                ))}
               </select>
+              {(!activeMainTask?.assignments || activeMainTask.assignments.length === 0) && (
+                <p className="mt-1 text-2xs text-amber-700">Assign Staff ke Main Task terlebih dahulu.</p>
+              )}
             </div>
           </div>
 
@@ -2001,8 +2031,8 @@ export default function ProjectsClient() {
 
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => setIsCreateWeeklyOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleAddWeeklyPlan} className="btn-primary py-1.5 px-4 text-xs bg-indigo-600 hover:bg-indigo-700">
-              Simpan Target Mingguan
+            <button disabled={weeklySaving || !weeklyForm.assignee_id} onClick={handleAddWeeklyPlan} className="btn-primary py-1.5 px-4 text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
+              {weeklySaving ? "Menyimpan..." : "Simpan Target Mingguan"}
             </button>
           </div>
         </div>
@@ -2097,8 +2127,8 @@ export default function ProjectsClient() {
 
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => setIsCreateDailyOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleAddDailyTask} className="btn-primary py-1.5 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold">
-              Simpan Aktivitas Harian
+            <button disabled={dailySaving} onClick={handleAddDailyTask} className="btn-primary py-1.5 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold disabled:opacity-60 disabled:cursor-not-allowed">
+              {dailySaving ? "Menyimpan..." : "Simpan Aktivitas Harian"}
             </button>
           </div>
         </div>

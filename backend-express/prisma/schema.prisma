@@ -2806,6 +2806,7 @@ model project_task_assignment {
   assigned_by_id String?   @map("assigned_by_id")
   assigned_at    DateTime
 
+  @@unique([company_id, main_task_id, assignee_id])
   @@index([tenant_id, company_id])
   @@map("project_task_assignment")
 }

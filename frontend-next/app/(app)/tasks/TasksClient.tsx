@@ -207,9 +207,8 @@ function NewDailyTaskModal({
   }, [selectedProject]);
 
   useEffect(() => {
-    if (weeklyOptions.length > 0 && !weeklyTaskId) {
-      setWeeklyTaskId(String(weeklyOptions[0].id));
-    }
+    const selectedStillAvailable = weeklyOptions.some(option => String(option.id) === String(weeklyTaskId));
+    if (!selectedStillAvailable) setWeeklyTaskId(weeklyOptions[0] ? String(weeklyOptions[0].id) : "");
   }, [weeklyOptions, weeklyTaskId]);
 
   if (!isOpen) return null;
@@ -245,8 +244,8 @@ function NewDailyTaskModal({
       setNotes("");
       onClose();
       await onSuccess();
-    } catch {
-      toast.error("Gagal membuat tugas harian. Pastikan Anda memiliki wewenang pada proyek ini.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal membuat tugas harian pada scope Weekly Task ini."));
     } finally {
       setSubmitting(false);
     }
@@ -508,9 +507,6 @@ export default function TasksClient() {
     }).catch(() => {});
   }, []);
 
-  // Mutation controls follow the active backend role; identity names and emails are never authorization signals.
-  const isPM = useMemo(() => userRole === "pm" || userRole === "om", [userRole]);
-
   const fetchTasks = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -537,21 +533,28 @@ export default function TasksClient() {
    * the UI cannot advertise or submit a mutation that the API must reject.
    */
   const creatableProjects = useMemo(() => {
-    if (isPM) return projects;
     if (userRole !== "staff" || user?.id == null) return [];
 
     const activeUserId = String(user.id);
     return projects
       .map((project) => ({
         ...project,
-        main_tasks: (project.main_tasks || []).filter((mainTask) =>
-          (mainTask.assignments || []).some((assignment) =>
-            String(assignment.assignee_id ?? assignment.assignee ?? "") === activeUserId
+        main_tasks: (project.main_tasks || [])
+          .filter((mainTask) =>
+            (mainTask.assignments || []).some((assignment) =>
+              String(assignment.assignee_id ?? assignment.assignee ?? "") === activeUserId
+            )
           )
-        ),
+          .map((mainTask) => {
+            const assignedWeekly = (mainTask.weekly_tasks || mainTask.weekly_plans || []).filter(
+              (weeklyTask) => String(weeklyTask.assignee_id ?? "") === activeUserId
+            );
+            return { ...mainTask, weekly_tasks: assignedWeekly, weekly_plans: assignedWeekly };
+          })
+          .filter((mainTask) => (mainTask.weekly_tasks || []).length > 0),
       }))
       .filter((project) => (project.main_tasks || []).length > 0);
-  }, [isPM, projects, user?.id, userRole]);
+  }, [projects, user?.id, userRole]);
 
   const canCreateDailyTask = creatableProjects.length > 0;
   const canOpenReporting = canAccessRoute({
@@ -755,7 +758,7 @@ export default function TasksClient() {
       <tbody>
         {items.map(({ projectName, projectCode, mainTaskName, weekNumber, task }) => {
           const isOwner = String(task.owner_id || (task as any).owner || "") === String(user?.id);
-          const isAllowed = isPM || isOwner;
+          const isAllowed = isOwner;
           return (
             <TaskRow
               key={task.id}

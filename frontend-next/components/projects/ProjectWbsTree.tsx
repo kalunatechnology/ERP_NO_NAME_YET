@@ -12,7 +12,7 @@ interface ProjectWbsTreeProps {
   userRole: string;
   onCreateMainTaskClick: () => void;
   onAssignClick: (main: any) => void;
-  onRemoveAssignment: (assignmentId: any) => void;
+  onRemoveAssignment: (mainTask: any, assignmentId: any) => void;
   onCreateWeeklyClick: (main: any) => void;
   onDeleteMainTask: (mainId: any, name: string) => void;
   onCreateDailyClick: (weekly: any) => void;

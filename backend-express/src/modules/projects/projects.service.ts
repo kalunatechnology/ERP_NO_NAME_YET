@@ -78,6 +78,15 @@ export class ProjectsService {
     }
   }
 
+  static async assertCanAssignProjectMembers(user: any, companyId: string, db: any = prisma): Promise<void> {
+    if (this.hasPlatformAdmin(user) || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) return;
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
+      const managedIds = await this.managedProjectIds(user, companyId, db);
+      if (managedIds.length) return;
+    }
+    throw new ForbiddenError('Daftar assignee hanya tersedia untuk PM project terkait atau Operational Manager.');
+  }
+
   static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
@@ -164,6 +173,19 @@ export class ProjectsService {
     return { main_task_id: { in: mainTasks.map((task: { id: string }) => task.id) } };
   }
 
+  static async taskAssignmentAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
+    if (this.isOperationalAssignee(user)) return { assignee_id: user.id };
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
+
+    const mainWhere = await this.mainTaskAccessWhere(user, companyId, db);
+    const mainTasks = await db.project_main_task.findMany({
+      where: { company_id: companyId, ...mainWhere },
+      select: { id: true },
+    });
+    return { main_task_id: { in: mainTasks.map((task: { id: string }) => task.id) } };
+  }
+
   static async taskTransferAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
     if (this.isOperationalAssignee(user)) {
       return { OR: [{ requested_by_id: user.id }, { target_user_id: user.id }] };
@@ -210,6 +232,26 @@ export class ProjectsService {
       select: { id: true },
     });
     if (!membership) throw new ForbiddenError('User tujuan bukan anggota aktif company ini.');
+  }
+
+  static async assertOperationalCompanyMember(userId: string, companyId: string, db: any = prisma): Promise<void> {
+    await this.assertActiveCompanyMember(userId, companyId, db);
+    const assignments = await db.iam_user_role.findMany({
+      where: { user_id: userId, company_id: companyId },
+      select: { role_id: true },
+    });
+    const roleIds = assignments
+      .map((assignment: { role_id: string | null }) => assignment.role_id)
+      .filter((roleId: string | null): roleId is string => Boolean(roleId));
+    const operationalRole = roleIds.length
+      ? await db.iam_role.findFirst({
+          where: { id: { in: roleIds }, role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] } },
+          select: { id: true },
+        })
+      : null;
+    if (!operationalRole) {
+      throw new ValidationError('Assignee Weekly Task harus memiliki role Staff atau Supervisor pada company aktif.');
+    }
   }
 
   /**

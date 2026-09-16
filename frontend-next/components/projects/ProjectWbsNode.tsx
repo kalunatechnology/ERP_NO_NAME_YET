@@ -18,7 +18,7 @@ interface ProjectWbsNodeProps {
   isPM: boolean;
   currentUserId: string;
   onAssignClick: (main: any) => void;
-  onRemoveAssignment: (assignmentId: any) => void;
+  onRemoveAssignment: (mainTask: any, assignmentId: any) => void;
   onCreateWeeklyClick: (main: any) => void;
   onDeleteMainTask: (mainId: any, name: string) => void;
   onCreateDailyClick: (weekly: any) => void;
@@ -60,10 +60,7 @@ export function ProjectWbsNode({
     completedDailies += dailies.filter((d: any) => ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase())).length;
   });
 
-  const isAssigned = (main.assignments || []).some(
-    (a: any) => String(a.assignee || a.assignee_id || a.user || a.id || "") === String(currentUserId)
-  );
-  const canCreateWeekly = canUpdateProject && (isPM || isAssigned);
+  const canCreateWeekly = canUpdateProject && isPM;
 
   return (
     <div className="card rounded-2xl border border-text-tertiary overflow-hidden shadow-xs bg-white transition-all duration-200 hover:border-gray-300">
@@ -119,7 +116,7 @@ export function ProjectWbsNode({
                     <span>{a.assignee_name || a.user_name}</span>
                     {canUpdateProject && isPM && (
                       <button
-                        onClick={() => onRemoveAssignment(a.id)}
+                        onClick={() => onRemoveAssignment(main, a.id)}
                         className="hover:text-red-600 font-bold ml-1 text-xs"
                         title="Hapus penugasan (Wewenang PM)"
                       >
@@ -177,7 +174,7 @@ export function ProjectWbsNode({
             {weeklyPlans.length === 0 ? (
               <div className="p-5 rounded-xl bg-gray-50 border border-dashed border-gray-200 text-center">
                 <p className="text-xs text-text-secondary">
-                  Belum ada Target Mingguan pada Main Task ini. {canCreateWeekly ? "Klik + Target Mingguan untuk mendelegasikan sprint mingguan tim." : "Menunggu PM atau assignee membuat target mingguan."}
+                  Belum ada Target Mingguan pada Main Task ini. {canCreateWeekly ? "Klik + Target Mingguan untuk mendelegasikan sprint mingguan tim." : "Menunggu PM membuat dan menugaskan target mingguan."}
                 </p>
               </div>
             ) : (
@@ -185,7 +182,7 @@ export function ProjectWbsNode({
                 const dailyTasks = weekly.daily_tasks || [];
                 const isWeeklyExpanded = !collapsedWeeklyTasks[String(weekly.id)];
                 const isWeeklyPic = String(weekly.assignee_id || weekly.assignee || "") === String(currentUserId);
-                const canCreateDaily = canUpdateProject && (isPM || isWeeklyPic);
+                const canCreateDaily = !isPM && isWeeklyPic;
 
                 return (
                   <div key={weekly.id} className="rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200">
@@ -278,9 +275,9 @@ export function ProjectWbsNode({
                                     const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
                                     const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
                                     const isDailyOwner = String(daily.owner_id || daily.owner || "") === String(currentUserId);
-                                    const canManageDaily = canUpdateProject && isDailyOwner;
-                                    const canDeleteDaily = canUpdateProject && isPM;
-                                    const canTransferDaily = canUpdateProject && (isPM || isDailyOwner);
+                                    const canManageDaily = isDailyOwner;
+                                    const canDeleteDaily = isDailyOwner;
+                                    const canTransferDaily = isDailyOwner;
 
                                     return (
                                       <tr key={daily.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-50", isBlocked && "bg-red-50/60")}>

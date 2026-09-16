@@ -257,7 +257,9 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
         canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=300") : emptyResponse(),
         canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=200") : emptyResponse(),
         canReadFinance ? api.get("/api/v1/finance/project-fundings/?page_size=100") : emptyResponse(),
-        api.get("/api/v1/accounts/users/?page_size=200"),
+        // User administration is not part of the PROJECTS contract. Names are
+        // supplied by the dashboard bundle or project-scoped assignee catalog.
+        emptyResponse(),
       ]);
 
   const projects     = normalizeList<Project>(projectsRes.data).rows;
@@ -984,33 +986,12 @@ export async function removeTaskAssignment(id: string | number) {
  *
  * @param input - Uses the typed arguments in the signature to construct path, query, headers, or body.
  * @returns The typed payload or Promise produced after response normalization.
- * External dependency: calls `/api/v1/accounts/users/?page_size=200`, `/api/v1/projects/members/?page_size=200`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
+ * External dependency: calls the PM-scoped `/api/v1/projects/assignable-users/` catalog. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function fetchCompanyUsers(): Promise<any[]> {
-    const [accountsResult, membersResult] = await Promise.allSettled([
-      api.get("/api/v1/accounts/users/?page_size=200"),
-      api.get("/api/v1/projects/members/?page_size=200")
-    ]);
-    if (accountsResult.status === "rejected" && membersResult.status === "rejected") {
-      throw accountsResult.reason;
-    }
-    const accRes = accountsResult.status === "fulfilled" ? accountsResult.value : null;
-    const projMembersRes = membersResult.status === "fulfilled" ? membersResult.value : null;
-
-    let list: any[] = [];
-    if (accRes?.data) {
-      list = normalizeList<any>(accRes.data).rows;
-    }
-    if (list.length === 0 && projMembersRes?.data) {
-      list = normalizeList<any>(projMembersRes.data).rows.map((m: any) => ({
-        id: m.user_id || m.id,
-        email: m.email || m.username,
-        username: m.username,
-        full_name: m.full_name || m.user_name || m.username,
-        role_in_project: m.project_role || m.role || "MEMBER",
-      }));
-    }
+    const response = await api.get("/api/v1/projects/assignable-users/");
+    const list = normalizeList<any>(response.data).rows;
 
     // Keep this list strictly company-scoped. An empty list is an honest
     // state when no member is available for assignment; never fabricate
@@ -1027,7 +1008,8 @@ export async function fetchCompanyUsers(): Promise<any[]> {
           email: u.email,
           username: u.username || u.email?.split("@")[0],
           full_name: u.full_name || u.name || u.username || u.email,
-          role_in_project: u.role || u.role_in_project || "MEMBER",
+          role_in_project: u.role_name || u.role_in_project || "Staff",
+          role_code: u.role_code,
           department: u.department || "Operations"
         });
       }

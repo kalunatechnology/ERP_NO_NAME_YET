@@ -10,7 +10,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { isSuperAdmin, RoleCode } from '../../types/roles';
 
 export const projectsRouter = Router();
@@ -616,12 +616,39 @@ const handleAssignMembers = async (req: Request, res: Response, next: NextFuncti
     await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, companyId);
 
     const rawUsers = req.body.user_ids ?? req.body.assignee ?? [];
-    const userIds: string[] = [...new Set(Array.isArray(rawUsers) ? rawUsers.map(String) : [String(rawUsers)].filter(Boolean))];
+    const requestedUsers = Array.isArray(rawUsers) ? rawUsers : rawUsers == null ? [] : [rawUsers];
+    const userIds: string[] = [...new Set(requestedUsers
+      .filter((value) => value !== null && value !== undefined)
+      .map((value) => String(value).trim())
+      .filter(Boolean))];
     const memberships = userIds.length ? await prisma.iam_user_company_membership.findMany({
       where: { company_id: companyId, user_id: { in: userIds }, status: 'ACTIVE' },
       select: { user_id: true },
     }) : [];
     if (memberships.length !== userIds.length) throw new ForbiddenError('Satu atau lebih assignee berada di luar company aktif.');
+    await Promise.all(userIds.map((userId) => ProjectsService.assertOperationalCompanyMember(userId, companyId)));
+
+    const currentAssignments = await prisma.project_task_assignment.findMany({
+      where: { main_task_id: mainTaskId, company_id: companyId },
+      select: { assignee_id: true },
+    });
+    const retainedIds = new Set(userIds);
+    const removedIds = currentAssignments
+      .map((assignment) => assignment.assignee_id)
+      .filter((userId) => !retainedIds.has(userId));
+    if (removedIds.length) {
+      const linkedWeeklyTask = await prisma.project_weekly_task.findFirst({
+        where: {
+          main_task_id: mainTaskId,
+          company_id: companyId,
+          assignee_id: { in: removedIds },
+        },
+        select: { id: true },
+      });
+      if (linkedWeeklyTask) {
+        throw new ConflictError('Assignee masih memiliki Weekly Task. Hapus Weekly Task terkait sebelum menghapus assignment Main Task.');
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       // Remove assignments not in userIds
@@ -655,7 +682,7 @@ const handleAssignMembers = async (req: Request, res: Response, next: NextFuncti
               assigned_by_id: req.user?.id ?? null,
               assigned_at: new Date(),
       }));
-      if (newAssignments.length) await tx.project_task_assignment.createMany({ data: newAssignments });
+      if (newAssignments.length) await tx.project_task_assignment.createMany({ data: newAssignments, skipDuplicates: true });
       if (mainTask.project_id) {
         const newMembers = userIds.filter((uid) => !memberIds.has(uid)).map((uid) => ({
                 id: crypto.randomUUID(),
@@ -700,6 +727,59 @@ projectsRouter.post('/main-tasks/:id/assign_members', handleAssignMembers);
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
 projectsRouter.post('/main-tasks/:id/assign-members', handleAssignMembers);
+
+projectsRouter.get('/assignable-users', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    await ProjectsService.assertCanAssignProjectMembers(req.user, companyId);
+    const memberships = await prisma.iam_user_company_membership.findMany({
+      where: { company_id: companyId, status: 'ACTIVE' },
+      select: { user_id: true },
+    });
+    const userIds = memberships.map((membership) => membership.user_id);
+    const roleAssignments = userIds.length
+      ? await prisma.iam_user_role.findMany({
+          where: { company_id: companyId, user_id: { in: userIds } },
+          select: { user_id: true, role_id: true },
+        })
+      : [];
+    const roleIds = roleAssignments
+      .map((assignment) => assignment.role_id)
+      .filter((roleId): roleId is string => Boolean(roleId));
+    const roles = roleIds.length
+      ? await prisma.iam_role.findMany({
+          where: { id: { in: roleIds }, role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] } },
+          select: { id: true, role_code: true, role_name: true },
+        })
+      : [];
+    const roleById = new Map(roles.map((role) => [role.id, role]));
+    const operationalRoleByUser = new Map<string, (typeof roles)[number]>();
+    roleAssignments.forEach((assignment) => {
+      const role = assignment.role_id ? roleById.get(assignment.role_id) : undefined;
+      if (assignment.user_id && role) operationalRoleByUser.set(assignment.user_id, role);
+    });
+    const operationalUserIds = [...operationalRoleByUser.keys()];
+    const users = operationalUserIds.length
+      ? await prisma.iam_user.findMany({
+          where: { id: { in: operationalUserIds }, is_active: true },
+          select: { id: true, email: true, username: true, full_name: true },
+          orderBy: { full_name: 'asc' },
+        })
+      : [];
+    const results = users.map((user) => {
+      const role = operationalRoleByUser.get(user.id);
+      return {
+        ...user,
+        role_code: role?.role_code ?? null,
+        role_name: role?.role_name ?? 'Staff',
+        role_in_project: role?.role_name ?? 'Staff',
+      };
+    });
+    res.json({ count: results.length, results });
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * handleMainTaskOverrideProgress implements a named function within this file's Express API routing boundary.
@@ -1110,32 +1190,21 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
       ? await prisma.project_main_task.findFirst({ where: { id: mainTaskId, company_id: activeCompanyId(req) }, select: { id: true, project_id: true } })
       : null;
     if (!mainTask) throw new ValidationError('Main Task tidak valid atau berada di luar company aktif.');
-    const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(
-      req.user?.active_role_code as RoleCode,
-    );
-    if (isOperationalAssignee) {
-      if (!mainTaskId || !req.user?.id) {
-        throw new ForbiddenError('Main Task dan assignee aktif wajib tersedia untuk membuat target mingguan.');
-      }
-      const assignment = await prisma.project_task_assignment.findFirst({
-        where: {
-          main_task_id: mainTaskId,
-          assignee_id: req.user.id,
-          company_id: activeCompanyId(req),
-          ...(req.user.tenant_id ? { tenant_id: req.user.tenant_id } : {}),
-        },
-        select: { id: true },
-      });
-      if (!assignment) {
-        throw new ForbiddenError('Anda hanya dapat membuat target mingguan pada Main Task yang ditugaskan kepada Anda.');
-      }
-      // An operational assignee can plan their own work, not reassign it.
-      data.assignee_id = req.user.id;
-    } else {
-      await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
-    }
+    await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
-    if (data.assignee_id) await ProjectsService.assertActiveCompanyMember(String(data.assignee_id), activeCompanyId(req));
+    if (!data.assignee_id) throw new ValidationError('Assignee Weekly Task wajib dipilih dari assignment Main Task.');
+    await ProjectsService.assertOperationalCompanyMember(String(data.assignee_id), activeCompanyId(req));
+    const assignment = await prisma.project_task_assignment.findFirst({
+      where: {
+        main_task_id: mainTaskId,
+        assignee_id: String(data.assignee_id),
+        company_id: activeCompanyId(req),
+      },
+      select: { id: true },
+    });
+    if (!assignment) {
+      throw new ValidationError('Assignee Weekly Task harus sudah ditugaskan pada Main Task yang sama.');
+    }
     if (!data.target_description && data.target_output) data.target_description = data.target_output;
     if (!String(data.target_description ?? '').trim()) throw new ValidationError('Target mingguan wajib diisi.');
     // Progress is derived from Daily Tasks; API payloads cannot seed it.
@@ -1154,14 +1223,7 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
       select: { id: true, project_id: true },
     });
     if (!mainTask) throw new ValidationError('Hierarchy Weekly Task tidak valid.');
-    const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(
-      req.user?.active_role_code as RoleCode,
-    );
-    if (isOperationalAssignee) {
-      if (existing.assignee_id !== req.user?.id) throw new ForbiddenError('Anda hanya dapat memperbarui Weekly Task milik Anda.');
-    } else {
-      await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
-    }
+    await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
     if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
     delete data.main_task;
@@ -1208,22 +1270,20 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     });
     if (!mainTask) throw new ValidationError('Main Task induk tidak valid.');
 
-    const activeRole = req.user?.active_role_code;
-    const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(activeRole as RoleCode);
-    if (isOperationalAssignee) {
-      const assignment = await prisma.project_task_assignment.findFirst({
-        where: { main_task_id: mainTask.id, assignee_id: req.user?.id, company_id: companyId },
-        select: { id: true },
-      });
-      if (!assignment || weeklyTask.assignee_id !== req.user?.id) {
-        throw new ForbiddenError('Anda hanya dapat membuat Daily Task pada Weekly Task milik Anda dari Main Task yang ditugaskan.');
-      }
-      data.owner_id = req.user?.id;
-    } else {
-      await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, companyId);
-      if (data.owner && !data.owner_id) data.owner_id = data.owner;
-      if (!data.owner_id) data.owner_id = weeklyTask.assignee_id ?? req.user?.id;
+    const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(
+      req.user?.active_role_code as RoleCode,
+    );
+    if (!isOperationalAssignee || !req.user?.id) {
+      throw new ForbiddenError('Daily Task dibuat dan dikelola sendiri oleh Staff pemilik Weekly Task. PM memiliki akses monitor.');
     }
+    const assignment = await prisma.project_task_assignment.findFirst({
+      where: { main_task_id: mainTask.id, assignee_id: req.user.id, company_id: companyId },
+      select: { id: true },
+    });
+    if (!assignment || weeklyTask.assignee_id !== req.user.id) {
+      throw new ForbiddenError('Anda hanya dapat membuat Daily Task pada Weekly Task milik Anda dari Main Task yang ditugaskan.');
+    }
+    data.owner_id = req.user.id;
     await ProjectsService.assertActiveCompanyMember(String(data.owner_id ?? ''), companyId);
     if (!data.title && data.activity_input) data.title = data.activity_input;
     if (!String(data.title ?? '').trim()) throw new ValidationError('Aktivitas harian wajib diisi.');
@@ -1269,7 +1329,7 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     return data;
   },
   beforeDelete: async (req, existing) => {
-    await ProjectsService.assertCanManageDailyTask(existing.id, req.user, activeCompanyId(req));
+    await ProjectsService.assertCanOperateDailyTask(existing.id, req.user, activeCompanyId(req));
   },
   afterCreate: async (req, rec) => {
     await ProjectsService.recalculateTaskTree({ dailyTaskId: rec.id, companyId: activeCompanyId(req) });
@@ -1282,13 +1342,32 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
 // Task Assignments with alias mapping
 projectsRouter.use('/task-assignments', createCrudRouter({
   modelName: 'project_task_assignment',
-  beforeCreate: async (req, data) => {
-    if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
-    if (req.body.main_task && !data.main_task_id) data.main_task_id = req.body.main_task;
-    if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
-    if (req.body.assignee && !data.assignee_id) data.assignee_id = req.body.assignee;
-    if (!data.assigned_at) data.assigned_at = new Date();
-    return data;
+  accessWhere: async (req) => ProjectsService.taskAssignmentAccessWhere(req.user, activeCompanyId(req)),
+  beforeCreate: async () => {
+    throw new ValidationError('Assignment harus dibuat melalui aksi assign-members pada Main Task.');
+  },
+  beforeUpdate: async () => {
+    throw new ValidationError('Assignment tidak dapat diubah langsung. Gunakan aksi assign-members pada Main Task.');
+  },
+  beforeDelete: async (req, existing) => {
+    const companyId = activeCompanyId(req);
+    const mainTask = await prisma.project_main_task.findFirst({
+      where: { id: existing.main_task_id, company_id: companyId },
+      select: { project_id: true },
+    });
+    if (!mainTask) throw new NotFoundError('MainTask');
+    await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, companyId);
+    const linkedWeeklyTask = await prisma.project_weekly_task.findFirst({
+      where: {
+        main_task_id: existing.main_task_id,
+        assignee_id: existing.assignee_id,
+        company_id: companyId,
+      },
+      select: { id: true },
+    });
+    if (linkedWeeklyTask) {
+      throw new ConflictError('Assignment masih digunakan Weekly Task. Hapus Weekly Task terkait terlebih dahulu.');
+    }
   },
 }));
 
