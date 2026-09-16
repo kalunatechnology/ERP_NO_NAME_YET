@@ -44,7 +44,7 @@ import { analyticsRouter } from './modules/analytics/analytics.routes';
 import { implementationRouter } from './modules/implementation/implementation.routes';
 import { reportingRouter } from './modules/reporting/reporting.routes';
 import { commandsRouter } from './modules/commands/commands.routes';
-import { dashboardRouter } from './modules/dashboard/dashboard.routes';
+import { dashboardRouter, invalidateDashboardCache } from './modules/dashboard/dashboard.routes';
 import { marbotInternalRouter, marbotUserRouter } from './modules/marbot/marbot.routes';
 
 // Initialize Workflows
@@ -138,6 +138,19 @@ export function createApp(): Express {
   apiV1.use(enforceSuperAdminReadOnly);
   apiV1.use(enforceTransactionIdempotency);
   apiV1.use(auditLog);
+
+  // Dashboard/bootstrap aggregates data from multiple ERP domains. Invalidate
+  // its read-through snapshot after every successful authenticated mutation,
+  // rather than only after Project mutations. This keeps cross-page totals and
+  // shared records coherent after Finance, CRM, Request, Core, and other writes.
+  apiV1.use((req, res, next) => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) {
+      res.on('finish', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) invalidateDashboardCache();
+      });
+    }
+    next();
+  });
 
   // Top-level direct shortcuts
   apiV1.use('/', feedShortcutRouter);

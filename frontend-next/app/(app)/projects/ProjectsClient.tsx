@@ -268,7 +268,7 @@ export default function ProjectsClient() {
         delegatedModules: user?.delegated_modules,
         activeRoleCode: user?.active_role_code,
         isSuperAdmin: userRole === "super_admin",
-      }).then((response) => response.projects);
+      }, { fresh: silent }).then((response) => response.projects);
       const data = await projectBundle.then((bundle) => loadAllProjects(user?.enabled_modules || [], bundle, {
           delegatedModules: user?.delegated_modules,
           activeRoleCode: user?.active_role_code,
@@ -376,7 +376,7 @@ export default function ProjectsClient() {
       });
       toast.success("Penugasan anggota tim berhasil disimpan.");
       setIsAssignModalOpen(false);
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Gagal menyimpan penugasan anggota."));
     } finally {
@@ -430,7 +430,7 @@ export default function ProjectsClient() {
 
       toast.success("Target finansial dan anggaran proyek berhasil diperbarui.");
       setIsEditFinancialsOpen(false);
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch {
       toast.error("Gagal memperbarui target keuangan proyek");
     }
@@ -454,7 +454,7 @@ export default function ProjectsClient() {
 
       toast.success(`Permintaan dana ${formatRupiah(fundingRequestForm.amount)} berhasil diajukan ke Finance.`);
       setIsFundingRequestOpen(false);
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch {
       toast.error("Gagal mengajukan permintaan dana proyek");
     }
@@ -618,7 +618,7 @@ export default function ProjectsClient() {
       toast.success("Main Task (Level 1) berhasil ditambahkan!", { icon: "🌳" });
       setMainTaskForm({ title: "", description: "", weight: 15, priority: "MEDIUM" });
       setIsCreateMainTaskOpen(false);
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch {
       toast.error("Gagal membuat main task");
     }
@@ -640,7 +640,7 @@ export default function ProjectsClient() {
     if (weeklySaving) return;
     setWeeklySaving(true);
     try {
-      await createWeeklyTask({
+      const createdWeekly = await createWeeklyTask({
         main_task: activeMainTask.id,
         week_number: Number(weeklyForm.week_number),
         target_description: weeklyForm.target_description.trim(),
@@ -648,10 +648,37 @@ export default function ProjectsClient() {
         end_date: weeklyForm.end_date || undefined,
         assignee_id: weeklyForm.assignee_id || undefined
       });
+      const optimisticWeekly: WeeklyTask = {
+        id: createdWeekly?.id,
+        main_task: activeMainTask.id,
+        project: selectedProject.id,
+        week_number: Number(weeklyForm.week_number),
+        target_description: weeklyForm.target_description.trim(),
+        target_output: weeklyForm.target_description.trim(),
+        start_date: weeklyForm.start_date || "",
+        end_date: weeklyForm.end_date || "",
+        assignee_id: weeklyForm.assignee_id,
+        assignee_name: createdWeekly?.assignee_name || "",
+        status: createdWeekly?.status || "PLANNED",
+        progress: 0,
+        daily_tasks: [],
+      };
+      setProjects((current) => current.map((project) => ({
+        ...project,
+        main_tasks: (project.main_tasks || []).map((main) =>
+          String(main.id) === String(activeMainTask.id)
+            ? {
+                ...main,
+                weekly_tasks: [...(main.weekly_tasks || main.weekly_plans || []), optimisticWeekly],
+                weekly_plans: [...(main.weekly_tasks || main.weekly_plans || []), optimisticWeekly],
+              }
+            : main,
+        ),
+      })));
       toast.success(`Target minggu #${weeklyForm.week_number} berhasil dibuat.`);
       setWeeklyForm({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_id: "" });
       setIsCreateWeeklyOpen(false);
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Gagal membuat target mingguan."));
     } finally {
@@ -694,7 +721,7 @@ export default function ProjectsClient() {
         status: "IN_PROGRESS"
       });
       setIsCreateDailyOpen(false);
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Gagal mencatat aktivitas harian."));
     } finally {
@@ -721,7 +748,7 @@ export default function ProjectsClient() {
       });
       toast.success("Aktivitas harian dan progres berhasil diperbarui.");
       setIsEditDailyOpen(false);
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Gagal memperbarui aktivitas harian."));
     }
@@ -809,7 +836,7 @@ export default function ProjectsClient() {
       setIsTransferModalOpen(false);
       setTransferReason("");
       setTransferTargetUserId("");
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch {
       toast.error("Gagal mengajukan alih tugas");
     }
@@ -864,7 +891,7 @@ export default function ProjectsClient() {
     try {
       await deleteProject(selectedProject.id);
       toast.success("Proyek berhasil dihapus.");
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch {
       toast.error("Gagal menghapus proyek");
     }
@@ -884,7 +911,7 @@ export default function ProjectsClient() {
       setHealthData(res);
       setIsHealthModalOpen(true);
       toast.success("Kesehatan EVM proyek berhasil dihitung.");
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch {
       setHealthData(null);
       toast.error("Kesehatan proyek tidak dapat dihitung. Periksa data anggaran dan progres lalu coba lagi.");
@@ -911,7 +938,7 @@ export default function ProjectsClient() {
 
       toast.success(`Lifecycle proyek dimajukan ke ${nextStage}.`);
       setIsLifecycleModalOpen(false);
-      fetchProjects(true);
+      await fetchProjects(true);
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || "Gagal memajukan lifecycle proyek.");
     }
@@ -1267,7 +1294,7 @@ export default function ProjectsClient() {
             try {
               await assignMemberToMainTask({ main_task: main.id, user_ids: remainingIds });
               toast.success("Penugasan dihapus");
-              fetchProjects(true);
+              await fetchProjects(true);
             } catch (error) {
               toast.error(getApiErrorDetail(error, "Gagal menghapus penugasan."));
             }
@@ -1629,7 +1656,7 @@ export default function ProjectsClient() {
                             try {
                               await approveTransfer(tr.id);
                               toast.success("Transfer tugas disetujui!");
-                              fetchProjects(true);
+                              await fetchProjects(true);
                             } catch {
                               toast.error("Transfer tidak dapat disetujui");
                             }
@@ -1643,7 +1670,7 @@ export default function ProjectsClient() {
                             try {
                               await rejectTransfer(tr.id);
                               toast.success("Transfer tugas ditolak");
-                              fetchProjects(true);
+                              await fetchProjects(true);
                             } catch {
                               toast.error("Transfer tidak dapat ditolak");
                             }
@@ -2606,7 +2633,7 @@ export default function ProjectsClient() {
                 toast.success("Milestone berhasil ditambahkan!");
                 setIsMilestoneModalOpen(false);
                 setMilestoneForm({ name: "", target_date: "" });
-                fetchProjects(true);
+                await fetchProjects(true);
               }}
               className="btn-primary py-1.5 px-4 text-xs"
             >

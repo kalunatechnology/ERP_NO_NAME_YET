@@ -19,6 +19,10 @@ const api = axios.create({
   timeout: 30000,
 });
 
+const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+let successfulMutationRevision = 0;
+let dashboardFreshRevision = 0;
+
 /* ── Helper Regex UUID ── */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,6 +45,18 @@ api.interceptors.request.use(
       config.headers["Idempotency-Key"] = crypto.randomUUID();
     }
     if (typeof window !== "undefined") {
+      // The dashboard bootstrap is an aggregate read. After any successful
+      // write, make its next request bypass the server read-through cache once.
+      // Subsequent reads can use the cache again, preserving normal performance.
+      if (
+        method === "GET" &&
+        /\/api\/v1\/dashboard\/bootstrap\/?(?:\?.*)?$/.test(String(config.url || "")) &&
+        successfulMutationRevision > dashboardFreshRevision
+      ) {
+        config.params = { ...(config.params || {}), fresh: 1 };
+        (config as typeof config & { _erpFreshRevision?: number })._erpFreshRevision = successfulMutationRevision;
+      }
+
       const access =
         localStorage.getItem("erp.access") ||
         localStorage.getItem("access_token") ||
@@ -156,7 +172,23 @@ function refreshTokenOnce(): Promise<string | null> {
 }
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    const method = String(res.config.method || "get").toUpperCase();
+    const freshRevision = (res.config as typeof res.config & { _erpFreshRevision?: number })._erpFreshRevision;
+    if (freshRevision) dashboardFreshRevision = Math.max(dashboardFreshRevision, freshRevision);
+
+    if (typeof window !== "undefined" && MUTATION_METHODS.has(method)) {
+      successfulMutationRevision += 1;
+      window.dispatchEvent(new CustomEvent("erp:data-mutated", {
+        detail: {
+          method,
+          url: String(res.config.url || ""),
+          revision: successfulMutationRevision,
+        },
+      }));
+    }
+    return res;
+  },
   async (error) => {
     const original = error.config;
     const status = error.response?.status;

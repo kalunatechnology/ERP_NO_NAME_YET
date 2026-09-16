@@ -23,6 +23,10 @@ export const dashboardRouter = Router();
 const dashboardCache = new ReadThroughCache<Record<string, unknown>>(250);
 const DASHBOARD_CACHE_OPTIONS = { ttlMs: 15_000, staleMs: 285_000, timeoutMs: 1_200 };
 
+export function invalidateDashboardCache(): void {
+  dashboardCache.clear();
+}
+
 type DashboardSection = 'projects' | 'finance' | 'crm';
 
 const SECTION_ROLES: Record<DashboardSection, readonly string[]> = {
@@ -1149,7 +1153,7 @@ dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: Next
       [...enabled].sort().join(','),
       [...requested].sort().join(','),
     ].join('|');
-    const cached = await dashboardCache.get(cacheKey, async () => {
+    const loadSections = async () => {
       const requestedSet = new Set(requested);
       const sectionPromises = new Map<DashboardSection, Promise<unknown>>();
       // Loaders are intentionally created inside the cache miss callback. A hit
@@ -1159,12 +1163,19 @@ dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: Next
       if (requestedSet.has('crm')) sectionPromises.set('crm', loadCrmBundle(req, enabled));
       const result = await Promise.all(requested.map(async (section) => [section, await sectionPromises.get(section)!] as const));
       return Object.fromEntries(result);
-    }, DASHBOARD_CACHE_OPTIONS);
+    };
+    const forceFresh = String(req.query.fresh ?? '') === '1';
+    const cached = forceFresh
+      ? { value: await loadSections(), state: 'MISS' as const }
+      : await dashboardCache.get(cacheKey, loadSections, DASHBOARD_CACHE_OPTIONS);
     // The URL is shared by every tenant and role; make every intermediary aware
     // that authorization and company scope are part of the representation key.
     res.vary('Authorization');
     res.vary('X-Company-ID');
-    res.setHeader('Cache-Control', 'private, max-age=15, stale-while-revalidate=30');
+    res.setHeader(
+      'Cache-Control',
+      forceFresh ? 'private, no-store' : 'private, max-age=15, stale-while-revalidate=30',
+    );
     res.setHeader('X-Dashboard-Cache', cached.state);
     res.setHeader('Server-Timing', `dashboard;dur=${(performance.now() - startedAt).toFixed(1)}`);
     return res.json({ success: true, data: cached.value, meta: { sections: requested, request_id: req.requestId } });

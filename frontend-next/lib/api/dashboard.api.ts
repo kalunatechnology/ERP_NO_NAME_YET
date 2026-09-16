@@ -115,6 +115,7 @@ interface DashboardBootstrapResponse {
 export async function loadDashboardBootstrap(
   sections: DashboardSection[],
   access: FrontendAccessContext = {},
+  options: { fresh?: boolean } = {},
 ): Promise<DashboardBootstrap> {
   /**
    * Tidak ada section yang dibutuhkan.
@@ -163,6 +164,7 @@ export async function loadDashboardBootstrap(
     {
       params: {
         sections: requestedSections.join(','),
+        ...(options.fresh ? { fresh: '1' } : {}),
       },
 
       timeout: 30_000,
