@@ -54,6 +54,7 @@ export class AccountsService {
       throw new UnauthorizedError('Email atau password tidak valid.');
     }
 
+    const lookupStartedAt = performance.now();
     let user = await prisma.iam_user.findFirst({
       where: {
         OR: [
@@ -62,6 +63,8 @@ export class AccountsService {
         ],
       },
     });
+    const lookupMs = performance.now() - lookupStartedAt;
+    if (lookupMs > 5000) console.warn(`[auth-latency] stage=user-lookup duration_ms=${lookupMs.toFixed(0)}`);
 
     if (!user) {
       throw new UnauthorizedError('Email atau password tidak valid.');
@@ -71,7 +74,10 @@ export class AccountsService {
       throw new UnauthorizedError('Akun pengguna tidak aktif.');
     }
 
+    const passwordStartedAt = performance.now();
     const passwordMatches = await verifyPassword(pass, user.password_hash);
+    const passwordMs = performance.now() - passwordStartedAt;
+    if (passwordMs > 2000) console.warn(`[auth-latency] stage=password-verify duration_ms=${passwordMs.toFixed(0)}`);
 
     if (!passwordMatches) {
       throw new UnauthorizedError('Email atau password tidak valid.');
@@ -83,6 +89,7 @@ export class AccountsService {
       : undefined;
 
     const now = new Date();
+    const snapshotStartedAt = performance.now();
     const snapshots = await prisma.$queryRaw<Array<{ snapshot: LoginAccessSnapshot }>>(Prisma.sql`
       WITH updated_user AS (
         UPDATE iam_user
@@ -128,6 +135,8 @@ export class AccountsService {
       ) AS snapshot
       FROM updated_user
     `);
+    const snapshotMs = performance.now() - snapshotStartedAt;
+    if (snapshotMs > 5000) console.warn(`[auth-latency] stage=access-snapshot duration_ms=${snapshotMs.toFixed(0)}`);
     const snapshot = snapshots[0]?.snapshot;
     if (!snapshot) throw new UnauthorizedError('Email atau password tidak valid.');
     const userRoles = snapshot.user_roles;

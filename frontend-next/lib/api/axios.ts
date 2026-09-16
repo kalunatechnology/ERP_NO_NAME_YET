@@ -36,7 +36,8 @@ function syncCookie(token?: string) {
 api.interceptors.request.use(
   (config) => {
     const method = String(config.method || 'get').toUpperCase();
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && config.headers && !config.headers["Idempotency-Key"]) {
+    const publicTokenLogin = method === 'POST' && /^\/api\/v1\/auth\/token\/?(?:\?.*)?$/.test(String(config.url || ''));
+    if (!publicTokenLogin && ["POST", "PUT", "PATCH", "DELETE"].includes(method) && config.headers && !config.headers["Idempotency-Key"]) {
       config.headers["Idempotency-Key"] = crypto.randomUUID();
     }
     if (typeof window !== "undefined") {
@@ -45,7 +46,7 @@ api.interceptors.request.use(
         localStorage.getItem("access_token") ||
         localStorage.getItem("token");
 
-      if (access && config.headers) {
+      if (access && config.headers && !publicTokenLogin) {
         config.headers.Authorization = `Bearer ${access}`;
       }
 

@@ -28,6 +28,7 @@
     "test:marbot-signature": "ts-node --files tests/marbot-signature.unit.ts",
     "test:marbot-deployment": "ts-node --files tests/marbot-deployment.smoke.ts",
     "test:reporting-scope": "ts-node --files tests/reporting-global-scope.unit.ts",
+    "benchmark:q10:login": "node scripts/benchmark_demo_login.js",
     "reconcile:q9": "ts-node scripts/reconcile_q9_access.ts",
     "reconcile:q10": "ts-node scripts/reconcile_q10_test_baseline.ts",
     "audit:project-progress": "ts-node scripts/audit_project_progress.ts",

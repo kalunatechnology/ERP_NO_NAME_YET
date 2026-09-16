@@ -46,7 +46,11 @@ publicAuthRouter.post('/token', async (req: Request, res: Response, next: NextFu
     res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
     res.json(result);
   } catch (err) {
+    if (!res.headersSent) res.setHeader('Server-Timing', `auth;dur=${(performance.now() - startedAt).toFixed(1)}`);
     next(err);
+  } finally {
+    const totalMs = performance.now() - startedAt;
+    if (totalMs > 10000) console.warn(`[auth-latency] stage=login-total duration_ms=${totalMs.toFixed(0)}`);
   }
 });
 

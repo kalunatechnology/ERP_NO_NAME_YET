@@ -46,7 +46,7 @@ export async function loginUser(email: string, password: string): Promise<LoginP
       email: cleanEmail,
       username: cleanEmail,
       password,
-    }, { timeout: 15_000 });
+    }, { timeout: 15_000, headers: { "X-Company-ID": "" } });
     const payload = res.data?.data || res.data;
     const access = payload?.access;
     const refresh = payload?.refresh || "";
@@ -64,6 +64,12 @@ export async function loginUser(email: string, password: string): Promise<LoginP
 
     throw new Error("Respon otentikasi tidak valid dari server.");
   } catch (err: any) {
+    if (err.code === "ECONNABORTED") {
+      throw new Error("Login terlalu lambat dan melewati 15 detik. Ini masalah ketersediaan atau latensi server, bukan bukti password salah.");
+    }
+    if (err.code === "ERR_NETWORK") {
+      throw new Error("Server autentikasi tidak dapat dijangkau. Periksa koneksi dan alamat API backend, lalu coba lagi.");
+    }
     const errorMsg =
       err.response?.data?.detail ||
       err.response?.data?.message ||

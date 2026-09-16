@@ -320,6 +320,7 @@ async function main(): Promise<void> {
     const navigationContract = await readFile(`${__dirname}/../../frontend-next/lib/access/navigation-contract.ts`, 'utf8');
     const administrationClient = await readFile(`${__dirname}/../../frontend-next/components/administration/AccessAdministration.tsx`, 'utf8');
     const authApi = await readFile(`${__dirname}/../../frontend-next/lib/api/auth.api.ts`, 'utf8');
+    const serverSource = await readFile(`${__dirname}/../src/server.ts`, 'utf8');
     const coreRoutes = await readFile(`${__dirname}/../src/modules/core/core.routes.ts`, 'utf8');
     const reportingAccessRoutes = await readFile(`${__dirname}/../src/modules/reporting/reporting.routes.ts`, 'utf8');
     for (const mapping of [
@@ -339,6 +340,9 @@ async function main(): Promise<void> {
     assert(administrationClient.includes('"X-Company-ID": "all"') && administrationClient.includes('"X-Company-ID": contextCompany'), 'Super Admin company catalog and module actions must use explicit scopes.');
     assert(axiosSource.includes('const explicitCompany = config.headers?.["X-Company-ID"]'), 'An explicit company scope must not be overwritten by localStorage.');
     assert(authApi.includes('"/api/v1/auth/me/", { headers: { "X-Company-ID": "" } }'), 'Profile refresh must not inherit a stale company header.');
+    assert(authApi.includes('timeout: 15_000, headers: { "X-Company-ID": "" }') && authApi.includes('err.code === "ECONNABORTED"'), 'Login must isolate stale company scope and distinguish timeout from invalid credentials.');
+    assert(serverSource.includes('await prisma.$connect();') && serverSource.includes('await prisma.$queryRaw`SELECT 1`;'), 'Startup must verify a real database query before listening for login traffic.');
+    assert(axiosSource.includes('const publicTokenLogin =') && axiosSource.includes('&& !publicTokenLogin'), 'Public token login must not inherit an old bearer token or mutation idempotency header.');
     assert(coreRoutes.includes('req.user?.active_role_code === RoleCode.COMPANY_ADMIN'), 'Company Admin module mutation must require the active role.');
     assert(reportingAccessRoutes.includes('req.user?.active_role_code === RoleCode.SUPERVISOR') && reportingAccessRoutes.includes('const staffOnly = personalOnly(req);'), 'Supervisor and Staff must share personal reporting scope.');
     assert(reportingAccessRoutes.includes('user_id: userId') && reportingAccessRoutes.includes('employee_id: employeeId'), 'Attendance projection must use an explicit user-to-employee identity.');

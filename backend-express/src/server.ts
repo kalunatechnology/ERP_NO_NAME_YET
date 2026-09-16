@@ -27,6 +27,9 @@ async function main() {
   for (let attempt = 1; attempt <= maxConnectAttempts; attempt += 1) {
     try {
       await prisma.$connect();
+      // A TCP/session handshake alone does not prove the first application SQL
+      // request is ready after a pooler wake or a new deployment.
+      await prisma.$queryRaw`SELECT 1`;
       console.log('✅ Database connected successfully via Prisma');
       break;
     } catch (err) {
