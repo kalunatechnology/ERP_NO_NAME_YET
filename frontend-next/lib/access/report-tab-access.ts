@@ -17,7 +17,7 @@ export function canOpenReportTab(tabId: string, role: UserRoleType, access: Fron
   const canReadProjects = canRequestApi("/api/v1/projects/projects/", access);
   const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", access);
   if (tabId === "project-pnl") return canReadProjects && canReadFinance;
-  if (tabId === "executive") return canReadProjects;
+  if (tabId === "executive") return canReadProjects && canReadFinance;
   if (tabId === "journals") return canReadFinance;
   return true;
 }

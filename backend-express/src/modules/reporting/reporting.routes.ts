@@ -11,13 +11,20 @@ import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { requireActiveRole } from '../../middlewares/rbac.middleware';
-import { RoleCode } from '../../types/roles';
+import { isSuperAdmin, RoleCode } from '../../types/roles';
 
 export const reportingRouter = Router();
 
 function activeCompanyId(req: Request): string {
   if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses laporan.');
   return req.companyId;
+}
+
+/** A selected company stays scoped; only Super Admin may read the global view. */
+export function reportCompanyWhere(req: Request): { company_id?: string } {
+  if (req.companyId) return { company_id: req.companyId };
+  if (req.user && isSuperAdmin(req.user.roles)) return {};
+  throw new ForbiddenError('Pilih company sebelum mengakses laporan.');
 }
 
 function reportLimit(req: Request, fallback = 100): number {
@@ -182,10 +189,11 @@ reportingRouter.get('/periodic-project-summary', async (req: Request, res: Respo
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) throw new ValidationError('Rentang tanggal laporan tidak valid.');
     end.setHours(23, 59, 59, 999);
     const staffOnly = personalOnly(req);
+    const companyScope = reportCompanyWhere(req);
 
     const take = reportLimit(req);
     const baseWhere = {
-        company_id: activeCompanyId(req),
+        ...companyScope,
         planned_date: { gte: start, lte: end },
         ...(staffOnly ? { owner_id: req.user!.id } : {}),
     };
@@ -229,10 +237,11 @@ reportingRouter.get('/attendance-summary', async (req: Request, res: Response, n
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) throw new ValidationError('Rentang tanggal laporan tidak valid.');
     end.setHours(23, 59, 59, 999);
     const staffOnly = personalOnly(req);
+    const companyScope = reportCompanyWhere(req);
     const take = reportLimit(req);
     const employeeId = staffOnly ? await personalEmployeeId(req) : null;
     const where = {
-        company_id: activeCompanyId(req),
+        ...companyScope,
         work_date: { gte: start, lte: end },
         ...(employeeId ? { employee_id: employeeId } : {}),
     };
@@ -244,8 +253,8 @@ reportingRouter.get('/attendance-summary', async (req: Request, res: Response, n
     const projectIds = [...new Set(visibleEntries.map((entry) => entry.project_id).filter(Boolean))] as string[];
     const employeeIds = [...new Set(visibleEntries.map((entry) => entry.employee_id).filter(Boolean))] as string[];
     const [projects, employees] = await Promise.all([
-      prisma.project_project.findMany({ where: { company_id: activeCompanyId(req), id: { in: projectIds } }, select: { id: true, project_name: true } }),
-      prisma.master_employee.findMany({ where: { company_id: activeCompanyId(req), id: { in: employeeIds } }, select: { id: true, employee_number: true } }),
+      prisma.project_project.findMany({ where: { ...companyScope, id: { in: projectIds } }, select: { id: true, project_name: true } }),
+      prisma.master_employee.findMany({ where: { ...companyScope, id: { in: employeeIds } }, select: { id: true, employee_number: true } }),
     ]);
     const projectNames = new Map(projects.map((project) => [project.id, project.project_name]));
     const employeeNames = new Map(employees.map((employee) => [employee.id, employee.employee_number]));

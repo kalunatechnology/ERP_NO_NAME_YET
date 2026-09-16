@@ -498,9 +498,12 @@ export default function ReportingClient() {
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState(createDefaultData());
   const [loadedDataKey, setLoadedDataKey] = useState("");
+  const [loadError, setLoadError] = useState<{ key: string; message: string } | null>(null);
   const requestSequence = useRef(0);
   const contextKey = JSON.stringify([user?.id, company, user?.active_role_code, canReadProjects, canReadFinance]);
-  const displayData = loadedDataKey === contextKey ? data : createDefaultData();
+  const hasLoadedData = loadedDataKey === contextKey;
+  const displayData = hasLoadedData ? data : createDefaultData();
+  const visibleLoadError = loadError?.key === contextKey ? loadError.message : "";
   const [showArchive, setShowArchive] = useState(false);
   const [reportHistory, setReportHistory] = useState<Array<{ id: string; title: string; format: string; createdAt: string }>>([]);
 
@@ -516,6 +519,8 @@ export default function ReportingClient() {
 
   const loadData = useCallback(async (silent = false) => {
     const sequence = ++requestSequence.current;
+    setLoadedDataKey("");
+    setLoadError(null);
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
@@ -523,9 +528,16 @@ export default function ReportingClient() {
       if (sequence === requestSequence.current) {
         setData(d);
         setLoadedDataKey(contextKey);
+        setLoadError(null);
       }
-    } catch {
-      if (sequence === requestSequence.current) toast.error("Gagal memuat data laporan.");
+    } catch (error: any) {
+      if (sequence === requestSequence.current) {
+        setLoadedDataKey("");
+        setLoadError({
+          key: contextKey,
+          message: error?.response?.data?.detail || error?.response?.data?.error?.message || "Gagal memuat data laporan. Coba segarkan kembali atau periksa akses company dan modul Anda.",
+        });
+      }
     } finally {
       if (sequence === requestSequence.current) {
         setLoading(false);
@@ -545,14 +557,14 @@ export default function ReportingClient() {
 
   /* Track recently opened Reporting */
   useEffect(() => {
-    if (!allowedTabs.some((tab) => tab.id === activeTab)) return;
+    if (!hasLoadedData || !allowedTabs.some((tab) => tab.id === activeTab)) return;
     feedApi.trackRecentItem({
       item_type: "REPORT",
       object_id: `rep-${activeTab}`,
       title: `Laporan — ${REPORT_TABS.find(t => t.id === activeTab)?.label || "Executive"}`,
       target_url: "/reporting",
     }).catch(() => {});
-  }, [activeTab, allowedTabs]);
+  }, [activeTab, allowedTabs, hasLoadedData]);
 
 /**
  * handleExport coordinates the UI behavior represented by this function.
@@ -562,6 +574,7 @@ export default function ReportingClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleExport = (format: "csv" | "pdf") => {
+    if (!hasLoadedData || loading || refreshing) return;
     if (format === "csv") {
       toast("Mengunduh laporan CSV...");
       const rows = [
@@ -632,6 +645,7 @@ export default function ReportingClient() {
 
   const isPersonalReport = userRole === 'staff';
   const canExportFinancialCsv = canReadProjects && canReadFinance;
+  const canExportLoadedReport = hasLoadedData && !loading && !refreshing;
 
   return (
     <div className="flex flex-col gap-5">
@@ -643,11 +657,11 @@ export default function ReportingClient() {
           <p className="text-xs text-text-secondary mt-0.5">{isPersonalReport ? "Ringkasan aktivitas tugas dan kehadiran yang tercatat atas nama Anda." : "Visibilitas real-time: Revenue, Biaya Aktual (Labor/Material), Gross Margin, dan General Ledger."}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => handleExport("pdf")} className="btn-outline text-xs gap-1.5 border-brand-green/40 text-brand-deep-green hover:bg-brand-light-green">
+          <button onClick={() => handleExport("pdf")} disabled={!canExportLoadedReport} className="btn-outline text-xs gap-1.5 border-brand-green/40 text-brand-deep-green hover:bg-brand-light-green disabled:opacity-50 disabled:cursor-not-allowed">
             <FileText size={13} /> Cetak / PDF
           </button>
           <button onClick={() => setShowArchive(value => !value)} className="btn-ghost text-xs gap-1.5"><Book size={13} /> View Other Reports</button>
-          {canExportFinancialCsv && <button onClick={() => handleExport("csv")} className="btn-ghost text-xs gap-1.5 text-text-secondary hover:text-text-primary">
+          {canExportFinancialCsv && <button onClick={() => handleExport("csv")} disabled={!canExportLoadedReport} className="btn-ghost text-xs gap-1.5 text-text-secondary hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed">
             <Download size={13} /> Export CSV
           </button>}
           <button onClick={() => loadData(true)} disabled={refreshing} className="btn-ghost text-xs gap-1.5 text-text-secondary hover:text-text-primary">
@@ -685,10 +699,18 @@ export default function ReportingClient() {
 
       {/* ── Content (Printable Area) ───────── */}
       <div id="printable-report-area">
-        {loading ? (
+        {loading || refreshing ? (
           <div className="flex flex-col gap-4">
             {[...Array(3)].map((_, i) => <div key={i} className="card rounded-xl p-4 h-20 animate-pulse"><div className="h-4 bg-gray-200 rounded w-1/3" /></div>)}
           </div>
+        ) : visibleLoadError ? (
+          <div role="alert" className="card rounded-xl p-5 border border-red-200 bg-red-50 text-red-800">
+            <p className="font-semibold">Laporan belum berhasil dimuat.</p>
+            <p className="mt-1 text-sm">{visibleLoadError}</p>
+            <button onClick={() => void loadData()} className="btn-outline mt-3 text-xs">Coba lagi</button>
+          </div>
+        ) : !hasLoadedData ? (
+          <div className="card rounded-xl p-5 text-sm text-text-secondary">Menyiapkan laporan untuk konteks akses saat ini...</div>
         ) : (
           <>
             {activeTab === "project-pnl" && <TabProjectPnL data={displayData} />}

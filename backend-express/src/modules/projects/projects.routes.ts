@@ -11,13 +11,20 @@ import prisma from '../../config/database';
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
-import { RoleCode } from '../../types/roles';
+import { isSuperAdmin, RoleCode } from '../../types/roles';
 
 export const projectsRouter = Router();
 
 function activeCompanyId(req: Request): string {
   if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses data proyek.');
   return req.companyId;
+}
+
+/** Global portfolio listing is read-only and reserved for the platform administrator. */
+export function portfolioReadCompanyId(req: Request): string {
+  if (req.companyId) return req.companyId;
+  if (req.method === 'GET' && req.user && isSuperAdmin(req.user.roles)) return '';
+  return activeCompanyId(req);
 }
 
 function activeTenantId(req: Request): string {
@@ -1732,7 +1739,7 @@ projectsRouter.get(
 projectsRouter.use('/projects', createCrudRouter({
   modelName: 'project_project',
   searchFields: ['project_name', 'project_code', 'status', 'customer_name'],
-  accessWhere: async (req) => ProjectsService.projectAccessWhere(req.user, activeCompanyId(req)),
+  accessWhere: async (req) => ProjectsService.projectAccessWhere(req.user, portfolioReadCompanyId(req)),
   beforeCreate: async (req, data) => {
     // 1. Alias mappings
     if (!data.project_name && data.name) data.project_name = data.name;

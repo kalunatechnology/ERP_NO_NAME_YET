@@ -175,6 +175,20 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
                 <div className="absolute left-0 mt-2 w-64 bg-white rounded-2xl border border-text-tertiary shadow-card-lg p-2 z-50 animate-in fade-in zoom-in-95">
                   <div className="px-2 py-1 text-2xs font-bold text-text-secondary uppercase">Pilih Context Company</div>
                   <div className="flex flex-col gap-1 mt-1">
+                    <button
+                      onClick={() => {
+                        setCompany(null);
+                        setIsCompanyDropdownOpen(false);
+                        toast.success("Context Global aktif.");
+                      }}
+                      className={cn(
+                        "w-full text-left p-2 rounded-xl text-xs flex items-center justify-between hover:bg-brand-light-green/40",
+                        !company && "bg-brand-light-green font-bold text-brand-deep-green"
+                      )}
+                    >
+                      <span>Global · Semua company</span>
+                      {!company && <Check size={13} className="text-brand-deep-green" />}
+                    </button>
                     {companies.map(c => (
                       <button
                         key={c.id}

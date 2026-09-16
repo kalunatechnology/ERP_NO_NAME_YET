@@ -450,6 +450,8 @@ async function main(): Promise<void> {
     assert(reportTabAccess.includes('om: ["operational", "periodic", "attendance"]')
       && reportingClient.includes('canOpenReportTab(tab.id, userRole, requestAccess)'),
       'OM must not receive executive or Project P&L reporting tabs.');
+    assert(reportTabAccess.includes('if (tabId === "executive") return canReadProjects && canReadFinance;'),
+      'Executive finance metrics must not be shown when their Finance source is unavailable.');
     assert(reportingClient.includes("includeOperational: userRole === 'om'"), 'Operational projection must only be requested for the OM journey.');
     assert(!projectClient.includes('<TopExpensesBarChart'), 'Project workspace must not render project expense analytics for PM or OM.');
     assert(!tasksClient.includes('<span>+ Buat Task Harian</span>'), 'Daily Task action must not render duplicate plus symbols.');
