@@ -394,21 +394,40 @@ export class CoreService {
           });
           permissionByCode.set(code, permission.id);
         }
-        for (const role of roles) {
-          const codes = ['USE_MARBOT', ...(MARBOT_ROLE_READS[role.role_code] || [])];
-          for (const code of codes) {
-            const permissionId = permissionByCode.get(code)!;
-            const existing = await tx.iam_role_permission.findFirst({ where: {
-              tenant_id: tenantId, company_id: companyId, role_id: role.id, permission_id: permissionId,
-            }, select: { id: true } });
-            if (!existing) await tx.iam_role_permission.create({ data: {
-              id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
-              role_id: role.id, permission_id: permissionId, allowed: true,
-            } });
-          }
+        // Collect all permissionIds to check in bulk, then create only missing ones
+        const allRolePermChecks = roles.flatMap(role =>
+          ['USE_MARBOT', ...(MARBOT_ROLE_READS[role.role_code] || [])].map(code => ({
+            role, code, permissionId: permissionByCode.get(code)!,
+          }))
+        );
+        const existingRolePerms = await tx.iam_role_permission.findMany({
+          where: {
+            tenant_id: tenantId,
+            company_id: companyId,
+            role_id: { in: [...new Set(allRolePermChecks.map(r => r.role.id))] },
+            permission_id: { in: [...new Set(allRolePermChecks.map(r => r.permissionId))] },
+          },
+          select: { role_id: true, permission_id: true },
+        });
+        const existingSet = new Set(existingRolePerms.map(e => `${e.role_id}:${e.permission_id}`));
+        const toCreate = allRolePermChecks.filter(({ role, permissionId }) =>
+          !existingSet.has(`${role.id}:${permissionId}`)
+        );
+        if (toCreate.length > 0) {
+          await tx.iam_role_permission.createMany({
+            data: toCreate.map(({ role, permissionId }) => ({
+              id: crypto.randomUUID(),
+              tenant_id: tenantId,
+              company_id: companyId,
+              role_id: role.id,
+              permission_id: permissionId,
+              allowed: true,
+            })),
+            skipDuplicates: true,
+          });
         }
       }
       return result;
-    });
+    }, { timeout: 30000 });
   }
 }
