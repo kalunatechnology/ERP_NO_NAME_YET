@@ -7,6 +7,7 @@
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
+const fs = require('node:fs');
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -29,12 +30,25 @@ function main() {
   // behaves consistently on Windows and Linux and never depends on shell
   // resolution of npm/npm.cmd during a hosting build.
   const root = path.resolve(__dirname, '..');
+  const hasFrontend = fs.existsSync(path.resolve(root, '..', 'frontend-next', 'lib', 'access', 'module-contract.ts'));
+
   run(process.execPath, [path.join(root, 'node_modules', 'prisma', 'build', 'index.js'), 'generate']);
   run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);
-  run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/q11-system-guardrails.ts']);
-  run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/reporting-global-scope.unit.ts']);
-  run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/integration-hardening.unit.ts']);
-  run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/marbot-signature.unit.ts']);
+
+  if (process.env.SKIP_TESTS_ON_BUILD !== 'true') {
+    // tests/q11-system-guardrails.ts imports contracts from the sibling frontend-next project.
+    // In isolated deployment environments (e.g., Hostinger / Docker / CI standalone backend),
+    // skip cross-project monorepo tests if the sibling folder does not exist or target is Hostinger.
+    if (hasFrontend && process.env.DEPLOYMENT_TARGET !== 'hostinger') {
+      run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/q11-system-guardrails.ts']);
+    } else {
+      console.log('Skipping tests/q11-system-guardrails.ts (monorepo frontend-next not present or production deployment target).');
+    }
+
+    run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/reporting-global-scope.unit.ts']);
+    run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/integration-hardening.unit.ts']);
+    run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/marbot-signature.unit.ts']);
+  }
 }
 
 try {

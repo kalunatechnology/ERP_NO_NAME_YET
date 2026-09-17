@@ -286,13 +286,13 @@ async function main(): Promise<void> {
     };
     for (const [activeRoleCode, expected] of Object.entries(expectedBase)) {
       const access = { activeRoleCode, enabledModules: allEnabled, isSuperAdmin: activeRoleCode === 'ROLE-SUPER-ADMIN' };
-      const actual = getNavigationEntries(access).map((item) => item.href);
+      const actual = getNavigationEntries(access).map((item: any) => item.href);
       assert.deepEqual(actual, expected, `${activeRoleCode}: navigation must match enabled page contracts`);
       actual.forEach((pathname) => assert.equal(canAccessRoute({ pathname, ...access }), true));
     }
-    assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['REPORTING'] }).map((item) => item.href), ['/dashboard', '/reporting']);
-    assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['FINANCE'], delegatedModules: ['FINANCE'] }).map((item) => item.href), ['/dashboard', '/finance']);
-    assert(!getNavigationEntries({ activeRoleCode: 'ROLE-PM', enabledModules: ['PROJECTS'], delegatedModules: ['PROJECTS'] }).some((item) => item.href === '/administration'));
+    assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['REPORTING'] }).map((item: any) => item.href), ['/dashboard', '/reporting']);
+    assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['FINANCE'], delegatedModules: ['FINANCE'] }).map((item: any) => item.href), ['/dashboard', '/finance']);
+    assert(!getNavigationEntries({ activeRoleCode: 'ROLE-PM', enabledModules: ['PROJECTS'], delegatedModules: ['PROJECTS'] }).some((item: any) => item.href === '/administration'));
     assert.equal(canPerform('finance:operate', 'ROLE-SUPER-ADMIN'), false);
     assert.equal(canPerform('finance:operate', 'ROLE-FINANCE'), true);
     assert.equal(canPerform('project:create', 'ROLE-SUPER-ADMIN'), false);
