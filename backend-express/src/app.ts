@@ -17,7 +17,7 @@ import { env } from './config/env';
 import { authenticate } from './middlewares/auth.middleware';
 import { resolveTenant } from './middlewares/tenant.middleware';
 import { auditLog } from './middlewares/audit.middleware';
-import { enforceSuperAdminReadOnly, requireRole, restrictActiveRoleMutations } from './middlewares/rbac.middleware';
+import { enforceSuperAdminReadOnly, requireActiveRole, requireRole, restrictActiveRoleMutations } from './middlewares/rbac.middleware';
 import { RoleCode } from './types/roles';
 import { requireModuleAccess } from './middlewares/entitlement.middleware';
 import { errorHandler } from './middlewares/error.middleware';
@@ -43,6 +43,7 @@ import { logisticsRouter } from './modules/logistics/logistics.routes';
 import { analyticsRouter } from './modules/analytics/analytics.routes';
 import { implementationRouter } from './modules/implementation/implementation.routes';
 import { reportingRouter } from './modules/reporting/reporting.routes';
+import { managementReportsRouter } from './modules/management_reports/management_reports.routes';
 import { commandsRouter } from './modules/commands/commands.routes';
 import { dashboardRouter, invalidateDashboardCache } from './modules/dashboard/dashboard.routes';
 import { marbotInternalRouter, marbotUserRouter } from './modules/marbot/marbot.routes';
@@ -167,18 +168,18 @@ export function createApp(): Express {
   apiV1.use(
     '/crm',
     requireModuleAccess('CRM'),
-    requireRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR),
+    requireActiveRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
       message: 'Role Director memiliki akses preview CRM; seluruh mutasi operasional dinonaktifkan.',
     }),
     crmRouter,
   );
-  apiV1.use('/sales', requireModuleAccess('SALES'), requireRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), salesRouter);
+  apiV1.use('/sales', requireModuleAccess('SALES'), requireActiveRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), salesRouter);
   apiV1.use(
     '/projects',
     requireModuleAccess('PROJECTS'),
-    requireRole(RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.SUPERVISOR, RoleCode.STAFF),
+    requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.SUPERVISOR, RoleCode.STAFF),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
       message: 'Role Director memiliki akses preview seluruh proyek.',
@@ -199,7 +200,7 @@ export function createApp(): Express {
   apiV1.use(
     '/finance',
     requireModuleAccess('FINANCE'),
-    requireRole(RoleCode.FINANCE, RoleCode.DIRECTOR),
+    requireActiveRole(RoleCode.FINANCE, RoleCode.DIRECTOR),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
       message: 'Role Director memiliki akses preview Finance; seluruh mutasi operasional dinonaktifkan.',
@@ -216,6 +217,12 @@ export function createApp(): Express {
   apiV1.use('/analytics', requireModuleAccess('ANALYTICS'), analyticsRouter);
   apiV1.use('/implementation', requireModuleAccess('IMPLEMENTATION'), implementationRouter);
   apiV1.use('/reporting', requireModuleAccess('REPORTING'), reportingRouter);
+  apiV1.use(
+    '/management-reports',
+    requireModuleAccess('REPORTING'),
+    requireActiveRole(RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR),
+    managementReportsRouter,
+  );
   apiV1.use('/commands', commandsRouter);
   apiV1.use('/dashboard', dashboardRouter);
 

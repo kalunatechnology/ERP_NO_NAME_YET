@@ -12,6 +12,10 @@ import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { requireActiveRole } from '../../middlewares/rbac.middleware';
 import { isSuperAdmin, RoleCode } from '../../types/roles';
+import {
+  EmployeeProvisioningService,
+} from '../master_data/employee-provisioning.service';
+import { ReportingService } from './reporting.service';
 
 export const reportingRouter = Router();
 
@@ -37,29 +41,46 @@ function personalOnly(req: Request): boolean {
 }
 
 /** Resolve timesheet identity from an explicit user↔employee link only. */
-async function personalEmployeeId(req: Request): Promise<string> {
-  const companyId = activeCompanyId(req);
-  const tenantId = req.user?.tenant_id;
-  const userId = req.user?.id;
-  if (!tenantId || !userId) throw new ForbiddenError('Identitas tenant atau user tidak tersedia.');
-  const employee = await prisma.master_employee.findFirst({
-    where: { tenant_id: tenantId, company_id: companyId, user_id: userId },
-    select: { id: true },
-  });
-  if (employee) return employee.id;
-  const member = await prisma.project_member.findFirst({
-    where: { tenant_id: tenantId, company_id: companyId, user_id: userId, status: 'ACTIVE', employee_id: { not: null } },
-    select: { employee_id: true },
-    orderBy: { assigned_at: 'desc' },
-  });
-  if (member?.employee_id) {
-    const mapped = await prisma.master_employee.findFirst({
-      where: { id: member.employee_id, tenant_id: tenantId, company_id: companyId },
-      select: { id: true },
-    });
-    if (mapped) return mapped.id;
+/**
+ * Resolve personal employee identity
+ * menggunakan provisioning service yang sama
+ * dengan Projects/Timesheet.
+ */
+async function personalEmployeeId(
+  req: Request,
+): Promise<string> {
+  const companyId =
+    activeCompanyId(req);
+
+  const tenantId =
+    req.user?.tenant_id;
+
+  const userId =
+    req.user?.id;
+
+  if (!tenantId || !userId) {
+    throw new ForbiddenError(
+      'Identitas tenant atau user tidak tersedia.',
+    );
   }
-  throw new ForbiddenError('Akun user belum terhubung dengan data employee.');
+
+  // Attendance projection resolves user_id: userId to employee identity
+  const employee =
+    await EmployeeProvisioningService.ensureForUser({
+      userId,
+      tenantId,
+      companyId,
+      actorId:
+        userId,
+    });
+
+  if (!employee) {
+    throw new ForbiddenError(
+      'Super Admin tidak memiliki profil employee.',
+    );
+  }
+
+  return employee.id;
 }
 
 // Reporting is a projection boundary: reports may be read/exported, but source
@@ -276,30 +297,13 @@ reportingRouter.get('/attendance-summary', async (req: Request, res: Response, n
 });
 
 /** Company-scoped operational projection for Operations Management. */
-reportingRouter.get('/operational-summary', requireActiveRole(RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
+reportingRouter.get('/operational-summary', requireActiveRole(RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const companyId = activeCompanyId(req);
-    const now = new Date();
-    const projectWhere = { company_id: companyId };
-    const taskWhere = { company_id: companyId };
-    const milestoneWhere = { company_id: companyId };
-    const [projectsTotal, projectsActive, tasksTotal, tasksInProgress, tasksBlocked, milestonesTotal, milestonesOverdue] = await Promise.all([
-      prisma.project_project.count({ where: projectWhere }),
-      prisma.project_project.count({ where: { ...projectWhere, status: { in: ['ACTIVE', 'IN_PROGRESS'] } } }),
-      prisma.project_daily_task.count({ where: taskWhere }),
-      prisma.project_daily_task.count({ where: { ...taskWhere, status: 'IN_PROGRESS' } }),
-      prisma.project_daily_task.count({ where: { ...taskWhere, OR: [{ is_blocked: true }, { status: 'BLOCKED' }] } }),
-      prisma.project_milestone.count({ where: milestoneWhere }),
-      prisma.project_milestone.count({ where: { ...milestoneWhere, planned_date: { lt: now }, status: { notIn: ['COMPLETED', 'DONE'] } } }),
-    ]);
-    return res.json({
-      generated_at: now,
-      projects: { total: projectsTotal, active: projectsActive },
-      tasks: { total: tasksTotal, in_progress: tasksInProgress, blocked: tasksBlocked },
-      milestones: { total: milestonesTotal, overdue: milestonesOverdue },
-    });
+    const summary = await ReportingService.buildOperationalSummary(companyId);
+    res.json(summary);
   } catch (err) {
-    return next(err);
+    next(err);
   }
 });
 

@@ -723,7 +723,68 @@ const rolePermissionsCrud = () => createCrudRouter({
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
+async function listUserRoles(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { userId } = req.params;
+    const companyId = req.companyId || String(req.header('X-Company-ID') || '');
+    if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
+    const result = await AccountsService.getUserRoles(companyId, userId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function assignUserRole(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { userId } = req.params;
+    const roleCode = req.params.roleCode || req.body?.role_code || req.body?.roleCode;
+    if (!roleCode) throw new ValidationError('role_code wajib diisi.');
+    const companyId = req.companyId;
+    if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new ForbiddenError('Tenant ID tidak ditemukan.');
+    const result = await AccountsService.assignRoleToUser({
+      companyId,
+      tenantId,
+      targetUserId: userId,
+      rawRoleCode: roleCode,
+      actorId: req.user?.id,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function removeUserRole(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { userId } = req.params;
+    const roleCode = req.params.roleCode || req.body?.role_code || req.body?.roleCode;
+    if (!roleCode) throw new ValidationError('role_code wajib diisi.');
+    const companyId = req.companyId;
+    if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new ForbiddenError('Tenant ID tidak ditemukan.');
+    const result = await AccountsService.removeRoleFromUser({
+      companyId,
+      tenantId,
+      targetUserId: userId,
+      rawRoleCode: roleCode,
+      actorId: req.user?.id,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 function mountAccountResources(router: Router) {
+  router.get('/users/:userId/roles', listUserRoles);
+  router.put('/users/:userId/roles', requireCompanyAdmin, requireCompanyContextForWrite, assignUserRole);
+  router.put('/users/:userId/roles/:roleCode', requireCompanyAdmin, requireCompanyContextForWrite, assignUserRole);
+  router.delete('/users/:userId/roles/:roleCode', requireCompanyAdmin, requireCompanyContextForWrite, removeUserRole);
+  router.delete('/users/:userId/roles', requireCompanyAdmin, requireCompanyContextForWrite, removeUserRole);
   router.post('/users/invite', requireCompanyAdmin, inviteUser);
   router.get('/user-module-access', requireCompanyAdmin, listUserModuleAccess);
   router.put('/users/:userId/module-access/:moduleCode', requireCompanyAdmin, requireCompanyContextForWrite, setUserModuleAccess);

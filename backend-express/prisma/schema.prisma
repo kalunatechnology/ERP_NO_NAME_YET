@@ -5275,3 +5275,52 @@ model workflow_transition_log {
   @@index([tenant_id, company_id])
   @@map("workflow_transition_log")
 }
+
+// =============================================================================
+// APP: MANAGEMENT REPORTS
+// =============================================================================
+
+model management_report {
+  id          String   @id @default(uuid())
+
+  tenant_id   String   @map("tenant_id")
+  company_id  String   @map("company_id")
+
+  report_number String
+  title         String
+
+  report_type   String
+  period_type   String
+
+  period_start DateTime
+  period_end   DateTime
+
+  executive_summary String?
+  achievements      String?
+  blockers          String?
+  risks             String?
+  decisions_needed  String?
+  next_plan         String?
+
+  snapshot_json Json?
+
+  status String @default("DRAFT")
+
+  prepared_by_id String @map("prepared_by_id")
+
+  submitted_at DateTime?
+
+  reviewed_by_id String?   @map("reviewed_by_id")
+  reviewed_at    DateTime?
+  review_note    String?
+
+  version_number   Int     @default(1)
+  parent_report_id String? @map("parent_report_id")
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([company_id, report_number, version_number])
+  @@index([tenant_id, company_id, status])
+  @@map("management_report")
+}

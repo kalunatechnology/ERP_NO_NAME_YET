@@ -24,6 +24,7 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
     { href: "/finance", label: "Finance Preview" },
     { href: "/crm", label: "CRM Preview" },
     { href: "/reporting", label: "Performance" },
+    { href: "/management-reports", label: "Management Reports" },
     { href: "/resources", label: "Data Explorer" },
   ],
   [ROLE_CODES.operationalManager]: [
@@ -31,6 +32,7 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
     { href: "/projects", label: "Projects" },
     { href: "/tasks", label: "Daily Tasks" },
     { href: "/reporting", label: "Reports" },
+    { href: "/management-reports", label: "Management Reports" },
   ],
   [ROLE_CODES.projectManager]: [
     { href: "/dashboard", label: "Dashboard" },
@@ -69,9 +71,6 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
 };
 
 const DELEGATED_NAVIGATION: Partial<Record<string, readonly NavigationEntry[]>> = {
-  PROJECTS: [{ href: "/projects", label: "Projects" }, { href: "/tasks", label: "Daily Tasks" }],
-  CRM: [{ href: "/crm", label: "CRM & Sales" }],
-  FINANCE: [{ href: "/finance", label: "Finance" }],
   REPORTING: [{ href: "/reporting", label: "Reports" }],
   ANALYTICS: [{ href: "/resources", label: "Data Explorer" }],
 };

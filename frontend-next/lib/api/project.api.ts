@@ -90,6 +90,7 @@ export interface DailyTask {
   time_slot?: string;
   title?: string;
   activity_input?: string;
+  description?: string;
   output_result?: string;
   status: DailyTaskStatusValue;
   progress?: number;
@@ -257,9 +258,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
         canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=300") : emptyResponse(),
         canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=200") : emptyResponse(),
         canReadFinance ? api.get("/api/v1/finance/project-fundings/?page_size=100") : emptyResponse(),
-        // User administration is not part of the PROJECTS contract. Names are
-        // supplied by the dashboard bundle or project-scoped assignee catalog.
-        emptyResponse(),
+        api.get("/api/v1/projects/task-participants/"),
       ]);
 
   const projects     = normalizeList<Project>(projectsRes.data).rows;
@@ -304,23 +303,100 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
     // 1. Build daily tasks mapped by weekly_task
     const dailyByWeekly: Record<string, DailyTask[]> = {};
     rawDaily.forEach((d: any) => {
-      const wId = String(d.weekly_task || d.weekly_task_id || d.weekly_plan || d.weekly_plan_id || "");
-      if (!dailyByWeekly[wId]) dailyByWeekly[wId] = [];
+      const wId = String(
+        d.weekly_task ||
+        d.weekly_task_id ||
+        d.weekly_plan ||
+        d.weekly_plan_id ||
+        ""
+      );
+
+      if (!dailyByWeekly[wId]) {
+        dailyByWeekly[wId] = [];
+      }
+
+      const ownerId =
+        d.owner_id ||
+        d.owner ||
+        d.assigned_to;
+
       dailyByWeekly[wId].push({
-        id: d.id,
-        weekly_task: wId,
-        planned_date: normalizeDateKey(d.planned_date || d.task_date),
-        time_slot: d.time_slot || d.time || "",
-        title: d.title || d.activity_input || d.name || "",
-        activity_input: d.activity_input || d.title || "",
-        output_result: d.output_result || d.output || "",
-        status: (d.status === "DONE" || d.status === "COMPLETED") ? "COMPLETED" : (d.status || "PENDING"),
-        progress: Number(d.progress || (d.status === "COMPLETED" || d.status === "DONE" ? 100 : 0)),
-        notes: d.notes || "",
-        owner_name: d.owner_name || d.owner_username || d.assignee_name || "Member",
-        owner_id: d.owner_id || d.owner || d.assigned_to,
-        is_blocked: d.is_blocked || d.status === "BLOCKED",
-        block_reason: d.block_reason || "",
+        id:
+          d.id,
+
+        weekly_task:
+          wId,
+
+        planned_date:
+          normalizeDateKey(
+            d.planned_date ||
+            d.task_date
+          ),
+
+        time_slot:
+          d.time_slot ||
+          d.time ||
+          "",
+
+        title:
+          d.title ||
+          d.activity_input ||
+          d.name ||
+          "",
+
+        activity_input:
+          d.activity_input ||
+          d.title ||
+          "",
+
+        output_result:
+          d.output_result ||
+          d.output ||
+          "",
+
+        status:
+          (
+            d.status === "DONE" ||
+            d.status === "COMPLETED"
+          )
+            ? "COMPLETED"
+            : (
+                d.status ||
+                "PENDING"
+              ),
+
+        progress:
+          Number(
+            d.progress ||
+            (
+              d.status === "COMPLETED" ||
+              d.status === "DONE"
+                ? 100
+                : 0
+            )
+          ),
+
+        notes:
+          d.notes ||
+          "",
+
+        owner_id:
+          ownerId,
+
+        owner_name:
+          d.owner_name ||
+          d.owner_username ||
+          d.assignee_name ||
+          userMap[String(ownerId)] ||
+          "Member",
+
+        is_blocked:
+          d.is_blocked ||
+          d.status === "BLOCKED",
+
+        block_reason:
+          d.block_reason ||
+          "",
       });
     });
 

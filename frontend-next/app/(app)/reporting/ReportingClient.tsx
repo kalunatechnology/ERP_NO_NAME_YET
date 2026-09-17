@@ -8,11 +8,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   RefreshCw, BarChart3, TrendingUp, DollarSign, FileText,
   Download, CalendarDays, ChevronDown, Layers, Building2,
-  ArrowUpRight, ArrowDownRight, Book, ClipboardCheck, Clock3,
+  ArrowUpRight, ArrowDownRight, Book, ClipboardCheck, Clock3, Plus,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
@@ -480,6 +480,7 @@ function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> })
 export default function ReportingClient() {
   const { user, userRole, company } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const requestAccess = {
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
@@ -657,6 +658,22 @@ export default function ReportingClient() {
           <p className="text-xs text-text-secondary mt-0.5">{isPersonalReport ? "Ringkasan aktivitas tugas dan kehadiran yang tercatat atas nama Anda." : "Visibilitas real-time: Revenue, Biaya Aktual (Labor/Material), Gross Margin, dan General Ledger."}</p>
         </div>
         <div className="flex items-center gap-2">
+          {userRole === "om" && (
+            <button
+              onClick={() => router.push("/management-reports?action=create")}
+              className="btn-primary text-xs gap-1.5 font-bold"
+            >
+              <Plus size={13} /> Buat Laporan Operasional
+            </button>
+          )}
+          {userRole === "executive" && (
+            <button
+              onClick={() => router.push("/management-reports")}
+              className="btn-outline text-xs gap-1.5 border-brand-green/40 text-brand-deep-green hover:bg-brand-light-green font-semibold"
+            >
+              <FileText size={13} /> Laporan Manajemen
+            </button>
+          )}
           <button onClick={() => handleExport("pdf")} disabled={!canExportLoadedReport} className="btn-outline text-xs gap-1.5 border-brand-green/40 text-brand-deep-green hover:bg-brand-light-green disabled:opacity-50 disabled:cursor-not-allowed">
             <FileText size={13} /> Cetak / PDF
           </button>

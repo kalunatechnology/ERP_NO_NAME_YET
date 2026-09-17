@@ -232,6 +232,76 @@ export function AccessAdministration() {
     return displayedUsers.filter((item) => !query || `${item.full_name || ""} ${item.email}`.toLowerCase().includes(query));
   }, [search, displayedUsers]);
 
+  const ASSIGNABLE_ROLES = [
+    { code: "ROLE-STAFF", label: "Staff" },
+    { code: "ROLE-FINANCE", label: "Finance" },
+    { code: "ROLE-OM", label: "Operational Manager" },
+    { code: "ROLE-PM", label: "Project Manager" },
+    { code: "ROLE-SUPERVISOR", label: "Supervisor" },
+    { code: "ROLE-CRM-LEAD", label: "CRM Lead" },
+    { code: "ROLE-SALES", label: "Sales" },
+    { code: "ROLE-DIRECTOR", label: "Director" },
+  ];
+
+  const [userRolesData, setUserRolesData] = useState<{
+    active_role_id?: string | null;
+    roles: Array<{
+      user_role_id: string;
+      role_id: string;
+      role_code: string;
+      raw_role_code: string;
+      role_name: string;
+      is_active: boolean;
+    }>;
+  }>({ roles: [] });
+  const [loadingUserRoles, setLoadingUserRoles] = useState(false);
+  const [roleUpdatingKey, setRoleUpdatingKey] = useState<string | null>(null);
+
+  const loadUserRoles = useCallback(async (userId: string) => {
+    if (!userId || !contextCompany) return;
+    setLoadingUserRoles(true);
+    try {
+      const res = await api.get(`/api/v1/accounts/users/${userId}/roles`, {
+        headers: { "X-Company-ID": contextCompany },
+      });
+      setUserRolesData(res.data || { roles: [] });
+    } catch {
+      setUserRolesData({ roles: [] });
+    } finally {
+      setLoadingUserRoles(false);
+    }
+  }, [contextCompany]);
+
+  useEffect(() => {
+    if (selectedUserId) {
+      void loadUserRoles(selectedUserId);
+    }
+  }, [selectedUserId, loadUserRoles]);
+
+  async function handleToggleUserRole(rawRoleCode: string, isAssigned: boolean) {
+    if (!selectedUserId || selectedUserId === user?.id) return;
+    setRoleUpdatingKey(rawRoleCode);
+    try {
+      if (isAssigned) {
+        await api.delete(`/api/v1/accounts/users/${selectedUserId}/roles/${rawRoleCode}`, {
+          headers: { "X-Company-ID": contextCompany },
+        });
+        toast.success(`Role ${rawRoleCode} dicabut.`);
+      } else {
+        await api.put(`/api/v1/accounts/users/${selectedUserId}/roles/${rawRoleCode}`, {}, {
+          headers: { "X-Company-ID": contextCompany },
+        });
+        toast.success(`Role ${rawRoleCode} berhasil ditugaskan.`);
+      }
+      await loadUserRoles(selectedUserId);
+      await loadBase();
+    } catch (err: any) {
+      toast.error(errorMessage(err, "Gagal memperbarui role pengguna."));
+    } finally {
+      setRoleUpdatingKey(null);
+    }
+  }
+
   /** Company Admin sets per-user access */
   async function setUserAccess(moduleCode: string, mode: AccessMode) {
     if (!selectedUserId || selectedUserId === user?.id) return;
@@ -674,6 +744,60 @@ export function AccessAdministration() {
                     </div>
                   </div>
                 )}
+
+                {/* Assigned Roles Section */}
+                <div className="mt-6 rounded-2xl border border-[#EFEFEF] p-5 bg-[#FDFDFD]">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-semibold text-[#2649B3]">Assigned Roles</h3>
+                      <p className="mt-0.5 text-xs text-[#4F5050]">
+                        Peran yang ditugaskan kepada pengguna pada company ini. Pengguna dapat berganti peran aktif melalui menu atas.
+                      </p>
+                    </div>
+                    {userRolesData.roles.find((r) => r.is_active) && (
+                      <div className="flex items-center gap-1.5 rounded-full bg-[#EAF6FF] px-3 py-1 text-xs font-semibold text-[#2649B3]">
+                        <span className="text-2xs text-[#4F5050]">Active Role:</span>
+                        <span>{userRolesData.roles.find((r) => r.is_active)?.role_name || userRolesData.roles.find((r) => r.is_active)?.role_code}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {loadingUserRoles ? (
+                    <div className="py-4 text-center text-xs text-[#4F5050]">Memuat daftar peran...</div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                      {ASSIGNABLE_ROLES.map((item) => {
+                        const assigned = userRolesData.roles.some(
+                          (r) => r.raw_role_code === item.code || r.role_code === item.code
+                        );
+                        const isSelf = selectedUserId === user?.id;
+                        const updating = roleUpdatingKey === item.code;
+                        return (
+                          <label
+                            key={item.code}
+                            className={`flex items-center justify-between gap-2 rounded-xl border p-3 text-xs transition cursor-pointer ${
+                              assigned
+                                ? "border-[#2649B3]/40 bg-white shadow-xs font-semibold text-[#2649B3]"
+                                : "border-[#EFEFEF] bg-white text-[#090909] hover:border-[#2649B3]/20"
+                            } ${isSelf ? "cursor-not-allowed opacity-60" : ""}`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <input
+                                type="checkbox"
+                                checked={assigned}
+                                disabled={isSelf || updating}
+                                onChange={() => handleToggleUserRole(item.code, assigned)}
+                                className="h-4 w-4 rounded border-[#D9D9D9] text-[#2649B3] focus:ring-[#2649B3]"
+                              />
+                              <span>{item.label}</span>
+                            </div>
+                            {updating && <RefreshCw size={12} className="animate-spin text-[#2649B3]" />}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 <div className="mt-6">
                   <div className="mb-4 flex items-end justify-between gap-4">

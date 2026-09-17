@@ -13,6 +13,10 @@ import { hashPassword, isLegacyDjangoPassword, verifyPassword } from '../../util
 import { loadUserAccessContext } from './access-context.service';
 import { isSuperAdmin, parseRoleCode, RoleCode, toExternalRoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
+import {
+  EmployeeProvisioningService,
+} from '../master_data/employee-provisioning.service';
+import { ROLE_BUNDLES } from './role-bundle.config';
 
 type LoginAccessSnapshot = {
   user_roles: Array<{
@@ -605,14 +609,39 @@ export class AccountsService {
         });
       }
 
-      if (!created.active_role_id && roles.length > 0) {
-        await tx.iam_user.update({
-          where: { id: created.id },
-          data: { active_role_id: roles[0].id },
-        });
-      }
+    if (!created.active_role_id && roles.length > 0) {
+      await tx.iam_user.update({
+        where: {
+          id: created.id,
+        },
+        data: {
+          active_role_id:
+            roles[0].id,
+        },
+      });
+    }
 
-      return created;
+    /**
+     * NEW:
+     * Setiap user company non-Super Admin
+     * otomatis mempunyai Employee.
+     */
+    await EmployeeProvisioningService.ensureForUser(
+      {
+        userId:
+          created.id,
+
+        tenantId,
+
+        companyId,
+
+        actorId:
+          actorId ?? null,
+      },
+      tx,
+    );
+
+    return created;
     });
 
     return {
@@ -639,5 +668,253 @@ export class AccountsService {
         company_id: companyId,
       })),
     };
+  }
+
+  static async getUserRoles(companyId: string, targetUserId: string) {
+    const user = await prisma.iam_user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, active_role_id: true },
+    });
+    if (!user) throw new NotFoundError('User tidak ditemukan.');
+
+    const userRoles = await prisma.iam_user_role.findMany({
+      where: {
+        user_id: targetUserId,
+        company_id: companyId,
+      },
+      orderBy: { created_at: 'asc' },
+    });
+
+    const roleIds = userRoles.map((ur) => ur.role_id).filter((id): id is string => Boolean(id));
+    const roles = await prisma.iam_role.findMany({
+      where: { id: { in: roleIds } },
+    });
+    const roleMap = new Map(roles.map((r) => [r.id, r]));
+
+    return {
+      active_role_id: user.active_role_id,
+      roles: userRoles
+        .map((ur) => {
+          const role = ur.role_id ? roleMap.get(ur.role_id) : null;
+          if (!role) return null;
+          return {
+            user_role_id: ur.id,
+            role_id: role.id,
+            role_code: toExternalRoleCode(role.role_code),
+            raw_role_code: role.role_code,
+            role_name: role.role_name,
+            is_active: ur.role_id === user.active_role_id,
+          };
+        })
+        .filter(Boolean),
+    };
+  }
+
+  static async assignRoleToUser(params: {
+    companyId: string;
+    tenantId: string;
+    targetUserId: string;
+    rawRoleCode: string;
+    actorId?: string | null;
+  }) {
+    const { companyId, tenantId, targetUserId, rawRoleCode, actorId } = params;
+    const parsedRole = parseRoleCode(rawRoleCode);
+
+    if (!parsedRole) {
+      throw new ValidationError(`Role code '${rawRoleCode}' tidak valid.`);
+    }
+
+    if (parsedRole === RoleCode.SUPER_ADMIN) {
+      throw new ForbiddenError('Super Admin role tidak dapat diberikan pada level company.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Target user check
+      const user = await tx.iam_user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, is_active: true, tenant_id: true, active_role_id: true },
+      });
+      if (!user) throw new NotFoundError('User tidak ditemukan.');
+      if (!user.is_active) throw new ForbiddenError('User tidak aktif.');
+      if (user.tenant_id && user.tenant_id !== tenantId) {
+        throw new ForbiddenError('User berada pada tenant yang berbeda.');
+      }
+
+      // 2. Cek membership company ACTIVE
+      const membership = await tx.iam_user_company_membership.findFirst({
+        where: {
+          user_id: targetUserId,
+          company_id: companyId,
+          tenant_id: tenantId,
+          status: 'ACTIVE',
+        },
+      });
+      if (!membership) {
+        throw new ForbiddenError('User tidak memiliki membership aktif pada company ini.');
+      }
+
+      // 3. Cek role berada pada tenant/company benar
+      let role = await tx.iam_role.findFirst({
+        where: {
+          tenant_id: tenantId,
+          role_code: parsedRole,
+        },
+      });
+      if (!role) {
+        // Cek jika ada role sistem global untuk tenant ini atau buat jika belum ada
+        const existingRoles = await tx.iam_role.findMany({
+          where: { tenant_id: tenantId },
+        });
+        role = existingRoles.find((r) => r.role_code === parsedRole) ?? null;
+      }
+      if (!role) {
+        throw new NotFoundError(`Role ${rawRoleCode} tidak ditemukan pada tenant ini.`);
+      }
+
+      // 4. Cek module requirement tersedia di company (ROLE_BUNDLES)
+      const bundle = ROLE_BUNDLES[parsedRole];
+      if (bundle && bundle.requiredModules.length > 0) {
+        const companyModules = await tx.iam_company_module_access.findMany({
+          where: {
+            company_id: companyId,
+            enabled: true,
+            module_code: { in: bundle.requiredModules },
+          },
+          select: { module_code: true },
+        });
+        const enabledSet = new Set(companyModules.map((m) => m.module_code.toUpperCase()));
+        const missingModules = bundle.requiredModules.filter((m: string) => !enabledSet.has(m.toUpperCase()));
+        if (missingModules.length > 0) {
+          throw new ForbiddenError(
+            `Company belum mengaktifkan modul yang dibutuhkan oleh role ${bundle.label}: ${missingModules.join(', ')}.`,
+          );
+        }
+      }
+
+      // 5. Buat iam_user_role jika belum ada
+      const existingAssignment = await tx.iam_user_role.findFirst({
+        where: {
+          user_id: targetUserId,
+          role_id: role.id,
+          company_id: companyId,
+        },
+      });
+
+      let assignment = existingAssignment;
+      if (!existingAssignment) {
+        assignment = await tx.iam_user_role.create({
+          data: {
+            id: crypto.randomUUID(),
+            user_id: targetUserId,
+            role_id: role.id,
+            company_id: companyId,
+            created_by_id: actorId ?? targetUserId,
+          },
+        });
+      }
+
+      // Jangan ubah active_role_id jika user sudah punya active_role_id
+      if (!user.active_role_id) {
+        await tx.iam_user.update({
+          where: { id: targetUserId },
+          data: { active_role_id: role.id },
+        });
+      }
+
+      // Pastikan employee record sudah ada
+      await EmployeeProvisioningService.ensureForUser(
+        {
+          userId: targetUserId,
+          tenantId,
+          companyId,
+          actorId: actorId ?? null,
+        },
+        tx,
+      );
+
+      return {
+        assigned: true,
+        user_role_id: assignment?.id,
+        role_code: toExternalRoleCode(role.role_code),
+        role_name: role.role_name,
+      };
+    });
+  }
+
+  static async removeRoleFromUser(params: {
+    companyId: string;
+    tenantId: string;
+    targetUserId: string;
+    rawRoleCode: string;
+    actorId?: string | null;
+  }) {
+    const { companyId, tenantId, targetUserId, rawRoleCode, actorId } = params;
+    const parsedRole = parseRoleCode(rawRoleCode);
+
+    if (!parsedRole) {
+      throw new ValidationError(`Role code '${rawRoleCode}' tidak valid.`);
+    }
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Target user
+      const user = await tx.iam_user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, active_role_id: true, tenant_id: true },
+      });
+      if (!user) throw new NotFoundError('User tidak ditemukan.');
+
+      // 2. Role lookup
+      const role = await tx.iam_role.findFirst({
+        where: {
+          tenant_id: tenantId,
+          role_code: parsedRole,
+        },
+      });
+      if (!role) throw new NotFoundError(`Role ${rawRoleCode} tidak ditemukan.`);
+
+      // 3. Proteksi: Company Admin tidak boleh menghapus/mengubah role administratif miliknya sendiri
+      if (actorId && actorId === targetUserId && parsedRole === RoleCode.COMPANY_ADMIN) {
+        throw new ForbiddenError('Company Admin tidak dapat menghapus role administratif miliknya sendiri.');
+      }
+
+      // 4. Cek semua role yang dimiliki user di company ini
+      const existingUserRoles = await tx.iam_user_role.findMany({
+        where: {
+          user_id: targetUserId,
+          company_id: companyId,
+        },
+      });
+
+      const targetRoleAssignment = existingUserRoles.find((ur) => ur.role_id === role.id);
+      if (!targetRoleAssignment) {
+        return { removed: false, message: 'User tidak memiliki role tersebut.' };
+      }
+
+      // Proteksi: tidak boleh menghapus role terakhir
+      if (existingUserRoles.length <= 1) {
+        throw new ValidationError('User harus memiliki setidaknya satu role pada company.');
+      }
+
+      // Hapus role assignment
+      await tx.iam_user_role.delete({
+        where: { id: targetRoleAssignment.id },
+      });
+
+      // Jika role yang dihapus merupakan active_role_id, pindahkan ke role lain yang tersisa
+      if (user.active_role_id === role.id) {
+        const remainingRole = existingUserRoles.find((ur) => ur.role_id !== role.id);
+        if (remainingRole && remainingRole.role_id) {
+          await tx.iam_user.update({
+            where: { id: targetUserId },
+            data: { active_role_id: remainingRole.role_id },
+          });
+        }
+      }
+
+      return {
+        removed: true,
+        role_code: toExternalRoleCode(role.role_code),
+      };
+    });
   }
 }

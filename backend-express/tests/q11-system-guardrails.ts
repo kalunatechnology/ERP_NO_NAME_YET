@@ -229,11 +229,13 @@ async function main(): Promise<void> {
     assert.match(String((await invokeMiddleware(enforceSuperAdminReadOnly, superAdmin, undefined, '/projects/projects/') as Error)?.message), /hanya memiliki akses baca/i);
     assert.match(String((await invokeMiddleware(enforceSuperAdminReadOnly, superAdmin, undefined, '/core/recent-items/track/', 'DELETE') as Error)?.message), /hanya memiliki akses baca/i);
 
-    const [requestRoutes, requestService, crmRoutes, projectWbsNode] = await Promise.all([
+    const [requestRoutes, requestService, crmRoutes, projectWbsNode, managementReportRoutes, accountsRoutes] = await Promise.all([
       readFile(`${__dirname}/../src/modules/core/request.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/core/request.service.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/crm/crm.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/projects/ProjectWbsNode.tsx`, 'utf8'),
+      readFile(`${__dirname}/../src/modules/management_reports/management_reports.routes.ts`, 'utf8'),
+      readFile(`${__dirname}/../src/modules/accounts/accounts.routes.ts`, 'utf8'),
     ]);
     assert(requestRoutes.includes("'/:id/validate-om', requireActiveRole(RoleCode.OPERATIONAL_MANAGER)"));
     assert(requestRoutes.includes("'/:id/disburse', requireActiveRole(RoleCode.FINANCE)"));
@@ -244,10 +246,22 @@ async function main(): Promise<void> {
       projectWbsNode.includes('const canCreateDaily = !isPM && isWeeklyPic;'),
       'Daily Task create UI must be restricted to the Weekly Task owner',
     );
+    assert(managementReportRoutes.includes("requireActiveRole(RoleCode.OPERATIONAL_MANAGER)"));
+    assert(managementReportRoutes.includes("requireActiveRole(RoleCode.DIRECTOR)"));
+    assert(accountsRoutes.includes("'/users/:userId/roles'"));
+    assert(accountsRoutes.includes("'/users/:userId/roles/:roleCode'"));
+
+    const omUser = { id: 'om-1', roles: [RoleCode.OPERATIONAL_MANAGER], active_role_code: RoleCode.OPERATIONAL_MANAGER };
+    const dirUser = { id: 'dir-1', roles: [RoleCode.DIRECTOR], active_role_code: RoleCode.DIRECTOR };
+    assert.equal(await invokeMiddleware(requireActiveRole(RoleCode.OPERATIONAL_MANAGER), omUser), null);
+    assert.match(String((await invokeMiddleware(requireActiveRole(RoleCode.OPERATIONAL_MANAGER), dirUser) as Error)?.message), /role aktif/i);
+    assert.equal(await invokeMiddleware(requireActiveRole(RoleCode.DIRECTOR), dirUser), null);
+    assert.match(String((await invokeMiddleware(requireActiveRole(RoleCode.DIRECTOR), omUser) as Error)?.message), /role aktif/i);
     return {
       delegated_sensitive_action: 'blocked',
       request_approvals: 'active-role-gated',
       executive_override: 'director-only',
+      management_reports: 'active-role-gated',
       lpj_submitter: 'request-owner-only',
       project_ui: 'aligned-with-backend',
     };
@@ -275,8 +289,8 @@ async function main(): Promise<void> {
     const expectedBase: Record<string, string[]> = {
       'ROLE-SUPER-ADMIN': ['/dashboard', '/administration', '/reporting', '/resources'],
       'ROLE-COMPANY-ADMIN': ['/dashboard', '/administration', '/reporting', '/resources'],
-      'ROLE-DIRECTOR': ['/dashboard', '/projects', '/finance', '/crm', '/reporting', '/resources'],
-      'ROLE-OM': ['/dashboard', '/projects', '/tasks', '/reporting'],
+      'ROLE-DIRECTOR': ['/dashboard', '/projects', '/finance', '/crm', '/reporting', '/management-reports', '/resources'],
+      'ROLE-OM': ['/dashboard', '/projects', '/tasks', '/reporting', '/management-reports'],
       'ROLE-PM': ['/dashboard', '/projects', '/tasks', '/crm', '/reporting'],
       'ROLE-SUPERVISOR': ['/dashboard', '/projects', '/tasks', '/reporting'],
       'ROLE-STAFF': ['/dashboard', '/projects', '/tasks', '/reporting'],
@@ -291,7 +305,7 @@ async function main(): Promise<void> {
       actual.forEach((pathname) => assert.equal(canAccessRoute({ pathname, ...access }), true));
     }
     assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['REPORTING'] }).map((item: any) => item.href), ['/dashboard', '/reporting']);
-    assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['FINANCE'], delegatedModules: ['FINANCE'] }).map((item: any) => item.href), ['/dashboard', '/finance']);
+    assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['FINANCE'], delegatedModules: ['FINANCE'] }).map((item: any) => item.href), ['/dashboard']);
     assert(!getNavigationEntries({ activeRoleCode: 'ROLE-PM', enabledModules: ['PROJECTS'], delegatedModules: ['PROJECTS'] }).some((item: any) => item.href === '/administration'));
     assert.equal(canPerform('finance:operate', 'ROLE-SUPER-ADMIN'), false);
     assert.equal(canPerform('finance:operate', 'ROLE-FINANCE'), true);
@@ -333,6 +347,10 @@ async function main(): Promise<void> {
     const serverSource = await readFile(`${__dirname}/../src/server.ts`, 'utf8');
     const coreRoutes = await readFile(`${__dirname}/../src/modules/core/core.routes.ts`, 'utf8');
     const reportingAccessRoutes = await readFile(`${__dirname}/../src/modules/reporting/reporting.routes.ts`, 'utf8');
+    const employeeProvisioningService = await readFile(
+      `${__dirname}/../src/modules/master_data/employee-provisioning.service.ts`,
+      'utf8',
+    );
     for (const mapping of [
       'prefix: "/tasks", module: "PROJECTS"',
       'prefix: "/reporting", module: "REPORTING"',
@@ -396,8 +414,26 @@ async function main(): Promise<void> {
     assert(financeRoutes.includes("'/payments/:id/execute'"));
     assert(projectRoutes.includes("'/dashboard/financial-summary'"));
     assert(projectRoutes.includes("Status Daily Task tidak valid."), 'Daily Task creation must reject statuses outside the command contract.');
-    assert(projectRoutes.includes('existingProjectMember?.employee_id'), 'Timesheet identity must retain the explicit project-member migration fallback.');
-    assert(projectRoutes.includes("'Akun user belum terhubung dengan data employee.'"), 'Missing employee identity must fail closed with an actionable message.');
+    assert(
+      projectRoutes.includes('EmployeeProvisioningService.ensureForUser'),
+      'Projects/Timesheet harus menggunakan centralized employee provisioning.',
+    );
+    assert(
+      employeeProvisioningService.includes('existingProjectMember?.employee_id'),
+      'Employee provisioning harus mempertahankan legacy project-member employee mapping.',
+    );
+    assert(
+      employeeProvisioningService.includes('master_employee.upsert'),
+      'Missing employee profile harus di-auto-provision.',
+    );
+    assert(
+      employeeProvisioningService.includes('RoleCode.SUPER_ADMIN'),
+      'Super Admin harus dikecualikan dari employee provisioning.',
+    );
+    assert(
+      reportingAccessRoutes.includes('EmployeeProvisioningService.ensureForUser'),
+      'Reporting harus menggunakan employee identity resolver yang sama.',
+    );
     assert(profileModal.includes('current_password'));
     assert(profileModal.includes('api.patch("/api/v1/auth/profile"'));
     assert(projectClient.includes('"executive", "om", "pm", "finance"'), 'Project financial visibility must use the normalized executive role.');

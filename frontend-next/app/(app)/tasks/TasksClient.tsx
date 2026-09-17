@@ -420,14 +420,14 @@ function TaskRow({
       <td className="py-2.5 px-4 align-top max-w-56">
         <div className="flex items-start gap-2">
           <button
-            onClick={isAllowed ? onToggle : () => toast.error("Akses Ditolak: Anda tidak memiliki wewenang pada task ini!")}
+            onClick={isAllowed ? onToggle : () => toast.error("Akses Ditolak: hanya pemilik task yang dapat mengubah task ini.")}
             disabled={!isAllowed}
             className={cn(
               "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
               !isAllowed && "cursor-not-allowed opacity-40 bg-gray-100",
               isAllowed && isDone ? "bg-brand-green border-brand-green text-white" : "border-gray-300 hover:border-brand-green"
             )}
-            title={!isAllowed ? "Hanya PIC, Owner, atau PM yang dapat mengubah status" : (isDone ? "Buka kembali" : "Tandai selesai")}
+            title={!isAllowed ? "Hanya pemilik task yang dapat mengubah status" : (isDone ? "Buka kembali" : "Tandai selesai")}
           >
             {isDone && <Check size={11} strokeWidth={3} />}
           </button>
@@ -602,21 +602,32 @@ export default function TasksClient() {
   const filteredTasks = useMemo(() => {
     const q = deferredSearch.toLowerCase().trim();
     return allTasks.filter(item => {
-      const matchSearch = q
-        ? (item.task.title || item.task.activity_input || "").toLowerCase().includes(q) ||
-          item.projectName.toLowerCase().includes(q) ||
-          item.projectCode.toLowerCase().includes(q)
-        : true;
+      const searchableValues = [
+        item.task.title,
+        item.task.activity_input,
+        item.task.description,
+        item.task.output_result,
+        item.task.notes,
+        item.task.time_slot,
+        item.task.block_reason,
+        item.mainTaskName,
+        item.projectName,
+        item.projectCode,
+        item.task.owner_name,
+        `week ${item.weekNumber}`,
+        `w${item.weekNumber}`,
+      ];
+      const matchSearch = q ? searchableValues.some(value => String(value ?? "").toLowerCase().includes(q)) : true;
       if (!matchSearch) return false;
       const taskDate = normalizeDateKey(item.task.planned_date);
       if (activeFilter === "TODAY") return taskDate === today;
-      if (activeFilter === "ACTIVE") return ["ON_PROGRESS","PENDING"].includes(item.task.status || "");
+      if (activeFilter === "ACTIVE") return ["ON_PROGRESS","IN_PROGRESS","PENDING"].includes(item.task.status || "");
       if (activeFilter === "COMPLETED") return ["COMPLETED","DONE"].includes(item.task.status || "");
       if (activeFilter === "OVERDUE") return Boolean(taskDate && taskDate < today && !["COMPLETED","DONE"].includes(item.task.status || ""));
       if (activeFilter === "BLOCKED") {
         return Boolean(item.task.is_blocked) ||
                item.task.status === "BLOCKED" ||
-               Boolean((item.task as any).block_reason) ||
+               Boolean(item.task.block_reason) ||
                Boolean((item.task as any).blocker_reason) ||
                Boolean(item.task.notes?.toLowerCase().includes("kendala") || item.task.notes?.toLowerCase().includes("blocked") || item.task.notes?.toLowerCase().includes("hambatan"));
       }
@@ -715,7 +726,7 @@ export default function TasksClient() {
     return Boolean(taskDate && taskDate < today && !["COMPLETED","DONE"].includes(i.task.status || ""));
   }).length;
   const doneToday     = allTasks.filter(i => normalizeDateKey(i.task.planned_date) === today && ["COMPLETED","DONE"].includes(i.task.status || "")).length;
-  const activeCount   = allTasks.filter(i => ["ON_PROGRESS","PENDING"].includes(i.task.status || "")).length;
+  const activeCount   = allTasks.filter(i => ["ON_PROGRESS","IN_PROGRESS","PENDING"].includes(i.task.status || "")).length;
   const pendingSubmissionCount = allTasks.filter(({ task }) =>
     !["COMPLETED", "DONE"].includes(task.status || "") || !String(task.output_result || "").trim()
   ).length;
@@ -786,7 +797,7 @@ export default function TasksClient() {
             <Layers size={20} className="text-brand-green" /> Tasks & Personal Workspace
           </h1>
           <p className="text-xs text-text-secondary mt-0.5">
-            Daftar seluruh tugas harian Anda dari semua proyek (Cross-Project Daily View)
+            Task harian Anda dan task proyek yang dapat Anda akses sebagai anggota tim.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -867,7 +878,7 @@ export default function TasksClient() {
           <Search size={14} className="text-text-secondary flex-shrink-0" />
           <input
             type="text"
-            placeholder="Cari task atau proyek..."
+            placeholder="Cari task, proyek, WBS, output, catatan, atau anggota tim..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="flex-1 text-xs border-none outline-none bg-transparent"

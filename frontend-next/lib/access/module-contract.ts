@@ -56,17 +56,19 @@ export interface RouteAccessContract {
   module: ModuleCode | null;
   roles: readonly string[] | null;
   moduleBypassRoles?: readonly string[];
+  allowDelegation?: boolean;
 }
 
 /** Route contracts are ordered from the most specific route to the broadest. */
 export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   { prefix: "/administration", module: null, roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/resources", module: "ANALYTICS", roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin, ROLE_CODES.director], moduleBypassRoles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
+  { prefix: "/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/reporting", module: "REPORTING", roles: null },
-  { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff] },
-  { prefix: "/tasks", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff] },
-  { prefix: "/finance", module: "FINANCE", roles: [ROLE_CODES.finance, ROLE_CODES.director] },
-  { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.projectManager, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director] },
+  { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff], allowDelegation: false },
+  { prefix: "/tasks", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff], allowDelegation: false },
+  { prefix: "/finance", module: "FINANCE", roles: [ROLE_CODES.finance, ROLE_CODES.director], allowDelegation: false },
+  { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.projectManager, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/dashboard", module: null, roles: null },
 ] as const;
 
@@ -105,8 +107,10 @@ export function canAccessRoute(input: {
   if (!bypassesModule && !hasModuleEntitlement(input.enabledModules, contract.module)) return false;
   if (!contract.roles || contract.roles.includes(activeRole)) return true;
 
+  if (contract.allowDelegation === false) return false;
+
   // Backend requireRole accepts an explicit per-user module delegation after
-  // requireModuleAccess. Preserve that exact exception on frontend routes.
+  // requireModuleAccess. Preserve that exact exception on frontend routes only when allowed.
   return Boolean(contract.module && normalizeModuleCodes(input.delegatedModules).has(contract.module));
 }
 
@@ -131,10 +135,11 @@ const API_ACCESS_CONTRACTS: readonly ApiAccessContract[] = [
   { prefix: "/api/v1/requests", module: "REQUESTS" },
   { prefix: "/api/v1/request", module: "REQUESTS" },
   { prefix: "/api/v1/marbot", module: "MARBOT" },
-  { prefix: "/api/v1/crm", module: "CRM", roles: CRM_ROLES },
-  { prefix: "/api/v1/sales", module: "SALES", roles: CRM_ROLES },
-  { prefix: "/api/v1/projects", module: "PROJECTS", roles: PROJECT_ROLES },
-  { prefix: "/api/v1/finance", module: "FINANCE", roles: FINANCE_ROLES },
+  { prefix: "/api/v1/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: false },
+  { prefix: "/api/v1/crm", module: "CRM", roles: CRM_ROLES, allowDelegation: false },
+  { prefix: "/api/v1/sales", module: "SALES", roles: CRM_ROLES, allowDelegation: false },
+  { prefix: "/api/v1/projects", module: "PROJECTS", roles: PROJECT_ROLES, allowDelegation: false },
+  { prefix: "/api/v1/finance", module: "FINANCE", roles: FINANCE_ROLES, allowDelegation: false },
   { prefix: "/api/v1/procurement", module: "PROCUREMENT" },
   { prefix: "/api/v1/inventory", module: "INVENTORY" },
   { prefix: "/api/v1/manufacturing", module: "MANUFACTURING" },

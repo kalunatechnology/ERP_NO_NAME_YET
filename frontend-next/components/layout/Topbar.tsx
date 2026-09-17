@@ -357,7 +357,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
               <div className="p-1.5 flex flex-col gap-0.5">
                 {(user?.roles || []).length > 1 && (
                   <div className="mb-1 border-b border-text-tertiary/60 pb-2">
-                    <div className="px-3 pb-1.5 text-3xs font-bold uppercase tracking-wider text-text-secondary">Ganti akses aktif</div>
+                    <div className="px-3 pb-1.5 text-3xs font-bold uppercase tracking-wider text-text-secondary">Peran Aktif</div>
                     <div className="flex flex-col gap-1">
                       {user?.roles?.map((role) => {
                         const code = role.role_code || role.role || "";

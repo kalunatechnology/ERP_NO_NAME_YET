@@ -128,33 +128,402 @@ export class ProjectsService {
     if (!project) throw new ForbiddenError('Anda tidak memiliki akses ke project ini.');
   }
 
-  static async dailyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.isOperationalAssignee(user)) return { owner_id: user.id };
-    if (this.hasPortfolioRead(user)) return {};
-    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
+  private static readonly UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-    const projectIds = await this.managedProjectIds(user, companyId, db);
-    if (!projectIds.length) return { id: { in: [] } };
-    const mainTasks = await db.project_main_task.findMany({
-      where: { company_id: companyId, project_id: { in: projectIds } },
-      select: { id: true },
-    });
-    const mainTaskIds = mainTasks.map((task: { id: string }) => task.id);
-    if (!mainTaskIds.length) return { id: { in: [] } };
-    const weeklyTasks = await db.project_weekly_task.findMany({
-      where: { company_id: companyId, main_task_id: { in: mainTaskIds } },
-      select: { id: true },
-    });
-    return { weekly_task_id: { in: weeklyTasks.map((task: { id: string }) => task.id) } };
+  private static async operationalTaskReadScope(
+    user: any,
+    companyId: string,
+    db: any = prisma,
+  ): Promise<{
+    mainTaskIds: string[];
+    weeklyTaskIds: string[];
+  }> {
+    if (
+      !this.isOperationalAssignee(user) ||
+      !user?.id ||
+      !companyId
+    ) {
+      return {
+        mainTaskIds: [],
+        weeklyTaskIds: [],
+      };
+    }
+
+    if (
+      db === prisma &&
+      (!this.UUID_REGEX.test(String(user.id)) || !this.UUID_REGEX.test(String(companyId)))
+    ) {
+      return {
+        mainTaskIds: [],
+        weeklyTaskIds: [],
+      };
+    }
+
+    try {
+
+    const [
+      memberships,
+      mainAssignments,
+      ownWeeklyTasks,
+    ] = await Promise.all([
+      db.project_member.findMany({
+        where: {
+          company_id:
+            companyId,
+
+          user_id:
+            user.id,
+
+          status:
+            'ACTIVE',
+        },
+
+        select: {
+          project_id:
+            true,
+        },
+      }),
+
+      db.project_task_assignment.findMany({
+        where: {
+          company_id:
+            companyId,
+
+          assignee_id:
+            user.id,
+        },
+
+        select: {
+          main_task_id:
+            true,
+        },
+      }),
+
+      db.project_weekly_task.findMany({
+        where: {
+          company_id:
+            companyId,
+
+          assignee_id:
+            user.id,
+        },
+
+        select: {
+          id:
+            true,
+
+          main_task_id:
+            true,
+        },
+      }),
+    ]);
+
+    const memberProjectIds =
+      memberships
+        .map(
+          (item: {
+            project_id:
+              string | null;
+          }) =>
+            item.project_id,
+        )
+        .filter(
+          (
+            id: string | null,
+          ): id is string =>
+            Boolean(id),
+        );
+
+    /**
+     * Jika user merupakan active project member,
+     * ia boleh membaca hierarchy task project tersebut.
+     */
+    const projectMainTasks =
+      memberProjectIds.length
+        ? await db.project_main_task.findMany({
+            where: {
+              company_id:
+                companyId,
+
+              project_id: {
+                in:
+                  memberProjectIds,
+              },
+            },
+
+            select: {
+              id:
+                true,
+            },
+          })
+        : [];
+
+    const projectMainIds =
+      projectMainTasks.map(
+        (task: { id: string }) =>
+          task.id,
+      );
+
+    const directlyAssignedMainIds =
+      mainAssignments.map(
+        (assignment: {
+          main_task_id: string;
+        }) =>
+          assignment.main_task_id,
+      );
+
+    /**
+     * Parent Main Task tetap perlu terlihat
+     * jika user ditugaskan ke Weekly Task.
+     */
+    const weeklyParentMainIds =
+      ownWeeklyTasks.map(
+        (task: {
+          main_task_id: string;
+        }) =>
+          task.main_task_id,
+      );
+
+    const mainTaskIds =
+      Array.from(
+        new Set([
+          ...projectMainIds,
+          ...directlyAssignedMainIds,
+          ...weeklyParentMainIds,
+        ]),
+      );
+
+    /**
+     * Seluruh weekly task boleh dibaca jika:
+     *
+     * - user member project; atau
+     * - user assigned langsung pada Main Task.
+     *
+     * Assignment Weekly saja tidak otomatis
+     * membuka sibling Weekly Task.
+     */
+    const hierarchyMainIds =
+      Array.from(
+        new Set([
+          ...projectMainIds,
+          ...directlyAssignedMainIds,
+        ]),
+      );
+
+    const hierarchyWeeklyTasks =
+      hierarchyMainIds.length
+        ? await db.project_weekly_task.findMany({
+            where: {
+              company_id:
+                companyId,
+
+              main_task_id: {
+                in:
+                  hierarchyMainIds,
+              },
+            },
+
+            select: {
+              id:
+                true,
+            },
+          })
+        : [];
+
+    const weeklyTaskIds =
+      Array.from(
+        new Set([
+          ...ownWeeklyTasks.map(
+            (task: {
+              id: string;
+            }) =>
+              task.id,
+          ),
+
+          ...hierarchyWeeklyTasks.map(
+            (task: {
+              id: string;
+            }) =>
+              task.id,
+          ),
+        ]),
+      );
+
+      return {
+        mainTaskIds,
+        weeklyTaskIds,
+      };
+    } catch {
+      return {
+        mainTaskIds: [],
+        weeklyTaskIds: [],
+      };
+    }
+  }
+
+  static async dailyTaskAccessWhere(
+    user: any,
+    companyId: string,
+    db: any = prisma,
+  ): Promise<Record<string, unknown>> {
+    if (
+      this.isOperationalAssignee(
+        user,
+      )
+    ) {
+      const scope =
+        await this.operationalTaskReadScope(
+          user,
+          companyId,
+          db,
+        );
+
+      /**
+       * Tidak mempunyai relasi team/project?
+       *
+       * Tetap pertahankan behavior lama:
+       * hanya task miliknya sendiri.
+       */
+      if (
+        !scope.weeklyTaskIds.length
+      ) {
+        return {
+          owner_id:
+            user.id,
+        };
+      }
+
+      return {
+        OR: [
+          {
+            owner_id:
+              user.id,
+          },
+
+          {
+            weekly_task_id: {
+              in:
+                scope.weeklyTaskIds,
+            },
+          },
+        ],
+      };
+    }
+
+    if (
+      this.hasPortfolioRead(user)
+    ) {
+      return {};
+    }
+
+    if (
+      this.activeRole(user) !==
+      RoleCode.PROJECT_MANAGER
+    ) {
+      return {
+        id: {
+          in: [],
+        },
+      };
+    }
+
+    const projectIds =
+      await this.managedProjectIds(
+        user,
+        companyId,
+        db,
+      );
+
+    if (!projectIds.length) {
+      return {
+        id: {
+          in: [],
+        },
+      };
+    }
+
+    const mainTasks =
+      await db.project_main_task.findMany({
+        where: {
+          company_id:
+            companyId,
+
+          project_id: {
+            in:
+              projectIds,
+          },
+        },
+
+        select: {
+          id:
+            true,
+        },
+      });
+
+    const mainTaskIds =
+      mainTasks.map(
+        (task: { id: string }) =>
+          task.id,
+      );
+
+    if (!mainTaskIds.length) {
+      return {
+        id: {
+          in: [],
+        },
+      };
+    }
+
+    const weeklyTasks =
+      await db.project_weekly_task.findMany({
+        where: {
+          company_id:
+            companyId,
+
+          main_task_id: {
+            in:
+              mainTaskIds,
+          },
+        },
+
+        select: {
+          id:
+            true,
+        },
+      });
+
+    return {
+      weekly_task_id: {
+        in:
+          weeklyTasks.map(
+            (task: {
+              id: string;
+            }) =>
+              task.id,
+          ),
+      },
+    };
   }
 
   static async mainTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.isOperationalAssignee(user)) {
-      const assignments = await db.project_task_assignment.findMany({
-        where: { company_id: companyId, assignee_id: user.id },
-        select: { main_task_id: true },
-      });
-      return { id: { in: assignments.map((assignment: { main_task_id: string }) => assignment.main_task_id) } };
+    if (
+      this.isOperationalAssignee(
+        user,
+      )
+    ) {
+      const scope =
+        await this.operationalTaskReadScope(
+          user,
+          companyId,
+          db,
+        );
+
+      return {
+        id: {
+          in:
+            scope.mainTaskIds,
+        },
+      };
     }
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
@@ -162,7 +531,34 @@ export class ProjectsService {
   }
 
   static async weeklyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.isOperationalAssignee(user)) return { assignee_id: user.id };
+    if (
+      this.isOperationalAssignee(
+        user,
+      )
+    ) {
+      const scope =
+        await this.operationalTaskReadScope(
+          user,
+          companyId,
+          db,
+        );
+
+      if (
+        !scope.weeklyTaskIds.length
+      ) {
+        return {
+          assignee_id:
+            user.id,
+        };
+      }
+
+      return {
+        id: {
+          in:
+            scope.weeklyTaskIds,
+        },
+      };
+    }
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
     const mainWhere = await this.mainTaskAccessWhere(user, companyId, db);

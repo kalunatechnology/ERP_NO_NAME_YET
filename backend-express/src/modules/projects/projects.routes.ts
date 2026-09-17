@@ -12,6 +12,9 @@ import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { isSuperAdmin, RoleCode } from '../../types/roles';
+import {
+  EmployeeProvisioningService,
+} from '../master_data/employee-provisioning.service';
 
 export const projectsRouter = Router();
 
@@ -67,7 +70,19 @@ function isStaff(req: Request): boolean {
  *     ↓
  * project_timesheet.employee_id
  */
-async function currentEmployee(req: Request) {
+/**
+ * Resolve employee identity.
+ *
+ * Non-Super Admin:
+ * - memakai employee yang sudah ada; atau
+ * - membuat employee otomatis jika belum tersedia.
+ *
+ * Super Admin:
+ * - tidak mempunyai master_employee.
+ */
+async function currentEmployee(
+  req: Request,
+) {
   const companyId =
     activeCompanyId(req);
 
@@ -78,80 +93,229 @@ async function currentEmployee(req: Request) {
     activeUserId(req);
 
   const employee =
-    await prisma.master_employee.findFirst({
-      where: {
-        tenant_id:
-          tenantId,
-
-        company_id:
-          companyId,
-
-        user_id:
-          userId,
-      },
-
-      select: {
-        id:
-          true,
-
-        user_id:
-          true,
-
-        employee_number:
-          true,
-
-        employment_status:
-          true,
-
-        standard_hourly_rate:
-          true,
-      },
+    await EmployeeProvisioningService.ensureForUser({
+      userId,
+      tenantId,
+      companyId,
+      actorId:
+        userId,
     });
 
-  if (employee) {
-    return employee;
+  if (!employee) {
+    throw new ForbiddenError(
+      'Super Admin tidak memiliki profil employee karena merupakan administrator platform.',
+    );
   }
 
-  // Backward-compatible transition path. Only use an explicit employee_id
-  // already stored on an active project membership; never infer identity from
-  // names, usernames, employee numbers, or coincidentally equal IDs.
-  const existingProjectMember =
-    await prisma.project_member.findFirst({
-      where: {
-        tenant_id: tenantId,
-        company_id: companyId,
-        user_id: userId,
-        employee_id: { not: null },
-        status: 'ACTIVE',
-      },
-      select: { employee_id: true },
-      orderBy: { assigned_at: 'desc' },
-    });
-
-  if (existingProjectMember?.employee_id) {
-    const mappedEmployee =
-      await prisma.master_employee.findFirst({
-        where: {
-          id: existingProjectMember.employee_id,
-          tenant_id: tenantId,
-          company_id: companyId,
-        },
-        select: {
-          id: true,
-          user_id: true,
-          employee_number: true,
-          employment_status: true,
-          standard_hourly_rate: true,
-        },
-      });
-
-    if (mappedEmployee) return mappedEmployee;
-  }
-
-  throw new ForbiddenError(
-    'Akun user belum terhubung dengan data employee.',
-  );
+  return employee;
 }
+
+projectsRouter.get(
+  '/task-participants',
+  async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const companyId =
+        activeCompanyId(req);
+
+      const tenantId =
+        activeTenantId(req);
+
+      const [
+        dailyAccess,
+        weeklyAccess,
+        mainAccess,
+      ] = await Promise.all([
+        ProjectsService.dailyTaskAccessWhere(
+          req.user,
+          companyId,
+        ),
+
+        ProjectsService.weeklyTaskAccessWhere(
+          req.user,
+          companyId,
+        ),
+
+        ProjectsService.mainTaskAccessWhere(
+          req.user,
+          companyId,
+        ),
+      ]);
+
+      const [
+        dailyTasks,
+        weeklyTasks,
+        mainTasks,
+      ] = await Promise.all([
+        prisma.project_daily_task.findMany({
+          where: {
+            AND: [
+              {
+                tenant_id:
+                  tenantId,
+
+                company_id:
+                  companyId,
+              },
+
+              dailyAccess,
+            ],
+          },
+
+          select: {
+            owner_id:
+              true,
+          },
+        }),
+
+        prisma.project_weekly_task.findMany({
+          where: {
+            AND: [
+              {
+                tenant_id:
+                  tenantId,
+
+                company_id:
+                  companyId,
+              },
+
+              weeklyAccess,
+            ],
+          },
+
+          select: {
+            assignee_id:
+              true,
+          },
+        }),
+
+        prisma.project_main_task.findMany({
+          where: {
+            AND: [
+              {
+                tenant_id:
+                  tenantId,
+
+                company_id:
+                  companyId,
+              },
+
+              mainAccess,
+            ],
+          },
+
+          select: {
+            id:
+              true,
+          },
+        }),
+      ]);
+
+      const mainTaskIds =
+        mainTasks.map(
+          (task) =>
+            task.id,
+        );
+
+      const assignments =
+        mainTaskIds.length
+          ? await prisma.project_task_assignment.findMany({
+              where: {
+                tenant_id:
+                  tenantId,
+
+                company_id:
+                  companyId,
+
+                main_task_id: {
+                  in:
+                    mainTaskIds,
+                },
+              },
+
+              select: {
+                assignee_id:
+                  true,
+              },
+            })
+          : [];
+
+      const userIds =
+        Array.from(
+          new Set(
+            [
+              ...dailyTasks.map(
+                (task) =>
+                  task.owner_id,
+              ),
+
+              ...weeklyTasks.map(
+                (task) =>
+                  task.assignee_id,
+              ),
+
+              ...assignments.map(
+                (assignment) =>
+                  assignment.assignee_id,
+              ),
+            ].filter(
+              (
+                id,
+              ): id is string =>
+                Boolean(id),
+            ),
+          ),
+        );
+
+      const users =
+        userIds.length
+          ? await prisma.iam_user.findMany({
+              where: {
+                id: {
+                  in:
+                    userIds,
+                },
+
+                tenant_id:
+                  tenantId,
+
+                is_active:
+                  true,
+              },
+
+              select: {
+                id:
+                  true,
+
+                full_name:
+                  true,
+
+                username:
+                  true,
+              },
+
+              orderBy: {
+                full_name:
+                  'asc',
+              },
+            })
+          : [];
+
+      res.json({
+        count:
+          users.length,
+
+        results:
+          users,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // =============================================================================
 // 0. CUSTOMERS / CLIENTS LIST (Strict Company & Tenant Isolated)
@@ -1139,9 +1303,19 @@ projectsRouter.use('/main-tasks', createCrudRouter({
     if (!String(data.name ?? '').trim()) throw new ValidationError('Nama Main Task wajib diisi.');
     const projectId = String(data.project_id ?? '');
     const project = projectId
-      ? await prisma.project_project.findFirst({ where: { id: projectId, company_id: activeCompanyId(req) }, select: { id: true } })
+      ? await prisma.project_project.findFirst({
+          where: { id: projectId, company_id: activeCompanyId(req) },
+          select: { id: true, tenant_id: true, company_id: true },
+        })
       : null;
     if (!project) throw new ValidationError('Project induk tidak valid atau berada di luar company aktif.');
+    const tenantId = activeTenantId(req);
+    const companyId = activeCompanyId(req);
+    if (project.tenant_id !== tenantId || project.company_id !== companyId) {
+      throw new ValidationError('Scope tenant/company Project tidak sesuai dengan context aktif.');
+    }
+    data.tenant_id = project.tenant_id;
+    data.company_id = project.company_id;
     await ProjectsService.assertCanManageProject(req.user, project.id, activeCompanyId(req));
     if (!data.created_by_id && req.user?.id) data.created_by_id = req.user.id;
     if (data.weight === undefined) data.weight = 10;
@@ -1201,9 +1375,19 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     if (req.body.main_task && !data.main_task_id) data.main_task_id = req.body.main_task;
     const mainTaskId = String(data.main_task_id ?? '');
     const mainTask = mainTaskId
-      ? await prisma.project_main_task.findFirst({ where: { id: mainTaskId, company_id: activeCompanyId(req) }, select: { id: true, project_id: true } })
+      ? await prisma.project_main_task.findFirst({
+          where: { id: mainTaskId, company_id: activeCompanyId(req) },
+          select: { id: true, project_id: true, tenant_id: true, company_id: true },
+        })
       : null;
     if (!mainTask) throw new ValidationError('Main Task tidak valid atau berada di luar company aktif.');
+    const tenantId = activeTenantId(req);
+    const companyId = activeCompanyId(req);
+    if (mainTask.tenant_id !== tenantId || mainTask.company_id !== companyId) {
+      throw new ValidationError('Scope Main Task tidak sesuai dengan tenant/company aktif.');
+    }
+    data.tenant_id = mainTask.tenant_id;
+    data.company_id = mainTask.company_id;
     await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
     if (!data.assignee_id) throw new ValidationError('Assignee Weekly Task wajib dipilih dari assignment Main Task.');
@@ -1275,17 +1459,36 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
 // Helper to normalize Daily Tasks
 projectsRouter.use('/daily-tasks', createCrudRouter({
   modelName: 'project_daily_task',
-  searchFields: ['title', 'description', 'notes'],
+  searchFields: [
+    'title',
+    'description',
+    'notes',
+    'output_result',
+    'time_slot',
+    'block_reason',
+  ],
   accessWhere: async (req) => ProjectsService.dailyTaskAccessWhere(req.user, activeCompanyId(req)),
   beforeCreate: async (req, data) => {
     if (data.weekly_task && !data.weekly_task_id) data.weekly_task_id = data.weekly_task;
     if (req.body.weekly_task && !data.weekly_task_id) data.weekly_task_id = req.body.weekly_task;
     const companyId = activeCompanyId(req);
+    const tenantId = activeTenantId(req);
     const weeklyTaskId = String(data.weekly_task_id ?? '');
     const weeklyTask = weeklyTaskId
-      ? await prisma.project_weekly_task.findFirst({ where: { id: weeklyTaskId, company_id: companyId } })
+      ? await prisma.project_weekly_task.findFirst({
+          where: {
+            id: weeklyTaskId,
+            tenant_id: tenantId,
+            company_id: companyId,
+          },
+        })
       : null;
     if (!weeklyTask) throw new ValidationError('Weekly Task tidak valid atau berada di luar company aktif.');
+    if (!weeklyTask.tenant_id || !weeklyTask.company_id) {
+      throw new ValidationError('Weekly Task belum memiliki tenant/company scope yang valid.');
+    }
+    data.tenant_id = weeklyTask.tenant_id;
+    data.company_id = weeklyTask.company_id;
     const mainTask = await prisma.project_main_task.findFirst({
       where: { id: weeklyTask.main_task_id, company_id: companyId },
       select: { id: true, project_id: true },
