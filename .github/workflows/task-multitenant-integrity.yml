@@ -28,6 +28,9 @@ jobs:
             backend-express/package-lock.json
             frontend-next/package-lock.json
 
+      - name: Repair patch generator quoting
+        run: python3 backend-express/scripts/repair_task_integrity_patch.py
+
       - name: Apply implementation patch
         run: node backend-express/scripts/apply_task_multitenant_integrity_patch.mjs
 
