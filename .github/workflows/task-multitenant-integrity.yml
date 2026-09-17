@@ -44,6 +44,11 @@ jobs:
 
       - name: Q11 system guardrails
         working-directory: backend-express
+        env:
+          DATABASE_URL: postgresql://ci_user:ci_pass@127.0.0.1:5432/erp_ci
+          DIRECT_URL: postgresql://ci_user:ci_pass@127.0.0.1:5432/erp_ci
+          JWT_SECRET: ci-only-not-for-production
+          JWT_REFRESH_SECRET: ci-only-refresh-not-for-production
         run: npm run test:q11
 
       - name: Install frontend dependencies
