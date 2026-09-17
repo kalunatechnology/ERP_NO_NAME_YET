@@ -13,6 +13,7 @@ import { hashPassword, isLegacyDjangoPassword, verifyPassword } from '../../util
 import { loadUserAccessContext } from './access-context.service';
 import { isSuperAdmin, parseRoleCode, RoleCode, toExternalRoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
+import { EmployeeProvisioningService } from '../master_data/employee-provisioning.service';
 
 type LoginAccessSnapshot = {
   user_roles: Array<{
@@ -611,6 +612,16 @@ export class AccountsService {
           data: { active_role_id: roles[0].id },
         });
       }
+
+      await EmployeeProvisioningService.ensureForUser(
+        {
+          userId: created.id,
+          tenantId,
+          companyId,
+          actorId: actorId ?? null,
+        },
+        tx,
+      );
 
       return created;
     });

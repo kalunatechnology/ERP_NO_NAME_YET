@@ -164,7 +164,13 @@ async function main(): Promise<void> {
 
   results.push(await scenario(names[6], async () => {
     const staff = { id: 'staff-a', roles: [RoleCode.STAFF], active_role_code: RoleCode.STAFF };
-    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a'), { owner_id: 'staff-a' });
+    const staffNoRelationsDb = {
+      project_member: { findMany: async () => [] },
+      project_task_assignment: { findMany: async () => [] },
+      project_weekly_task: { findMany: async () => [] },
+      project_daily_task: { findMany: async () => [] },
+    };
+    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a', staffNoRelationsDb), { owner_id: 'staff-a' });
 
     const pm = { id: 'pm-a', roles: [RoleCode.PROJECT_MANAGER], active_role_code: RoleCode.PROJECT_MANAGER };
     const pmDb = {
@@ -355,7 +361,7 @@ async function main(): Promise<void> {
     assert(axiosSource.includes('const publicTokenLogin =') && axiosSource.includes('&& !publicTokenLogin'), 'Public token login must not inherit an old bearer token or mutation idempotency header.');
     assert(coreRoutes.includes('req.user?.active_role_code === RoleCode.COMPANY_ADMIN'), 'Company Admin module mutation must require the active role.');
     assert(reportingAccessRoutes.includes('req.user?.active_role_code === RoleCode.SUPERVISOR') && reportingAccessRoutes.includes('const staffOnly = personalOnly(req);'), 'Supervisor and Staff must share personal reporting scope.');
-    assert(reportingAccessRoutes.includes('user_id: userId') && reportingAccessRoutes.includes('employee_id: employeeId'), 'Attendance projection must use an explicit user-to-employee identity.');
+    assert(reportingAccessRoutes.includes('EmployeeProvisioningService.ensureForUser') && reportingAccessRoutes.includes('employee_id: employeeId'), 'Attendance projection must use centralized explicit user-to-employee identity.');
     assert(reportingAccessRoutes.includes("'/operational-summary', requireActiveRole(RoleCode.OPERATIONAL_MANAGER)"), 'Company-wide operational report must require OM active role.');
     assert(reportingClient.includes('sectionErrors: { attendance: attendanceResult.error') && reportingClient.includes('if (data.sectionErrors.attendance)'), 'Attendance failure must not masquerade as zero activity or blank the periodic report.');
     assert(commandPalette.includes('canAccessRoute({'), 'Command palette must hide routes that the active context cannot open.');
@@ -396,8 +402,10 @@ async function main(): Promise<void> {
     assert(financeRoutes.includes("'/payments/:id/execute'"));
     assert(projectRoutes.includes("'/dashboard/financial-summary'"));
     assert(projectRoutes.includes("Status Daily Task tidak valid."), 'Daily Task creation must reject statuses outside the command contract.');
-    assert(projectRoutes.includes('existingProjectMember?.employee_id'), 'Timesheet identity must retain the explicit project-member migration fallback.');
-    assert(projectRoutes.includes("'Akun user belum terhubung dengan data employee.'"), 'Missing employee identity must fail closed with an actionable message.');
+    assert(projectRoutes.includes('EmployeeProvisioningService.ensureForUser'), 'Timesheet identity must use centralized employee provisioning.');
+    assert(projectRoutes.includes("'Super Admin tidak memiliki profil employee.'"), 'Super Admin must remain a platform identity without a synthetic employee.');
+    assert(projectRoutes.includes("searchFields: ['title', 'description', 'notes', 'output_result', 'time_slot']"), 'Daily Task API search must cover operational text fields.');
+    assert(tasksClient.includes('item.mainTaskName') && tasksClient.includes('item.task.output_result') && tasksClient.includes('item.task.owner_name'), 'Task workspace search must cover WBS, output, and owner labels.');
     assert(profileModal.includes('current_password'));
     assert(profileModal.includes('api.patch("/api/v1/auth/profile"'));
     assert(projectClient.includes('"executive", "om", "pm", "finance"'), 'Project financial visibility must use the normalized executive role.');

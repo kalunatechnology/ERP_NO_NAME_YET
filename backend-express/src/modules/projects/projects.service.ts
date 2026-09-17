@@ -87,36 +87,108 @@ export class ProjectsService {
     throw new ForbiddenError('Daftar assignee hanya tersedia untuk PM project terkait atau Operational Manager.');
   }
 
+  private static async operationalTaskVisibility(user: any, companyId: string, db: any = prisma) {
+    const userId = user?.id as string | undefined;
+    if (!userId || !this.isOperationalAssignee(user)) {
+      return {
+        memberProjectIds: [] as string[],
+        readableProjectIds: [] as string[],
+        readableMainTaskIds: [] as string[],
+        readableWeeklyTaskIds: [] as string[],
+        teamWeeklyTaskIds: [] as string[],
+        hasTeamRelation: false,
+      };
+    }
+
+    const tenantWhere = user?.tenant_id ? { tenant_id: user.tenant_id } : {};
+    const scoped = { company_id: companyId, ...tenantWhere };
+
+    const [memberships, assignments, weeklyAssignments, ownedDailyTasks] = await Promise.all([
+      db.project_member.findMany({
+        where: { ...scoped, user_id: userId, status: 'ACTIVE' },
+        select: { project_id: true },
+      }),
+      db.project_task_assignment.findMany({
+        where: { ...scoped, assignee_id: userId },
+        select: { main_task_id: true },
+      }),
+      db.project_weekly_task.findMany({
+        where: { ...scoped, assignee_id: userId },
+        select: { id: true, main_task_id: true },
+      }),
+      db.project_daily_task.findMany({
+        where: { ...scoped, owner_id: userId },
+        select: { weekly_task_id: true },
+      }),
+    ]);
+
+    const unique = (values: Array<string | null | undefined>) => [...new Set(values.filter((value): value is string => Boolean(value)))];
+    const memberProjectIds = unique(memberships.map((item: { project_id: string | null }) => item.project_id));
+    const assignedMainTaskIds = unique(assignments.map((item: { main_task_id: string }) => item.main_task_id));
+    const assignedWeeklyTaskIds = unique(weeklyAssignments.map((item: { id: string }) => item.id));
+    const ownedWeeklyTaskIds = unique(ownedDailyTasks.map((item: { weekly_task_id: string }) => item.weekly_task_id));
+
+    const hierarchyWeeklyIds = unique([...assignedWeeklyTaskIds, ...ownedWeeklyTaskIds]);
+    const hierarchyWeeklyRows = hierarchyWeeklyIds.length
+      ? await db.project_weekly_task.findMany({
+          where: { ...scoped, id: { in: hierarchyWeeklyIds } },
+          select: { id: true, main_task_id: true },
+        })
+      : [];
+    const parentMainTaskIds = unique(hierarchyWeeklyRows.map((item: { main_task_id: string }) => item.main_task_id));
+
+    const relatedMainTaskIds = unique([...assignedMainTaskIds, ...parentMainTaskIds]);
+    const relatedMainRows = relatedMainTaskIds.length
+      ? await db.project_main_task.findMany({
+          where: { ...scoped, id: { in: relatedMainTaskIds } },
+          select: { id: true, project_id: true },
+        })
+      : [];
+    const memberMainRows = memberProjectIds.length
+      ? await db.project_main_task.findMany({
+          where: { ...scoped, project_id: { in: memberProjectIds } },
+          select: { id: true, project_id: true },
+        })
+      : [];
+
+    const memberMainTaskIds = unique(memberMainRows.map((item: { id: string }) => item.id));
+    const readableMainTaskIds = unique([...relatedMainTaskIds, ...memberMainTaskIds]);
+    const teamMainTaskIds = unique([...assignedMainTaskIds, ...memberMainTaskIds]);
+
+    const teamWeeklyRows = teamMainTaskIds.length
+      ? await db.project_weekly_task.findMany({
+          where: { ...scoped, main_task_id: { in: teamMainTaskIds } },
+          select: { id: true },
+        })
+      : [];
+    const teamWeeklyTaskIds = unique([
+      ...assignedWeeklyTaskIds,
+      ...teamWeeklyRows.map((item: { id: string }) => item.id),
+    ]);
+    const readableWeeklyTaskIds = unique([...teamWeeklyTaskIds, ...ownedWeeklyTaskIds]);
+    const readableProjectIds = unique([
+      ...memberProjectIds,
+      ...relatedMainRows.map((item: { project_id: string }) => item.project_id),
+    ]);
+
+    return {
+      memberProjectIds,
+      readableProjectIds,
+      readableMainTaskIds,
+      readableWeeklyTaskIds,
+      teamWeeklyTaskIds,
+      hasTeamRelation: Boolean(memberProjectIds.length || assignedMainTaskIds.length || assignedWeeklyTaskIds.length),
+    };
+  }
+
   static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
       return { id: { in: await this.managedProjectIds(user, companyId, db) } };
     }
     if (!this.isOperationalAssignee(user) || !user?.id) return { id: { in: [] } };
-
-    const [memberships, assignments] = await Promise.all([
-      db.project_member.findMany({
-        where: { company_id: companyId, user_id: user.id, status: 'ACTIVE' },
-        select: { project_id: true },
-      }),
-      db.project_task_assignment.findMany({
-        where: { company_id: companyId, assignee_id: user.id },
-        select: { main_task_id: true },
-      }),
-    ]);
-    const mainIds = assignments.map((assignment: { main_task_id: string }) => assignment.main_task_id);
-    const assignedMainTasks = mainIds.length
-      ? await db.project_main_task.findMany({
-        where: { company_id: companyId, id: { in: mainIds } },
-        select: { project_id: true },
-      })
-      : [];
-    const projectIds = new Set<string>();
-    memberships.forEach((membership: { project_id: string | null }) => {
-      if (membership.project_id) projectIds.add(membership.project_id);
-    });
-    assignedMainTasks.forEach((task: { project_id: string }) => projectIds.add(task.project_id));
-    return { id: { in: [...projectIds] } };
+    const visibility = await this.operationalTaskVisibility(user, companyId, db);
+    return { id: { in: visibility.readableProjectIds } };
   }
 
   static async assertCanViewProject(user: any, projectId: string, companyId: string, db: any = prisma): Promise<void> {
@@ -129,7 +201,19 @@ export class ProjectsService {
   }
 
   static async dailyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.isOperationalAssignee(user)) return { owner_id: user.id };
+    if (this.isOperationalAssignee(user)) {
+      if (!user?.id) return { id: { in: [] } };
+      const visibility = await this.operationalTaskVisibility(user, companyId, db);
+      if (!visibility.hasTeamRelation || !visibility.teamWeeklyTaskIds.length) {
+        return { owner_id: user.id };
+      }
+      return {
+        OR: [
+          { owner_id: user.id },
+          { weekly_task_id: { in: visibility.teamWeeklyTaskIds } },
+        ],
+      };
+    }
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
 
@@ -150,11 +234,8 @@ export class ProjectsService {
 
   static async mainTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
     if (this.isOperationalAssignee(user)) {
-      const assignments = await db.project_task_assignment.findMany({
-        where: { company_id: companyId, assignee_id: user.id },
-        select: { main_task_id: true },
-      });
-      return { id: { in: assignments.map((assignment: { main_task_id: string }) => assignment.main_task_id) } };
+      const visibility = await this.operationalTaskVisibility(user, companyId, db);
+      return { id: { in: visibility.readableMainTaskIds } };
     }
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
@@ -162,7 +243,10 @@ export class ProjectsService {
   }
 
   static async weeklyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.isOperationalAssignee(user)) return { assignee_id: user.id };
+    if (this.isOperationalAssignee(user)) {
+      const visibility = await this.operationalTaskVisibility(user, companyId, db);
+      return { id: { in: visibility.readableWeeklyTaskIds } };
+    }
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
     const mainWhere = await this.mainTaskAccessWhere(user, companyId, db);

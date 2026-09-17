@@ -427,7 +427,7 @@ function TaskRow({
               !isAllowed && "cursor-not-allowed opacity-40 bg-gray-100",
               isAllowed && isDone ? "bg-brand-green border-brand-green text-white" : "border-gray-300 hover:border-brand-green"
             )}
-            title={!isAllowed ? "Hanya PIC, Owner, atau PM yang dapat mengubah status" : (isDone ? "Buka kembali" : "Tandai selesai")}
+            title={!isAllowed ? "Hanya pemilik task yang dapat mengubah status" : (isDone ? "Buka kembali" : "Tandai selesai")}
           >
             {isDone && <Check size={11} strokeWidth={3} />}
           </button>
@@ -465,7 +465,7 @@ function TaskRow({
             <Pencil size={13} />
           </button>
         ) : (
-          <span className="text-3xs text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded" title="Hanya PIC / Owner atau PM yang dapat mengedit">
+          <span className="text-3xs text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded" title="Hanya pemilik task yang dapat mengedit">
             Read only
           </span>
         )}
@@ -602,15 +602,31 @@ export default function TasksClient() {
   const filteredTasks = useMemo(() => {
     const q = deferredSearch.toLowerCase().trim();
     return allTasks.filter(item => {
-      const matchSearch = q
-        ? (item.task.title || item.task.activity_input || "").toLowerCase().includes(q) ||
-          item.projectName.toLowerCase().includes(q) ||
-          item.projectCode.toLowerCase().includes(q)
-        : true;
+      const searchableText = [
+        item.task.title,
+        item.task.activity_input,
+        item.projectCode,
+        item.projectName,
+        item.mainTaskName,
+        item.task.output_result,
+        item.task.notes,
+        item.task.block_reason,
+        item.task.owner_name,
+        item.task.owner_id,
+      ]
+        .filter(value => value !== null && value !== undefined)
+        .map(value => String(value).toLowerCase())
+        .join(' ');
+      const matchSearch = q ? searchableText.includes(q) : true;
       if (!matchSearch) return false;
+
+      // Search is intentionally global across all accessible tasks. Quick
+      // filters resume when the search box is empty.
+      if (q) return true;
+
       const taskDate = normalizeDateKey(item.task.planned_date);
       if (activeFilter === "TODAY") return taskDate === today;
-      if (activeFilter === "ACTIVE") return ["ON_PROGRESS","PENDING"].includes(item.task.status || "");
+      if (activeFilter === "ACTIVE") return ["ON_PROGRESS", "IN_PROGRESS", "PENDING"].includes(item.task.status || "");
       if (activeFilter === "COMPLETED") return ["COMPLETED","DONE"].includes(item.task.status || "");
       if (activeFilter === "OVERDUE") return Boolean(taskDate && taskDate < today && !["COMPLETED","DONE"].includes(item.task.status || ""));
       if (activeFilter === "BLOCKED") {
@@ -786,7 +802,7 @@ export default function TasksClient() {
             <Layers size={20} className="text-brand-green" /> Tasks & Personal Workspace
           </h1>
           <p className="text-xs text-text-secondary mt-0.5">
-            Daftar seluruh tugas harian Anda dari semua proyek (Cross-Project Daily View)
+            Daftar task yang dapat Anda akses dari proyek terkait. Task rekan tampil read-only.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -867,7 +883,7 @@ export default function TasksClient() {
           <Search size={14} className="text-text-secondary flex-shrink-0" />
           <input
             type="text"
-            placeholder="Cari task atau proyek..."
+            placeholder="Cari task, proyek, WBS, output, catatan, atau owner..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="flex-1 text-xs border-none outline-none bg-transparent"

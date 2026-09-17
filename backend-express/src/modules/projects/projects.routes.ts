@@ -12,6 +12,7 @@ import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { isSuperAdmin, RoleCode } from '../../types/roles';
+import { EmployeeProvisioningService } from '../master_data/employee-provisioning.service';
 
 export const projectsRouter = Router();
 
@@ -68,89 +69,22 @@ function isStaff(req: Request): boolean {
  * project_timesheet.employee_id
  */
 async function currentEmployee(req: Request) {
-  const companyId =
-    activeCompanyId(req);
+  const companyId = activeCompanyId(req);
+  const tenantId = activeTenantId(req);
+  const userId = activeUserId(req);
 
-  const tenantId =
-    activeTenantId(req);
+  const employee = await EmployeeProvisioningService.ensureForUser({
+    userId,
+    tenantId,
+    companyId,
+    actorId: userId,
+  });
 
-  const userId =
-    activeUserId(req);
-
-  const employee =
-    await prisma.master_employee.findFirst({
-      where: {
-        tenant_id:
-          tenantId,
-
-        company_id:
-          companyId,
-
-        user_id:
-          userId,
-      },
-
-      select: {
-        id:
-          true,
-
-        user_id:
-          true,
-
-        employee_number:
-          true,
-
-        employment_status:
-          true,
-
-        standard_hourly_rate:
-          true,
-      },
-    });
-
-  if (employee) {
-    return employee;
+  if (!employee) {
+    throw new ForbiddenError('Super Admin tidak memiliki profil employee.');
   }
 
-  // Backward-compatible transition path. Only use an explicit employee_id
-  // already stored on an active project membership; never infer identity from
-  // names, usernames, employee numbers, or coincidentally equal IDs.
-  const existingProjectMember =
-    await prisma.project_member.findFirst({
-      where: {
-        tenant_id: tenantId,
-        company_id: companyId,
-        user_id: userId,
-        employee_id: { not: null },
-        status: 'ACTIVE',
-      },
-      select: { employee_id: true },
-      orderBy: { assigned_at: 'desc' },
-    });
-
-  if (existingProjectMember?.employee_id) {
-    const mappedEmployee =
-      await prisma.master_employee.findFirst({
-        where: {
-          id: existingProjectMember.employee_id,
-          tenant_id: tenantId,
-          company_id: companyId,
-        },
-        select: {
-          id: true,
-          user_id: true,
-          employee_number: true,
-          employment_status: true,
-          standard_hourly_rate: true,
-        },
-      });
-
-    if (mappedEmployee) return mappedEmployee;
-  }
-
-  throw new ForbiddenError(
-    'Akun user belum terhubung dengan data employee.',
-  );
+  return employee;
 }
 
 // =============================================================================
@@ -292,6 +226,63 @@ projectsRouter.post('/customers', async (req: Request, res: Response, next: Next
       label: newParty.display_name,
       value: newParty.display_name,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// Project-scoped identity catalog used only to label task owners/assignees.
+// It returns users referenced by task rows already visible to the caller; this
+// is intentionally not a replacement for the Accounts administration API.
+projectsRouter.get('/task-participants', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const tenantId = activeTenantId(req);
+    const [mainScope, weeklyScope, dailyScope] = await Promise.all([
+      ProjectsService.mainTaskAccessWhere(req.user, companyId),
+      ProjectsService.weeklyTaskAccessWhere(req.user, companyId),
+      ProjectsService.dailyTaskAccessWhere(req.user, companyId),
+    ]);
+
+    const [mainTasks, weeklyTasks, dailyTasks] = await Promise.all([
+      prisma.project_main_task.findMany({
+        where: { tenant_id: tenantId, company_id: companyId, ...mainScope },
+        select: { id: true },
+      }),
+      prisma.project_weekly_task.findMany({
+        where: { tenant_id: tenantId, company_id: companyId, ...weeklyScope },
+        select: { assignee_id: true },
+      }),
+      prisma.project_daily_task.findMany({
+        where: { tenant_id: tenantId, company_id: companyId, ...dailyScope },
+        select: { owner_id: true },
+      }),
+    ]);
+
+    const mainTaskIds = mainTasks.map((task) => task.id);
+    const assignments = mainTaskIds.length
+      ? await prisma.project_task_assignment.findMany({
+          where: { tenant_id: tenantId, company_id: companyId, main_task_id: { in: mainTaskIds } },
+          select: { assignee_id: true },
+        })
+      : [];
+
+    const participantIds = [...new Set([
+      ...weeklyTasks.map((task) => task.assignee_id),
+      ...dailyTasks.map((task) => task.owner_id),
+      ...assignments.map((assignment) => assignment.assignee_id),
+    ].filter((id): id is string => Boolean(id)))];
+
+    const users = participantIds.length
+      ? await prisma.iam_user.findMany({
+          where: { id: { in: participantIds }, tenant_id: tenantId, is_active: true },
+          select: { id: true, email: true, username: true, full_name: true },
+          orderBy: { full_name: 'asc' },
+        })
+      : [];
+
+    res.json({ count: users.length, results: users });
   } catch (err) {
     next(err);
   }
@@ -1275,7 +1266,7 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
 // Helper to normalize Daily Tasks
 projectsRouter.use('/daily-tasks', createCrudRouter({
   modelName: 'project_daily_task',
-  searchFields: ['title', 'description', 'notes'],
+  searchFields: ['title', 'description', 'notes', 'output_result', 'time_slot'],
   accessWhere: async (req) => ProjectsService.dailyTaskAccessWhere(req.user, activeCompanyId(req)),
   beforeCreate: async (req, data) => {
     if (data.weekly_task && !data.weekly_task_id) data.weekly_task_id = data.weekly_task;
@@ -1288,9 +1279,14 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     if (!weeklyTask) throw new ValidationError('Weekly Task tidak valid atau berada di luar company aktif.');
     const mainTask = await prisma.project_main_task.findFirst({
       where: { id: weeklyTask.main_task_id, company_id: companyId },
-      select: { id: true, project_id: true },
+      select: { id: true, project_id: true, tenant_id: true, company_id: true },
     });
     if (!mainTask) throw new ValidationError('Main Task induk tidak valid.');
+
+    // Parent hierarchy is authoritative for write scope. Never trust tenant or
+    // company values supplied by the browser.
+    data.tenant_id = mainTask.tenant_id ?? weeklyTask.tenant_id ?? activeTenantId(req);
+    data.company_id = mainTask.company_id ?? weeklyTask.company_id ?? companyId;
 
     const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(
       req.user?.active_role_code as RoleCode,

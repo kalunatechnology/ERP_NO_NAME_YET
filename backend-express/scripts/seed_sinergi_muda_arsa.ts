@@ -327,6 +327,7 @@ async function main() {
       proj = await prisma.project_project.update({
         where: { id: proj.id },
         data: {
+          tenant_id: tenantSMA.id,
           company_id: companySMA.id,
           project_name: pd.name,
           customer_name: pd.customer,
@@ -353,6 +354,8 @@ async function main() {
         mainTask = await prisma.project_main_task.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: proj.tenant_id ?? tenantSMA.id,
+            company_id: proj.company_id ?? companySMA.id,
             project_id: proj.id,
             name: mt.title,
             description: mt.desc,
@@ -371,6 +374,8 @@ async function main() {
         await prisma.project_task_assignment.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: proj.tenant_id ?? tenantSMA.id,
+            company_id: proj.company_id ?? companySMA.id,
             main_task_id: mainTask.id,
             assignee_id: mt.assignee.id,
             assigned_at: new Date(),
@@ -381,6 +386,8 @@ async function main() {
         const weeklyTask = await prisma.project_weekly_task.create({
           data: {
             id: crypto.randomUUID(),
+            tenant_id: proj.tenant_id ?? tenantSMA.id,
+            company_id: proj.company_id ?? companySMA.id,
             main_task_id: mainTask.id,
             assignee_id: mt.assignee.id,
             week_number: 1,
@@ -399,6 +406,8 @@ async function main() {
           await prisma.project_daily_task.create({
             data: {
               id: crypto.randomUUID(),
+              tenant_id: proj.tenant_id ?? tenantSMA.id,
+              company_id: proj.company_id ?? companySMA.id,
               weekly_task_id: weeklyTask.id,
               owner_id: dt.assignee.id,
               title: dt.title,

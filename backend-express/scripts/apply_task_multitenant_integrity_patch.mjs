@@ -178,7 +178,7 @@ export class EmployeeProvisioningService {
       }
     }
 
-    const employeeNumber = `EMP-${userId.replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+    const employeeNumber = 'EMP-' + userId.replace(/-/g, '').slice(0, 12).toUpperCase();
     const employee = await db.master_employee.upsert({
       where: {
         company_id_user_id: {
@@ -255,7 +255,7 @@ async function main() {
     const project = await prisma.project_project.findUnique({ where: { id: task.project_id } });
     if (!project?.tenant_id || !project.company_id) {
       skipped += 1;
-      console.warn(`[skip main] ${task.id}: parent project scope incomplete`);
+      console.warn('[skip main] ' + task.id + ': parent project scope incomplete');
       continue;
     }
     if (differs(task, project)) {
@@ -272,7 +272,7 @@ async function main() {
     const parent = await prisma.project_main_task.findUnique({ where: { id: task.main_task_id } });
     if (!parent?.tenant_id || !parent.company_id) {
       skipped += 1;
-      console.warn(`[skip weekly] ${task.id}: parent main task scope incomplete`);
+      console.warn('[skip weekly] ' + task.id + ': parent main task scope incomplete');
       continue;
     }
     if (differs(task, parent)) {
@@ -289,7 +289,7 @@ async function main() {
     const parent = await prisma.project_weekly_task.findUnique({ where: { id: task.weekly_task_id } });
     if (!parent?.tenant_id || !parent.company_id) {
       skipped += 1;
-      console.warn(`[skip daily] ${task.id}: parent weekly task scope incomplete`);
+      console.warn('[skip daily] ' + task.id + ': parent weekly task scope incomplete');
       continue;
     }
     if (differs(task, parent)) {
@@ -306,7 +306,7 @@ async function main() {
     const parent = await prisma.project_main_task.findUnique({ where: { id: assignment.main_task_id } });
     if (!parent?.tenant_id || !parent.company_id) {
       skipped += 1;
-      console.warn(`[skip assignment] ${assignment.id}: parent main task scope incomplete`);
+      console.warn('[skip assignment] ' + assignment.id + ': parent main task scope incomplete');
       continue;
     }
     if (differs(assignment, parent)) {
@@ -371,7 +371,7 @@ async function main() {
       else skipped += 1;
     } catch (error) {
       failed += 1;
-      console.error(`[failed] user=${membership.user_id}`, error);
+      console.error('[failed] user=' + membership.user_id, error);
     }
   }
 
@@ -497,9 +497,9 @@ replaceExact(
 );
 replaceExact(
   projectRoutesPath,
-  `      select: { id: true, project_id: true },`,
-  `      select: { id: true, project_id: true, tenant_id: true, company_id: true },`,
-  `select: { id: true, project_id: true, tenant_id: true, company_id: true }`,
+  `    const mainTask = await prisma.project_main_task.findFirst({\n      where: { id: weeklyTask.main_task_id, company_id: companyId },\n      select: { id: true, project_id: true },\n    });`,
+  `    const mainTask = await prisma.project_main_task.findFirst({\n      where: { id: weeklyTask.main_task_id, company_id: companyId },\n      select: { id: true, project_id: true, tenant_id: true, company_id: true },\n    });`,
+  `where: { id: weeklyTask.main_task_id, company_id: companyId },\n      select: { id: true, project_id: true, tenant_id: true, company_id: true }`,
 );
 replaceExact(
   projectRoutesPath,
@@ -599,6 +599,21 @@ replaceExact(
   `    assert(projectRoutes.includes('existingProjectMember?.employee_id'), 'Timesheet identity must retain the explicit project-member migration fallback.');\n    assert(projectRoutes.includes("'Akun user belum terhubung dengan data employee.'"), 'Missing employee identity must fail closed with an actionable message.');`,
   `    assert(projectRoutes.includes('EmployeeProvisioningService.ensureForUser'), 'Timesheet identity must use centralized employee provisioning.');\n    assert(projectRoutes.includes("'Super Admin tidak memiliki profil employee.'"), 'Super Admin must remain a platform identity without a synthetic employee.');\n    assert(projectRoutes.includes("searchFields: ['title', 'description', 'notes', 'output_result', 'time_slot']"), 'Daily Task API search must cover operational text fields.');\n    assert(tasksClient.includes('item.mainTaskName') && tasksClient.includes('item.task.output_result') && tasksClient.includes('item.task.owner_name'), 'Task workspace search must cover WBS, output, and owner labels.');`,
   `Timesheet identity must use centralized employee provisioning.`,
+);
+
+
+replaceExact(
+  q11Path,
+  `    const staff = { id: 'staff-a', roles: [RoleCode.STAFF], active_role_code: RoleCode.STAFF };\n    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a'), { owner_id: 'staff-a' });`,
+  `    const staff = { id: 'staff-a', roles: [RoleCode.STAFF], active_role_code: RoleCode.STAFF };\n    const staffNoRelationsDb = {\n      project_member: { findMany: async () => [] },\n      project_task_assignment: { findMany: async () => [] },\n      project_weekly_task: { findMany: async () => [] },\n      project_daily_task: { findMany: async () => [] },\n    };\n    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a', staffNoRelationsDb), { owner_id: 'staff-a' });`,
+  `const staffNoRelationsDb = {`,
+);
+
+replaceExact(
+  q11Path,
+  `    assert(reportingAccessRoutes.includes('user_id: userId') && reportingAccessRoutes.includes('employee_id: employeeId'), 'Attendance projection must use an explicit user-to-employee identity.');`,
+  `    assert(reportingAccessRoutes.includes('EmployeeProvisioningService.ensureForUser') && reportingAccessRoutes.includes('employee_id: employeeId'), 'Attendance projection must use centralized explicit user-to-employee identity.');`,
+  `Attendance projection must use centralized explicit user-to-employee identity.`,
 );
 
 console.log('Task multi-tenant integrity patch applied successfully.');

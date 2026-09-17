@@ -257,9 +257,9 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
         canReadFinance ? api.get("/api/v1/finance/project-cost-entries/?page_size=300") : emptyResponse(),
         canReadFinance ? api.get("/api/v1/finance/billing-proposals/?page_size=200") : emptyResponse(),
         canReadFinance ? api.get("/api/v1/finance/project-fundings/?page_size=100") : emptyResponse(),
-        // User administration is not part of the PROJECTS contract. Names are
-        // supplied by the dashboard bundle or project-scoped assignee catalog.
-        emptyResponse(),
+        // Task participant names come from a project-scoped read-only catalog,
+        // never from the admin-only Accounts user listing.
+        api.get('/api/v1/projects/task-participants/'),
       ]);
 
   const projects     = normalizeList<Project>(projectsRes.data).rows;
@@ -317,7 +317,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
         status: (d.status === "DONE" || d.status === "COMPLETED") ? "COMPLETED" : (d.status || "PENDING"),
         progress: Number(d.progress || (d.status === "COMPLETED" || d.status === "DONE" ? 100 : 0)),
         notes: d.notes || "",
-        owner_name: d.owner_name || d.owner_username || d.assignee_name || "Member",
+        owner_name: d.owner_name || d.owner_username || d.assignee_name || userMap[String(d.owner_id || d.owner || d.assigned_to || "")] || "Member",
         owner_id: d.owner_id || d.owner || d.assigned_to,
         is_blocked: d.is_blocked || d.status === "BLOCKED",
         block_reason: d.block_reason || "",
@@ -347,7 +347,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
         end_date: w.end_date || w.planned_end || "",
         status: w.status || "PLANNED",
         progress: calcProg,
-        assignee_name: w.assignee_name || w.assignee_username || w.owner_name || "",
+        assignee_name: w.assignee_name || w.assignee_username || w.owner_name || userMap[String(w.assignee_id || w.assignee || w.assigned_to || "")] || "",
         assignee_id: w.assignee_id || w.assignee || w.assigned_to,
         daily_tasks: wDailies,
       });
