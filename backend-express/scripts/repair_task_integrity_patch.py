@@ -24,7 +24,6 @@ for old, new in replacements.items():
     elif new not in text:
         raise SystemExit(f'Expected patch text not found: {old}')
 
-# Scope the parent selector patch specifically to Daily Task creation.
 old_selector_patch = """replaceExact(
   projectRoutesPath,
   `      select: { id: true, project_id: true },`,
@@ -44,16 +43,19 @@ if old_selector_patch in text:
 elif new_selector_patch not in text:
     raise SystemExit('Expected Daily Task selector patch definition not found')
 
-# Q11 previously tested STAFF fallback without a database because the old access
-# helper never queried relationships. The new behavior must query relationships,
-# so supply an explicit empty relationship mock and keep the exact owner-only
-# fallback assertion.
 q11_injection = r"""
 replaceExact(
   q11Path,
   `    const staff = { id: 'staff-a', roles: [RoleCode.STAFF], active_role_code: RoleCode.STAFF };\n    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a'), { owner_id: 'staff-a' });`,
   `    const staff = { id: 'staff-a', roles: [RoleCode.STAFF], active_role_code: RoleCode.STAFF };\n    const staffNoRelationsDb = {\n      project_member: { findMany: async () => [] },\n      project_task_assignment: { findMany: async () => [] },\n      project_weekly_task: { findMany: async () => [] },\n      project_daily_task: { findMany: async () => [] },\n    };\n    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a', staffNoRelationsDb), { owner_id: 'staff-a' });`,
   `const staffNoRelationsDb = {`,
+);
+
+replaceExact(
+  q11Path,
+  `    assert(reportingAccessRoutes.includes('user_id: userId') && reportingAccessRoutes.includes('employee_id: employeeId'), 'Attendance projection must use an explicit user-to-employee identity.');`,
+  `    assert(reportingAccessRoutes.includes('EmployeeProvisioningService.ensureForUser') && reportingAccessRoutes.includes('employee_id: employeeId'), 'Attendance projection must use centralized explicit user-to-employee identity.');`,
+  `Attendance projection must use centralized explicit user-to-employee identity.`,
 );
 """
 
@@ -64,4 +66,4 @@ if q11_injection.strip() not in text:
     text = text.replace(marker, '\n' + q11_injection + marker)
 
 patch.write_text(text, encoding='utf-8')
-print('Patch generator repaired and Q11 owner-only fallback mock added.')
+print('Patch generator repaired and Q11 identity guardrails aligned.')
