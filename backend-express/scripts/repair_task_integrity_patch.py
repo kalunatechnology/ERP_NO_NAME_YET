@@ -24,9 +24,7 @@ for old, new in replacements.items():
     elif new not in text:
         raise SystemExit(f'Expected patch text not found: {old}')
 
-# The initial generator used a generic select replacement and could hit another
-# project_main_task lookup earlier in the large route file. Replace that patch
-# definition with an anchor scoped specifically to Daily Task creation.
+# Scope the parent selector patch specifically to Daily Task creation.
 old_selector_patch = """replaceExact(
   projectRoutesPath,
   `      select: { id: true, project_id: true },`,
@@ -46,5 +44,24 @@ if old_selector_patch in text:
 elif new_selector_patch not in text:
     raise SystemExit('Expected Daily Task selector patch definition not found')
 
+# Q11 previously tested STAFF fallback without a database because the old access
+# helper never queried relationships. The new behavior must query relationships,
+# so supply an explicit empty relationship mock and keep the exact owner-only
+# fallback assertion.
+q11_injection = r"""
+replaceExact(
+  q11Path,
+  `    const staff = { id: 'staff-a', roles: [RoleCode.STAFF], active_role_code: RoleCode.STAFF };\n    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a'), { owner_id: 'staff-a' });`,
+  `    const staff = { id: 'staff-a', roles: [RoleCode.STAFF], active_role_code: RoleCode.STAFF };\n    const staffNoRelationsDb = {\n      project_member: { findMany: async () => [] },\n      project_task_assignment: { findMany: async () => [] },\n      project_weekly_task: { findMany: async () => [] },\n      project_daily_task: { findMany: async () => [] },\n    };\n    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a', staffNoRelationsDb), { owner_id: 'staff-a' });`,
+  `const staffNoRelationsDb = {`,
+);
+"""
+
+marker = "\nconsole.log('Task multi-tenant integrity patch applied successfully.');"
+if q11_injection.strip() not in text:
+    if marker not in text:
+        raise SystemExit('Patch generator final marker not found')
+    text = text.replace(marker, '\n' + q11_injection + marker)
+
 patch.write_text(text, encoding='utf-8')
-print('Patch generator quoting and Daily Task selector repaired.')
+print('Patch generator repaired and Q11 owner-only fallback mock added.')
