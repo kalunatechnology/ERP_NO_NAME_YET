@@ -6,7 +6,9 @@
  * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
+import { randomUUID } from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
+import prisma from '../../config/database';
 import { CoreService } from './core.service';
 import { authenticate } from '../../middlewares/auth.middleware';
 import { createCrudRouter } from '../../utils/crud-factory';
@@ -284,6 +286,257 @@ coreRouter.patch('/companies/:id/modules/:moduleCode', authenticate, handleSetCo
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
 coreRouter.put('/companies/:id/modules/:moduleCode', authenticate, handleSetCompanyModule);
+
+// Company Bootstrap & Bulk Module Provisioning (Super Admin exclusive)
+/**
+ * POST route handler: `/companies/bootstrap`.
+ * Super Admin creates a company, initial currency, module presets, and initial admin in one step.
+ */
+coreRouter.post('/companies/bootstrap', authenticate, requireSuperuser, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await CoreService.bootstrapCompany(req.body, req.user?.id);
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST route handler: `/companies/:id/modules/batch`.
+ * Super Admin updates multiple company modules in bulk.
+ */
+coreRouter.post('/companies/:id/modules/batch', authenticate, requireSuperuser, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const modules = Array.isArray(req.body?.modules) ? req.body.modules : [];
+    const result = await CoreService.setCompanyModulesBulk(req.params.id, modules, req.user?.id);
+    res.json({ results: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================================
+// MarBot Chatbot Tenant Configuration (Super Admin Only)
+// ============================================================================
+
+/**
+ * GET /tenants/:tenantId/marbot-config
+ * Retrieves MarBot config for a tenant with secrets masked. Checks DB first, then falls back to env.
+ */
+coreRouter.get('/tenants/:tenantId/marbot-config', authenticate, requireSuperuser, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { tenantId } = req.params;
+    const dbRow = await prisma.marbot_tenant_config.findUnique({
+      where: { tenant_id: tenantId },
+    });
+
+    if (dbRow) {
+      res.json({
+        configured: true,
+        source: 'DATABASE',
+        data: {
+          tenant_id: dbRow.tenant_id,
+          external_tenant_id: dbRow.external_tenant_id,
+          chatbot_url: dbRow.chatbot_url,
+          chatbot_api_key_masked: '••••••••' + (dbRow.chatbot_api_key ? dbRow.chatbot_api_key.slice(-4) : ''),
+          inbound_context_secret_masked: '••••••••',
+          outbound_tool_secret_masked: '••••••••',
+          role_map_json: dbRow.role_map_json,
+          updated_at: dbRow.updated_at,
+        },
+      });
+      return;
+    }
+
+    // Check env fallback
+    try {
+      const map = JSON.parse(process.env.MARBOT_TENANT_CONFIG_JSON || '{}');
+      const envConfig = map[tenantId];
+      if (envConfig) {
+        res.json({
+          configured: true,
+          source: 'ENV',
+          data: {
+            tenant_id: tenantId,
+            external_tenant_id: envConfig.externalTenantId,
+            chatbot_url: envConfig.chatbotUrl,
+            chatbot_api_key_masked: '••••••••',
+            inbound_context_secret_masked: '••••••••',
+            outbound_tool_secret_masked: '••••••••',
+            role_map_json: envConfig.roleMap ? JSON.stringify(envConfig.roleMap) : null,
+            updated_at: null,
+          },
+        });
+        return;
+      }
+    } catch { /* ignore parse errors */ }
+
+    // Not configured
+    res.json({
+      configured: false,
+      source: 'NONE',
+      data: null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PUT /tenants/:tenantId/marbot-config
+ * Saves or updates MarBot chatbot credentials for a tenant in the database.
+ */
+coreRouter.put('/tenants/:tenantId/marbot-config', authenticate, requireSuperuser, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { tenantId } = req.params;
+    const tenant = await prisma.core_tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new ValidationError('Tenant tidak ditemukan.');
+
+    const body = req.body || {};
+    const externalTenantId = (body.external_tenant_id || tenant.code).trim();
+    const chatbotUrl = (body.chatbot_url || '').trim();
+    let chatbotApiKey = (body.chatbot_api_key || '').trim();
+    let inboundSecret = (body.inbound_context_secret || '').trim();
+    let outboundSecret = (body.outbound_tool_secret || '').trim();
+    const roleMapJson = body.role_map_json !== undefined
+      ? (typeof body.role_map_json === 'string' ? body.role_map_json : JSON.stringify(body.role_map_json))
+      : null;
+
+    if (!chatbotUrl) throw new ValidationError('URL chatbot wajib diisi.');
+    try {
+      const parsedUrl = new URL(chatbotUrl);
+      if (parsedUrl.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && parsedUrl.hostname === 'localhost')) {
+        throw new ValidationError('URL chatbot harus menggunakan HTTPS.');
+      }
+    } catch (e: any) {
+      throw new ValidationError(e.message || 'Format URL chatbot tidak valid.');
+    }
+
+    // Existing config check for preserving masked secrets
+    const existing = await prisma.marbot_tenant_config.findUnique({ where: { tenant_id: tenantId } });
+
+    // If apiKey is masked or empty and existing exists, keep existing
+    if ((!chatbotApiKey || chatbotApiKey.includes('•••') || chatbotApiKey === '***CONFIGURED***') && existing) {
+      chatbotApiKey = existing.chatbot_api_key;
+    }
+    if ((!inboundSecret || inboundSecret.includes('•••') || inboundSecret === '***CONFIGURED***') && existing) {
+      inboundSecret = existing.inbound_context_secret;
+    }
+    if ((!outboundSecret || outboundSecret.includes('•••') || outboundSecret === '***CONFIGURED***') && existing) {
+      outboundSecret = existing.outbound_tool_secret;
+    }
+
+    if (!chatbotApiKey) throw new ValidationError('API Key chatbot wajib diisi.');
+    if (!inboundSecret) throw new ValidationError('Inbound Context Secret wajib diisi.');
+    if (!outboundSecret) throw new ValidationError('Outbound Tool Secret wajib diisi.');
+
+    if (inboundSecret === outboundSecret) {
+      throw new ValidationError('Kunci konteks dan kunci tool MarBot harus berbeda demi keamanan.');
+    }
+
+    const saved = await prisma.marbot_tenant_config.upsert({
+      where: { tenant_id: tenantId },
+      update: {
+        external_tenant_id: externalTenantId,
+        chatbot_url: chatbotUrl,
+        chatbot_api_key: chatbotApiKey,
+        inbound_context_secret: inboundSecret,
+        outbound_tool_secret: outboundSecret,
+        role_map_json: roleMapJson,
+        created_by_id: req.user?.id,
+      },
+      create: {
+        id: randomUUID(),
+        tenant_id: tenantId,
+        external_tenant_id: externalTenantId,
+        chatbot_url: chatbotUrl,
+        chatbot_api_key: chatbotApiKey,
+        inbound_context_secret: inboundSecret,
+        outbound_tool_secret: outboundSecret,
+        role_map_json: roleMapJson,
+        created_by_id: req.user?.id,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Konfigurasi MarBot berhasil disimpan.',
+      data: {
+        tenant_id: saved.tenant_id,
+        external_tenant_id: saved.external_tenant_id,
+        chatbot_url: saved.chatbot_url,
+        configured: true,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /tenants/:tenantId/marbot-config
+ * Removes MarBot configuration for a tenant.
+ */
+coreRouter.delete('/tenants/:tenantId/marbot-config', authenticate, requireSuperuser, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { tenantId } = req.params;
+    await prisma.marbot_tenant_config.deleteMany({
+      where: { tenant_id: tenantId },
+    });
+    res.json({ success: true, message: 'Konfigurasi MarBot berhasil dihapus.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /tenants/:tenantId/marbot-config/test
+ * Tests connectivity to the MarBot chatbot endpoint.
+ */
+coreRouter.post('/tenants/:tenantId/marbot-config/test', authenticate, requireSuperuser, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { tenantId } = req.params;
+    let chatbotUrl = req.body?.chatbot_url;
+    let apiKey = req.body?.chatbot_api_key;
+
+    if (!chatbotUrl || !apiKey || apiKey.includes('•••') || apiKey === '***CONFIGURED***') {
+      const dbRow = await prisma.marbot_tenant_config.findUnique({ where: { tenant_id: tenantId } });
+      if (dbRow) {
+        chatbotUrl = chatbotUrl || dbRow.chatbot_url;
+        if (!apiKey || apiKey.includes('•••') || apiKey === '***CONFIGURED***') apiKey = dbRow.chatbot_api_key;
+      }
+    }
+
+    if (!chatbotUrl) throw new ValidationError('URL endpoint chatbot belum ditentukan.');
+
+    const targetUrl = new URL(chatbotUrl);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const resp = await fetch(targetUrl.toString(), {
+        method: 'GET',
+        signal: controller.signal,
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      });
+      clearTimeout(timeout);
+      res.json({
+        reachable: true,
+        status: resp.status,
+        statusText: resp.statusText,
+        message: `Endpoint chatbot merespon status ${resp.status} (${resp.statusText || 'OK'}).`,
+      });
+    } catch (networkErr: any) {
+      clearTimeout(timeout);
+      res.status(502).json({
+        reachable: false,
+        message: `Tidak dapat terhubung ke endpoint chatbot: ${networkErr.message || 'Connection refused/timed out'}.`,
+      });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
 
 // REST ViewSets
 coreRouter.use('/companies', requireFinanceOrAdminForCompanyWrite, createCrudRouter({ modelName: 'core_company', searchFields: ['company_code', 'legal_name'] }));

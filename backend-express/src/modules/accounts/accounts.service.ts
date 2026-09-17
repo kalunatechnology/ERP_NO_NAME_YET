@@ -485,8 +485,9 @@ export class AccountsService {
     roleCodes: RoleCode[];
     companyId: string;
     tenantId: string;
+    actorId?: string;
   }) {
-    const { name, email, password, roleCodes, companyId, tenantId } = input;
+    const { name, email, password, roleCodes, companyId, tenantId, actorId } = input;
     const cleanEmail = email.trim().toLowerCase();
     const cleanUsername = cleanEmail.split('@')[0]!;
 
@@ -498,12 +499,10 @@ export class AccountsService {
     }
 
     const existing = await prisma.iam_user.findFirst({
-      where: {
-        OR: [{ email: cleanEmail }, { username: cleanUsername }],
-      },
+      where: { OR: [{ email: cleanEmail }, { username: cleanUsername }] },
     });
 
-    if (existing && (existing.email.toLowerCase() !== cleanEmail || existing.tenant_id !== tenantId)) {
+    if (existing && existing.tenant_id !== tenantId) {
       throw new ValidationError('Email atau username sudah digunakan oleh akun lain.');
     }
     if (existing) {
@@ -566,6 +565,8 @@ export class AccountsService {
             password_hash: passwordHash!,
             is_active: true,
             is_staff: false,
+            // The creator's privilege must never be copied to the invited user.
+            // SUPER_ADMIN is intentionally rejected by the route above.
             is_superuser: false,
             status: 'ACTIVE',
             date_joined: new Date(),
@@ -577,26 +578,32 @@ export class AccountsService {
           id: crypto.randomUUID(),
           user_id: created.id,
           role_id: role.id,
+          tenant_id: tenantId,
           company_id: companyId,
           organization_id: organization?.id ?? null,
+          created_by_id: actorId ?? null,
         })),
       });
 
-      await tx.iam_user_company_membership.upsert({
+      const existingMembership = await tx.iam_user_company_membership.findUnique({
         where: { user_id: created.id },
-        update: {
-          company_id: companyId,
-          tenant_id: tenantId,
-          status: 'ACTIVE',
-        },
-        create: {
-          id: crypto.randomUUID(),
-          user_id: created.id,
-          company_id: companyId,
-          tenant_id: tenantId,
-          status: 'ACTIVE',
-        },
       });
+      if (existingMembership) {
+        if (existingMembership.tenant_id !== tenantId || existingMembership.company_id !== companyId) {
+          throw new ValidationError('User sudah memiliki membership pada company/tenant lain.');
+        }
+      } else {
+        await tx.iam_user_company_membership.create({
+          data: {
+            id: crypto.randomUUID(),
+            user_id: created.id,
+            company_id: companyId,
+            tenant_id: tenantId,
+            status: 'ACTIVE',
+            created_by_id: actorId ?? null,
+          },
+        });
+      }
 
       if (!created.active_role_id && roles.length > 0) {
         await tx.iam_user.update({
@@ -619,7 +626,7 @@ export class AccountsService {
         full_name: user.full_name,
         status: user.status,
         is_staff: user.is_staff,
-        is_superuser: false,
+        is_superuser: user.is_superuser,
         is_active: user.is_active,
         tenant_id: user.tenant_id,
         date_joined: user.date_joined,

@@ -298,6 +298,78 @@ export class CoreService {
  * @returns The synchronous result or Promise produced below.
  * Database/side effects: uses `core_company`, `iam_company_module_access`; transaction scope is exactly the coded scope.
  */
+  /**
+   * Validates MarBot connection for a tenant by checking the database (marbot_tenant_config)
+   * first, and falling back to the legacy MARBOT_TENANT_CONFIG_JSON env var.
+   */
+  static async resolveAndValidateMarbotConfig(tenantId: string, tx: any) {
+    let config: {
+      externalTenantId: string;
+      chatbotUrl: string;
+      chatbotApiKey: string;
+      inboundContextSecret: string;
+      outboundToolSecret: string;
+    } | null = null;
+
+    // 1. Try DB first
+    try {
+      const dbRow = await tx.marbot_tenant_config.findUnique({
+        where: { tenant_id: tenantId },
+        select: {
+          external_tenant_id: true,
+          chatbot_url: true,
+          chatbot_api_key: true,
+          inbound_context_secret: true,
+          outbound_tool_secret: true,
+        },
+      });
+
+      if (dbRow) {
+        config = {
+          externalTenantId: dbRow.external_tenant_id,
+          chatbotUrl: dbRow.chatbot_url,
+          chatbotApiKey: dbRow.chatbot_api_key,
+          inboundContextSecret: dbRow.inbound_context_secret,
+          outboundToolSecret: dbRow.outbound_tool_secret,
+        };
+      }
+    } catch {
+      // If table query fails, continue to fallback
+    }
+
+    // 2. Fallback to env var
+    if (!config) {
+      try {
+        const envMap = JSON.parse(process.env.MARBOT_TENANT_CONFIG_JSON || '{}');
+        const envConf = envMap[tenantId];
+        if (envConf) {
+          config = envConf;
+        }
+      } catch { /* reject below */ }
+    }
+
+    if (!config?.externalTenantId || !config?.chatbotUrl || !config?.chatbotApiKey ||
+        !config?.inboundContextSecret || !config?.outboundToolSecret) {
+      throw new ValidationError('Koneksi MarBot untuk tenant ini belum dikonfigurasi di dashboard Super Admin atau server ERP.');
+    }
+
+    const tenant = await tx.core_tenant.findUnique({ where: { id: tenantId }, select: { code: true } });
+    if (!tenant || config.externalTenantId !== tenant.code) {
+      throw new ValidationError('ID tenant eksternal MarBot tidak cocok dengan kode tenant ERP.');
+    }
+    if (config.inboundContextSecret === config.outboundToolSecret) {
+      throw new ValidationError('Kunci konteks dan kunci tool MarBot harus berbeda.');
+    }
+    let url: URL;
+    try { url = new URL(config.chatbotUrl); } catch { throw new ValidationError('URL chatbot MarBot tidak valid.'); }
+    if (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.hostname === 'localhost')) {
+      throw new ValidationError('Koneksi chatbot MarBot harus menggunakan HTTPS.');
+    }
+    try { await tx.marbot_request.count(); } catch {
+      throw new ValidationError('Migrasi audit MarBot belum diterapkan pada database ERP.');
+    }
+  }
+
   static async setCompanyModuleAccess(
     companyId: string,
     moduleCode: string,
@@ -333,27 +405,7 @@ export class CoreService {
       const allowRead = data.allow_read ?? previous?.allow_read ?? enabled;
       const allowWrite = cleanCode === 'MARBOT' ? false : data.allow_write ?? previous?.allow_write ?? enabled;
       if (cleanCode === 'MARBOT' && enabled) {
-        let config: any;
-        try { config = JSON.parse(process.env.MARBOT_TENANT_CONFIG_JSON || '{}')[tenantId]; } catch { /* reject below */ }
-        if (!config?.externalTenantId || !config?.chatbotUrl || !config?.chatbotApiKey ||
-            !config?.inboundContextSecret || !config?.outboundToolSecret) {
-          throw new ValidationError('Koneksi MarBot untuk tenant ini belum dikonfigurasi di server ERP.');
-        }
-        const tenant = await tx.core_tenant.findUnique({ where: { id: tenantId }, select: { code: true } });
-        if (!tenant || config.externalTenantId !== tenant.code) {
-          throw new ValidationError('ID tenant eksternal MarBot tidak cocok dengan kode tenant ERP.');
-        }
-        if (config.inboundContextSecret === config.outboundToolSecret) {
-          throw new ValidationError('Kunci konteks dan kunci tool MarBot harus berbeda.');
-        }
-        let url: URL;
-        try { url = new URL(config.chatbotUrl); } catch { throw new ValidationError('URL chatbot MarBot tidak valid.'); }
-        if (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.hostname === 'localhost')) {
-          throw new ValidationError('Koneksi chatbot MarBot harus menggunakan HTTPS.');
-        }
-        try { await tx.marbot_request.count(); } catch {
-          throw new ValidationError('Migrasi audit MarBot belum diterapkan pada database ERP.');
-        }
+        await this.resolveAndValidateMarbotConfig(tenantId, tx);
       }
       const result = await tx.iam_company_module_access.upsert({
       where: {
@@ -428,6 +480,268 @@ export class CoreService {
         }
       }
       return result;
+    }, { timeout: 30000 });
+  }
+
+  /**
+   * Bulk updates company module entitlements in one atomic transaction.
+   */
+  static async setCompanyModulesBulk(
+    companyId: string,
+    modules: Array<{ module_code: string; enabled: boolean; allow_read?: boolean; allow_write?: boolean }>,
+    enabledById?: string,
+  ) {
+    if (!Array.isArray(modules) || modules.length === 0) {
+      throw new ValidationError('Minimal satu konfigurasi modul wajib dikirim.');
+    }
+    const normalizedModules = modules.map((item) => {
+      if (!item || typeof item.module_code !== 'string' || typeof item.enabled !== 'boolean') {
+        throw new ValidationError('Setiap modul wajib memiliki module_code dan enabled bertipe boolean.');
+      }
+      const moduleCode = item.module_code.trim().toUpperCase();
+      if (!this.ALL_MODULE_CODES.includes(moduleCode)) {
+        throw new ValidationError(`Module ${moduleCode || '(kosong)'} tidak terdaftar dalam katalog sistem.`);
+      }
+      if (item.allow_read !== undefined && typeof item.allow_read !== 'boolean') {
+        throw new ValidationError(`allow_read untuk ${moduleCode} wajib bertipe boolean.`);
+      }
+      if (item.allow_write !== undefined && typeof item.allow_write !== 'boolean') {
+        throw new ValidationError(`allow_write untuk ${moduleCode} wajib bertipe boolean.`);
+      }
+      return { ...item, module_code: moduleCode };
+    });
+    const uniqueCodes = new Set(normalizedModules.map((item) => item.module_code));
+    if (uniqueCodes.size !== normalizedModules.length) {
+      throw new ValidationError('Payload modul tidak boleh berisi module_code duplikat.');
+    }
+
+    const company = await prisma.core_company.findUnique({
+      where: { id: companyId },
+      select: { id: true, tenant_id: true },
+    });
+    if (!company) {
+      throw new ValidationError('Company tidak ditemukan.');
+    }
+    const tenantId = company.tenant_id;
+    if (!tenantId) throw new ValidationError('Company tidak memiliki tenant yang valid.');
+
+    // If any includes MARBOT with enabled=true, validate config
+    const marbotModule = normalizedModules.find((m) => m.module_code === 'MARBOT' && m.enabled);
+    if (marbotModule) {
+      await this.resolveAndValidateMarbotConfig(tenantId, prisma);
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const results = [];
+      for (const item of normalizedModules) {
+        const cleanCode = item.module_code;
+        const enabled = item.enabled;
+        const allowRead = item.allow_read ?? enabled;
+        const allowWrite = cleanCode === 'MARBOT' ? false : (item.allow_write ?? enabled);
+
+        const upserted = await tx.iam_company_module_access.upsert({
+          where: {
+            company_id_module_code: {
+              company_id: companyId,
+              module_code: cleanCode,
+            },
+          },
+          update: {
+            enabled,
+            allow_read: allowRead,
+            allow_write: allowWrite,
+            ...(enabledById ? { enabled_by_id: enabledById } : {}),
+          },
+          create: {
+            id: crypto.randomUUID(),
+            tenant_id: tenantId,
+            company_id: companyId,
+            module_code: cleanCode,
+            enabled,
+            allow_read: allowRead,
+            allow_write: allowWrite,
+            enabled_by_id: enabledById ?? null,
+          },
+        });
+        results.push(upserted);
+      }
+      return results;
+    }, { timeout: 30000 });
+  }
+
+  /**
+   * Bootstraps a new company entity under a tenant with initial currency,
+   * module presets, and optional initial company admin assignment.
+   */
+  static async bootstrapCompany(
+    data: {
+      tenant_id: string;
+      company_code: string;
+      legal_name: string;
+      business_category?: string;
+      tax_number?: string;
+      status?: string;
+      module_preset?: 'ALL' | 'STANDARD' | 'MINIMAL' | 'NONE';
+      initial_admin_user_id?: string;
+    },
+    actorId?: string,
+  ) {
+    if (!data || typeof data.tenant_id !== 'string' || typeof data.company_code !== 'string' || typeof data.legal_name !== 'string') {
+      throw new ValidationError('tenant_id, company_code, dan legal_name wajib diisi.');
+    }
+    if (data.business_category !== undefined && typeof data.business_category !== 'string') {
+      throw new ValidationError('business_category wajib bertipe string.');
+    }
+    if (data.tax_number !== undefined && typeof data.tax_number !== 'string') {
+      throw new ValidationError('tax_number wajib bertipe string.');
+    }
+    if (data.status !== undefined && typeof data.status !== 'string') {
+      throw new ValidationError('status wajib bertipe string.');
+    }
+    if (data.module_preset !== undefined && typeof data.module_preset !== 'string') {
+      throw new ValidationError('module_preset wajib bertipe string.');
+    }
+    if (data.initial_admin_user_id !== undefined && typeof data.initial_admin_user_id !== 'string') {
+      throw new ValidationError('initial_admin_user_id wajib bertipe string.');
+    }
+    const cleanTenantId = data.tenant_id.trim();
+    if (!cleanTenantId) throw new ValidationError('tenant_id wajib diisi.');
+    const cleanCode = data.company_code.trim().toUpperCase();
+    const cleanLegalName = data.legal_name.trim();
+    if (!cleanCode || !/^[A-Z0-9_-]+$/.test(cleanCode)) {
+      throw new ValidationError('Kode perusahaan hanya boleh berupa huruf kapital, angka, garis bawah, dan tanda hubung.');
+    }
+    if (!cleanLegalName) throw new ValidationError('Nama legal perusahaan wajib diisi.');
+    const allowedPresets = new Set(['ALL', 'STANDARD', 'MINIMAL', 'NONE']);
+    if (data.module_preset && !allowedPresets.has(data.module_preset)) {
+      throw new ValidationError('Preset modul tidak valid.');
+    }
+    const allowedStatuses = new Set(['ACTIVE', 'INACTIVE']);
+    const companyStatus = (data.status || 'ACTIVE').trim().toUpperCase();
+    if (!allowedStatuses.has(companyStatus)) throw new ValidationError('Status company tidak valid.');
+
+    const tenant = await prisma.core_tenant.findUnique({
+      where: { id: cleanTenantId },
+    });
+    if (!tenant) throw new ValidationError('Tenant tidak ditemukan.');
+    if (tenant.status?.toUpperCase() !== 'ACTIVE') {
+      throw new ValidationError('Company hanya dapat dibuat pada tenant yang aktif.');
+    }
+
+    const existingCompany = await prisma.core_company.findFirst({
+      where: {
+        company_code: cleanCode,
+        tenant_id: cleanTenantId,
+      },
+    });
+    if (existingCompany) {
+      throw new ValidationError(`Kode perusahaan "${cleanCode}" sudah digunakan di tenant ini.`);
+    }
+
+    const idrCurrency = await prisma.master_currency.findFirst({
+      where: { currency_code: 'IDR' },
+    });
+    if (!idrCurrency) throw new ValidationError('Master currency IDR belum tersedia.');
+
+    let initialAdmin: { id: string; tenant_id: string | null } | null = null;
+    if (data.initial_admin_user_id) {
+      initialAdmin = await prisma.iam_user.findUnique({
+        where: { id: data.initial_admin_user_id },
+        select: { id: true, tenant_id: true },
+      });
+      if (!initialAdmin) throw new ValidationError('User Company Admin awal tidak ditemukan.');
+      if (initialAdmin.tenant_id !== cleanTenantId) {
+        throw new ValidationError('User Company Admin awal berada di luar tenant target.');
+      }
+      const membership = await prisma.iam_user_company_membership.findUnique({
+        where: { user_id: initialAdmin.id },
+        select: { company_id: true },
+      });
+      if (membership) {
+        throw new ValidationError('User Company Admin awal sudah terhubung ke company lain.');
+      }
+    }
+
+    const companyAdminRole = data.initial_admin_user_id
+      ? await prisma.iam_role.findFirst({
+          where: { tenant_id: cleanTenantId, role_code: RoleCode.COMPANY_ADMIN },
+        })
+      : null;
+    if (data.initial_admin_user_id && !companyAdminRole) {
+      throw new ValidationError('Role Company Admin belum tersedia pada tenant target.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const companyId = crypto.randomUUID();
+      const newCompany = await tx.core_company.create({
+        data: {
+          id: companyId,
+          tenant_id: cleanTenantId,
+          company_code: cleanCode,
+          legal_name: cleanLegalName,
+          business_category: data.business_category?.trim() || 'General',
+          tax_number: data.tax_number?.trim() || '-',
+          status: companyStatus,
+          base_currency_id: idrCurrency.id,
+        },
+      });
+
+      // Module presets
+      let modulesToEnable: string[] = [];
+      if (data.module_preset === 'ALL') {
+        modulesToEnable = this.ALL_MODULE_CODES.filter((c) => c !== 'MARBOT');
+      } else if (data.module_preset === 'STANDARD') {
+        modulesToEnable = ['CORE', 'REQUESTS', 'CRM', 'SALES', 'PROJECTS', 'FINANCE', 'REPORTING'];
+      } else if (data.module_preset === 'MINIMAL') {
+        modulesToEnable = ['CORE', 'REQUESTS'];
+      }
+
+      for (const code of this.ALL_MODULE_CODES) {
+        const isEnabled = modulesToEnable.includes(code);
+        await tx.iam_company_module_access.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: cleanTenantId,
+            company_id: newCompany.id,
+            module_code: code,
+            enabled: isEnabled,
+            allow_read: isEnabled,
+            allow_write: isEnabled,
+            enabled_by_id: actorId ?? null,
+          },
+        });
+      }
+
+      // Initial admin assignment if user selected
+      if (data.initial_admin_user_id) {
+        await tx.iam_user_company_membership.create({
+          data: {
+            id: crypto.randomUUID(),
+            user_id: data.initial_admin_user_id,
+            company_id: newCompany.id,
+            tenant_id: cleanTenantId,
+            status: 'ACTIVE',
+            created_by_id: actorId ?? null,
+          },
+        });
+
+        await tx.iam_user_role.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: cleanTenantId,
+            created_by_id: actorId ?? null,
+            user_id: data.initial_admin_user_id,
+            role_id: companyAdminRole!.id,
+            company_id: newCompany.id,
+          },
+        });
+        await tx.iam_user.update({
+          where: { id: data.initial_admin_user_id },
+          data: { active_role_id: companyAdminRole!.id },
+        });
+      }
+
+      return newCompany;
     }, { timeout: 30000 });
   }
 }

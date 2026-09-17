@@ -416,8 +416,23 @@ const usersCrud = () => createCrudRouter({
  */
 async function inviteUser(req: Request, res: Response, next: NextFunction) {
   try {
-    if (!req.companyId || !req.user?.tenant_id) {
-      throw new ForbiddenError('Pilih satu company eksplisit untuk mengundang user.');
+    const callerIsSuperAdmin = isSuperAdmin(req.user?.roles ?? []);
+
+    // Super Admin may provide company_id and tenant_id explicitly in the body.
+    // Company Admin is always scoped to their own company via req.companyId.
+    const companyId: string | undefined = callerIsSuperAdmin
+      ? (req.body.company_id ?? req.companyId)
+      : req.companyId;
+    const tenantId: string | undefined = callerIsSuperAdmin
+      ? (req.body.tenant_id ?? req.user?.tenant_id)
+      : req.user?.tenant_id;
+
+    if (!companyId || !tenantId) {
+      throw new ForbiddenError(
+        callerIsSuperAdmin
+          ? 'Super Admin wajib menyertakan company_id dan tenant_id pada body request.'
+          : 'Pilih satu company eksplisit untuk mengundang user.',
+      );
     }
 
     const roleCodes: string[] = Array.isArray(req.body.role_codes)
@@ -433,7 +448,7 @@ async function inviteUser(req: Request, res: Response, next: NextFunction) {
     if (canonicalRoleCodes.includes(RoleCode.SUPER_ADMIN)) {
       throw new ForbiddenError('Super Admin bersifat global dan tidak dapat dibuat melalui invitation company.');
     }
-    if (!isSuperAdmin(req.user.roles) && canonicalRoleCodes.includes(RoleCode.COMPANY_ADMIN)) {
+    if (!callerIsSuperAdmin && canonicalRoleCodes.includes(RoleCode.COMPANY_ADMIN)) {
       throw new ForbiddenError('Company Admin tidak dapat mengangkat Company Admin lain.');
     }
 
@@ -442,8 +457,9 @@ async function inviteUser(req: Request, res: Response, next: NextFunction) {
       email: req.body.email ?? '',
       password: req.body.password ?? '',
       roleCodes: canonicalRoleCodes,
-      companyId: req.companyId,
-      tenantId: req.user.tenant_id,
+      companyId,
+      tenantId,
+      actorId: req.user?.id,
     });
     res.status(201).json(result);
   } catch (error) {

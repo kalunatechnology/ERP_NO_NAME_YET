@@ -211,7 +211,9 @@ export async function applyAndValidateWriteScope(
     throw new ForbiddenError(`Model ${modelName} belum memiliki jalur scope company yang tervalidasi.`);
   }
 
-  if (fields.has('tenant_id') && user.tenant_id) data['tenant_id'] = user.tenant_id;
+  if (fields.has('tenant_id') && (!isSuperAdmin(user.roles) || !data['tenant_id']) && user.tenant_id) {
+    data['tenant_id'] = user.tenant_id;
+  }
   if (fields.has('company_id')) {
     if (!req.companyId && modelName !== 'core_company') {
       throw new ForbiddenError('Pilih satu company sebelum melakukan perubahan data.');

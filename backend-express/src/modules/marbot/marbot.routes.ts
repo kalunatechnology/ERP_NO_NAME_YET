@@ -36,6 +36,80 @@ const toolQueryKeys: Record<string, string[]> = {
   'crm.open_tickets': ['customerId', 'priority'],
 };
 
+function envTenantConfig(tenantId: string): TenantConfig | null {
+  try {
+    const map = JSON.parse(process.env.MARBOT_TENANT_CONFIG_JSON || '{}');
+    const config = map[tenantId];
+    if (!config?.externalTenantId || !config.chatbotUrl || !config.chatbotApiKey || !config.inboundContextSecret || !config.outboundToolSecret) {
+      return null;
+    }
+    return config as TenantConfig;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolves MarBot config for a tenant using a two-step fallback chain:
+ *  1. Database: marbot_tenant_config (managed by Super Admin via dashboard)
+ *  2. Legacy: MARBOT_TENANT_CONFIG_JSON environment variable (backward compat)
+ *
+ * Throws ForbiddenError if neither source has a valid config.
+ */
+async function resolveTenantConfig(tenantId: string): Promise<TenantConfig> {
+  // Step 1: Try database
+  const dbRow = await prisma.marbot_tenant_config.findUnique({
+    where: { tenant_id: tenantId },
+    select: {
+      external_tenant_id: true,
+      chatbot_url: true,
+      chatbot_api_key: true,
+      inbound_context_secret: true,
+      outbound_tool_secret: true,
+      role_map_json: true,
+    },
+  });
+
+  if (dbRow) {
+    let roleMap: Partial<Record<RoleCode, string>> | undefined;
+    if (dbRow.role_map_json) {
+      try { roleMap = JSON.parse(dbRow.role_map_json); } catch { /* ignore malformed JSON */ }
+    }
+    const config: TenantConfig = {
+      externalTenantId: dbRow.external_tenant_id,
+      chatbotUrl: dbRow.chatbot_url,
+      chatbotApiKey: dbRow.chatbot_api_key,
+      inboundContextSecret: dbRow.inbound_context_secret,
+      outboundToolSecret: dbRow.outbound_tool_secret,
+      roleMap,
+    };
+    // Validate URL
+    try {
+      const url = new URL(config.chatbotUrl);
+      if (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.hostname === 'localhost')) {
+        throw new ForbiddenError('Endpoint MarBot dari database tidak aman (harus HTTPS).');
+      }
+    } catch (err) {
+      if (err instanceof ForbiddenError) throw err;
+      throw new ForbiddenError('Endpoint MarBot dari database tidak valid.');
+    }
+    return config;
+  }
+
+  // Step 2: Fallback to env var (backward compatibility for existing tenants)
+  const envConfig = envTenantConfig(tenantId);
+  if (envConfig) {
+    const url = new URL(envConfig.chatbotUrl);
+    if (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.hostname === 'localhost')) {
+      throw new ForbiddenError('Endpoint MarBot tidak aman.');
+    }
+    return envConfig;
+  }
+
+  throw new ForbiddenError('Integrasi MarBot belum dikonfigurasi untuk tenant ini.');
+}
+
+/** @deprecated Use resolveTenantConfig() (async) instead. Kept for synchronous callers that will be migrated. */
 function tenantConfig(tenantId: string): TenantConfig {
   let map: Record<string, TenantConfig>;
   try {
@@ -140,7 +214,7 @@ async function verifyToolRequest(req: Request, toolName: string) {
       || Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300 || req.header('X-Tool-Name') !== toolName) {
     throw new UnauthorizedError();
   }
-  const config = tenantConfig(tenant.id);
+  const config = await resolveTenantConfig(tenant.id);
   if (config.externalTenantId !== tenantClaim || !matchesHmac(toolSignaturePayload(req, toolName, config), signature, config.outboundToolSecret)) {
     throw new UnauthorizedError();
   }
@@ -282,7 +356,7 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
   try {
     if (!req.user?.tenant_id || !req.companyId) throw new ForbiddenError();
     const access = await checkedUser(req.user.id, req.companyId, req.user.tenant_id);
-    const config = tenantConfig(req.user.tenant_id);
+    const config = await resolveTenantConfig(req.user.tenant_id);
     const message = req.body?.message;
     const conversationId = req.body?.conversationId;
     if (typeof message !== 'string' || !message.trim() || message.length > 4000 ||
