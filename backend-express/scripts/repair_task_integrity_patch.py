@@ -24,5 +24,27 @@ for old, new in replacements.items():
     elif new not in text:
         raise SystemExit(f'Expected patch text not found: {old}')
 
+# The initial generator used a generic select replacement and could hit another
+# project_main_task lookup earlier in the large route file. Replace that patch
+# definition with an anchor scoped specifically to Daily Task creation.
+old_selector_patch = """replaceExact(
+  projectRoutesPath,
+  `      select: { id: true, project_id: true },`,
+  `      select: { id: true, project_id: true, tenant_id: true, company_id: true },`,
+  `select: { id: true, project_id: true, tenant_id: true, company_id: true }`,
+);"""
+
+new_selector_patch = """replaceExact(
+  projectRoutesPath,
+  `    const mainTask = await prisma.project_main_task.findFirst({\\n      where: { id: weeklyTask.main_task_id, company_id: companyId },\\n      select: { id: true, project_id: true },\\n    });`,
+  `    const mainTask = await prisma.project_main_task.findFirst({\\n      where: { id: weeklyTask.main_task_id, company_id: companyId },\\n      select: { id: true, project_id: true, tenant_id: true, company_id: true },\\n    });`,
+  `where: { id: weeklyTask.main_task_id, company_id: companyId },\\n      select: { id: true, project_id: true, tenant_id: true, company_id: true }`,
+);"""
+
+if old_selector_patch in text:
+    text = text.replace(old_selector_patch, new_selector_patch)
+elif new_selector_patch not in text:
+    raise SystemExit('Expected Daily Task selector patch definition not found')
+
 patch.write_text(text, encoding='utf-8')
-print('Patch generator quoting repaired.')
+print('Patch generator quoting and Daily Task selector repaired.')
