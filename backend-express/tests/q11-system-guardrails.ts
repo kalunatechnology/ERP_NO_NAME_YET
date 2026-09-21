@@ -196,15 +196,17 @@ async function main(): Promise<void> {
       /hanya dapat diperbarui oleh pemilik/i,
     );
 
-    const [appSource, routesSource, schemaSource, assignmentMigration] = await Promise.all([
+    const [appSource, projectAuthorityMiddleware, routesSource, schemaSource, assignmentMigration] = await Promise.all([
       readFile(`${__dirname}/../src/app.ts`, 'utf8'),
+      readFile(`${__dirname}/../src/modules/projects/project-authority.middleware.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/projects/projects.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../prisma/schema.prisma`, 'utf8'),
       readFile(`${__dirname}/../prisma/migrations/20260916120000_project_assignment_contract/migration.sql`, 'utf8'),
     ]);
-    assert(appSource.includes("methods: ['POST']"), 'Staff Daily Task create allow-list is missing');
-    assert(appSource.includes("methods: ['PUT', 'PATCH', 'DELETE']"), 'Staff must retain full CRUD for owned Daily Tasks');
-    assert(!appSource.includes("{ path: /\\/api\\/v1\\/projects\\/weekly-tasks\\/?$/, methods: ['POST'] }"), 'Staff must not create Weekly Tasks');
+    assert(appSource.includes('restrictProjectMutationsByAuthority'), 'Project-aware mutation middleware is not mounted');
+    assert(projectAuthorityMiddleware.includes("methods: ['POST']"), 'Staff Daily Task create allow-list is missing');
+    assert(projectAuthorityMiddleware.includes("methods: ['PUT', 'PATCH', 'DELETE']"), 'Staff must retain full CRUD for owned Daily Tasks');
+    assert(!projectAuthorityMiddleware.includes("path: /^\\/weekly-tasks\\/?$/, methods: ['POST']"), 'Staff must not create Weekly Tasks without project authority');
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.dailyTaskAccessWhere'));
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.taskAssignmentAccessWhere'));
     assert(routesSource.includes('Assignment harus dibuat melalui aksi assign-members'), 'Generic assignment create bypass must remain closed.');
@@ -388,7 +390,10 @@ async function main(): Promise<void> {
     assert(!projectApi.includes('/api/v1/accounts/users/?page_size=200'), 'PM assignment must not depend on an admin-only Accounts endpoint.');
     assert(projectApi.includes('DAILY_TASK_STATUS_ALIASES'), 'Daily Task write adapter must normalize legacy UI statuses.');
     assert(projectApi.includes('Do not spread a UI object here'), 'Daily Task update payload must be allow-listed.');
-    assert(projectApi.includes('assignee: payload.assignee_id || undefined'), 'Weekly Task must send an assignee user ID, not a display name.');
+    assert(
+      projectApi.includes('assignee: payload.assignee_id,') || projectApi.includes('assignee: payload.assignee_id || undefined'),
+      'Weekly Task must send an assignee user ID, not a display name.',
+    );
     assert(!projectApi.includes('assignee_name: payload.assignee_name'), 'Weekly Task payload must not send the frontend-only assignee name.');
     assert(reportingClient.includes('canRequestApi(\'/api/v1/finance/project-cost-entries/\''));
     assert(reportingClient.includes('Laporan Aktivitas dan Kehadiran Saya'));

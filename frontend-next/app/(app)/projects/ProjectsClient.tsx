@@ -16,7 +16,7 @@ import {
   Edit, Search, Check, Wallet
 } from "lucide-react";
 import {
-  Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, TaskAssignment,
+  Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, TaskAssignment, ProjectAuthority, ProjectSupervisor,
   loadAllProjects, createProject, deleteProject,
   createMainTask, deleteMainTask,
   createWeeklyTask, deleteWeeklyTask,
@@ -27,7 +27,9 @@ import {
   assignMemberToMainTask, fetchCompanyUsers,
   fetchProjectFinancialPerformance,
   fetchProjectFundingRequests, submitProjectFundingRequest,
-  fetchProjectCustomers, getApiErrorDetail
+  updateProjectFinancials,
+  fetchProjectCustomers, getApiErrorDetail,
+  getProjectAuthority, getProjectSupervisor, assignProjectSupervisor, revokeProjectSupervisor
 } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn, localDateKey } from "@/lib/utils";
@@ -93,6 +95,7 @@ export default function ProjectsClient() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [supervisorSaving, setSupervisorSaving] = useState(false);
   const [weeklySaving, setWeeklySaving] = useState(false);
   const [dailySaving, setDailySaving] = useState(false);
 
@@ -114,18 +117,23 @@ export default function ProjectsClient() {
   const [financialPerformance, setFinancialPerformance] = useState<any>(null);
   const [fundingRequestsList, setFundingRequestsList] = useState<any[]>([]);
   const [financialTargetForm, setFinancialTargetForm] = useState({
-    contract_amount: 0,
-    budget_amount: 0,
-    target_margin_percent: 0,
+    contract_amount: "",
+    budget_amount: "",
+    target_margin_percent: "",
   });
   const [fundingRequestForm, setFundingRequestForm] = useState({
-    amount: 0,
-    category: "OPERATIONAL",
+    amount: "",
+    category: "",
     description: ""
   });
+  const [fundingRequestErrors, setFundingRequestErrors] = useState<Record<string, string>>({});
+  const [fundingSaving, setFundingSaving] = useState(false);
 
   /* Team Users list for Assignment */
   const [companyUsers, setCompanyUsers] = useState<any[]>([]);
+  const [projectAuthority, setProjectAuthority] = useState<ProjectAuthority | null>(null);
+  const [projectSupervisor, setProjectSupervisor] = useState<ProjectSupervisor | null>(null);
+  const [supervisorCandidateId, setSupervisorCandidateId] = useState("");
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<(string | number)[]>([]);
 
   /* Active Targets for Sub-Level Creation */
@@ -144,12 +152,14 @@ export default function ProjectsClient() {
 
   /* Form states */
   const [newProjForm, setNewProjForm] = useState({
-    name: "", code: "", customer_name: "", budget_amount: 0, description: "",
+    name: "", code: "", customer_name: "", budget_amount: "", description: "",
     planned_start_date: localDateKey(),
     planned_end_date: localDateKey(new Date(Date.now() + 30 * 86400000))
   });
-  const [mainTaskForm, setMainTaskForm] = useState({ title: "", description: "", weight: 15, priority: "MEDIUM" });
-  const [weeklyForm, setWeeklyForm] = useState({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_id: "" });
+  const [mainTaskForm, setMainTaskForm] = useState({ title: "", cost_owner_division_id: "", description: "", weight: "", priority: "MEDIUM" as "LOW" | "MEDIUM" | "HIGH" | "URGENT" });
+  const [mainTaskErrors, setMainTaskErrors] = useState<Record<string, string>>({});
+  const [weeklyForm, setWeeklyForm] = useState({ week_number: "1", target_description: "", start_date: "", end_date: "", assignee_id: "" });
+  const [weeklyErrors, setWeeklyErrors] = useState<Record<string, string>>({});
   
   const [dailyForm, setDailyForm] = useState({
     title: "",
@@ -174,7 +184,6 @@ export default function ProjectsClient() {
   const [newChecklistTitle, setNewChecklistTitle] = useState("");
   const [newChecklistDate, setNewChecklistDate] = useState("");
 
-  const [costForm, setCostForm] = useState({ division_id: "", category: "MATERIAL", amount: 5000000, description: "" });
   const [divisionOptions, setDivisionOptions] = useState<any[]>([]);
   const [milestoneForm, setMilestoneForm] = useState({ name: "", target_date: "" });
 
@@ -223,6 +232,7 @@ export default function ProjectsClient() {
   /* Track a project once when the active project actually changes. */
   const lastTrackedProjectIdRef = useRef<string | null>(null);
   const selectedProjectId = selectedProject?.id != null ? String(selectedProject.id) : "";
+  const selectedAuthority = projectAuthority?.project_id === selectedProjectId ? projectAuthority : null;
   const selectedProjectTitle = selectedProject
     ? selectedProject.project_name || (selectedProject as any).name || `Proyek #${selectedProject.id}`
     : "";
@@ -245,6 +255,7 @@ export default function ProjectsClient() {
   const isExecutive = useMemo(() => userRole === "executive", [userRole]);
   const canCreateProject = useMemo(() => canPerform("project:create", userRole), [userRole]);
   const canUpdateProject = useMemo(() => canPerform("project:update", userRole), [userRole]);
+  const canManageSelectedProject = Boolean(selectedAuthority?.can_manage_project);
   const canViewFinancials = useMemo(() => {
     return ["super_admin", "company_admin", "executive", "om", "pm", "finance"].includes(userRole || "");
   }, [userRole]);
@@ -257,6 +268,7 @@ export default function ProjectsClient() {
 
   // Request-version counter: prevents a slow response from overwriting a newer one.
   const fetchVersionRef = useRef(0);
+  const authorityFetchVersionRef = useRef(0);
 
   const fetchProjects = useCallback(async (silent = false) => {
     const version = ++fetchVersionRef.current;
@@ -276,7 +288,7 @@ export default function ProjectsClient() {
         }));
       const auxiliary = await Promise.allSettled([
         getTransferRequests(),
-        isPM ? fetchCompanyUsers() : Promise.resolve([]),
+        Promise.resolve([]),
         fetchProjectCustomers(),
         api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? [])
       ]);
@@ -293,7 +305,21 @@ export default function ProjectsClient() {
       if (failedAuxiliary > 0) {
         toast.error(`${failedAuxiliary} sumber data pendukung proyek gagal dimuat. Data utama proyek tetap ditampilkan.`);
       }
-      setProjects(data);
+      const divisionNameById = new Map(
+        (Array.isArray(divisions) ? divisions : []).map((division: any) => [
+          String(division.id),
+          String(division.organization_name ?? division.name ?? division.id),
+        ]),
+      );
+      setProjects(data.map((project) => ({
+        ...project,
+        main_tasks: (project.main_tasks || []).map((mainTask) => ({
+          ...mainTask,
+          cost_owner_division_name: mainTask.cost_owner_division_id
+            ? divisionNameById.get(String(mainTask.cost_owner_division_id)) ?? String(mainTask.cost_owner_division_id)
+            : undefined,
+        })),
+      })));
       if (custList && custList.length > 0) {
         setCustomerOptions(custList);
       }
@@ -325,7 +351,7 @@ export default function ProjectsClient() {
       }
     }
     // selectedId intentionally excluded: read via ref to avoid re-creating this callback on selection change
-  }, [isPM, requestedProjectId, requestedProjectTab, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
+  }, [requestedProjectId, requestedProjectTab, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
 /**
  * openAssignModal coordinates the UI behavior represented by this function.
@@ -335,8 +361,8 @@ export default function ProjectsClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const openAssignModal = (main: MainTask) => {
-    if (!isPM) {
-      toast.error("Akses Ditolak: Hanya Project Manager yang memiliki wewenang menugaskan anggota tim!");
+    if (!selectedAuthority?.can_assign_team) {
+      toast.error("Anda tidak memiliki kewenangan assignment pada project ini.");
       return;
     }
     setActiveMainTask(main);
@@ -362,8 +388,8 @@ export default function ProjectsClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleAssignMember = async () => {
-    if (!isPM) {
-      toast.error("Akses Ditolak: Hanya Project Manager yang berhak mendelegasikan Main Task!");
+    if (!selectedAuthority?.can_assign_team) {
+      toast.error("Anda tidak memiliki kewenangan assignment pada project ini.");
       return;
     }
     if (!activeMainTask) return;
@@ -389,6 +415,64 @@ export default function ProjectsClient() {
   }, [fetchProjects]);
 
   useEffect(() => {
+    const projectId = selectedProjectId;
+    const version = ++authorityFetchVersionRef.current;
+    setProjectAuthority(null);
+    setProjectSupervisor(null);
+    setCompanyUsers([]);
+    setSupervisorCandidateId("");
+    if (!projectId) return;
+
+    Promise.all([getProjectAuthority(projectId), getProjectSupervisor(projectId)])
+      .then(async ([authority, supervisor]) => {
+        if (version !== authorityFetchVersionRef.current) return;
+        setProjectAuthority(authority);
+        setProjectSupervisor(supervisor);
+        if (authority.can_assign_team || authority.can_delegate_supervisor) {
+          const users = await fetchCompanyUsers(projectId);
+          if (version === authorityFetchVersionRef.current) setCompanyUsers(users);
+        }
+      })
+      .catch((error) => {
+        if (version === authorityFetchVersionRef.current) {
+          setProjectAuthority(null);
+          setProjectSupervisor(null);
+          toast.error(getApiErrorDetail(error, "Gagal memuat kewenangan project."));
+        }
+      });
+  }, [selectedProjectId]);
+
+  const handleAssignSupervisor = async () => {
+    if (!selectedId || !supervisorCandidateId || !selectedAuthority?.can_delegate_supervisor) return;
+    setSupervisorSaving(true);
+    try {
+      const supervisor = await assignProjectSupervisor(selectedId, supervisorCandidateId);
+      setProjectSupervisor(supervisor);
+      toast.success("Project Supervisor berhasil ditetapkan.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal menetapkan Project Supervisor."));
+    } finally {
+      setSupervisorSaving(false);
+    }
+  };
+
+  const handleRevokeSupervisor = async () => {
+    if (!selectedId || !selectedAuthority?.can_delegate_supervisor || !projectSupervisor) return;
+    if (!confirm(`Cabut Project Supervisor ${projectSupervisor.full_name}?`)) return;
+    setSupervisorSaving(true);
+    try {
+      await revokeProjectSupervisor(selectedId);
+      setProjectSupervisor(null);
+      setSupervisorCandidateId("");
+      toast.success("Project Supervisor berhasil dicabut.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal mencabut Project Supervisor."));
+    } finally {
+      setSupervisorSaving(false);
+    }
+  };
+
+  useEffect(() => {
     if (!selectedId || !canViewFinancials) {
       setFinancialPerformance(null);
       setFundingRequestsList([]);
@@ -406,9 +490,9 @@ export default function ProjectsClient() {
   useEffect(() => {
     if (selectedProject) {
       setFinancialTargetForm({
-        contract_amount: Number((selectedProject as any).contract_amount || selectedProject.budget_amount || selectedProject.budget || 0),
-        budget_amount: Number(selectedProject.budget_amount || selectedProject.budget || 0),
-        target_margin_percent: Number((selectedProject as any).target_margin_percent || 0),
+        contract_amount: selectedProject.contract_amount != null ? String(selectedProject.contract_amount) : "",
+        budget_amount: selectedProject.budget_amount != null ? String(selectedProject.budget_amount) : "",
+        target_margin_percent: selectedProject.target_margin_percent != null ? String(selectedProject.target_margin_percent) : "",
       });
     }
   }, [selectedProject]);
@@ -422,10 +506,22 @@ export default function ProjectsClient() {
  */
   const handleUpdateFinancialTargets = async () => {
     if (!selectedProject) return;
+    const contractAmount = Number(financialTargetForm.contract_amount);
+    const budgetAmount = Number(financialTargetForm.budget_amount);
+    const targetMarginPercent = Number(financialTargetForm.target_margin_percent);
+    if (![contractAmount, budgetAmount, targetMarginPercent].every(Number.isFinite)
+      || contractAmount < 0
+      || budgetAmount < 0
+      || targetMarginPercent < 0
+      || targetMarginPercent > 100) {
+      toast.error("Nilai finansial tidak valid. Nominal tidak boleh negatif dan margin harus 0–100%.");
+      return;
+    }
     try {
-      await api.post(`/api/v1/projects/projects/${selectedProject.id}/update_financials/`, {
-        budget_amount: Number(financialTargetForm.budget_amount),
-        target_margin_percent: Number(financialTargetForm.target_margin_percent),
+      await updateProjectFinancials(selectedProject.id, {
+        contract_amount: contractAmount,
+        budget_amount: budgetAmount,
+        target_margin_percent: targetMarginPercent,
       });
 
       toast.success("Target finansial dan anggaran proyek berhasil diperbarui.");
@@ -445,18 +541,37 @@ export default function ProjectsClient() {
  */
   const handleCreateFundingRequest = async () => {
     if (!selectedProject) return;
+    const errors: Record<string, string> = {};
+    const amount = Number(fundingRequestForm.amount);
+    const description = fundingRequestForm.description.trim();
+    if (!fundingRequestForm.category) errors.category = "Kategori pengeluaran wajib dipilih.";
+    if (!fundingRequestForm.amount || !Number.isFinite(amount) || amount <= 0) {
+      errors.amount = "Jumlah dana wajib diisi dan harus lebih dari Rp0.";
+    }
+    if (!description) errors.description = "Keterangan / alasan permintaan dana wajib diisi.";
+    setFundingRequestErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      toast.error(Object.values(errors)[0]);
+      return;
+    }
+    if (fundingSaving) return;
+    setFundingSaving(true);
     try {
       await submitProjectFundingRequest(selectedProject.id, {
-        amount: Number(fundingRequestForm.amount),
-        category: fundingRequestForm.category,
-        description: fundingRequestForm.description
+        amount,
+        category: fundingRequestForm.category as "OPERATIONAL" | "MATERIAL" | "LOGISTICS" | "EQUIPMENT" | "OTHER",
+        description,
       });
 
-      toast.success(`Permintaan dana ${formatRupiah(fundingRequestForm.amount)} berhasil diajukan ke Finance.`);
+      toast.success(`Permintaan dana ${formatRupiah(amount)} berhasil diajukan ke Finance.`);
+      setFundingRequestForm({ amount: "", category: "", description: "" });
+      setFundingRequestErrors({});
       setIsFundingRequestOpen(false);
       await fetchProjects(true);
-    } catch {
-      toast.error("Gagal mengajukan permintaan dana proyek");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal mengajukan permintaan dana proyek"));
+    } finally {
+      setFundingSaving(false);
     }
   };
 
@@ -606,21 +721,35 @@ export default function ProjectsClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleAddMainTask = async () => {
-    if (!selectedProject || !mainTaskForm.title.trim()) return;
+    if (!selectedProject) return;
+    const errors: Record<string, string> = {};
+    const title = mainTaskForm.title.trim();
+    const weight = Number(mainTaskForm.weight);
+    if (!title) errors.title = "Judul Paket Kerja Utama wajib diisi.";
+    if (!mainTaskForm.weight || !Number.isFinite(weight) || weight < 1 || weight > 100) {
+      errors.weight = "Bobot kontribusi wajib berada antara 1 sampai 100.";
+    }
+    setMainTaskErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      toast.error(Object.values(errors)[0]);
+      return;
+    }
     try {
       await createMainTask({
         project: selectedProject.id,
-        title: mainTaskForm.title.trim(),
+        title,
         description: mainTaskForm.description.trim(),
-        weight: mainTaskForm.weight,
-        priority: mainTaskForm.priority
+        weight,
+        priority: mainTaskForm.priority,
+        cost_owner_division_id: mainTaskForm.cost_owner_division_id || undefined,
       });
       toast.success("Main Task (Level 1) berhasil ditambahkan!", { icon: "🌳" });
-      setMainTaskForm({ title: "", description: "", weight: 15, priority: "MEDIUM" });
+      setMainTaskForm({ title: "", cost_owner_division_id: "", description: "", weight: "", priority: "MEDIUM" });
+      setMainTaskErrors({});
       setIsCreateMainTaskOpen(false);
       await fetchProjects(true);
-    } catch {
-      toast.error("Gagal membuat main task");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal membuat main task"));
     }
   };
 
@@ -632,9 +761,34 @@ export default function ProjectsClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleAddWeeklyPlan = async () => {
-    if (!selectedProject || !activeMainTask || !weeklyForm.target_description.trim()) return;
-    if (!weeklyForm.assignee_id) {
-      toast.error("Pilih Staff yang sudah ditugaskan pada Main Task ini.");
+    if (!selectedProject || !activeMainTask) return;
+    const errors: Record<string, string> = {};
+    const weekNumber = Number(weeklyForm.week_number);
+    const targetDescription = weeklyForm.target_description.trim();
+    if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 52) {
+      errors.week_number = "Nomor minggu wajib berada antara 1 sampai 52.";
+    }
+    if (!weeklyForm.assignee_id) errors.assignee_id = "PIC mingguan wajib dipilih dari assignee Main Task.";
+    if (!weeklyForm.start_date) errors.start_date = "Tanggal mulai wajib diisi.";
+    if (!weeklyForm.end_date) errors.end_date = "Tanggal selesai wajib diisi.";
+    if (weeklyForm.start_date && weeklyForm.end_date && weeklyForm.end_date < weeklyForm.start_date) {
+      errors.end_date = "Tanggal selesai tidak boleh lebih awal dari tanggal mulai.";
+    }
+    if (!targetDescription) errors.target_description = "Target Pekerjaan Mingguan wajib diisi.";
+    const validAssigneeIds = new Set((activeMainTask.assignments || []).map((assignment) => String(assignment.assignee_id ?? assignment.assignee ?? "")));
+    if (weeklyForm.assignee_id && !validAssigneeIds.has(String(weeklyForm.assignee_id))) {
+      errors.assignee_id = "PIC harus merupakan assignee Main Task yang sama.";
+    }
+    setWeeklyErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      const missingLabels = [
+        errors.week_number && "Minggu Ke",
+        errors.assignee_id && "PIC Mingguan",
+        errors.start_date && "Start Date",
+        errors.end_date && "End Date",
+        errors.target_description && "Target Pekerjaan Mingguan",
+      ].filter(Boolean);
+      toast.error(`Mohon periksa field wajib: ${missingLabels.join(", ")}.`);
       return;
     }
     if (weeklySaving) return;
@@ -642,19 +796,19 @@ export default function ProjectsClient() {
     try {
       const createdWeekly = await createWeeklyTask({
         main_task: activeMainTask.id,
-        week_number: Number(weeklyForm.week_number),
-        target_description: weeklyForm.target_description.trim(),
-        start_date: weeklyForm.start_date || undefined,
-        end_date: weeklyForm.end_date || undefined,
-        assignee_id: weeklyForm.assignee_id || undefined
+        week_number: weekNumber,
+        target_description: targetDescription,
+        start_date: weeklyForm.start_date,
+        end_date: weeklyForm.end_date,
+        assignee_id: weeklyForm.assignee_id,
       });
       const optimisticWeekly: WeeklyTask = {
         id: createdWeekly?.id,
         main_task: activeMainTask.id,
         project: selectedProject.id,
         week_number: Number(weeklyForm.week_number),
-        target_description: weeklyForm.target_description.trim(),
-        target_output: weeklyForm.target_description.trim(),
+        target_description: targetDescription,
+        target_output: targetDescription,
         start_date: weeklyForm.start_date || "",
         end_date: weeklyForm.end_date || "",
         assignee_id: weeklyForm.assignee_id,
@@ -676,7 +830,8 @@ export default function ProjectsClient() {
         ),
       })));
       toast.success(`Target minggu #${weeklyForm.week_number} berhasil dibuat.`);
-      setWeeklyForm({ week_number: 1, target_description: "", start_date: "", end_date: "", assignee_id: "" });
+      setWeeklyForm({ week_number: "1", target_description: "", start_date: "", end_date: "", assignee_id: "" });
+      setWeeklyErrors({});
       setIsCreateWeeklyOpen(false);
       await fetchProjects(true);
     } catch (error) {
@@ -826,7 +981,7 @@ export default function ProjectsClient() {
         target_user_id: transferTargetUserId,
         reason: transferReason.trim()
       };
-      if (isPM) {
+      if (selectedAuthority?.can_direct_reassign) {
         await directReassignDailyTask(payload);
         toast.success("Daily Task berhasil dialihkan.");
       } else {
@@ -867,7 +1022,7 @@ export default function ProjectsClient() {
       toast.success(`Proyek "${newProjForm.name}" berhasil dibuat.`);
       setIsCreateProjOpen(false);
       setNewProjForm({
-        name: "", code: "", customer_name: "", budget_amount: 0, description: "",
+        name: "", code: "", customer_name: "", budget_amount: "", description: "",
         planned_start_date: localDateKey(),
         planned_end_date: localDateKey(new Date(Date.now() + 30 * 86400000))
       });
@@ -1036,7 +1191,7 @@ export default function ProjectsClient() {
             <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
           </button>
 
-          {isPM && (
+          {selectedAuthority?.can_delete_project && (
             <button
               onClick={handleDeleteProject}
               className="btn-ghost py-1.5 px-2.5 text-xs gap-1 text-red-600 hover:bg-red-50 hover:border-red-200"
@@ -1049,7 +1204,7 @@ export default function ProjectsClient() {
       </div>
 
       {/* ── Project Hero Banner & Financial KPIs ── */}
-      {selectedProject && userRole !== "staff" && (
+      {selectedProject && (userRole !== "staff" || canManageSelectedProject) && (
         <div className="card bg-brand-deep-green text-white p-6 rounded-2xl relative overflow-hidden shadow-card-lg border-0">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
             <div className="flex flex-col gap-2 max-w-2xl">
@@ -1064,6 +1219,11 @@ export default function ProjectsClient() {
                 <span className="text-2xs text-white/80 flex items-center gap-1">
                   PM: <b>{selectedProject.pm_name || "Project Manager Assigned"}</b>
                 </span>
+                {selectedAuthority?.is_acting_project_manager && (
+                  <span className="text-2xs font-bold rounded bg-amber-300 px-2 py-0.5 text-amber-950">
+                    Project Supervisor / Acting PM
+                  </span>
+                )}
               </div>
 
               <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
@@ -1086,7 +1246,7 @@ export default function ProjectsClient() {
               <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
                 <div className="bg-brand-green h-full rounded-full transition-all duration-500" style={{ width: `${selectedProject.progress}%` }} />
               </div>
-              {isPM ? (
+              {selectedAuthority?.can_manage_wbs ? (
                 <button
                   onClick={() => setIsCreateMainTaskOpen(true)}
                   className="mt-2 w-full py-1.5 px-3 bg-white text-brand-deep-green rounded-xl text-xs font-bold hover:bg-brand-light-green transition-all flex items-center justify-center gap-1.5 shadow-sm"
@@ -1153,7 +1313,7 @@ export default function ProjectsClient() {
         </div>
       )}
 
-      {selectedProject && userRole === "staff" && (
+      {selectedProject && userRole === "staff" && !canManageSelectedProject && (
         <section className="card rounded-2xl border border-text-tertiary bg-white p-5" aria-labelledby="staff-project-progress-title">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
@@ -1178,14 +1338,58 @@ export default function ProjectsClient() {
         </section>
       )}
 
+      {selectedProject && selectedAuthority && (projectSupervisor || selectedAuthority.can_delegate_supervisor || selectedAuthority.is_acting_project_manager) && (
+        <section className="card rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <span className="text-2xs font-bold uppercase tracking-wider text-amber-700">Project Supervisor</span>
+              <div className="mt-1 text-sm font-bold text-text-primary">
+                {projectSupervisor ? projectSupervisor.full_name : "Belum ditetapkan"}
+              </div>
+              {projectSupervisor && <div className="text-2xs text-text-secondary">{projectSupervisor.email} · Acting Project Manager</div>}
+            </div>
+            {selectedAuthority.can_delegate_supervisor && (
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className="input min-w-[240px] text-xs"
+                  value={supervisorCandidateId}
+                  onChange={(event) => setSupervisorCandidateId(event.target.value)}
+                >
+                  <option value="">Pilih Staff / Supervisor</option>
+                  {companyUsers.map((member) => (
+                    <option key={member.id} value={member.id}>{member.full_name} ({member.role_name || member.role_in_project})</option>
+                  ))}
+                </select>
+                <button
+                  className="btn-primary py-1.5 px-3 text-xs disabled:opacity-50"
+                  disabled={!supervisorCandidateId || supervisorSaving}
+                  onClick={handleAssignSupervisor}
+                >
+                  {projectSupervisor ? "Change Supervisor" : "Assign Supervisor"}
+                </button>
+                {projectSupervisor && (
+                  <button
+                    className="btn-ghost py-1.5 px-3 text-xs text-red-600 disabled:opacity-50"
+                    disabled={supervisorSaving}
+                    onClick={handleRevokeSupervisor}
+                  >
+                    Revoke Supervisor
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* ── Lifecycle Stage Flow ── */}
-      {userRole !== "staff" && <div className="card p-4 rounded-2xl flex flex-col gap-3">
+      {(userRole !== "staff" || canManageSelectedProject) && <div className="card p-4 rounded-2xl flex flex-col gap-3">
         <div className="flex justify-between items-center flex-wrap gap-2">
           <div>
             <h3 className="text-xs font-bold text-text-primary">Project Lifecycle Stage Flow</h3>
             <p className="text-2xs text-text-secondary">Alur transisi gate operasional dan verifikasi mutu.</p>
           </div>
-          {isPM && (
+          {selectedAuthority?.can_delegate_supervisor && (
             <button
               onClick={() => setIsLifecycleModalOpen(true)}
               className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green"
@@ -1280,8 +1484,10 @@ export default function ProjectsClient() {
       {activeTab === "TREE" && (
         <ProjectWbsTree
           mainTasks={mainTasks}
-          canUpdateProject={canUpdateProject}
           isPM={isPM}
+          canManageWbs={Boolean(selectedAuthority?.can_manage_wbs)}
+          canAssignTeam={Boolean(selectedAuthority?.can_assign_team)}
+          canManageWeeklyTasks={Boolean(selectedAuthority?.can_manage_weekly_tasks)}
           currentUserId={String(user?.id || "")}
           userRole={userRole}
           onCreateMainTaskClick={() => setIsCreateMainTaskOpen(true)}
@@ -1305,7 +1511,7 @@ export default function ProjectsClient() {
             const today = localDateKey();
             const nextWeek = localDateKey(new Date(Date.now() + 6 * 86400000));
             setWeeklyForm({
-              week_number: ((main.weekly_tasks || main.weekly_plans || []).length + 1),
+              week_number: String((main.weekly_tasks || main.weekly_plans || []).length + 1),
               target_description: "",
               start_date: today,
               end_date: nextWeek,
@@ -1599,7 +1805,7 @@ export default function ProjectsClient() {
                                 </button>
                               )}
 
-                              {(isDailyOwner || isPM) && (
+                              {(isDailyOwner || selectedAuthority?.can_direct_reassign) && (
                                 <button
                                   onClick={() => {
                                     setActiveDailyTask(daily);
@@ -1607,7 +1813,7 @@ export default function ProjectsClient() {
                                     setIsTransferModalOpen(true);
                                   }}
                                   className="p-1 rounded text-amber-600 hover:bg-amber-50"
-                                  title={isPM ? "Alihkan Task" : "Ajukan Alih Tugas"}
+                                  title={selectedAuthority?.can_direct_reassign ? "Alihkan Task" : "Ajukan Alih Tugas"}
                                 >
                                   <RefreshCw size={12} />
                                 </button>
@@ -1649,7 +1855,7 @@ export default function ProjectsClient() {
                     <span className="text-2xs text-text-secondary">Alasan: {tr.reason || "Beban kerja tinggi / kendala teknis"}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {isPM && tr.status === "PENDING" ? (
+                    {selectedAuthority?.can_review_task_transfer && tr.status === "PENDING" ? (
                       <>
                         <button
                           onClick={async () => {
@@ -1701,12 +1907,14 @@ export default function ProjectsClient() {
               <h3 className="text-sm font-bold text-text-primary">Daftar Milestone Proyek Aktif</h3>
               <p className="text-2xs text-text-secondary">Pencapaian target termin dan verifikasi mutu proyek terpilih.</p>
             </div>
-            <button
-              onClick={() => setIsMilestoneModalOpen(true)}
-              className="btn-primary py-1.5 px-3 text-xs gap-1.5"
-            >
-              <Plus size={14} /> Tambah Milestone
-            </button>
+            {selectedAuthority?.can_manage_milestones && (
+              <button
+                onClick={() => setIsMilestoneModalOpen(true)}
+                className="btn-primary py-1.5 px-3 text-xs gap-1.5"
+              >
+                <Plus size={14} /> Tambah Milestone
+              </button>
+            )}
           </div>
 
           <div className="divide-y divide-gray-100">
@@ -1782,27 +1990,27 @@ export default function ProjectsClient() {
               <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
                 <span className="text-2xs text-white/60 block font-medium">Target Revenue (Nilai Kontrak)</span>
                 <span className="text-base font-extrabold text-white mt-1 block">
-                  {formatRupiah(Number(financialPerformance?.expected_revenue || (selectedProject as any)?.contract_amount || 0))}
+                  {formatRupiah(Number(financialPerformance?.expected_revenue ?? selectedProject?.contract_amount ?? 0))}
                 </span>
                 <span className="text-3xs text-brand-primary-soft mt-0.5 block">
-                  Invoiced: {formatRupiah(Number(financialPerformance?.invoiced_revenue || 0))}
+                  Invoiced: {formatRupiah(Number(financialPerformance?.invoiced_revenue ?? 0))}
                 </span>
               </div>
 
               <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
                 <span className="text-2xs text-white/60 block font-medium">Total Anggaran (Budget Baseline)</span>
                 <span className="text-base font-extrabold text-white mt-1 block">
-                  {formatRupiah(Number(financialPerformance?.planned_budget || selectedProject?.budget_amount || selectedProject?.budget || 0))}
+                  {formatRupiah(Number(financialPerformance?.planned_budget ?? selectedProject?.budget_amount ?? selectedProject?.budget ?? 0))}
                 </span>
                 <span className="text-3xs text-cyan-400 mt-0.5 block">
-                  Utilisasi: {financialPerformance?.budget_utilization_percent || 0}%
+                  Utilisasi: {financialPerformance?.budget_utilization_percent ?? 0}%
                 </span>
               </div>
 
               <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
                 <span className="text-2xs text-white/60 block font-medium">Actual Cost (Biaya Riil Terpakai)</span>
                 <span className="text-base font-extrabold text-amber-300 mt-1 block">
-                  {formatRupiah(Number(financialPerformance?.actual_cost || selectedProject?.actual_cost || 0))}
+                  {formatRupiah(Number(financialPerformance?.actual_cost ?? selectedProject?.actual_cost ?? 0))}
                 </span>
                 <span className="text-3xs text-white/50 mt-0.5 block">
                   Tenaga Kerja, Material & Alat
@@ -1813,12 +2021,12 @@ export default function ProjectsClient() {
                 <span className="text-2xs text-white/60 block font-medium">Proyeksi Laba Bersih (Gross Margin)</span>
                 <span className={cn(
                   "text-base font-extrabold mt-1 block",
-                  Number(financialPerformance?.actual_gross_profit || 0) >= 0 ? "text-brand-primary-soft" : "text-red-400"
+                  Number(financialPerformance?.actual_gross_profit ?? 0) >= 0 ? "text-brand-primary-soft" : "text-red-400"
                 )}>
-                  {formatRupiah(Number(financialPerformance?.actual_gross_profit || 0))}
+                  {formatRupiah(Number(financialPerformance?.actual_gross_profit ?? 0))}
                 </span>
                 <span className="text-3xs text-white/70 mt-0.5 block">
-                  Margin: <b>{financialPerformance?.actual_margin_percent || 0}%</b> (Target: {financialPerformance?.target_margin_percent || 20}%)
+                  Margin: <b>{financialPerformance?.actual_margin_percent ?? 0}%</b> (Target: {financialPerformance?.target_margin_percent ?? 0}%)
                 </span>
               </div>
             </div>
@@ -1913,7 +2121,10 @@ export default function ProjectsClient() {
       {/* ── Modals ── */}
       <Modal
         isOpen={isCreateMainTaskOpen}
-        onClose={() => setIsCreateMainTaskOpen(false)}
+        onClose={() => {
+          setIsCreateMainTaskOpen(false);
+          setMainTaskErrors({});
+        }}
         title="Buat Main Task / Paket Kerja Utama"
         subtitle={`Struktur WBS Level 1 — Proyek: ${selectedProject?.project_name}`}
         size="lg"
@@ -1921,7 +2132,7 @@ export default function ProjectsClient() {
         <div className="flex flex-col gap-3">
           <div>
             <label className="text-xs font-bold text-text-secondary block mb-1">Divisi Pemilik Biaya</label>
-            <select value={costForm.division_id} onChange={e => setCostForm({ ...costForm, division_id: e.target.value })} className="input text-xs">
+            <select value={mainTaskForm.cost_owner_division_id} onChange={e => setMainTaskForm({ ...mainTaskForm, cost_owner_division_id: e.target.value })} className="input text-xs">
               <option value="">Belum ditentukan</option>
               {divisionOptions.map((division) => <option key={division.id} value={division.id}>{division.organization_name ?? division.name}</option>)}
             </select>
@@ -1932,10 +2143,14 @@ export default function ProjectsClient() {
               type="text"
               placeholder="Contoh: Desain 3D, Storyboard, Pengadaan Komponen"
               value={mainTaskForm.title}
-              onChange={e => setMainTaskForm({ ...mainTaskForm, title: e.target.value })}
-              className="input text-xs"
+              onChange={e => {
+                setMainTaskForm({ ...mainTaskForm, title: e.target.value });
+                setMainTaskErrors((current) => ({ ...current, title: "" }));
+              }}
+              className={cn("input text-xs", mainTaskErrors.title && "border-red-500 focus:border-red-500")}
               autoFocus
             />
+            {mainTaskErrors.title && <p className="mt-1 text-2xs text-red-600">{mainTaskErrors.title}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1944,16 +2159,21 @@ export default function ProjectsClient() {
                 type="number"
                 min="1"
                 max="100"
+                placeholder="1–100"
                 value={mainTaskForm.weight}
-                onChange={e => setMainTaskForm({ ...mainTaskForm, weight: Number(e.target.value) })}
-                className="input text-xs"
+                onChange={e => {
+                  setMainTaskForm({ ...mainTaskForm, weight: e.target.value });
+                  setMainTaskErrors((current) => ({ ...current, weight: "" }));
+                }}
+                className={cn("input text-xs", mainTaskErrors.weight && "border-red-500 focus:border-red-500")}
               />
+              {mainTaskErrors.weight && <p className="mt-1 text-2xs text-red-600">{mainTaskErrors.weight}</p>}
             </div>
             <div>
               <label className="text-xs font-bold text-text-primary block mb-1">Prioritas Eksekusi</label>
               <select
                 value={mainTaskForm.priority}
-                onChange={e => setMainTaskForm({ ...mainTaskForm, priority: e.target.value })}
+                onChange={e => setMainTaskForm({ ...mainTaskForm, priority: e.target.value as "LOW" | "MEDIUM" | "HIGH" | "URGENT" })}
                 className="input text-xs"
               >
                 <option value="LOW">LOW (Rendah)</option>
@@ -1975,7 +2195,7 @@ export default function ProjectsClient() {
           </div>
 
           <div className="flex justify-end gap-2 mt-2">
-            <button onClick={() => setIsCreateMainTaskOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
+            <button onClick={() => { setIsCreateMainTaskOpen(false); setMainTaskErrors({}); }} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
             <button onClick={handleAddMainTask} className="btn-primary py-1.5 px-4 text-xs bg-brand-deep-green hover:bg-brand-green">
               Simpan Main Task
             </button>
@@ -2049,7 +2269,10 @@ export default function ProjectsClient() {
 
       <Modal
         isOpen={isCreateWeeklyOpen}
-        onClose={() => setIsCreateWeeklyOpen(false)}
+        onClose={() => {
+          setIsCreateWeeklyOpen(false);
+          setWeeklyErrors({});
+        }}
         title="Turunkan ke Target Mingguan (Weekly Task)"
         subtitle={`Level 2 Breakdown — Main Task: ${activeMainTask?.name || activeMainTask?.title}`}
         size="md"
@@ -2063,16 +2286,23 @@ export default function ProjectsClient() {
                 min="1"
                 max="52"
                 value={weeklyForm.week_number}
-                onChange={e => setWeeklyForm({ ...weeklyForm, week_number: Number(e.target.value) })}
-                className="input text-xs"
+                onChange={e => {
+                  setWeeklyForm({ ...weeklyForm, week_number: e.target.value });
+                  setWeeklyErrors((current) => ({ ...current, week_number: "" }));
+                }}
+                className={cn("input text-xs", weeklyErrors.week_number && "border-red-500 focus:border-red-500")}
               />
+              {weeklyErrors.week_number && <p className="mt-1 text-2xs text-red-600">{weeklyErrors.week_number}</p>}
             </div>
             <div>
               <label className="text-xs font-bold text-text-primary block mb-1">Assignee / PIC Mingguan *</label>
               <select
                 value={weeklyForm.assignee_id}
-                onChange={e => setWeeklyForm({ ...weeklyForm, assignee_id: e.target.value })}
-                className="input text-xs"
+                onChange={e => {
+                  setWeeklyForm({ ...weeklyForm, assignee_id: e.target.value });
+                  setWeeklyErrors((current) => ({ ...current, assignee_id: "" }));
+                }}
+                className={cn("input text-xs", weeklyErrors.assignee_id && "border-red-500 focus:border-red-500")}
               >
                 <option value="">— Pilih assignee Main Task —</option>
                 {activeMainTask?.assignments && activeMainTask.assignments.length > 0 ? (
@@ -2087,6 +2317,7 @@ export default function ProjectsClient() {
               {(!activeMainTask?.assignments || activeMainTask.assignments.length === 0) && (
                 <p className="mt-1 text-2xs text-amber-700">Assign Staff ke Main Task terlebih dahulu.</p>
               )}
+              {weeklyErrors.assignee_id && <p className="mt-1 text-2xs text-red-600">{weeklyErrors.assignee_id}</p>}
             </div>
           </div>
 
@@ -2096,18 +2327,27 @@ export default function ProjectsClient() {
               <input
                 type="date"
                 value={weeklyForm.start_date}
-                onChange={e => setWeeklyForm({ ...weeklyForm, start_date: e.target.value })}
-                className="input text-xs"
+                onChange={e => {
+                  setWeeklyForm({ ...weeklyForm, start_date: e.target.value });
+                  setWeeklyErrors((current) => ({ ...current, start_date: "", end_date: "" }));
+                }}
+                className={cn("input text-xs", weeklyErrors.start_date && "border-red-500 focus:border-red-500")}
               />
+              {weeklyErrors.start_date && <p className="mt-1 text-2xs text-red-600">{weeklyErrors.start_date}</p>}
             </div>
             <div>
               <label className="text-xs font-bold text-text-primary block mb-1">End Date *</label>
               <input
                 type="date"
                 value={weeklyForm.end_date}
-                onChange={e => setWeeklyForm({ ...weeklyForm, end_date: e.target.value })}
-                className="input text-xs"
+                min={weeklyForm.start_date || undefined}
+                onChange={e => {
+                  setWeeklyForm({ ...weeklyForm, end_date: e.target.value });
+                  setWeeklyErrors((current) => ({ ...current, end_date: "" }));
+                }}
+                className={cn("input text-xs", weeklyErrors.end_date && "border-red-500 focus:border-red-500")}
               />
+              {weeklyErrors.end_date && <p className="mt-1 text-2xs text-red-600">{weeklyErrors.end_date}</p>}
             </div>
           </div>
 
@@ -2117,14 +2357,18 @@ export default function ProjectsClient() {
               rows={2}
               placeholder="Contoh: Menyelesaikan skema tabel dan API endpoints..."
               value={weeklyForm.target_description}
-              onChange={e => setWeeklyForm({ ...weeklyForm, target_description: e.target.value })}
-              className="input text-xs"
+              onChange={e => {
+                setWeeklyForm({ ...weeklyForm, target_description: e.target.value });
+                setWeeklyErrors((current) => ({ ...current, target_description: "" }));
+              }}
+              className={cn("input text-xs", weeklyErrors.target_description && "border-red-500 focus:border-red-500")}
             />
+            {weeklyErrors.target_description && <p className="mt-1 text-2xs text-red-600">{weeklyErrors.target_description}</p>}
           </div>
 
           <div className="flex justify-end gap-2 mt-2">
-            <button onClick={() => setIsCreateWeeklyOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button disabled={weeklySaving || !weeklyForm.assignee_id} onClick={handleAddWeeklyPlan} className="btn-primary py-1.5 px-4 text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
+            <button onClick={() => { setIsCreateWeeklyOpen(false); setWeeklyErrors({}); }} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
+            <button disabled={weeklySaving} onClick={handleAddWeeklyPlan} className="btn-primary py-1.5 px-4 text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
               {weeklySaving ? "Menyimpan..." : "Simpan Target Mingguan"}
             </button>
           </div>
@@ -2345,13 +2589,13 @@ export default function ProjectsClient() {
           setTransferTargetUserId("");
           setTransferReason("");
         }}
-        title={isPM ? "Alihkan Daily Task" : "Ajukan Alih Tugas (Task Transfer)"}
+        title={selectedAuthority?.can_direct_reassign ? "Alihkan Daily Task" : "Ajukan Alih Tugas (Task Transfer)"}
         subtitle={`Task: ${activeDailyTask?.title}`}
         size="md"
       >
         <div className="flex flex-col gap-3">
           <p className="text-xs text-text-secondary">
-            {isPM
+            {selectedAuthority?.can_direct_reassign
               ? "Pilih anggota aktif sebagai pemilik baru. Perubahan ini akan dicatat sebagai reassignment oleh PM/OM."
               : "Pilih anggota tujuan dan ajukan permohonan kepada Project Manager untuk ditinjau."}
           </p>
@@ -2393,7 +2637,7 @@ export default function ProjectsClient() {
               disabled={!transferTargetUserId || !transferReason.trim()}
               className="btn-primary py-1.5 px-4 text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
             >
-              {isPM ? "Alihkan Task" : "Kirim Permohonan"}
+              {selectedAuthority?.can_direct_reassign ? "Alihkan Task" : "Kirim Permohonan"}
             </button>
           </div>
         </div>
@@ -2456,8 +2700,10 @@ export default function ProjectsClient() {
             <label className="text-xs font-bold text-text-secondary block mb-1">Total Anggaran (Rp)</label>
             <input
               type="number"
+              min="0"
+              placeholder="0"
               value={newProjForm.budget_amount}
-              onChange={e => setNewProjForm({ ...newProjForm, budget_amount: Number(e.target.value) })}
+              onChange={e => setNewProjForm({ ...newProjForm, budget_amount: e.target.value })}
               className="input text-xs"
             />
           </div>
@@ -2656,8 +2902,10 @@ export default function ProjectsClient() {
             <label className="text-xs font-bold text-text-primary block mb-1">Target Pendapatan / Nilai Kontrak (Revenue Target Rp) *</label>
             <input
               type="number"
+              min="0"
+              placeholder="0"
               value={financialTargetForm.contract_amount}
-              onChange={e => setFinancialTargetForm({ ...financialTargetForm, contract_amount: Number(e.target.value) })}
+              onChange={e => setFinancialTargetForm((prev) => ({ ...prev, contract_amount: e.target.value }))}
               className="input text-xs"
             />
           </div>
@@ -2666,8 +2914,10 @@ export default function ProjectsClient() {
             <label className="text-xs font-bold text-text-primary block mb-1">Pagu Anggaran Disetujui (Planned Budget Baseline Rp) *</label>
             <input
               type="number"
+              min="0"
+              placeholder="0"
               value={financialTargetForm.budget_amount}
-              onChange={e => setFinancialTargetForm({ ...financialTargetForm, budget_amount: Number(e.target.value) })}
+              onChange={e => setFinancialTargetForm((prev) => ({ ...prev, budget_amount: e.target.value }))}
               className="input text-xs"
             />
           </div>
@@ -2678,8 +2928,9 @@ export default function ProjectsClient() {
               type="number"
               min="0"
               max="100"
+              placeholder="0"
               value={financialTargetForm.target_margin_percent}
-              onChange={e => setFinancialTargetForm({ ...financialTargetForm, target_margin_percent: Number(e.target.value) })}
+              onChange={e => setFinancialTargetForm((prev) => ({ ...prev, target_margin_percent: e.target.value }))}
               className="input text-xs"
             />
           </div>
@@ -2696,7 +2947,10 @@ export default function ProjectsClient() {
       {/* Modal Funding Request */}
       <Modal
         isOpen={isFundingRequestOpen}
-        onClose={() => setIsFundingRequestOpen(false)}
+        onClose={() => {
+          setIsFundingRequestOpen(false);
+          setFundingRequestErrors({});
+        }}
         title="Ajukan Permintaan Dana & Budgeting Proyek (Cash Advance)"
         subtitle={`Proyek: ${selectedProject?.project_name}`}
         size="md"
@@ -2709,25 +2963,36 @@ export default function ProjectsClient() {
             <label className="text-xs font-bold text-text-primary block mb-1">Kategori Pengeluaran / Kebutuhan *</label>
             <select
               value={fundingRequestForm.category}
-              onChange={e => setFundingRequestForm({ ...fundingRequestForm, category: e.target.value })}
-              className="input text-xs"
+              onChange={e => {
+                setFundingRequestForm({ ...fundingRequestForm, category: e.target.value });
+                setFundingRequestErrors((current) => ({ ...current, category: "" }));
+              }}
+              className={cn("input text-xs", fundingRequestErrors.category && "border-red-500 focus:border-red-500")}
             >
+              <option value="">— Pilih kategori kebutuhan —</option>
               <option value="OPERATIONAL">Dana Operasional Tim</option>
               <option value="MATERIAL">Pengadaan Material Kritis</option>
               <option value="LOGISTICS">Transportasi & Logistik Lapangan</option>
               <option value="EQUIPMENT">Sewa Alat & Perizinan</option>
               <option value="OTHER">Lain-lain (Emergency Fund)</option>
             </select>
+            {fundingRequestErrors.category && <p className="mt-1 text-2xs text-red-600">{fundingRequestErrors.category}</p>}
           </div>
 
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Jumlah Dana yang Diajukan (Rp) *</label>
             <input
               type="number"
+              min="0"
+              placeholder="0"
               value={fundingRequestForm.amount}
-              onChange={e => setFundingRequestForm({ ...fundingRequestForm, amount: Number(e.target.value) })}
-              className="input text-xs"
+              onChange={e => {
+                setFundingRequestForm({ ...fundingRequestForm, amount: e.target.value });
+                setFundingRequestErrors((current) => ({ ...current, amount: "" }));
+              }}
+              className={cn("input text-xs", fundingRequestErrors.amount && "border-red-500 focus:border-red-500")}
             />
+            {fundingRequestErrors.amount && <p className="mt-1 text-2xs text-red-600">{fundingRequestErrors.amount}</p>}
           </div>
 
           <div>
@@ -2736,15 +3001,19 @@ export default function ProjectsClient() {
               rows={2}
               placeholder="Jelaskan kebutuhan pengeluaran dana dan peruntukannya di lapangan..."
               value={fundingRequestForm.description}
-              onChange={e => setFundingRequestForm({ ...fundingRequestForm, description: e.target.value })}
-              className="input text-xs"
+              onChange={e => {
+                setFundingRequestForm({ ...fundingRequestForm, description: e.target.value });
+                setFundingRequestErrors((current) => ({ ...current, description: "" }));
+              }}
+              className={cn("input text-xs", fundingRequestErrors.description && "border-red-500 focus:border-red-500")}
             />
+            {fundingRequestErrors.description && <p className="mt-1 text-2xs text-red-600">{fundingRequestErrors.description}</p>}
           </div>
 
           <div className="flex justify-end gap-2 mt-2">
-            <button onClick={() => setIsFundingRequestOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button onClick={handleCreateFundingRequest} className="btn-primary py-1.5 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold">
-              Kirim Permintaan ke Finance
+            <button onClick={() => { setIsFundingRequestOpen(false); setFundingRequestErrors({}); }} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
+            <button disabled={fundingSaving} onClick={handleCreateFundingRequest} className="btn-primary py-1.5 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold disabled:opacity-60 disabled:cursor-not-allowed">
+              {fundingSaving ? "Mengirim..." : "Kirim Permintaan ke Finance"}
             </button>
           </div>
         </div>

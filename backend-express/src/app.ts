@@ -32,6 +32,7 @@ import { masterDataRouter } from './modules/master_data/master_data.routes';
 import { crmRouter } from './modules/crm/crm.routes';
 import { salesRouter } from './modules/sales/sales.routes';
 import { projectsRouter } from './modules/projects/projects.routes';
+import { restrictProjectMutationsByAuthority } from './modules/projects/project-authority.middleware';
 import { financeRouter } from './modules/finance/finance.routes';
 import { procurementRouter } from './modules/procurement/procurement.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
@@ -179,22 +180,12 @@ export function createApp(): Express {
   apiV1.use(
     '/projects',
     requireModuleAccess('PROJECTS'),
-    requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.SUPERVISOR, RoleCode.STAFF),
+    requireActiveRole(RoleCode.COMPANY_ADMIN, RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.SUPERVISOR, RoleCode.STAFF),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
       message: 'Role Director memiliki akses preview seluruh proyek.',
     }),
-    restrictActiveRoleMutations({
-      restrictedRoles: [RoleCode.SUPERVISOR, RoleCode.STAFF],
-      allowedMutationPaths: [
-        /\/api\/v1\/projects\/daily-tasks\/[^/]+\/(update[-_]progress|report[-_]blocked|request[-_]transfer)$/,
-        { path: /\/api\/v1\/projects\/daily-tasks\/?$/, methods: ['POST'] },
-        { path: /\/api\/v1\/projects\/daily-tasks\/[^/]+\/?$/, methods: ['PUT', 'PATCH', 'DELETE'] },
-        { path: /\/api\/v1\/projects\/task-transfers\/[^/]+\/cancel\/?$/, methods: ['POST'] },
-        /\/api\/v1\/projects\/timesheets(?:\/[^/]+)?\/?$/,
-      ],
-      message: 'Staff dan Supervisor hanya dapat mengelola Daily Task serta timesheet miliknya. Weekly Task dan assignment merupakan kewenangan PM/OM.',
-    }),
+    restrictProjectMutationsByAuthority,
     projectsRouter,
   );
   apiV1.use(

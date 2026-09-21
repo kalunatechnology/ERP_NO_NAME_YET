@@ -2,8 +2,7 @@
 
 import React from "react";
 import {
-  ChevronRight, UserCheck, Plus, Trash2, Check, Edit, RefreshCw,
-  Layers, CalendarDays
+  ChevronRight, UserCheck, Plus, Trash2, Check, Edit, RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProjectWbsSummary } from "./ProjectWbsSummary";
@@ -14,8 +13,10 @@ interface ProjectWbsNodeProps {
   onToggleExpand: () => void;
   collapsedWeeklyTasks: Record<string, boolean>;
   onToggleWeekly: (weeklyId: string) => void;
-  canUpdateProject: boolean;
   isPM: boolean;
+  canManageWbs: boolean;
+  canAssignTeam: boolean;
+  canManageWeeklyTasks: boolean;
   currentUserId: string;
   onAssignClick: (main: any) => void;
   onRemoveAssignment: (mainTask: any, assignmentId: any) => void;
@@ -35,8 +36,10 @@ export function ProjectWbsNode({
   onToggleExpand,
   collapsedWeeklyTasks,
   onToggleWeekly,
-  canUpdateProject,
   isPM,
+  canManageWbs,
+  canAssignTeam,
+  canManageWeeklyTasks,
   currentUserId,
   onAssignClick,
   onRemoveAssignment,
@@ -60,7 +63,7 @@ export function ProjectWbsNode({
     completedDailies += dailies.filter((d: any) => ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase())).length;
   });
 
-  const canCreateWeekly = canUpdateProject && isPM;
+  const canCreateWeekly = canManageWeeklyTasks;
 
   return (
     <div className="card rounded-2xl border border-text-tertiary overflow-hidden shadow-xs bg-white transition-all duration-200 hover:border-gray-300">
@@ -89,6 +92,11 @@ export function ProjectWbsNode({
               <h3 className="text-sm font-bold text-text-primary truncate">{main.name || main.title}</h3>
               <span className="badge badge-info text-2xs">{main.status}</span>
               <span className="badge text-2xs bg-amber-50 text-amber-700 border border-amber-200">Bobot {main.weight || 10}%</span>
+              {main.cost_owner_division_name && (
+                <span className="badge text-2xs bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Divisi Biaya: {main.cost_owner_division_name}
+                </span>
+              )}
             </div>
             <p className="text-2xs text-text-secondary mt-0.5 line-clamp-1">
               {main.description || "Tidak ada catatan deskripsi paket kerja."}
@@ -114,7 +122,7 @@ export function ProjectWbsNode({
                 {main.assignments.map((a: any) => (
                   <span key={a.id} className="badge bg-indigo-50 text-indigo-800 border border-indigo-200 text-2xs flex items-center gap-1 font-semibold">
                     <span>{a.assignee_name || a.user_name}</span>
-                    {canUpdateProject && isPM && (
+                    {canAssignTeam && (
                       <button
                         onClick={() => onRemoveAssignment(main, a.id)}
                         className="hover:text-red-600 font-bold ml-1 text-xs"
@@ -131,7 +139,7 @@ export function ProjectWbsNode({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap ml-auto">
-          {canUpdateProject && isPM && (
+          {canAssignTeam && (
             <button
               onClick={() => onAssignClick(main)}
               className="btn-outline py-1 px-2.5 text-2xs gap-1 text-indigo-700 border-indigo-300 hover:bg-indigo-50"
@@ -150,7 +158,7 @@ export function ProjectWbsNode({
             </button>
           )}
 
-          {canUpdateProject && isPM && (
+          {canManageWbs && (
             <button
               onClick={() => onDeleteMainTask(main.id, main.name || main.title)}
               className="p-1 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50"
@@ -232,7 +240,7 @@ export function ProjectWbsNode({
                           </button>
                         )}
 
-                        {canUpdateProject && isPM && (
+                        {canManageWeeklyTasks && (
                           <button
                             onClick={() => onDeleteWeeklyTask(weekly.id, weekly.week_number)}
                             className="p-1 rounded text-text-secondary hover:text-red-600"

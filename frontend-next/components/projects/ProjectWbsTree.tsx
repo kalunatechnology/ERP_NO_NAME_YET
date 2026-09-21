@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { Layers, Plus, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp } from "lucide-react";
+import { Layers, Plus, ChevronsDown, ChevronsUp } from "lucide-react";
 import { ProjectWbsNode } from "./ProjectWbsNode";
 
 interface ProjectWbsTreeProps {
   mainTasks: any[];
-  canUpdateProject: boolean;
   isPM: boolean;
+  canManageWbs: boolean;
+  canAssignTeam: boolean;
+  canManageWeeklyTasks: boolean;
   currentUserId: string;
   userRole: string;
   onCreateMainTaskClick: () => void;
@@ -25,8 +27,10 @@ interface ProjectWbsTreeProps {
 
 export function ProjectWbsTree({
   mainTasks,
-  canUpdateProject,
   isPM,
+  canManageWbs,
+  canAssignTeam,
+  canManageWeeklyTasks,
   currentUserId,
   userRole,
   onCreateMainTaskClick,
@@ -137,7 +141,7 @@ export function ProjectWbsTree({
             </div>
           )}
 
-          {canUpdateProject && isPM && (
+          {canManageWbs && (
             <button
               onClick={onCreateMainTaskClick}
               className="btn-primary py-1.5 px-3 text-xs gap-1.5 shadow-xs"
@@ -154,11 +158,11 @@ export function ProjectWbsTree({
           <Layers size={36} className="text-brand-green mx-auto mb-2 opacity-60" />
           <h3 className="text-sm font-bold text-text-primary">Belum ada Paket Kerja (Main Task) pada proyek ini</h3>
           <p className="text-xs text-text-secondary mt-1 max-w-md mx-auto">
-            {canUpdateProject && isPM
+            {canManageWbs
               ? "Klik tombol + Tambah Main Task untuk membuat paket kerja WBS tingkat 1."
               : "Menunggu Project Manager (PM) untuk membuat paket kerja WBS Main Task."}
           </p>
-          {canUpdateProject && isPM && (
+          {canManageWbs && (
             <button
               onClick={onCreateMainTaskClick}
               className="btn-primary mx-auto mt-4 py-2 px-4 text-xs gap-1.5"
@@ -177,8 +181,10 @@ export function ProjectWbsTree({
               onToggleExpand={() => handleToggleMain(String(main.id))}
               collapsedWeeklyTasks={collapsedWeekly}
               onToggleWeekly={handleToggleWeekly}
-              canUpdateProject={canUpdateProject}
               isPM={isPM}
+              canManageWbs={canManageWbs}
+              canAssignTeam={canAssignTeam}
+              canManageWeeklyTasks={canManageWeeklyTasks}
               currentUserId={currentUserId}
               onAssignClick={onAssignClick}
               onRemoveAssignment={onRemoveAssignment}

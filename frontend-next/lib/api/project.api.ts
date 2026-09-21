@@ -21,6 +21,8 @@ export interface Project {
   progress_percentage?: number;
   progress?: number;
   budget_amount?: number;
+  contract_amount?: number;
+  target_margin_percent?: number;
   total_budget?: number;
   budget?: number;
   actual_cost?: number;
@@ -39,6 +41,36 @@ export interface Project {
   cost_entries?: CostEntry[];
   billing_proposals?: BillingProposal[];
   fundings?: Funding[];
+  authority?: ProjectAuthority;
+}
+
+export interface ProjectAuthority {
+  project_id: string;
+  effective_role: string | null;
+  is_project_manager: boolean;
+  is_acting_project_manager: boolean;
+  can_manage_project: boolean;
+  can_manage_wbs: boolean;
+  can_assign_team: boolean;
+  can_manage_weekly_tasks: boolean;
+  can_direct_reassign: boolean;
+  can_review_task_transfer: boolean;
+  can_override_progress: boolean;
+  can_manage_milestones: boolean;
+  can_delegate_supervisor: boolean;
+  can_create_project: boolean;
+  can_delete_project: boolean;
+}
+
+export interface ProjectSupervisor {
+  project_id: string;
+  user_id: string;
+  full_name: string;
+  email: string;
+  project_role: 'ACTING_PROJECT_MANAGER';
+  status: 'ACTIVE' | 'INACTIVE';
+  assigned_at?: string | null;
+  assigned_by?: { id: string; full_name: string; email: string } | null;
 }
 
 export interface TaskAssignment {
@@ -61,6 +93,8 @@ export interface MainTask {
   progress?: number;
   status: string;
   priority?: string;
+  cost_owner_division_id?: string | null;
+  cost_owner_division_name?: string;
   assignments?: TaskAssignment[];
   weekly_tasks?: WeeklyTask[];
   weekly_plans?: WeeklyTask[];
@@ -449,6 +483,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
             : 0,
           status: m.status || "PLANNED",
           priority: m.priority || "MEDIUM",
+          cost_owner_division_id: m.cost_owner_division_id || null,
           assignments: assigns,
           weekly_tasks: wTasks,
           weekly_plans: wTasks,
@@ -639,15 +674,17 @@ export async function createMainTask(payload: {
   project: string | number;
   title: string;
   description?: string;
-  weight?: number;
-  priority?: string;
+  weight: number;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  cost_owner_division_id?: string;
 }) {
   const { data } = await api.post("/api/v1/projects/main-tasks/", {
       project: payload.project,
       name: payload.title,
       description: payload.description || "",
-      weight: payload.weight || 10,
-      priority: payload.priority || "MEDIUM",
+      weight: payload.weight,
+      priority: payload.priority,
+      cost_owner_division_id: payload.cost_owner_division_id || null,
       status: "PLANNED",
   });
   return data;
@@ -678,17 +715,17 @@ export async function createWeeklyTask(payload: {
   main_task: string | number;
   week_number: number;
   target_description: string;
-  start_date?: string;
-  end_date?: string;
-  assignee_id?: string | number;
+  start_date: string;
+  end_date: string;
+  assignee_id: string | number;
 }) {
   const { data } = await api.post("/api/v1/projects/weekly-tasks/", {
       main_task: payload.main_task,
       week_number: payload.week_number,
       target_description: payload.target_description,
-      start_date: payload.start_date || undefined,
-      end_date: payload.end_date || undefined,
-      assignee: payload.assignee_id || undefined,
+      start_date: payload.start_date,
+      end_date: payload.end_date,
+      assignee: payload.assignee_id,
   });
   return data;
 }
@@ -1003,8 +1040,8 @@ export async function fetchProjectFundingRequests(projectId: string | number) {
  */
 export async function submitProjectFundingRequest(projectId: string | number, payload: {
   amount: number;
-  category?: string;
-  description?: string;
+  category: "OPERATIONAL" | "MATERIAL" | "LOGISTICS" | "EQUIPMENT" | "OTHER";
+  description: string;
 }) {
   const { data } = await api.post(`/api/v1/projects/projects/${projectId}/funding_requests/`, payload);
   return data;
@@ -1065,8 +1102,8 @@ export async function removeTaskAssignment(id: string | number) {
  * External dependency: calls the PM-scoped `/api/v1/projects/assignable-users/` catalog. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function fetchCompanyUsers(): Promise<any[]> {
-    const response = await api.get("/api/v1/projects/assignable-users/");
+export async function fetchCompanyUsers(projectId: string | number): Promise<any[]> {
+    const response = await api.get("/api/v1/projects/assignable-users/", { params: { project_id: projectId } });
     const list = normalizeList<any>(response.data).rows;
 
     // Keep this list strictly company-scoped. An empty list is an honest
@@ -1092,6 +1129,25 @@ export async function fetchCompanyUsers(): Promise<any[]> {
     });
 
     return merged;
+}
+
+export async function getProjectAuthority(projectId: string | number): Promise<ProjectAuthority> {
+  const { data } = await api.get(`/api/v1/projects/projects/${projectId}/authority`);
+  return data;
+}
+
+export async function getProjectSupervisor(projectId: string | number): Promise<ProjectSupervisor | null> {
+  const { data } = await api.get(`/api/v1/projects/projects/${projectId}/supervisor`);
+  return data;
+}
+
+export async function assignProjectSupervisor(projectId: string | number, userId: string | number, reason?: string): Promise<ProjectSupervisor> {
+  const { data } = await api.put(`/api/v1/projects/projects/${projectId}/supervisor`, { user_id: userId, reason });
+  return data;
+}
+
+export async function revokeProjectSupervisor(projectId: string | number, reason?: string): Promise<void> {
+  await api.delete(`/api/v1/projects/projects/${projectId}/supervisor`, { data: { reason } });
 }
 
 // =============================================================================

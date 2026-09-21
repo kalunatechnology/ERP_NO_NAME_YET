@@ -738,6 +738,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             actual_end_date,
             budget_amount,
             contract_amount,
+            target_margin_percent,
             progress_percent,
             status,
             lifecycle_status,

@@ -41,10 +41,13 @@ function main() {
     // skip cross-project monorepo tests if the sibling folder does not exist or target is Hostinger.
     if (hasFrontend && process.env.DEPLOYMENT_TARGET !== 'hostinger') {
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/q11-system-guardrails.ts']);
+      run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-financial-targets.unit.ts']);
+      run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-input-validation.unit.ts']);
     } else {
-      console.log('Skipping tests/q11-system-guardrails.ts (monorepo frontend-next not present or production deployment target).');
+      console.log('Skipping cross-project frontend contract tests (monorepo frontend-next not present or production deployment target).');
     }
 
+    run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-acting-manager.unit.ts']);
     run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/reporting-global-scope.unit.ts']);
     run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/integration-hardening.unit.ts']);
     run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/marbot-signature.unit.ts']);

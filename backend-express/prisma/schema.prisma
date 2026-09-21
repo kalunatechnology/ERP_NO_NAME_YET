@@ -2094,6 +2094,7 @@ model project_member {
   left_at          DateTime?
 
   @@index([tenant_id, company_id])
+  @@index([company_id, project_id, user_id, project_role, status], map: "project_member_active_authority_lookup_idx")
   @@map("project_member")
 }
 
@@ -2797,6 +2798,7 @@ model project_main_task {
   company_id             String?   @map("company_id")
   id                     String    @id @default(uuid())
   project_id             String    @map("project_id")
+  cost_owner_division_id String?   @map("cost_owner_division_id")
   name                   String
   description            String
   priority               String
@@ -2812,6 +2814,7 @@ model project_main_task {
   updated_at             DateTime
 
   @@index([tenant_id, company_id])
+  @@index([company_id, cost_owner_division_id], map: "project_main_task_company_cost_owner_division_idx")
   @@map("project_main_task")
 }
 

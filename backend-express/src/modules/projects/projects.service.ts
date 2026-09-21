@@ -10,6 +10,31 @@ import prisma from '../../config/database';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
 
+export const PROJECT_MANAGEMENT_ROLES = [
+  'PROJECT_MANAGER',
+  'PM',
+  'LEAD_PROJECT_MANAGER',
+] as const;
+export const ACTING_PROJECT_MANAGER_ROLE = 'ACTING_PROJECT_MANAGER' as const;
+
+export interface ProjectAuthority {
+  project_id: string;
+  effective_role: string | null;
+  is_project_manager: boolean;
+  is_acting_project_manager: boolean;
+  can_manage_project: boolean;
+  can_manage_wbs: boolean;
+  can_assign_team: boolean;
+  can_manage_weekly_tasks: boolean;
+  can_direct_reassign: boolean;
+  can_review_task_transfer: boolean;
+  can_override_progress: boolean;
+  can_manage_milestones: boolean;
+  can_delegate_supervisor: boolean;
+  can_create_project: boolean;
+  can_delete_project: boolean;
+}
+
 export class ProjectsService {
   private static activeRole(user: any): string {
     return user?.active_role_code ?? user?.roles?.[0] ?? '';
@@ -19,8 +44,8 @@ export class ProjectsService {
     return ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
   }
 
-  private static isProjectController(user: any): boolean {
-    return this.hasPlatformAdmin(user) || ([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
+  private static isCompanyAdmin(user: any): boolean {
+    return this.activeRole(user) === RoleCode.COMPANY_ADMIN;
   }
 
   private static hasPlatformAdmin(user: any): boolean {
@@ -33,32 +58,44 @@ export class ProjectsService {
   }
 
   static async managedProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
-    if (this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) {
+    if (this.isCompanyAdmin(user) || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) {
       const projects = await db.project_project.findMany({
         where: { company_id: companyId },
         select: { id: true },
       });
       return projects.map((project: { id: string }) => project.id);
     }
-    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER || !user?.id) return [];
+    if (!user?.id) return [];
+    if (
+      db === prisma
+      && (!this.UUID_REGEX.test(String(user.id)) || !this.UUID_REGEX.test(String(companyId)))
+    ) return [];
+    const activeRole = this.activeRole(user);
+    const membershipRoles = activeRole === RoleCode.PROJECT_MANAGER
+      ? [...PROJECT_MANAGEMENT_ROLES, ACTING_PROJECT_MANAGER_ROLE]
+      : this.isOperationalAssignee(user)
+        ? [ACTING_PROJECT_MANAGER_ROLE]
+        : [];
+    if (!membershipRoles.length) return [];
 
     const memberships = await db.project_member.findMany({
       where: {
         company_id: companyId,
         user_id: user.id,
         status: 'ACTIVE',
-        project_role: { in: ['PROJECT_MANAGER', 'PM', 'LEAD_PROJECT_MANAGER'] },
+        project_role: { in: membershipRoles },
       },
       select: { project_id: true },
     });
     const memberProjectIds = memberships
       .map((membership: { project_id: string | null }) => membership.project_id)
       .filter((id: string | null): id is string => Boolean(id));
+    const isGlobalPm = activeRole === RoleCode.PROJECT_MANAGER;
     const projects = await db.project_project.findMany({
       where: {
         company_id: companyId,
         OR: [
-          { project_manager_id: user.id },
+          ...(isGlobalPm ? [{ project_manager_id: user.id }] : []),
           ...(memberProjectIds.length ? [{ id: { in: memberProjectIds } }] : []),
         ],
       },
@@ -68,23 +105,32 @@ export class ProjectsService {
   }
 
   static async assertCanManageProject(user: any, projectId: string | null | undefined, companyId: string, db: any = prisma): Promise<void> {
-    if (!projectId || !this.isProjectController(user)) {
-      throw new ForbiddenError('Aksi ini hanya dapat dilakukan PM project terkait atau Operational Manager.');
+    if (!projectId || !companyId || !user?.id || user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
+      throw new ForbiddenError('Anda tidak memiliki kewenangan pengelolaan pada project ini.');
     }
-    if (this.hasPlatformAdmin(user) || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) return;
+    if (this.isCompanyAdmin(user) || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) {
+      const project = await db.project_project.findFirst({ where: { id: projectId, company_id: companyId }, select: { id: true } });
+      if (project) return;
+      throw new ForbiddenError('Anda tidak memiliki kewenangan pengelolaan pada project ini.');
+    }
     const managedIds = await this.managedProjectIds(user, companyId, db);
     if (!managedIds.includes(projectId)) {
-      throw new ForbiddenError('PM hanya dapat mengelola project yang menjadi tanggung jawabnya.');
+      throw new ForbiddenError('Anda tidak memiliki kewenangan pengelolaan pada project ini.');
     }
   }
 
-  static async assertCanAssignProjectMembers(user: any, companyId: string, db: any = prisma): Promise<void> {
-    if (this.hasPlatformAdmin(user) || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) return;
-    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
-      const managedIds = await this.managedProjectIds(user, companyId, db);
-      if (managedIds.length) return;
+  static async hasProjectManagementAuthority(user: any, projectId: string, companyId: string, db: any = prisma): Promise<boolean> {
+    try {
+      await this.assertCanManageProject(user, projectId, companyId, db);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenError) return false;
+      throw error;
     }
-    throw new ForbiddenError('Daftar assignee hanya tersedia untuk PM project terkait atau Operational Manager.');
+  }
+
+  static async assertCanAssignProjectMembers(user: any, projectId: string, companyId: string, db: any = prisma): Promise<void> {
+    await this.assertCanManageProject(user, projectId, companyId, db);
   }
 
   static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
@@ -378,6 +424,20 @@ export class ProjectsService {
           db,
         );
 
+      const managedProjectIds = await this.managedProjectIds(user, companyId, db);
+      let managedWeeklyTaskIds: string[] = [];
+      if (managedProjectIds.length) {
+        const managedMainTasks = await db.project_main_task.findMany({
+          where: { company_id: companyId, project_id: { in: managedProjectIds } },
+          select: { id: true },
+        });
+        const managedWeeklyTasks = await db.project_weekly_task.findMany({
+          where: { company_id: companyId, main_task_id: { in: managedMainTasks.map((task: { id: string }) => task.id) } },
+          select: { id: true },
+        });
+        managedWeeklyTaskIds = managedWeeklyTasks.map((task: { id: string }) => task.id);
+      }
+
       /**
        * Tidak mempunyai relasi team/project?
        *
@@ -385,7 +445,7 @@ export class ProjectsService {
        * hanya task miliknya sendiri.
        */
       if (
-        !scope.weeklyTaskIds.length
+        !scope.weeklyTaskIds.length && !managedWeeklyTaskIds.length
       ) {
         return {
           owner_id:
@@ -403,7 +463,7 @@ export class ProjectsService {
           {
             weekly_task_id: {
               in:
-                scope.weeklyTaskIds,
+                [...new Set([...scope.weeklyTaskIds, ...managedWeeklyTaskIds])],
             },
           },
         ],
@@ -518,12 +578,10 @@ export class ProjectsService {
           db,
         );
 
-      return {
-        id: {
-          in:
-            scope.mainTaskIds,
-        },
-      };
+      const managedProjectIds = await this.managedProjectIds(user, companyId, db);
+      return managedProjectIds.length
+        ? { OR: [{ id: { in: scope.mainTaskIds } }, { project_id: { in: managedProjectIds } }] }
+        : { id: { in: scope.mainTaskIds } };
     }
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
@@ -543,20 +601,21 @@ export class ProjectsService {
           db,
         );
 
-      if (
-        !scope.weeklyTaskIds.length
-      ) {
-        return {
-          assignee_id:
-            user.id,
-        };
+      const managedProjectIds = await this.managedProjectIds(user, companyId, db);
+      if (!managedProjectIds.length) {
+        return scope.weeklyTaskIds.length
+          ? { id: { in: scope.weeklyTaskIds } }
+          : { assignee_id: user.id };
       }
-
+      const managedMainTasks = await db.project_main_task.findMany({
+        where: { company_id: companyId, project_id: { in: managedProjectIds } },
+        select: { id: true },
+      });
       return {
-        id: {
-          in:
-            scope.weeklyTaskIds,
-        },
+        OR: [
+          { id: { in: scope.weeklyTaskIds } },
+          { main_task_id: { in: managedMainTasks.map((task: { id: string }) => task.id) } },
+        ],
       };
     }
     if (this.hasPortfolioRead(user)) return {};
@@ -570,7 +629,20 @@ export class ProjectsService {
   }
 
   static async taskAssignmentAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.isOperationalAssignee(user)) return { assignee_id: user.id };
+    if (this.isOperationalAssignee(user)) {
+      const managedProjectIds = await this.managedProjectIds(user, companyId, db);
+      if (!managedProjectIds.length) return { assignee_id: user.id };
+      const managedMainTasks = await db.project_main_task.findMany({
+        where: { company_id: companyId, project_id: { in: managedProjectIds } },
+        select: { id: true },
+      });
+      return {
+        OR: [
+          { assignee_id: user.id },
+          { main_task_id: { in: managedMainTasks.map((task: { id: string }) => task.id) } },
+        ],
+      };
+    }
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
 
@@ -584,7 +656,27 @@ export class ProjectsService {
 
   static async taskTransferAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
     if (this.isOperationalAssignee(user)) {
-      return { OR: [{ requested_by_id: user.id }, { target_user_id: user.id }] };
+      const managedProjectIds = await this.managedProjectIds(user, companyId, db);
+      if (!managedProjectIds.length) return { OR: [{ requested_by_id: user.id }, { target_user_id: user.id }] };
+      const managedMainTasks = await db.project_main_task.findMany({
+        where: { company_id: companyId, project_id: { in: managedProjectIds } },
+        select: { id: true },
+      });
+      const managedWeeklyTasks = await db.project_weekly_task.findMany({
+        where: { company_id: companyId, main_task_id: { in: managedMainTasks.map((task: { id: string }) => task.id) } },
+        select: { id: true },
+      });
+      const managedDailyTasks = await db.project_daily_task.findMany({
+        where: { company_id: companyId, weekly_task_id: { in: managedWeeklyTasks.map((task: { id: string }) => task.id) } },
+        select: { id: true },
+      });
+      return {
+        OR: [
+          { requested_by_id: user.id },
+          { target_user_id: user.id },
+          { daily_task_id: { in: managedDailyTasks.map((task: { id: string }) => task.id) } },
+        ],
+      };
     }
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
@@ -648,6 +740,272 @@ export class ProjectsService {
     if (!operationalRole) {
       throw new ValidationError('Assignee Weekly Task harus memiliki role Staff atau Supervisor pada company aktif.');
     }
+  }
+
+  static async assertCanDelegateProjectAuthority(
+    user: any,
+    projectId: string,
+    companyId: string,
+    db: any = prisma,
+  ): Promise<void> {
+    if (!user?.id || user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
+      throw new ForbiddenError('Anda tidak memiliki kewenangan untuk menunjuk atau mencabut Project Supervisor.');
+    }
+    const project = await db.project_project.findFirst({
+      where: { id: projectId, company_id: companyId },
+      select: { id: true, project_manager_id: true },
+    });
+    if (!project) throw new NotFoundError('Project');
+    const allowed = this.isCompanyAdmin(user)
+      || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER
+      || (this.activeRole(user) === RoleCode.PROJECT_MANAGER && project.project_manager_id === user.id);
+    if (!allowed) {
+      throw new ForbiddenError('Anda tidak memiliki kewenangan untuk menunjuk atau mencabut Project Supervisor.');
+    }
+  }
+
+  static async getProjectSupervisor(projectId: string, companyId: string, db: any = prisma) {
+    const project = await db.project_project.findFirst({
+      where: { id: projectId, company_id: companyId },
+      select: { id: true },
+    });
+    if (!project) throw new NotFoundError('Project');
+    const membership = await db.project_member.findFirst({
+      where: {
+        project_id: projectId,
+        company_id: companyId,
+        project_role: ACTING_PROJECT_MANAGER_ROLE,
+        status: 'ACTIVE',
+      },
+      orderBy: { assigned_at: 'desc' },
+    });
+    if (!membership?.user_id) return null;
+    const [member, creator] = await Promise.all([
+      db.iam_user.findFirst({
+        where: { id: membership.user_id, is_active: true },
+        select: { id: true, full_name: true, email: true },
+      }),
+      membership.created_by_id
+        ? db.iam_user.findFirst({
+            where: { id: membership.created_by_id },
+            select: { id: true, full_name: true, email: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    return {
+      project_id: projectId,
+      user_id: membership.user_id,
+      full_name: member?.full_name ?? '',
+      email: member?.email ?? '',
+      project_role: membership.project_role,
+      status: membership.status,
+      assigned_at: membership.assigned_at,
+      assigned_by: creator,
+    };
+  }
+
+  private static async writeSupervisorAudit(
+    db: any,
+    params: {
+      projectId: string;
+      tenantId: string | null;
+      companyId: string;
+      actorId: string;
+      eventType: string;
+      beforeData: Record<string, unknown>;
+      afterData: Record<string, unknown>;
+    },
+  ) {
+    await db.core_audit_event.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenant_id: params.tenantId,
+        company_id: params.companyId,
+        created_by_id: params.actorId,
+        user_id: params.actorId,
+        entity_name: 'project_member',
+        entity_id: params.projectId,
+        event_type: params.eventType,
+        before_data: params.beforeData,
+        after_data: params.afterData,
+        occurred_at: new Date(),
+      },
+    });
+  }
+
+  static async assignProjectSupervisor(
+    projectId: string,
+    userId: string,
+    reason: string,
+    actor: any,
+    companyId: string,
+  ) {
+    if (!userId) throw new ValidationError('user_id wajib diisi.');
+    await this.assertCanDelegateProjectAuthority(actor, projectId, companyId);
+    const project = await prisma.project_project.findFirst({
+      where: { id: projectId, company_id: companyId },
+      select: { id: true, tenant_id: true },
+    });
+    if (!project) throw new NotFoundError('Project');
+    const candidate = await prisma.iam_user.findFirst({
+      where: { id: userId, tenant_id: project.tenant_id, is_active: true, status: 'ACTIVE' },
+      select: { id: true, active_role_id: true },
+    });
+    if (!candidate) throw new ValidationError('Calon Project Supervisor harus merupakan user aktif pada tenant yang sama.');
+    await this.assertOperationalCompanyMember(userId, companyId);
+    const activeOperationalRole = candidate.active_role_id
+      ? await prisma.iam_role.findFirst({
+          where: {
+            id: candidate.active_role_id,
+            company_id: companyId,
+            role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] },
+          },
+          select: { id: true },
+        })
+      : null;
+    if (!activeOperationalRole) {
+      throw new ValidationError('Role aktif calon Project Supervisor harus STAFF atau SUPERVISOR.');
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await this.assertCanDelegateProjectAuthority(actor, projectId, companyId, tx);
+      const current = await tx.project_member.findFirst({
+        where: { project_id: projectId, company_id: companyId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE' },
+        orderBy: { assigned_at: 'desc' },
+      });
+      if (current?.user_id === userId) return;
+      const now = new Date();
+      if (current) {
+        await tx.project_member.updateMany({
+          where: { project_id: projectId, company_id: companyId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE' },
+          data: { status: 'INACTIVE', left_at: now },
+        });
+      }
+      const historical = await tx.project_member.findFirst({
+        where: { project_id: projectId, company_id: companyId, user_id: userId, project_role: ACTING_PROJECT_MANAGER_ROLE },
+        orderBy: { created_at: 'desc' },
+      });
+      if (historical) {
+        await tx.project_member.update({
+          where: { id: historical.id },
+          data: {
+            status: 'ACTIVE',
+            assigned_at: now,
+            left_at: null,
+            created_by_id: actor.id,
+            permissions_json: { source: 'PROJECT_SUPERVISOR', reason: reason ?? '' },
+          },
+        });
+      } else {
+        await tx.project_member.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: project.tenant_id,
+            company_id: companyId,
+            created_by_id: actor.id,
+            project_id: projectId,
+            user_id: userId,
+            project_role: ACTING_PROJECT_MANAGER_ROLE,
+            status: 'ACTIVE',
+            permissions_json: { source: 'PROJECT_SUPERVISOR', reason: reason ?? '' },
+            assigned_at: now,
+          },
+        });
+      }
+      await this.writeSupervisorAudit(tx, {
+        projectId,
+        tenantId: project.tenant_id,
+        companyId,
+        actorId: actor.id,
+        eventType: current ? 'PROJECT_SUPERVISOR_REPLACED' : 'PROJECT_SUPERVISOR_ASSIGNED',
+        beforeData: { user_id: current?.user_id ?? null, reason: reason ?? '' },
+        afterData: { user_id: userId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE', reason: reason ?? '' },
+      });
+    });
+    return this.getProjectSupervisor(projectId, companyId);
+  }
+
+  static async revokeProjectSupervisor(projectId: string, reason: string, actor: any, companyId: string) {
+    await this.assertCanDelegateProjectAuthority(actor, projectId, companyId);
+    await prisma.$transaction(async (tx) => {
+      await this.assertCanDelegateProjectAuthority(actor, projectId, companyId, tx);
+      const current = await tx.project_member.findFirst({
+        where: { project_id: projectId, company_id: companyId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE' },
+      });
+      if (!current) throw new NotFoundError('ProjectSupervisor');
+      await tx.project_member.update({
+        where: { id: current.id },
+        data: { status: 'INACTIVE', left_at: new Date() },
+      });
+      await this.writeSupervisorAudit(tx, {
+        projectId,
+        tenantId: current.tenant_id,
+        companyId,
+        actorId: actor.id,
+        eventType: 'PROJECT_SUPERVISOR_REVOKED',
+        beforeData: { user_id: current.user_id, project_role: current.project_role, status: 'ACTIVE' },
+        afterData: { user_id: current.user_id, project_role: current.project_role, status: 'INACTIVE', reason: reason ?? '' },
+      });
+    });
+  }
+
+  static async getProjectAuthority(user: any, projectId: string, companyId: string, db: any = prisma): Promise<ProjectAuthority> {
+    const project = await db.project_project.findFirst({
+      where: { id: projectId, company_id: companyId },
+      select: { id: true, project_manager_id: true },
+    });
+    if (!project) throw new NotFoundError('Project');
+    await this.assertCanViewProject(user, projectId, companyId, db);
+    const eligibleMembershipRoles = this.activeRole(user) === RoleCode.PROJECT_MANAGER
+      ? [...PROJECT_MANAGEMENT_ROLES, ACTING_PROJECT_MANAGER_ROLE]
+      : this.isOperationalAssignee(user)
+        ? [ACTING_PROJECT_MANAGER_ROLE]
+        : [];
+    const membership = user?.id && eligibleMembershipRoles.length
+      ? await db.project_member.findFirst({
+          where: {
+            project_id: projectId,
+            company_id: companyId,
+            user_id: user.id,
+            status: 'ACTIVE',
+            project_role: { in: eligibleMembershipRoles },
+          },
+          select: { project_role: true },
+        })
+      : null;
+    const isOriginalPm = Boolean(user?.id && project.project_manager_id === user.id && this.activeRole(user) === RoleCode.PROJECT_MANAGER);
+    const isMembershipPm = Boolean(membership && PROJECT_MANAGEMENT_ROLES.includes(membership.project_role as typeof PROJECT_MANAGEMENT_ROLES[number]));
+    const isActing = membership?.project_role === ACTING_PROJECT_MANAGER_ROLE;
+    const isOm = this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER;
+    const isAdmin = this.isCompanyAdmin(user);
+    const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && (isAdmin || isOm || isOriginalPm || isMembershipPm || isActing);
+    const canDelegate = canManage && (isAdmin || isOm || isOriginalPm);
+    const effectiveRole = isActing
+      ? ACTING_PROJECT_MANAGER_ROLE
+      : (isOriginalPm || isMembershipPm)
+        ? 'PROJECT_MANAGER'
+        : isOm
+          ? 'OPERATIONAL_MANAGER'
+          : isAdmin
+            ? 'COMPANY_ADMIN'
+            : null;
+    return {
+      project_id: projectId,
+      effective_role: effectiveRole,
+      is_project_manager: isOriginalPm || isMembershipPm,
+      is_acting_project_manager: isActing,
+      can_manage_project: canManage,
+      can_manage_wbs: canManage,
+      can_assign_team: canManage,
+      can_manage_weekly_tasks: canManage,
+      can_direct_reassign: canManage,
+      can_review_task_transfer: canManage,
+      can_override_progress: canManage,
+      can_manage_milestones: canManage,
+      can_delegate_supervisor: canDelegate,
+      can_create_project: isAdmin || isOm || this.activeRole(user) === RoleCode.PROJECT_MANAGER,
+      can_delete_project: isAdmin || isOm || isOriginalPm,
+    };
   }
 
   /**
@@ -1061,7 +1419,7 @@ export class ProjectsService {
     const pv = Math.round(bac * plannedProgress * 100) / 100;
     const ev = Math.round(bac * actualProgress * 100) / 100;
 
-    const [costEntries, expenses] = await Promise.all([
+    const [costEntries, expenses, billingDocuments] = await Promise.all([
       prisma.fin_project_cost_entry.findMany({
         where: { project_id: projectId, ...(companyId ? { company_id: companyId } : {}) },
         select: { total_cost: true },
@@ -1070,12 +1428,29 @@ export class ProjectsService {
         where: { project_id: projectId, ...(companyId ? { company_id: companyId } : {}) },
         select: { amount: true },
       }),
+      prisma.fin_billing_document.findMany({
+        where: { project_id: projectId, ...(companyId ? { company_id: companyId } : {}), status: 'POSTED' },
+        select: { total_amount: true },
+      }),
     ]);
 
     const costEntryTotal = costEntries.reduce((sum, c) => sum + Number(c.total_cost ?? 0), 0);
     const expenseTotal = expenses.reduce((sum, e) => sum + Number(e.amount ?? 0), 0);
     const acTotal = Math.max(costEntryTotal, expenseTotal);
     const ac = Math.round(acTotal * 100) / 100;
+    const expectedRevenue = Number(project.contract_amount ?? 0);
+    const targetMarginPercent = Number(project.target_margin_percent ?? 0);
+    const invoicedRevenue = Math.round(
+      billingDocuments.reduce((sum, document) => sum + Number(document.total_amount ?? 0), 0) * 100,
+    ) / 100;
+    const earnedRevenue = Math.round(expectedRevenue * actualProgress * 100) / 100;
+    const actualGrossProfit = Math.round((earnedRevenue - ac) * 100) / 100;
+    const actualMarginPercent = earnedRevenue > 0
+      ? Math.round((actualGrossProfit / earnedRevenue) * 10000) / 100
+      : 0;
+    const budgetUtilizationPercent = bac > 0
+      ? Math.round((ac / bac) * 10000) / 100
+      : 0;
 
     const cv = ev - ac;
     const sv = ev - pv;
@@ -1092,10 +1467,23 @@ export class ProjectsService {
         : cpi >= 0.85 || spi >= 0.85
           ? 'WARNING'
           : 'CRITICAL';
+    const financialHealthStatus = actualGrossProfit < 0
+      ? 'UNPROFITABLE'
+      : actualMarginPercent >= targetMarginPercent
+        ? 'PROFITABLE'
+        : 'AT_RISK';
 
     return {
       as_of_date: asOfDate.toISOString().slice(0, 10),
       budget_at_completion: bac,
+      planned_budget: bac,
+      expected_revenue: expectedRevenue,
+      invoiced_revenue: invoicedRevenue,
+      target_margin_percent: targetMarginPercent,
+      budget_utilization_percent: budgetUtilizationPercent,
+      actual_gross_profit: actualGrossProfit,
+      actual_margin_percent: actualMarginPercent,
+      financial_health_status: financialHealthStatus,
       planned_progress_pct: Math.round(plannedProgress * 10000) / 100,
       actual_progress_pct: Math.round(actualProgress * 10000) / 100,
       planned_value: pv,
@@ -1577,7 +1965,10 @@ export class ProjectsService {
   static async getFinancialSummary(user: any, companyId: string, projectId?: string) {
     const role = this.activeRole(user);
     const allowedRoles: string[] = [RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR];
-    if (!allowedRoles.includes(role) && !this.hasPlatformAdmin(user)) {
+    const hasScopedProjectRead = projectId
+      ? await this.hasProjectManagementAuthority(user, projectId, companyId)
+      : false;
+    if (!allowedRoles.includes(role) && !this.hasPlatformAdmin(user) && !hasScopedProjectRead) {
       throw new ForbiddenError('Ringkasan keuangan proyek hanya tersedia untuk PM, OM, Director, atau administrator company.');
     }
     const accessWhere = await this.projectAccessWhere(user, companyId);
