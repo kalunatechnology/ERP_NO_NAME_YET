@@ -94,14 +94,14 @@ export function Modal({
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-start justify-between p-3.5 sm:p-5 border-b border-text-tertiary bg-gray-50/50">
-          <div>
-            <h3 className="text-base font-semibold text-text-primary">{title}</h3>
-            {subtitle && <p className="text-xs text-text-secondary mt-0.5">{subtitle}</p>}
+        <div className="flex items-start justify-between px-4 py-4 sm:px-6 sm:py-5 border-b border-text-tertiary bg-gray-50/50">
+          <div className="space-y-1 pr-2">
+            <h3 className="text-base font-semibold text-text-primary leading-tight">{title}</h3>
+            {subtitle && <p className="text-xs text-text-secondary leading-relaxed">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-gray-100 transition-colors shrink-0"
             aria-label="Tutup"
           >
             <X size={18} />
@@ -109,7 +109,7 @@ export function Modal({
         </div>
 
         {/* Content */}
-        <div className="p-5 overflow-y-auto flex-1">
+        <div className="px-4 py-4 sm:px-6 sm:py-5 overflow-y-auto overscroll-contain flex-1">
           {children}
         </div>
       </div>

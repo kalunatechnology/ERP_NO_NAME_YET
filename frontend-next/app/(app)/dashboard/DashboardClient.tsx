@@ -500,17 +500,21 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
             <div className="flex flex-col divide-y divide-text-tertiary/50">
               {projectSummaries.slice(0, 8).map(ps => (
                 <div key={ps.projectId} className="px-4 py-3 hover:bg-bg-lighter/50 transition-colors">
-                  <div className="mb-2 grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(170px,auto)_64px] sm:gap-4">
+                  <div className="mb-2 grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(180px,1fr)_minmax(180px,auto)] sm:gap-4 sm:items-center">
                     <span className="min-w-0 truncate text-sm font-medium text-text-primary">{ps.projectName}</span>
-                    <div className="min-w-0 text-left sm:text-right">
+                    <div className="min-w-0 text-left sm:text-center">
                       <span className="block whitespace-nowrap text-xs text-text-secondary">{formatMoney(ps.spent)} / {formatMoney(ps.budget)}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 text-left sm:text-right">
+                      <span className={cn("text-xs font-bold", ps.utilization > 90 ? "text-red-600" : ps.utilization > 70 ? "text-amber-600" : "text-brand-green")}>
+                        {ps.utilization}%
+                      </span>
                       {ps.pendingAmount > 0 && (
-                        <span className="mt-0.5 block text-2xs text-amber-600">+ {formatMoney(ps.pendingAmount)} menunggu persetujuan</span>
+                        <span className="text-2xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+                          + {formatMoney(ps.pendingAmount)} menunggu persetujuan
+                        </span>
                       )}
                     </div>
-                    <span className={cn("text-left text-xs font-bold sm:text-right", ps.utilization > 90 ? "text-red-600" : ps.utilization > 70 ? "text-amber-600" : "text-brand-green")}>
-                      {ps.utilization}%
-                    </span>
                   </div>
                   <ProgressBar
                     value={ps.utilization}

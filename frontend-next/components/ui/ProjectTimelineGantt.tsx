@@ -54,13 +54,21 @@ export function ProjectTimelineGantt({
   const visibleTasks = taskItems.slice((page - 1) * pageSize, page * pageSize);
 
   useEffect(() => {
-    setPage((current) => Math.min(current, totalPages));
+    setPage((current) => Math.min(Math.max(1, current), totalPages));
   }, [totalPages]);
+
+  const pageNumbers = React.useMemo(() => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+    return Array.from({ length: 5 }, (_, i) => start + i);
+  }, [page, totalPages]);
 
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#EFEFEF] rounded-2xl p-5 sm:p-7 shadow-xs select-none",
+        "w-full bg-white border border-[#EFEFEF] rounded-[14px] p-5 sm:p-7 shadow-xs select-none",
         className
       )}
     >
@@ -220,11 +228,39 @@ export function ProjectTimelineGantt({
             task
           </label>
           <div className="flex items-center gap-1" aria-label="Navigasi halaman timeline">
-            <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1} className="rounded-lg border border-[#D9D9D9] p-1.5 text-[#4F5050] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Halaman sebelumnya"><ChevronLeft size={14} /></button>
-            {Array.from({ length: totalPages }, (_, index) => index + 1).slice(Math.max(0, page - 3), Math.max(0, page - 3) + 5).map((pageNumber) => (
-              <button key={pageNumber} type="button" onClick={() => setPage(pageNumber)} className={cn("min-w-7 rounded-lg px-2 py-1.5 font-bold", page === pageNumber ? "bg-[#2649B3] text-white" : "border border-[#D9D9D9] text-[#4F5050]")}>{pageNumber}</button>
+            <button
+              type="button"
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              disabled={page === 1}
+              className="rounded-lg border border-[#D9D9D9] p-1.5 text-[#4F5050] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Halaman sebelumnya"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            {pageNumbers.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                type="button"
+                onClick={() => setPage(pageNumber)}
+                className={cn(
+                  "min-w-7 rounded-lg px-2.5 py-1 text-xs font-bold transition-colors",
+                  page === pageNumber
+                    ? "bg-[#2649B3] text-white shadow-xs"
+                    : "border border-[#D9D9D9] text-[#4F5050] hover:bg-gray-50 hover:text-[#090909]"
+                )}
+              >
+                {pageNumber}
+              </button>
             ))}
-            <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={page === totalPages} className="rounded-lg border border-[#D9D9D9] p-1.5 text-[#4F5050] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Halaman berikutnya"><ChevronRight size={14} /></button>
+            <button
+              type="button"
+              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              disabled={page === totalPages}
+              className="rounded-lg border border-[#D9D9D9] p-1.5 text-[#4F5050] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Halaman berikutnya"
+            >
+              <ChevronRight size={14} />
+            </button>
           </div>
         </div>
       )}

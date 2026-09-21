@@ -1129,7 +1129,7 @@ export default function FinanceClient() {
           {/* 4 Kartu Rekening Bank */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
             {bankAccounts.map((b) => (
-              <div key={b.id} className="card p-4 rounded-2xl border border-text-tertiary bg-white flex flex-col justify-between min-h-[120px] shadow-xs">
+              <div key={b.id} className="card p-4 rounded-[14px] border border-text-tertiary bg-white flex flex-col justify-between min-h-[120px] shadow-xs">
                 <div>
                   <div className="flex items-center justify-between text-2xs font-bold text-text-secondary uppercase">
                     <span>{b.type.replace("_", " ")}</span>
@@ -1138,12 +1138,12 @@ export default function FinanceClient() {
                   <strong className="text-xs font-bold text-text-primary block mt-1">{b.name.split("—")[0]}</strong>
                   <span className="text-2xs text-text-secondary font-mono block mt-0.5">{b.number}</span>
                 </div>
-                <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex justify-between items-baseline">
-                  <span className="text-2xs text-text-secondary">{b.balance == null ? "Status Saldo:" : "Saldo Tersedia:"}</span>
+                <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex items-center justify-between gap-2">
+                  <span className="text-2xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Tersedia:"}</span>
                   {b.balance == null ? (
-                    <span className="rounded-full border border-[#9FD6FF] bg-[#EAF6FF] px-2.5 py-1 text-2xs font-bold text-[#2649B3]">Belum Tersedia</span>
+                    <span className="status-chip whitespace-nowrap">Belum Tersedia</span>
                   ) : (
-                    <strong className="text-sm font-black text-brand-deep-green">{formatMoney(b.balance)}</strong>
+                    <strong className="text-sm font-black text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
                   )}
                 </div>
               </div>
@@ -1602,19 +1602,19 @@ export default function FinanceClient() {
             {/* Ringkasan Saldo Real-Time */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
               {bankAccounts.map((b) => (
-                <div key={b.id} className="card p-4 rounded-2xl border border-text-tertiary bg-white flex flex-col justify-between shadow-xs">
+                <div key={b.id} className="card p-4 rounded-[14px] border border-text-tertiary bg-white flex flex-col justify-between shadow-xs">
                   <div className="flex items-center justify-between text-2xs font-bold text-text-secondary uppercase">
                     <span>{b.type.replace(/_/g, " ")}</span>
                     <Landmark size={14} className="text-brand-green" />
                   </div>
                   <strong className="text-xs font-bold text-text-primary block mt-1">{b.bank}</strong>
                   <span className="text-2xs text-text-secondary font-mono mt-0.5">{b.number}</span>
-                  <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex justify-between items-baseline">
-                    <span className="text-2xs text-text-secondary">{b.balance == null ? "Status Saldo:" : "Saldo Buku:"}</span>
+                  <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex items-center justify-between gap-2">
+                    <span className="text-2xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Buku:"}</span>
                     {b.balance == null ? (
-                      <span className="rounded-full border border-[#9FD6FF] bg-[#EAF6FF] px-2.5 py-1 text-2xs font-bold text-[#2649B3]">Belum Tersedia</span>
+                      <span className="status-chip whitespace-nowrap">Belum Tersedia</span>
                     ) : (
-                      <strong className="text-sm font-black text-brand-deep-green">{formatMoney(b.balance)}</strong>
+                      <strong className="text-sm font-black text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
                     )}
                   </div>
                 </div>

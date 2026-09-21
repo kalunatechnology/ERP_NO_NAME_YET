@@ -396,13 +396,13 @@ export function MonthlyStackedBarChart({
                     {/* Branded empty state: neutral information, not an error. */}
                     {isZero ? (
                       <div
-                        className="relative flex h-28 w-full flex-col items-center justify-center overflow-hidden rounded-[14px] border border-dashed border-[#9FD6FF] px-1.5 text-center shadow-2xs transition-all duration-200 group-hover:border-[#42ACFB]"
+                        className="relative flex h-28 w-full flex-col items-center justify-center overflow-hidden rounded-[14px] border border-dashed border-[#9FD6FF] px-1 text-center shadow-2xs transition-all duration-200 group-hover:border-[#42ACFB]"
                         style={{
                           background: "repeating-linear-gradient(45deg, #F8FBFF, #F8FBFF 6px, #EAF6FF 6px, #EAF6FF 12px)",
                         }}
                         title={`${item.month}: Belum ada transaksi tercatat`}
                       >
-                        <span className="select-none text-center text-[8px] font-extrabold uppercase leading-3 tracking-tight text-[#2649B3]/70">
+                        <span className="block w-full select-none text-center text-[8px] font-bold uppercase leading-tight tracking-tight text-[#2649B3]/75">
                           Belum<br />tercatat
                         </span>
                       </div>

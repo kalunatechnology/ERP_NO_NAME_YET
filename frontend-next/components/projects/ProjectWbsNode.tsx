@@ -269,13 +269,13 @@ export function ProjectWbsNode({
                             <div className="table-scroll-wrapper rounded-xl border border-gray-100">
                               <table className="data-table w-full min-w-[860px] table-fixed text-left text-xs">
                                 <thead>
-                                  <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider">
-                                    <th className="w-[135px] px-3 py-3 font-bold">Tanggal & Waktu</th>
-                                    <th className="w-[230px] px-3 py-3 font-bold">Input (Aktivitas yang Dikerjakan)</th>
-                                    <th className="w-[180px] px-3 py-3 font-bold">Output (Hasil Kerja)</th>
-                                    <th className="w-[145px] px-3 py-3 font-bold">Status & Progres</th>
-                                    <th className="w-[170px] px-3 py-3 font-bold">Catatan / Kendala</th>
-                                    <th className="w-[100px] px-3 py-3 text-right font-bold">Aksi</th>
+                                  <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b border-gray-200">
+                                    <th className="w-[140px] px-3.5 py-3 font-bold">Tanggal & Waktu</th>
+                                    <th className="w-[230px] px-3.5 py-3 font-bold">Input (Aktivitas)</th>
+                                    <th className="w-[180px] px-3.5 py-3 font-bold">Output (Hasil Kerja)</th>
+                                    <th className="w-[150px] px-3.5 py-3 font-bold">Status & Progres</th>
+                                    <th className="w-[180px] px-3.5 py-3 font-bold">Catatan / Kendala</th>
+                                    <th className="w-[110px] px-3.5 py-3 text-right font-bold">Aksi</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -289,11 +289,11 @@ export function ProjectWbsNode({
 
                                     return (
                                       <tr key={daily.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-50", isBlocked && "bg-red-50/60")}>
-                                        <td className="py-2 px-3 whitespace-nowrap align-top font-semibold text-text-primary">
+                                        <td className="py-2.5 px-3.5 whitespace-nowrap align-top font-semibold text-text-primary">
                                           <div>{daily.planned_date}</div>
                                           <span className="text-2xs text-text-secondary font-normal">{daily.time_slot}</span>
                                         </td>
-                                        <td className="py-2 px-3 align-top max-w-[240px]">
+                                        <td className="py-2.5 px-3.5 align-top max-w-[240px]">
                                           <div className="flex min-w-0 items-start gap-2">
                                             <button
                                               onClick={() => onToggleDailyStatus(daily, canManageDaily)}
@@ -315,22 +315,22 @@ export function ProjectWbsNode({
                                             </div>
                                           </div>
                                         </td>
-                                        <td className="py-2 px-3 align-top max-w-[200px] text-brand-deep-green text-xs">
+                                        <td className="py-2.5 px-3.5 align-top max-w-[200px] text-brand-deep-green text-xs break-words">
                                           {daily.output_result || <span className="text-text-secondary italic text-2xs">-</span>}
                                         </td>
-                                        <td className="py-2 px-3 align-top whitespace-nowrap">
+                                        <td className="py-2.5 px-3.5 align-top whitespace-nowrap">
                                           <span className={cn(
-                                            "badge text-2xs font-bold",
+                                            "badge text-2xs font-bold whitespace-nowrap",
                                             isDone ? "badge-success" : isBlocked ? "badge-danger" : "badge-info"
                                           )}>
                                             {daily.status} ({daily.progress}%)
                                           </span>
                                         </td>
-                                        <td className="py-2 px-3 align-top max-w-[160px] text-2xs">
+                                        <td className="py-2.5 px-3.5 align-top max-w-[180px] text-2xs break-words">
                                           {isBlocked && <div className="text-red-600 font-bold">{daily.block_reason || "Terkendala"}</div>}
                                           <div>{daily.notes || <span className="text-text-secondary italic">-</span>}</div>
                                         </td>
-                                        <td className="py-2 px-3 align-top text-right whitespace-nowrap">
+                                        <td className="py-2.5 px-3.5 align-top text-right whitespace-nowrap min-w-[90px]">
                                           <div className="flex items-center justify-end gap-1.5">
                                             {canManageDaily ? (
                                               <button
@@ -341,7 +341,7 @@ export function ProjectWbsNode({
                                                 <Edit size={11} /> Update
                                               </button>
                                             ) : (
-                                              <span className="inline-flex whitespace-nowrap rounded-lg border border-gray-200 bg-gray-100 px-2 py-1 text-3xs font-medium text-text-secondary">
+                                              <span className="readonly-badge" title="Hanya PIC atau assignee yang dapat mengedit">
                                                 Read only
                                               </span>
                                             )}

@@ -373,7 +373,7 @@ export function ModuleEntitlements({
             placeholder="Cari modul..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-[#94A3B8] outline-none transition focus:border-[#2649B3] focus:bg-white"
+            className="h-10 w-full rounded-[11px] border border-[#E2E8F0] bg-[#F8FAFC] pl-10 pr-4 text-sm text-[#0F172A] placeholder-gray-400 outline-none transition focus:border-[#2649B3] focus:bg-white"
           />
         </div>
       </div>
@@ -394,7 +394,7 @@ export function ModuleEntitlements({
           return (
             <div
               key={item.module_code}
-              className={`flex flex-col justify-between rounded-2xl border p-5 transition shadow-sm ${
+              className={`flex flex-col justify-between rounded-[14px] border p-5 transition shadow-sm ${
                 item.enabled
                   ? "border-[#9FD6FF] bg-white"
                   : "border-[#EFEFEF] bg-[#FDFDFD] opacity-80"
@@ -424,13 +424,13 @@ export function ModuleEntitlements({
                   <button
                     disabled={isToggling || batchLoading}
                     onClick={() => handleToggleModule(item.module_code, item.enabled)}
-                    className={`relative shrink-0 h-6 w-11 rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
+                    className={`relative shrink-0 h-6 w-11 rounded-[10px] transition-colors duration-200 ease-in-out focus:outline-none ${
                       item.enabled ? "bg-[#2649B3]" : "bg-[#CBD5E1]"
                     }`}
                     aria-label={`Toggle ${meta.name}`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm ${
+                      className={`inline-block h-4 w-4 transform rounded-[7px] bg-white transition duration-200 ease-in-out shadow-xs ${
                         item.enabled ? "translate-x-6" : "translate-x-1"
                       }`}
                     />

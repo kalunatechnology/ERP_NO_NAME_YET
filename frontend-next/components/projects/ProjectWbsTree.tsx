@@ -108,11 +108,8 @@ export function ProjectWbsTree({
       <div className="flex items-center justify-between flex-wrap gap-2.5 pb-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-xs font-bold text-text-primary">
-            {userRole === "staff" ? "Task Terkait Saya" : "Main Task → Weekly Plan → Daily Task"}
+            Main Task → Weekly Plan → Daily Task
           </span>
-          {userRole === "staff" && (
-            <span className="hidden text-xs text-text-secondary sm:inline">Paket kerja dan aktivitas yang ditugaskan kepada akun Anda.</span>
-          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap ml-auto">

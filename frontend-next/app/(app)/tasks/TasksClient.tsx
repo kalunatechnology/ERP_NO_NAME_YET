@@ -397,7 +397,7 @@ function TaskRow({
       isOverdue && "bg-amber-50/30",
     )}>
       {/* Project & WBS */}
-      <td className="py-2.5 px-4 align-top">
+      <td className="py-3 px-4 align-top">
         <span className="text-2xs font-extrabold px-1.5 py-0.5 rounded bg-brand-light-green text-brand-deep-green mr-1.5">
           {projectCode}
         </span>
@@ -408,16 +408,16 @@ function TaskRow({
       </td>
 
       {/* Date & Time */}
-      <td className="py-2.5 px-4 align-top whitespace-nowrap">
+      <td className="py-3 px-4 align-top whitespace-nowrap">
         <div className={cn("text-xs font-medium", isOverdue ? "text-red-600 font-bold" : "text-text-primary")}>
           {taskDate || "-"}
-          {isOverdue && <AlertTriangle size={12} className="ml-1 text-amber-600" />}
+          {isOverdue && <AlertTriangle size={12} className="ml-1 text-amber-600 inline" />}
         </div>
         <div className="text-2xs text-text-secondary">{task.time_slot || "-"}</div>
       </td>
 
       {/* Activity */}
-      <td className="py-2.5 px-4 align-top max-w-56">
+      <td className="py-3 px-4 align-top max-w-56">
         <div className="flex items-start gap-2">
           <button
             onClick={isAllowed ? onToggle : () => toast.error("Akses Ditolak: hanya pemilik task yang dapat mengubah task ini.")}
@@ -443,19 +443,19 @@ function TaskRow({
       </td>
 
       {/* Output */}
-      <td className="py-2.5 px-4 align-top max-w-40">
+      <td className="py-3 px-4 align-top max-w-40">
         <span className={cn("text-xs", task.output_result ? "text-brand-deep-green" : "text-text-secondary italic text-2xs")}>
           {task.output_result || "Belum diisi"}
         </span>
       </td>
 
       {/* Status */}
-      <td className="py-2.5 px-4 align-top">
+      <td className="py-3 px-4 align-top">
         <StatusBadge status={task.status || "PENDING"} progress={task.progress} />
       </td>
 
       {/* Actions */}
-      <td className="py-2.5 px-4 align-top">
+      <td className="py-3 px-4 align-top">
         {isAllowed ? (
           <button
             onClick={onEdit}
@@ -465,7 +465,7 @@ function TaskRow({
             <Pencil size={13} />
           </button>
         ) : (
-          <span className="inline-flex whitespace-nowrap rounded-lg border border-gray-200 bg-gray-100 px-2 py-1 text-3xs text-text-secondary" title="Hanya PIC / Owner atau PM yang dapat mengedit">
+          <span className="readonly-badge" title="Hanya PIC / Owner atau PM yang dapat mengedit">
             Read only
           </span>
         )}
@@ -765,12 +765,12 @@ export default function TasksClient() {
     <table className="w-full min-w-[760px] text-left text-xs">
       <thead>
         <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b border-gray-200">
-          <th className="py-2.5 px-4 font-bold">Proyek & WBS</th>
-          <th className="py-2.5 px-4 font-bold">Tanggal & Waktu</th>
-          <th className="py-2.5 px-4 font-bold">Aktivitas / Task</th>
+          <th className="py-3 px-4 font-bold">Proyek & WBS</th>
+          <th className="py-3 px-4 font-bold">Tanggal & Waktu</th>
+          <th className="py-3 px-4 font-bold">Aktivitas / Task</th>
           <th className="whitespace-nowrap px-4 py-3 font-bold">Output Hasil</th>
           <th className="whitespace-nowrap px-4 py-3 font-bold">Status</th>
-          <th className="py-2.5 px-4 font-bold"></th>
+          <th className="py-3 px-4 font-bold"></th>
         </tr>
       </thead>
       <tbody>
@@ -910,17 +910,35 @@ export default function TasksClient() {
           ))}
         </div>
 
-        {/* View Mode toggle */}
-        <div className="flex flex-shrink-0 items-center gap-1 rounded-xl border border-text-tertiary bg-gray-50 p-1">
+        {/* View Mode toggle: Segmented Control [ Semua ] [ Grouped ] [ List ] */}
+        <div className="segmented-control">
           <button
-            onClick={() => setViewMode("grouped")}
-            className={cn("rounded-lg px-2.5 py-1 text-2xs font-semibold transition-all", viewMode === "grouped" ? "bg-brand-green text-white shadow-sm" : "text-text-secondary")}
+            type="button"
+            onClick={() => setActiveFilter("ALL")}
+            className={cn(
+              "segmented-control-item",
+              activeFilter === "ALL" && "segmented-control-item-active"
+            )}
+          >
+            Semua
+          </button>
+          <button
+            type="button"
+            onClick={() => { setViewMode("grouped"); if (activeFilter === "ALL") setActiveFilter("TODAY"); }}
+            className={cn(
+              "segmented-control-item",
+              viewMode === "grouped" && activeFilter !== "ALL" && "segmented-control-item-active"
+            )}
           >
             Grouped
           </button>
           <button
-            onClick={() => setViewMode("list")}
-            className={cn("rounded-lg px-2.5 py-1 text-2xs font-semibold transition-all", viewMode === "list" ? "bg-brand-green text-white shadow-sm" : "text-text-secondary")}
+            type="button"
+            onClick={() => { setViewMode("list"); if (activeFilter === "ALL") setActiveFilter("TODAY"); }}
+            className={cn(
+              "segmented-control-item",
+              viewMode === "list" && activeFilter !== "ALL" && "segmented-control-item-active"
+            )}
           >
             List
           </button>

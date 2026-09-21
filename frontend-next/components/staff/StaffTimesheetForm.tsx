@@ -152,26 +152,26 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         <label className="text-xs font-semibold text-text-secondary">
-          Proyek <span className="text-red-500">*</span>
+          Proyek <span className="form-required">*</span>
           <select value={projectId} onChange={(event) => { setProjectId(event.target.value); setTaskId(""); }} className="input mt-1 text-xs" required>
             <option value="">Pilih proyek yang ditugaskan</option>
             {projects.map((project) => <option key={project.id} value={String(project.id)}>{project.project_code || project.code} — {project.project_name || project.name}</option>)}
           </select>
         </label>
         <label className="text-xs font-semibold text-text-secondary">
-          Task proyek (opsional)
+          Task proyek <span className="form-optional">(opsional)</span>
           <select value={taskId} onChange={(event) => setTaskId(event.target.value)} className="input mt-1 text-xs" disabled={!projectId || tasks.length === 0}>
             <option value="">Tanpa task spesifik</option>
             {tasks.map((task) => <option key={task.id} value={String(task.id)}>{task.title}</option>)}
           </select>
         </label>
         <label className="text-xs font-semibold text-text-secondary">
-          Tanggal kerja <span className="text-red-500">*</span>
+          Tanggal kerja <span className="form-required">*</span>
           <input type="date" value={workDate} max={localDateKey()} onChange={(event) => setWorkDate(event.target.value)} className="input mt-1 text-xs" required />
         </label>
         <div className="text-xs font-semibold text-text-secondary">
           Kehadiran &amp; timer kerja
-          <div className="mt-1 flex h-10 items-center justify-between rounded-xl border border-[#9FD6FF] bg-[#F8FBFF] px-2">
+          <div className="mt-1 flex h-10 items-center justify-between rounded-[11px] border border-[#9FD6FF] bg-[#F8FBFF] px-2.5">
             <span className="font-mono text-sm font-bold text-text-primary">{workElapsedLabel}</span>
             {!workTimerRunning ? (
               <button type="button" onClick={workStartedAt ? undefined : startWork} disabled={Boolean(workEndedAt)} className="inline-flex items-center gap-1 rounded-lg bg-[#EAF6FF] px-2.5 py-1.5 text-2xs font-bold text-[#2649B3] disabled:opacity-60">
@@ -181,7 +181,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
               <button type="button" onClick={stopWork} className="inline-flex items-center gap-1 rounded-lg bg-[#2649B3] px-2.5 py-1.5 text-2xs font-bold text-white"><Square size={12} /> Akhiri Kerja</button>
             )}
           </div>
-          <span className="mt-1 flex items-center gap-1 text-3xs font-normal text-[#4F5050]"><MonitorSmartphone size={11} /> Tersedia melalui browser desktop dan mobile.</span>
+          <span className="form-helper flex items-center gap-1"><MonitorSmartphone size={11} /> Tersedia melalui browser desktop dan mobile.</span>
         </div>
         <label className="text-xs font-semibold text-text-secondary">
           Total jam terverifikasi
@@ -189,7 +189,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
         </label>
         <div className="text-xs font-semibold text-text-secondary">
           Timer lembur terverifikasi
-          <div className="mt-1 flex h-10 items-center justify-between rounded-xl border border-text-tertiary bg-white px-2">
+          <div className="mt-1 flex h-10 items-center justify-between rounded-[11px] border border-text-tertiary bg-white px-2.5">
             <span className="font-mono text-sm font-bold text-text-primary">{elapsedLabel}</span>
             {!timerRunning ? (
               <button type="button" onClick={startOvertime} disabled={!workEndedAt || Boolean(overtimeEndedAt)} className="inline-flex items-center gap-1 rounded-lg bg-[#EAF6FF] px-2.5 py-1.5 text-2xs font-bold text-[#2649B3] disabled:opacity-50"><Play size={12} /> {overtimeEndedAt ? "Terkunci" : "Mulai Lembur"}</button>
@@ -198,17 +198,36 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
             )}
           </div>
         </div>
-        <label className="text-xs font-semibold text-text-secondary">
-          Alasan lembur
-          <input value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} placeholder="Opsional, isi bila ada lembur" className="input mt-1 text-xs placeholder:text-gray-400" />
+      </div>
+
+      {/* Horizontal overtime row on desktop (Alasan Lembur | Bukti Lembur) */}
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <label className="text-xs font-semibold text-text-secondary flex flex-col justify-start">
+          <span>Alasan lembur</span>
+          <input
+            value={overtimeReason}
+            onChange={(event) => setOvertimeReason(event.target.value)}
+            placeholder="Opsional, isi bila ada lembur"
+            className="input mt-1 text-xs"
+          />
+          <span className="form-helper">Opsional, isi bila ada lembur</span>
         </label>
-        <label className="text-xs font-semibold text-text-secondary md:col-span-1 xl:col-span-2">
-          Bukti penyelesaian lembur {Number(overtimeHours) > 0 ? <span className="text-red-500">*</span> : <span className="font-normal text-gray-400">(opsional)</span>}
-          <span className="mt-1 flex items-center gap-2 rounded-xl border border-text-tertiary bg-white px-3">
-            <Link2 size={14} className="shrink-0 text-[#2649B3]" />
-            <input type="url" value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Tempel link dokumen, Drive, hasil kerja, atau tiket" className="h-10 w-full bg-transparent text-xs outline-none placeholder:text-gray-400" required={Number(overtimeHours) > 0} />
+        <label className="text-xs font-semibold text-text-secondary flex flex-col justify-start">
+          <span>
+            Bukti penyelesaian lembur {Number(overtimeHours) > 0 ? <span className="form-required">*</span> : <span className="form-optional">(opsional)</span>}
           </span>
-          <span className="mt-1 block text-3xs font-normal text-gray-400">Timestamp kerja, aktivitas terakhir, dan bukti lembur dikirim otomatis sehingga durasi tidak dapat diisi manual.</span>
+          <span className="mt-1 flex h-[38px] items-center gap-2 rounded-[11px] border border-text-tertiary bg-white px-3 focus-within:border-brand-green focus-within:ring-2 focus-within:ring-brand-green/20 transition-all">
+            <Link2 size={14} className="shrink-0 text-[#2649B3]" />
+            <input
+              type="url"
+              value={evidenceUrl}
+              onChange={(event) => setEvidenceUrl(event.target.value)}
+              placeholder="Tempel link dokumen, Drive, hasil kerja, atau tiket"
+              className="h-full w-full bg-transparent text-xs outline-none placeholder:text-gray-400"
+              required={Number(overtimeHours) > 0}
+            />
+          </span>
+          <span className="form-helper">Timestamp &amp; bukti lembur dikirim otomatis</span>
         </label>
       </div>
 

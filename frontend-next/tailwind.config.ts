@@ -92,6 +92,7 @@ const config: Config = {
       /* ── Box Shadow ──────────────────────────────────── */
       boxShadow: {
         "2xs":    "0 1px 2px rgba(0,0,0,0.03)",
+        xs:       "0 1px 2px rgba(0,0,0,0.05)",
         card:     "0 1px 3px rgba(0,0,0,0.04)",
         "card-md":"0 4px 12px rgba(38,73,179,0.08)",
         sidebar:  "2px 0 8px rgba(0,0,0,0.04)",

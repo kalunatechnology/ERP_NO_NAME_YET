@@ -467,12 +467,14 @@ export default function ManagementReportsClient() {
 
             <form onSubmit={handleSaveReport} className="mt-5 space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-[#090909] mb-1">Judul Laporan *</label>
+                <label className="block font-semibold text-[#090909] mb-1">
+                  Judul Laporan <span className="form-required">*</span>
+                </label>
                 <input
                   required
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                  className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#2649B3] focus:outline-none"
                   placeholder="Contoh: Laporan Operasional Proyek Pekan ke-3"
                 />
               </div>
@@ -483,7 +485,7 @@ export default function ManagementReportsClient() {
                   <select
                     value={formData.period_type}
                     onChange={(e) => setFormData({ ...formData, period_type: e.target.value })}
-                    className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
                   >
                     <option value="WEEKLY">Mingguan (Weekly)</option>
                     <option value="MONTHLY">Bulanan (Monthly)</option>
@@ -491,23 +493,27 @@ export default function ManagementReportsClient() {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#090909] mb-1">Tanggal Mulai *</label>
+                  <label className="block font-semibold text-[#090909] mb-1">
+                    Tanggal Mulai <span className="form-required">*</span>
+                  </label>
                   <input
                     type="date"
                     required
                     value={formData.period_start}
                     onChange={(e) => setFormData({ ...formData, period_start: e.target.value })}
-                    className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#090909] mb-1">Tanggal Akhir *</label>
+                  <label className="block font-semibold text-[#090909] mb-1">
+                    Tanggal Akhir <span className="form-required">*</span>
+                  </label>
                   <input
                     type="date"
                     required
                     value={formData.period_end}
                     onChange={(e) => setFormData({ ...formData, period_end: e.target.value })}
-                    className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
                   />
                 </div>
               </div>
@@ -518,7 +524,7 @@ export default function ManagementReportsClient() {
                   rows={3}
                   value={formData.executive_summary}
                   onChange={(e) => setFormData({ ...formData, executive_summary: e.target.value })}
-                  className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                  className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#2649B3] focus:outline-none"
                   placeholder="Ringkasan eksekutif performa dan capaian kunci..."
                 />
               </div>
@@ -530,7 +536,7 @@ export default function ManagementReportsClient() {
                     rows={2}
                     value={formData.achievements}
                     onChange={(e) => setFormData({ ...formData, achievements: e.target.value })}
-                    className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#2649B3] focus:outline-none"
                     placeholder="Milestone tercapai, task penting selesai..."
                   />
                 </div>
@@ -540,7 +546,7 @@ export default function ManagementReportsClient() {
                     rows={2}
                     value={formData.blockers}
                     onChange={(e) => setFormData({ ...formData, blockers: e.target.value })}
-                    className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#2649B3] focus:outline-none"
                     placeholder="Hambatan lapangan, keterlambatan vendor..."
                   />
                 </div>
@@ -553,7 +559,7 @@ export default function ManagementReportsClient() {
                     rows={2}
                     value={formData.risks}
                     onChange={(e) => setFormData({ ...formData, risks: e.target.value })}
-                    className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#2649B3] focus:outline-none"
                     placeholder="Potensi risiko ke depan dan langkah antisipasi..."
                   />
                 </div>
@@ -563,7 +569,7 @@ export default function ManagementReportsClient() {
                     rows={2}
                     value={formData.decisions_needed}
                     onChange={(e) => setFormData({ ...formData, decisions_needed: e.target.value })}
-                    className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                    className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#2649B3] focus:outline-none"
                     placeholder="Persetujuan perubahan budget, eskalasi izin..."
                   />
                 </div>
@@ -575,7 +581,7 @@ export default function ManagementReportsClient() {
                   rows={2}
                   value={formData.next_plan}
                   onChange={(e) => setFormData({ ...formData, next_plan: e.target.value })}
-                  className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                  className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 placeholder:text-gray-400 focus:border-[#2649B3] focus:outline-none"
                   placeholder="Target kerja dan prioritas operasional mendatang..."
                 />
               </div>
@@ -781,14 +787,20 @@ export default function ManagementReportsClient() {
 
             <div>
               <label className="block text-xs font-semibold text-[#090909] mb-1">
-                {reviewAction === "REVISION" ? "Catatan Revisi *" : "Catatan Direksi (Opsional)"}
+                {reviewAction === "REVISION" ? (
+                  <>
+                    Catatan Revisi <span className="form-required">*</span>
+                  </>
+                ) : (
+                  "Catatan Direksi (Opsional)"
+                )}
               </label>
               <textarea
                 required={reviewAction === "REVISION"}
                 rows={4}
                 value={reviewNote}
                 onChange={(e) => setReviewNote(e.target.value)}
-                className="w-full rounded-xl border border-[#D9D9D9] p-3 text-xs focus:border-[#2649B3] focus:outline-none"
+                className="w-full rounded-[11px] border border-[#D9D9D9] p-3 text-xs placeholder:text-gray-400 focus:border-[#2649B3] focus:outline-none"
                 placeholder={reviewAction === "REVISION" ? "Tuliskan poin yang perlu direvisi..." : "Tuliskan arahan / catatan tambahan..."}
               />
             </div>

@@ -132,12 +132,52 @@
     @apply text-text-primary border-text-tertiary/70 bg-bg-light/40;
   }
 
-  /* Input */
+  /* Input standard (11px radius, light gray placeholder) */
   .input {
-    @apply w-full px-3 py-2 rounded-md border border-text-tertiary
+    @apply w-full px-3 py-2 rounded-[11px] border border-text-tertiary
            text-sm text-text-primary bg-white
            focus:outline-none focus:border-brand-green focus:ring-2 focus:ring-brand-green/20
-           transition-all duration-150 ease-out placeholder:text-text-secondary;
+           transition-all duration-150 ease-out placeholder:text-gray-400;
+  }
+
+  /* Form standards */
+  .form-required {
+    @apply ml-0.5 text-red-500 font-semibold;
+  }
+  .form-helper {
+    @apply mt-1 text-[11px] leading-relaxed text-gray-400;
+  }
+  .form-optional {
+    @apply text-[11px] text-gray-400 font-normal;
+  }
+
+  /* Badges & Chips */
+  .readonly-badge {
+    @apply inline-flex items-center whitespace-nowrap rounded-lg
+           border border-gray-200 bg-gray-100
+           px-2 py-1 text-[10px] font-medium text-gray-500 select-none;
+  }
+  .status-chip {
+    @apply inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-[10px]
+           text-xs font-medium border select-none;
+  }
+
+  /* Segmented Controls (outer 12-14px, inner 8-10px) */
+  .segmented-control {
+    @apply inline-flex items-center p-1 bg-gray-100 rounded-[12px]
+           border border-gray-200 gap-1 select-none;
+  }
+  .segmented-control-item {
+    @apply px-3 py-1.5 text-xs font-medium rounded-[8px]
+           transition-all duration-150 text-gray-600 hover:text-gray-900;
+  }
+  .segmented-control-item-active {
+    @apply bg-white text-gray-900 font-semibold shadow-xs;
+  }
+
+  /* Compact Cards (max 14px radius) */
+  .compact-card {
+    @apply rounded-[14px] border border-text-tertiary bg-white p-3 shadow-2xs;
   }
 
   /* Table */

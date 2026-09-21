@@ -16,6 +16,7 @@ import {
   LogOut, ChevronRight, Clock, FileText, X
 } from "lucide-react";
 import { useAuth, getRoleLabel, getRoleBadgeStyle } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { feedApi, UserRecentItemDto } from "@/lib/api/feed.api";
 import { cn } from "@/lib/utils";
 import { canAccessRoute, canRequestApi } from "@/lib/access/module-contract";
@@ -43,6 +44,7 @@ const NAV_ICONS: Record<string, React.ElementType> = {
 export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarProps = {}) {
   const pathname = usePathname();
   const { user, userRole, company, logout } = useAuth();
+  const { t } = useLanguage();
   const [recentItems, setRecentItems] = useState<UserRecentItemDto[]>([]);
   const [recentCompany, setRecentCompany] = useState<string | null>(null);
 
@@ -131,7 +133,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
         {/* Navigation Section */}
         <div className="flex flex-col gap-0.5">
           <p className="text-[10px] font-extrabold text-[#4F5050] uppercase tracking-wider px-2 mb-1">
-            Menu
+            {t("Menu")}
           </p>
           <nav className="flex flex-col gap-0.5" role="navigation">
             {navItems.map(({ href, label, icon: Icon }) => {
@@ -159,7 +161,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
                     )}
                     aria-hidden="true"
                   />
-                  <span className="flex-1 truncate text-xs">{label}</span>
+                  <span className="flex-1 truncate text-xs">{t(label)}</span>
                   {isActive && (
                     <ChevronRight size={11} className="text-[#2649B3] opacity-60 flex-shrink-0 ml-auto" />
                   )}
@@ -174,7 +176,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
           <div className="flex flex-col gap-1 pt-2 border-t border-[#EFEFEF]">
             <p className="text-[10px] font-extrabold text-[#4F5050] uppercase tracking-wider px-2 flex items-center gap-1.5 mb-0.5">
               <Clock size={10} className="text-[#294BB2]" />
-              <span>Recently Opened</span>
+              <span>{t("Recently Opened")}</span>
             </p>
             <div className="flex flex-col gap-0.5">
               {visibleRecentItems.map((item) => (

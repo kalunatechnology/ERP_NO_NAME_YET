@@ -837,7 +837,7 @@ export function AccessAdministration() {
                       return (
                         <div
                           key={module.module_code}
-                          className="grid gap-3 rounded-2xl border border-[#EFEFEF] p-4 xl:grid-cols-[minmax(210px,1fr)_auto] xl:items-center"
+                          className="grid gap-3 rounded-[14px] border border-[#EFEFEF] p-4 xl:grid-cols-[minmax(210px,1fr)_auto] xl:items-center"
                         >
                           <div>
                             <div className="flex items-center gap-2">
@@ -848,7 +848,7 @@ export function AccessAdministration() {
                             </div>
                             <p className="ml-9 mt-1 text-xs text-[#4F5050]">{meta.description}</p>
                           </div>
-                          <div className="grid grid-cols-2 gap-1 rounded-xl bg-[#FDFDFD] p-1 sm:grid-cols-4">
+                          <div className="segmented-control grid grid-cols-2 gap-1 p-1 sm:grid-cols-4">
                             {choices.map((choice) => {
                               const Icon = choice.icon;
                               const checked = current === choice.mode;
@@ -857,9 +857,9 @@ export function AccessAdministration() {
                                   key={choice.mode}
                                   disabled={saving || selectedUser.id === user?.id}
                                   onClick={() => setUserAccess(module.module_code, choice.mode)}
-                                  className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${
+                                  className={`segmented-control-item min-h-9 px-2.5 ${
                                     checked
-                                      ? "bg-white text-[#2649B3] shadow-sm ring-1 ring-[#EAF6FF]"
+                                      ? "segmented-control-item-active ring-1 ring-[#9FD6FF]"
                                       : "text-[#4F5050] hover:text-[#2649B3]"
                                   } disabled:cursor-not-allowed disabled:opacity-50`}
                                 >
@@ -905,7 +905,7 @@ export function AccessAdministration() {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <input
               required
-              className="h-11 rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm placeholder:text-gray-400 outline-none focus:border-[#42ACFB]"
               placeholder="Nama lengkap *"
               value={invite.name}
               onChange={(e) => setInvite({ ...invite, name: e.target.value })}
@@ -913,7 +913,7 @@ export function AccessAdministration() {
             <input
               required
               type="email"
-              className="h-11 rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm placeholder:text-gray-400 outline-none focus:border-[#42ACFB]"
               placeholder="Email *"
               value={invite.email}
               onChange={(e) => setInvite({ ...invite, email: e.target.value })}
@@ -922,14 +922,14 @@ export function AccessAdministration() {
               required
               minLength={8}
               type="password"
-              className="h-11 rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm placeholder:text-gray-400 outline-none focus:border-[#42ACFB]"
               placeholder="Password sementara (min. 8 karakter) *"
               value={invite.password}
               onChange={(e) => setInvite({ ...invite, password: e.target.value })}
             />
             <select
               required
-              className="h-11 rounded-xl border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
+              className="h-11 rounded-[11px] border border-[#EFEFEF] px-3 text-sm outline-none focus:border-[#42ACFB]"
               value={invite.role_code}
               onChange={(e) => setInvite({ ...invite, role_code: e.target.value })}
             >

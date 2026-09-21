@@ -92,7 +92,7 @@ export function ProjectMilestoneCard({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#EFEFEF] rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-[220px_1fr] lg:grid-cols-[250px_1fr] shadow-xs select-none",
+        "w-full bg-white border border-[#EFEFEF] rounded-[14px] overflow-hidden grid grid-cols-1 md:grid-cols-[220px_1fr] lg:grid-cols-[250px_1fr] shadow-xs select-none",
         className
       )}
     >
@@ -138,17 +138,37 @@ export function ProjectMilestoneCard({
           )}
         </div>
         {projects.length > 0 && (
-          <div className="mt-auto flex flex-col gap-2 border-t border-[#DCEBFA] pt-3 text-2xs text-[#4F5050]">
+          <div className="mt-auto flex flex-col gap-1.5 border-t border-[#DCEBFA] pt-2.5 text-2xs text-[#4F5050]">
             <label className="flex items-center justify-between gap-2">
-              Per halaman
-              <select value={projectPageSize} onChange={(event) => { setProjectPageSize(Number(event.target.value)); setProjectPage(1); }} className="rounded-lg border border-[#D9D9D9] bg-white px-2 py-1 font-semibold text-[#090909] outline-none">
+              <span>Per halaman</span>
+              <select
+                value={projectPageSize}
+                onChange={(event) => { setProjectPageSize(Number(event.target.value)); setProjectPage(1); }}
+                className="h-7 rounded-lg border border-[#D9D9D9] bg-white px-2 py-0.5 text-2xs font-semibold text-[#090909] outline-none focus:border-[#2649B3]"
+              >
                 {[5, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}
               </select>
             </label>
             <div className="flex items-center justify-between gap-2">
-              <button type="button" onClick={() => setProjectPage((value) => Math.max(1, value - 1))} disabled={projectPage === 1} className="rounded-lg border border-[#D9D9D9] bg-white p-1.5 disabled:opacity-40" aria-label="Halaman proyek sebelumnya"><ChevronLeft size={13} /></button>
+              <button
+                type="button"
+                onClick={() => setProjectPage((value) => Math.max(1, value - 1))}
+                disabled={projectPage === 1}
+                className="rounded-lg border border-[#D9D9D9] bg-white p-1 text-[#4F5050] transition-colors hover:bg-gray-50 disabled:opacity-40"
+                aria-label="Halaman proyek sebelumnya"
+              >
+                <ChevronLeft size={13} />
+              </button>
               <span className="font-semibold">{projectPage} / {projectPageCount}</span>
-              <button type="button" onClick={() => setProjectPage((value) => Math.min(projectPageCount, value + 1))} disabled={projectPage === projectPageCount} className="rounded-lg border border-[#D9D9D9] bg-white p-1.5 disabled:opacity-40" aria-label="Halaman proyek berikutnya"><ChevronRight size={13} /></button>
+              <button
+                type="button"
+                onClick={() => setProjectPage((value) => Math.min(projectPageCount, value + 1))}
+                disabled={projectPage === projectPageCount}
+                className="rounded-lg border border-[#D9D9D9] bg-white p-1 text-[#4F5050] transition-colors hover:bg-gray-50 disabled:opacity-40"
+                aria-label="Halaman proyek berikutnya"
+              >
+                <ChevronRight size={13} />
+              </button>
             </div>
           </div>
         )}
@@ -188,7 +208,7 @@ export function ProjectMilestoneCard({
                 <div
                   key={m.id}
                   className={cn(
-                    "w-[240px] sm:w-[270px] rounded-[16px] p-3.5 flex flex-col gap-2.5 transition-all flex-shrink-0 shadow-2xs",
+                    "w-[240px] sm:w-[270px] rounded-[14px] p-3.5 flex flex-col gap-2.5 transition-all flex-shrink-0 shadow-2xs",
                     m.isActive
                       ? "bg-[#EAF6FF] border border-[#9FD6FF]"
                       : "bg-white border border-[#EFEFEF] hover:border-neutral-300"

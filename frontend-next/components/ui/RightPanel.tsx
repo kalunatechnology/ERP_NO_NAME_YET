@@ -117,8 +117,8 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
               </div>
 
               <div className="mt-1 flex items-center gap-1.5 pl-6">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#66D575]" aria-hidden="true" />
-                <span className="text-[10px] font-semibold leading-none text-[#4F5050]">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-[#66D575] animate-pulse" aria-hidden="true" />
+                <span className="text-[11px] font-semibold leading-none text-[#4F5050] whitespace-nowrap">
                   Real Time
                 </span>
               </div>
@@ -178,11 +178,11 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                 </div>
               )) : alerts.length === 0 ? (
                 <div
-                  className="flex min-h-[72px] items-center rounded-lg border border-[#D9D9D9] bg-white px-4 py-3 text-[10px] font-medium text-[#4F5050]"
+                  className="flex min-h-[80px] items-center justify-center rounded-[11px] border border-[#D9D9D9] bg-white px-4 py-4 text-center text-xs font-medium text-[#4F5050]"
                   role="status"
                   aria-live="polite"
                 >
-                  Belum ada alert baru.
+                  Belum ada alert baru saat ini.
                 </div>
               ) : alerts.map((item) => (
                 <button
@@ -190,19 +190,20 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                   type="button"
                   onClick={() => openAlert(item)}
                   className={cn(
-                    "flex h-[70px] w-full flex-col justify-center rounded-md border px-3 text-left transition-all hover:-translate-y-0.5 hover:border-[#9FD6FF] hover:shadow-sm",
-                    item.isHighlighted ? "border-transparent bg-[#EAF6FF]" : "border-[#D9D9D9] bg-white"
+                    "flex min-h-[72px] w-full flex-col justify-center rounded-[10px] border px-3.5 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-[#9FD6FF] hover:shadow-xs",
+                    item.isHighlighted ? "border-[#9FD6FF] bg-[#EAF6FF]" : "border-[#E5E7EB] bg-white"
                   )}
                   title={item.title}
                 >
                   <span className="flex w-full items-center justify-between gap-2">
                     <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-bold text-[#090909]">
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#66D575]" />{item.category}
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#66D575]" />
+                      <span className="truncate">{item.category}</span>
                     </span>
-                    <span className="shrink-0 text-[9px] font-medium text-[#4F5050]">{item.time}</span>
+                    <span className="shrink-0 text-[10px] font-medium text-[#4F5050] whitespace-nowrap">{item.time}</span>
                   </span>
-                  <strong className="mt-1 truncate text-[11px] leading-tight text-[#090909]">{item.title}</strong>
-                  <span className="mt-1 truncate text-[10px] leading-tight text-[#4F5050]">{item.snippet}</span>
+                  <strong className="mt-1 truncate text-xs leading-tight text-[#090909] font-bold">{item.title}</strong>
+                  <span className="mt-1 truncate text-[10px] leading-relaxed text-[#4F5050]">{item.snippet}</span>
                 </button>
               ))}
             </div>
@@ -255,7 +256,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
             <div className="flex h-16 w-16 items-center justify-center rounded-full text-xl font-bold text-[#2649B3] shadow-sm" style={{ background: selectedContact.color }}>{selectedContact.initials}</div>
             <div><h3 className="text-base font-bold text-[#090909]">{selectedContact.name}</h3><p className="mt-0.5 text-xs text-[#4F5050]">{selectedContact.role}</p></div>
             {selectedContact.email && (
-              <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-[#D9D9D9] bg-[#FDFDFD] p-3 text-xs">
+              <div className="flex w-full items-center justify-between gap-2 rounded-[11px] border border-[#D9D9D9] bg-[#FDFDFD] p-3 text-xs">
                 <div className="flex min-w-0 items-center gap-2 text-[#090909]"><Mail size={14} className="shrink-0 text-[#2649B3]" /><span className="truncate">{selectedContact.email}</span></div>
                 <button type="button" onClick={() => copyContactEmail(selectedContact.email)} className="shrink-0 rounded-lg p-1.5 text-[#4F5050] hover:bg-white hover:text-[#2649B3]" title="Salin email">{copiedEmail ? <Check size={14} /> : <Copy size={14} />}</button>
               </div>

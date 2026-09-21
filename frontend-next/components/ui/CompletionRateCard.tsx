@@ -75,7 +75,7 @@ export function CompletionRateCard({
             return (
               <div
                 key={item.id}
-                className="flex flex-col justify-between gap-2.5 w-full bg-[#FDFDFD] p-3.5 rounded-2xl border border-[#EFEFEF] transition-all hover:bg-[#EAF6FF]/40"
+                className="flex flex-col justify-between gap-2 w-full bg-[#FDFDFD] p-3 rounded-[14px] border border-[#EFEFEF] transition-all hover:bg-[#EAF6FF]/40 shadow-2xs"
               >
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span
@@ -84,13 +84,13 @@ export function CompletionRateCard({
                   >
                     {item.industry}
                   </span>
-                  <span className="font-extrabold text-[#2649B3] bg-[#EAF6FF] border border-[#9FD6FF] px-2.5 py-0.5 rounded-full text-2xs tabular-nums flex-shrink-0">
+                  <span className="font-extrabold text-[#2649B3] bg-[#EAF6FF] border border-[#9FD6FF] px-2 py-0.5 rounded-full text-2xs tabular-nums flex-shrink-0 ml-1">
                     {Math.round(val)}%
                   </span>
                 </div>
 
                 {/* Progress Bar Track */}
-                <div className="w-full h-2.5 bg-[#EFEFEF] rounded-full overflow-hidden p-0.5 shadow-2xs">
+                <div className="w-full h-2.5 bg-[#EFEFEF] rounded-full overflow-hidden p-0.5 shadow-2xs my-0.5">
                   <div
                     className="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-[#2649B3] to-[#294BB2]"
                     style={{ width: `${val}%` }}
