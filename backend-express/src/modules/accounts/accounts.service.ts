@@ -59,14 +59,29 @@ export class AccountsService {
     }
 
     const lookupStartedAt = performance.now();
+    // Normal signup/profile flows store normalized lowercase identifiers. Keep
+    // that common login path index-friendly; case-insensitive comparison wraps
+    // both columns in LOWER() and can force a full user-table scan.
     let user = await prisma.iam_user.findFirst({
       where: {
         OR: [
-          { email: { equals: cleanId, mode: 'insensitive' } },
-          { username: { equals: cleanId, mode: 'insensitive' } },
+          { email: cleanId },
+          { username: cleanId },
         ],
       },
     });
+    // Compatibility fallback for legacy rows created before identifier
+    // normalization was enforced.
+    if (!user) {
+      user = await prisma.iam_user.findFirst({
+        where: {
+          OR: [
+            { email: { equals: cleanId, mode: 'insensitive' } },
+            { username: { equals: cleanId, mode: 'insensitive' } },
+          ],
+        },
+      });
+    }
     const lookupMs = performance.now() - lookupStartedAt;
     if (lookupMs > 5000) console.warn(`[auth-latency] stage=user-lookup duration_ms=${lookupMs.toFixed(0)}`);
 

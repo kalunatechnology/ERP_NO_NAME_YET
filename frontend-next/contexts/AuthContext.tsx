@@ -7,7 +7,7 @@
 "use client";
 
 import React, {
-  createContext, useContext, useEffect, useReducer, useCallback, ReactNode,
+  createContext, useContext, useEffect, useReducer, useCallback, useRef, ReactNode,
 } from "react";
 import {
   changeActiveRole, loginUser, logoutUser, getMyProfile, getCompanies, UserProfile,
@@ -163,6 +163,33 @@ function assignedCompanyItems(user: UserProfile): CompanyItem[] {
   }];
 }
 
+/** Only values that can change application identity, access, or visible profile
+ * state participate in the comparison. Sorting makes equivalent API payloads
+ * stable even when PostgreSQL returns array rows in a different order. */
+function profileStateSignature(user: UserProfile | null): string {
+  if (!user) return "";
+  const value = user as UserProfile & Record<string, unknown>;
+  const roles = (user.roles || []).map((role) => ({
+    role_code: normalizeRoleCode(role.role_code || role.role || ""),
+    company_id: role.company_id == null ? null : String(role.company_id),
+  })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return JSON.stringify({
+    id: String(user.id),
+    email: user.email,
+    username: user.username || "",
+    full_name: user.full_name || "",
+    company_id: user.company_id || null,
+    active_role_code: normalizeRoleCode(user.active_role_code || ""),
+    enabled_modules: [...(user.enabled_modules || [])].map(String).sort(),
+    delegated_modules: [...(user.delegated_modules || [])].map(String).sort(),
+    is_superuser: Boolean(user.is_superuser),
+    is_staff: Boolean(user.is_staff),
+    is_active: value.is_active ?? true,
+    status: value.status ?? "ACTIVE",
+    roles,
+  });
+}
+
 /**
  * authReducer coordinates the UI behavior represented by this function.
  *
@@ -232,6 +259,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
     error: null,
   });
+  const latestStateRef = useRef(state);
+  latestStateRef.current = state;
+  const profileRefreshPromiseRef = useRef<Promise<void> | null>(null);
+  const lastProfileRefreshAtRef = useRef(0);
 
   // API 401 handling stays on the active route. The app shell observes this
   // state and replaces protected content with an in-place session notice.
@@ -253,28 +284,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    const user = await getMyProfile();
-    const userRole = detectRole(user);
-    const assignedCompany = user.company_id || user.roles?.[0]?.company_id || null;
-    const activeCompany = userRole === "super_admin" ? state.company : assignedCompany;
-    if (userRole !== "super_admin") {
-      if (activeCompany) {
-        localStorage.setItem("erp.company", String(activeCompany));
-        localStorage.setItem("active_company_id", String(activeCompany));
-      } else {
-        localStorage.removeItem("erp.company");
-        localStorage.removeItem("active_company_id");
+    if (profileRefreshPromiseRef.current) return profileRefreshPromiseRef.current;
+    const pending = (async () => {
+      const user = await getMyProfile();
+      const userRole = detectRole(user);
+      const current = latestStateRef.current;
+      const assignedCompany = user.company_id || user.roles?.[0]?.company_id || null;
+      const activeCompany = userRole === "super_admin" ? current.company : assignedCompany;
+      if (userRole !== "super_admin") {
+        if (activeCompany) {
+          localStorage.setItem("erp.company", String(activeCompany));
+          localStorage.setItem("active_company_id", String(activeCompany));
+        } else {
+          localStorage.removeItem("erp.company");
+          localStorage.removeItem("active_company_id");
+        }
       }
-    }
-    dispatch({
-      type: "LOGIN_SUCCESS",
-      user,
-      company: activeCompany ? String(activeCompany) : null,
-      companies: state.companies,
-      isAdmin: checkIsAdmin(user),
-      userRole,
+      lastProfileRefreshAtRef.current = Date.now();
+      const nextCompany = activeCompany ? String(activeCompany) : null;
+      if (
+        profileStateSignature(current.user) === profileStateSignature(user) &&
+        current.company === nextCompany &&
+        current.userRole === userRole
+      ) {
+        return;
+      }
+      dispatch({
+        type: "LOGIN_SUCCESS",
+        user,
+        company: nextCompany,
+        companies: current.companies,
+        isAdmin: checkIsAdmin(user),
+        userRole,
+      });
+    })().finally(() => {
+      profileRefreshPromiseRef.current = null;
     });
-  }, [state.companies, state.company]);
+    profileRefreshPromiseRef.current = pending;
+    return pending;
+  }, []);
 
   const setActiveRole = useCallback(async (roleCode: string) => {
     const user = await changeActiveRole(roleCode);
@@ -332,6 +380,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: assignedCompanyItems(user), isAdmin, userRole });
+        lastProfileRefreshAtRef.current = Date.now();
 
         // Only Super Admin can switch across companies. Load that selector after
         // authentication is usable so it cannot hold the initial page hostage.
@@ -365,7 +414,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-    const handleFocus = () => { void refreshProfile(); };
+    const handleFocus = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastProfileRefreshAtRef.current < 60_000) return;
+      void refreshProfile();
+    };
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
   }, [refreshProfile, state.isAuthenticated]);
@@ -401,6 +454,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       dispatch({ type: "LOGIN_SUCCESS", user, company: activeCompany ? String(activeCompany) : null, companies: assignedCompanyItems(user), isAdmin, userRole });
+      lastProfileRefreshAtRef.current = Date.now();
 
       if (userRole === "super_admin") {
         void getCompanies().then((compRes) => {

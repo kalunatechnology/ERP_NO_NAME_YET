@@ -262,6 +262,13 @@ export default function ProjectsClient() {
 
   const [customerOptions, setCustomerOptions] = useState<string[]>([]);
 
+  // Auth profile refreshes may return new array instances with identical
+  // values. Primitive keys keep the project loader stable until access really
+  // changes, preventing a focus event from remounting the full-page loader.
+  const enabledModulesKey = [...(user?.enabled_modules || [])].map(String).sort().join("|");
+  const delegatedModulesKey = [...(user?.delegated_modules || [])].map(String).sort().join("|");
+  const activeRoleCode = user?.active_role_code || "";
+
   // Stable ref to the current selectedId so fetchProjects can read it without being in its deps
   const selectedIdRef = useRef<string | number | null>(null);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
@@ -269,29 +276,36 @@ export default function ProjectsClient() {
   // Request-version counter: prevents a slow response from overwriting a newer one.
   const fetchVersionRef = useRef(0);
   const authorityFetchVersionRef = useRef(0);
+  const automaticFetchKeyRef = useRef("");
 
   const fetchProjects = useCallback(async (silent = false) => {
     const version = ++fetchVersionRef.current;
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
+      const enabledModules = enabledModulesKey ? enabledModulesKey.split("|") : [];
+      const delegatedModules = delegatedModulesKey ? delegatedModulesKey.split("|") : [];
       const projectBundle = loadDashboardBootstrap(["projects"], {
-        enabledModules: user?.enabled_modules,
-        delegatedModules: user?.delegated_modules,
-        activeRoleCode: user?.active_role_code,
+        enabledModules,
+        delegatedModules,
+        activeRoleCode,
         isSuperAdmin: userRole === "super_admin",
       }, { fresh: silent }).then((response) => response.projects);
-      const data = await projectBundle.then((bundle) => loadAllProjects(user?.enabled_modules || [], bundle, {
-          delegatedModules: user?.delegated_modules,
-          activeRoleCode: user?.active_role_code,
+      const projectData = projectBundle.then((bundle) => loadAllProjects(enabledModules, bundle, {
+          delegatedModules,
+          activeRoleCode,
           isSuperAdmin: userRole === "super_admin",
         }));
-      const auxiliary = await Promise.allSettled([
+      const auxiliaryData = Promise.allSettled([
         getTransferRequests(),
         Promise.resolve([]),
         fetchProjectCustomers(),
         api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? [])
       ]);
+      // Primary and supporting reads share one concurrent request wave. Apart
+      // from lowering elapsed time, this lets backend auth snapshot coalescing
+      // serve the whole wave with one authorization lookup.
+      const [data, auxiliary] = await Promise.all([projectData, auxiliaryData]);
 
       // Guard against race conditions: if a newer fetch was initiated, discard this stale response completely!
       if (version !== fetchVersionRef.current) return;
@@ -351,7 +365,7 @@ export default function ProjectsClient() {
       }
     }
     // selectedId intentionally excluded: read via ref to avoid re-creating this callback on selection change
-  }, [requestedProjectId, requestedProjectTab, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
+  }, [activeRoleCode, delegatedModulesKey, enabledModulesKey, requestedProjectId, requestedProjectTab, userRole]);
 
 /**
  * openAssignModal coordinates the UI behavior represented by this function.
@@ -411,8 +425,18 @@ export default function ProjectsClient() {
   };
 
   useEffect(() => {
+    const automaticFetchKey = [
+      activeRoleCode,
+      delegatedModulesKey,
+      enabledModulesKey,
+      requestedProjectId || "",
+      requestedProjectTab || "",
+      userRole,
+    ].join("::");
+    if (automaticFetchKeyRef.current === automaticFetchKey) return;
+    automaticFetchKeyRef.current = automaticFetchKey;
     fetchProjects();
-  }, [fetchProjects]);
+  }, [activeRoleCode, delegatedModulesKey, enabledModulesKey, fetchProjects, requestedProjectId, requestedProjectTab, userRole]);
 
   useEffect(() => {
     const projectId = selectedProjectId;

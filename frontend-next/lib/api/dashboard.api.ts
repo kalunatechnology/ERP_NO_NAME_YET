@@ -95,6 +95,37 @@ interface DashboardBootstrapResponse {
   };
 }
 
+const BOOTSTRAP_BROWSER_CACHE_MS = 15_000;
+const bootstrapCache = new Map<string, { expiresAt: number; value: DashboardBootstrap }>();
+const bootstrapRequests = new Map<string, Promise<DashboardBootstrap>>();
+let mutationListenerInstalled = false;
+let bootstrapCacheRevision = 0;
+
+function browserBootstrapScopeKey(sections: DashboardSection[], access: FrontendAccessContext): string {
+  if (typeof window === 'undefined') return `server:${sections.join(',')}`;
+  const token = localStorage.getItem('erp.access') || localStorage.getItem('access_token') || '';
+  const company = localStorage.getItem('erp.company') || localStorage.getItem('active_company_id') || '';
+  return JSON.stringify({
+    sections: [...sections].sort(),
+    token,
+    company,
+    activeRoleCode: access.activeRoleCode || '',
+    enabledModules: [...(access.enabledModules || [])].map(String).sort(),
+    delegatedModules: [...(access.delegatedModules || [])].map(String).sort(),
+    isSuperAdmin: Boolean(access.isSuperAdmin),
+  });
+}
+
+function ensureBootstrapMutationListener(): void {
+  if (mutationListenerInstalled || typeof window === 'undefined') return;
+  mutationListenerInstalled = true;
+  window.addEventListener('erp:data-mutated', () => {
+    bootstrapCacheRevision += 1;
+    bootstrapCache.clear();
+    bootstrapRequests.clear();
+  });
+}
+
 /**
  * Requests only the sections needed for the currently visible dashboard role.
  *
@@ -134,6 +165,7 @@ export async function loadDashboardBootstrap(
    * projects
    */
   const requestedSections = Array.from(new Set(sections));
+  ensureBootstrapMutationListener();
 
   /**
    * Frontend contract check.
@@ -159,17 +191,41 @@ export async function loadDashboardBootstrap(
    * - X-Company-ID
    * - token/session handling
    */
-  const response = await api.get<DashboardBootstrapResponse>(
-    '/api/v1/dashboard/bootstrap',
-    {
-      params: {
-        sections: requestedSections.join(','),
-        ...(options.fresh ? { fresh: '1' } : {}),
-      },
+  const cacheKey = browserBootstrapScopeKey(requestedSections, access);
+  if (!options.fresh) {
+    const cached = bootstrapCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const pending = bootstrapRequests.get(cacheKey);
+    if (pending) return pending;
+  }
 
-      timeout: 30_000,
-    },
-  );
+  const requestRevision = bootstrapCacheRevision;
+  const request = api.get<DashboardBootstrapResponse>(
+      '/api/v1/dashboard/bootstrap',
+      {
+        params: {
+          sections: requestedSections.join(','),
+          ...(options.fresh ? { fresh: '1' } : {}),
+        },
+        timeout: 30_000,
+      },
+    )
+    .then((response) => (
+      response.data?.data ??
+      (response.data as DashboardBootstrap) ??
+      {}
+    ));
+
+  if (!options.fresh) bootstrapRequests.set(cacheKey, request);
+  try {
+    const value = await request;
+    if (options.fresh || requestRevision === bootstrapCacheRevision) {
+      bootstrapCache.set(cacheKey, { expiresAt: Date.now() + BOOTSTRAP_BROWSER_CACHE_MS, value });
+    }
+    return value;
+  } finally {
+    bootstrapRequests.delete(cacheKey);
+  }
 
   /**
    * Response Express saat ini:
@@ -187,9 +243,6 @@ export async function loadDashboardBootstrap(
    * Fallback kedua dipertahankan untuk kompatibilitas apabila
    * endpoint lama masih mengembalikan bootstrap secara langsung.
    */
-  return (
-    response.data?.data ??
-    (response.data as DashboardBootstrap) ??
-    {}
-  );
+  // Response normalization is performed by the request promise above so both
+  // cache hits and network reads share the exact same contract.
 }
