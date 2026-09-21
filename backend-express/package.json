@@ -26,6 +26,7 @@
     "test:q11": "ts-node --files tests/q11-system-guardrails.ts",
     "test:pagination": "ts-node --files tests/pagination.unit.ts",
     "test:marbot-signature": "ts-node --files tests/marbot-signature.unit.ts",
+    "test:marbot-tenant": "ts-node --files tests/marbot-tenant.unit.ts",
     "test:marbot-deployment": "ts-node --files tests/marbot-deployment.smoke.ts",
     "test:reporting-scope": "ts-node --files tests/reporting-global-scope.unit.ts",
     "test:project-authority": "ts-node --files tests/project-acting-manager.unit.ts",

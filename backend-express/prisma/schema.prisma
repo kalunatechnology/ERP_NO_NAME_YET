@@ -76,19 +76,25 @@ model marbot_request {
 // Per-tenant MarBot chatbot integration credentials, managed by Super Admin via dashboard.
 // Falls back to MARBOT_TENANT_CONFIG_JSON env var for backward compatibility with existing tenants.
 model marbot_tenant_config {
-  id                     String   @id @default(uuid())
-  tenant_id              String   @unique
-  external_tenant_id     String   // The tenant identifier known to the chatbot system (e.g. "SINERGI_MUDA_ARSA")
-  chatbot_url            String   // HTTPS endpoint of the chatbot service
-  chatbot_api_key        String   // API key for authenticating inbound requests to chatbot
-  inbound_context_secret String   // HMAC secret for signing context payloads sent TO chatbot
-  outbound_tool_secret   String   // HMAC secret for verifying tool callback requests FROM chatbot
-  role_map_json          String?  // Optional JSON: {"DIRECTOR": "EXECUTIVE"} — ERP role → chatbot role mapping
-  created_at             DateTime @default(now())
-  updated_at             DateTime @updatedAt
-  created_by_id          String?  // FK to iam_user.id — Super Admin who configured this
+  id                     String    @id @default(uuid())
+  tenant_id              String    @unique
+  external_tenant_id     String    // The tenant identifier known to the chatbot system (e.g. "SINERGI_MUDA_ARSA")
+  chatbot_url            String    // HTTPS endpoint of the chatbot service
+  chatbot_api_key        String?   // API key for authenticating inbound requests to chatbot (nullable for provisioning lifecycle)
+  chatbot_tenant_id      String?   // Chatbot UUID returned by POST /api/v1/admin/tenants
+  active_key_id          String?   // Key identifier of the active API key
+  inbound_context_secret String?   // HMAC secret for signing context payloads sent TO chatbot (nullable for provisioning lifecycle)
+  outbound_tool_secret   String?   // HMAC secret for verifying tool callback requests FROM chatbot (nullable for provisioning lifecycle)
+  sync_status            String    @default("NOT_PROVISIONED") // NOT_PROVISIONED | PROVISIONING | ACTIVE | ERROR
+  last_synced_at         DateTime?
+  last_sync_error        String?
+  role_map_json          String?   // Optional JSON: {"DIRECTOR": "EXECUTIVE"} — ERP role → chatbot role mapping
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+  created_by_id          String?   // FK to iam_user.id — Super Admin who configured this
 
   @@index([tenant_id])
+  @@index([sync_status])
   @@map("marbot_tenant_config")
 }
 

@@ -321,10 +321,19 @@ export class CoreService {
           chatbot_api_key: true,
           inbound_context_secret: true,
           outbound_tool_secret: true,
+          sync_status: true,
         },
       });
 
-      if (dbRow) {
+      if (
+        dbRow &&
+        (!dbRow.sync_status || dbRow.sync_status === 'ACTIVE') &&
+        dbRow.external_tenant_id &&
+        dbRow.chatbot_url &&
+        dbRow.chatbot_api_key &&
+        dbRow.inbound_context_secret &&
+        dbRow.outbound_tool_secret
+      ) {
         config = {
           externalTenantId: dbRow.external_tenant_id,
           chatbotUrl: dbRow.chatbot_url,
