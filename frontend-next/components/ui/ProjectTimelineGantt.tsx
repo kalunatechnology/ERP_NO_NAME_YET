@@ -8,8 +8,8 @@
  */
 "use client";
 
-import React, { useState } from "react";
-import { Calendar, Layers } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Calendar, ChevronLeft, ChevronRight, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface GanttTaskItem {
@@ -45,8 +45,17 @@ export function ProjectTimelineGantt({
   projectName,
 }: ProjectTimelineGanttProps) {
   const [hoveredTask, setHoveredTask] = useState<GanttTaskItem | null>(null);
+  const [pageSize, setPageSize] = useState(6);
+  const [page, setPage] = useState(1);
   const weeks = Array.from({ length: totalWeeks }, (_, i) => `W${i + 1}`);
-  const hasTasks = tasks && tasks.length > 0;
+  const taskItems = tasks || [];
+  const hasTasks = taskItems.length > 0;
+  const totalPages = Math.max(1, Math.ceil(taskItems.length / pageSize));
+  const visibleTasks = taskItems.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
 
   return (
     <div
@@ -104,7 +113,7 @@ export function ProjectTimelineGantt({
 
             {/* Task Rows */}
             <div className="flex flex-col divide-y divide-[#FDFDFD] py-1">
-              {tasks.map((task) => {
+              {visibleTasks.map((task) => {
                 const colStart = Math.min(Math.max(1, task.startWeek), totalWeeks);
                 const spanCount = Math.min(
                   Math.max(1, task.endWeek - task.startWeek + 1),
@@ -167,7 +176,7 @@ export function ProjectTimelineGantt({
                           {/* Progress Fill */}
                           {task.progress > 0 ? (
                             <div
-                              className="relative h-full bg-[#2649B3] rounded-full flex items-center justify-end px-2.5 transition-all duration-500 shadow-2xs min-w-[34px]"
+                              className="relative flex h-full min-w-[38px] items-center justify-end rounded-full bg-[#2649B3] px-2 transition-all duration-500 shadow-2xs"
                               style={{ width: `${Math.min(100, Math.max(10, task.progress))}%` }}
                             >
                               <span className="text-[10px] sm:text-[11px] font-black text-white leading-none select-none tracking-tight">
@@ -192,6 +201,30 @@ export function ProjectTimelineGantt({
                 );
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {hasTasks && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#EFEFEF] pt-3 text-xs">
+          <label className="flex items-center gap-2 text-[#4F5050]">
+            Tampilkan
+            <select
+              value={pageSize}
+              onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}
+              className="rounded-lg border border-[#D9D9D9] bg-white px-2 py-1 font-semibold text-[#090909] outline-none focus:border-[#2649B3]"
+              aria-label="Jumlah task per halaman"
+            >
+              {[6, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+            task
+          </label>
+          <div className="flex items-center gap-1" aria-label="Navigasi halaman timeline">
+            <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1} className="rounded-lg border border-[#D9D9D9] p-1.5 text-[#4F5050] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Halaman sebelumnya"><ChevronLeft size={14} /></button>
+            {Array.from({ length: totalPages }, (_, index) => index + 1).slice(Math.max(0, page - 3), Math.max(0, page - 3) + 5).map((pageNumber) => (
+              <button key={pageNumber} type="button" onClick={() => setPage(pageNumber)} className={cn("min-w-7 rounded-lg px-2 py-1.5 font-bold", page === pageNumber ? "bg-[#2649B3] text-white" : "border border-[#D9D9D9] text-[#4F5050]")}>{pageNumber}</button>
+            ))}
+            <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={page === totalPages} className="rounded-lg border border-[#D9D9D9] p-1.5 text-[#4F5050] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Halaman berikutnya"><ChevronRight size={14} /></button>
           </div>
         </div>
       )}

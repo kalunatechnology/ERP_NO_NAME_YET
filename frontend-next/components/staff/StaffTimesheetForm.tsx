@@ -152,7 +152,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         <label className="text-xs font-semibold text-text-secondary">
-          Proyek *
+          Proyek <span className="text-red-500">*</span>
           <select value={projectId} onChange={(event) => { setProjectId(event.target.value); setTaskId(""); }} className="input mt-1 text-xs" required>
             <option value="">Pilih proyek yang ditugaskan</option>
             {projects.map((project) => <option key={project.id} value={String(project.id)}>{project.project_code || project.code} — {project.project_name || project.name}</option>)}
@@ -166,7 +166,7 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
           </select>
         </label>
         <label className="text-xs font-semibold text-text-secondary">
-          Tanggal kerja *
+          Tanggal kerja <span className="text-red-500">*</span>
           <input type="date" value={workDate} max={localDateKey()} onChange={(event) => setWorkDate(event.target.value)} className="input mt-1 text-xs" required />
         </label>
         <div className="text-xs font-semibold text-text-secondary">
@@ -200,15 +200,15 @@ export function StaffTimesheetForm({ projects, userId, onCreated }: StaffTimeshe
         </div>
         <label className="text-xs font-semibold text-text-secondary">
           Alasan lembur
-          <input value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} placeholder="Opsional, isi bila ada lembur" className="input mt-1 text-xs" />
+          <input value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} placeholder="Opsional, isi bila ada lembur" className="input mt-1 text-xs placeholder:text-gray-400" />
         </label>
-        <label className="text-xs font-semibold text-text-secondary md:col-span-2 xl:col-span-3">
-          Bukti penyelesaian lembur {Number(overtimeHours) > 0 ? "*" : "(opsional)"}
+        <label className="text-xs font-semibold text-text-secondary md:col-span-1 xl:col-span-2">
+          Bukti penyelesaian lembur {Number(overtimeHours) > 0 ? <span className="text-red-500">*</span> : <span className="font-normal text-gray-400">(opsional)</span>}
           <span className="mt-1 flex items-center gap-2 rounded-xl border border-text-tertiary bg-white px-3">
             <Link2 size={14} className="shrink-0 text-[#2649B3]" />
-            <input type="url" value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Tempel link dokumen, Drive, hasil kerja, atau tiket" className="h-10 w-full bg-transparent text-xs outline-none" required={Number(overtimeHours) > 0} />
+            <input type="url" value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Tempel link dokumen, Drive, hasil kerja, atau tiket" className="h-10 w-full bg-transparent text-xs outline-none placeholder:text-gray-400" required={Number(overtimeHours) > 0} />
           </span>
-          <span className="mt-1 block text-3xs font-normal">Timestamp kerja, aktivitas terakhir, dan bukti lembur dikirim otomatis sehingga durasi tidak dapat diisi manual.</span>
+          <span className="mt-1 block text-3xs font-normal text-gray-400">Timestamp kerja, aktivitas terakhir, dan bukti lembur dikirim otomatis sehingga durasi tidak dapat diisi manual.</span>
         </label>
       </div>
 

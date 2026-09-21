@@ -465,7 +465,7 @@ function TaskRow({
             <Pencil size={13} />
           </button>
         ) : (
-          <span className="text-3xs text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded" title="Hanya PIC / Owner atau PM yang dapat mengedit">
+          <span className="inline-flex whitespace-nowrap rounded-lg border border-gray-200 bg-gray-100 px-2 py-1 text-3xs text-text-secondary" title="Hanya PIC / Owner atau PM yang dapat mengedit">
             Read only
           </span>
         )}
@@ -526,6 +526,13 @@ export default function TasksClient() {
   }, [user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+  useEffect(() => {
+    if (window.location.hash !== "#task-submission") return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("task-submission")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [loading]);
 
   /*
    * The backend allows operational users to create Daily Tasks only below a
@@ -755,14 +762,14 @@ export default function TasksClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const renderTable = (items: typeof filteredTasks) => (
-    <table className="w-full text-xs text-left min-w-[620px]">
+    <table className="w-full min-w-[760px] text-left text-xs">
       <thead>
         <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b border-gray-200">
           <th className="py-2.5 px-4 font-bold">Proyek & WBS</th>
           <th className="py-2.5 px-4 font-bold">Tanggal & Waktu</th>
           <th className="py-2.5 px-4 font-bold">Aktivitas / Task</th>
-          <th className="py-2.5 px-4 font-bold">Output Hasil</th>
-          <th className="py-2.5 px-4 font-bold">Status</th>
+          <th className="whitespace-nowrap px-4 py-3 font-bold">Output Hasil</th>
+          <th className="whitespace-nowrap px-4 py-3 font-bold">Status</th>
           <th className="py-2.5 px-4 font-bold"></th>
         </tr>
       </thead>
@@ -843,7 +850,7 @@ export default function TasksClient() {
         </div>
       </div>
 
-      <section className="card rounded-xl p-4 border-l-4 border-brand-green" aria-labelledby="task-submission-title">
+      <section id="task-submission" className="card scroll-mt-24 rounded-xl border-l-4 border-brand-green p-4" aria-labelledby="task-submission-title">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h2 id="task-submission-title" className="text-sm font-bold text-text-primary flex items-center gap-2">
@@ -878,7 +885,7 @@ export default function TasksClient() {
           <Search size={14} className="text-text-secondary flex-shrink-0" />
           <input
             type="text"
-            placeholder="Cari task, proyek, WBS, output, catatan, atau anggota tim..."
+            placeholder="Cari task atau proyek..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="flex-1 text-xs border-none outline-none bg-transparent"
@@ -904,16 +911,16 @@ export default function TasksClient() {
         </div>
 
         {/* View Mode toggle */}
-        <div className="flex items-center gap-1 border border-text-tertiary rounded-lg p-0.5 flex-shrink-0">
+        <div className="flex flex-shrink-0 items-center gap-1 rounded-xl border border-text-tertiary bg-gray-50 p-1">
           <button
             onClick={() => setViewMode("grouped")}
-            className={cn("px-2 py-1 rounded text-2xs font-semibold transition-all", viewMode === "grouped" ? "bg-brand-green text-white" : "text-text-secondary")}
+            className={cn("rounded-lg px-2.5 py-1 text-2xs font-semibold transition-all", viewMode === "grouped" ? "bg-brand-green text-white shadow-sm" : "text-text-secondary")}
           >
             Grouped
           </button>
           <button
             onClick={() => setViewMode("list")}
-            className={cn("px-2 py-1 rounded text-2xs font-semibold transition-all", viewMode === "list" ? "bg-brand-green text-white" : "text-text-secondary")}
+            className={cn("rounded-lg px-2.5 py-1 text-2xs font-semibold transition-all", viewMode === "list" ? "bg-brand-green text-white shadow-sm" : "text-text-secondary")}
           >
             List
           </button>

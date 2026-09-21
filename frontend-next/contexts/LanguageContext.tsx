@@ -46,7 +46,7 @@ const idToEnglish: Record<string, string> = {
   "Waktu Nyata": "Real Time",
   "Performance Proyek": "Project Performance",
   "Kelola semua proyek": "Manage all projects",
-  "Company Overview": "Ringkasan Perusahaan",
+  "Ringkasan Perusahaan": "Company Overview",
   "Total Proyek": "Total Projects",
   "Progres Keseluruhan": "Overall Progress",
   "Total Anggaran": "Total Budget",
@@ -135,6 +135,23 @@ const idToEnglish: Record<string, string> = {
   "Tidak ada data": "No data",
   "Akses Dibatasi": "Access Restricted",
   "Kembali ke Dashboard": "Back to Dashboard",
+  "Proyek Ditugaskan": "Assigned Projects",
+  "Tugas Harian": "Daily Tasks",
+  "Baru Dibuka": "Recently Opened",
+  "Pengajuan Tugas": "Task Submission",
+  "Kirim Timesheet": "Submit Timesheet",
+  "Dikelompokkan": "Grouped",
+  "Daftar": "List",
+  "Hanya baca": "Read only",
+  "Daftar Proyek": "Project List",
+  "Ringkasan Eksekutif": "Executive Summary",
+  "Status Saldo": "Balance Status",
+  "Belum Tersedia": "Unavailable",
+  "Cari task atau proyek...": "Search tasks or projects...",
+  "Utilisasi Anggaran per Proyek": "Budget Utilization by Project",
+  "Per halaman": "Per page",
+  "Tampilkan": "Show",
+  "menunggu persetujuan": "awaiting approval",
 };
 
 const englishToId = Object.fromEntries(
@@ -154,11 +171,13 @@ function translateText(text: string, language: AppLanguage): string {
         [/^(\d+) proyek aktif$/i, (match) => `${match[1]} active projects`],
         [/^Minggu (\d+) – Minggu (\d+)$/i, (match) => `Week ${match[1]} – Week ${match[2]}`],
         [/^Lihat semua kontak \((\d+)\)$/i, (match) => `View all contacts (${match[1]})`],
+        [/^(\d+) perlu dilengkapi$/i, (match) => `${match[1]} need completion`],
       ]
     : [
         [/^(\d+) active projects$/i, (match) => `${match[1]} proyek aktif`],
         [/^Week (\d+) – Week (\d+)$/i, (match) => `Minggu ${match[1]} – Minggu ${match[2]}`],
         [/^View all contacts \((\d+)\)$/i, (match) => `Lihat semua kontak (${match[1]})`],
+        [/^(\d+) need completion$/i, (match) => `${match[1]} perlu dilengkapi`],
       ];
   for (const [pattern, render] of templates) {
     const match = core.match(pattern);

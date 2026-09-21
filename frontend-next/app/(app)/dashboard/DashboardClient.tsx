@@ -500,10 +500,15 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
             <div className="flex flex-col divide-y divide-text-tertiary/50">
               {projectSummaries.slice(0, 8).map(ps => (
                 <div key={ps.projectId} className="px-4 py-3 hover:bg-bg-lighter/50 transition-colors">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium text-text-primary truncate flex-1">{ps.projectName}</span>
-                    <span className="text-xs text-text-secondary ml-2">{formatMoney(ps.spent)} / {formatMoney(ps.budget)}</span>
-                    <span className={cn("text-xs font-bold ml-3", ps.utilization > 90 ? "text-red-600" : ps.utilization > 70 ? "text-amber-600" : "text-brand-green")}>
+                  <div className="mb-2 grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(170px,auto)_64px] sm:gap-4">
+                    <span className="min-w-0 truncate text-sm font-medium text-text-primary">{ps.projectName}</span>
+                    <div className="min-w-0 text-left sm:text-right">
+                      <span className="block whitespace-nowrap text-xs text-text-secondary">{formatMoney(ps.spent)} / {formatMoney(ps.budget)}</span>
+                      {ps.pendingAmount > 0 && (
+                        <span className="mt-0.5 block text-2xs text-amber-600">+ {formatMoney(ps.pendingAmount)} menunggu persetujuan</span>
+                      )}
+                    </div>
+                    <span className={cn("text-left text-xs font-bold sm:text-right", ps.utilization > 90 ? "text-red-600" : ps.utilization > 70 ? "text-amber-600" : "text-brand-green")}>
                       {ps.utilization}%
                     </span>
                   </div>
@@ -512,11 +517,6 @@ function FinanceDashboard({ finData, loading }: { finData: FinanceDashboardData 
                     color={ps.utilization > 90 ? "#DC2626" : ps.utilization > 70 ? "#D97706" : "#294BB2"}
                     height={5}
                   />
-                  {ps.pendingAmount > 0 && (
-                    <div className="text-2xs text-amber-600 mt-1">
-                      + {formatMoney(ps.pendingAmount)} pending approval
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -667,12 +667,12 @@ function ExecutiveDashboard({ projects, finData, loading }: {
       <section>
         <SectionHeader title="Company Overview" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard label="Total Proyek" value={total} subLabel={`${active} aktif`} icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
-          <KpiCard label="Overall Progress" value={`${avgProgress}%`} subLabel="rata-rata" icon={Target} iconBg="#EAF6FF" iconColor="#294BB2" />
+          <KpiCard label="Total Proyek" value={total} subLabel={`${active} aktif`} icon={FolderKanban} iconBg="#EAF6FF" iconColor="#294BB2" />
+          <KpiCard label="Overall Progress" value={`${avgProgress}%`} subLabel="rata-rata" icon={Activity} iconBg="#EAF6FF" iconColor="#294BB2" />
           <KpiCard label="Total Anggaran" value={kpis ? formatMoney(kpis.totalBudget) : "-"}
-            subLabel={kpis ? `${kpis.budgetUtilization}% digunakan` : ""} icon={DollarSign} iconBg="#FAF5FF" iconColor="#7E22CE" />
+            subLabel={kpis ? `${kpis.budgetUtilization}% digunakan` : ""} icon={DollarSign} iconBg="#EAF6FF" iconColor="#294BB2" />
           <KpiCard label="Perlu Keputusan" value={pendingCount}
-            subLabel={urgentPending > 0 ? `${urgentPending} URGENT` : "pending approval"} icon={ShieldAlert} iconBg="#FEF2F2" iconColor="#DC2626"
+            subLabel={urgentPending > 0 ? `${urgentPending} URGENT` : "pending approval"} icon={CheckSquare} iconBg="#EAF6FF" iconColor="#294BB2"
             trend={urgentPending > 0 ? { value: `${urgentPending} butuh perhatian`, up: false } : null} />
         </div>
       </section>
@@ -1149,7 +1149,7 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
             </h3>
             <p className="mt-1 text-xs text-text-secondary">Lengkapi output, status, dan kendala untuk membentuk laporan periodik.</p>
           </div>
-          <Link href="/tasks" className="btn-secondary px-3 py-1.5 text-xs">
+          <Link href="/tasks#task-submission" className="btn-secondary px-3 py-1.5 text-xs">
             {pendingSubmissions.length} perlu dilengkapi
           </Link>
         </div>

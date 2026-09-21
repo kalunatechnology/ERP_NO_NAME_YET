@@ -106,15 +106,13 @@ export function ProjectWbsTree({
     <div className="flex flex-col gap-4">
       {/* WBS Action Toolbar & Global Expand/Collapse controls */}
       <div className="flex items-center justify-between flex-wrap gap-2.5 pb-1">
-        <div className="flex items-center gap-2">
-          <span className="badge badge-success text-xs font-bold">
-            {userRole === "staff" ? "Task Terkait Saya" : "Hierarki WBS Proyek"}
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-xs font-bold text-text-primary">
+            {userRole === "staff" ? "Task Terkait Saya" : "Main Task → Weekly Plan → Daily Task"}
           </span>
-          <span className="text-xs text-text-secondary hidden sm:inline">
-            {userRole === "staff"
-              ? "Paket kerja dan aktivitas yang ditugaskan kepada akun Anda."
-              : "L1: Main Task → L2: Weekly Plan → L3: Daily Task"}
-          </span>
+          {userRole === "staff" && (
+            <span className="hidden text-xs text-text-secondary sm:inline">Paket kerja dan aktivitas yang ditugaskan kepada akun Anda.</span>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap ml-auto">

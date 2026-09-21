@@ -1139,8 +1139,12 @@ export default function FinanceClient() {
                   <span className="text-2xs text-text-secondary font-mono block mt-0.5">{b.number}</span>
                 </div>
                 <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex justify-between items-baseline">
-                  <span className="text-2xs text-text-secondary">Saldo Tersedia:</span>
-                  <strong className="text-sm font-black text-brand-deep-green">{b.balance == null ? "Belum tersedia" : formatMoney(b.balance)}</strong>
+                  <span className="text-2xs text-text-secondary">{b.balance == null ? "Status Saldo:" : "Saldo Tersedia:"}</span>
+                  {b.balance == null ? (
+                    <span className="rounded-full border border-[#9FD6FF] bg-[#EAF6FF] px-2.5 py-1 text-2xs font-bold text-[#2649B3]">Belum Tersedia</span>
+                  ) : (
+                    <strong className="text-sm font-black text-brand-deep-green">{formatMoney(b.balance)}</strong>
+                  )}
                 </div>
               </div>
             ))}
@@ -1606,8 +1610,12 @@ export default function FinanceClient() {
                   <strong className="text-xs font-bold text-text-primary block mt-1">{b.bank}</strong>
                   <span className="text-2xs text-text-secondary font-mono mt-0.5">{b.number}</span>
                   <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex justify-between items-baseline">
-                    <span className="text-2xs text-text-secondary">Saldo Buku:</span>
-                    <strong className="text-sm font-black text-brand-deep-green">{b.balance == null ? "Belum tersedia" : formatMoney(b.balance)}</strong>
+                    <span className="text-2xs text-text-secondary">{b.balance == null ? "Status Saldo:" : "Saldo Buku:"}</span>
+                    {b.balance == null ? (
+                      <span className="rounded-full border border-[#9FD6FF] bg-[#EAF6FF] px-2.5 py-1 text-2xs font-bold text-[#2649B3]">Belum Tersedia</span>
+                    ) : (
+                      <strong className="text-sm font-black text-brand-deep-green">{formatMoney(b.balance)}</strong>
+                    )}
                   </div>
                 </div>
               ))}

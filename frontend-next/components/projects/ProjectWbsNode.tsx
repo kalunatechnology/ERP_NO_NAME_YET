@@ -266,16 +266,16 @@ export function ProjectWbsNode({
                               Belum ada aktivitas harian pada target ini. {canCreateDaily ? "Klik + Daily Task untuk mencatat sesi kerja." : ""}
                             </div>
                           ) : (
-                            <div className="table-scroll-wrapper border border-gray-100 rounded-xl">
-                              <table className="w-full data-table text-xs text-left min-w-[620px]">
+                            <div className="table-scroll-wrapper rounded-xl border border-gray-100">
+                              <table className="data-table w-full min-w-[860px] table-fixed text-left text-xs">
                                 <thead>
                                   <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider">
-                                    <th className="py-2 px-3 font-bold">Tanggal & Waktu</th>
-                                    <th className="py-2 px-3 font-bold">Input (Aktivitas yang Dikerjakan)</th>
-                                    <th className="py-2 px-3 font-bold">Output (Hasil Kerja)</th>
-                                    <th className="py-2 px-3 font-bold">Status & Progres</th>
-                                    <th className="py-2 px-3 font-bold">Catatan / Kendala</th>
-                                    <th className="py-2 px-3 font-bold text-right">Aksi</th>
+                                    <th className="w-[135px] px-3 py-3 font-bold">Tanggal & Waktu</th>
+                                    <th className="w-[230px] px-3 py-3 font-bold">Input (Aktivitas yang Dikerjakan)</th>
+                                    <th className="w-[180px] px-3 py-3 font-bold">Output (Hasil Kerja)</th>
+                                    <th className="w-[145px] px-3 py-3 font-bold">Status & Progres</th>
+                                    <th className="w-[170px] px-3 py-3 font-bold">Catatan / Kendala</th>
+                                    <th className="w-[100px] px-3 py-3 text-right font-bold">Aksi</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -294,7 +294,7 @@ export function ProjectWbsNode({
                                           <span className="text-2xs text-text-secondary font-normal">{daily.time_slot}</span>
                                         </td>
                                         <td className="py-2 px-3 align-top max-w-[240px]">
-                                          <div className="flex items-start gap-2">
+                                          <div className="flex min-w-0 items-start gap-2">
                                             <button
                                               onClick={() => onToggleDailyStatus(daily, canManageDaily)}
                                               disabled={!canManageDaily}
@@ -307,8 +307,8 @@ export function ProjectWbsNode({
                                             >
                                               {isDone && <Check size={11} strokeWidth={3} />}
                                             </button>
-                                            <div>
-                                              <strong className={cn("text-xs font-bold block text-text-primary", isDone && "line-through text-text-secondary")}>
+                                            <div className="min-w-0">
+                                              <strong className={cn("block break-words text-xs font-bold leading-5 text-text-primary", isDone && "line-through text-text-secondary")}>
                                                 {daily.title || daily.activity_input}
                                               </strong>
                                               <span className="text-2xs text-text-secondary block mt-0.5">PIC: <b>{daily.owner_name}</b></span>
@@ -341,7 +341,7 @@ export function ProjectWbsNode({
                                                 <Edit size={11} /> Update
                                               </button>
                                             ) : (
-                                              <span className="text-3xs font-medium text-text-secondary bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">
+                                              <span className="inline-flex whitespace-nowrap rounded-lg border border-gray-200 bg-gray-100 px-2 py-1 text-3xs font-medium text-text-secondary">
                                                 Read only
                                               </span>
                                             )}

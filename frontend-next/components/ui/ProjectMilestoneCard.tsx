@@ -8,7 +8,7 @@
 "use client";
 
 import React from "react";
-import { ChevronRight, Milestone as MilestoneIcon, FolderKanban } from "lucide-react";
+import { ChevronLeft, ChevronRight, Milestone as MilestoneIcon, FolderKanban } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ProjectSummary {
@@ -52,8 +52,18 @@ export function ProjectMilestoneCard({
   const [internalSelectedId, setInternalSelectedId] = React.useState<string | number>(
     controlledSelectedId || projects[0]?.id || ""
   );
+  const [projectPageSize, setProjectPageSize] = React.useState(5);
+  const [projectPage, setProjectPage] = React.useState(1);
 
   const activeId = controlledSelectedId !== undefined ? controlledSelectedId : internalSelectedId;
+  const projectPageCount = Math.max(1, Math.ceil(projects.length / projectPageSize));
+  const visibleProjects = projects.slice((projectPage - 1) * projectPageSize, projectPage * projectPageSize);
+
+  React.useEffect(() => {
+    const selectedIndex = projects.findIndex((project) => String(project.id) === String(activeId));
+    if (selectedIndex >= 0) setProjectPage(Math.floor(selectedIndex / projectPageSize) + 1);
+    else setProjectPage((current) => Math.min(current, projectPageCount));
+  }, [activeId, projectPageCount, projectPageSize, projects]);
 
   const currentMilestones: MilestoneItem[] = Array.isArray(milestones)
     ? milestones
@@ -90,20 +100,20 @@ export function ProjectMilestoneCard({
       <div className="bg-[#EAF6FF]/50 p-4 sm:p-5 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-[#EAF6FF]">
         <div className="flex items-center gap-2 mb-1.5">
           <FolderKanban size={17} className="text-[#294BB2]" />
-          <h4 className="text-sm sm:text-base font-bold text-[#090909]">Project Lists</h4>
+          <h4 className="text-sm sm:text-base font-bold text-[#090909]">Daftar Proyek</h4>
         </div>
         <div className="flex flex-col gap-1 overflow-y-auto max-h-[220px] md:max-h-[280px] pr-1 no-scrollbar">
           {projects.length === 0 ? (
             <div className="p-3 text-center text-xs text-gray-500">Belum ada proyek terdaftar.</div>
           ) : (
-            projects.map((prj) => {
+            visibleProjects.map((prj) => {
               const isSelected = String(activeId) === String(prj.id);
               return (
                 <button
                   key={prj.id}
                   onClick={() => handleSelect(prj.id)}
                   className={cn(
-                    "w-full text-left px-3 py-2 rounded-xl text-xs transition-all flex items-center justify-between group cursor-pointer",
+                    "group flex w-full cursor-pointer items-center justify-between rounded-[14px] px-3 py-2 text-left text-xs transition-all",
                     isSelected
                       ? "bg-white text-[#090909] shadow-xs font-bold border border-[#9FD6FF]"
                       : "text-[#4F5050] hover:bg-white/60 hover:text-[#090909]"
@@ -127,6 +137,21 @@ export function ProjectMilestoneCard({
             })
           )}
         </div>
+        {projects.length > 0 && (
+          <div className="mt-auto flex flex-col gap-2 border-t border-[#DCEBFA] pt-3 text-2xs text-[#4F5050]">
+            <label className="flex items-center justify-between gap-2">
+              Per halaman
+              <select value={projectPageSize} onChange={(event) => { setProjectPageSize(Number(event.target.value)); setProjectPage(1); }} className="rounded-lg border border-[#D9D9D9] bg-white px-2 py-1 font-semibold text-[#090909] outline-none">
+                {[5, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
+            <div className="flex items-center justify-between gap-2">
+              <button type="button" onClick={() => setProjectPage((value) => Math.max(1, value - 1))} disabled={projectPage === 1} className="rounded-lg border border-[#D9D9D9] bg-white p-1.5 disabled:opacity-40" aria-label="Halaman proyek sebelumnya"><ChevronLeft size={13} /></button>
+              <span className="font-semibold">{projectPage} / {projectPageCount}</span>
+              <button type="button" onClick={() => setProjectPage((value) => Math.min(projectPageCount, value + 1))} disabled={projectPage === projectPageCount} className="rounded-lg border border-[#D9D9D9] bg-white p-1.5 disabled:opacity-40" aria-label="Halaman proyek berikutnya"><ChevronRight size={13} /></button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Right Content: Milestones Stepper */}

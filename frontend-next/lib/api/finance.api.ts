@@ -123,7 +123,7 @@ export async function loadFinanceDashboard(enabledModules: string[] = [], bundle
     pendingItems.push({
       id: f.id,
       type: "funding",
-      label: f.purpose || `Pengajuan Dana #${String(f.id).slice(0, 6)}`,
+      label: f.purpose || (f.project_name ? `Pengajuan Dana - ${f.project_name}` : "Pengajuan Dana Proyek"),
       project: f.project_name || String(f.project || ""),
       amount: amt,
       status: f.status || "PENDING",

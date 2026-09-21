@@ -351,6 +351,9 @@ export default function ManagementReportsClient() {
                       <td className="px-5 py-4 font-mono font-semibold text-[#2649B3]">
                         {report.report_number}
                         <span className="block text-3xs text-[#4F5050]">v{report.version_number}</span>
+                        <span className="mt-1 block font-sans text-[10px] font-normal text-[#6B7280]">
+                          {new Date(report.updated_at || report.submitted_at || report.created_at).toLocaleString("id-ID")}
+                        </span>
                       </td>
                       <td className="px-5 py-4">
                         <span className="block font-bold text-sm text-[#090909]">{report.title}</span>
@@ -469,7 +472,7 @@ export default function ManagementReportsClient() {
                   required
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full rounded-xl border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
+                  className="w-full rounded-[11px] border border-[#D9D9D9] p-2.5 focus:border-[#2649B3] focus:outline-none"
                   placeholder="Contoh: Laporan Operasional Proyek Pekan ke-3"
                 />
               </div>
