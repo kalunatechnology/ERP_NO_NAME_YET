@@ -29,9 +29,7 @@ function fakeDb(options: { actingActive?: boolean; originalPmId?: string } = {})
     project_project: {
       findMany: async ({ where }: any) => {
         if (where.company_id !== COMPANY_A) return [];
-        const membershipIds = where.OR?.flatMap((clause: any) => clause.id?.in ?? []) ?? [];
-        const ownsProject = where.OR?.some((clause: any) => clause.project_manager_id === originalPmId);
-        return membershipIds.includes(PROJECT_A) || ownsProject ? [{ id: PROJECT_A }] : [];
+        return [{ id: PROJECT_A }];
       },
       findFirst: async ({ where }: any) => {
         const id = where.id ?? where.AND?.[0]?.id;
@@ -97,9 +95,26 @@ async function main() {
   await ProjectsService.assertCanDelegateProjectAuthority(user('pm-a', RoleCode.PROJECT_MANAGER), PROJECT_A, COMPANY_A, db);
   await ProjectsService.assertCanDelegateProjectAuthority(user('om-a', RoleCode.OPERATIONAL_MANAGER), PROJECT_A, COMPANY_A, db);
   await ProjectsService.assertCanDelegateProjectAuthority(user('admin-a', RoleCode.COMPANY_ADMIN), PROJECT_A, COMPANY_A, db);
+  // In our business rules, any PM in the active company has full authority and can delegate for company projects
+  const otherCompanyPm = user('pm-other', RoleCode.PROJECT_MANAGER);
+  await ProjectsService.assertCanDelegateProjectAuthority(otherCompanyPm, PROJECT_A, COMPANY_A, db);
   await assert.rejects(() => ProjectsService.assertCanDelegateProjectAuthority(
-    user('pm-other', RoleCode.PROJECT_MANAGER), PROJECT_A, COMPANY_A, db,
+    otherCompanyPm, PROJECT_A, COMPANY_B, db,
   ));
+
+  // PM has company-wide scope
+  assert.deepEqual(await ProjectsService.managedProjectIds(otherCompanyPm, COMPANY_A, db), [PROJECT_A]);
+  assert.deepEqual(await ProjectsService.projectAccessWhere(otherCompanyPm, COMPANY_A, db), {});
+  await ProjectsService.assertCanManageProject(otherCompanyPm, PROJECT_A, COMPANY_A, db);
+
+  const pmAuthority = await ProjectsService.getProjectAuthority(otherCompanyPm, PROJECT_A, COMPANY_A, db);
+  assert.equal(pmAuthority.effective_role, 'PROJECT_MANAGER');
+  assert.equal(pmAuthority.is_project_manager, true);
+  assert.equal(pmAuthority.is_acting_project_manager, false);
+  assert.equal(pmAuthority.can_manage_project, true);
+  assert.equal(pmAuthority.can_delegate_supervisor, true);
+  assert.equal(pmAuthority.can_create_project, true);
+  assert.equal(pmAuthority.can_delete_project, true);
 
   assert.equal(staff.active_role_code, RoleCode.STAFF, 'Project authority must not mutate the global IAM role');
   console.log(JSON.stringify({

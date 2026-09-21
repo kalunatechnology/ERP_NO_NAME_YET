@@ -54,69 +54,77 @@ export class ProjectsService {
 
   private static hasPortfolioRead(user: any): boolean {
     return this.hasPlatformAdmin(user)
-      || ([RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
+      || ([RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.PROJECT_MANAGER] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
   }
 
   static async managedProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
-    if (this.isCompanyAdmin(user) || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) {
+    if (!user?.id || !companyId) return [];
+    const activeRole = this.activeRole(user);
+    if (
+      this.isCompanyAdmin(user) ||
+      activeRole === RoleCode.OPERATIONAL_MANAGER ||
+      activeRole === RoleCode.PROJECT_MANAGER
+    ) {
       const projects = await db.project_project.findMany({
         where: { company_id: companyId },
         select: { id: true },
       });
       return projects.map((project: { id: string }) => project.id);
     }
-    if (!user?.id) return [];
     if (
       db === prisma
       && (!this.UUID_REGEX.test(String(user.id)) || !this.UUID_REGEX.test(String(companyId)))
     ) return [];
-    const activeRole = this.activeRole(user);
-    const membershipRoles = activeRole === RoleCode.PROJECT_MANAGER
-      ? [...PROJECT_MANAGEMENT_ROLES, ACTING_PROJECT_MANAGER_ROLE]
-      : this.isOperationalAssignee(user)
-        ? [ACTING_PROJECT_MANAGER_ROLE]
-        : [];
-    if (!membershipRoles.length) return [];
 
-    const memberships = await db.project_member.findMany({
-      where: {
-        company_id: companyId,
-        user_id: user.id,
-        status: 'ACTIVE',
-        project_role: { in: membershipRoles },
-      },
-      select: { project_id: true },
-    });
-    const memberProjectIds = memberships
-      .map((membership: { project_id: string | null }) => membership.project_id)
-      .filter((id: string | null): id is string => Boolean(id));
-    const isGlobalPm = activeRole === RoleCode.PROJECT_MANAGER;
-    const projects = await db.project_project.findMany({
-      where: {
-        company_id: companyId,
-        OR: [
-          ...(isGlobalPm ? [{ project_manager_id: user.id }] : []),
-          ...(memberProjectIds.length ? [{ id: { in: memberProjectIds } }] : []),
-        ],
-      },
-      select: { id: true },
-    });
-    return projects.map((project: { id: string }) => project.id);
+    if (this.isOperationalAssignee(user)) {
+      const memberships = await db.project_member.findMany({
+        where: {
+          company_id: companyId,
+          user_id: user.id,
+          status: 'ACTIVE',
+          project_role: ACTING_PROJECT_MANAGER_ROLE,
+        },
+        select: { project_id: true },
+      });
+      return memberships
+        .map((membership: { project_id: string | null }) => membership.project_id)
+        .filter((id: string | null): id is string => Boolean(id));
+    }
+    return [];
   }
 
   static async assertCanManageProject(user: any, projectId: string | null | undefined, companyId: string, db: any = prisma): Promise<void> {
     if (!projectId || !companyId || !user?.id || user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan pengelolaan pada project ini.');
     }
-    if (this.isCompanyAdmin(user) || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER) {
-      const project = await db.project_project.findFirst({ where: { id: projectId, company_id: companyId }, select: { id: true } });
+    const activeRole = this.activeRole(user);
+    if (
+      this.isCompanyAdmin(user) ||
+      activeRole === RoleCode.OPERATIONAL_MANAGER ||
+      activeRole === RoleCode.PROJECT_MANAGER
+    ) {
+      const project = await db.project_project.findFirst({
+        where: { id: projectId, company_id: companyId },
+        select: { id: true },
+      });
       if (project) return;
       throw new ForbiddenError('Anda tidak memiliki kewenangan pengelolaan pada project ini.');
     }
-    const managedIds = await this.managedProjectIds(user, companyId, db);
-    if (!managedIds.includes(projectId)) {
+    if (this.isOperationalAssignee(user)) {
+      const membership = await db.project_member.findFirst({
+        where: {
+          project_id: projectId,
+          company_id: companyId,
+          user_id: user.id,
+          status: 'ACTIVE',
+          project_role: ACTING_PROJECT_MANAGER_ROLE,
+        },
+        select: { id: true },
+      });
+      if (membership) return;
       throw new ForbiddenError('Anda tidak memiliki kewenangan pengelolaan pada project ini.');
     }
+    throw new ForbiddenError('Anda tidak memiliki kewenangan pengelolaan pada project ini.');
   }
 
   static async hasProjectManagementAuthority(user: any, projectId: string, companyId: string, db: any = prisma): Promise<boolean> {
@@ -134,10 +142,7 @@ export class ProjectsService {
   }
 
   static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user)) return {};
-    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
-      return { id: { in: await this.managedProjectIds(user, companyId, db) } };
-    }
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
     if (!this.isOperationalAssignee(user) || !user?.id) return { id: { in: [] } };
 
     const [memberships, assignments] = await Promise.all([
@@ -471,96 +476,15 @@ export class ProjectsService {
     }
 
     if (
-      this.hasPortfolioRead(user)
+      this.hasPortfolioRead(user) ||
+      this.activeRole(user) === RoleCode.PROJECT_MANAGER
     ) {
       return {};
     }
 
-    if (
-      this.activeRole(user) !==
-      RoleCode.PROJECT_MANAGER
-    ) {
-      return {
-        id: {
-          in: [],
-        },
-      };
-    }
-
-    const projectIds =
-      await this.managedProjectIds(
-        user,
-        companyId,
-        db,
-      );
-
-    if (!projectIds.length) {
-      return {
-        id: {
-          in: [],
-        },
-      };
-    }
-
-    const mainTasks =
-      await db.project_main_task.findMany({
-        where: {
-          company_id:
-            companyId,
-
-          project_id: {
-            in:
-              projectIds,
-          },
-        },
-
-        select: {
-          id:
-            true,
-        },
-      });
-
-    const mainTaskIds =
-      mainTasks.map(
-        (task: { id: string }) =>
-          task.id,
-      );
-
-    if (!mainTaskIds.length) {
-      return {
-        id: {
-          in: [],
-        },
-      };
-    }
-
-    const weeklyTasks =
-      await db.project_weekly_task.findMany({
-        where: {
-          company_id:
-            companyId,
-
-          main_task_id: {
-            in:
-              mainTaskIds,
-          },
-        },
-
-        select: {
-          id:
-            true,
-        },
-      });
-
     return {
-      weekly_task_id: {
-        in:
-          weeklyTasks.map(
-            (task: {
-              id: string;
-            }) =>
-              task.id,
-          ),
+      id: {
+        in: [],
       },
     };
   }
@@ -583,9 +507,8 @@ export class ProjectsService {
         ? { OR: [{ id: { in: scope.mainTaskIds } }, { project_id: { in: managedProjectIds } }] }
         : { id: { in: scope.mainTaskIds } };
     }
-    if (this.hasPortfolioRead(user)) return {};
-    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
-    return { project_id: { in: await this.managedProjectIds(user, companyId, db) } };
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    return { id: { in: [] } };
   }
 
   static async weeklyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
@@ -618,14 +541,8 @@ export class ProjectsService {
         ],
       };
     }
-    if (this.hasPortfolioRead(user)) return {};
-    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
-    const mainWhere = await this.mainTaskAccessWhere(user, companyId, db);
-    const mainTasks = await db.project_main_task.findMany({
-      where: { company_id: companyId, ...mainWhere },
-      select: { id: true },
-    });
-    return { main_task_id: { in: mainTasks.map((task: { id: string }) => task.id) } };
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    return { id: { in: [] } };
   }
 
   static async taskAssignmentAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
@@ -643,15 +560,8 @@ export class ProjectsService {
         ],
       };
     }
-    if (this.hasPortfolioRead(user)) return {};
-    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
-
-    const mainWhere = await this.mainTaskAccessWhere(user, companyId, db);
-    const mainTasks = await db.project_main_task.findMany({
-      where: { company_id: companyId, ...mainWhere },
-      select: { id: true },
-    });
-    return { main_task_id: { in: mainTasks.map((task: { id: string }) => task.id) } };
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    return { id: { in: [] } };
   }
 
   static async taskTransferAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
@@ -678,14 +588,8 @@ export class ProjectsService {
         ],
       };
     }
-    if (this.hasPortfolioRead(user)) return {};
-    if (this.activeRole(user) !== RoleCode.PROJECT_MANAGER) return { id: { in: [] } };
-    const dailyWhere = await this.dailyTaskAccessWhere(user, companyId, db);
-    const dailyTasks = await db.project_daily_task.findMany({
-      where: { company_id: companyId, ...dailyWhere },
-      select: { id: true },
-    });
-    return { daily_task_id: { in: dailyTasks.map((task: { id: string }) => task.id) } };
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    return { id: { in: [] } };
   }
 
   private static async dailyTaskContext(dailyTaskId: string, companyId: string, db: any = prisma) {
@@ -758,7 +662,7 @@ export class ProjectsService {
     if (!project) throw new NotFoundError('Project');
     const allowed = this.isCompanyAdmin(user)
       || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER
-      || (this.activeRole(user) === RoleCode.PROJECT_MANAGER && project.project_manager_id === user.id);
+      || this.activeRole(user) === RoleCode.PROJECT_MANAGER;
     if (!allowed) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk menunjuk atau mencabut Project Supervisor.');
     }
@@ -956,43 +860,43 @@ export class ProjectsService {
     });
     if (!project) throw new NotFoundError('Project');
     await this.assertCanViewProject(user, projectId, companyId, db);
-    const eligibleMembershipRoles = this.activeRole(user) === RoleCode.PROJECT_MANAGER
-      ? [...PROJECT_MANAGEMENT_ROLES, ACTING_PROJECT_MANAGER_ROLE]
-      : this.isOperationalAssignee(user)
-        ? [ACTING_PROJECT_MANAGER_ROLE]
-        : [];
-    const membership = user?.id && eligibleMembershipRoles.length
-      ? await db.project_member.findFirst({
-          where: {
-            project_id: projectId,
-            company_id: companyId,
-            user_id: user.id,
-            status: 'ACTIVE',
-            project_role: { in: eligibleMembershipRoles },
-          },
-          select: { project_role: true },
-        })
-      : null;
-    const isOriginalPm = Boolean(user?.id && project.project_manager_id === user.id && this.activeRole(user) === RoleCode.PROJECT_MANAGER);
-    const isMembershipPm = Boolean(membership && PROJECT_MANAGEMENT_ROLES.includes(membership.project_role as typeof PROJECT_MANAGEMENT_ROLES[number]));
-    const isActing = membership?.project_role === ACTING_PROJECT_MANAGER_ROLE;
-    const isOm = this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER;
+    const activeRole = this.activeRole(user);
+    const isGlobalPm = activeRole === RoleCode.PROJECT_MANAGER;
+    const isOm = activeRole === RoleCode.OPERATIONAL_MANAGER;
     const isAdmin = this.isCompanyAdmin(user);
-    const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && (isAdmin || isOm || isOriginalPm || isMembershipPm || isActing);
-    const canDelegate = canManage && (isAdmin || isOm || isOriginalPm);
+
+    let isActing = false;
+    if (this.isOperationalAssignee(user) && user?.id) {
+      const membership = await db.project_member.findFirst({
+        where: {
+          project_id: projectId,
+          company_id: companyId,
+          user_id: user.id,
+          status: 'ACTIVE',
+          project_role: ACTING_PROJECT_MANAGER_ROLE,
+        },
+        select: { project_role: true },
+      });
+      isActing = Boolean(membership);
+    }
+
+    const isPm = isGlobalPm;
+    const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && (isAdmin || isOm || isPm || isActing);
+    const canDelegate = canManage && (isAdmin || isOm || isPm);
     const effectiveRole = isActing
       ? ACTING_PROJECT_MANAGER_ROLE
-      : (isOriginalPm || isMembershipPm)
+      : isPm
         ? 'PROJECT_MANAGER'
         : isOm
           ? 'OPERATIONAL_MANAGER'
           : isAdmin
             ? 'COMPANY_ADMIN'
             : null;
+
     return {
       project_id: projectId,
       effective_role: effectiveRole,
-      is_project_manager: isOriginalPm || isMembershipPm,
+      is_project_manager: isPm,
       is_acting_project_manager: isActing,
       can_manage_project: canManage,
       can_manage_wbs: canManage,
@@ -1003,8 +907,8 @@ export class ProjectsService {
       can_override_progress: canManage,
       can_manage_milestones: canManage,
       can_delegate_supervisor: canDelegate,
-      can_create_project: isAdmin || isOm || this.activeRole(user) === RoleCode.PROJECT_MANAGER,
-      can_delete_project: isAdmin || isOm || isOriginalPm,
+      can_create_project: isAdmin || isOm || isPm,
+      can_delete_project: isAdmin || isOm || isPm,
     };
   }
 
