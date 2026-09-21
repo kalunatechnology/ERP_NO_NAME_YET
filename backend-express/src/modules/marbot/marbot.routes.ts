@@ -7,23 +7,22 @@ import { resolveTenant } from '../../middlewares/tenant.middleware';
 import { AppError, ForbiddenError, UnauthorizedError, ValidationError } from '../../utils/errors';
 import {
   canonicalJson,
-  createHmacSignature,
   matchesHmac,
+  signRuntimeContext,
   toolSignaturePayload,
 } from './marbot-signature.service';
 import { resolveMarbotTenantConfig } from './marbot.config';
 import {
-  checkedModule,
-  checkedUser,
-  getVisibleProjectIds,
-  hasPermission,
+  buildMarbotRuntimeAuthority,
   mapRoleForChatbot,
-  requirePermission,
+  normalizeProjectScope,
   toolModules,
   toolPermissions,
   toolQueryKeys,
 } from './marbot-access.service';
 import { MarbotToolScope } from './marbot.types';
+import { buildMarbotRuntimeContextV2 } from './marbot-runtime.service';
+import { env } from '../../config/env';
 
 // Re-export services for backwards compatibility with tests and callers
 export { canonicalJson, toolSignaturePayload, matchesHmac, resolveMarbotTenantConfig };
@@ -45,7 +44,17 @@ async function verifyToolRequest(req: Request, toolName: string): Promise<Marbot
   const nonce = String(req.header('X-Nonce') || '');
   const timestamp = Number(req.header('X-Timestamp'));
   const requestId = String(req.header('X-Request-Id') || '');
-  const roles = String(req.header('X-User-Roles') || '').split(',').filter(Boolean);
+  const companyClaim = String(req.header('X-Company-Id') || '');
+  const roles = String(req.header('X-User-Roles') || '').split(',').map((role) => role.trim()).filter(Boolean).sort();
+  const claimedPermissions = [...new Set(
+    String(req.header('X-User-Permissions') || '').split(',').map((value) => value.trim()).filter(Boolean),
+  )].sort();
+  let claimedProjectScope;
+  try {
+    claimedProjectScope = normalizeProjectScope(JSON.parse(String(req.header('X-Project-Scope') || '')));
+  } catch {
+    throw new UnauthorizedError();
+  }
   const signature = String(req.header('X-Chatbot-Signature') || '');
 
   const tenant = await prisma.core_tenant.findFirst({
@@ -58,6 +67,8 @@ async function verifyToolRequest(req: Request, toolName: string): Promise<Marbot
     !userId ||
     !nonce ||
     !requestId ||
+    !companyClaim ||
+    !claimedPermissions.length ||
     roles.length !== 1 ||
     !Number.isInteger(timestamp) ||
     Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300 ||
@@ -77,10 +88,13 @@ async function verifyToolRequest(req: Request, toolName: string): Promise<Marbot
   const membership = await prisma.iam_user_company_membership.findUnique({
     where: { user_id: userId },
   });
-  if (!membership || membership.status !== 'ACTIVE' || membership.tenant_id !== tenant.id) {
+  if (
+    !membership || membership.status !== 'ACTIVE' || membership.tenant_id !== tenant.id ||
+    membership.company_id !== companyClaim
+  ) {
     throw new ForbiddenError();
   }
-  const companyId = membership.company_id;
+  const companyId = companyClaim;
 
   // Atomic unique insert blocks replay across instances. Denials after signature verification are also recorded.
   await prisma.marbot_request.create({
@@ -98,11 +112,26 @@ async function verifyToolRequest(req: Request, toolName: string): Promise<Marbot
   });
 
   try {
-    const access = await checkedModule(userId, companyId, tenant.id, toolModules[toolName]);
-    if (mapRoleForChatbot(access.activeRoleCode!, config) !== roles[0]) {
+    const authority = await buildMarbotRuntimeAuthority(userId, tenant.id, companyId);
+    if (
+      !authority.enabledModules.includes(toolModules[toolName]) ||
+      mapRoleForChatbot(authority.roleCode, config) !== roles[0]
+    ) {
       throw new ForbiddenError();
     }
-    await requirePermission(access.activeRoleId!, tenant.id, companyId, toolPermissions[toolName]);
+    const currentPermissions = new Set(authority.permissions);
+    const acceptedToolPermissions = toolPermissions[toolName] || [];
+    if (
+      !acceptedToolPermissions.some((permission) => claimedPermissions.includes(permission)) ||
+      claimedPermissions.some((permission) => !currentPermissions.has(permission))
+    ) throw new ForbiddenError();
+    if (authority.projectScope.mode === 'LIST') {
+      if (claimedProjectScope.mode === 'ALL') throw new ForbiddenError();
+      const allowedProjects = new Set(authority.projectScope.projectIds);
+      if (claimedProjectScope.projectIds.some((projectId) => !allowedProjects.has(projectId))) {
+        throw new ForbiddenError();
+      }
+    }
     await prisma.marbot_request.update({
       where: { nonce },
       data: { outcome: 'ALLOWED' },
@@ -111,7 +140,9 @@ async function verifyToolRequest(req: Request, toolName: string): Promise<Marbot
       tenantId: tenant.id,
       companyId,
       userId,
-      role: access.activeRoleCode!,
+      role: authority.roleCode,
+      permissions: claimedPermissions,
+      projectScope: claimedProjectScope,
     };
   } catch (error) {
     await prisma.marbot_request.update({
@@ -127,7 +158,7 @@ export const marbotInternalRouter = Router();
 marbotInternalRouter.get('/projects/summary', async (req, res, next) => {
   try {
     const scope = await verifyToolRequest(req, 'project.summary');
-    const ids = await getVisibleProjectIds(scope.tenantId, scope.companyId, scope.userId, scope.role);
+    const ids = scope.projectScope.mode === 'LIST' ? scope.projectScope.projectIds : null;
     const projectId = String(req.query.projectId || '');
     if (!projectId) throw new ValidationError('projectId wajib diisi.');
     if (ids && !ids.includes(projectId)) throw new ForbiddenError();
@@ -145,7 +176,8 @@ marbotInternalRouter.get('/projects/summary', async (req, res, next) => {
         progress_percent: true,
         planned_end_date: true,
         customer_name: true,
-        ...(new Set<RoleCode>([RoleCode.DIRECTOR, RoleCode.FINANCE]).has(scope.role)
+        ...(scope.permissions.some((permission) =>
+          ['READ_PROJECT_FINANCE', 'READ_COMPANY_FINANCE', 'READ_FINANCE_SUMMARY'].includes(permission))
           ? { budget_amount: true }
           : {}),
       },
@@ -172,7 +204,7 @@ marbotInternalRouter.get('/projects/summary', async (req, res, next) => {
 marbotInternalRouter.get('/projects/tasks', async (req, res, next) => {
   try {
     const scope = await verifyToolRequest(req, 'project.task_overview');
-    const ids = await getVisibleProjectIds(scope.tenantId, scope.companyId, scope.userId, scope.role);
+    const ids = scope.projectScope.mode === 'LIST' ? scope.projectScope.projectIds : null;
     const employee = await prisma.master_employee.findFirst({
       where: { tenant_id: scope.tenantId, company_id: scope.companyId, user_id: scope.userId },
       select: { id: true },
@@ -225,10 +257,6 @@ marbotInternalRouter.get('/projects/tasks', async (req, res, next) => {
 marbotInternalRouter.get('/finance/expenses', async (req, res, next) => {
   try {
     const scope = await verifyToolRequest(req, 'finance.expense_summary');
-    if (!new Set<RoleCode>([RoleCode.DIRECTOR, RoleCode.FINANCE]).has(scope.role)) {
-      throw new ForbiddenError();
-    }
-
     const period = String(req.query.period || new Date().toISOString().slice(0, 7));
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
       throw new ValidationError('Periode tidak valid.');
@@ -242,6 +270,7 @@ marbotInternalRouter.get('/finance/expenses', async (req, res, next) => {
         where: {
           tenant_id: scope.tenantId,
           company_id: scope.companyId,
+          ...(scope.projectScope.mode === 'LIST' ? { project_id: { in: scope.projectScope.projectIds } } : {}),
           transaction_date: { gte: start, lt: end },
           status: 'POSTED',
         },
@@ -328,7 +357,6 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
 
   try {
     if (!req.user?.tenant_id || !req.companyId) throw new ForbiddenError();
-    const access = await checkedUser(req.user.id, req.companyId, req.user.tenant_id);
     const config = await resolveMarbotTenantConfig(req.user.tenant_id);
     const message = req.body?.message;
     const conversationId = req.body?.conversationId;
@@ -342,42 +370,13 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
       throw new ValidationError('Pesan atau conversationId tidak valid.');
     }
 
-    const issuedAt = Math.floor(Date.now() / 1000);
-    const roleId = access.activeRoleId!;
-    const [canReadProject, canReadTask, canReadFinance, canReadCrm] = await Promise.all([
-      hasPermission(roleId, req.user.tenant_id, req.companyId, 'READ_PROJECT'),
-      hasPermission(roleId, req.user.tenant_id, req.companyId, 'READ_TASK'),
-      hasPermission(roleId, req.user.tenant_id, req.companyId, 'READ_FINANCE_SUMMARY'),
-      hasPermission(roleId, req.user.tenant_id, req.companyId, 'READ_TICKET'),
-    ]);
-
-    const contextModules = access.enabledModules.filter(
-      (module) =>
-        module === 'MARBOT' ||
-        module === 'GENERAL' ||
-        (module === 'PROJECTS' && (canReadProject || canReadTask)) ||
-        (module === 'FINANCE' &&
-          canReadFinance &&
-          new Set<RoleCode>([RoleCode.DIRECTOR, RoleCode.FINANCE]).has(access.activeRoleCode!)) ||
-        (module === 'CRM' &&
-          canReadCrm &&
-          new Set<RoleCode>([RoleCode.DIRECTOR, RoleCode.CRM_LEAD, RoleCode.SALES]).has(
-            access.activeRoleCode!,
-          )),
+    const context = await buildMarbotRuntimeContextV2(
+      req.user.id, req.user.tenant_id, req.companyId, config,
     );
-
-    const context = {
-      externalTenantId: config.externalTenantId,
-      externalUserId: req.user.id,
-      companyId: req.companyId,
-      roleCodes: [mapRoleForChatbot(access.activeRoleCode!, config)],
-      enabledModules: contextModules,
-      issuedAt,
-      expiresAt: issuedAt + 120,
-      jti: randomUUID(),
-    };
-
-    const signature = createHmacSignature(canonicalJson(context), config.inboundContextSecret);
+    const useContractV2 = env.CHATBOT_CONTRACT_MODE === 'v2';
+    const signature = useContractV2
+      ? signRuntimeContext(context, config.inboundContextSecret)
+      : null;
 
     await prisma.marbot_request.create({
       data: {
@@ -399,16 +398,21 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
 
     let upstream: globalThis.Response;
     try {
+      const upstreamHeaders: Record<string, string> = {
+        Authorization: `Bearer ${config.chatbotApiKey}`,
+        'Content-Type': 'application/json',
+        'X-External-User-Id': req.user.id,
+        'X-Request-Id': req.requestId || context.jti,
+      };
+      if (signature) upstreamHeaders['X-Context-Signature'] = signature;
       upstream = await fetch(url, {
         method: 'POST',
         redirect: 'manual',
         signal: controller.signal,
-        headers: {
-          Authorization: `Bearer ${config.chatbotApiKey}`,
-          'Content-Type': 'application/json',
-          'X-Context-Signature': signature,
-        },
-        body: JSON.stringify({ message, conversationId, context }),
+        headers: upstreamHeaders,
+        body: JSON.stringify(useContractV2
+          ? { message, conversationId, context }
+          : { message, conversationId }),
       });
     } catch {
       throw new AppError('Layanan MarBot tidak dapat dihubungi.', 502, 'MARBOT_NETWORK_ERROR');

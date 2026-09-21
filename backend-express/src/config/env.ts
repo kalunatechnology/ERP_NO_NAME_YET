@@ -29,7 +29,7 @@ const envSchema = z.object({
 
   JWT_ACCESS_SECRET: z.string().default('your-super-secret-access-key-32chars-minimum-prod'),
   JWT_REFRESH_SECRET: z.string().default('your-super-secret-refresh-key-32chars-minimum-prod'),
-  JWT_ACCESS_EXPIRES_IN: z.string().default('30m'),
+  JWT_ACCESS_EXPIRES_IN: z.string().default('1d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
   CORS_ALLOWED_ORIGINS: z
@@ -58,6 +58,9 @@ const envSchema = z.object({
   CHATBOT_SERVICE_URL: z.string().optional(),
   CHATBOT_CONTROL_PLANE_SECRET: z.string().optional(),
   ERP_BASE_URL: z.string().optional(),
+  CHATBOT_ERP_READONLY_DATABASE_URL: z.string().optional(),
+  MARBOT_ENCRYPTION_KEY: z.string().optional(),
+  CHATBOT_CONTRACT_MODE: z.enum(['legacy', 'v2']).default('legacy'),
 });
 
 /**

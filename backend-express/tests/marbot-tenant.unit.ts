@@ -4,6 +4,7 @@ import { resolveMarbotTenantConfig } from '../src/modules/marbot/marbot.config';
 import { MarbotTenantService } from '../src/modules/marbot/marbot-tenant.service';
 import { MarbotControlPlaneClient } from '../src/modules/marbot/marbot-control-plane.client';
 import { RoleCode } from '@prisma/client';
+import { env } from '../src/config/env';
 
 async function runMarbotTenantTests() {
   console.log('Running MarBot tenant & control plane unit test suite...');
@@ -29,6 +30,7 @@ async function runMarbotTenantTests() {
           sync_status: 'ACTIVE',
         }),
       },
+      iam_company_module_access: { findMany: async () => [{ module_code: 'MARBOT' }] },
     };
     const activeCfg = await resolveMarbotTenantConfig('t-active', mockDbActive);
     assert.strictEqual(activeCfg.externalTenantId, 'CORP_A');
@@ -146,7 +148,7 @@ async function runMarbotTenantTests() {
     assert.strictEqual(managedStatus.configured, true);
     assert.strictEqual(managedStatus.chatbotTenantId, 'cb-tenant-uuid-1');
     assert.strictEqual(managedStatus.activeKeyId, 'key-id-1');
-    assert.strictEqual(managedStatus.data?.chatbot_api_key_masked, '••••••••7890');
+    assert.strictEqual(managedStatus.data?.chatbot_api_key_masked, '••••••••');
     assert.strictEqual(managedStatus.data?.inbound_context_secret_masked, '••••••••');
     console.log('✓ Case 2A: MANAGED mode status passed');
 
@@ -195,6 +197,7 @@ async function runMarbotTenantTests() {
     // 3. MarbotTenantService.provisionTenant tests
     // --------------------------------------------------------------------------
     console.log('\n--- 3. Testing provisionTenant flow & guards ---');
+    (env as any).CHATBOT_CONTRACT_MODE = 'v2';
 
     // Case 3A: Fail-closed when CHATBOT_SERVICE_URL or SECRET missing
     const unconfiguredClient = new MarbotControlPlaneClient('', '');
@@ -253,18 +256,22 @@ async function runMarbotTenantTests() {
           return updatedRow;
         },
       },
+      iam_company_module_access: {
+        findMany: async () => [{ module_code: 'MARBOT' }, { module_code: 'PROJECTS' }],
+      },
     };
 
     let sentPayload: any = null;
-    mockClient.provisionTenant = async (payload) => {
+    mockClient.provisionTenant = async (payload, idempotencyKey) => {
       sentPayload = payload;
+      assert.strictEqual(idempotencyKey, 'erp:t-new:marbot:provision:v2');
       return {
-        tenantId: 'cb-alpha-id',
-        externalTenantId: payload.externalTenantId,
-        apiKey: { key: 'new-key-12345678', keyId: 'key-id-alpha' },
-        inboundContextSecret: 'inbound-sec',
-        outboundToolSecret: 'outbound-sec',
-        status: 'ACTIVE',
+        contractVersion: 2,
+        tenant: { id: 'cb-alpha-id', externalTenantId: payload.externalTenantId, status: 'ACTIVE' },
+        credentials: {
+          apiKey: 'new-key-12345678', keyId: 'key-id-alpha',
+          inboundContextSecret: 'inbound-sec', outboundToolSecret: 'outbound-sec',
+        },
       };
     };
 
@@ -275,7 +282,8 @@ async function runMarbotTenantTests() {
     );
 
     assert.strictEqual(sentPayload.externalTenantId, 'ALPHA_CORP');
-    assert.strictEqual(sentPayload.tenantName, 'Alpha Corp');
+    assert.strictEqual(sentPayload.name, 'Alpha Corp');
+    assert.strictEqual(sentPayload.contractVersion, 2);
     assert.strictEqual(sentPayload.erpBaseUrl, 'https://erp.test.com');
     assert.strictEqual(provResult.mode, 'MANAGED');
     assert.strictEqual(provResult.syncStatus, 'ACTIVE');

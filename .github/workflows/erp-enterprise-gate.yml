@@ -1,0 +1,53 @@
+name: ERP Enterprise Gate
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-express
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/erp
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/erp
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend-express/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma validate
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:marbot-signature
+      - run: npm run test:marbot-tenant
+      - run: npm run test:marbot-runtime-v2
+      - run: npm run test:marbot-tool-hmac-v2
+      - run: npm run test:marbot-control-plane-v2
+      - run: npm run test:marbot-project-scope
+      - run: npm run test:marbot-secrets
+      - run: npm run test:jwt-expiry
+      - run: npm run test:project-authority
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-next
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend-next/package-lock.json
+      - run: npm ci
+      - run: npm run build

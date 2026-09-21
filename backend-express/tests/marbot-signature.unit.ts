@@ -31,6 +31,9 @@ const headers: Record<string, string> = {
   'X-Request-Id': 'request-1',
   'X-User-Id': 'user-1',
   'X-User-Roles': 'EXECUTIVE',
+  'X-Company-Id': 'company-1',
+  'X-User-Permissions': 'READ_TASK,READ_PROJECT',
+  'X-Project-Scope': '{"projectIds":["p-1"],"mode":"LIST"}',
 };
 const req = {
   baseUrl: '/internal/marbot',
@@ -55,6 +58,9 @@ const expectedPayload = [
   'EXECUTIVE',
   'project.task_overview',
   'request-1',
+  'company-1',
+  'READ_PROJECT,READ_TASK',
+  '{"mode":"LIST","projectIds":["p-1"]}',
 ].join('\n');
 
 assert.equal(payload, expectedPayload);
@@ -67,5 +73,14 @@ assert.equal(createHmac('sha256', 'secret').update(payload).digest('hex'), sig);
 assert.strictEqual(matchesHmac(payload, sig, 'secret'), true);
 assert.strictEqual(verifyHmacSignature(payload, sig, 'secret'), true);
 assert.strictEqual(matchesHmac(payload, 'bad' + sig.slice(3), 'secret'), false);
+
+headers['X-Company-Id'] = 'company-tampered';
+assert.notEqual(toolSignaturePayload(req, 'project.task_overview', config), payload);
+headers['X-Company-Id'] = 'company-1';
+headers['X-User-Permissions'] = 'READ_TASK';
+assert.notEqual(toolSignaturePayload(req, 'project.task_overview', config), payload);
+headers['X-User-Permissions'] = 'READ_TASK,READ_PROJECT';
+headers['X-Project-Scope'] = '{"mode":"ALL","projectIds":[]}';
+assert.notEqual(toolSignaturePayload(req, 'project.task_overview', config), payload);
 
 console.log('Marbot chatbot signature compatibility: passed');

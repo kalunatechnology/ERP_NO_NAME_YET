@@ -105,9 +105,22 @@ function browserBootstrapScopeKey(sections: DashboardSection[], access: Frontend
   if (typeof window === 'undefined') return `server:${sections.join(',')}`;
   const token = localStorage.getItem('erp.access') || localStorage.getItem('access_token') || '';
   const company = localStorage.getItem('erp.company') || localStorage.getItem('active_company_id') || '';
+  let userId = '';
+  try {
+    const encodedPayload = token.split('.')[1];
+    if (encodedPayload) {
+      const normalized = encodedPayload.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+      const payload = JSON.parse(atob(padded));
+      userId = String(payload.userId || payload.user_id || payload.sub || '');
+    }
+  } catch {
+    userId = '';
+  }
+  if (!userId) return `uncacheable:${Date.now()}:${Math.random()}:${sections.join(',')}`;
   return JSON.stringify({
     sections: [...sections].sort(),
-    token,
+    userId,
     company,
     activeRoleCode: access.activeRoleCode || '',
     enabledModules: [...(access.enabledModules || [])].map(String).sort(),
@@ -195,6 +208,7 @@ export async function loadDashboardBootstrap(
   if (!options.fresh) {
     const cached = bootstrapCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
+    if (cached) bootstrapCache.delete(cacheKey);
     const pending = bootstrapRequests.get(cacheKey);
     if (pending) return pending;
   }

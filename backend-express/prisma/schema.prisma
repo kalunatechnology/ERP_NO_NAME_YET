@@ -85,9 +85,15 @@ model marbot_tenant_config {
   active_key_id          String?   // Key identifier of the active API key
   inbound_context_secret String?   // HMAC secret for signing context payloads sent TO chatbot (nullable for provisioning lifecycle)
   outbound_tool_secret   String?   // HMAC secret for verifying tool callback requests FROM chatbot (nullable for provisioning lifecycle)
-  sync_status            String    @default("NOT_PROVISIONED") // NOT_PROVISIONED | PROVISIONING | ACTIVE | ERROR
+  sync_status            String    @default("NOT_PROVISIONED") // NOT_PROVISIONED | PROVISIONING | ACTIVE | ERROR | SYNC_ERROR
   last_synced_at         DateTime?
   last_sync_error        String?
+  provisioning_operation_id String?
+  contract_version          Int       @default(2)
+  runtime_context_version   Int       @default(2)
+  datasource_source_key     String?
+  datasource_status         String?
+  last_contract_sync_at     DateTime?
   role_map_json          String?   // Optional JSON: {"DIRECTOR": "EXECUTIVE"} — ERP role → chatbot role mapping
   created_at             DateTime  @default(now())
   updated_at             DateTime  @updatedAt
@@ -95,6 +101,7 @@ model marbot_tenant_config {
 
   @@index([tenant_id])
   @@index([sync_status])
+  @@index([provisioning_operation_id])
   @@map("marbot_tenant_config")
 }
 

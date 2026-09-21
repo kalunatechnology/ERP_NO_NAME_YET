@@ -1,128 +1,44 @@
-# Marbot authorization owned by ERP
+# MarBot Enterprise Contract V2
 
-This integration keeps the chatbot source unchanged. The ERP browser sends chat
-requests to `POST /api/v1/marbot/chat/completions` with its ordinary ERP JWT and
-active `X-Company-ID`. ERP reloads the user, active membership, active role,
-company, module access, and `USE_MARBOT` grant. It creates a two-minute signed
-context and streams the chatbot response back to that browser. The tenant API
-key and signing key remain on the ERP server. The browser no longer embeds a
-chatbot credential. Chat and tool audits store identifiers and outcomes only;
-they do not store prompt text or ERP response data.
+ERP owns identity and business authority. MarBot enforces the signed runtime snapshot, while PostgreSQL provides the final read-only data boundary. The browser only calls ERP with its normal JWT and active company; API keys, HMAC secrets, database credentials, permissions, and project scope are never supplied by the browser.
 
-The chatbot's existing read tools call `/internal/marbot/projects/summary`,
-`/internal/marbot/projects/tasks`, `/internal/marbot/finance/expenses`, and
-`/internal/marbot/crm/tickets`. ERP verifies the chatbot HMAC against method,
-path, sorted query, body hash, timestamp, nonce, tenant, user, active role, tool,
-and request ID. The unique nonce row blocks replay across ERP processes. ERP
-then reloads authorization from its own database and applies company and
-project/task scopes before returning projected fields. There are no action
-endpoints in this phase; action requests cannot mutate ERP through Marbot.
+## Runtime flow
 
-## Provisioning
+`POST /api/v1/marbot/chat/completions` reloads the active user/company/role/module snapshot, batch-loads MarBot permissions, and derives project visibility through `ProjectsService.projectAccessWhere()`. ERP emits `MarbotRuntimeContextV2` with `contextVersion: 2`, a 120-second expiry, company, mapped role, filtered modules, effective permissions, canonical `ALL`/`LIST` project scope, locale, and unique JTI. The canonical JSON is signed with the tenant inbound-context secret.
 
-1. Apply the `20260915160000_marbot_request` Prisma migration before activating
-   the routes. The new table is required for replay protection; missing tables
-   cause a closed denial.
-2. Add `MARBOT_TENANT_CONFIG_JSON` on the ERP server. Its keys are ERP
-   `core_tenant.id` values. `externalTenantId` must equal both ERP
-   `core_tenant.code` and the chatbot tenant's `externalTenantId`. Set a fixed
-   HTTPS `chatbotUrl` (`https://chatbot-arsalynk.vercel.app` for the supplied
-   deployment), tenant API key, and two different random HMAC secrets.
-   The `inboundContextSecret` must equal the chatbot tenant's `INBOUND_CONTEXT`
-   key; `outboundToolSecret` must equal its `OUTBOUND_TOOL` key. Configure the
-   chatbot's `erpBaseUrl` as the fixed HTTPS ERP base URL and allow that domain.
-3. In **Company entitlements**, Super Admin enables **MarBot Assistant** for
-   each intended company. The toggle is available only after server-side
-   tenant keys and endpoint are configured. Activation installs an initial
-   `USE_MARBOT` and read-permission profile for the company's business roles
-   in one transaction; Super Admin and Company Admin roles are excluded.
-   Existing explicit role grants or denials are preserved. Deactivation stops
-   access immediately and does not delete role or user configuration.
-4. In **Team access control**, Company Admin selects a user and sets MarBot to
-   **Role default**, **No access**, or **Use MarBot**. The user override cannot
-   exceed the company entitlement. MarBot has no **View & manage** mode while
-   the unchanged chatbot offers only safe read tools. A user's active role must
-   have `USE_MARBOT`; the default role profile covers the ordinary business
-   roles. Role permissions can be adjusted through the ERP's existing
-   `accounts/role-permissions` governance API. New custom roles created after
-   activation require an explicit role grant.
-5. Each read tool uses the following ERP permission and scope:
+Tool callbacks use a 13-part HMAC payload: method, path and sorted query, timestamp, nonce, body hash, external tenant, user, sorted roles, tool, request ID, company, sorted permissions, and canonical project scope. ERP verifies HMAC and replay nonce before reloading current authority. A callback may narrow permissions or projects, but can never broaden them.
 
-   | Tool | Module | ERP permission | Scope |
-   | --- | --- | --- | --- |
-   | `project.summary` | PROJECTS | `READ_PROJECT` | Company for Director/OM; Finance projects with cost entries; assigned or managed project otherwise |
-   | `project.task_overview` | PROJECTS | `READ_TASK` | Company for Director/OM; Staff/Supervisor additionally own assigned tasks |
-   | `finance.expense_summary` | FINANCE | `READ_FINANCE_SUMMARY` | Director/Finance, company, posted project cost entries only |
-   | `crm.open_tickets` | CRM | `READ_TICKET` | Director/CRM Lead; Sales only assigned service cases |
+## Control plane and lifecycle
 
-6. Configure corresponding module/role permissions in the chatbot tenant
-   registry so its existing tool precheck can reach ERP. ERP remains the final
-   decision for those calls. The default `DIRECTOR` signed role is
-   `EXECUTIVE`; any other mismatch can be set in `roleMap`.
-7. Disable the chatbot `TenantDataSource` for sensitive ERP data, or do not
-   register it. The chatbot's direct PostgreSQL query path does not call the
-   ERP gateway, so ERP row-level scope cannot govern it. Upload only documents
-   intended for the chatbot's existing tenant/module/visibility controls.
-8. Rotate the old browser-exposed chatbot caller token. Removing it from the
-   frontend bundle does not revoke already-issued copies.
+Managed provisioning calls `POST /api/v1/control-plane/tenants` with Contract V2 and stable idempotency key `erp:<tenantId>:marbot:provision:v2`. Modules are derived from active ERP company entitlements. Lifecycle metadata records contract/runtime versions, datasource state, operation ID, and last contract sync. Retrying an uncertain request uses the same operation key.
 
-## Known compatibility limits of the unchanged chatbot
+Server-only configuration:
 
-- Its `project.summary` tool requires `projectId`, while its current chat
-  orchestrator calls that tool with empty parameters for some project prompts.
-  The request fails before reaching ERP. Those prompts need an explicitly
-  configured safe data view or a future chatbot update to supply `projectId`.
-- If an outbound ERP request fails, the chatbot dispatcher can return mock
-  data. ERP cannot prevent that reply without changing chatbot behavior. Do
-  not treat chatbot narrative as a financial or approval source of record.
-- The existing finance tool name says `expense_summary`; ERP supplies posted
-  **project cost entries** only and marks the response `PROJECT_COST_ONLY`.
-  It does not represent every expense category in the accounting ledger.
-- The chatbot's GraphRAG and stored knowledge are separate from ERP read
-  endpoints. ERP cannot retroactively filter information already indexed there.
-- Signed context sends only modules for which the active ERP role has a read
-  grant. The unchanged chatbot still filters knowledge primarily by module and
-  visibility, so documents within one module must not mix finer data scopes.
-- Existing chatbot conversation listing routes still use legacy caller auth.
-  The ERP drawer now creates an owned conversation through signed chat and
-  stores only its ID for the current browser session. Team-wide conversation
-  access is intentionally absent.
+```env
+CHATBOT_SERVICE_URL=https://marbot.example.com
+CHATBOT_CONTROL_PLANE_SECRET=<high-entropy-control-plane-secret>
+CHATBOT_CONTRACT_MODE=legacy
+ERP_BASE_URL=https://erp.example.com
+CHATBOT_ERP_READONLY_DATABASE_URL=postgresql://marbot_reader:.../erp
+MARBOT_ENCRYPTION_KEY=<32-byte-base64-or-64-hex-key>
+```
 
-Validation: backend and frontend TypeScript checks, Prisma schema validation,
-and the HMAC compatibility vector in `tests/marbot-signature.unit.ts`.
+The currently published `chatbot-arsalynk.vercel.app` OpenAPI is version 1.0 and documents the caller-token contract (`message`, `conversationId`, and `X-External-User-Id`). Keep `CHATBOT_CONTRACT_MODE=legacy` for that deployment. ERP still validates its own user/module/permission/project authority before forwarding. Change the value to `v2` only after the target deployment accepts Runtime Context V2 and its control-plane endpoint; managed provisioning is intentionally disabled in legacy mode.
 
-Public deployment probe on 2026-09-15 against
-`https://chatbot-arsalynk.vercel.app`: `/health` returned 200 with `status: ok`,
-`/docs/openapi.json` returned 200 and lists the chat POST path, and a dummy
-chat POST without credentials returned 401. The OpenAPI ChatRequest schema does
-not list enterprise signed context, although a context-bearing unauthenticated
-request follows the tenant-auth rejection path. This confirms route existence
-and authentication enforcement, not tenant-key/HMAC interoperability. The ERP
-local `.env` currently has no `MARBOT_TENANT_CONFIG_JSON`; a real signed
-conversation cannot be exercised until that configuration and chatbot tenant
-keys are provisioned. Re-run `test:marbot-deployment` for the public probe.
+Production managed provisioning fails closed without `MARBOT_ENCRYPTION_KEY`. New credentials are stored as AES-256-GCM `enc:v1` values. Existing plaintext legacy rows remain readable during migration, but browser responses only contain masks/status metadata.
 
-On 2026-09-15, `prisma migrate status` could not complete against either the
-configured Supabase direct endpoint or the runtime pooler, including an
-approved network retry. No database migration or company activation was
-performed. Confirm database reachability and apply the migration before
-enabling MarBot; TypeScript, Prisma schema validation, signature unit test,
-and the public deployment smoke test passed after ERP configuration hardening.
+## Safe datasource
 
-## Automatic migration at release
+The read-only credential must not be the ERP `DATABASE_URL`. Grant `marbot_reader` only `CONNECT`, schema `USAGE`, and `SELECT` on `ai_projects`, `ai_project_tasks`, `ai_project_finance_summary`, `ai_finance_summary`, and `ai_crm_deals`.
 
-The MarBot migration is in the committed Prisma migration directory, so the
-existing release gate picks it up with every pending migration. For Hostinger,
-set `DEPLOYMENT_TARGET=hostinger` and `SUPABASE_DIRECT_URL` to the direct
-Supabase endpoint. `npm run deploy:hostinger` runs `prisma migrate deploy`
-before compilation, and a migration failure stops the build. For Docker,
-`DEPLOYMENT_TARGET=docker` is set by the Dockerfile; the production startup
-script runs migrations before loading Express, and a failure stops startup.
-The image includes the Prisma migrations and the deployment scripts. Both
-paths are idempotent for already-applied migrations. Vercel builds deliberately
-do not migrate a shared database; use a separate controlled migration release
-step if the ERP backend is ever deployed there.
+The provisioning contract enforces the `company_id` scope column, allowlisted views, 100-row/30-column limits, a 256 KiB result limit, and a five-second statement timeout. Never expose base tables or a generic write/SQL tool.
 
-Automatic schema migration does not provision tenant API keys or turn on a
-company entitlement. Those remain explicit server configuration and ERP admin
-actions after the release; MarBot activation fails closed until they exist.
+## Permissions and project scope
+
+Legacy `READ_FINANCE_SUMMARY` remains supported. Contract V2 adds `READ_PROJECT_FINANCE`, `READ_COMPANY_FINANCE`, and `READ_CRM_DEALS`. Runtime modules are the intersection of company entitlement and effective permission. Project scope always comes from canonical ERP project policy, so original PM, Acting PM, Director/OM, Staff, and Supervisor behavior stays aligned with the Project module.
+
+## Release order
+
+Run `prisma migrate deploy` before starting the new application revision. The migrations add lifecycle fields/permissions and then safe views. Create the restricted database role outside the application migration if it does not exist; the view migration grants access only when `marbot_reader` already exists. Configure secrets, provision/sync from Super Admin, test connectivity, and only then enable the MARBOT company entitlement.
+
+Regression commands are defined in `backend-express/package.json`: signature, tenant lifecycle, runtime V2, tool HMAC V2, control plane V2, project scope, and project authority. The enterprise CI workflow validates Prisma, backend type/build/tests, and the frontend build.

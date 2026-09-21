@@ -90,23 +90,19 @@ export async function enforceTransactionIdempotency(req: Request, res: Response,
 
   const originalJson = res.json.bind(res);
   res.json = ((body: unknown) => {
-    const responseStatus = res.statusCode;
-    // The transaction result is already committed by the route handler. Send
-    // it immediately; persisting the replay envelope is bookkeeping and must
-    // not add another remote-database round trip to every CRUD response.
-    const response = originalJson(body);
-    void prisma.core_idempotency_key.update({
-      where: { id: record.id },
-      data: {
-        state: responseStatus >= 500 ? 'FAILED' : 'COMPLETED',
-        response_status: responseStatus,
-        response_body: body as any,
-        completed_at: new Date(),
-      },
-    }).catch((error) => {
-      console.warn('[idempotency] Failed to persist completed response:', error instanceof Error ? error.message : error);
-    });
-    return response;
+    void (async () => {
+      await prisma.core_idempotency_key.update({
+        where: { id: record.id },
+        data: {
+          state: res.statusCode >= 500 ? 'FAILED' : 'COMPLETED',
+          response_status: res.statusCode,
+          response_body: body as any,
+          completed_at: new Date(),
+        },
+      });
+      originalJson(body);
+    })().catch(next);
+    return res;
   }) as Response['json'];
   return next();
 }

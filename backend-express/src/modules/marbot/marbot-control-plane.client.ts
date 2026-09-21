@@ -34,10 +34,11 @@ export class MarbotControlPlaneClient {
    */
   async provisionTenant(
     payload: ChatbotProvisionTenantRequest,
+    idempotencyKey: string,
   ): Promise<ChatbotProvisionTenantResponse> {
     this.assertConfigured();
 
-    const targetUrl = `${this.baseUrl}/api/v1/admin/tenants`;
+    const targetUrl = `${this.baseUrl}/api/v1/control-plane/tenants`;
     let response: globalThis.Response;
 
     try {
@@ -46,6 +47,7 @@ export class MarbotControlPlaneClient {
         headers: {
           Authorization: `Bearer ${this.controlPlaneSecret}`,
           'Content-Type': 'application/json',
+          'X-Idempotency-Key': idempotencyKey,
         },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(10000),
@@ -96,13 +98,16 @@ export class MarbotControlPlaneClient {
       throw new AppError(errMsg, 502, 'CHATBOT_PROVISIONING_FAILED');
     }
 
-    // Unwrap response data if wrapped in data property
     const rawData = responseData?.data ? responseData.data : responseData;
 
     if (
-      !rawData?.apiKey?.key ||
-      !rawData?.inboundContextSecret ||
-      !rawData?.outboundToolSecret
+      rawData?.contractVersion !== 2 ||
+      !rawData?.tenant?.id ||
+      rawData?.tenant?.externalTenantId !== payload.externalTenantId ||
+      !rawData?.credentials?.apiKey ||
+      !rawData?.credentials?.keyId ||
+      !rawData?.credentials?.inboundContextSecret ||
+      !rawData?.credentials?.outboundToolSecret
     ) {
       throw new AppError(
         'Format respon provisioning dari layanan Chatbot tidak lengkap.',
@@ -111,17 +116,7 @@ export class MarbotControlPlaneClient {
       );
     }
 
-    return {
-      tenantId: rawData.tenantId || rawData.id,
-      externalTenantId: rawData.externalTenantId,
-      apiKey: {
-        key: rawData.apiKey.key,
-        keyId: rawData.apiKey.keyId || rawData.activeKeyId || 'default',
-      },
-      inboundContextSecret: rawData.inboundContextSecret,
-      outboundToolSecret: rawData.outboundToolSecret,
-      status: rawData.status || 'ACTIVE',
-    };
+    return rawData as ChatbotProvisionTenantResponse;
   }
 }
 

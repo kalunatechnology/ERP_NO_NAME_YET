@@ -358,6 +358,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setAuthCookie(access);
+    let hydratedFromCache = false;
+    try {
+      const cachedUser = JSON.parse(localStorage.getItem("erp.user") || "null") as UserProfile | null;
+      if (cachedUser?.id && cachedUser.email) {
+        const cachedRole = detectRole(cachedUser);
+        const assignedCompany = cachedUser.company_id || cachedUser.roles?.[0]?.company_id || null;
+        const storedCompany = localStorage.getItem("erp.company");
+        const cachedCompany = cachedRole === "super_admin" && storedCompany && UUID_REGEX.test(storedCompany)
+          ? storedCompany
+          : assignedCompany;
+        dispatch({
+          type: "LOGIN_SUCCESS",
+          user: cachedUser,
+          company: cachedCompany ? String(cachedCompany) : null,
+          companies: assignedCompanyItems(cachedUser),
+          isAdmin: checkIsAdmin(cachedUser),
+          userRole: cachedRole,
+        });
+        hydratedFromCache = true;
+      }
+    } catch {
+      localStorage.removeItem("erp.user");
+    }
 
     getMyProfile()
       .then((user) => {
@@ -394,10 +417,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }).catch(() => {});
         }
       })
-      .catch(() => {
+      .catch((error: any) => {
+        const status = Number(error?.response?.status || 0);
+        // A temporary network/5xx failure must not blank an already hydrated
+        // workspace. Backend authorization remains authoritative for every API.
+        if (hydratedFromCache && (status === 0 || status >= 500)) return;
         localStorage.removeItem("erp.access");
         localStorage.removeItem("erp.refresh");
         localStorage.removeItem("access_token");
+        localStorage.removeItem("erp.user");
         localStorage.removeItem("erp.company");
         localStorage.removeItem("active_company_id");
         removeAuthCookie();
@@ -481,6 +509,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("erp.access");
     localStorage.removeItem("erp.refresh");
     localStorage.removeItem("access_token");
+    localStorage.removeItem("erp.user");
     localStorage.removeItem("erp.company");
     localStorage.removeItem("active_company_id");
     removeAuthCookie();

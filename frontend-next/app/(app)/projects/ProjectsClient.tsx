@@ -302,41 +302,14 @@ export default function ProjectsClient() {
         fetchProjectCustomers(),
         api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? [])
       ]);
-      // Primary and supporting reads share one concurrent request wave. Apart
-      // from lowering elapsed time, this lets backend auth snapshot coalescing
-      // serve the whole wave with one authorization lookup.
-      const [data, auxiliary] = await Promise.all([projectData, auxiliaryData]);
+      // Render the primary project/WBS dataset as soon as it is ready. Slow
+      // supporting lookups must never hold the entire workspace behind a
+      // full-page loading state (especially across a high-latency host).
+      const data = await projectData;
 
       // Guard against race conditions: if a newer fetch was initiated, discard this stale response completely!
       if (version !== fetchVersionRef.current) return;
-
-      const valueOrEmpty = (result: PromiseSettledResult<any>) => result.status === "fulfilled" ? result.value : [];
-      const transferList = valueOrEmpty(auxiliary[0]);
-      const uList = valueOrEmpty(auxiliary[1]);
-      const custList = valueOrEmpty(auxiliary[2]);
-      const divisions = valueOrEmpty(auxiliary[3]);
-      const failedAuxiliary = auxiliary.filter((result) => result.status === "rejected").length;
-      if (failedAuxiliary > 0) {
-        toast.error(`${failedAuxiliary} sumber data pendukung proyek gagal dimuat. Data utama proyek tetap ditampilkan.`);
-      }
-      const divisionNameById = new Map(
-        (Array.isArray(divisions) ? divisions : []).map((division: any) => [
-          String(division.id),
-          String(division.organization_name ?? division.name ?? division.id),
-        ]),
-      );
-      setProjects(data.map((project) => ({
-        ...project,
-        main_tasks: (project.main_tasks || []).map((mainTask) => ({
-          ...mainTask,
-          cost_owner_division_name: mainTask.cost_owner_division_id
-            ? divisionNameById.get(String(mainTask.cost_owner_division_id)) ?? String(mainTask.cost_owner_division_id)
-            : undefined,
-        })),
-      })));
-      if (custList && custList.length > 0) {
-        setCustomerOptions(custList);
-      }
+      setProjects(data);
 
       // Read current selectedId via ref (not dep) to preserve selection across silent refreshes
       const currentSelectedId = selectedIdRef.current;
@@ -351,9 +324,31 @@ export default function ProjectsClient() {
       }
       if (requestedProjectTab) setActiveTab(requestedProjectTab);
 
-      setTransfers(transferList);
-      setCompanyUsers(uList);
-      setDivisionOptions(Array.isArray(divisions) ? divisions : []);
+      void auxiliaryData.then((auxiliary) => {
+        if (version !== fetchVersionRef.current) return;
+        const valueOrEmpty = (result: PromiseSettledResult<any>) => result.status === "fulfilled" ? result.value : [];
+        const transferList = valueOrEmpty(auxiliary[0]);
+        const custList = valueOrEmpty(auxiliary[2]);
+        const divisions = valueOrEmpty(auxiliary[3]);
+        const divisionNameById = new Map(
+          (Array.isArray(divisions) ? divisions : []).map((division: any) => [
+            String(division.id),
+            String(division.organization_name ?? division.name ?? division.id),
+          ]),
+        );
+        setProjects(data.map((project) => ({
+          ...project,
+          main_tasks: (project.main_tasks || []).map((mainTask) => ({
+            ...mainTask,
+            cost_owner_division_name: mainTask.cost_owner_division_id
+              ? divisionNameById.get(String(mainTask.cost_owner_division_id)) ?? String(mainTask.cost_owner_division_id)
+              : undefined,
+          })),
+        })));
+        if (custList?.length) setCustomerOptions(custList);
+        setTransfers(transferList);
+        setDivisionOptions(Array.isArray(divisions) ? divisions : []);
+      });
     } catch {
       if (version === fetchVersionRef.current) {
         toast.error("Gagal menyinkronkan data proyek");

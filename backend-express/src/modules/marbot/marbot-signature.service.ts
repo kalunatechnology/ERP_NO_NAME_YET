@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
+import { MarbotRuntimeContextV2 } from './marbot.types';
 
 /**
  * Deterministically formats JSON payloads with sorted keys for consistent HMAC hashing.
@@ -32,6 +33,10 @@ export function createHmacSignature(payload: string, secret: string): string {
   return createHmac('sha256', secret).update(payload).digest('hex');
 }
 
+export function signRuntimeContext(context: MarbotRuntimeContextV2, secret: string): string {
+  return createHmacSignature(canonicalJson(context), secret);
+}
+
 /**
  * Constructs the canonical multi-line string for tool request verification.
  */
@@ -50,6 +55,19 @@ export function toolSignaturePayload(
     .filter(Boolean)
     .sort()
     .join(',');
+  const companyId = String(req.header('X-Company-Id') || '');
+  const permissions = String(req.header('X-User-Permissions') || '')
+    .split(',')
+    .map((permission) => permission.trim())
+    .filter(Boolean)
+    .sort()
+    .join(',');
+  let projectScope = '';
+  try {
+    projectScope = canonicalJson(JSON.parse(String(req.header('X-Project-Scope') || '')));
+  } catch {
+    projectScope = String(req.header('X-Project-Scope') || '');
+  }
   const query = Object.keys(req.query)
     .sort()
     .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(String(req.query[key]))}`)
@@ -67,6 +85,9 @@ export function toolSignaturePayload(
     roles,
     toolName,
     requestId,
+    companyId,
+    permissions,
+    projectScope,
   ].join('\n');
 }
 

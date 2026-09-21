@@ -1,9 +1,10 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import prisma from '../../config/database';
 import { env } from '../../config/env';
 import { AppError, ValidationError } from '../../utils/errors';
 import {
   ChatbotProvisionTenantResponse,
+  ChatbotTenantModuleProvision,
   MarbotTenantConfig,
   TenantIntegrationStatus,
 } from './marbot.types';
@@ -12,6 +13,37 @@ import {
   MarbotControlPlaneClient,
   marbotControlPlaneClient,
 } from './marbot-control-plane.client';
+import { decryptMarbotSecret, encryptMarbotSecret, hasMarbotEncryptionKey } from './marbot-secret.service';
+
+const MODULE_PERMISSION_CATALOG: Record<string, string[]> = {
+  GENERAL: ['READ_GENERAL'],
+  MARBOT: ['USE_MARBOT'],
+  PROJECTS: ['READ_PROJECT', 'READ_TASK'],
+  FINANCE: ['READ_PROJECT_FINANCE', 'READ_COMPANY_FINANCE', 'READ_FINANCE_SUMMARY'],
+  CRM: ['READ_CRM_DEALS', 'READ_TICKET'],
+};
+
+async function tenantProvisionModules(tenantId: string, db: any): Promise<ChatbotTenantModuleProvision[]> {
+  const rows = await db.iam_company_module_access.findMany({
+    where: { tenant_id: tenantId, enabled: true, allow_read: true },
+    select: { module_code: true },
+  });
+  const enabled = new Set<string>(['GENERAL', ...rows.map((row: any) => String(row.module_code))]);
+  return [...enabled].sort().filter((code) => MODULE_PERMISSION_CATALOG[code]).map((moduleCode) => ({
+    moduleCode,
+    enabled: true,
+    allowedRoles: ['*'],
+    permissions: MODULE_PERMISSION_CATALOG[moduleCode],
+  }));
+}
+
+function protectSecret(secret: string): string {
+  if (hasMarbotEncryptionKey()) return encryptMarbotSecret(secret);
+  if (env.NODE_ENV === 'production') {
+    throw new ValidationError('MARBOT_ENCRYPTION_KEY wajib dikonfigurasi untuk managed provisioning.');
+  }
+  return secret;
+}
 
 export class MarbotTenantService {
   /**
@@ -39,6 +71,9 @@ export class MarbotTenantService {
 
     if (dbRow) {
       const mode: 'MANAGED' | 'LEGACY' = dbRow.chatbot_tenant_id ? 'MANAGED' : 'LEGACY';
+      const enabledModules = mode === 'MANAGED' && db.iam_company_module_access?.findMany
+        ? (await tenantProvisionModules(tenantId, db)).map((item) => item.moduleCode)
+        : undefined;
       return {
         tenantId,
         configured: dbRow.sync_status === 'ACTIVE',
@@ -49,12 +84,18 @@ export class MarbotTenantService {
         activeKeyId: dbRow.active_key_id,
         lastSyncedAt: dbRow.last_synced_at,
         lastSyncError: dbRow.last_sync_error,
+        contractVersion: env.CHATBOT_CONTRACT_MODE === 'v2' ? (dbRow.contract_version ?? 2) : 1,
+        runtimeContextVersion: env.CHATBOT_CONTRACT_MODE === 'v2' ? (dbRow.runtime_context_version ?? 2) : 1,
+        datasourceSourceKey: dbRow.datasource_source_key,
+        datasourceStatus: dbRow.datasource_status,
+        lastContractSyncAt: dbRow.last_contract_sync_at,
+        enabledModules,
+        managedProvisioningAvailable: env.CHATBOT_CONTRACT_MODE === 'v2',
         data: {
           tenant_id: dbRow.tenant_id,
           external_tenant_id: dbRow.external_tenant_id,
           chatbot_url: dbRow.chatbot_url,
-          chatbot_api_key_masked:
-            '••••••••' + (dbRow.chatbot_api_key ? dbRow.chatbot_api_key.slice(-4) : ''),
+          chatbot_api_key_masked: dbRow.chatbot_api_key ? '••••••••' : '',
           inbound_context_secret_masked: '••••••••',
           outbound_tool_secret_masked: '••••••••',
           role_map_json: dbRow.role_map_json,
@@ -75,6 +116,9 @@ export class MarbotTenantService {
         activeKeyId: null,
         lastSyncedAt: null,
         lastSyncError: null,
+        contractVersion: 1,
+        runtimeContextVersion: 1,
+        managedProvisioningAvailable: env.CHATBOT_CONTRACT_MODE === 'v2',
         data: {
           tenant_id: tenantId,
           external_tenant_id: envConfig.externalTenantId,
@@ -98,6 +142,9 @@ export class MarbotTenantService {
       activeKeyId: null,
       lastSyncedAt: null,
       lastSyncError: null,
+      contractVersion: null,
+      runtimeContextVersion: null,
+      managedProvisioningAvailable: env.CHATBOT_CONTRACT_MODE === 'v2',
       data: null,
     };
   }
@@ -122,8 +169,16 @@ export class MarbotTenantService {
     db: any = prisma,
   ): Promise<TenantIntegrationStatus> {
     const client = options.client || marbotControlPlaneClient;
+    if (env.CHATBOT_CONTRACT_MODE !== 'v2') {
+      throw new ValidationError(
+        'Managed provisioning membutuhkan CHATBOT_CONTRACT_MODE=v2. Service MarBot production saat ini menggunakan konfigurasi legacy/caller token.',
+      );
+    }
     // 1. Fail-closed guard on configuration
     client.assertConfigured();
+    if (env.NODE_ENV === 'production' && !hasMarbotEncryptionKey()) {
+      throw new ValidationError('MARBOT_ENCRYPTION_KEY wajib dikonfigurasi untuk managed provisioning.');
+    }
 
     const tenant = await db.core_tenant.findUnique({
       where: { id: tenantId },
@@ -142,27 +197,63 @@ export class MarbotTenantService {
       );
     }
 
-    if (existing && existing.sync_status === 'ACTIVE' && existing.chatbot_tenant_id) {
-      throw new ValidationError('Tenant sudah aktif terintegrasi dengan MarBot.');
-    }
-
     if (existing && existing.sync_status === 'PROVISIONING') {
       throw new ValidationError('Proses provisioning sedang berjalan untuk tenant ini.');
     }
 
     const chatbotUrl = (env.CHATBOT_SERVICE_URL || '').replace(/\/+$/, '');
+    const resolvedErpBaseUrl =
+      (options.erpBaseUrl || env.ERP_BASE_URL || 'https://marka.arsalynk.com').replace(/\/+$/, '');
+    const modules = await tenantProvisionModules(tenantId, db);
+    let erpHostname: string;
+    try {
+      erpHostname = new URL(resolvedErpBaseUrl).hostname;
+    } catch {
+      throw new ValidationError('ERP_BASE_URL tidak valid.');
+    }
+    const dataSource = env.CHATBOT_ERP_READONLY_DATABASE_URL ? {
+      sourceKey: 'ERP_MAIN',
+      name: `${tenant.name} ERP Read Model`,
+      connectionUrl: env.CHATBOT_ERP_READONLY_DATABASE_URL,
+      isolationMode: 'COLUMN' as const,
+      scopeColumn: 'company_id',
+      scopeContextKey: 'companyId',
+      schemaAllowlist: ['public'],
+      tableAllowlist: ['ai_projects', 'ai_project_tasks', 'ai_project_finance_summary', 'ai_finance_summary', 'ai_crm_deals'],
+      maxRows: 100,
+      maxColumns: 30,
+      maxResultBytes: 262144,
+      statementTimeoutMs: 5000,
+    } : null;
+    const provisionPayload = {
+      contractVersion: 2 as const,
+      externalTenantId: tenant.code,
+      name: tenant.name,
+      erpBaseUrl: resolvedErpBaseUrl,
+      allowedErpDomains: [erpHostname],
+      allowedInternalCidrs: [],
+      credentialScopes: ['chat', 'knowledge:read', 'jobs:read'],
+      modules,
+      dataSource,
+    };
+    const isManagedSync = Boolean(existing?.chatbot_tenant_id);
+    const payloadHash = createHash('sha256').update(JSON.stringify(provisionPayload)).digest('hex').slice(0, 20);
+    const operationId = isManagedSync
+      ? `erp:${tenantId}:marbot:sync:v2:${payloadHash}`
+      : existing?.provisioning_operation_id || `erp:${tenantId}:marbot:provision:v2`;
 
     // 3. Atomic CAS state transition to PROVISIONING
     if (existing) {
       const claimed = await db.marbot_tenant_config.updateMany({
         where: {
           tenant_id: tenantId,
-          sync_status: { in: ['NOT_PROVISIONED', 'ERROR'] },
+          sync_status: { in: ['NOT_PROVISIONED', 'ERROR', 'SYNC_ERROR', 'ACTIVE'] },
         },
         data: {
           sync_status: 'PROVISIONING',
           last_sync_error: null,
           chatbot_url: chatbotUrl || existing.chatbot_url,
+          provisioning_operation_id: operationId,
         },
       });
       if (claimed.count !== 1) {
@@ -177,6 +268,9 @@ export class MarbotTenantService {
             external_tenant_id: tenant.code,
             chatbot_url: chatbotUrl,
             sync_status: 'PROVISIONING',
+            provisioning_operation_id: operationId,
+            contract_version: 2,
+            runtime_context_version: 2,
             created_by_id: options.adminUserId,
           },
         });
@@ -187,23 +281,16 @@ export class MarbotTenantService {
     }
 
     // 4. Outbound call to Chatbot admin API (outside database transaction)
-    const resolvedErpBaseUrl =
-      (options.erpBaseUrl || env.ERP_BASE_URL || 'https://marka.arsalynk.com').replace(/\/+$/, '');
-
     let provisionRes: ChatbotProvisionTenantResponse;
     try {
-      provisionRes = await client.provisionTenant({
-        externalTenantId: tenant.code,
-        tenantName: tenant.name,
-        erpBaseUrl: resolvedErpBaseUrl,
-      });
+      provisionRes = await client.provisionTenant(provisionPayload, operationId);
     } catch (provisionErr: any) {
       // Sanitize error before storing (do not store tokens, secrets, or headers)
       const sanitizedError = String(provisionErr?.message || 'Provisioning failed').slice(0, 500);
       await db.marbot_tenant_config.update({
         where: { tenant_id: tenantId },
         data: {
-          sync_status: 'ERROR',
+          sync_status: isManagedSync ? 'SYNC_ERROR' : 'ERROR',
           last_sync_error: sanitizedError,
         },
       }).catch(() => undefined);
@@ -214,15 +301,20 @@ export class MarbotTenantService {
     const saved = await db.marbot_tenant_config.update({
       where: { tenant_id: tenantId },
       data: {
-        external_tenant_id: provisionRes.externalTenantId || tenant.code,
+        external_tenant_id: provisionRes.tenant.externalTenantId,
         chatbot_url: chatbotUrl,
-        chatbot_api_key: provisionRes.apiKey.key,
-        active_key_id: provisionRes.apiKey.keyId,
-        chatbot_tenant_id: provisionRes.tenantId,
-        inbound_context_secret: provisionRes.inboundContextSecret,
-        outbound_tool_secret: provisionRes.outboundToolSecret,
+        chatbot_api_key: protectSecret(provisionRes.credentials.apiKey),
+        active_key_id: provisionRes.credentials.keyId,
+        chatbot_tenant_id: provisionRes.tenant.id,
+        inbound_context_secret: protectSecret(provisionRes.credentials.inboundContextSecret),
+        outbound_tool_secret: protectSecret(provisionRes.credentials.outboundToolSecret),
         sync_status: 'ACTIVE',
         last_synced_at: new Date(),
+        contract_version: 2,
+        runtime_context_version: 2,
+        datasource_source_key: provisionRes.dataSource?.sourceKey || (env.CHATBOT_ERP_READONLY_DATABASE_URL ? 'ERP_MAIN' : null),
+        datasource_status: provisionRes.dataSource?.status || (env.CHATBOT_ERP_READONLY_DATABASE_URL ? 'CONFIGURED' : null),
+        last_contract_sync_at: new Date(),
         last_sync_error: null,
       },
     });
@@ -237,12 +329,16 @@ export class MarbotTenantService {
       activeKeyId: saved.active_key_id,
       lastSyncedAt: saved.last_synced_at,
       lastSyncError: null,
+      contractVersion: 2,
+      runtimeContextVersion: 2,
+      datasourceSourceKey: saved.datasource_source_key,
+      datasourceStatus: saved.datasource_status,
+      lastContractSyncAt: saved.last_contract_sync_at,
       data: {
         tenant_id: saved.tenant_id,
         external_tenant_id: saved.external_tenant_id,
         chatbot_url: saved.chatbot_url,
-        chatbot_api_key_masked:
-          '••••••••' + (saved.chatbot_api_key ? saved.chatbot_api_key.slice(-4) : ''),
+        chatbot_api_key_masked: saved.chatbot_api_key ? '••••••••' : '',
         inbound_context_secret_masked: '••••••••',
         outbound_tool_secret_masked: '••••••••',
         role_map_json: saved.role_map_json,
@@ -324,9 +420,9 @@ export class MarbotTenantService {
       update: {
         external_tenant_id: externalTenantId,
         chatbot_url: chatbotUrl,
-        chatbot_api_key: chatbotApiKey,
-        inbound_context_secret: inboundSecret,
-        outbound_tool_secret: outboundSecret,
+        chatbot_api_key: protectSecret(chatbotApiKey),
+        inbound_context_secret: protectSecret(inboundSecret),
+        outbound_tool_secret: protectSecret(outboundSecret),
         role_map_json: roleMapJson,
         sync_status: 'ACTIVE',
         last_synced_at: new Date(),
@@ -338,9 +434,9 @@ export class MarbotTenantService {
         tenant_id: tenantId,
         external_tenant_id: externalTenantId,
         chatbot_url: chatbotUrl,
-        chatbot_api_key: chatbotApiKey,
-        inbound_context_secret: inboundSecret,
-        outbound_tool_secret: outboundSecret,
+        chatbot_api_key: protectSecret(chatbotApiKey),
+        inbound_context_secret: protectSecret(inboundSecret),
+        outbound_tool_secret: protectSecret(outboundSecret),
         role_map_json: roleMapJson,
         sync_status: 'ACTIVE',
         last_synced_at: new Date(),
@@ -378,7 +474,7 @@ export class MarbotTenantService {
       if (dbRow) {
         chatbotUrl = chatbotUrl || dbRow.chatbot_url;
         if (!apiKey || apiKey.includes('•••') || apiKey === '***CONFIGURED***') {
-          apiKey = dbRow.chatbot_api_key || undefined;
+          apiKey = dbRow.chatbot_api_key ? decryptMarbotSecret(dbRow.chatbot_api_key) : undefined;
         }
       }
     }

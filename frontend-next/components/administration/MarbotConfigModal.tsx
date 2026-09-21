@@ -16,8 +16,6 @@ import {
   Globe,
   Shield,
   Trash2,
-  ExternalLink,
-  Info,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
@@ -41,11 +39,20 @@ export function MarbotConfigModal({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
 
   // Status info from backend
   const [configured, setConfigured] = useState(false);
   const [source, setSource] = useState<"DATABASE" | "ENV" | "NONE">("NONE");
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [mode, setMode] = useState<"MANAGED" | "LEGACY" | "UNCONFIGURED">("UNCONFIGURED");
+  const [syncStatus, setSyncStatus] = useState("NOT_PROVISIONED");
+  const [contractVersion, setContractVersion] = useState<number | null>(null);
+  const [runtimeVersion, setRuntimeVersion] = useState<number | null>(null);
+  const [datasourceStatus, setDatasourceStatus] = useState<string | null>(null);
+  const [enabledModules, setEnabledModules] = useState<string[]>([]);
+  const [lastContractSyncAt, setLastContractSyncAt] = useState<string | null>(null);
+  const [managedProvisioningAvailable, setManagedProvisioningAvailable] = useState(false);
 
   // Form inputs
   const [externalTenantId, setExternalTenantId] = useState("");
@@ -73,6 +80,14 @@ export function MarbotConfigModal({
     setConfigured(false);
     setSource("NONE");
     setUpdatedAt(null);
+    setMode("UNCONFIGURED");
+    setSyncStatus("NOT_PROVISIONED");
+    setContractVersion(null);
+    setRuntimeVersion(null);
+    setDatasourceStatus(null);
+    setEnabledModules([]);
+    setLastContractSyncAt(null);
+    setManagedProvisioningAvailable(false);
     setExternalTenantId("");
     setChatbotUrl("");
     setChatbotApiKey("");
@@ -91,6 +106,14 @@ export function MarbotConfigModal({
       const payload = res.data;
       setConfigured(Boolean(payload.configured));
       setSource(payload.source || "NONE");
+      setMode(payload.mode || "UNCONFIGURED");
+      setSyncStatus(payload.syncStatus || "NOT_PROVISIONED");
+      setContractVersion(payload.contractVersion ?? null);
+      setRuntimeVersion(payload.runtimeContextVersion ?? null);
+      setDatasourceStatus(payload.datasourceStatus ?? null);
+      setEnabledModules(Array.isArray(payload.enabledModules) ? payload.enabledModules : []);
+      setLastContractSyncAt(payload.lastContractSyncAt ?? null);
+      setManagedProvisioningAvailable(Boolean(payload.managedProvisioningAvailable));
 
       if (payload.data) {
         setExternalTenantId(payload.data.external_tenant_id || tenant.code);
@@ -110,6 +133,21 @@ export function MarbotConfigModal({
       toast.error(err.response?.data?.message || "Gagal memuat konfigurasi MarBot.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleProvision = async () => {
+    if (!tenant) return;
+    setProvisioning(true);
+    try {
+      await api.post(`/api/v1/core/tenants/${tenant.id}/marbot-config/provision`, {});
+      toast.success(mode === "MANAGED" ? "Kontrak MarBot berhasil disinkronkan." : "Tenant berhasil diprovision ke MarBot.");
+      await fetchConfig();
+      onConfigSaved?.();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Provisioning MarBot gagal.");
+    } finally {
+      setProvisioning(false);
     }
   };
 
@@ -258,8 +296,29 @@ export function MarbotConfigModal({
             </div>
           )}
 
+          {mode === "MANAGED" && (
+            <div className="grid grid-cols-2 gap-3 rounded-2xl border border-[#DCE7FF] bg-[#F8FAFF] p-4 text-xs sm:grid-cols-3">
+              {[
+                ["Mode", "MANAGED"],
+                ["Contract", contractVersion ? `V${contractVersion}` : "—"],
+                ["Runtime", runtimeVersion ? `V${runtimeVersion}` : "—"],
+                ["Status", syncStatus],
+                ["Datasource", datasourceStatus || "NOT CONFIGURED"],
+                ["Modules", enabledModules.length ? enabledModules.join(", ") : "GENERAL"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-[#E2E8F0] bg-white p-3">
+                  <div className="font-semibold uppercase tracking-wider text-[#64748B]">{label}</div>
+                  <div className="mt-1 break-words font-bold text-[#2649B3]">{value}</div>
+                </div>
+              ))}
+              <div className="col-span-2 text-[11px] text-[#64748B] sm:col-span-3">
+                Sinkronisasi kontrak terakhir: {lastContractSyncAt ? new Date(lastContractSyncAt).toLocaleString("id-ID") : "Belum tersedia"}. Credential dikelola server dan tidak pernah dikirim ke browser.
+              </div>
+            </div>
+          )}
+
           {/* Fields */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {mode !== "MANAGED" && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold uppercase tracking-wider text-[#475569]">
                 External Tenant ID <span className="text-red-500">*</span>
@@ -372,7 +431,7 @@ export function MarbotConfigModal({
                 Mapping kode role internal ERP ke role yang dipahami oleh engine persona MarBot.
               </p>
             </div>
-          </div>
+          </div>}
 
           {/* Action Buttons Footer */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#F1F5F9] pt-4">
@@ -386,6 +445,16 @@ export function MarbotConfigModal({
                 <RefreshCw className={`h-3.5 w-3.5 ${testing ? "animate-spin text-[#2649B3]" : ""}`} />
                 {testing ? "Menguji..." : "Test Koneksi"}
               </button>
+
+              {managedProvisioningAvailable && <button
+                type="button"
+                onClick={handleProvision}
+                disabled={provisioning}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#2649B3] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1D3A96] disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${provisioning ? "animate-spin" : ""}`} />
+                {provisioning ? "Memproses..." : mode === "MANAGED" ? "Sync Contract" : "Provision"}
+              </button>}
 
               {configured && source === "DATABASE" && (
                 <button
@@ -408,14 +477,14 @@ export function MarbotConfigModal({
               >
                 Tutup
               </button>
-              <button
+              {mode !== "MANAGED" && <button
                 type="submit"
                 disabled={saving}
                 className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-[#2649B3] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1D3A96] disabled:opacity-50"
               >
                 <Bot className="h-3.5 w-3.5" />
                 {saving ? "Menyimpan..." : "Simpan Konfigurasi"}
-              </button>
+              </button>}
             </div>
           </div>
         </form>

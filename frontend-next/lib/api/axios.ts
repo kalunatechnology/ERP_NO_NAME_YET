@@ -123,6 +123,7 @@ function expireSession() {
   localStorage.removeItem("erp.refresh");
   localStorage.removeItem("access_token");
   localStorage.removeItem("token");
+  localStorage.removeItem("erp.user");
   localStorage.removeItem("erp.company");
   localStorage.removeItem("active_company_id");
   syncCookie();

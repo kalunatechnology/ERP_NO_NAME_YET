@@ -1,7 +1,9 @@
 import { RoleCode } from '@prisma/client';
 import prisma from '../../config/database';
+import { env } from '../../config/env';
 import { ForbiddenError } from '../../utils/errors';
 import { MarbotTenantConfig } from './marbot.types';
+import { decryptMarbotSecret } from './marbot-secret.service';
 
 export function envTenantConfig(tenantId: string): MarbotTenantConfig | null {
   try {
@@ -16,7 +18,7 @@ export function envTenantConfig(tenantId: string): MarbotTenantConfig | null {
     ) {
       return null;
     }
-    return config as MarbotTenantConfig;
+    return { ...config, contractVersion: 1 } as MarbotTenantConfig;
   } catch {
     return null;
   }
@@ -60,6 +62,8 @@ export async function resolveMarbotTenantConfig(
       outbound_tool_secret: true,
       role_map_json: true,
       sync_status: true,
+      contract_version: true,
+      runtime_context_version: true,
     },
   });
 
@@ -84,10 +88,12 @@ export async function resolveMarbotTenantConfig(
     return {
       externalTenantId: dbRow.external_tenant_id,
       chatbotUrl: dbRow.chatbot_url,
-      chatbotApiKey: dbRow.chatbot_api_key,
-      inboundContextSecret: dbRow.inbound_context_secret,
-      outboundToolSecret: dbRow.outbound_tool_secret,
+      chatbotApiKey: decryptMarbotSecret(dbRow.chatbot_api_key),
+      inboundContextSecret: decryptMarbotSecret(dbRow.inbound_context_secret),
+      outboundToolSecret: decryptMarbotSecret(dbRow.outbound_tool_secret),
       roleMap,
+      contractVersion: env.CHATBOT_CONTRACT_MODE === 'v2' && dbRow.contract_version === 2 ? 2 : 1,
+      runtimeContextVersion: dbRow.runtime_context_version === 2 ? 2 : undefined,
     };
   }
 
@@ -103,7 +109,7 @@ export async function resolveMarbotTenantConfig(
     throw new ForbiddenError('Layanan MarBot untuk tenant ini sedang dalam proses sinkronisasi.');
   }
 
-  if (dbRow && dbRow.sync_status === 'ERROR') {
+  if (dbRow && ['ERROR', 'SYNC_ERROR'].includes(dbRow.sync_status)) {
     throw new ForbiddenError('Layanan MarBot untuk tenant ini mengalami kendala konfigurasi.');
   }
 
