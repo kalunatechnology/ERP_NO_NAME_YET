@@ -1442,7 +1442,11 @@ projectsRouter.use('/main-tasks', createCrudRouter({
     if (!String(data.name ?? '').trim()) throw new ValidationError('Nama Main Task wajib diisi.');
     data.name = String(data.name).trim();
     data.description = String(data.description ?? '').trim();
-    data.weight = validateMainTaskWeight(data.weight);
+    // Preserve the established API contract used by older deployed frontend
+    // bundles: omitted weight defaults to 10. Explicit values remain strict.
+    data.weight = data.weight === undefined || data.weight === null || data.weight === ''
+      ? 10
+      : validateMainTaskWeight(data.weight);
     const priority = String(data.priority ?? 'MEDIUM').toUpperCase();
     if (!['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority)) {
       throw new ValidationError('Prioritas Main Task tidak valid.');

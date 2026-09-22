@@ -82,7 +82,7 @@ async function main() {
   assert.doesNotMatch(routes, /requested_amount:\s*req\.body\.amount \?\? req\.body\.requested_amount \?\? 0/);
   assert.doesNotMatch(routes, /purpose:\s*req\.body\.description \?\? req\.body\.purpose \?\?/);
   assert.match(routes, /validateWeeklyTaskFields\(data\)/);
-  assert.match(routes, /data\.weight = validateMainTaskWeight\(data\.weight\)/);
+  assert.match(routes, /data\.weight === undefined[\s\S]*?\? 10[\s\S]*?: validateMainTaskWeight\(data\.weight\)/);
   assert.doesNotMatch(routes, /project_task_assignment\.deleteMany\([\s\S]*?assignee_id:\s*\{\s*notIn:\s*userIds/);
   assert.match(routes, /Assignment is additive/);
   assert.match(client, /await removeTaskAssignment\(assignmentId\)/);

@@ -73,7 +73,6 @@ export function hasModelField(modelName: string, fieldName: string): boolean {
   return getModelFields(modelName).has(fieldName);
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUIRED_BUSINESS_LABEL_FIELDS = new Set([
   'name',
   'project_name',
@@ -88,7 +87,7 @@ const REQUIRED_BUSINESS_LABEL_FIELDS = new Set([
 
 /**
  * Universal auto-filler for required scalar & schema fields across all 200+ Prisma models.
- * Prevents "Argument X is missing" and UUID format errors by generating intelligent defaults.
+ * Prevents "Argument X is missing" errors by generating intelligent defaults.
  */
 export function autoFillRequiredFields(modelName: string, data: any, req?: Request): any {
   const key = String(modelName).toLowerCase();
@@ -142,26 +141,31 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
       result[field.name] = new Date(result[field.name]);
     }
 
-    // B. Clean up UUID / _id fields (convert invalid non-UUID strings to null / fallback)
+    // B. Normalize ID fields. Production IDs are PostgreSQL TEXT, including
+    // deterministic seed identifiers that are UUID-shaped but not RFC UUIDs.
+    // Referential integrity and tenant/company scope are validated separately;
+    // this generic layer must not erase valid TEXT identifiers.
     if (fn.endsWith('_id') || fn === 'id') {
       const val = result[field.name];
       if (val !== undefined && val !== null) {
         if (typeof val === 'string') {
           const trimmed = val.trim();
-          if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'DEFAULT' || !UUID_REGEX.test(trimmed)) {
+          if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'DEFAULT') {
             if (field.isRequired) {
-              if (fn === 'created_by_id' && req?.user?.id && UUID_REGEX.test(req.user.id)) {
+              if (fn === 'created_by_id' && req?.user?.id) {
                 result[field.name] = req.user.id;
               } else if (fn === 'company_id') {
-                if (req?.companyId && UUID_REGEX.test(req.companyId)) result[field.name] = req.companyId;
+                if (req?.companyId) result[field.name] = req.companyId;
                 else delete result[field.name];
               } else if (fn === 'tenant_id') {
-                if (req?.user?.tenant_id && UUID_REGEX.test(req.user.tenant_id)) result[field.name] = req.user.tenant_id;
+                if (req?.user?.tenant_id) result[field.name] = req.user.tenant_id;
                 else delete result[field.name];
               }
             } else {
               result[field.name] = null;
             }
+          } else {
+            result[field.name] = trimmed;
           }
         }
       }
@@ -174,10 +178,10 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
           // Skip _id fields from generic string defaults!
           if (fn.endsWith('_id') || fn === 'id') {
             if (fn === 'tenant_id') {
-              if (req?.user?.tenant_id && UUID_REGEX.test(req.user.tenant_id)) result[field.name] = req.user.tenant_id;
+              if (req?.user?.tenant_id) result[field.name] = req.user.tenant_id;
             } else if (fn === 'company_id') {
-              if (req?.companyId && UUID_REGEX.test(req.companyId)) result[field.name] = req.companyId;
-            } else if (fn === 'created_by_id' && req?.user?.id && UUID_REGEX.test(req.user.id)) {
+              if (req?.companyId) result[field.name] = req.companyId;
+            } else if (fn === 'created_by_id' && req?.user?.id) {
               result[field.name] = req.user.id;
             }
             continue;
