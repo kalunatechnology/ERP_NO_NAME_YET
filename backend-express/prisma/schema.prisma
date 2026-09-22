@@ -2,12 +2,11 @@
 // 100% Behavioral and Structural Parity with Django REST Framework
 
 generator client {
-  provider      = "prisma-client-js"
-  // Hostinger shared hosting can panic inside the default Node-API library
-  // engine ("timer has gone away"). The sidecar binary isolates Prisma's
-  // async runtime from the hosting process lifecycle.
-  engineType    = "binary"
-  binaryTargets = ["native", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
+  provider   = "prisma-client-js"
+  // Hostinger shared hosting terminates Prisma's Rust async timer runtime
+  // ("timer has gone away"). Use Prisma's GA TypeScript query compiler with
+  // the PostgreSQL JS driver so no Rust query engine is started at runtime.
+  engineType = "client"
 }
 
 datasource db {
