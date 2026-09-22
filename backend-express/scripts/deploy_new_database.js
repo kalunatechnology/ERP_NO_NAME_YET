@@ -9,7 +9,7 @@
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
-const { PrismaClient } = require('@prisma/client');
+const { createPrismaClient } = require('./prisma_client');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
 function targetUrl() {
@@ -34,7 +34,7 @@ function runNode(args, url, extraEnv = {}) {
 }
 
 async function assertEmpty(url) {
-  const client = new PrismaClient({ datasources: { db: { url } } });
+  const client = createPrismaClient(url);
   try {
     const tables = await client.$queryRawUnsafe(`
       SELECT table_name

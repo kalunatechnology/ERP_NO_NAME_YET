@@ -20,7 +20,7 @@
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
-const { PrismaClient } = require('@prisma/client');
+const { createPrismaClient } = require('./prisma_client');
 
 const RECOVERABLE_MIGRATION = '20260911090000_backfill_employee_user_mapping';
 
@@ -56,7 +56,7 @@ function requireMigrationSupabaseUrl(value) {
  * against an unknown schema version.
  */
 async function recoverKnownFailedMigration(prismaCli, directUrl) {
-  const client = new PrismaClient({ datasources: { db: { url: directUrl } } });
+  const client = createPrismaClient(directUrl);
   try {
     let rows;
     try {
@@ -88,7 +88,7 @@ async function recoverKnownFailedMigration(prismaCli, directUrl) {
 }
 
 async function hasApplicationRows(directUrl) {
-  const client = new PrismaClient({ datasources: { db: { url: directUrl } } });
+  const client = createPrismaClient(directUrl);
   try {
     const tables = await client.$queryRawUnsafe(`
       SELECT table_name

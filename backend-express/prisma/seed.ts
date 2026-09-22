@@ -1,8 +1,12 @@
 import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcrypt';
 import { parseRoleCode } from '../src/types/roles';
+import { postgresPoolConfig } from '../src/config/postgres';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(postgresPoolConfig(process.env.DATABASE_URL || '')),
+});
 const DEFAULT_PASSWORD = process.env.SEED_DEFAULT_PASSWORD || 'DummyPass123!';
 const PRODUCTION_CONFIRMATION = 'RESET_TO_SINERGI_MUDA_ARSA';
 

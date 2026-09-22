@@ -1,12 +1,12 @@
 /** Read-only account/auth readiness probe. Never prints secrets, hashes or IDs. */
 require('dotenv').config();
-const { PrismaClient } = require('@prisma/client');
+const { createPrismaClient } = require('./prisma_client');
 const bcrypt = require('bcrypt');
 
 async function main() {
   const email = String(process.argv[2] || '').trim().toLowerCase();
   if (!email) throw new Error('Provide an account email.');
-  const db = new PrismaClient();
+  const db = createPrismaClient();
   try {
     const startedAt = performance.now();
     const user = await db.iam_user.findFirst({
