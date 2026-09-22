@@ -418,7 +418,6 @@ export function ProjectWbsNode({
                         </div>
                       </div>
                     </div>
-                    </div>
                   </div>
                 );
               })
