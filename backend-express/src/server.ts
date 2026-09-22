@@ -34,11 +34,13 @@ async function connectDatabaseInBackground(app: ReturnType<typeof createApp>, is
       return;
     } catch (err) {
       app.locals.databaseReady = false;
-      // A failed Prisma engine/session must be discarded before retrying. This
-      // avoids carrying a failed connection state into the next attempt.
-      await prisma.$disconnect().catch(() => undefined);
       const delayMs = Math.min(15_000, Math.max(1_000, attempt * 1_000));
-      console.warn(`⚠️ Database connection attempt ${attempt} failed; retrying in ${delayMs} ms.`);
+      const errorCode = typeof err === 'object' && err !== null && 'code' in err
+        ? String((err as { code?: unknown }).code ?? 'UNKNOWN')
+        : err instanceof Error ? err.name : 'UNKNOWN';
+      // Do not disconnect a global Prisma client while incoming requests may
+      // reference it. The binary engine owns reconnecting its failed session.
+      console.warn(`⚠️ Database connection attempt ${attempt} failed (${errorCode}); retrying in ${delayMs} ms.`);
       await sleep(delayMs);
     }
   }

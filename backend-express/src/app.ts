@@ -133,6 +133,19 @@ export function createApp(): Express {
     });
   });
 
+  // Never send application queries into Prisma while its startup handshake is
+  // still retrying. Besides returning an honest 503, this prevents concurrent
+  // login queries from racing the engine initialization on shared hosting.
+  app.use((req: Request, res: Response, next) => {
+    if (app.locals.databaseReady) return next();
+    res.status(503).json({
+      success: false,
+      error: 'DATABASE_STARTING',
+      detail: 'Koneksi database sedang disiapkan. Silakan coba kembali beberapa saat lagi.',
+      request_id: req.requestId,
+    });
+  });
+
   // 3. API v1 Router Pipeline
   // The chatbot has no ERP JWT. Its internal tools use request-bound HMAC;
   // the browser chat proxy uses the ordinary ERP JWT and company membership.

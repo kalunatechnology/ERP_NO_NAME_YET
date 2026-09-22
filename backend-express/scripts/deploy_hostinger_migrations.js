@@ -35,11 +35,13 @@ const RECOVERABLE_MIGRATION = '20260911090000_backfill_employee_user_mapping';
  * @returns {string} The validated URL; it is never printed.
  * @throws {Error} When the target is missing or points at a pooler/non-direct host.
  */
-function requireDirectSupabaseUrl(value) {
+function requireMigrationSupabaseUrl(value) {
   if (!value) throw new Error('SUPABASE_DIRECT_URL is required for a Hostinger database deployment.');
   const url = new URL(value);
-  if (!/^db\.[a-z0-9-]+\.supabase\.co$/i.test(url.hostname) || url.port !== '5432') {
-    throw new Error('SUPABASE_DIRECT_URL must use db.<project>.supabase.co:5432, not a pooler URL.');
+  const isDirect = /^db\.[a-z0-9-]+\.supabase\.co$/i.test(url.hostname) && url.port === '5432';
+  const isSessionPooler = url.hostname.endsWith('.pooler.supabase.com') && url.port === '5432';
+  if (!isDirect && !isSessionPooler) {
+    throw new Error('Migration URL must use Supabase direct or session pooler port 5432, never transaction pooler port 6543.');
   }
   return value;
 }
@@ -146,7 +148,7 @@ async function main() {
     throw new Error('Refusing database migration: DEPLOYMENT_TARGET must be "hostinger" or "docker".');
   }
 
-  const directUrl = requireDirectSupabaseUrl(process.env.SUPABASE_DIRECT_URL ?? process.env.DIRECT_URL);
+  const directUrl = requireMigrationSupabaseUrl(process.env.SUPABASE_DIRECT_URL ?? process.env.DIRECT_URL);
   const prismaCli = path.join(__dirname, '..', 'node_modules', 'prisma', 'build', 'index.js');
   await recoverKnownFailedMigration(prismaCli, directUrl);
   const result = spawnSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {
