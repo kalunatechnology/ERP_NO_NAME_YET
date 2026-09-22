@@ -6,7 +6,6 @@
  */
 
 import axios from "axios";
-import { canRequestApi, getApiAccessContract } from "@/lib/access/module-contract";
 
 // Express defaults to port 8001 in local development. Keeping this fallback
 // aligned with the backend prevents an otherwise valid login from waiting on
@@ -81,31 +80,11 @@ api.interceptors.request.use(
         config.headers["X-Company-ID"] = company.trim();
       }
 
-      // Local fail-closed preflight. Backend remains authoritative, but known
-      // module requests are not sent when the current profile has no matching
-      // entitlement. This prevents background loaders from generating expected
-      // 403 traffic and keeps route/module/request contracts consistent.
-      const apiContract = getApiAccessContract(String(config.url ?? ""));
-      if (apiContract) {
-        let storedUser: { enabled_modules?: string[]; delegated_modules?: string[]; active_role_code?: string | null; is_superuser?: boolean } | null = null;
-        try {
-          storedUser = JSON.parse(localStorage.getItem("erp.user") || "null");
-        } catch {
-          storedUser = null;
-        }
-        if (!storedUser || !canRequestApi(config.url || "", {
-          enabledModules: storedUser.enabled_modules,
-          delegatedModules: storedUser.delegated_modules,
-          activeRoleCode: storedUser.active_role_code,
-          isSuperAdmin: storedUser.is_superuser,
-        })) {
-          throw new axios.AxiosError(
-            `Request dibatalkan: modul ${apiContract.module} tidak tersedia pada konteks akses aktif.`,
-            "ERR_FRONTEND_MODULE_ACCESS",
-            config,
-          );
-        }
-      }
+      // Do not authorize network requests from the browser profile cache.
+      // Assignment and delegation can change while a session is open, so
+      // `erp.user` may briefly lag behind AuthContext and the database. The UI
+      // contracts still hide unavailable routes/actions, while the backend
+      // remains the single authoritative boundary for every API request.
     }
     return config;
   },

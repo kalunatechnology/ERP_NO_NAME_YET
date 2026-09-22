@@ -132,6 +132,7 @@ export default function ProjectsClient() {
   /* Team Users list for Assignment */
   const [companyUsers, setCompanyUsers] = useState<any[]>([]);
   const [projectAuthority, setProjectAuthority] = useState<ProjectAuthority | null>(null);
+  const [authorityResolvedProjectId, setAuthorityResolvedProjectId] = useState("");
   const [projectSupervisor, setProjectSupervisor] = useState<ProjectSupervisor | null>(null);
   const [supervisorCandidateId, setSupervisorCandidateId] = useState("");
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<(string | number)[]>([]);
@@ -233,6 +234,7 @@ export default function ProjectsClient() {
   const lastTrackedProjectIdRef = useRef<string | null>(null);
   const selectedProjectId = selectedProject?.id != null ? String(selectedProject.id) : "";
   const selectedAuthority = projectAuthority?.project_id === selectedProjectId ? projectAuthority : null;
+  const authorityPending = Boolean(selectedProjectId && authorityResolvedProjectId !== selectedProjectId);
   const selectedProjectTitle = selectedProject
     ? selectedProject.project_name || (selectedProject as any).name || `Proyek #${selectedProject.id}`
     : "";
@@ -442,6 +444,7 @@ export default function ProjectsClient() {
     const projectId = selectedProjectId;
     const version = ++authorityFetchVersionRef.current;
     setProjectAuthority(null);
+    setAuthorityResolvedProjectId("");
     setProjectSupervisor(null);
     setCompanyUsers([]);
     setSupervisorCandidateId("");
@@ -462,6 +465,11 @@ export default function ProjectsClient() {
           setProjectAuthority(null);
           setProjectSupervisor(null);
           toast.error(getApiErrorDetail(error, "Gagal memuat kewenangan project."));
+        }
+      })
+      .finally(() => {
+        if (version === authorityFetchVersionRef.current) {
+          setAuthorityResolvedProjectId(projectId);
         }
       });
   }, [selectedProjectId]);
@@ -1123,12 +1131,14 @@ export default function ProjectsClient() {
     }
   };
 
-  if (loading) {
+  if (loading || authorityPending) {
     return (
       <div className="flex items-center justify-center py-24">
         <div className="flex flex-col items-center gap-3">
           <RefreshCw size={28} className="text-brand-green animate-spin" />
-          <span className="text-sm font-semibold text-text-primary">Menyinkronkan Workspace Proyek & WBS…</span>
+          <span className="text-sm font-semibold text-text-primary">
+            {loading ? "Menyinkronkan Workspace Proyek & WBS…" : "Memverifikasi kewenangan proyek…"}
+          </span>
         </div>
       </div>
     );
