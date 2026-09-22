@@ -28,4 +28,13 @@ assert.equal(normalized.project_id, projectId);
 assert.equal(normalized.tenant_id, tenantId);
 assert.equal(normalized.company_id, companyId);
 assert.equal(normalized.created_by_id, userId);
-console.log('PASS: TEXT-backed production IDs survive generic CRUD normalization.');
+assert.ok(normalized.created_at instanceof Date);
+assert.ok(normalized.updated_at instanceof Date);
+
+const workflowDefaults = autoFillRequiredFields('sales_order_change_request', {
+  change_type: 'SCOPE',
+  change_reason: 'Rust-free metadata compatibility',
+});
+assert.equal(workflowDefaults.approval_status, 'PENDING');
+
+console.log('PASS: Rust-free Prisma keeps full CRUD metadata behavior and TEXT-backed IDs.');
