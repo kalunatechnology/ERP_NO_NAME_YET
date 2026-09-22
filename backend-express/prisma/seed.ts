@@ -59,7 +59,6 @@ export const users: SeedUser[] = [
   // Oman is the operational name in the task list. Keep the existing Noorman
   // login identity so production users are not unexpectedly renamed.
   { username: 'noorman', email: 'noorman@arsalynk.com', name: 'M Noorman Perdana', roleCodes: ['ROLE-STAFF'], activeRoleCode: 'ROLE-STAFF' },
-  { username: 'law', email: 'law@arsalynk.com', name: 'Law', roleCodes: ['ROLE-STAFF'], activeRoleCode: 'ROLE-STAFF' },
   { username: 'ilyas', email: 'ilyas@arsalynk.com', name: 'Ilyas', roleCodes: ['ROLE-STAFF'], activeRoleCode: 'ROLE-STAFF' },
 ];
 
@@ -156,10 +155,10 @@ export const projects: ProjectSpec[] = [
   {
     code: 'SMA-PRJ-006', name: 'Project ERP Marka',
     description: 'Project building ERP Marka sebagai produk IT dari Arsalynk.',
-    manager: 'jundy', members: ['jundy', 'law', 'ilyas', 'laode', 'arof'], start: '2026-09-21', deadline: '2026-10-31',
+    manager: 'jundy', members: ['jundy', 'ilyas', 'laode', 'arof'], start: '2026-09-21', deadline: '2026-10-31',
     mainTasks: [{
       title: 'ERP Project Management', description: 'Mengelola dan memantau pengerjaan Project ERP Marka.',
-      pic: 'jundy', assignees: ['jundy', 'law', 'ilyas', 'laode', 'arof'], start: '2026-09-21', due: '2026-10-31', status: 'PLANNED',
+      pic: 'jundy', assignees: ['jundy', 'ilyas', 'laode', 'arof'], start: '2026-09-21', due: '2026-10-31', status: 'PLANNED',
       weekly: [
         {
           title: 'Weekly ERP Management', assignee: 'jundy', start: '2026-09-21', end: '2026-09-25',
@@ -177,9 +176,9 @@ export const projects: ProjectSpec[] = [
           daily: [{ title: 'Validasi user dan akses implementasi ERP Marka', owner: 'laode', date: '2026-09-22', result: 'Daftar user dan akses tervalidasi.', status: 'IN_PROGRESS' }],
         },
         {
-          title: 'Development ERP Marka', assignee: 'law', start: '2026-09-21', end: '2026-09-25',
+          title: 'Development ERP Marka', assignee: 'laode', start: '2026-09-21', end: '2026-09-25',
           target: 'Perbaikan prioritas implementasi terselesaikan.', status: 'IN_PROGRESS',
-          daily: [{ title: 'Implementasi dan perbaikan prioritas ERP Marka', owner: 'law', date: '2026-09-22', result: 'Perbaikan prioritas siap direview.', status: 'IN_PROGRESS' }],
+          daily: [{ title: 'Implementasi dan perbaikan prioritas ERP Marka', owner: 'laode', date: '2026-09-22', result: 'Perbaikan prioritas siap direview.', status: 'IN_PROGRESS' }],
         },
         {
           title: 'Development Supervision ERP Marka', assignee: 'ilyas', start: '2026-09-21', end: '2026-09-25',

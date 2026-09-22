@@ -30,6 +30,21 @@ Kemudian jalankan satu kali:
 npm run deploy:database:new
 ```
 
+## Seed otomatis pada Hostinger
+
+Untuk seed bersamaan dengan build/deploy Hostinger, cukup tambahkan pada `.env`
+deployment:
+
+```text
+DEPLOYMENT_TARGET=hostinger
+AUTO_SEED_EMPTY_DATABASE=true
+SEED_DEFAULT_PASSWORD=<password awal kuat minimal 12 karakter>
+```
+
+Saat deploy, migration berjalan terlebih dahulu. Seed hanya dijalankan jika
+seluruh tabel aplikasi masih kosong. Deployment berikutnya mendeteksi data yang
+sudah ada dan melewati seed, sehingga tidak menghapus atau menimpa data.
+
 Script akan:
 
 1. Membaca `.env` deployment tanpa memerlukan system environment variable baru.

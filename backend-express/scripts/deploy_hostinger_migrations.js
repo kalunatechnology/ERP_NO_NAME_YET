@@ -15,6 +15,8 @@
  * - Applies committed Prisma migrations to the database named by
  *   SUPABASE_DIRECT_URL. It never creates or drops a database and it never
  *   logs connection strings or credentials.
+ * - When explicitly enabled, seeds only an entirely empty application
+ *   database after its baseline migration has completed.
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
@@ -83,6 +85,58 @@ async function recoverKnownFailedMigration(prismaCli, directUrl) {
   }
 }
 
+async function hasApplicationRows(directUrl) {
+  const client = new PrismaClient({ datasources: { db: { url: directUrl } } });
+  try {
+    const tables = await client.$queryRawUnsafe(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE'
+        AND table_name <> '_prisma_migrations'
+      ORDER BY table_name
+    `);
+    for (const row of tables) {
+      const tableName = String(row.table_name);
+      const quotedTableName = `"${tableName.replaceAll('"', '""')}"`;
+      const result = await client.$queryRawUnsafe(`SELECT EXISTS (SELECT 1 FROM ${quotedTableName} LIMIT 1) AS has_rows`);
+      if (result[0]?.has_rows) return true;
+    }
+    return false;
+  } finally {
+    await client.$disconnect();
+  }
+}
+
+async function seedEmptyDatabaseIfEnabled(prismaCli, directUrl) {
+  if (process.env.AUTO_SEED_EMPTY_DATABASE !== 'true') return;
+  if (await hasApplicationRows(directUrl)) {
+    console.log('Initial seed skipped: database already contains application data.');
+    return;
+  }
+  if (!process.env.SEED_DEFAULT_PASSWORD || process.env.SEED_DEFAULT_PASSWORD.length < 12) {
+    throw new Error('AUTO_SEED_EMPTY_DATABASE=true requires SEED_DEFAULT_PASSWORD with at least 12 characters.');
+  }
+  console.log('Empty database detected. Running one-time production seed.');
+  const seed = spawnSync(
+    process.execPath,
+    ['-r', 'ts-node/register', '--enable-source-maps', 'prisma/seed.ts'],
+    {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        DATABASE_URL: directUrl,
+        DIRECT_URL: directUrl,
+        NODE_ENV: 'production',
+        ALLOW_PRODUCTION_SEED_RESET: 'RESET_TO_SINERGI_MUDA_ARSA',
+      },
+    },
+  );
+  if (seed.error) throw seed.error;
+  if (seed.status !== 0) process.exit(seed.status ?? 1);
+}
+
 async function main() {
   if (process.env.VERCEL === '1') {
     console.log('Skipped database migration: Vercel deployment detected.');
@@ -101,6 +155,7 @@ async function main() {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
+  await seedEmptyDatabaseIfEnabled(prismaCli, directUrl);
 }
 
 try {
