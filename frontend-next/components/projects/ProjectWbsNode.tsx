@@ -262,107 +262,148 @@ export function ProjectWbsNode({
                       <div className="overflow-hidden">
                         <div className="p-3 bg-white">
                           {dailyTasks.length === 0 ? (
-                            <div className="p-3.5 rounded-lg bg-gray-50 border border-dashed border-gray-200 text-center text-2xs text-text-secondary">
+                            <div className="p-4 rounded-xl bg-gray-50 border border-dashed border-gray-200 text-center text-xs text-text-secondary">
                               Belum ada aktivitas harian pada target ini. {canCreateDaily ? "Klik + Daily Task untuk mencatat sesi kerja." : ""}
                             </div>
                           ) : (
-                            <div className="table-scroll-wrapper rounded-xl border border-gray-100">
-                              <table className="data-table w-full min-w-[860px] table-fixed text-left text-xs">
+                            <div className="overflow-x-auto rounded-[18px] border border-gray-200 bg-white">
+                              <table className="w-full min-w-[920px] table-fixed text-left">
                                 <thead>
-                                  <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b border-gray-200">
-                                    <th className="w-[140px] px-3.5 py-3 font-bold">Tanggal & Waktu</th>
-                                    <th className="w-[230px] px-3.5 py-3 font-bold">Input (Aktivitas)</th>
-                                    <th className="w-[180px] px-3.5 py-3 font-bold">Output (Hasil Kerja)</th>
-                                    <th className="w-[150px] px-3.5 py-3 font-bold">Status & Progres</th>
-                                    <th className="w-[180px] px-3.5 py-3 font-bold">Catatan / Kendala</th>
-                                    <th className="w-[110px] px-3.5 py-3 text-right font-bold">Aksi</th>
+                                  <tr className="border-b border-gray-200 bg-[#F8F9FB] text-[11px] uppercase tracking-[0.04em] text-[#55585F]">
+                                    <th className="w-[17%] px-4 py-3.5 font-bold">Tanggal & Waktu</th>
+                                    <th className="w-[31%] px-4 py-3.5 font-bold">Aktivitas / Task</th>
+                                    <th className="w-[27%] px-4 py-3.5 font-bold">Output Hasil</th>
+                                    <th className="w-[17%] px-4 py-3.5 font-bold">Status</th>
+                                    <th className="w-[8%] px-4 py-3.5 text-right font-bold">Aksi</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {dailyTasks.map((daily: any) => {
-                                    const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
-                                    const isBlocked = daily.is_blocked || daily.status === "BLOCKED";
+                                    const normalizedStatus = String(daily.status || "IN_PROGRESS").toUpperCase();
+                                    const isDone = normalizedStatus === "COMPLETED" || normalizedStatus === "DONE";
+                                    const isBlocked = daily.is_blocked || normalizedStatus === "BLOCKED";
                                     const isDailyOwner = String(daily.owner_id || daily.owner || "") === String(currentUserId);
                                     const canManageDaily = isDailyOwner;
                                     const canDeleteDaily = isDailyOwner;
                                     const canTransferDaily = isDailyOwner;
 
                                     return (
-                                      <tr key={daily.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-50", isBlocked && "bg-red-50/60")}>
-                                        <td className="py-2.5 px-3.5 whitespace-nowrap align-top font-semibold text-text-primary">
-                                          <div>{daily.planned_date}</div>
-                                          <span className="text-2xs text-text-secondary font-normal">{daily.time_slot}</span>
+                                      <tr
+                                        key={daily.id}
+                                        className={cn(
+                                          "border-b border-gray-100 last:border-b-0 transition-colors hover:bg-[#F8FBFF]",
+                                          isBlocked && "bg-red-50/40"
+                                        )}
+                                      >
+                                        <td className="px-4 py-4 align-top">
+                                          <div className="text-[13px] font-bold leading-5 text-[#17191C]">
+                                            {daily.planned_date || "-"}
+                                          </div>
+                                          <div className="mt-0.5 text-[11px] font-medium text-[#6B6F76]">
+                                            {daily.time_slot || "Waktu belum diatur"}
+                                          </div>
                                         </td>
-                                        <td className="py-2.5 px-3.5 align-top max-w-[240px]">
-                                          <div className="flex min-w-0 items-start gap-2">
+
+                                        <td className="px-4 py-4 align-top">
+                                          <div className="flex min-w-0 items-start gap-2.5">
                                             <button
+                                              type="button"
                                               onClick={() => onToggleDailyStatus(daily, canManageDaily)}
                                               disabled={!canManageDaily}
                                               className={cn(
-                                                "w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-all flex-shrink-0",
-                                                !canManageDaily && "cursor-not-allowed opacity-40 bg-gray-100",
-                                                canManageDaily && isDone ? "bg-brand-green border-brand-green text-white" : "border-gray-300 hover:border-brand-green"
+                                                "mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-all",
+                                                isDone
+                                                  ? "border-[#3157C8] bg-[#3157C8] text-white"
+                                                  : "border-gray-300 bg-white",
+                                                canManageDaily
+                                                  ? "hover:border-[#3157C8]"
+                                                  : "cursor-default opacity-70"
                                               )}
-                                              title={!canManageDaily ? "Hanya PIC atau assignee yang dapat mengubah status" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
+                                              title={!canManageDaily ? "Hanya PIC yang dapat mengubah status" : (isDone ? "Tandai belum selesai" : "Tandai selesai")}
                                             >
-                                              {isDone && <Check size={11} strokeWidth={3} />}
+                                              {isDone && <Check size={12} strokeWidth={3} />}
                                             </button>
                                             <div className="min-w-0">
-                                              <strong className={cn("block break-words text-xs font-bold leading-5 text-text-primary", isDone && "line-through text-text-secondary")}>
-                                                {daily.title || daily.activity_input}
-                                              </strong>
-                                              <span className="text-2xs text-text-secondary block mt-0.5">PIC: <b>{daily.owner_name}</b></span>
+                                              <div
+                                                className={cn(
+                                                  "break-words text-[13px] font-bold leading-5 text-[#111318]",
+                                                  isDone && "text-[#666A71] line-through"
+                                                )}
+                                              >
+                                                {daily.title || daily.activity_input || "Aktivitas harian"}
+                                              </div>
+                                              <div className="mt-1 text-[11px] text-[#6B6F76]">
+                                                PIC: <span className="font-semibold text-[#4B4F56]">{daily.owner_name || "Belum ditentukan"}</span>
+                                              </div>
                                             </div>
                                           </div>
                                         </td>
-                                        <td className="py-2.5 px-3.5 align-top max-w-[200px] text-brand-deep-green text-xs break-words">
-                                          {daily.output_result || <span className="text-text-secondary italic text-2xs">-</span>}
+
+                                        <td className="px-4 py-4 align-top">
+                                          <div className="break-words text-[13px] leading-5 text-[#294BB2]">
+                                            {daily.output_result || <span className="italic text-[#9A9DA3]">Belum ada output</span>}
+                                          </div>
+                                          {isBlocked && (
+                                            <div className="mt-1.5 rounded-md bg-red-50 px-2 py-1 text-[11px] font-semibold leading-4 text-red-700">
+                                              Kendala: {daily.block_reason || "Terkendala"}
+                                            </div>
+                                          )}
+                                          {!isBlocked && daily.notes && (
+                                            <div className="mt-1.5 text-[11px] leading-4 text-[#777B82]">
+                                              Catatan: {daily.notes}
+                                            </div>
+                                          )}
                                         </td>
-                                        <td className="py-2.5 px-3.5 align-top whitespace-nowrap">
-                                          <span className={cn(
-                                            "badge text-2xs font-bold whitespace-nowrap",
-                                            isDone ? "badge-success" : isBlocked ? "badge-danger" : "badge-info"
-                                          )}>
-                                            {daily.status} ({daily.progress}%)
+
+                                        <td className="px-4 py-4 align-top">
+                                          <span
+                                            className={cn(
+                                              "inline-flex max-w-full items-center rounded-full px-3 py-1 text-[11px] font-bold whitespace-nowrap",
+                                              isDone
+                                                ? "bg-[#EAF6FF] text-[#3157C8]"
+                                                : isBlocked
+                                                  ? "bg-red-100 text-red-700"
+                                                  : "bg-[#DCEEFF] text-[#2854BF]"
+                                            )}
+                                          >
+                                            {normalizedStatus} ({Number(daily.progress ?? (isDone ? 100 : 0))}%)
                                           </span>
                                         </td>
-                                        <td className="py-2.5 px-3.5 align-top max-w-[180px] text-2xs break-words">
-                                          {isBlocked && <div className="text-red-600 font-bold">{daily.block_reason || "Terkendala"}</div>}
-                                          <div>{daily.notes || <span className="text-text-secondary italic">-</span>}</div>
-                                        </td>
-                                        <td className="py-2.5 px-3.5 align-top text-right whitespace-nowrap min-w-[90px]">
-                                          <div className="flex items-center justify-end gap-1.5">
+
+                                        <td className="px-4 py-4 align-top">
+                                          <div className="flex items-center justify-end gap-1">
                                             {canManageDaily ? (
                                               <button
+                                                type="button"
                                                 onClick={() => onEditDailyClick(daily)}
-                                                className="btn-outline py-0.5 px-2 text-2xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                                                title="Update Aktivitas & Progres"
+                                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4F5050] transition-colors hover:bg-[#EAF6FF] hover:text-[#294BB2]"
+                                                title="Update Daily Task"
                                               >
-                                                <Edit size={11} /> Update
+                                                <Edit size={15} />
                                               </button>
                                             ) : (
-                                              <span className="readonly-badge" title="Hanya PIC atau assignee yang dapat mengedit">
-                                                Read only
-                                              </span>
+                                              <span className="text-[10px] font-semibold text-[#9A9DA3]">View only</span>
                                             )}
 
                                             {canTransferDaily && (
                                               <button
+                                                type="button"
                                                 onClick={() => onTransferDailyClick(daily)}
-                                                className="p-1 rounded text-amber-600 hover:bg-amber-50"
-                                                title="Ajukan Alih Tugas (Transfer)"
+                                                className="flex h-8 w-8 items-center justify-center rounded-lg text-amber-600 transition-colors hover:bg-amber-50"
+                                                title="Ajukan alih tugas"
                                               >
-                                                <RefreshCw size={12} />
+                                                <RefreshCw size={14} />
                                               </button>
                                             )}
 
                                             {canDeleteDaily && (
                                               <button
+                                                type="button"
                                                 onClick={() => onDeleteDailyTask(daily.id, daily.title || daily.activity_input)}
-                                                className="p-1 rounded text-text-secondary hover:text-red-600"
+                                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#777B82] transition-colors hover:bg-red-50 hover:text-red-600"
                                                 title="Hapus Daily Task"
                                               >
-                                                <Trash2 size={12} />
+                                                <Trash2 size={14} />
                                               </button>
                                             )}
                                           </div>
