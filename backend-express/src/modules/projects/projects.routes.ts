@@ -1436,8 +1436,17 @@ projectsRouter.use('/main-tasks', createCrudRouter({
   searchFields: ['name', 'description'],
   accessWhere: async (req) => ProjectsService.mainTaskAccessWhere(req.user, activeCompanyId(req)),
   beforeCreate: async (req, data) => {
-    if (data.project && !data.project_id) data.project_id = data.project;
-    if (req.body.project && !data.project_id) data.project_id = req.body.project;
+    // Canonicalize the project relation before any validation or generic CRUD
+    // normalization. New clients send project_id; legacy clients may still send
+    // project. A conflicting pair is rejected instead of depending on field
+    // ordering or a later alias-cleanup step.
+    const canonicalProjectId = String(data.project_id ?? req.body.project_id ?? '').trim();
+    const legacyProjectId = String(data.project ?? req.body.project ?? '').trim();
+    if (canonicalProjectId && legacyProjectId && canonicalProjectId !== legacyProjectId) {
+      throw new ValidationError('Project Main Task tidak konsisten.');
+    }
+    data.project_id = canonicalProjectId || legacyProjectId;
+    delete data.project;
     if (data.title && !data.name) data.name = data.title;
     if (!String(data.name ?? '').trim()) throw new ValidationError('Nama Main Task wajib diisi.');
     data.name = String(data.name).trim();
@@ -1452,7 +1461,7 @@ projectsRouter.use('/main-tasks', createCrudRouter({
       throw new ValidationError('Prioritas Main Task tidak valid.');
     }
     data.priority = priority;
-    const projectId = String(data.project_id ?? '');
+    const projectId = String(data.project_id ?? '').trim();
     const project = projectId
       ? await prisma.project_project.findFirst({
           where: { id: projectId, company_id: activeCompanyId(req) },
