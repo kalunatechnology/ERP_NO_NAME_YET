@@ -307,7 +307,12 @@ export default function ProjectsClient() {
         getTransferRequests(),
         Promise.resolve([]),
         fetchProjectCustomers(),
-        api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? [])
+        api.get('/api/v1/core/organizations/?status=ACTIVE&page_size=200').then((response) => {
+          const rows = response.data?.results ?? response.data?.data ?? [];
+          return Array.isArray(rows)
+            ? rows.filter((division: any) => String(division.status ?? '').toUpperCase() === 'ACTIVE')
+            : [];
+        })
       ]);
       // Render the primary project/WBS dataset as soon as it is ready. Slow
       // supporting lookups must never hold the entire workspace behind a
