@@ -679,12 +679,17 @@ export async function createMainTask(payload: {
   cost_owner_division_id?: string;
 }) {
   const { data } = await api.post("/api/v1/projects/main-tasks/", {
-      project: payload.project,
+      // project_id is the canonical backend contract. The backend still
+      // accepts the legacy `project` alias for older deployed clients, but
+      // new writes should not depend on alias normalization.
+      project_id: String(payload.project),
       name: payload.title,
       description: payload.description || "",
       weight: payload.weight,
       priority: payload.priority,
-      cost_owner_division_id: payload.cost_owner_division_id || null,
+      ...(payload.cost_owner_division_id
+        ? { cost_owner_division_id: payload.cost_owner_division_id }
+        : {}),
       status: "PLANNED",
   });
   return data;
