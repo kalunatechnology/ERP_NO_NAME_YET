@@ -114,10 +114,19 @@ export function createApp(): Express {
     app.use(morgan('dev'));
   }
 
-  // 2. Public health check
+  // 2. Public service status and health check
+  app.get('/', (_req: Request, res: Response) => {
+    res.json({
+      service: 'erp-backend-express',
+      status: app.locals.databaseReady ? 'healthy' : 'starting',
+      health: '/health',
+      api: '/api/v1',
+    });
+  });
+
   app.get('/health', (_req: Request, res: Response) => {
     res.json({
-      status: 'healthy',
+      status: app.locals.databaseReady ? 'healthy' : 'starting',
       timestamp: new Date().toISOString(),
       service: 'erp-backend-express',
       version: '1.0.0',
