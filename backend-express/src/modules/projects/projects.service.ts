@@ -619,17 +619,22 @@ export class ProjectsService {
     return context;
   }
 
-  static async assertActiveCompanyMember(userId: string, companyId: string, db: any = prisma): Promise<void> {
+  static async assertActiveCompanyMember(
+    userId: string,
+    companyId: string,
+    db: any = prisma,
+  ): Promise<{ id: string; tenant_id: string }> {
     if (!userId) throw new ValidationError('User tujuan wajib dipilih.');
     const membership = await db.iam_user_company_membership.findFirst({
       where: { company_id: companyId, user_id: userId, status: 'ACTIVE' },
-      select: { id: true },
+      select: { id: true, tenant_id: true },
     });
     if (!membership) throw new ForbiddenError('User tujuan bukan anggota aktif company ini.');
+    return membership;
   }
 
   static async assertOperationalCompanyMember(userId: string, companyId: string, db: any = prisma): Promise<void> {
-    await this.assertActiveCompanyMember(userId, companyId, db);
+    const membership = await this.assertActiveCompanyMember(userId, companyId, db);
     const assignments = await db.iam_user_role.findMany({
       where: { user_id: userId, company_id: companyId },
       select: { role_id: true },
@@ -641,7 +646,11 @@ export class ProjectsService {
       ? await db.iam_role.findFirst({
           where: {
             id: { in: roleIds },
-            company_id: companyId,
+            tenant_id: membership.tenant_id,
+            OR: [
+              { company_id: companyId },
+              { company_id: null },
+            ],
             role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] },
           },
           select: { id: true },

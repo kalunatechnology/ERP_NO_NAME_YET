@@ -123,7 +123,7 @@ async function main() {
   const operationalCandidateDb = {
     iam_user_company_membership: {
       findFirst: async ({ where }: any) => where.company_id === COMPANY_A && where.user_id === STAFF_ID
-        ? { id: 'membership-a' }
+        ? { id: 'membership-a', tenant_id: 'tenant-a' }
         : null,
     },
     iam_user_role: {
@@ -132,10 +132,12 @@ async function main() {
         : [],
     },
     iam_role: {
-      findFirst: async ({ where }: any) => where.company_id === COMPANY_A
+      findFirst: async ({ where }: any) => where.tenant_id === 'tenant-a'
+        && where.OR.some((scope: any) => scope.company_id === null)
+        && where.OR.some((scope: any) => scope.company_id === COMPANY_A)
         && where.id.in.includes('staff-role-a')
         && where.role_code.in.includes(RoleCode.STAFF)
-        ? { id: 'staff-role-a' }
+        ? { id: 'staff-role-a', company_id: null }
         : null,
     },
   } as any;
