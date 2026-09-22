@@ -19,6 +19,20 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+function assertNoUuidCastsForTextIds(directory) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const location = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      assertNoUuidCastsForTextIds(location);
+    } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+      const source = fs.readFileSync(location, 'utf8');
+      if (source.includes('::uuid')) {
+        throw new Error(`Invalid raw SQL UUID cast for TEXT-backed Prisma IDs: ${path.relative(path.resolve(__dirname, '..'), location)}`);
+      }
+    }
+  }
+}
+
 function main() {
   // The explicit target prevents accidental database writes from developer
   // machines and prevents migration execution in Vercel builds.
@@ -31,6 +45,11 @@ function main() {
   // resolution of npm/npm.cmd during a hosting build.
   const root = path.resolve(__dirname, '..');
   const hasFrontend = fs.existsSync(path.resolve(root, '..', 'frontend-next', 'lib', 'access', 'module-contract.ts'));
+
+  // Prisma String IDs are stored as PostgreSQL TEXT in the production
+  // baseline. Rust-free driver parameters are text too; forcing them to UUID
+  // produces PostgreSQL 42883 (operator does not exist: text = uuid).
+  assertNoUuidCastsForTextIds(path.join(root, 'src'));
 
   run(process.execPath, [path.join(root, 'node_modules', 'prisma', 'build', 'index.js'), 'generate']);
   run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);

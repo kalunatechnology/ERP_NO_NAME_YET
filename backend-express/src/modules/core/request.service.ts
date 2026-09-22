@@ -1137,7 +1137,7 @@ static async getRequests(params: {
     companyId
       ? Prisma.sql`
           AND ae.company_id =
-            ${companyId}::uuid
+            ${companyId}::text
         `
       : Prisma.empty;
 
@@ -1311,11 +1311,11 @@ static async getRequests(params: {
                 logs.entity_id
 
               AND (
-                ${companyId ?? null}::uuid
+                ${companyId ?? null}::text
                   IS NULL
 
                 OR wa.company_id =
-                  ${companyId ?? null}::uuid
+                  ${companyId ?? null}::text
               )
           ),
           '[]'::jsonb
@@ -1328,11 +1328,11 @@ static async getRequests(params: {
           logs.entity_id
 
         AND (
-          ${companyId ?? null}::uuid
+          ${companyId ?? null}::text
             IS NULL
 
           OR wi.company_id =
-            ${companyId ?? null}::uuid
+            ${companyId ?? null}::text
         )
 
       /**

@@ -51,9 +51,9 @@ export async function loadAuthenticationSnapshot(userId: string): Promise<Authen
   const results = await prisma.$queryRaw<Array<{ user_record: AuthenticationUser; snapshot: AccessSnapshot }>>(Prisma.sql`
     WITH selected_user AS (
       SELECT id,email,full_name,is_staff,status,tenant_id,is_active,active_role_id
-      FROM iam_user WHERE id=${userId}::uuid LIMIT 1
+      FROM iam_user WHERE id=${userId}::text LIMIT 1
     ), membership AS (
-      SELECT m.* FROM iam_user_company_membership m WHERE m.user_id=${userId}::uuid LIMIT 1
+      SELECT m.* FROM iam_user_company_membership m WHERE m.user_id=${userId}::text LIMIT 1
     )
     SELECT to_jsonb(u) AS user_record, jsonb_build_object(
       'assignments', COALESCE((SELECT jsonb_agg(to_jsonb(ur)) FROM iam_user_role ur WHERE ur.user_id=u.id), '[]'::jsonb),
@@ -132,15 +132,15 @@ export async function loadUserAccessContext(
     ? await prisma.$queryRaw<Array<{ snapshot: AccessSnapshot }>>(Prisma.sql`
         WITH membership AS (
           SELECT m.* FROM iam_user_company_membership m
-          WHERE m.user_id = ${userId}::uuid LIMIT 1
+          WHERE m.user_id = ${userId}::text LIMIT 1
         )
         SELECT jsonb_build_object(
-          'assignments', COALESCE((SELECT jsonb_agg(to_jsonb(ur)) FROM iam_user_role ur WHERE ur.user_id = ${userId}::uuid), '[]'::jsonb),
+          'assignments', COALESCE((SELECT jsonb_agg(to_jsonb(ur)) FROM iam_user_role ur WHERE ur.user_id = ${userId}::text), '[]'::jsonb),
           'membership', (SELECT to_jsonb(m) FROM membership m),
           'roles', COALESCE((
             SELECT jsonb_agg(to_jsonb(r)) FROM iam_role r
             JOIN iam_user_role ur ON ur.role_id = r.id
-            WHERE ur.user_id = ${userId}::uuid AND r.tenant_id IS NOT DISTINCT FROM ${user.tenant_id}::uuid
+            WHERE ur.user_id = ${userId}::text AND r.tenant_id IS NOT DISTINCT FROM ${user.tenant_id}::text
           ), '[]'::jsonb),
           'company_modules', COALESCE((
             SELECT jsonb_agg(jsonb_build_object('module_code', cma.module_code))
@@ -152,11 +152,11 @@ export async function loadUserAccessContext(
           'user_modules', COALESCE((
             SELECT jsonb_agg(jsonb_build_object('module_code', uma.module_code, 'allow_read', uma.allow_read, 'allow_write', uma.allow_write))
             FROM iam_user_module_access uma JOIN membership m ON m.company_id = uma.company_id AND m.tenant_id = uma.tenant_id
-            WHERE uma.user_id = ${userId}::uuid
+            WHERE uma.user_id = ${userId}::text
           ), '[]'::jsonb),
           'project_delegated', EXISTS (
             SELECT 1 FROM project_member pm JOIN membership m ON m.company_id=pm.company_id AND m.tenant_id=pm.tenant_id
-            WHERE pm.user_id=${userId}::uuid AND pm.project_role='ACTING_PROJECT_MANAGER' AND UPPER(pm.status)='ACTIVE'
+            WHERE pm.user_id=${userId}::text AND pm.project_role='ACTING_PROJECT_MANAGER' AND UPPER(pm.status)='ACTIVE'
           )
         ) AS snapshot
       `)
