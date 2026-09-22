@@ -20,6 +20,22 @@ import prisma from './config/database';
  */
 const sleep = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
+function describeDatabaseError(err: unknown) {
+  if (!(err instanceof Error)) return { code: 'UNKNOWN', detail: 'Unknown database connection failure' };
+
+  const prismaError = err as Error & { code?: unknown; errorCode?: unknown };
+  const code = String(prismaError.code ?? prismaError.errorCode ?? err.name ?? 'UNKNOWN');
+  // Prisma messages can contain a full connection URL. Keep runtime logs useful
+  // without ever printing database credentials.
+  const detail = err.message
+    .replace(/(postgres(?:ql)?:\/\/)[^\s@]+@/gi, '$1<credentials>@')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 500);
+
+  return { code, detail };
+}
+
 async function connectDatabaseInBackground(app: ReturnType<typeof createApp>, isStopping: () => boolean) {
   let attempt = 0;
   while (!isStopping()) {
@@ -35,12 +51,11 @@ async function connectDatabaseInBackground(app: ReturnType<typeof createApp>, is
     } catch (err) {
       app.locals.databaseReady = false;
       const delayMs = Math.min(15_000, Math.max(1_000, attempt * 1_000));
-      const errorCode = typeof err === 'object' && err !== null && 'code' in err
-        ? String((err as { code?: unknown }).code ?? 'UNKNOWN')
-        : err instanceof Error ? err.name : 'UNKNOWN';
+      const { code: errorCode, detail } = describeDatabaseError(err);
       // Do not disconnect a global Prisma client while incoming requests may
       // reference it. The binary engine owns reconnecting its failed session.
       console.warn(`⚠️ Database connection attempt ${attempt} failed (${errorCode}); retrying in ${delayMs} ms.`);
+      console.warn(`   Database detail: ${detail}`);
       await sleep(delayMs);
     }
   }
