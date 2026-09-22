@@ -166,6 +166,23 @@ async function main(): Promise<void> {
     const staff = { id: 'staff-a', roles: [RoleCode.STAFF], active_role_code: RoleCode.STAFF };
     assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a'), { owner_id: 'staff-a' });
 
+    const financeWithStaffBaseline = {
+      id: 'finance-staff-a',
+      roles: [RoleCode.FINANCE, RoleCode.STAFF],
+      active_role_code: RoleCode.FINANCE,
+    };
+    const emptyPersonalScopeDb = {
+      project_member: { findMany: async () => [] },
+      project_task_assignment: { findMany: async () => [] },
+      project_weekly_task: { findMany: async () => [] },
+      project_main_task: { findMany: async () => [] },
+    };
+    assert.deepEqual(
+      await ProjectsService.dailyTaskAccessWhere(financeWithStaffBaseline, 'company-a', emptyPersonalScopeDb),
+      { owner_id: 'finance-staff-a' },
+      'A selected functional role must not remove the inherited personal Staff scope.',
+    );
+
     const pm = { id: 'pm-a', roles: [RoleCode.PROJECT_MANAGER], active_role_code: RoleCode.PROJECT_MANAGER };
     const pmDb = {
       project_member: { findMany: async () => [{ project_id: 'project-a' }] },
@@ -211,7 +228,7 @@ async function main(): Promise<void> {
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.projectAccessWhere'));
     assert(routesSource.includes("projectsRouter.use('/projects/:id', enforceProjectBoundary)"));
     assert(routesSource.includes("readOnly: true"), 'Generic task-transfer mutation bypass remains enabled');
-    return { staff_visibility: 'owner-only', pm_visibility: 'managed-project-only', admin_visibility: 'company-wide', progress: 'owner-only', transfer_crud: 'read-only' };
+    return { staff_visibility: 'owner-only', staff_baseline: 'inherited-across-active-role', pm_visibility: 'managed-project-only', admin_visibility: 'company-wide', progress: 'owner-only', transfer_crud: 'read-only' };
   }));
 
   results.push(await scenario(names[7], async () => {

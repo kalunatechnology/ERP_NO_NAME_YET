@@ -16,7 +16,7 @@ import {
   Edit, Search, Check, Wallet
 } from "lucide-react";
 import {
-  Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, TaskAssignment, ProjectAuthority, ProjectSupervisor,
+  Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, ProjectAuthority, ProjectSupervisor,
   loadAllProjects, createProject, deleteProject,
   createMainTask, deleteMainTask,
   createWeeklyTask, deleteWeeklyTask,
@@ -24,7 +24,7 @@ import {
   requestTaskTransfer, directReassignDailyTask, getTransferRequests, approveTransfer, rejectTransfer,
   recalculateProjectHealth,
   createMilestone,
-  assignMemberToMainTask, fetchCompanyUsers,
+  assignMemberToMainTask, removeTaskAssignment, fetchCompanyUsers,
   fetchProjectFinancialPerformance,
   fetchProjectFundingRequests, submitProjectFundingRequest,
   updateProjectFinancials,
@@ -307,7 +307,12 @@ export default function ProjectsClient() {
         getTransferRequests(),
         Promise.resolve([]),
         fetchProjectCustomers(),
-        api.get('/api/v1/core/organizations/?page_size=200').then((response) => response.data?.results ?? response.data?.data ?? [])
+        api.get('/api/v1/core/organizations/?status=ACTIVE&page_size=200').then((response) => {
+          const rows = response.data?.results ?? response.data?.data ?? [];
+          return Array.isArray(rows)
+            ? rows.filter((division: any) => String(division.status ?? '').toUpperCase() === 'ACTIVE')
+            : [];
+        })
       ]);
       // Render the primary project/WBS dataset as soon as it is ready. Slow
       // supporting lookups must never hold the entire workspace behind a
@@ -1527,12 +1532,8 @@ export default function ProjectsClient() {
           onCreateMainTaskClick={() => setIsCreateMainTaskOpen(true)}
           onAssignClick={(main) => openAssignModal(main)}
           onRemoveAssignment={async (main, assignmentId) => {
-            const remainingIds = (main.assignments || [])
-              .filter((assignment: TaskAssignment) => String(assignment.id) !== String(assignmentId))
-              .map((assignment: TaskAssignment) => assignment.assignee_id ?? assignment.assignee)
-              .filter((id: unknown): id is string | number => id !== null && id !== undefined && id !== "");
             try {
-              await assignMemberToMainTask({ main_task: main.id, user_ids: remainingIds });
+              await removeTaskAssignment(assignmentId);
               toast.success("Penugasan dihapus");
               await fetchProjects(true);
             } catch (error) {

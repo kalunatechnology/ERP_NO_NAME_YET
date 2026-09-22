@@ -115,13 +115,13 @@ export class AccountsService {
         UPDATE iam_user
         SET last_login_at = ${loginAt},
             password_hash = COALESCE(${passwordHash ?? null}, password_hash)
-        WHERE id = ${user.id}::uuid
+        WHERE id = ${user.id}::text
         RETURNING id, tenant_id
       ), membership AS (
         SELECT m.tenant_id, m.company_id, m.status, c.legal_name, c.company_code
         FROM iam_user_company_membership m
         JOIN core_company c ON c.id = m.company_id AND c.tenant_id IS NOT DISTINCT FROM m.tenant_id
-        WHERE m.user_id = ${user.id}::uuid
+        WHERE m.user_id = ${user.id}::text
         LIMIT 1
       )
       SELECT jsonb_build_object(
@@ -129,14 +129,14 @@ export class AccountsService {
           SELECT jsonb_agg(jsonb_build_object(
             'id', ur.id, 'role_id', ur.role_id, 'company_id', ur.company_id,
             'organization_id', ur.organization_id
-          )) FROM iam_user_role ur WHERE ur.user_id = ${user.id}::uuid
+          )) FROM iam_user_role ur WHERE ur.user_id = ${user.id}::text
         ), '[]'::jsonb),
         'membership', (SELECT to_jsonb(m) FROM membership m),
         'roles', COALESCE((
           SELECT jsonb_agg(jsonb_build_object('id', r.id, 'role_code', r.role_code, 'role_name', r.role_name))
           FROM iam_role r
           JOIN iam_user_role ur ON ur.role_id = r.id
-          WHERE ur.user_id = ${user.id}::uuid AND r.tenant_id = ${user.tenant_id}::uuid
+          WHERE ur.user_id = ${user.id}::text AND r.tenant_id = ${user.tenant_id}::text
         ), '[]'::jsonb),
         'company_modules', COALESCE((
           SELECT jsonb_agg(jsonb_build_object('module_code', cma.module_code))
@@ -150,12 +150,12 @@ export class AccountsService {
             'module_code', uma.module_code, 'allow_read', uma.allow_read, 'allow_write', uma.allow_write
           )) FROM iam_user_module_access uma
           JOIN membership m ON m.company_id = uma.company_id AND m.tenant_id = uma.tenant_id
-          WHERE uma.user_id = ${user.id}::uuid
+          WHERE uma.user_id = ${user.id}::text
         ), '[]'::jsonb),
         'project_delegated', EXISTS (
           SELECT 1 FROM project_member pm
           JOIN membership m ON m.company_id=pm.company_id AND m.tenant_id=pm.tenant_id
-          WHERE pm.user_id=${user.id}::uuid
+          WHERE pm.user_id=${user.id}::text
             AND pm.project_role='ACTING_PROJECT_MANAGER'
             AND UPPER(pm.status)='ACTIVE'
         )
@@ -318,7 +318,7 @@ export class AccountsService {
       prisma.$queryRaw<Array<{ id: string; legal_name: string; company_code: string }>>(Prisma.sql`
         SELECT c.id, c.legal_name, c.company_code
         FROM core_company c JOIN iam_user_company_membership m ON m.company_id=c.id
-        WHERE m.user_id=${userId}::uuid AND c.tenant_id IS NOT DISTINCT FROM m.tenant_id LIMIT 1
+        WHERE m.user_id=${userId}::text AND c.tenant_id IS NOT DISTINCT FROM m.tenant_id LIMIT 1
       `),
     ]);
     if (!user) throw new NotFoundError('User');

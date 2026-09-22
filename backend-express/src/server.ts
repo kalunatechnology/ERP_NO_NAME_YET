@@ -18,36 +18,63 @@ import prisma from './config/database';
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-async function main() {
-  const app = createApp();
+const sleep = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
-  // Supavisor may transiently reject a new session while rotating or waking.
-  // Keep readiness closed and retry a bounded number of times before failing.
-  const maxConnectAttempts = 5;
-  for (let attempt = 1; attempt <= maxConnectAttempts; attempt += 1) {
+function describeDatabaseError(err: unknown) {
+  if (!(err instanceof Error)) return { code: 'UNKNOWN', detail: 'Unknown database connection failure' };
+
+  const prismaError = err as Error & { code?: unknown; errorCode?: unknown };
+  const code = String(prismaError.code ?? prismaError.errorCode ?? err.name ?? 'UNKNOWN');
+  // Prisma messages can contain a full connection URL. Keep runtime logs useful
+  // without ever printing database credentials.
+  const detail = err.message
+    .replace(/(postgres(?:ql)?:\/\/)[^\s@]+@/gi, '$1<credentials>@')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 500);
+
+  return { code, detail };
+}
+
+async function connectDatabaseInBackground(app: ReturnType<typeof createApp>, isStopping: () => boolean) {
+  let attempt = 0;
+  while (!isStopping()) {
+    attempt += 1;
     try {
       await prisma.$connect();
       // A TCP/session handshake alone does not prove the first application SQL
       // request is ready after a pooler wake or a new deployment.
       await prisma.$queryRaw`SELECT 1`;
+      app.locals.databaseReady = true;
       console.log('✅ Database connected successfully via Prisma');
-      break;
+      return;
     } catch (err) {
-      if (attempt === maxConnectAttempts) {
-        console.error('❌ Failed to connect to database after bounded retries:', err);
-        process.exit(1);
-      }
-      const delayMs = Math.min(5000, attempt * 1000);
-      console.warn(`⚠️ Database connection attempt ${attempt}/${maxConnectAttempts} failed; retrying in ${delayMs} ms.`);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      app.locals.databaseReady = false;
+      const delayMs = Math.min(15_000, Math.max(1_000, attempt * 1_000));
+      const { code: errorCode, detail } = describeDatabaseError(err);
+      // Do not disconnect a global Prisma client while incoming requests may
+      // reference it. The binary engine owns reconnecting its failed session.
+      console.warn(`⚠️ Database connection attempt ${attempt} failed (${errorCode}); retrying in ${delayMs} ms.`);
+      console.warn(`   Database detail: ${detail}`);
+      await sleep(delayMs);
     }
   }
+}
 
+function main() {
+  const app = createApp();
+  app.locals.databaseReady = false;
+  let stopping = false;
+
+  // Hostinger requires a process to call listen() within a few seconds. Do
+  // not block HTTP startup on a remote database handshake: Prisma reconnects
+  // in the background while the host can immediately route traffic to us.
   const server = app.listen(env.PORT, () => {
     console.log(`🚀 ERP Express Backend running on http://localhost:${env.PORT}`);
     console.log(`📡 API Base URL: http://localhost:${env.PORT}/api/v1/`);
     console.log(`🩺 Health Check: http://localhost:${env.PORT}/health`);
   });
+  void connectDatabaseInBackground(app, () => stopping);
 
   // Graceful shutdown
 /**
@@ -59,6 +86,7 @@ async function main() {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   const shutdown = async (signal: string) => {
+    stopping = true;
     console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
     server.close(async () => {
       await prisma.$disconnect();
@@ -71,7 +99,4 @@ async function main() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-main().catch((err) => {
-  console.error('Fatal error during startup:', err);
-  process.exit(1);
-});
+main();

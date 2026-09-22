@@ -7,6 +7,8 @@
  * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
  */
 import { Request, Response, NextFunction, Router } from 'express';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database';
 import { paginateArray, paginateCursor, parsePagination, sendDeleteSuccess } from './response';
@@ -37,8 +39,129 @@ export interface CrudOptions {
   transform?: (record: any) => any;
 }
 
-// Cache model fields from Prisma DMMF
+type CrudFieldMetadata = {
+  name: string;
+  type: string;
+  kind: 'scalar' | 'enum' | 'object';
+  isRequired: boolean;
+  hasDefaultValue: boolean;
+  isId: boolean;
+};
+
+type CrudModelMetadata = {
+  name: string;
+  fields: CrudFieldMetadata[];
+};
+
 const MODEL_FIELDS_CACHE = new Map<string, Set<string>>();
+let SCHEMA_MODEL_METADATA: Map<string, CrudModelMetadata> | null = null;
+
+const PRISMA_SCALARS = new Set([
+  'String', 'Boolean', 'Int', 'BigInt', 'Float', 'Decimal',
+  'DateTime', 'Json', 'Bytes', 'Unsupported',
+]);
+
+function schemaCandidates(): string[] {
+  return [
+    path.resolve(__dirname, '../../prisma/schema.prisma'),
+    path.resolve(process.cwd(), 'prisma/schema.prisma'),
+    path.resolve(process.cwd(), 'backend-express/prisma/schema.prisma'),
+  ];
+}
+
+/**
+ * Prisma's Rust-free engine exposes a simplified runtime DMMF that omits
+ * field flags such as isRequired and hasDefaultValue. Generic CRUD validation
+ * depends on those flags, so parse the checked-in Prisma schema once and keep a
+ * tiny runtime metadata map. This preserves the Rust-free Hostinger runtime
+ * without weakening required-field/default behavior.
+ */
+function loadSchemaModelMetadata(): Map<string, CrudModelMetadata> {
+  if (SCHEMA_MODEL_METADATA) return SCHEMA_MODEL_METADATA;
+
+  let schema = '';
+  for (const candidate of schemaCandidates()) {
+    try {
+      schema = readFileSync(candidate, 'utf8');
+      if (schema) break;
+    } catch {
+      // Try the next stable runtime/build path.
+    }
+  }
+
+  const models = new Map<string, CrudModelMetadata>();
+  if (!schema) {
+    SCHEMA_MODEL_METADATA = models;
+    return models;
+  }
+
+  const enumNames = new Set<string>();
+  for (const match of schema.matchAll(/\benum\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/g)) {
+    enumNames.add(match[1]!);
+  }
+
+  for (const match of schema.matchAll(/\bmodel\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*?)\n\}/g)) {
+    const name = match[1]!;
+    const body = match[2] ?? '';
+    const fields: CrudFieldMetadata[] = [];
+
+    for (const rawLine of body.split('\n')) {
+      const line = rawLine.replace(/\/\/.*$/, '').trim();
+      if (!line || line.startsWith('@@')) continue;
+      const fieldMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([^\s]+)(?:\s+([\s\S]*))?$/);
+      if (!fieldMatch) continue;
+
+      const fieldName = fieldMatch[1]!;
+      const typeToken = fieldMatch[2]!;
+      const attributes = fieldMatch[3] ?? '';
+      const baseType = typeToken.replace(/[?\[\]]/g, '');
+      const isList = typeToken.endsWith('[]');
+      const isRequired = !typeToken.endsWith('?') && !isList;
+      const kind: CrudFieldMetadata['kind'] = PRISMA_SCALARS.has(baseType)
+        ? 'scalar'
+        : enumNames.has(baseType)
+          ? 'enum'
+          : 'object';
+
+      fields.push({
+        name: fieldName,
+        type: baseType,
+        kind,
+        isRequired,
+        hasDefaultValue: /@default\s*\(/.test(attributes),
+        isId: /(?:^|\s)@id(?:\s|$)/.test(attributes),
+      });
+    }
+
+    models.set(name.toLowerCase(), { name, fields });
+  }
+
+  SCHEMA_MODEL_METADATA = models;
+  return models;
+}
+
+function getCrudModelMetadata(modelName: string): CrudModelMetadata | undefined {
+  const key = String(modelName).toLowerCase();
+  const schemaModel = loadSchemaModelMetadata().get(key);
+  if (schemaModel) return schemaModel;
+
+  const dmmfModel = Prisma.dmmf?.datamodel?.models?.find(
+    (model) => model.name.toLowerCase() === key,
+  );
+  if (!dmmfModel) return undefined;
+
+  return {
+    name: dmmfModel.name,
+    fields: dmmfModel.fields.map((field: any) => ({
+      name: field.name,
+      type: field.type,
+      kind: field.kind,
+      isRequired: Boolean(field.isRequired),
+      hasDefaultValue: Boolean(field.hasDefaultValue),
+      isId: Boolean(field.isId),
+    })),
+  };
+}
 
 /**
  * getModelFields implements this file's named function contract.
@@ -53,10 +176,8 @@ export function getModelFields(modelName: string): Set<string> {
   if (MODEL_FIELDS_CACHE.has(key)) {
     return MODEL_FIELDS_CACHE.get(key)!;
   }
-  const model = Prisma.dmmf?.datamodel?.models?.find(
-    (m) => m.name.toLowerCase() === key
-  );
-  const fields = new Set<string>(model?.fields?.map((f) => f.name) || []);
+  const model = getCrudModelMetadata(modelName);
+  const fields = new Set<string>(model?.fields?.map((field) => field.name) || []);
   MODEL_FIELDS_CACHE.set(key, fields);
   return fields;
 }
@@ -73,7 +194,6 @@ export function hasModelField(modelName: string, fieldName: string): boolean {
   return getModelFields(modelName).has(fieldName);
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUIRED_BUSINESS_LABEL_FIELDS = new Set([
   'name',
   'project_name',
@@ -88,13 +208,10 @@ const REQUIRED_BUSINESS_LABEL_FIELDS = new Set([
 
 /**
  * Universal auto-filler for required scalar & schema fields across all 200+ Prisma models.
- * Prevents "Argument X is missing" and UUID format errors by generating intelligent defaults.
+ * Prevents "Argument X is missing" errors by generating intelligent defaults.
  */
 export function autoFillRequiredFields(modelName: string, data: any, req?: Request): any {
-  const key = String(modelName).toLowerCase();
-  const model = Prisma.dmmf?.datamodel?.models?.find(
-    (m) => m.name.toLowerCase() === key
-  );
+  const model = getCrudModelMetadata(modelName);
   if (!model) return data;
 
   const result: any = { ...data };
@@ -142,26 +259,31 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
       result[field.name] = new Date(result[field.name]);
     }
 
-    // B. Clean up UUID / _id fields (convert invalid non-UUID strings to null / fallback)
+    // B. Normalize ID fields. Production IDs are PostgreSQL TEXT, including
+    // deterministic seed identifiers that are UUID-shaped but not RFC UUIDs.
+    // Referential integrity and tenant/company scope are validated separately;
+    // this generic layer must not erase valid TEXT identifiers.
     if (fn.endsWith('_id') || fn === 'id') {
       const val = result[field.name];
       if (val !== undefined && val !== null) {
         if (typeof val === 'string') {
           const trimmed = val.trim();
-          if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'DEFAULT' || !UUID_REGEX.test(trimmed)) {
+          if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'DEFAULT') {
             if (field.isRequired) {
-              if (fn === 'created_by_id' && req?.user?.id && UUID_REGEX.test(req.user.id)) {
+              if (fn === 'created_by_id' && req?.user?.id) {
                 result[field.name] = req.user.id;
               } else if (fn === 'company_id') {
-                if (req?.companyId && UUID_REGEX.test(req.companyId)) result[field.name] = req.companyId;
+                if (req?.companyId) result[field.name] = req.companyId;
                 else delete result[field.name];
               } else if (fn === 'tenant_id') {
-                if (req?.user?.tenant_id && UUID_REGEX.test(req.user.tenant_id)) result[field.name] = req.user.tenant_id;
+                if (req?.user?.tenant_id) result[field.name] = req.user.tenant_id;
                 else delete result[field.name];
               }
             } else {
               result[field.name] = null;
             }
+          } else {
+            result[field.name] = trimmed;
           }
         }
       }
@@ -174,10 +296,10 @@ export function autoFillRequiredFields(modelName: string, data: any, req?: Reque
           // Skip _id fields from generic string defaults!
           if (fn.endsWith('_id') || fn === 'id') {
             if (fn === 'tenant_id') {
-              if (req?.user?.tenant_id && UUID_REGEX.test(req.user.tenant_id)) result[field.name] = req.user.tenant_id;
+              if (req?.user?.tenant_id) result[field.name] = req.user.tenant_id;
             } else if (fn === 'company_id') {
-              if (req?.companyId && UUID_REGEX.test(req.companyId)) result[field.name] = req.companyId;
-            } else if (fn === 'created_by_id' && req?.user?.id && UUID_REGEX.test(req.user.id)) {
+              if (req?.companyId) result[field.name] = req.companyId;
+            } else if (fn === 'created_by_id' && req?.user?.id) {
               result[field.name] = req.user.id;
             }
             continue;

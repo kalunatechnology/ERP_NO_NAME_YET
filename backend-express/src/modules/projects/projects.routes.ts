@@ -935,38 +935,10 @@ const handleAssignMembers = async (req: Request, res: Response, next: NextFuncti
     if (memberships.length !== userIds.length) throw new ForbiddenError('Satu atau lebih assignee berada di luar company aktif.');
     await Promise.all(userIds.map((userId) => ProjectsService.assertOperationalCompanyMember(userId, companyId)));
 
-    const currentAssignments = await prisma.project_task_assignment.findMany({
-      where: { main_task_id: mainTaskId, company_id: companyId },
-      select: { assignee_id: true },
-    });
-    const retainedIds = new Set(userIds);
-    const removedIds = currentAssignments
-      .map((assignment) => assignment.assignee_id)
-      .filter((userId) => !retainedIds.has(userId));
-    if (removedIds.length) {
-      const linkedWeeklyTask = await prisma.project_weekly_task.findFirst({
-        where: {
-          main_task_id: mainTaskId,
-          company_id: companyId,
-          assignee_id: { in: removedIds },
-        },
-        select: { id: true },
-      });
-      if (linkedWeeklyTask) {
-        throw new ConflictError('Assignee masih memiliki Weekly Task. Hapus Weekly Task terkait sebelum menghapus assignment Main Task.');
-      }
-    }
-
     await prisma.$transaction(async (tx) => {
-      // Remove assignments not in userIds
-      await tx.project_task_assignment.deleteMany({
-        where: {
-          main_task_id: mainTaskId,
-          company_id: companyId,
-          assignee_id: { notIn: userIds },
-        },
-      });
-
+      // Assignment is additive. Existing Main Task assignments are never
+      // replaced by a partial/stale project-member selection. Removal has its
+      // own explicit, guarded task-assignment DELETE action.
       const [existingAssignments, existingMembers] = await Promise.all([
         tx.project_task_assignment.findMany({
           where: { main_task_id: mainTaskId, company_id: companyId, assignee_id: { in: userIds } },
@@ -1464,19 +1436,32 @@ projectsRouter.use('/main-tasks', createCrudRouter({
   searchFields: ['name', 'description'],
   accessWhere: async (req) => ProjectsService.mainTaskAccessWhere(req.user, activeCompanyId(req)),
   beforeCreate: async (req, data) => {
-    if (data.project && !data.project_id) data.project_id = data.project;
-    if (req.body.project && !data.project_id) data.project_id = req.body.project;
+    // Canonicalize the project relation before any validation or generic CRUD
+    // normalization. New clients send project_id; legacy clients may still send
+    // project. A conflicting pair is rejected instead of depending on field
+    // ordering or a later alias-cleanup step.
+    const canonicalProjectId = String(data.project_id ?? req.body.project_id ?? '').trim();
+    const legacyProjectId = String(data.project ?? req.body.project ?? '').trim();
+    if (canonicalProjectId && legacyProjectId && canonicalProjectId !== legacyProjectId) {
+      throw new ValidationError('Project Main Task tidak konsisten.');
+    }
+    data.project_id = canonicalProjectId || legacyProjectId;
+    delete data.project;
     if (data.title && !data.name) data.name = data.title;
     if (!String(data.name ?? '').trim()) throw new ValidationError('Nama Main Task wajib diisi.');
     data.name = String(data.name).trim();
     data.description = String(data.description ?? '').trim();
-    data.weight = validateMainTaskWeight(data.weight);
+    // Preserve the established API contract used by older deployed frontend
+    // bundles: omitted weight defaults to 10. Explicit values remain strict.
+    data.weight = data.weight === undefined || data.weight === null || data.weight === ''
+      ? 10
+      : validateMainTaskWeight(data.weight);
     const priority = String(data.priority ?? 'MEDIUM').toUpperCase();
     if (!['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority)) {
       throw new ValidationError('Prioritas Main Task tidak valid.');
     }
     data.priority = priority;
-    const projectId = String(data.project_id ?? '');
+    const projectId = String(data.project_id ?? '').trim();
     const project = projectId
       ? await prisma.project_project.findFirst({
           where: { id: projectId, company_id: activeCompanyId(req) },
@@ -1722,11 +1707,13 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     });
     if (!mainTask) throw new ValidationError('Main Task induk tidak valid.');
 
-    const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(
-      req.user?.active_role_code as RoleCode,
-    );
-    if (!isOperationalAssignee || !req.user?.id) {
-      throw new ForbiddenError('Daily Task dibuat dan dikelola sendiri oleh Staff pemilik Weekly Task. PM memiliki akses monitor.');
+    // Daily Task is personal execution data, not a management privilege.
+    // Any authenticated company user may create one only when they are both a
+    // Main Task assignee and the owner of the selected Weekly Task. The owner
+    // is always forced to the caller below, so elevated roles cannot create a
+    // Daily Task on behalf of somebody else.
+    if (!req.user?.id || isSuperAdmin(req.user.roles)) {
+      throw new ForbiddenError('Daily Task dibuat dan dikelola sendiri oleh user company pemilik Weekly Task.');
     }
     const assignment = await prisma.project_task_assignment.findFirst({
       where: { main_task_id: mainTask.id, assignee_id: req.user.id, company_id: companyId },

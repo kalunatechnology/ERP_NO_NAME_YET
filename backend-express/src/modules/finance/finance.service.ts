@@ -615,7 +615,7 @@ export class FinanceService {
       normal_balance: string; total_debit: number; total_credit: number;
     };
     const companyPredicate = companyId
-      ? Prisma.sql`a.company_id = ${companyId}::uuid`
+      ? Prisma.sql`a.company_id = ${companyId}::text`
       : Prisma.sql`a.company_id IS NULL`;
     // A financial report must remain read-only. COA setup belongs to an explicit
     // setup/write workflow, not to GET. Aggregate posted journal lines in SQL so

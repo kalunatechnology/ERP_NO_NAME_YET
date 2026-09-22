@@ -35,7 +35,7 @@ const envSchema = z.object({
   CORS_ALLOWED_ORIGINS: z
     .string()
     .default(
-      'http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://localhost:5500,http://127.0.0.1:5500,https://marka.arsalynk.com,http://marka.arsalynk.com,https://arsalynk.com,http://arsalynk.com',
+      'http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://localhost:5500,http://127.0.0.1:5500,https://markha.arsalynk.com,http://markha.arsalynk.com,https://marka.arsalynk.com,http://marka.arsalynk.com,https://arsalynk.com,http://arsalynk.com',
     )
     .transform((val) => val.split(',').map((s) => s.trim()).filter(Boolean)),
   CORS_ALLOW_CREDENTIALS: z
@@ -76,9 +76,9 @@ const envSchema = z.object({
  *
  * Vercel uses Supavisor transaction pooling (`pooler.supabase.com:6543`) to
  * tolerate ephemeral serverless instances. Hostinger runs a persistent
- * Express process and must use the direct PostgreSQL endpoint
- * (`db.<project>.supabase.co:5432`). `DIRECT_URL` remains direct in both
- * environments because Prisma migrations require a non-pooled connection.
+ * Express process and can use either the IPv4-compatible session pooler
+ * (`pooler.supabase.com:5432`) or the direct PostgreSQL endpoint. Migrations
+ * reject transaction pooling but support direct and session-mode port 5432.
  *
  * The validation is intentionally fail-closed: starting against the wrong
  * endpoint creates intermittent connection failures that are difficult to
@@ -108,11 +108,20 @@ function resolveDatabaseTopology(config: z.infer<typeof envSchema>) {
   }
 
   if (target === 'hostinger') {
-    const direct = new URL(directUrl);
-    if (!/^db\.[a-z0-9-]+\.supabase\.co$/i.test(direct.hostname) || direct.port !== '5432') {
-      throw new Error('Hostinger requires SUPABASE_DIRECT_URL using db.<project>.supabase.co:5432.');
+    const runtimeUrl = config.DATABASE_URL;
+    const runtime = new URL(runtimeUrl);
+    const runtimeIsDirect = /^db\.[a-z0-9-]+\.supabase\.co$/i.test(runtime.hostname) && runtime.port === '5432';
+    const runtimeIsSessionPooler = runtime.hostname.endsWith('.pooler.supabase.com') && runtime.port === '5432';
+    if (!runtimeIsDirect && !runtimeIsSessionPooler) {
+      throw new Error('Hostinger DATABASE_URL must use Supabase direct or session pooler port 5432, never transaction pooler port 6543.');
     }
-    return { target, databaseUrl: directUrl, directUrl };
+    const migration = new URL(directUrl);
+    const migrationIsDirect = /^db\.[a-z0-9-]+\.supabase\.co$/i.test(migration.hostname) && migration.port === '5432';
+    const migrationIsSessionPooler = migration.hostname.endsWith('.pooler.supabase.com') && migration.port === '5432';
+    if (!migrationIsDirect && !migrationIsSessionPooler) {
+      throw new Error('Hostinger DIRECT_URL must use Supabase direct or session pooler port 5432.');
+    }
+    return { target, databaseUrl: withPoolDefaults(runtimeUrl, 5), directUrl };
   }
 
   return { target, databaseUrl: withPoolDefaults(config.DATABASE_URL, 5), directUrl };

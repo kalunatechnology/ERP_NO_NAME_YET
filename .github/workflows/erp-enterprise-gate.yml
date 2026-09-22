@@ -3,7 +3,7 @@ name: ERP Enterprise Gate
 on:
   pull_request:
   push:
-    branches: [master]
+    branches: [master, production]
 
 jobs:
   backend:

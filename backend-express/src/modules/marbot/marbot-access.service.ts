@@ -146,9 +146,9 @@ export async function getGrantedPermissions(
       SELECT DISTINCT p.permission_code
       FROM iam_role_permission rp
       JOIN iam_permission p ON p.id = rp.permission_id
-      WHERE rp.role_id = ${roleId}::uuid
-        AND rp.tenant_id = ${tenantId}::uuid
-        AND rp.company_id = ${companyId}::uuid
+      WHERE rp.role_id = ${roleId}::text
+        AND rp.tenant_id = ${tenantId}::text
+        AND rp.company_id = ${companyId}::text
         AND rp.allowed = true
         AND p.permission_code IN (${Prisma.join([...codes])})
       ORDER BY p.permission_code

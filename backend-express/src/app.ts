@@ -114,13 +114,35 @@ export function createApp(): Express {
     app.use(morgan('dev'));
   }
 
-  // 2. Public health check
+  // 2. Public service status and health check
+  app.get('/', (_req: Request, res: Response) => {
+    res.json({
+      service: 'erp-backend-express',
+      status: app.locals.databaseReady ? 'healthy' : 'starting',
+      health: '/health',
+      api: '/api/v1',
+    });
+  });
+
   app.get('/health', (_req: Request, res: Response) => {
     res.json({
-      status: 'healthy',
+      status: app.locals.databaseReady ? 'healthy' : 'starting',
       timestamp: new Date().toISOString(),
       service: 'erp-backend-express',
       version: '1.0.0',
+    });
+  });
+
+  // Never send application queries into Prisma while its startup handshake is
+  // still retrying. Besides returning an honest 503, this prevents concurrent
+  // login queries from racing the engine initialization on shared hosting.
+  app.use((req: Request, res: Response, next) => {
+    if (app.locals.databaseReady) return next();
+    res.status(503).json({
+      success: false,
+      error: 'DATABASE_STARTING',
+      detail: 'Koneksi database sedang disiapkan. Silakan coba kembali beberapa saat lagi.',
+      request_id: req.requestId,
     });
   });
 
@@ -180,9 +202,24 @@ export function createApp(): Express {
   apiV1.use(
     '/projects',
     requireModuleAccess('PROJECTS'),
-    requireActiveRole(RoleCode.COMPANY_ADMIN, RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.SUPERVISOR, RoleCode.STAFF),
+    requireActiveRole(
+      RoleCode.COMPANY_ADMIN,
+      RoleCode.PROJECT_MANAGER,
+      RoleCode.OPERATIONAL_MANAGER,
+      RoleCode.DIRECTOR,
+      RoleCode.SUPERVISOR,
+      RoleCode.STAFF,
+      RoleCode.FINANCE,
+      RoleCode.CRM_LEAD,
+      RoleCode.SALES,
+    ),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
+      allowedMutationPaths: [
+        { path: /^\/api\/v1\/projects\/daily-tasks\/?$/, methods: ['POST'] },
+        { path: /^\/api\/v1\/projects\/daily-tasks\/[^/]+\/?$/, methods: ['PUT', 'PATCH', 'DELETE'] },
+        { path: /^\/api\/v1\/projects\/daily-tasks\/[^/]+\/(?:update[-_]progress|report[-_]blocked|request[-_]transfer)\/?$/ },
+      ],
       message: 'Role Director memiliki akses preview seluruh proyek.',
     }),
     restrictProjectMutationsByAuthority,

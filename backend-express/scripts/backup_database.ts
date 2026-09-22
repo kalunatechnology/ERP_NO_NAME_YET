@@ -43,13 +43,18 @@ function quoteLiteral(value: string): string {
  */
 async function main() {
   const tables = await prisma.$queryRawUnsafe<Array<{ tablename: string }>>(
-    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
+    "SELECT tablename::text AS tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename::text",
   );
   const columns = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT table_name, column_name, data_type, udt_name, is_nullable, column_default
+    `SELECT table_name::text AS table_name,
+            column_name::text AS column_name,
+            data_type::text AS data_type,
+            udt_name::text AS udt_name,
+            is_nullable::text AS is_nullable,
+            column_default::text AS column_default
      FROM information_schema.columns
      WHERE table_schema = 'public'
-     ORDER BY table_name, ordinal_position`,
+     ORDER BY table_name::text, ordinal_position`,
   );
 
   const exportQuery = tables.map(({ tablename }) => (

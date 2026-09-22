@@ -18,7 +18,7 @@
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
-const { PrismaClient } = require('@prisma/client');
+const { createPrismaClient } = require('./prisma_client');
 
 const RECOVERABLE_MIGRATION = '20260911090000_backfill_employee_user_mapping';
 
@@ -33,11 +33,13 @@ const RECOVERABLE_MIGRATION = '20260911090000_backfill_employee_user_mapping';
  * @returns {string} The validated URL; it is never printed.
  * @throws {Error} When the target is missing or points at a pooler/non-direct host.
  */
-function requireDirectSupabaseUrl(value) {
+function requireMigrationSupabaseUrl(value) {
   if (!value) throw new Error('SUPABASE_DIRECT_URL is required for a Hostinger database deployment.');
   const url = new URL(value);
-  if (!/^db\.[a-z0-9-]+\.supabase\.co$/i.test(url.hostname) || url.port !== '5432') {
-    throw new Error('SUPABASE_DIRECT_URL must use db.<project>.supabase.co:5432, not a pooler URL.');
+  const isDirect = /^db\.[a-z0-9-]+\.supabase\.co$/i.test(url.hostname) && url.port === '5432';
+  const isSessionPooler = url.hostname.endsWith('.pooler.supabase.com') && url.port === '5432';
+  if (!isDirect && !isSessionPooler) {
+    throw new Error('Migration URL must use Supabase direct or session pooler port 5432, never transaction pooler port 6543.');
   }
   return value;
 }
@@ -52,12 +54,21 @@ function requireDirectSupabaseUrl(value) {
  * against an unknown schema version.
  */
 async function recoverKnownFailedMigration(prismaCli, directUrl) {
-  const client = new PrismaClient({ datasources: { db: { url: directUrl } } });
+  const client = createPrismaClient(directUrl);
   try {
-    const rows = await client.$queryRawUnsafe(
-      'SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations" WHERE migration_name = $1 ORDER BY started_at DESC LIMIT 1',
-      RECOVERABLE_MIGRATION,
-    );
+    let rows;
+    try {
+      rows = await client.$queryRawUnsafe(
+        'SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations" WHERE migration_name = $1 ORDER BY started_at DESC LIMIT 1',
+        RECOVERABLE_MIGRATION,
+      );
+    } catch (error) {
+      // A genuinely empty deployment database has no Prisma history table yet.
+      // `migrate deploy` below owns creating it together with the baseline.
+      const databaseCode = error?.meta?.code;
+      if (error?.code === 'P2010' && databaseCode === '42P01') return;
+      throw error;
+    }
     const failed = rows[0];
     if (!failed || failed.finished_at || failed.rolled_back_at) return;
 
@@ -83,7 +94,7 @@ async function main() {
     throw new Error('Refusing database migration: DEPLOYMENT_TARGET must be "hostinger" or "docker".');
   }
 
-  const directUrl = requireDirectSupabaseUrl(process.env.SUPABASE_DIRECT_URL ?? process.env.DIRECT_URL);
+  const directUrl = requireMigrationSupabaseUrl(process.env.SUPABASE_DIRECT_URL ?? process.env.DIRECT_URL);
   const prismaCli = path.join(__dirname, '..', 'node_modules', 'prisma', 'build', 'index.js');
   await recoverKnownFailedMigration(prismaCli, directUrl);
   const result = spawnSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {

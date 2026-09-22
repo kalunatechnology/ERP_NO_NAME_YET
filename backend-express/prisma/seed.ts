@@ -1,8 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../scripts/prisma_client';
 import bcrypt from 'bcrypt';
 import { parseRoleCode } from '../src/types/roles';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 const DUMMY_PASSWORD = 'DummyPass123!';
 
 /**

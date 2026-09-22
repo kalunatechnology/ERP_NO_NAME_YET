@@ -161,8 +161,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
       staff_member_projects AS (
         SELECT DISTINCT pm.project_id
         FROM project_member pm
-        WHERE pm.tenant_id = ${tenantId}::uuid
-          AND pm.company_id = ${companyId}::uuid
+        WHERE pm.tenant_id = ${tenantId}::text
+          AND pm.company_id = ${companyId}::text
           AND pm.user_id::text = ${userId}::text
           AND pm.project_id IS NOT NULL
           AND UPPER(pm.status) = 'ACTIVE'
@@ -183,10 +183,10 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
         FROM project_main_task mt
         INNER JOIN project_task_assignment a
           ON a.main_task_id = mt.id
-        WHERE mt.tenant_id = ${tenantId}::uuid
-          AND mt.company_id = ${companyId}::uuid
-          AND a.tenant_id = ${tenantId}::uuid
-          AND a.company_id = ${companyId}::uuid
+        WHERE mt.tenant_id = ${tenantId}::text
+          AND mt.company_id = ${companyId}::text
+          AND a.tenant_id = ${tenantId}::text
+          AND a.company_id = ${companyId}::text
           AND a.assignee_id::text = ${userId}::text
 
         UNION
@@ -197,10 +197,10 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
         FROM project_main_task mt
         INNER JOIN project_weekly_task wt
           ON wt.main_task_id = mt.id
-        WHERE mt.tenant_id = ${tenantId}::uuid
-          AND mt.company_id = ${companyId}::uuid
-          AND wt.tenant_id = ${tenantId}::uuid
-          AND wt.company_id = ${companyId}::uuid
+        WHERE mt.tenant_id = ${tenantId}::text
+          AND mt.company_id = ${companyId}::text
+          AND wt.tenant_id = ${tenantId}::text
+          AND wt.company_id = ${companyId}::text
           AND wt.assignee_id::text = ${userId}::text
 
         UNION
@@ -213,12 +213,12 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
           ON wt.main_task_id = mt.id
         INNER JOIN project_daily_task dt
           ON dt.weekly_task_id = wt.id
-        WHERE mt.tenant_id = ${tenantId}::uuid
-          AND mt.company_id = ${companyId}::uuid
-          AND wt.tenant_id = ${tenantId}::uuid
-          AND wt.company_id = ${companyId}::uuid
-          AND dt.tenant_id = ${tenantId}::uuid
-          AND dt.company_id = ${companyId}::uuid
+        WHERE mt.tenant_id = ${tenantId}::text
+          AND mt.company_id = ${companyId}::text
+          AND wt.tenant_id = ${tenantId}::text
+          AND wt.company_id = ${companyId}::text
+          AND dt.tenant_id = ${tenantId}::text
+          AND dt.company_id = ${companyId}::text
           AND dt.owner_id::text = ${userId}::text
       ),
 
@@ -230,8 +230,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
           t.id,
           t.project_id
         FROM project_task t
-        WHERE t.tenant_id = ${tenantId}::uuid
-          AND t.company_id = ${companyId}::uuid
+        WHERE t.tenant_id = ${tenantId}::text
+          AND t.company_id = ${companyId}::text
           AND t.assigned_to_id::text = ${userId}::text
       ),
 
@@ -262,8 +262,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
       staff_weekly_tasks AS (
         SELECT DISTINCT wt.id
         FROM project_weekly_task wt
-        WHERE wt.tenant_id = ${tenantId}::uuid
-          AND wt.company_id = ${companyId}::uuid
+        WHERE wt.tenant_id = ${tenantId}::text
+          AND wt.company_id = ${companyId}::text
           AND (
             wt.assignee_id::text = ${userId}::text
 
@@ -271,8 +271,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
               SELECT 1
               FROM project_daily_task dt
               WHERE dt.weekly_task_id = wt.id
-                AND dt.tenant_id = ${tenantId}::uuid
-                AND dt.company_id = ${companyId}::uuid
+                AND dt.tenant_id = ${tenantId}::text
+                AND dt.company_id = ${companyId}::text
                 AND dt.owner_id::text = ${userId}::text
             )
           )
@@ -287,8 +287,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
       staff_employee_ids AS (
         SELECT DISTINCT e.id::text AS employee_id
         FROM master_employee e
-        WHERE e.tenant_id = ${tenantId}::uuid
-          AND e.company_id = ${companyId}::uuid
+        WHERE e.tenant_id = ${tenantId}::text
+          AND e.company_id = ${companyId}::text
           -- master_employee.user_id is intentionally TEXT because it was
           -- introduced as a cross-model IAM reference. Compare identities as
           -- text instead of forcing the parameter to UUID.
@@ -298,8 +298,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
         SELECT DISTINCT pm.employee_id::text
         FROM project_member pm
-        WHERE pm.tenant_id = ${tenantId}::uuid
-          AND pm.company_id = ${companyId}::uuid
+        WHERE pm.tenant_id = ${tenantId}::text
+          AND pm.company_id = ${companyId}::text
           AND pm.user_id::text = ${userId}::text
           AND pm.employee_id IS NOT NULL
       )
@@ -338,8 +338,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             FROM project_project p
 
-            WHERE p.tenant_id = ${tenantId}::uuid
-              AND p.company_id = ${companyId}::uuid
+            WHERE p.tenant_id = ${tenantId}::text
+              AND p.company_id = ${companyId}::text
 
               AND p.id IN (
                 SELECT project_id
@@ -377,8 +377,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             FROM project_main_task mt
 
-            WHERE mt.tenant_id = ${tenantId}::uuid
-              AND mt.company_id = ${companyId}::uuid
+            WHERE mt.tenant_id = ${tenantId}::text
+              AND mt.company_id = ${companyId}::text
 
               AND mt.id IN (
                 SELECT id
@@ -411,8 +411,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             FROM project_task_assignment a
 
-            WHERE a.tenant_id = ${tenantId}::uuid
-              AND a.company_id = ${companyId}::uuid
+            WHERE a.tenant_id = ${tenantId}::text
+              AND a.company_id = ${companyId}::text
               AND a.assignee_id::text = ${userId}::text
 
               AND a.main_task_id IN (
@@ -446,8 +446,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             FROM project_weekly_task wt
 
-            WHERE wt.tenant_id = ${tenantId}::uuid
-              AND wt.company_id = ${companyId}::uuid
+            WHERE wt.tenant_id = ${tenantId}::text
+              AND wt.company_id = ${companyId}::text
 
               AND wt.id IN (
                 SELECT id
@@ -490,8 +490,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             FROM project_daily_task dt
 
-            WHERE dt.tenant_id = ${tenantId}::uuid
-              AND dt.company_id = ${companyId}::uuid
+            WHERE dt.tenant_id = ${tenantId}::text
+              AND dt.company_id = ${companyId}::text
               AND dt.owner_id::text = ${userId}::text
 
             ORDER BY
@@ -534,8 +534,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             FROM project_task t
 
-            WHERE t.tenant_id = ${tenantId}::uuid
-              AND t.company_id = ${companyId}::uuid
+            WHERE t.tenant_id = ${tenantId}::text
+              AND t.company_id = ${companyId}::text
               AND t.assigned_to_id::text = ${userId}::text
 
             ORDER BY
@@ -568,8 +568,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
             FROM project_milestone m
 
-            WHERE m.tenant_id = ${tenantId}::uuid
-              AND m.company_id = ${companyId}::uuid
+            WHERE m.tenant_id = ${tenantId}::text
+              AND m.company_id = ${companyId}::text
 
               AND m.project_id IN (
                 SELECT project_id
@@ -675,14 +675,14 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
         WITH staff_employee_ids AS (
           SELECT DISTINCT e.id::text AS employee_id
           FROM master_employee e
-          WHERE e.tenant_id = ${tenantId}::uuid
-            AND e.company_id = ${companyId}::uuid
+          WHERE e.tenant_id = ${tenantId}::text
+            AND e.company_id = ${companyId}::text
             AND e.user_id = ${userId}::text
           UNION
           SELECT DISTINCT pm.employee_id::text
           FROM project_member pm
-          WHERE pm.tenant_id = ${tenantId}::uuid
-            AND pm.company_id = ${companyId}::uuid
+          WHERE pm.tenant_id = ${tenantId}::text
+            AND pm.company_id = ${companyId}::text
             AND pm.user_id::text = ${userId}::text
             AND pm.employee_id IS NOT NULL
         )
@@ -693,8 +693,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
           COALESCE(SUM(ts.overtime_hours) FILTER (WHERE UPPER(ts.approval_status) = 'APPROVED'), 0)::float AS approved_hours,
           MAX(ts.work_date) FILTER (WHERE ts.overtime_hours > 0) AS last_overtime_date
         FROM project_timesheet ts
-        WHERE ts.tenant_id = ${tenantId}::uuid
-          AND ts.company_id = ${companyId}::uuid
+        WHERE ts.tenant_id = ${tenantId}::text
+          AND ts.company_id = ${companyId}::text
           AND ts.employee_id::text IN (SELECT employee_id FROM staff_employee_ids)
       `);
 
@@ -738,25 +738,25 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
   };
 
   const projectScope = managedProjectIds.length
-    ? Prisma.sql`AND id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::uuid`))})`
+    ? Prisma.sql`AND id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::text`))})`
     : Prisma.empty;
   const directProjectScope = managedProjectIds.length
-    ? Prisma.sql`AND project_id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::uuid`))})`
+    ? Prisma.sql`AND project_id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::text`))})`
     : Prisma.empty;
   const mainTaskScope = managedProjectIds.length
     ? Prisma.sql`AND main_task_id IN (
         SELECT id FROM project_main_task
-        WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid
-          AND project_id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::uuid`))})
+        WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text
+          AND project_id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::text`))})
       )`
     : Prisma.empty;
   const weeklyTaskScope = managedProjectIds.length
     ? Prisma.sql`AND weekly_task_id IN (
         SELECT wt.id FROM project_weekly_task wt
         JOIN project_main_task mt ON mt.id=wt.main_task_id
-        WHERE wt.tenant_id=${tenantId}::uuid AND wt.company_id=${companyId}::uuid
-          AND mt.tenant_id=${tenantId}::uuid AND mt.company_id=${companyId}::uuid
-          AND mt.project_id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::uuid`))})
+        WHERE wt.tenant_id=${tenantId}::text AND wt.company_id=${companyId}::text
+          AND mt.tenant_id=${tenantId}::text AND mt.company_id=${companyId}::text
+          AND mt.project_id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::text`))})
       )`
     : Prisma.empty;
 
@@ -791,8 +791,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           FROM project_project
 
-          WHERE tenant_id = ${tenantId}::uuid
-            AND company_id = ${companyId}::uuid
+          WHERE tenant_id = ${tenantId}::text
+            AND company_id = ${companyId}::text
             ${projectScope}
 
           LIMIT 100
@@ -817,8 +817,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           FROM project_main_task
 
-          WHERE tenant_id = ${tenantId}::uuid
-            AND company_id = ${companyId}::uuid
+          WHERE tenant_id = ${tenantId}::text
+            AND company_id = ${companyId}::text
             ${directProjectScope}
 
           LIMIT 300
@@ -836,8 +836,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           FROM project_task_assignment
 
-          WHERE tenant_id = ${tenantId}::uuid
-            AND company_id = ${companyId}::uuid
+          WHERE tenant_id = ${tenantId}::text
+            AND company_id = ${companyId}::text
             ${mainTaskScope}
 
           LIMIT 500
@@ -861,8 +861,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           FROM project_weekly_task
 
-          WHERE tenant_id = ${tenantId}::uuid
-            AND company_id = ${companyId}::uuid
+          WHERE tenant_id = ${tenantId}::text
+            AND company_id = ${companyId}::text
             ${mainTaskScope}
 
           LIMIT 500
@@ -890,8 +890,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           FROM project_daily_task
 
-          WHERE tenant_id = ${tenantId}::uuid
-            AND company_id = ${companyId}::uuid
+          WHERE tenant_id = ${tenantId}::text
+            AND company_id = ${companyId}::text
             ${weeklyTaskScope}
 
           LIMIT 1000
@@ -922,8 +922,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           FROM project_task
 
-          WHERE tenant_id = ${tenantId}::uuid
-            AND company_id = ${companyId}::uuid
+          WHERE tenant_id = ${tenantId}::text
+            AND company_id = ${companyId}::text
             ${directProjectScope}
 
           LIMIT 500
@@ -945,8 +945,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           FROM project_milestone
 
-          WHERE tenant_id = ${tenantId}::uuid
-            AND company_id = ${companyId}::uuid
+          WHERE tenant_id = ${tenantId}::text
+            AND company_id = ${companyId}::text
             ${directProjectScope}
 
           LIMIT 300
@@ -968,8 +968,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           FROM project_readiness_check
 
-          WHERE tenant_id = ${tenantId}::uuid
-            AND company_id = ${companyId}::uuid
+          WHERE tenant_id = ${tenantId}::text
+            AND company_id = ${companyId}::text
             ${directProjectScope}
 
           LIMIT 200
@@ -1000,8 +1000,8 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
           JOIN iam_user_role ur
             ON ur.user_id = u.id
 
-          WHERE ur.tenant_id = ${tenantId}::uuid
-            AND ur.company_id = ${companyId}::uuid
+          WHERE ur.tenant_id = ${tenantId}::text
+            AND ur.company_id = ${companyId}::text
 
           LIMIT 200
         ) x
@@ -1043,19 +1043,19 @@ async function loadFinanceBundle(req: Request, includeProjects: boolean) {
   };
   const result = await prisma.$queryRaw<Array<{ snapshot: FinanceSnapshot }>>(Prisma.sql`
     SELECT jsonb_build_object(
-      'total_budget', CASE WHEN ${includeProjects}::boolean THEN (SELECT COALESCE(sum(budget_amount),0) FROM project_project WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid) ELSE 0 END,
-      'used_budget', (SELECT COALESCE(sum(total_cost),0) FROM fin_project_cost_entry WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid AND status IN ('VALIDATED','APPROVED')),
-      'funding_groups', COALESCE((SELECT jsonb_agg(jsonb_build_object('status',status,'_count',jsonb_build_object('_all',count),'_sum',jsonb_build_object('requested_amount',amount))) FROM (SELECT status,count(*)::int AS count,sum(requested_amount) AS amount FROM fin_project_funding WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid GROUP BY status) g), '[]'::jsonb),
-      'billing_groups', COALESCE((SELECT jsonb_agg(jsonb_build_object('status',status,'_count',jsonb_build_object('_all',count),'_sum',jsonb_build_object('total_amount',amount))) FROM (SELECT status,count(*)::int AS count,sum(total_amount) AS amount FROM fin_billing_proposal WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid GROUP BY status) g), '[]'::jsonb),
-      'pending_fundings', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,purpose,requested_amount,status,created_at FROM fin_project_funding WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid AND status NOT IN ('APPROVED','DISBURSED','COMPLETED') ORDER BY created_at DESC,id DESC LIMIT 8) x), '[]'::jsonb),
-      'pending_billings', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,description,total_amount,status,created_at FROM fin_billing_proposal WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid AND status NOT IN ('APPROVED','PAID','COMPLETED') ORDER BY created_at DESC,id DESC LIMIT 8) x), '[]'::jsonb),
-      'recent_costs', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,description,total_cost,status,transaction_date FROM fin_project_cost_entry WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid ORDER BY transaction_date DESC,id DESC LIMIT 10) x), '[]'::jsonb),
-      'recent_fundings', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,purpose,requested_amount,status,created_at FROM fin_project_funding WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid ORDER BY created_at DESC,id DESC LIMIT 10) x), '[]'::jsonb),
-      'recent_billings', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,description,total_amount,status,created_at FROM fin_billing_proposal WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid ORDER BY created_at DESC,id DESC LIMIT 10) x), '[]'::jsonb),
-      'projects', CASE WHEN ${includeProjects}::boolean THEN COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_name,budget_amount FROM project_project WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid ORDER BY updated_at DESC,id DESC LIMIT 8) x), '[]'::jsonb) ELSE '[]'::jsonb END,
-      'costs_by_project', COALESCE((SELECT jsonb_agg(jsonb_build_object('project_id',project_id,'_sum',jsonb_build_object('total_cost',amount))) FROM (SELECT project_id,sum(total_cost) amount FROM fin_project_cost_entry WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid AND status IN ('VALIDATED','APPROVED') GROUP BY project_id) x), '[]'::jsonb),
-      'fundings_by_project', COALESCE((SELECT jsonb_agg(jsonb_build_object('project_id',project_id,'_sum',jsonb_build_object('requested_amount',amount))) FROM (SELECT project_id,sum(requested_amount) amount FROM fin_project_funding WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid AND status NOT IN ('APPROVED','DISBURSED','COMPLETED') GROUP BY project_id) x), '[]'::jsonb),
-      'billings_by_project', COALESCE((SELECT jsonb_agg(jsonb_build_object('project_id',project_id,'_sum',jsonb_build_object('total_amount',amount))) FROM (SELECT project_id,sum(total_amount) amount FROM fin_billing_proposal WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid AND status NOT IN ('APPROVED','PAID','COMPLETED') GROUP BY project_id) x), '[]'::jsonb)
+      'total_budget', CASE WHEN ${includeProjects}::boolean THEN (SELECT COALESCE(sum(budget_amount),0) FROM project_project WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text) ELSE 0 END,
+      'used_budget', (SELECT COALESCE(sum(total_cost),0) FROM fin_project_cost_entry WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text AND status IN ('VALIDATED','APPROVED')),
+      'funding_groups', COALESCE((SELECT jsonb_agg(jsonb_build_object('status',status,'_count',jsonb_build_object('_all',count),'_sum',jsonb_build_object('requested_amount',amount))) FROM (SELECT status,count(*)::int AS count,sum(requested_amount) AS amount FROM fin_project_funding WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text GROUP BY status) g), '[]'::jsonb),
+      'billing_groups', COALESCE((SELECT jsonb_agg(jsonb_build_object('status',status,'_count',jsonb_build_object('_all',count),'_sum',jsonb_build_object('total_amount',amount))) FROM (SELECT status,count(*)::int AS count,sum(total_amount) AS amount FROM fin_billing_proposal WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text GROUP BY status) g), '[]'::jsonb),
+      'pending_fundings', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,purpose,requested_amount,status,created_at FROM fin_project_funding WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text AND status NOT IN ('APPROVED','DISBURSED','COMPLETED') ORDER BY created_at DESC,id DESC LIMIT 8) x), '[]'::jsonb),
+      'pending_billings', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,description,total_amount,status,created_at FROM fin_billing_proposal WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text AND status NOT IN ('APPROVED','PAID','COMPLETED') ORDER BY created_at DESC,id DESC LIMIT 8) x), '[]'::jsonb),
+      'recent_costs', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,description,total_cost,status,transaction_date FROM fin_project_cost_entry WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text ORDER BY transaction_date DESC,id DESC LIMIT 10) x), '[]'::jsonb),
+      'recent_fundings', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,purpose,requested_amount,status,created_at FROM fin_project_funding WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text ORDER BY created_at DESC,id DESC LIMIT 10) x), '[]'::jsonb),
+      'recent_billings', COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_id,description,total_amount,status,created_at FROM fin_billing_proposal WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text ORDER BY created_at DESC,id DESC LIMIT 10) x), '[]'::jsonb),
+      'projects', CASE WHEN ${includeProjects}::boolean THEN COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,project_name,budget_amount FROM project_project WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text ORDER BY updated_at DESC,id DESC LIMIT 8) x), '[]'::jsonb) ELSE '[]'::jsonb END,
+      'costs_by_project', COALESCE((SELECT jsonb_agg(jsonb_build_object('project_id',project_id,'_sum',jsonb_build_object('total_cost',amount))) FROM (SELECT project_id,sum(total_cost) amount FROM fin_project_cost_entry WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text AND status IN ('VALIDATED','APPROVED') GROUP BY project_id) x), '[]'::jsonb),
+      'fundings_by_project', COALESCE((SELECT jsonb_agg(jsonb_build_object('project_id',project_id,'_sum',jsonb_build_object('requested_amount',amount))) FROM (SELECT project_id,sum(requested_amount) amount FROM fin_project_funding WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text AND status NOT IN ('APPROVED','DISBURSED','COMPLETED') GROUP BY project_id) x), '[]'::jsonb),
+      'billings_by_project', COALESCE((SELECT jsonb_agg(jsonb_build_object('project_id',project_id,'_sum',jsonb_build_object('total_amount',amount))) FROM (SELECT project_id,sum(total_amount) amount FROM fin_billing_proposal WHERE tenant_id=${tenantId}::text AND company_id=${companyId}::text AND status NOT IN ('APPROVED','PAID','COMPLETED') GROUP BY project_id) x), '[]'::jsonb)
     ) AS snapshot
   `);
   const snapshot = result[0].snapshot;

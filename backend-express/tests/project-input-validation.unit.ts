@@ -71,18 +71,26 @@ async function main() {
   assert.match(client, /weeklyErrors\.target_description/);
   assert.match(client, /mainTaskErrors\.title/);
   assert.match(client, /cost_owner_division_id:\s*mainTaskForm\.cost_owner_division_id/);
+  assert.match(client, /organizations\/\?status=ACTIVE&page_size=200/);
+  assert.match(client, /String\(division\.status \?\? ''\)\.toUpperCase\(\) === 'ACTIVE'/);
   assert.doesNotMatch(client, /value=\{costForm\.division_id\}/);
   assert.match(api, /start_date:\s*string;\s*end_date:\s*string;\s*assignee_id:\s*string \| number;/);
+  assert.match(api, /project_id:\s*String\(payload\.project\)/);
   assert.match(api, /cost_owner_division_id:\s*m\.cost_owner_division_id \|\| null/);
   assert.match(client, /cost_owner_division_name:\s*mainTask\.cost_owner_division_id/);
   assert.match(wbsNode, /Divisi Biaya: \{main\.cost_owner_division_name\}/);
   assert.match(routes, /assertCanManageProject\(req\.user, project\.id, companyId\)/);
+  assert.match(routes, /canonicalProjectId/);
+  assert.match(routes, /delete data\.project/);
   assert.match(routes, /requested_by_id:\s*req\.user\?\.id/);
   assert.match(routes, /submitted_at:\s*new Date\(\)/);
   assert.doesNotMatch(routes, /requested_amount:\s*req\.body\.amount \?\? req\.body\.requested_amount \?\? 0/);
   assert.doesNotMatch(routes, /purpose:\s*req\.body\.description \?\? req\.body\.purpose \?\?/);
   assert.match(routes, /validateWeeklyTaskFields\(data\)/);
-  assert.match(routes, /data\.weight = validateMainTaskWeight\(data\.weight\)/);
+  assert.match(routes, /data\.weight === undefined[\s\S]*?\? 10[\s\S]*?: validateMainTaskWeight\(data\.weight\)/);
+  assert.doesNotMatch(routes, /project_task_assignment\.deleteMany\([\s\S]*?assignee_id:\s*\{\s*notIn:\s*userIds/);
+  assert.match(routes, /Assignment is additive/);
+  assert.match(client, /await removeTaskAssignment\(assignmentId\)/);
   assert.match(schema, /cost_owner_division_id\s+String\?/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS "cost_owner_division_id" TEXT/);
 

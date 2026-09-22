@@ -68,7 +68,9 @@ export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   // STAFF/SUPERVISOR may open the management workspace only when an active
   // ACTING_PROJECT_MANAGER assignment contributes a PROJECTS delegation.
   { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: true },
-  { prefix: "/tasks", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff], allowDelegation: false },
+  // Daily Tasks are a baseline company-user workspace. Business roles add
+  // capabilities elsewhere and must never remove this personal workspace.
+  { prefix: "/tasks", module: "PROJECTS", roles: null, allowDelegation: false },
   { prefix: "/finance", module: "FINANCE", roles: [ROLE_CODES.finance, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.projectManager, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/dashboard", module: null, roles: null },
@@ -124,7 +126,7 @@ export interface ApiAccessContract {
 }
 
 const CRM_ROLES = [ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.projectManager, ROLE_CODES.director] as const;
-const PROJECT_ROLES = [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff] as const;
+const PROJECT_ROLES = [ROLE_CODES.companyAdmin, ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff] as const;
 const FINANCE_ROLES = [ROLE_CODES.finance, ROLE_CODES.director] as const;
 
 const API_ACCESS_CONTRACTS: readonly ApiAccessContract[] = [
@@ -140,7 +142,9 @@ const API_ACCESS_CONTRACTS: readonly ApiAccessContract[] = [
   { prefix: "/api/v1/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/api/v1/crm", module: "CRM", roles: CRM_ROLES, allowDelegation: false },
   { prefix: "/api/v1/sales", module: "SALES", roles: CRM_ROLES, allowDelegation: false },
-  { prefix: "/api/v1/projects", module: "PROJECTS", roles: PROJECT_ROLES, allowDelegation: false },
+  // Backend project scope is authoritative. This module also serves the
+  // personal Daily Task baseline shared by every company user.
+  { prefix: "/api/v1/projects", module: "PROJECTS" },
   { prefix: "/api/v1/finance", module: "FINANCE", roles: FINANCE_ROLES, allowDelegation: false },
   { prefix: "/api/v1/procurement", module: "PROCUREMENT" },
   { prefix: "/api/v1/inventory", module: "INVENTORY" },

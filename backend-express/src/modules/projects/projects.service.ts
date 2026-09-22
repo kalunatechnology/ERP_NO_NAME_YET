@@ -46,6 +46,12 @@ export class ProjectsService {
     return ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
   }
 
+  /** Every company identity inherits personal Staff capabilities even while a
+   * functional role such as PM, Finance, or Company Admin is active. */
+  private static hasBaseStaffAccess(user: any): boolean {
+    return Boolean(user?.id && user?.roles?.includes(RoleCode.STAFF));
+  }
+
   private static isCompanyAdmin(user: any): boolean {
     return this.activeRole(user) === RoleCode.COMPANY_ADMIN;
   }
@@ -145,7 +151,7 @@ export class ProjectsService {
 
   static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
     if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
-    if (!this.isOperationalAssignee(user) || !user?.id) return { id: { in: [] } };
+    if (!this.hasBaseStaffAccess(user)) return { id: { in: [] } };
 
     const [memberships, assignments] = await Promise.all([
       db.project_member.findMany({
@@ -192,7 +198,7 @@ export class ProjectsService {
     weeklyTaskIds: string[];
   }> {
     if (
-      !this.isOperationalAssignee(user) ||
+      !this.hasBaseStaffAccess(user) ||
       !user?.id ||
       !companyId
     ) {
@@ -419,11 +425,8 @@ export class ProjectsService {
     companyId: string,
     db: any = prisma,
   ): Promise<Record<string, unknown>> {
-    if (
-      this.isOperationalAssignee(
-        user,
-      )
-    ) {
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
           user,
@@ -477,13 +480,6 @@ export class ProjectsService {
       };
     }
 
-    if (
-      this.hasPortfolioRead(user) ||
-      this.activeRole(user) === RoleCode.PROJECT_MANAGER
-    ) {
-      return {};
-    }
-
     return {
       id: {
         in: [],
@@ -492,11 +488,8 @@ export class ProjectsService {
   }
 
   static async mainTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (
-      this.isOperationalAssignee(
-        user,
-      )
-    ) {
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
           user,
@@ -509,16 +502,12 @@ export class ProjectsService {
         ? { OR: [{ id: { in: scope.mainTaskIds } }, { project_id: { in: managedProjectIds } }] }
         : { id: { in: scope.mainTaskIds } };
     }
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
     return { id: { in: [] } };
   }
 
   static async weeklyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (
-      this.isOperationalAssignee(
-        user,
-      )
-    ) {
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
           user,
@@ -543,12 +532,12 @@ export class ProjectsService {
         ],
       };
     }
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
     return { id: { in: [] } };
   }
 
   static async taskAssignmentAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.isOperationalAssignee(user)) {
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasBaseStaffAccess(user)) {
       const managedProjectIds = await this.managedProjectIds(user, companyId, db);
       if (!managedProjectIds.length) return { assignee_id: user.id };
       const managedMainTasks = await db.project_main_task.findMany({
@@ -562,12 +551,12 @@ export class ProjectsService {
         ],
       };
     }
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
     return { id: { in: [] } };
   }
 
   static async taskTransferAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.isOperationalAssignee(user)) {
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasBaseStaffAccess(user)) {
       const managedProjectIds = await this.managedProjectIds(user, companyId, db);
       if (!managedProjectIds.length) return { OR: [{ requested_by_id: user.id }, { target_user_id: user.id }] };
       const managedMainTasks = await db.project_main_task.findMany({
@@ -590,7 +579,6 @@ export class ProjectsService {
         ],
       };
     }
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
     return { id: { in: [] } };
   }
 
@@ -770,24 +758,12 @@ export class ProjectsService {
       await this.assertCanDelegateProjectAuthority(actor, projectId, companyId, tx);
       const candidate = await tx.iam_user.findFirst({
         where: { id: userId, tenant_id: project.tenant_id, is_active: true, status: 'ACTIVE' },
-        select: { id: true, active_role_id: true },
+        select: { id: true },
       });
       if (!candidate) throw new ValidationError('Calon Project Supervisor harus merupakan user aktif pada tenant yang sama.');
+      // Staff is a baseline company role. Supervisor eligibility must not
+      // depend on the role currently selected in the user's session.
       await this.assertOperationalCompanyMember(userId, companyId, tx);
-      const activeOperationalRole = candidate.active_role_id
-        ? await tx.iam_role.findFirst({
-            where: {
-              id: candidate.active_role_id,
-              tenant_id: project.tenant_id,
-              OR: [{ company_id: companyId }, { company_id: null }],
-              role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] },
-            },
-            select: { id: true },
-          })
-        : null;
-      if (!activeOperationalRole) {
-        throw new ValidationError('Role aktif calon Project Supervisor harus Staff atau Supervisor.');
-      }
       const current = await tx.project_member.findFirst({
         where: { project_id: projectId, company_id: companyId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE' },
         orderBy: { assigned_at: 'desc' },

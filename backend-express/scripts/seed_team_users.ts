@@ -6,11 +6,11 @@
  * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from './prisma_client';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 /**
  * Legacy safety guard.

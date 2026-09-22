@@ -1,9 +1,9 @@
 import {
   Prisma,
-  PrismaClient,
 } from '@prisma/client';
+import { createPrismaClient } from './prisma_client';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 const APPLY =
   process.argv.includes('--apply');
