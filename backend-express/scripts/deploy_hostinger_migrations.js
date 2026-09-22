@@ -54,10 +54,19 @@ function requireDirectSupabaseUrl(value) {
 async function recoverKnownFailedMigration(prismaCli, directUrl) {
   const client = new PrismaClient({ datasources: { db: { url: directUrl } } });
   try {
-    const rows = await client.$queryRawUnsafe(
-      'SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations" WHERE migration_name = $1 ORDER BY started_at DESC LIMIT 1',
-      RECOVERABLE_MIGRATION,
-    );
+    let rows;
+    try {
+      rows = await client.$queryRawUnsafe(
+        'SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations" WHERE migration_name = $1 ORDER BY started_at DESC LIMIT 1',
+        RECOVERABLE_MIGRATION,
+      );
+    } catch (error) {
+      // A genuinely empty deployment database has no Prisma history table yet.
+      // `migrate deploy` below owns creating it together with the baseline.
+      const databaseCode = error?.meta?.code;
+      if (error?.code === 'P2010' && databaseCode === '42P01') return;
+      throw error;
+    }
     const failed = rows[0];
     if (!failed || failed.finished_at || failed.rolled_back_at) return;
 

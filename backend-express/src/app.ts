@@ -180,9 +180,24 @@ export function createApp(): Express {
   apiV1.use(
     '/projects',
     requireModuleAccess('PROJECTS'),
-    requireActiveRole(RoleCode.COMPANY_ADMIN, RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.SUPERVISOR, RoleCode.STAFF),
+    requireActiveRole(
+      RoleCode.COMPANY_ADMIN,
+      RoleCode.PROJECT_MANAGER,
+      RoleCode.OPERATIONAL_MANAGER,
+      RoleCode.DIRECTOR,
+      RoleCode.SUPERVISOR,
+      RoleCode.STAFF,
+      RoleCode.FINANCE,
+      RoleCode.CRM_LEAD,
+      RoleCode.SALES,
+    ),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
+      allowedMutationPaths: [
+        { path: /^\/api\/v1\/projects\/daily-tasks\/?$/, methods: ['POST'] },
+        { path: /^\/api\/v1\/projects\/daily-tasks\/[^/]+\/?$/, methods: ['PUT', 'PATCH', 'DELETE'] },
+        { path: /^\/api\/v1\/projects\/daily-tasks\/[^/]+\/(?:update[-_]progress|report[-_]blocked|request[-_]transfer)\/?$/ },
+      ],
       message: 'Role Director memiliki akses preview seluruh proyek.',
     }),
     restrictProjectMutationsByAuthority,

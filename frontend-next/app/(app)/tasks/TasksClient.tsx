@@ -540,7 +540,7 @@ export default function TasksClient() {
    * the UI cannot advertise or submit a mutation that the API must reject.
    */
   const creatableProjects = useMemo(() => {
-    if (userRole !== "staff" || user?.id == null) return [];
+    if (user?.id == null) return [];
 
     const activeUserId = String(user.id);
     return projects
@@ -561,7 +561,7 @@ export default function TasksClient() {
           .filter((mainTask) => (mainTask.weekly_tasks || []).length > 0),
       }))
       .filter((project) => (project.main_tasks || []).length > 0);
-  }, [projects, user?.id, userRole]);
+  }, [projects, user?.id]);
 
   const canCreateDailyTask = creatableProjects.length > 0;
   const canOpenReporting = canAccessRoute({
@@ -587,6 +587,7 @@ export default function TasksClient() {
       (p.main_tasks || []).forEach(m => {
         (m.weekly_tasks || m.weekly_plans || []).forEach(w => {
           (w.daily_tasks || []).forEach(d => {
+            if (user?.id != null && String(d.owner_id ?? "") !== String(user.id)) return;
             list.push({
               projectId: p.id,
               projectName: p.project_name || p.name || `Proyek ${p.id}`,
@@ -601,7 +602,7 @@ export default function TasksClient() {
     });
 
     return list;
-  }, [projects]);
+  }, [projects, user?.id]);
 
   const today = localDateKey();
   const deferredSearch = useDeferredValue(search);

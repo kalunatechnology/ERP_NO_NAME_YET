@@ -935,38 +935,10 @@ const handleAssignMembers = async (req: Request, res: Response, next: NextFuncti
     if (memberships.length !== userIds.length) throw new ForbiddenError('Satu atau lebih assignee berada di luar company aktif.');
     await Promise.all(userIds.map((userId) => ProjectsService.assertOperationalCompanyMember(userId, companyId)));
 
-    const currentAssignments = await prisma.project_task_assignment.findMany({
-      where: { main_task_id: mainTaskId, company_id: companyId },
-      select: { assignee_id: true },
-    });
-    const retainedIds = new Set(userIds);
-    const removedIds = currentAssignments
-      .map((assignment) => assignment.assignee_id)
-      .filter((userId) => !retainedIds.has(userId));
-    if (removedIds.length) {
-      const linkedWeeklyTask = await prisma.project_weekly_task.findFirst({
-        where: {
-          main_task_id: mainTaskId,
-          company_id: companyId,
-          assignee_id: { in: removedIds },
-        },
-        select: { id: true },
-      });
-      if (linkedWeeklyTask) {
-        throw new ConflictError('Assignee masih memiliki Weekly Task. Hapus Weekly Task terkait sebelum menghapus assignment Main Task.');
-      }
-    }
-
     await prisma.$transaction(async (tx) => {
-      // Remove assignments not in userIds
-      await tx.project_task_assignment.deleteMany({
-        where: {
-          main_task_id: mainTaskId,
-          company_id: companyId,
-          assignee_id: { notIn: userIds },
-        },
-      });
-
+      // Assignment is additive. Existing Main Task assignments are never
+      // replaced by a partial/stale project-member selection. Removal has its
+      // own explicit, guarded task-assignment DELETE action.
       const [existingAssignments, existingMembers] = await Promise.all([
         tx.project_task_assignment.findMany({
           where: { main_task_id: mainTaskId, company_id: companyId, assignee_id: { in: userIds } },
@@ -1722,11 +1694,13 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     });
     if (!mainTask) throw new ValidationError('Main Task induk tidak valid.');
 
-    const isOperationalAssignee = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(
-      req.user?.active_role_code as RoleCode,
-    );
-    if (!isOperationalAssignee || !req.user?.id) {
-      throw new ForbiddenError('Daily Task dibuat dan dikelola sendiri oleh Staff pemilik Weekly Task. PM memiliki akses monitor.');
+    // Daily Task is personal execution data, not a management privilege.
+    // Any authenticated company user may create one only when they are both a
+    // Main Task assignee and the owner of the selected Weekly Task. The owner
+    // is always forced to the caller below, so elevated roles cannot create a
+    // Daily Task on behalf of somebody else.
+    if (!req.user?.id || isSuperAdmin(req.user.roles)) {
+      throw new ForbiddenError('Daily Task dibuat dan dikelola sendiri oleh user company pemilik Weekly Task.');
     }
     const assignment = await prisma.project_task_assignment.findFirst({
       where: { main_task_id: mainTask.id, assignee_id: req.user.id, company_id: companyId },

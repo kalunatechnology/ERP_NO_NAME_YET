@@ -166,6 +166,23 @@ async function main(): Promise<void> {
     const staff = { id: 'staff-a', roles: [RoleCode.STAFF], active_role_code: RoleCode.STAFF };
     assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(staff, 'company-a'), { owner_id: 'staff-a' });
 
+    const financeWithStaffBaseline = {
+      id: 'finance-staff-a',
+      roles: [RoleCode.FINANCE, RoleCode.STAFF],
+      active_role_code: RoleCode.FINANCE,
+    };
+    const emptyPersonalScopeDb = {
+      project_member: { findMany: async () => [] },
+      project_task_assignment: { findMany: async () => [] },
+      project_weekly_task: { findMany: async () => [] },
+      project_main_task: { findMany: async () => [] },
+    };
+    assert.deepEqual(
+      await ProjectsService.dailyTaskAccessWhere(financeWithStaffBaseline, 'company-a', emptyPersonalScopeDb),
+      { owner_id: 'finance-staff-a' },
+      'A selected functional role must not remove the inherited personal Staff scope.',
+    );
+
     const pm = { id: 'pm-a', roles: [RoleCode.PROJECT_MANAGER], active_role_code: RoleCode.PROJECT_MANAGER };
     const pmDb = {
       project_member: { findMany: async () => [{ project_id: 'project-a' }] },
@@ -197,7 +214,7 @@ async function main(): Promise<void> {
       readFile(`${__dirname}/../src/modules/projects/project-authority.middleware.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/projects/projects.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../prisma/schema.prisma`, 'utf8'),
-      readFile(`${__dirname}/../prisma/migrations/20260916120000_project_assignment_contract/migration.sql`, 'utf8'),
+      readFile(`${__dirname}/../prisma/migrations/20260922000000_production_baseline/migration.sql`, 'utf8'),
     ]);
     assert(appSource.includes('restrictProjectMutationsByAuthority'), 'Project-aware mutation middleware is not mounted');
     assert(projectAuthorityMiddleware.includes("methods: ['POST']"), 'Staff Daily Task create allow-list is missing');
@@ -211,7 +228,7 @@ async function main(): Promise<void> {
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.projectAccessWhere'));
     assert(routesSource.includes("projectsRouter.use('/projects/:id', enforceProjectBoundary)"));
     assert(routesSource.includes("readOnly: true"), 'Generic task-transfer mutation bypass remains enabled');
-    return { staff_visibility: 'owner-only', pm_visibility: 'managed-project-only', admin_visibility: 'company-wide', progress: 'owner-only', transfer_crud: 'read-only' };
+    return { staff_visibility: 'owner-only', staff_baseline: 'inherited-across-active-role', pm_visibility: 'managed-project-only', admin_visibility: 'company-wide', progress: 'owner-only', transfer_crud: 'read-only' };
   }));
 
   results.push(await scenario(names[7], async () => {
@@ -486,7 +503,7 @@ async function main(): Promise<void> {
       readFile(`${__dirname}/../src/modules/dashboard/dashboard.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/reporting/reporting.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/ui/BudgetCheckStatusCard.tsx`, 'utf8'),
-      readFile(`${__dirname}/../prisma/migrations/20260911090000_backfill_employee_user_mapping/migration.sql`, 'utf8'),
+      readFile(`${__dirname}/../prisma/migrations/20260922000000_production_baseline/migration.sql`, 'utf8'),
     ]);
     for (const forbiddenField of ['employee_id:', 'hourly_rate:', 'amount:', 'approval_status:']) {
       assert(!timesheetForm.includes(forbiddenField), `Staff timesheet form must not send server-owned field ${forbiddenField}`);
@@ -501,8 +518,8 @@ async function main(): Promise<void> {
     assert(dashboardRoutes.includes('ts.employee_id::text IN'), 'Dashboard overtime employee identity must be normalized across legacy DB column types.');
     const staffDashboardProjection = dashboardRoutes.slice(dashboardRoutes.indexOf('if (isStaff)'), dashboardRoutes.indexOf('NON STAFF'));
     assert(!staffDashboardProjection.includes('= ${userId}::uuid'), 'Staff dashboard projection must not force mixed legacy identity columns to UUID.');
-    assert(employeeMappingMigration.includes('SET "employee_id" = employee."id"') && !employeeMappingMigration.includes('SET "employee_id" = employee."id"::text'), 'Employee mapping migration must assign UUID to UUID without a text cast.');
-    assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
+    assert(employeeMappingMigration.includes('CREATE UNIQUE INDEX "master_employee_company_id_user_id_key"'), 'Fresh-database baseline must enforce one employee identity per company user.');
+    assert(seedSource.includes("'CORE', 'PROJECTS', 'FINANCE', 'REPORTING'"), 'Production company must enable personal Project and Reporting access.');
     assert(reportingRoutes.includes("'/operational-summary'"), 'OM operational reporting projection is missing.');
     assert(reportTabAccess.includes('om: ["operational", "periodic", "attendance"]')
       && reportingClient.includes('canOpenReportTab(tab.id, userRole, requestAccess)'),
