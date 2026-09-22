@@ -397,8 +397,8 @@ async function main(): Promise<void> {
     assert(reportingClient.includes('sectionErrors: { attendance: attendanceResult.error') && reportingClient.includes('if (data.sectionErrors.attendance)'), 'Attendance failure must not masquerade as zero activity or blank the periodic report.');
     assert(commandPalette.includes('canAccessRoute({'), 'Command palette must hide routes that the active context cannot open.');
     assert(topbar.includes('{canOpenReporting && (') && topbar.includes("router.push('/reporting?tab=attendance')"), 'Topbar must hide Reporting shortcuts from unauthorized roles.');
-    assert(axiosSource.includes('ERR_FRONTEND_MODULE_ACCESS'));
-    assert(axiosSource.includes('canRequestApi(config.url || ""'));
+    assert(!axiosSource.includes('ERR_FRONTEND_MODULE_ACCESS'), 'Browser cache must never cancel an otherwise valid authorized API request.');
+    assert(axiosSource.includes('remains the single authoritative boundary'), 'API authorization must remain backend-authoritative.');
     assert(!crmApi.includes('enabled.size === 0'), 'Empty entitlements must not be interpreted as allow-all.');
     assert(crmApi.includes('{ decision: "ACCEPTED" }') && crmApi.includes('decision: "REJECTED"'), 'CRM customer decision payload must follow the Sales API contract.');
     assert(!projectApi.includes('api.post("/api/v1/projects/tasks/"'), 'WBS create failures must not fall back into the generic task model.');
@@ -536,7 +536,7 @@ async function main(): Promise<void> {
       active_role: 'enforced',
       invalid_entitlement: 'fail-closed',
       cross_module_loaders: 'preflight-gated',
-      unauthorized_network_request: 'cancelled',
+      unauthorized_network_request: 'backend-authorized',
       payload_contracts: 'aligned',
       false_success_fallbacks: 'blocked',
     };
