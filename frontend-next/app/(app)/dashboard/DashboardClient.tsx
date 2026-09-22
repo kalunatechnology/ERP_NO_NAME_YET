@@ -39,6 +39,7 @@ import { RequestReviewModal } from "@/components/requests/RequestReviewModal";
 import { RequestCardFeed } from "@/components/requests/RequestCardFeed";
 import { Sparkles, Plus } from "lucide-react";
 import { StaffOvertimeSummary } from "@/components/staff/StaffOvertimeSummary";
+import { ExecutiveDailyTaskMonitor } from "@/components/executive/ExecutiveDailyTaskMonitor";
 
 /* ═══════════════════════════════════════════════════════════════
    SHARED COMPONENTS
@@ -274,8 +275,47 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
   const healthStatus = delayed === 0 ? "On Track" : "Caution";
   const onTrackCount = Math.max(0, active - delayed);
 
+  const executiveTabs = (
+    <div className="inline-flex w-full sm:w-auto items-center gap-1 rounded-[14px] border border-[#D9D9D9] bg-white p-1 shadow-xs">
+      <button
+        type="button"
+        onClick={() => setActiveTab("overview")}
+        className={cn(
+          "flex-1 sm:flex-none rounded-[10px] px-4 py-2 text-xs font-bold transition-colors",
+          activeTab === "overview"
+            ? "bg-[#294BB2] text-white shadow-sm"
+            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#294BB2]"
+        )}
+      >
+        Overview
+      </button>
+      <button
+        type="button"
+        onClick={() => setActiveTab("daily_tasks")}
+        className={cn(
+          "flex-1 sm:flex-none rounded-[10px] px-4 py-2 text-xs font-bold transition-colors",
+          activeTab === "daily_tasks"
+            ? "bg-[#294BB2] text-white shadow-sm"
+            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#294BB2]"
+        )}
+      >
+        Daily Task Staff
+      </button>
+    </div>
+  );
+
+  if (activeTab === "daily_tasks") {
+    return (
+      <div className="flex flex-col gap-5 pb-8">
+        {executiveTabs}
+        <ExecutiveDailyTaskMonitor projects={projects} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 pb-8">
+      {executiveTabs}
       {/* ── KPI Row ───────────────────────── */}
       <section>
         <SectionHeader title="Overview Proyek Saya" actionLabel="Lihat semua" actionHref="/projects" />
@@ -592,6 +632,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
   finData: FinanceDashboardData | null;
   loading: boolean;
 }) {
+  const [activeTab, setActiveTab] = useState<"overview" | "daily_tasks">("overview");
   const today = localDateKey();
 
   if (loading) return <LoadingDashboard />;
