@@ -16,7 +16,10 @@ type WeeklySpec = { title: string; assignee: string; start: string; end: string;
 type MainTaskSpec = { title: string; description: string; pic: string; assignees: string[]; start: string; due: string | null; status: 'COMPLETED' | 'IN_PROGRESS' | 'PLANNED'; weekly: WeeklySpec[] };
 type ProjectSpec = { code: string; name: string; description: string; manager: string; members: string[]; start: string; deadline: string | null; mainTasks: MainTaskSpec[] };
 
-const d = (value: string | null): Date | null => value ? new Date(`${value}T00:00:00.000+07:00`) : null;
+// Project/task dates are calendar dates, not instants. Store them at UTC
+// midnight so PostgreSQL, Prisma, and browser date-only rendering all retain
+// the same YYYY-MM-DD value without shifting to the previous UTC day.
+const d = (value: string | null): Date | null => value ? new Date(`${value}T00:00:00.000Z`) : null;
 const dailyProgress = (status: DailySpec['status']): number => status === 'COMPLETED' ? 100 : status === 'IN_PROGRESS' ? 25 : 0;
 const average = (values: number[]): number => values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0;
 
