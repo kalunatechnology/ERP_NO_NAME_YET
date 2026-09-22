@@ -17,17 +17,17 @@ import prisma from '../src/config/database';
  */
 async function main() {
   const columns = await prisma.$queryRawUnsafe<Array<{ table_name: string; column_name: string }>>(`
-    SELECT table_name, column_name
+    SELECT table_name::text AS table_name, column_name::text AS column_name
     FROM information_schema.columns
     WHERE table_schema = 'public'
       AND (
         (table_name = 'iam_user' AND column_name = 'active_role_id') OR
         table_name IN ('iam_user_company_membership', 'iam_company_module_access')
       )
-    ORDER BY table_name, column_name
+    ORDER BY table_name::text, column_name::text
   `);
   const enumValues = await prisma.$queryRawUnsafe<Array<{ enumlabel: string }>>(`
-    SELECT e.enumlabel
+    SELECT e.enumlabel::text AS enumlabel
     FROM pg_type t
     JOIN pg_enum e ON e.enumtypid = t.oid
     WHERE t.typname = 'iam_role_code'
@@ -77,17 +77,19 @@ async function main() {
     ORDER BY u.email, r.role_code::text
   `);
   const laterMigrationColumns = await prisma.$queryRawUnsafe<Array<{ table_name: string; column_name: string }>>(`
-    SELECT table_name, column_name
+    SELECT table_name::text AS table_name, column_name::text AS column_name
     FROM information_schema.columns
     WHERE table_schema='public' AND (
       (table_name='iam_role' AND column_name IN ('company_id','custom_code','is_system')) OR
       (table_name='fin_period_closing' AND column_name IN ('requested_by','approved_by','approved_at')) OR
       (table_name='project_control_item' AND column_name='daily_task_id') OR
       (table_name='fin_project_cost_entry' AND column_name='division_id')
-    ) ORDER BY table_name, column_name
+    ) ORDER BY table_name::text, column_name::text
   `);
   const requiredConstraints = await prisma.$queryRawUnsafe<Array<{ table_name: string; constraint_name: string; constraint_type: string }>>(`
-    SELECT tc.table_name, tc.constraint_name, tc.constraint_type
+    SELECT tc.table_name::text AS table_name,
+           tc.constraint_name::text AS constraint_name,
+           tc.constraint_type::text AS constraint_type
     FROM information_schema.table_constraints tc
     WHERE tc.table_schema='public' AND tc.constraint_name IN (
       'iam_user_company_membership_user_fk',
@@ -95,7 +97,7 @@ async function main() {
       'iam_company_module_access_company_module_key',
       'iam_company_module_access_company_fk',
       'iam_company_module_access_period_ck'
-    ) ORDER BY tc.constraint_name
+    ) ORDER BY tc.constraint_name::text
   `);
   const migrationHistory = await prisma.$queryRawUnsafe<Array<{ migration_name: string; finished_at: Date | null; rolled_back_at: Date | null }>>(`
     SELECT migration_name, finished_at, rolled_back_at

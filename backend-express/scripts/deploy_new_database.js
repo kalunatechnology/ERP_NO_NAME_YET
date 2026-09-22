@@ -37,12 +37,12 @@ async function assertEmpty(url) {
   const client = createPrismaClient(url);
   try {
     const tables = await client.$queryRawUnsafe(`
-      SELECT table_name
+      SELECT table_name::text AS table_name
       FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_type = 'BASE TABLE'
         AND table_name <> '_prisma_migrations'
-      ORDER BY table_name
+      ORDER BY table_name::text
     `);
 
     for (const row of tables) {
