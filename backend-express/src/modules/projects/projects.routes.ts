@@ -1056,7 +1056,11 @@ projectsRouter.get('/assignable-users', async (req: Request, res: Response, next
       .filter((roleId): roleId is string => Boolean(roleId));
     const roles = roleIds.length
       ? await prisma.iam_role.findMany({
-          where: { id: { in: roleIds }, role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] } },
+          where: {
+            id: { in: roleIds },
+            company_id: companyId,
+            role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] },
+          },
           select: { id: true, role_code: true, role_name: true },
         })
       : [];

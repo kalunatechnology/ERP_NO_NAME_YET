@@ -9,6 +9,7 @@
 import prisma from '../../config/database';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
+import type { Prisma } from '@prisma/client';
 
 export const PROJECT_MANAGEMENT_ROLES = [
   'PROJECT_MANAGER',
@@ -16,6 +17,7 @@ export const PROJECT_MANAGEMENT_ROLES = [
   'LEAD_PROJECT_MANAGER',
 ] as const;
 export const ACTING_PROJECT_MANAGER_ROLE = 'ACTING_PROJECT_MANAGER' as const;
+const PROJECT_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
 
 export interface ProjectAuthority {
   project_id: string;
@@ -637,12 +639,16 @@ export class ProjectsService {
       .filter((roleId: string | null): roleId is string => Boolean(roleId));
     const operationalRole = roleIds.length
       ? await db.iam_role.findFirst({
-          where: { id: { in: roleIds }, role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] } },
+          where: {
+            id: { in: roleIds },
+            company_id: companyId,
+            role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] },
+          },
           select: { id: true },
         })
       : null;
     if (!operationalRole) {
-      throw new ValidationError('Assignee Weekly Task harus memiliki role Staff atau Supervisor pada company aktif.');
+      throw new ValidationError('User yang dipilih harus memiliki role Staff atau Supervisor pada company aktif.');
     }
   }
 
@@ -751,28 +757,14 @@ export class ProjectsService {
       select: { id: true, tenant_id: true },
     });
     if (!project) throw new NotFoundError('Project');
-    const candidate = await prisma.iam_user.findFirst({
-      where: { id: userId, tenant_id: project.tenant_id, is_active: true, status: 'ACTIVE' },
-      select: { id: true, active_role_id: true },
-    });
-    if (!candidate) throw new ValidationError('Calon Project Supervisor harus merupakan user aktif pada tenant yang sama.');
-    await this.assertOperationalCompanyMember(userId, companyId);
-    const activeOperationalRole = candidate.active_role_id
-      ? await prisma.iam_role.findFirst({
-          where: {
-            id: candidate.active_role_id,
-            company_id: companyId,
-            role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] },
-          },
-          select: { id: true },
-        })
-      : null;
-    if (!activeOperationalRole) {
-      throw new ValidationError('Role aktif calon Project Supervisor harus STAFF atau SUPERVISOR.');
-    }
-
     await prisma.$transaction(async (tx) => {
       await this.assertCanDelegateProjectAuthority(actor, projectId, companyId, tx);
+      const candidate = await tx.iam_user.findFirst({
+        where: { id: userId, tenant_id: project.tenant_id, is_active: true, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!candidate) throw new ValidationError('Calon Project Supervisor harus merupakan user aktif pada tenant yang sama.');
+      await this.assertOperationalCompanyMember(userId, companyId, tx);
       const current = await tx.project_member.findFirst({
         where: { project_id: projectId, company_id: companyId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE' },
         orderBy: { assigned_at: 'desc' },
@@ -825,7 +817,7 @@ export class ProjectsService {
         beforeData: { user_id: current?.user_id ?? null, reason: reason ?? '' },
         afterData: { user_id: userId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE', reason: reason ?? '' },
       });
-    });
+    }, PROJECT_TRANSACTION_OPTIONS);
     return this.getProjectSupervisor(projectId, companyId);
   }
 
@@ -850,7 +842,7 @@ export class ProjectsService {
         beforeData: { user_id: current.user_id, project_role: current.project_role, status: 'ACTIVE' },
         afterData: { user_id: current.user_id, project_role: current.project_role, status: 'INACTIVE', reason: reason ?? '' },
       });
-    });
+    }, PROJECT_TRANSACTION_OPTIONS);
   }
 
   static async getProjectAuthority(user: any, projectId: string, companyId: string, db: any = prisma): Promise<ProjectAuthority> {
@@ -928,9 +920,9 @@ export class ProjectsService {
     oldValue?: string;
     newValue?: string;
     reason?: string;
-  }) {
+  }, db: any = prisma) {
     try {
-      await prisma.project_task_activity_log.create({
+      await db.project_task_activity_log.create({
         data: {
           id: crypto.randomUUID(),
           tenant_id: params.tenantId ?? null,
@@ -950,6 +942,10 @@ export class ProjectsService {
         },
       });
     } catch (e) {
+      // A failed query inside an interactive transaction makes that transaction
+      // unusable. Propagate it so the caller rolls back instead of continuing
+      // with a partially applied task update.
+      if (db !== prisma) throw e;
       console.warn('[ProjectsService] Failed to log task activity:', e);
     }
   }
@@ -964,8 +960,8 @@ export class ProjectsService {
     mainTaskId?: string;
     projectId?: string;
     companyId?: string;
-  }) {
-    return prisma.$transaction(async (tx) => {
+  }, db?: Prisma.TransactionClient) {
+    const recalculate = async (tx: Prisma.TransactionClient) => {
       let weeklyId = params.weeklyTaskId;
       let mainId = params.mainTaskId;
       let projId = params.projectId;
@@ -1110,7 +1106,14 @@ export class ProjectsService {
       }
 
       return 0;
-    });
+    };
+
+    // Reuse the caller's transaction when a mutation already owns one. Starting
+    // a second transaction here can wait on locks held by the outer transaction
+    // until Prisma's five-second interactive timeout expires.
+    return db
+      ? recalculate(db)
+      : prisma.$transaction(recalculate, PROJECT_TRANSACTION_OPTIONS);
   }
 
   /**
@@ -1526,12 +1529,12 @@ export class ProjectsService {
           oldValue: `${task.progress}% (${task.status})`,
           newValue: `${updated.progress}% (${updated.status})`,
           reason: blockReason || 'Regular progress update',
-        });
+        }, tx);
       }
 
-      await this.recalculateTaskTree({ dailyTaskId, companyId });
+      await this.recalculateTaskTree({ dailyTaskId, companyId }, tx);
       return updated;
-    });
+    }, PROJECT_TRANSACTION_OPTIONS);
   }
 
 /**
@@ -1571,12 +1574,12 @@ export class ProjectsService {
           oldValue: task.status ?? 'ACTIVE',
           newValue: 'BLOCKED',
           reason,
-        });
+        }, tx);
       }
 
-      await this.recalculateTaskTree({ dailyTaskId, companyId });
+      await this.recalculateTaskTree({ dailyTaskId, companyId }, tx);
       return updated;
-    });
+    }, PROJECT_TRANSACTION_OPTIONS);
   }
 
 /**
@@ -1676,11 +1679,11 @@ export class ProjectsService {
           oldValue: oldOwner ?? '',
           newValue: targetUserId,
           reason,
-        });
+        }, tx);
       }
 
       return updated;
-    });
+    }, PROJECT_TRANSACTION_OPTIONS);
   }
 
 /**
@@ -1741,7 +1744,7 @@ export class ProjectsService {
             oldValue: task.owner_id ?? '',
             newValue: transfer.target_user_id ?? '',
             reason: `Transfer approved. Note: ${reviewNote}. Reason: ${transfer.reason}`,
-          });
+          }, tx);
         }
       } else {
         await tx.project_task_transfer_request.update({
@@ -1767,12 +1770,12 @@ export class ProjectsService {
             oldValue: 'PENDING',
             newValue: 'REJECTED',
             reason: reviewNote,
-          });
+          }, tx);
         }
       }
 
       return tx.project_task_transfer_request.findUnique({ where: { id: transferId } });
-    });
+    }, PROJECT_TRANSACTION_OPTIONS);
   }
 
 /**
@@ -1819,10 +1822,10 @@ export class ProjectsService {
             oldValue: String(oldProgress),
             newValue: String(progress),
             reason,
-          });
+          }, tx);
         }
 
-        await this.recalculateTaskTree({ mainTaskId: entityId, companyId });
+        await this.recalculateTaskTree({ mainTaskId: entityId, companyId }, tx);
         return updated;
       } else {
         const wt = await tx.project_weekly_task.findFirst({ where: { id: entityId, company_id: companyId } });
@@ -1857,13 +1860,13 @@ export class ProjectsService {
             oldValue: String(oldProgress),
             newValue: String(progress),
             reason,
-          });
+          }, tx);
         }
 
-        await this.recalculateTaskTree({ weeklyTaskId: entityId, companyId });
+        await this.recalculateTaskTree({ weeklyTaskId: entityId, companyId }, tx);
         return updated;
       }
-    });
+    }, PROJECT_TRANSACTION_OPTIONS);
   }
 
   static async getFinancialSummary(user: any, companyId: string, projectId?: string) {

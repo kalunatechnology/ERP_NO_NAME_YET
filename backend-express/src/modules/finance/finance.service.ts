@@ -13,6 +13,8 @@ import { AccountingError, NotFoundError, ValidationError } from '../../utils/err
 // NOTE: PeriodClosingService is imported lazily to avoid circular deps
 // It is called via dynamic import below
 
+const FINANCE_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
+
 
 // =============================================================================
 // CHART OF ACCOUNTS - STANDARD HIERARCHICAL (1000–6000)
@@ -65,10 +67,10 @@ export class FinanceService {
  * Data/side effects: Reads or mutates Prisma model(s) `fin_account`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async ensureStandardCOA(companyId?: string | null) {
+  static async ensureStandardCOA(companyId?: string | null, db: any = prisma) {
     const map = new Map<string, any>();
     for (const item of DEFAULT_COA) {
-      let acc = await prisma.fin_account.findFirst({
+      let acc = await db.fin_account.findFirst({
         where: {
           account_code: item.code,
           ...(companyId ? { company_id: companyId } : {}),
@@ -76,7 +78,7 @@ export class FinanceService {
       });
 
       if (!acc) {
-        acc = await prisma.fin_account.create({
+        acc = await db.fin_account.create({
           data: {
             id: crypto.randomUUID(),
             company_id: companyId ?? null,
@@ -103,8 +105,8 @@ export class FinanceService {
  * Data/side effects: Reads or mutates Prisma model(s) `fin_journal`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async ensureJournal(companyId: string | null, code: string, name: string, type = 'GENERAL') {
-    let journal = await prisma.fin_journal.findFirst({
+  static async ensureJournal(companyId: string | null, code: string, name: string, type = 'GENERAL', db: any = prisma) {
+    let journal = await db.fin_journal.findFirst({
       where: {
         journal_code: code,
         ...(companyId ? { company_id: companyId } : {}),
@@ -112,7 +114,7 @@ export class FinanceService {
     });
 
     if (!journal) {
-      journal = await prisma.fin_journal.create({
+      journal = await db.fin_journal.create({
         data: {
           id: crypto.randomUUID(),
           company_id: companyId,
@@ -388,11 +390,11 @@ export class FinanceService {
       if (!fromBank.ledger_account_id) throw new ValidationError('Bank pengirim tidak memiliki akun buku besar yang tertaut.');
       if (!toBank.ledger_account_id) throw new ValidationError('Bank penerima tidak memiliki akun buku besar yang tertaut.');
 
-      const coaMap = await this.ensureStandardCOA(companyId);
+      const coaMap = await this.ensureStandardCOA(companyId, tx);
       const transitAccount = coaMap.get('1140');
       if (!transitAccount) throw new AccountingError('Akun Cash in Transit (1140) tidak ditemukan. Jalankan setup COA terlebih dahulu.');
 
-      const journal = await this.ensureJournal(companyId, 'BNK', 'Bank Journal', 'BANK');
+      const journal = await this.ensureJournal(companyId, 'BNK', 'Bank Journal', 'BANK', tx);
       const transferRef = referenceNumber ?? `TRF-${Date.now()}`;
 
       // --- LANGKAH 1: Sisi Pengirim (Debit Transit, Kredit Bank Pengirim) ---
@@ -490,7 +492,7 @@ export class FinanceService {
         executed_by: executedByUserId,
         executed_at: new Date().toISOString(),
       };
-    });
+    }, FINANCE_TRANSACTION_OPTIONS);
   }
 
   // ---------------------------------------------------------------------------
@@ -911,11 +913,11 @@ export class FinanceService {
       }
 
       // Post GL Journal Entry
-      const coaMap = await this.ensureStandardCOA(doc.company_id);
+      const coaMap = await this.ensureStandardCOA(doc.company_id, tx);
       const arAccount = coaMap.get('1130');    // Piutang Usaha (AR)
       const revenueAccount = coaMap.get('4100'); // Pendapatan Proyek
       const ppnLiability = coaMap.get('2120');   // Hutang Pajak
-      const journal = await this.ensureJournal(doc.company_id, 'GJ', 'General Journal');
+      const journal = await this.ensureJournal(doc.company_id, 'GJ', 'General Journal', 'GENERAL', tx);
 
       if (arAccount && revenueAccount && journal) {
         const entry = await tx.fin_journal_entry.create({
@@ -985,7 +987,7 @@ export class FinanceService {
       }
 
       return updated;
-    });
+    }, FINANCE_TRANSACTION_OPTIONS);
   }
 
 /**
@@ -1086,7 +1088,7 @@ export class FinanceService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const journal = await this.ensureJournal(companyId ?? null, 'GJ', 'General Journal');
+      const journal = await this.ensureJournal(companyId ?? null, 'GJ', 'General Journal', 'GENERAL', tx);
       const entryId = crypto.randomUUID();
 
       await tx.fin_journal_entry.create({
@@ -1156,7 +1158,7 @@ export class FinanceService {
       }
 
       return { entryId, costVarianceId };
-    });
+    }, FINANCE_TRANSACTION_OPTIONS);
 
     return {
       project_id:            projectId,

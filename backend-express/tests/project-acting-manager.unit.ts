@@ -117,6 +117,55 @@ async function main() {
   assert.equal(pmAuthority.can_delete_project, true);
 
   assert.equal(staff.active_role_code, RoleCode.STAFF, 'Project authority must not mutate the global IAM role');
+
+  // Supervisor eligibility is based on the user's company-scoped role
+  // assignment, not on whichever role happens to be active in their session.
+  const operationalCandidateDb = {
+    iam_user_company_membership: {
+      findFirst: async ({ where }: any) => where.company_id === COMPANY_A && where.user_id === STAFF_ID
+        ? { id: 'membership-a' }
+        : null,
+    },
+    iam_user_role: {
+      findMany: async ({ where }: any) => where.company_id === COMPANY_A && where.user_id === STAFF_ID
+        ? [{ role_id: 'staff-role-a' }]
+        : [],
+    },
+    iam_role: {
+      findFirst: async ({ where }: any) => where.company_id === COMPANY_A
+        && where.id.in.includes('staff-role-a')
+        && where.role_code.in.includes(RoleCode.STAFF)
+        ? { id: 'staff-role-a' }
+        : null,
+    },
+  } as any;
+  await ProjectsService.assertOperationalCompanyMember(STAFF_ID, COMPANY_A, operationalCandidateDb);
+  await assert.rejects(() => ProjectsService.assertOperationalCompanyMember(STAFF_ID, COMPANY_B, operationalCandidateDb));
+
+  // A caller-owned transaction must be reused by the progress rollup. This
+  // regression test prevents nested interactive transactions from returning.
+  let projectProgressUpdate: any = null;
+  const rollupTransaction = {
+    project_main_task: {
+      findMany: async () => [
+        { weight: 1, progress: 25 },
+        { weight: 3, progress: 75 },
+      ],
+    },
+    project_project: {
+      update: async ({ data }: any) => {
+        projectProgressUpdate = data;
+        return data;
+      },
+    },
+  } as any;
+  const rolledUpProgress = await ProjectsService.recalculateTaskTree(
+    { projectId: PROJECT_A, companyId: COMPANY_A },
+    rollupTransaction,
+  );
+  assert.equal(rolledUpProgress, 62.5);
+  assert.deepEqual(projectProgressUpdate, { progress_percent: 62.5 });
+
   console.log(JSON.stringify({
     status: 'PASS',
     acting_project_scope: PROJECT_A,
@@ -124,6 +173,8 @@ async function main() {
     cross_company_denied: true,
     delegation_by_acting_denied: true,
     global_role_unchanged: true,
+    company_role_supervisor_eligibility: true,
+    progress_rollup_reuses_transaction: true,
   }, null, 2));
 }
 

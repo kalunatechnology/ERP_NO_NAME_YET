@@ -8,6 +8,9 @@
  */
 import prisma from '../../config/database';
 import { NotFoundError, ValidationError } from '../../utils/errors';
+import type { Prisma } from '@prisma/client';
+
+const CRM_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
 
 export class CRMService {
 /**
@@ -73,7 +76,7 @@ export class CRMService {
         inquiry: updatedInquiry,
         opportunity_id: opportunityId,
       };
-    });
+    }, CRM_TRANSACTION_OPTIONS);
   }
 
 /**
@@ -84,8 +87,13 @@ export class CRMService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async calculateEstimate(estimateId: string, userId: string, companyId: string) {
-    return prisma.$transaction(async (tx) => {
+  static async calculateEstimate(
+    estimateId: string,
+    userId: string,
+    companyId: string,
+    db?: Prisma.TransactionClient,
+  ) {
+    const calculate = async (tx: Prisma.TransactionClient) => {
       const estimate = await tx.crm_cost_estimate.findFirst({
         where: { id: estimateId, company_id: companyId },
       });
@@ -177,7 +185,10 @@ export class CRMService {
       }
 
       return updated;
-    });
+    };
+    return db
+      ? calculate(db)
+      : prisma.$transaction(calculate, CRM_TRANSACTION_OPTIONS);
   }
 
 /**
@@ -196,7 +207,7 @@ export class CRMService {
       if (!estimate) throw new NotFoundError('CostEstimate');
 
       if (estimate.status !== 'CALCULATED' && estimate.status !== 'QUOTED') {
-        estimate = await this.calculateEstimate(estimateId, userId, companyId);
+        estimate = await this.calculateEstimate(estimateId, userId, companyId, tx);
       }
 
       const existingVersion = await tx.crm_quotation_version.findFirst({
@@ -321,7 +332,7 @@ export class CRMService {
         status: quotation.status,
         created: true,
       };
-    });
+    }, CRM_TRANSACTION_OPTIONS);
   }
 
 /**
@@ -332,13 +343,13 @@ export class CRMService {
  * Data/side effects: Reads or mutates Prisma model(s) `master_customer_profile`, `fin_billing_document`, `crm_credit_status_snapshot`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async calculateCreditSnapshot(customerPartyId: string, companyId?: string | null) {
-    const profile = await prisma.master_customer_profile.findFirst({
+  static async calculateCreditSnapshot(customerPartyId: string, companyId?: string | null, db: any = prisma) {
+    const profile = await db.master_customer_profile.findFirst({
       where: { party_id: customerPartyId, ...(companyId ? { company_id: companyId } : { company_id: null }) },
     });
     const creditLimit = Number(profile?.credit_limit ?? 0);
 
-    const bills = await prisma.fin_billing_document.findMany({
+    const bills = await db.fin_billing_document.findMany({
       where: {
         party_id: customerPartyId,
         ...(companyId ? { company_id: companyId } : { company_id: null }),
@@ -363,7 +374,7 @@ export class CRMService {
     const status = profile?.credit_hold || available < 0 ? 'HOLD' : 'AVAILABLE';
     const risk = profile?.risk_category || (overdue > 0 ? 'HIGH' : 'LOW');
 
-    return prisma.crm_credit_status_snapshot.create({
+    return db.crm_credit_status_snapshot.create({
       data: {
         id: crypto.randomUUID(),
         tenant_id: profile?.tenant_id ?? null,
@@ -424,7 +435,7 @@ export class CRMService {
         },
       });
 
-      const snapshot = await this.calculateCreditSnapshot(customerPartyId, companyId);
+      const snapshot = await this.calculateCreditSnapshot(customerPartyId, companyId, tx);
       const dealAmount = Number(opportunity.expected_amount ?? 0);
       const isSafe =
         snapshot.credit_status !== 'HOLD' &&
@@ -536,7 +547,7 @@ export class CRMService {
             : 'Batas kredit terlampaui. Minta Executive Override.',
         },
       };
-    });
+    }, CRM_TRANSACTION_OPTIONS);
   }
 
 /**
