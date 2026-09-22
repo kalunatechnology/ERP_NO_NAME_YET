@@ -65,7 +65,9 @@ export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   { prefix: "/resources", module: "ANALYTICS", roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin, ROLE_CODES.director], moduleBypassRoles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/reporting", module: "REPORTING", roles: null },
-  { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff], allowDelegation: false },
+  // STAFF/SUPERVISOR may open the management workspace only when an active
+  // ACTING_PROJECT_MANAGER assignment contributes a PROJECTS delegation.
+  { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: true },
   { prefix: "/tasks", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff], allowDelegation: false },
   { prefix: "/finance", module: "FINANCE", roles: [ROLE_CODES.finance, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.projectManager, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: false },

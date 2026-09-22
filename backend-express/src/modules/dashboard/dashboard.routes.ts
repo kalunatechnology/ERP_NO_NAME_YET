@@ -62,6 +62,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
   const tenantId = req.user?.tenant_id;
   const userId = req.user?.id;
   const activeRole = req.user?.active_role_code;
+  const managementWorkspace = String(req.query.project_workspace ?? '').toLowerCase() === 'management';
 
   if (!tenantId) {
     throw new ForbiddenError(
@@ -81,7 +82,27 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
     );
   }
 
-  const isStaff = activeRole === RoleCode.STAFF;
+  const isOperationalUser = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[])
+    .includes(activeRole as RoleCode);
+  const managedProjectRows = managementWorkspace && isOperationalUser
+    ? await prisma.project_member.findMany({
+        where: {
+          tenant_id: tenantId,
+          company_id: companyId,
+          user_id: userId,
+          project_role: 'ACTING_PROJECT_MANAGER',
+          status: 'ACTIVE',
+        },
+        select: { project_id: true },
+      })
+    : [];
+  const managedProjectIds = managedProjectRows
+    .map((row) => row.project_id)
+    .filter((id): id is string => Boolean(id));
+  if (managementWorkspace && isOperationalUser && managedProjectIds.length === 0) {
+    throw new ForbiddenError('Workspace Project Management hanya tersedia untuk Project Supervisor yang aktif.');
+  }
+  const isStaff = isOperationalUser && !managementWorkspace;
 
   /**
    * ============================================================
@@ -716,6 +737,29 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
     users: unknown[];
   };
 
+  const projectScope = managedProjectIds.length
+    ? Prisma.sql`AND id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::uuid`))})`
+    : Prisma.empty;
+  const directProjectScope = managedProjectIds.length
+    ? Prisma.sql`AND project_id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::uuid`))})`
+    : Prisma.empty;
+  const mainTaskScope = managedProjectIds.length
+    ? Prisma.sql`AND main_task_id IN (
+        SELECT id FROM project_main_task
+        WHERE tenant_id=${tenantId}::uuid AND company_id=${companyId}::uuid
+          AND project_id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::uuid`))})
+      )`
+    : Prisma.empty;
+  const weeklyTaskScope = managedProjectIds.length
+    ? Prisma.sql`AND weekly_task_id IN (
+        SELECT wt.id FROM project_weekly_task wt
+        JOIN project_main_task mt ON mt.id=wt.main_task_id
+        WHERE wt.tenant_id=${tenantId}::uuid AND wt.company_id=${companyId}::uuid
+          AND mt.tenant_id=${tenantId}::uuid AND mt.company_id=${companyId}::uuid
+          AND mt.project_id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::uuid`))})
+      )`
+    : Prisma.empty;
+
   const rows = await prisma.$queryRaw<
     Array<{ bundle: ProjectBundle }>
   >(Prisma.sql`
@@ -749,6 +793,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           WHERE tenant_id = ${tenantId}::uuid
             AND company_id = ${companyId}::uuid
+            ${projectScope}
 
           LIMIT 100
         ) x
@@ -774,6 +819,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           WHERE tenant_id = ${tenantId}::uuid
             AND company_id = ${companyId}::uuid
+            ${directProjectScope}
 
           LIMIT 300
         ) x
@@ -792,6 +838,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           WHERE tenant_id = ${tenantId}::uuid
             AND company_id = ${companyId}::uuid
+            ${mainTaskScope}
 
           LIMIT 500
         ) x
@@ -816,6 +863,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           WHERE tenant_id = ${tenantId}::uuid
             AND company_id = ${companyId}::uuid
+            ${mainTaskScope}
 
           LIMIT 500
         ) x
@@ -844,6 +892,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           WHERE tenant_id = ${tenantId}::uuid
             AND company_id = ${companyId}::uuid
+            ${weeklyTaskScope}
 
           LIMIT 1000
         ) x
@@ -875,6 +924,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           WHERE tenant_id = ${tenantId}::uuid
             AND company_id = ${companyId}::uuid
+            ${directProjectScope}
 
           LIMIT 500
         ) x
@@ -897,6 +947,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           WHERE tenant_id = ${tenantId}::uuid
             AND company_id = ${companyId}::uuid
+            ${directProjectScope}
 
           LIMIT 300
         ) x
@@ -919,6 +970,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
 
           WHERE tenant_id = ${tenantId}::uuid
             AND company_id = ${companyId}::uuid
+            ${directProjectScope}
 
           LIMIT 200
         ) x
@@ -1153,6 +1205,7 @@ dashboardRouter.get('/bootstrap', async (req: Request, res: Response, next: Next
       req.user!.active_role_code,
       [...enabled].sort().join(','),
       [...requested].sort().join(','),
+      String(req.query.project_workspace ?? ''),
     ].join('|');
     const loadSections = async () => {
       const requestedSet = new Set(requested);

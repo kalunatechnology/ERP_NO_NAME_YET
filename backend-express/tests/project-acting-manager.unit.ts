@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { RoleCode } from '../src/types/roles';
 import { ProjectsService } from '../src/modules/projects/projects.service';
+import { loadUserAccessContext } from '../src/modules/accounts/access-context.service';
+import { canAccessRoute } from '../../frontend-next/lib/access/module-contract';
+import { getNavigationEntries } from '../../frontend-next/lib/access/navigation-contract';
 
 const COMPANY_A = 'company-a';
 const COMPANY_B = 'company-b';
@@ -168,6 +171,40 @@ async function main() {
   assert.equal(rolledUpProgress, 62.5);
   assert.deepEqual(projectProgressUpdate, { progress_percent: 62.5 });
 
+  const accessRows = {
+    assignments: [{ id: 'assignment-a', role_id: 'staff-role-a', company_id: COMPANY_A }],
+    membership: { id: 'membership-a', tenant_id: 'tenant-a', company_id: COMPANY_A, user_id: STAFF_ID, status: 'ACTIVE' },
+    roleRecords: [{ id: 'staff-role-a', tenant_id: 'tenant-a', company_id: null, role_code: RoleCode.STAFF, role_name: 'Staff' }],
+    moduleAccess: [{ module_code: 'PROJECTS' }],
+    userModuleAccess: [],
+  } as any;
+  const delegatedAccess = await loadUserAccessContext(
+    STAFF_ID,
+    { tenant_id: 'tenant-a', active_role_id: 'staff-role-a' },
+    { ...accessRows, projectDelegated: true },
+  );
+  const ordinaryAccess = await loadUserAccessContext(
+    STAFF_ID,
+    { tenant_id: 'tenant-a', active_role_id: 'staff-role-a' },
+    { ...accessRows, projectDelegated: false },
+  );
+  assert.equal(delegatedAccess.delegatedModules.includes('PROJECTS'), true);
+  assert.equal(ordinaryAccess.delegatedModules.includes('PROJECTS'), false);
+  const ordinaryStaffFrontendAccess = {
+    enabledModules: ['PROJECTS'],
+    delegatedModules: [],
+    activeRoleCode: 'ROLE-STAFF',
+  };
+  const supervisorFrontendAccess = {
+    ...ordinaryStaffFrontendAccess,
+    delegatedModules: ['PROJECTS'],
+  };
+  assert.equal(canAccessRoute({ pathname: '/projects', ...ordinaryStaffFrontendAccess }), false);
+  assert.equal(canAccessRoute({ pathname: '/tasks', ...ordinaryStaffFrontendAccess }), true);
+  assert.equal(canAccessRoute({ pathname: '/projects', ...supervisorFrontendAccess }), true);
+  assert.equal(getNavigationEntries(ordinaryStaffFrontendAccess).some((entry) => entry.href === '/projects'), false);
+  assert.equal(getNavigationEntries(supervisorFrontendAccess).some((entry) => entry.href === '/projects'), true);
+
   console.log(JSON.stringify({
     status: 'PASS',
     acting_project_scope: PROJECT_A,
@@ -177,6 +214,8 @@ async function main() {
     global_role_unchanged: true,
     company_role_supervisor_eligibility: true,
     progress_rollup_reuses_transaction: true,
+    supervisor_auto_project_delegation: true,
+    supervisor_project_navigation_only: true,
   }, null, 2));
 }
 

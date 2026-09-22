@@ -770,10 +770,24 @@ export class ProjectsService {
       await this.assertCanDelegateProjectAuthority(actor, projectId, companyId, tx);
       const candidate = await tx.iam_user.findFirst({
         where: { id: userId, tenant_id: project.tenant_id, is_active: true, status: 'ACTIVE' },
-        select: { id: true },
+        select: { id: true, active_role_id: true },
       });
       if (!candidate) throw new ValidationError('Calon Project Supervisor harus merupakan user aktif pada tenant yang sama.');
       await this.assertOperationalCompanyMember(userId, companyId, tx);
+      const activeOperationalRole = candidate.active_role_id
+        ? await tx.iam_role.findFirst({
+            where: {
+              id: candidate.active_role_id,
+              tenant_id: project.tenant_id,
+              OR: [{ company_id: companyId }, { company_id: null }],
+              role_code: { in: [RoleCode.STAFF, RoleCode.SUPERVISOR] },
+            },
+            select: { id: true },
+          })
+        : null;
+      if (!activeOperationalRole) {
+        throw new ValidationError('Role aktif calon Project Supervisor harus Staff atau Supervisor.');
+      }
       const current = await tx.project_member.findFirst({
         where: { project_id: projectId, company_id: companyId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE' },
         orderBy: { assigned_at: 'desc' },

@@ -39,6 +39,7 @@ type LoginAccessSnapshot = {
   }>;
   company_modules: Array<{ module_code: string }>;
   user_modules: Array<{ module_code: string; allow_read: boolean; allow_write: boolean }>;
+  project_delegated: boolean;
 };
 
 export class AccountsService {
@@ -150,7 +151,14 @@ export class AccountsService {
           )) FROM iam_user_module_access uma
           JOIN membership m ON m.company_id = uma.company_id AND m.tenant_id = uma.tenant_id
           WHERE uma.user_id = ${user.id}::uuid
-        ), '[]'::jsonb)
+        ), '[]'::jsonb),
+        'project_delegated', EXISTS (
+          SELECT 1 FROM project_member pm
+          JOIN membership m ON m.company_id=pm.company_id AND m.tenant_id=pm.tenant_id
+          WHERE pm.user_id=${user.id}::uuid
+            AND pm.project_role='ACTING_PROJECT_MANAGER'
+            AND UPPER(pm.status)='ACTIVE'
+        )
       ) AS snapshot
       FROM updated_user
     `);
@@ -208,6 +216,9 @@ export class AccountsService {
     const delegatedModules = userModules
       .filter((item) => item.allow_read)
       .map((item) => item.module_code.toUpperCase());
+    if (snapshot.project_delegated && enabledModules.includes('PROJECTS') && !delegatedModules.includes('PROJECTS')) {
+      delegatedModules.push('PROJECTS');
+    }
     const primaryCompanyId = superAdmin ? null : membership?.company_id ?? null;
 
     const tokens = signTokenPair({

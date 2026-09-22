@@ -15,6 +15,7 @@ import { isSuperAdmin, RoleCode } from '../../types/roles';
 import {
   EmployeeProvisioningService,
 } from '../master_data/employee-provisioning.service';
+import { invalidateDashboardCache } from '../dashboard/dashboard.routes';
 
 export const projectsRouter = Router();
 
@@ -543,7 +544,13 @@ const handleHierarchy = async (req: Request, res: Response, next: NextFunction) 
 const enforceProjectBoundary = async (req: Request, _res: Response, next: NextFunction) => {
   try {
     const companyId = activeCompanyId(req);
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    const activeRole = req.user?.active_role_code;
+    const isOperationalUser = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[])
+      .includes(activeRole as RoleCode);
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || isOperationalUser) {
+      // Personal task visibility is served through the staff projection. Full
+      // project-detail endpoints are reserved for an active project-scoped
+      // Acting PM assignment, including on read requests.
       await ProjectsService.assertCanManageProject(req.user, req.params.id, companyId);
     } else {
       await ProjectsService.assertCanViewProject(req.user, req.params.id, companyId);
@@ -583,6 +590,7 @@ projectsRouter.put('/projects/:id/supervisor', async (req: Request, res: Respons
       req.user,
       activeCompanyId(req),
     );
+    invalidateDashboardCache();
     res.json(supervisor);
   } catch (err) {
     next(err);
@@ -597,6 +605,7 @@ projectsRouter.delete('/projects/:id/supervisor', async (req: Request, res: Resp
       req.user,
       activeCompanyId(req),
     );
+    invalidateDashboardCache();
     res.status(204).send();
   } catch (err) {
     next(err);
@@ -1077,12 +1086,13 @@ projectsRouter.get('/assignable-users', async (req: Request, res: Response, next
     const users = operationalUserIds.length
       ? await prisma.iam_user.findMany({
           where: { id: { in: operationalUserIds }, is_active: true },
-          select: { id: true, email: true, username: true, full_name: true },
+          select: { id: true, email: true, username: true, full_name: true, active_role_id: true },
           orderBy: { full_name: 'asc' },
         })
       : [];
-    const results = users.map((user) => {
-      const role = operationalRoleByUser.get(user.id);
+    const results = users.flatMap((user) => {
+      const role = user.active_role_id ? roleById.get(user.active_role_id) : undefined;
+      if (!role) return [];
       return {
         ...user,
         role_code: role?.role_code ?? null,

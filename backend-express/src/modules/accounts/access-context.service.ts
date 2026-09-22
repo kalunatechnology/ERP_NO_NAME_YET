@@ -28,6 +28,7 @@ export interface KnownAccessRows {
   roleRecords?: iam_role[];
   moduleAccess?: Array<{ module_code: string }>;
   userModuleAccess?: Array<{ module_code: string; allow_read: boolean; allow_write: boolean }>;
+  projectDelegated?: boolean;
 }
 
 type AccessSnapshot = {
@@ -36,6 +37,7 @@ type AccessSnapshot = {
   roles: Array<iam_role & { role_code: string }>;
   company_modules: Array<{ module_code: string }>;
   user_modules: Array<{ module_code: string; allow_read: boolean; allow_write: boolean }>;
+  project_delegated: boolean;
 };
 
 export type AuthenticationUser = Pick<iam_user, 'id' | 'email' | 'full_name' | 'is_staff' | 'status' | 'tenant_id' | 'is_active' | 'active_role_id'>;
@@ -58,7 +60,11 @@ export async function loadAuthenticationSnapshot(userId: string): Promise<Authen
       'membership', (SELECT to_jsonb(m) FROM membership m),
       'roles', COALESCE((SELECT jsonb_agg(to_jsonb(r)) FROM iam_role r JOIN iam_user_role ur ON ur.role_id=r.id WHERE ur.user_id=u.id AND r.tenant_id IS NOT DISTINCT FROM u.tenant_id), '[]'::jsonb),
       'company_modules', COALESCE((SELECT jsonb_agg(jsonb_build_object('module_code',cma.module_code)) FROM iam_company_module_access cma JOIN membership m ON m.company_id=cma.company_id AND m.tenant_id=cma.tenant_id WHERE cma.enabled=true AND cma.allow_read=true AND (cma.effective_from IS NULL OR cma.effective_from<=${now}) AND (cma.effective_until IS NULL OR cma.effective_until>=${now})), '[]'::jsonb),
-      'user_modules', COALESCE((SELECT jsonb_agg(jsonb_build_object('module_code',uma.module_code,'allow_read',uma.allow_read,'allow_write',uma.allow_write)) FROM iam_user_module_access uma JOIN membership m ON m.company_id=uma.company_id AND m.tenant_id=uma.tenant_id WHERE uma.user_id=u.id), '[]'::jsonb)
+      'user_modules', COALESCE((SELECT jsonb_agg(jsonb_build_object('module_code',uma.module_code,'allow_read',uma.allow_read,'allow_write',uma.allow_write)) FROM iam_user_module_access uma JOIN membership m ON m.company_id=uma.company_id AND m.tenant_id=uma.tenant_id WHERE uma.user_id=u.id), '[]'::jsonb),
+      'project_delegated', EXISTS (
+        SELECT 1 FROM project_member pm JOIN membership m ON m.company_id=pm.company_id AND m.tenant_id=pm.tenant_id
+        WHERE pm.user_id=u.id AND pm.project_role='ACTING_PROJECT_MANAGER' AND UPPER(pm.status)='ACTIVE'
+      )
     ) AS snapshot
     FROM selected_user u
   `);
@@ -72,6 +78,7 @@ export async function loadAuthenticationSnapshot(userId: string): Promise<Authen
       roleRecords: result.snapshot.roles.map((role) => ({ ...role, role_code: parseRoleCode(role.role_code) })).filter((role): role is iam_role => role.role_code !== null),
       moduleAccess: result.snapshot.company_modules,
       userModuleAccess: result.snapshot.user_modules,
+      projectDelegated: result.snapshot.project_delegated,
     },
   };
 }
@@ -118,7 +125,8 @@ export async function loadUserAccessContext(
     && knownRows.membership === undefined
     && knownRows.roleRecords === undefined
     && knownRows.moduleAccess === undefined
-    && knownRows.userModuleAccess === undefined;
+    && knownRows.userModuleAccess === undefined
+    && knownRows.projectDelegated === undefined;
   const now = new Date();
   const rawSnapshots = useAtomicSnapshot
     ? await prisma.$queryRaw<Array<{ snapshot: AccessSnapshot }>>(Prisma.sql`
@@ -145,7 +153,11 @@ export async function loadUserAccessContext(
             SELECT jsonb_agg(jsonb_build_object('module_code', uma.module_code, 'allow_read', uma.allow_read, 'allow_write', uma.allow_write))
             FROM iam_user_module_access uma JOIN membership m ON m.company_id = uma.company_id AND m.tenant_id = uma.tenant_id
             WHERE uma.user_id = ${userId}::uuid
-          ), '[]'::jsonb)
+          ), '[]'::jsonb),
+          'project_delegated', EXISTS (
+            SELECT 1 FROM project_member pm JOIN membership m ON m.company_id=pm.company_id AND m.tenant_id=pm.tenant_id
+            WHERE pm.user_id=${userId}::uuid AND pm.project_role='ACTING_PROJECT_MANAGER' AND UPPER(pm.status)='ACTIVE'
+          )
         ) AS snapshot
       `)
     : [];
@@ -238,6 +250,22 @@ export async function loadUserAccessContext(
   const enabledModules = moduleAccess
     .map((item) => item.module_code.toUpperCase())
     .filter((moduleCode) => overrideByModule.get(moduleCode)?.allow_read ?? true);
+  const projectDelegated = snapshot?.project_delegated
+    ?? knownRows.projectDelegated
+    ?? Boolean(membership && await prisma.project_member.findFirst({
+      where: {
+        tenant_id: membership.tenant_id,
+        company_id: membership.company_id,
+        user_id: userId,
+        project_role: 'ACTING_PROJECT_MANAGER',
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    }));
+  const delegatedModules = new Set(
+    userModuleAccess.filter((item) => item.allow_read).map((item) => item.module_code.toUpperCase()),
+  );
+  if (projectDelegated && enabledModules.includes('PROJECTS')) delegatedModules.add('PROJECTS');
 
   return {
     roles,
@@ -247,6 +275,6 @@ export async function loadUserAccessContext(
     companyIds,
     isSuperAdmin: superAdmin,
     enabledModules,
-    delegatedModules: userModuleAccess.filter((item) => item.allow_read).map((item) => item.module_code.toUpperCase()),
+    delegatedModules: [...delegatedModules],
   };
 }

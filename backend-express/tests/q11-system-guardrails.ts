@@ -290,8 +290,8 @@ async function main(): Promise<void> {
       'ROLE-DIRECTOR': ['/dashboard', '/projects', '/finance', '/crm', '/reporting', '/management-reports', '/resources'],
       'ROLE-OM': ['/dashboard', '/projects', '/tasks', '/reporting', '/management-reports'],
       'ROLE-PM': ['/dashboard', '/projects', '/tasks', '/crm', '/reporting'],
-      'ROLE-SUPERVISOR': ['/dashboard', '/projects', '/tasks', '/reporting'],
-      'ROLE-STAFF': ['/dashboard', '/projects', '/tasks', '/reporting'],
+      'ROLE-SUPERVISOR': ['/dashboard', '/tasks', '/reporting'],
+      'ROLE-STAFF': ['/dashboard', '/tasks', '/reporting'],
       'ROLE-FINANCE': ['/dashboard', '/finance', '/reporting'],
       'ROLE-CRM-LEAD': ['/dashboard', '/crm', '/reporting'],
       'ROLE-SALES': ['/dashboard', '/crm', '/reporting'],
@@ -303,6 +303,10 @@ async function main(): Promise<void> {
       actual.forEach((pathname) => assert.equal(canAccessRoute({ pathname, ...access }), true));
     }
     assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['REPORTING'] }).map((item: any) => item.href), ['/dashboard', '/reporting']);
+    assert.deepEqual(
+      getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['PROJECTS'], delegatedModules: ['PROJECTS'] }).map((item: any) => item.href),
+      ['/dashboard', '/projects', '/tasks'],
+    );
     assert.deepEqual(getNavigationEntries({ activeRoleCode: 'ROLE-STAFF', enabledModules: ['FINANCE'], delegatedModules: ['FINANCE'] }).map((item: any) => item.href), ['/dashboard']);
     assert(!getNavigationEntries({ activeRoleCode: 'ROLE-PM', enabledModules: ['PROJECTS'], delegatedModules: ['PROJECTS'] }).some((item: any) => item.href === '/administration'));
     assert.equal(canPerform('finance:operate', 'ROLE-SUPER-ADMIN'), false);
@@ -442,11 +446,11 @@ async function main(): Promise<void> {
       projectClient.includes('canPerform("project:create", userRole)')
         && projectClient.includes('canPerform("project:update", userRole)')
         && projectClient.includes('{canCreateProject && (')
-        && projectClient.includes('{canUpdateProject && ('),
+        && projectClient.includes('{canUpdateSelectedProject && ('),
       'Staff Project workspace must gate project-level mutations through the canonical role policy.',
     );
-    assert(projectClient.includes('userRole === "staff" ? [') && projectClient.includes('Task Terkait Saya'), 'Staff Project workspace must use its compact assigned-task view.');
-    assert(projectClient.includes('mainTask.assignments') && projectClient.includes('activeUserId'), 'Staff Project hierarchy must be assignment scoped.');
+    assert(projectClient.includes('userRole === "staff" && !isActingProjectManager ? [') && projectClient.includes('Task Terkait Saya'), 'Ordinary Staff Project workspace must use its compact assigned-task view.');
+    assert(projectClient.includes('mainTask.assignments') && projectClient.includes('activeUserId') && projectClient.includes('isActingProjectManager'), 'Staff hierarchy must be assignment scoped while Acting PM receives the full delegated WBS.');
     assert(taxWorkspace.includes('/api/v1/finance/tax-transactions/projection?page_size=200'));
     assert(taxWorkspace.includes('const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [];'), 'Tax workspace must not ship production-looking local transactions.');
     assert(

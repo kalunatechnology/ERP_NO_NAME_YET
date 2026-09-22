@@ -101,8 +101,12 @@ const bootstrapRequests = new Map<string, Promise<DashboardBootstrap>>();
 let mutationListenerInstalled = false;
 let bootstrapCacheRevision = 0;
 
-function browserBootstrapScopeKey(sections: DashboardSection[], access: FrontendAccessContext): string {
-  if (typeof window === 'undefined') return `server:${sections.join(',')}`;
+function browserBootstrapScopeKey(
+  sections: DashboardSection[],
+  access: FrontendAccessContext,
+  projectWorkspace?: 'management',
+): string {
+  if (typeof window === 'undefined') return `server:${sections.join(',')}:${projectWorkspace ?? ''}`;
   const token = localStorage.getItem('erp.access') || localStorage.getItem('access_token') || '';
   const company = localStorage.getItem('erp.company') || localStorage.getItem('active_company_id') || '';
   let userId = '';
@@ -126,6 +130,7 @@ function browserBootstrapScopeKey(sections: DashboardSection[], access: Frontend
     enabledModules: [...(access.enabledModules || [])].map(String).sort(),
     delegatedModules: [...(access.delegatedModules || [])].map(String).sort(),
     isSuperAdmin: Boolean(access.isSuperAdmin),
+    projectWorkspace: projectWorkspace ?? '',
   });
 }
 
@@ -159,7 +164,7 @@ function ensureBootstrapMutationListener(): void {
 export async function loadDashboardBootstrap(
   sections: DashboardSection[],
   access: FrontendAccessContext = {},
-  options: { fresh?: boolean } = {},
+  options: { fresh?: boolean; projectWorkspace?: 'management' } = {},
 ): Promise<DashboardBootstrap> {
   /**
    * Tidak ada section yang dibutuhkan.
@@ -204,7 +209,7 @@ export async function loadDashboardBootstrap(
    * - X-Company-ID
    * - token/session handling
    */
-  const cacheKey = browserBootstrapScopeKey(requestedSections, access);
+  const cacheKey = browserBootstrapScopeKey(requestedSections, access, options.projectWorkspace);
   if (!options.fresh) {
     const cached = bootstrapCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
@@ -220,6 +225,7 @@ export async function loadDashboardBootstrap(
         params: {
           sections: requestedSections.join(','),
           ...(options.fresh ? { fresh: '1' } : {}),
+          ...(options.projectWorkspace ? { project_workspace: options.projectWorkspace } : {}),
         },
         timeout: 30_000,
       },

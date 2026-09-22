@@ -251,11 +251,16 @@ export default function ProjectsClient() {
 
   /* Project Manager & Executive Role Guard */
   // Mutation controls follow the active backend role; identity names and emails are never authorization signals.
-  const isPM = useMemo(() => userRole === "pm" || userRole === "om", [userRole]);
+  const isActingProjectManager = Boolean(selectedAuthority?.is_acting_project_manager);
+  const isPM = useMemo(
+    () => userRole === "pm" || userRole === "om" || isActingProjectManager,
+    [isActingProjectManager, userRole],
+  );
   const isExecutive = useMemo(() => userRole === "executive", [userRole]);
   const canCreateProject = useMemo(() => canPerform("project:create", userRole), [userRole]);
   const canUpdateProject = useMemo(() => canPerform("project:update", userRole), [userRole]);
   const canManageSelectedProject = Boolean(selectedAuthority?.can_manage_project);
+  const canUpdateSelectedProject = canUpdateProject || isActingProjectManager;
   const canViewFinancials = useMemo(() => {
     return ["super_admin", "company_admin", "executive", "om", "pm", "finance"].includes(userRole || "");
   }, [userRole]);
@@ -290,7 +295,7 @@ export default function ProjectsClient() {
         delegatedModules,
         activeRoleCode,
         isSuperAdmin: userRole === "super_admin",
-      }, { fresh: silent }).then((response) => response.projects);
+      }, { fresh: silent, projectWorkspace: 'management' }).then((response) => response.projects);
       const projectData = projectBundle.then((bundle) => loadAllProjects(enabledModules, bundle, {
           delegatedModules,
           activeRoleCode,
@@ -607,14 +612,14 @@ export default function ProjectsClient() {
 
   const mainTasks = useMemo(() => {
     const tasks = selectedProject?.main_tasks || [];
-    if (userRole !== "staff" || user?.id == null) return tasks;
+    if (userRole !== "staff" || isActingProjectManager || user?.id == null) return tasks;
     const activeUserId = String(user.id);
     return tasks.filter((mainTask) =>
       (mainTask.assignments || []).some((assignment) =>
         String(assignment.assignee_id ?? assignment.assignee ?? "") === activeUserId
       )
     );
-  }, [selectedProject?.main_tasks, user?.id, userRole]);
+  }, [isActingProjectManager, selectedProject?.main_tasks, user?.id, userRole]);
 
   /* 1. Real Gantt Tasks from Live Project WBS */
   const realGanttTasks = useMemo(() => {
@@ -1173,7 +1178,7 @@ export default function ProjectsClient() {
 
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {/* Tombol Target Finansial (Hanya PM/OM/Finance Operasional) */}
-          {canUpdateProject && canViewFinancials && (
+          {canUpdateSelectedProject && canViewFinancials && (
             <button
               onClick={() => setIsEditFinancialsOpen(true)}
               className="btn-secondary text-xs gap-1.5 py-1.5 px-3 border border-brand-green/30 text-brand-green hover:bg-brand-green/10 whitespace-nowrap shadow-xs font-semibold"
@@ -1183,7 +1188,7 @@ export default function ProjectsClient() {
           )}
 
           {/* Tombol Funding Request / Pengajuan Dana (Hanya PM/OM Operasional) */}
-          {canUpdateProject && canViewFinancials && (
+          {canUpdateSelectedProject && canViewFinancials && (
             <button
               onClick={() => setIsFundingRequestOpen(true)}
               className="btn-primary text-xs gap-1.5 py-1.5 px-3 bg-brand-green text-white hover:opacity-90 whitespace-nowrap font-semibold shadow-xs"
@@ -1192,7 +1197,7 @@ export default function ProjectsClient() {
             </button>
           )}
 
-          {canUpdateProject && (
+          {canUpdateSelectedProject && (
             <button
               onClick={handleRecalculateHealth}
               className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green whitespace-nowrap"
@@ -1452,7 +1457,7 @@ export default function ProjectsClient() {
         />
 
         {/* Widget 3: Project List & Milestone Stepper (Full Width Live Project Data) */}
-        {userRole !== "staff" && <ProjectMilestoneCard
+        {(userRole !== "staff" || isActingProjectManager) && <ProjectMilestoneCard
           selectedProjectId={selectedId ?? ""}
           onSelectProject={(id) => setSelectedId(id)}
           milestones={realMilestones}
@@ -1467,7 +1472,7 @@ export default function ProjectsClient() {
 
       {/* ── Navigation Tabs ── */}
       <div className="flex items-center gap-2 border-b border-text-tertiary overflow-x-auto no-scrollbar pb-1">
-        {(userRole === "staff" ? [
+        {(userRole === "staff" && !isActingProjectManager ? [
           { key: "TREE", label: "Task Terkait Saya", icon: Layers, count: mainTasks.length },
         ] : [
           { key: "TREE", label: "Hierarki Task (Full WBS Plan)", icon: Layers, count: mainTasks.length },
