@@ -496,8 +496,9 @@ async function main(): Promise<void> {
     for (const legacyGreen of ['#22C55E', '#16A34A', '#166534', '#5f8f35', 'bg-emerald-', 'text-emerald-']) {
       assert(!`${dashboardClient}${projectClient}${tasksClient}${financeClient}${feedSource}`.includes(legacyGreen), `Legacy green visual token remains: ${legacyGreen}`);
     }
-    const [timesheetForm, timesheetTable, overtimeWidget, dashboardRoutes, reportingRoutes, budgetCard, employeeMappingMigration] = await Promise.all([
+    const [timesheetForm, timesheetTimerApi, timesheetTable, overtimeWidget, dashboardRoutes, reportingRoutes, budgetCard, employeeMappingMigration] = await Promise.all([
       readFile(`${__dirname}/../../frontend-next/components/staff/StaffTimesheetForm.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/lib/api/timesheet-timer.api.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/staff/StaffTimesheetTable.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/staff/StaffOvertimeSummary.tsx`, 'utf8'),
       readFile(`${__dirname}/../src/modules/dashboard/dashboard.routes.ts`, 'utf8'),
@@ -508,7 +509,30 @@ async function main(): Promise<void> {
     for (const forbiddenField of ['employee_id:', 'hourly_rate:', 'amount:', 'approval_status:']) {
       assert(!timesheetForm.includes(forbiddenField), `Staff timesheet form must not send server-owned field ${forbiddenField}`);
     }
-    assert(timesheetForm.includes('createStaffTimesheet({') && timesheetForm.includes('overtime_hours: overtime'));
+    assert(!timesheetForm.includes('createStaffTimesheet({'), 'Staff timer must no longer submit browser-owned timestamps/hours through the legacy create endpoint.');
+    assert(
+      timesheetForm.includes('getActiveStaffTimer()')
+        && timesheetForm.includes('startStaffTimer({')
+        && timesheetForm.includes('stopStaffTimer')
+        && timesheetForm.includes('submitStaffTimer({'),
+      'Staff timesheet form must hydrate, start, stop, and submit through the server-authoritative timer contract.',
+    );
+    assert(
+      timesheetForm.includes('serverClockOffsetMs')
+        && timesheetForm.includes('document.addEventListener("visibilitychange"')
+        && timesheetForm.includes('window.addEventListener("focus"'),
+      'Staff timer must resynchronize from server time after browser tab/focus changes.',
+    );
+    for (const route of [
+      '/api/v1/projects/timesheets/timer/active',
+      '/api/v1/projects/timesheets/timer/start',
+      '/api/v1/projects/timesheets/timer/stop',
+      '/api/v1/projects/timesheets/timer/overtime/start',
+      '/api/v1/projects/timesheets/timer/overtime/stop',
+      '/api/v1/projects/timesheets/timer/submit',
+    ]) {
+      assert(timesheetTimerApi.includes(route), `Server timer frontend contract is missing ${route}`);
+    }
     assert(timesheetTable.includes('getStaffTimesheets({ page, page_size: PAGE_SIZE })'));
     assert(overtimeWidget.includes('getStaffOvertimeSummary()'));
     assert(tasksClient.includes('<StaffTimesheetForm') && tasksClient.includes('<StaffTimesheetTable'));
