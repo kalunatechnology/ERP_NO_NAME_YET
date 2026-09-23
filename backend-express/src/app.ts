@@ -32,6 +32,7 @@ import { masterDataRouter } from './modules/master_data/master_data.routes';
 import { crmRouter } from './modules/crm/crm.routes';
 import { salesRouter } from './modules/sales/sales.routes';
 import { projectsRouter } from './modules/projects/projects.routes';
+import { timesheetTimerRouter } from './modules/projects/timesheet-timer.routes';
 import { restrictProjectMutationsByAuthority } from './modules/projects/project-authority.middleware';
 import { financeRouter } from './modules/finance/finance.routes';
 import { procurementRouter } from './modules/procurement/procurement.routes';
@@ -222,6 +223,10 @@ export function createApp(): Express {
       ],
       message: 'Role Director memiliki akses preview seluruh proyek.',
     }),
+    // Timer self-service owns its own project/task validation and must run
+    // before the Acting-PM mutation bridge, which intentionally rejects
+    // unknown Staff mutation paths.
+    timesheetTimerRouter,
     restrictProjectMutationsByAuthority,
     projectsRouter,
   );
