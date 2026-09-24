@@ -1,4 +1,4 @@
-# Marka+ ERP Repository
+# Marka+ ERP Repositoryy
 
 > **Current implementation (10 September 2026):** the production path is `backend-express/` + `frontend-next/`, not the legacy Django backend described later in this historical document. The complete current baseline, route coverage, loading architecture, cache behavior, and verified benchmarks are in [Current Implementation Status](docs/CURRENT_IMPLEMENTATION_STATUS.md). Detailed technical truth remains in [System Documentation](docs/SYSTEM_DOCUMENTATION.md) and [Database Documentation](docs/DATABASE_DOCUMENTATION.md). Current access policy and its tracked changes are in [Access Control Baseline and Change Log](docs/ACCESS_CONTROL_CHANGELOG.md).
 

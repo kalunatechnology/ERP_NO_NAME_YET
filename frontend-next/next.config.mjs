@@ -4,6 +4,10 @@
  * Purpose: Defines application infrastructure responsibilities for the frontend application.
  * Responsibility: Owns the executable contracts declared here and their framework/import integration boundary.
  * Dependencies and side effects: Function comments identify HTTP, persistence, browser-state, and security effects where present.
+ *
+ * Deployment sync note: this file is intentionally shared unchanged between
+ * master previews and the production branch so both Vercel builds use the same
+ * Next.js runtime configuration.
  */
 /** @type {import('next').NextConfig} */
 const nextConfig = {
