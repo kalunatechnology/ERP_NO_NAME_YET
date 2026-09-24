@@ -41,6 +41,7 @@
     "benchmark:q10:login": "node scripts/benchmark_demo_login.js",
     "reconcile:q9": "ts-node scripts/reconcile_q9_access.ts",
     "reconcile:q10": "ts-node scripts/reconcile_q10_test_baseline.ts",
+    "audit:db-architecture": "node scripts/audit_database_architecture.js",
     "audit:project-progress": "ts-node scripts/audit_project_progress.ts",
     "reconcile:project-progress": "ts-node scripts/reconcile_project_progress.ts",
     "lint": "eslint src --ext .ts"
@@ -64,7 +65,6 @@
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/compression": "^1.7.5",
-    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/morgan": "^1.9.9",
