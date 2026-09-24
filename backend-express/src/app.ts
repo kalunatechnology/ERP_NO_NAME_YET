@@ -23,6 +23,7 @@ import { requireModuleAccess } from './middlewares/entitlement.middleware';
 import { errorHandler } from './middlewares/error.middleware';
 import { enforceTransactionIdempotency } from './middlewares/idempotency.middleware';
 import { notFound } from './middlewares/not-found.middleware';
+import { normalizeRequestPath } from './middlewares/path-normalization.middleware';
 
 // Domain Routers
 import { authRouter, publicAuthRouter, accountsRouter } from './modules/accounts/accounts.routes';
@@ -63,6 +64,11 @@ import './workflows';
  */
 export function createApp(): Express {
   const app = express();
+
+  // Canonicalize paths before any route/security middleware. A client that
+  // combines a base URL ending in `/` with `/api/...` otherwise reaches Express
+  // as `//api/...` and misses an otherwise valid route.
+  app.use(normalizeRequestPath);
 
   // 1. Core security & performance middleware
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
