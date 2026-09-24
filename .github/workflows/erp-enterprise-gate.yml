@@ -27,6 +27,7 @@ jobs:
       - run: npx prisma validate
       - run: npm run typecheck
       - run: npm run build
+      - run: npm run test:production-seed
       - run: npm run test:marbot-signature
       - run: npm run test:marbot-tenant
       - run: npm run test:marbot-runtime-v2
