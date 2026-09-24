@@ -1,14 +1,14 @@
 /**
- * Unified build entry point.
+ * Unified application build entry point.
  *
- * A Hostinger build runs pending Prisma migrations before compiling the
- * backend. Other environments compile only: Vercel must never run migrations
- * in a serverless build, and local builds must not touch a remote database.
+ * IMPORTANT: an application build must be database-mutation free. Hostinger,
+ * Vercel, CI, and local builds only generate Prisma Client and compile the
+ * application. Database migrations are an explicit release operation via
+ * `npm run deploy:hostinger:db`; they are never forced by `npm run build`.
  *
- * Deployment builds intentionally stop after migration/schema-audit/generate/
- * compile. Unit and cross-project contract tests belong to CI/local validation
- * and must not re-import the production runtime configuration during a
- * Hostinger build.
+ * This separation prevents a migration-history problem from blocking a frontend
+ * or backend code release and prevents ordinary rebuilds from mutating a live
+ * database. CI remains responsible for validating the migration contract.
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
@@ -41,18 +41,10 @@ function assertNoUuidCastsForTextIds(directory) {
 function main() {
   const isHostinger = process.env.VERCEL !== '1' && process.env.DEPLOYMENT_TARGET === 'hostinger';
 
-  // The explicit target prevents accidental database writes from developer
-  // machines and prevents migration execution in Vercel builds. Immediately
-  // audit the physical schema afterwards so Express can never start against a
-  // UUID-backed database while the production contract expects TEXT IDs.
-  if (isHostinger) {
-    run(process.execPath, [path.join(__dirname, 'deploy_hostinger_migrations.js')]);
-    run(process.execPath, [path.join(__dirname, 'audit_database_architecture.js')]);
-  }
-
-  // Invoke local tool entry points through the current Node executable. This
-  // behaves consistently on Windows and Linux and never depends on shell
-  // resolution of npm/npm.cmd during a hosting build.
+  // Never connect to or mutate a database from an application build. Migrations
+  // are intentionally explicit (`npm run deploy:hostinger:db`) so failed
+  // migration history cannot prevent unrelated frontend/backend code from being
+  // built and published.
   const root = path.resolve(__dirname, '..');
   const hasFrontend = fs.existsSync(path.resolve(root, '..', 'frontend-next', 'lib', 'access', 'module-contract.ts'));
 
@@ -64,13 +56,10 @@ function main() {
   run(process.execPath, [path.join(root, 'node_modules', 'prisma', 'build', 'index.js'), 'generate']);
   run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);
 
-  // Hostinger has already passed migration + physical architecture validation
-  // and TypeScript compilation. Running unit tests here re-imports env.ts with
-  // provider production variables and couples deployment availability to test
-  // harness assumptions. CI/local builds remain responsible for the full test
-  // suite.
+  // Hostinger application builds stop after deterministic, database-free
+  // compilation. Database migration/audit is a separate release operation.
   if (isHostinger) {
-    console.log('Hostinger deployment build: migrations applied, production schema parity verified, Prisma generated, TypeScript compiled; unit tests are delegated to CI.');
+    console.log('Hostinger application build: Prisma generated and TypeScript compiled. Database migration is explicit via npm run deploy:hostinger:db and is not executed by npm run build.');
     return;
   }
 

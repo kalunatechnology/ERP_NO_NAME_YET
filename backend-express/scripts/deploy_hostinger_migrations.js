@@ -1,5 +1,5 @@
 /**
- * Hostinger/Docker database deployment gate.
+ * Explicit Hostinger/Docker database deployment gate.
  *
  * Historical context
  * ------------------
@@ -12,6 +12,10 @@
  * safe. This gate converges only the migration *history records* first, then
  * lets Prisma execute migrations created after the convergence point normally.
  * Business/application rows are never copied, seeded, truncated, or merged.
+ *
+ * IMPORTANT: this script is NOT invoked by `npm run build`. It is an explicit
+ * release operation (`npm run deploy:hostinger:db`) so a migration problem can
+ * never block an unrelated application/frontend build.
  */
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -25,6 +29,26 @@ const MASTER_LEGACY_TAIL = '20260921171000_marbot_ai_read_views';
 const TEXT_ID_CONVERGENCE = '20260924024500_align_uuid_storage_to_production_text';
 const READ_VIEW_REFRESH = '20260924031000_refresh_read_views_after_history_convergence';
 const TEXT_ID_REPAIR = '20260924040000_repair_skipped_text_id_convergence';
+
+const READ_PROJECTION_RELATIONS = [
+  'view_finance_main_dashboard',
+  'view_project_dashboard',
+  'view_project_timeline_cost',
+  'view_crm_sales_dashboard',
+  'ai_projects',
+  'ai_project_tasks',
+  'ai_project_finance_summary',
+  'ai_finance_summary',
+  'ai_crm_deals',
+];
+
+const AI_READ_VIEWS = new Set([
+  'ai_projects',
+  'ai_project_tasks',
+  'ai_project_finance_summary',
+  'ai_finance_summary',
+  'ai_crm_deals',
+]);
 
 // These migrations are schema-equivalent to the production baseline at the
 // 2026-09-22 convergence point. They remain committed so both branches carry a
@@ -58,9 +82,10 @@ const MASTER_LEGACY_EQUIVALENT_MIGRATIONS = [
 ];
 
 // Only migrations that are explicitly designed to be deterministic on retry
-// may be auto-resolved. Both convergence migrations are transactional. The
-// read-view refresh also drops and recreates only repository-owned views, so a
-// failed older attempt can be safely marked rolled back and retried.
+// may be auto-resolved. The read-view refresh can fail on the production
+// baseline because several `view_*` names are intentionally physical tables,
+// not SQL views. The forward TEXT-ID repair already handles that shape safely
+// and supersedes the refresh after verifying all required projections exist.
 const SAFE_FAILED_MIGRATIONS = new Set([
   '20260911090000_backfill_employee_user_mapping',
   TEXT_ID_CONVERGENCE,
@@ -135,6 +160,26 @@ async function readUuidColumns(client) {
   `);
 }
 
+async function readProjectionRelations(client) {
+  return client.$queryRawUnsafe(`
+    SELECT c.relname::text AS relation_name, c.relkind::text AS relation_kind
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname IN (
+        'view_finance_main_dashboard',
+        'view_project_dashboard',
+        'view_project_timeline_cost',
+        'view_crm_sales_dashboard',
+        'ai_projects',
+        'ai_project_tasks',
+        'ai_project_finance_summary',
+        'ai_finance_summary',
+        'ai_crm_deals'
+      )
+  `);
+}
+
 async function applyTextIdRepair(prismaCli, directUrl, client, history) {
   if (isApplied(history.get(TEXT_ID_REPAIR))) return history;
 
@@ -170,6 +215,41 @@ async function applyTextIdRepair(prismaCli, directUrl, client, history) {
     history,
     TEXT_ID_REPAIR,
     'Transactional repair completed; recording migration as applied',
+  );
+}
+
+async function reconcileReadViewRefreshAfterRepair(prismaCli, directUrl, client, history) {
+  if (isApplied(history.get(READ_VIEW_REFRESH))) return history;
+  if (!isApplied(history.get(TEXT_ID_REPAIR))) return history;
+
+  const relations = await readProjectionRelations(client);
+  const byName = new Map(relations.map((row) => [String(row.relation_name), String(row.relation_kind)]));
+  const missing = READ_PROJECTION_RELATIONS.filter((name) => !byName.has(name));
+  if (missing.length) {
+    throw new Error(
+      `Cannot reconcile ${READ_VIEW_REFRESH}: required read projection(s) are missing after ${TEXT_ID_REPAIR}: ${missing.join(', ')}`,
+    );
+  }
+
+  // The production baseline intentionally created the four reporting `view_*`
+  // relations as physical tables. Never DROP those tables merely to satisfy a
+  // historical migration name. The repair migration preserves them and creates
+  // the MarBot AI projections as real views. Verify that invariant before
+  // recording the superseded refresh as applied.
+  const invalidAiViews = [...AI_READ_VIEWS].filter((name) => !['v', 'm'].includes(byName.get(name)));
+  if (invalidAiViews.length) {
+    throw new Error(
+      `Cannot reconcile ${READ_VIEW_REFRESH}: AI projection(s) are not views after ${TEXT_ID_REPAIR}: ${invalidAiViews.join(', ')}`,
+    );
+  }
+
+  return recordApplied(
+    prismaCli,
+    directUrl,
+    client,
+    history,
+    READ_VIEW_REFRESH,
+    `Forward repair ${TEXT_ID_REPAIR} already established compatible read projections; recording superseded refresh as applied`,
   );
 }
 
@@ -301,6 +381,7 @@ async function main() {
     let history = await resolveSafeFailedMigrations(prismaCli, directUrl, client);
     history = await convergeMigrationLineages(prismaCli, directUrl, client, history);
     history = await applyTextIdRepair(prismaCli, directUrl, client, history);
+    history = await reconcileReadViewRefreshAfterRepair(prismaCli, directUrl, client, history);
   } finally {
     await client.$disconnect();
   }
@@ -320,4 +401,8 @@ if (require.main === module) {
   });
 }
 
-module.exports = { applyTextIdRepair, convergeMigrationLineages };
+module.exports = {
+  applyTextIdRepair,
+  convergeMigrationLineages,
+  reconcileReadViewRefreshAfterRepair,
+};
