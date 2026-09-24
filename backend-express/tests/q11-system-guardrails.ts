@@ -214,7 +214,7 @@ async function main(): Promise<void> {
       readFile(`${__dirname}/../src/modules/projects/project-authority.middleware.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/projects/projects.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../prisma/schema.prisma`, 'utf8'),
-      readFile(`${__dirname}/../prisma/migrations/20260922000000_production_baseline/migration.sql`, 'utf8'),
+      readFile(`${__dirname}/../prisma/migrations/20260916120000_project_assignment_contract/migration.sql`, 'utf8'),
     ]);
     assert(appSource.includes('restrictProjectMutationsByAuthority'), 'Project-aware mutation middleware is not mounted');
     assert(projectAuthorityMiddleware.includes("methods: ['POST']"), 'Staff Daily Task create allow-list is missing');
@@ -496,19 +496,43 @@ async function main(): Promise<void> {
     for (const legacyGreen of ['#22C55E', '#16A34A', '#166534', '#5f8f35', 'bg-emerald-', 'text-emerald-']) {
       assert(!`${dashboardClient}${projectClient}${tasksClient}${financeClient}${feedSource}`.includes(legacyGreen), `Legacy green visual token remains: ${legacyGreen}`);
     }
-    const [timesheetForm, timesheetTable, overtimeWidget, dashboardRoutes, reportingRoutes, budgetCard, employeeMappingMigration] = await Promise.all([
+    const [timesheetForm, timesheetTimerApi, timesheetTable, overtimeWidget, dashboardRoutes, reportingRoutes, budgetCard, employeeMappingMigration] = await Promise.all([
       readFile(`${__dirname}/../../frontend-next/components/staff/StaffTimesheetForm.tsx`, 'utf8'),
+      readFile(`${__dirname}/../../frontend-next/lib/api/timesheet-timer.api.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/staff/StaffTimesheetTable.tsx`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/staff/StaffOvertimeSummary.tsx`, 'utf8'),
       readFile(`${__dirname}/../src/modules/dashboard/dashboard.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../src/modules/reporting/reporting.routes.ts`, 'utf8'),
       readFile(`${__dirname}/../../frontend-next/components/ui/BudgetCheckStatusCard.tsx`, 'utf8'),
-      readFile(`${__dirname}/../prisma/migrations/20260922000000_production_baseline/migration.sql`, 'utf8'),
+      readFile(`${__dirname}/../prisma/migrations/20260911090000_backfill_employee_user_mapping/migration.sql`, 'utf8'),
     ]);
     for (const forbiddenField of ['employee_id:', 'hourly_rate:', 'amount:', 'approval_status:']) {
       assert(!timesheetForm.includes(forbiddenField), `Staff timesheet form must not send server-owned field ${forbiddenField}`);
     }
-    assert(timesheetForm.includes('createStaffTimesheet({') && timesheetForm.includes('overtime_hours: overtime'));
+    assert(!timesheetForm.includes('createStaffTimesheet({'), 'Staff timer must no longer submit browser-owned timestamps/hours through the legacy create endpoint.');
+    assert(
+      timesheetForm.includes('getActiveStaffTimer()')
+        && timesheetForm.includes('startStaffTimer({')
+        && timesheetForm.includes('stopStaffTimer')
+        && timesheetForm.includes('submitStaffTimer({'),
+      'Staff timesheet form must hydrate, start, stop, and submit through the server-authoritative timer contract.',
+    );
+    assert(
+      timesheetForm.includes('serverClockOffsetMs')
+        && timesheetForm.includes('document.addEventListener("visibilitychange"')
+        && timesheetForm.includes('window.addEventListener("focus"'),
+      'Staff timer must resynchronize from server time after browser tab/focus changes.',
+    );
+    for (const route of [
+      '/api/v1/projects/timesheets/timer/active',
+      '/api/v1/projects/timesheets/timer/start',
+      '/api/v1/projects/timesheets/timer/stop',
+      '/api/v1/projects/timesheets/timer/overtime/start',
+      '/api/v1/projects/timesheets/timer/overtime/stop',
+      '/api/v1/projects/timesheets/timer/submit',
+    ]) {
+      assert(timesheetTimerApi.includes(route), `Server timer frontend contract is missing ${route}`);
+    }
     assert(timesheetTable.includes('getStaffTimesheets({ page, page_size: PAGE_SIZE })'));
     assert(overtimeWidget.includes('getStaffOvertimeSummary()'));
     assert(tasksClient.includes('<StaffTimesheetForm') && tasksClient.includes('<StaffTimesheetTable'));
@@ -518,8 +542,8 @@ async function main(): Promise<void> {
     assert(dashboardRoutes.includes('ts.employee_id::text IN'), 'Dashboard overtime employee identity must be normalized across legacy DB column types.');
     const staffDashboardProjection = dashboardRoutes.slice(dashboardRoutes.indexOf('if (isStaff)'), dashboardRoutes.indexOf('NON STAFF'));
     assert(!staffDashboardProjection.includes('= ${userId}::uuid'), 'Staff dashboard projection must not force mixed legacy identity columns to UUID.');
-    assert(employeeMappingMigration.includes('CREATE UNIQUE INDEX "master_employee_company_id_user_id_key"'), 'Fresh-database baseline must enforce one employee identity per company user.');
-    assert(seedSource.includes("'CORE', 'PROJECTS', 'FINANCE', 'REPORTING'"), 'Production company must enable personal Project and Reporting access.');
+    assert(employeeMappingMigration.includes('SET "employee_id" = employee."id"') && !employeeMappingMigration.includes('SET "employee_id" = employee."id"::text'), 'Employee mapping migration must assign UUID to UUID without a text cast.');
+    assert(seedSource.includes("'FINANCE', 'REPORTING'"), 'Ghost test company must enable the Staff self-reporting module.');
     assert(reportingRoutes.includes("'/operational-summary'"), 'OM operational reporting projection is missing.');
     assert(reportTabAccess.includes('om: ["operational", "periodic", "attendance"]')
       && reportingClient.includes('canOpenReportTab(tab.id, userRole, requestAccess)'),

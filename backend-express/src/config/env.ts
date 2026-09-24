@@ -18,8 +18,9 @@ const envSchema = z.object({
   PORT: z.string().default('8001').transform(Number),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
-  // The target is explicit so a persistent Hostinger process never
-  // accidentally inherits Vercel's transaction-pooler behavior.
+  // The target is explicit so runtime database selection follows the actual
+  // hosting topology instead of whichever generic DATABASE_URL happens to be
+  // present in the provider environment.
   DEPLOYMENT_TARGET: z.enum(['local', 'hostinger', 'docker', 'vercel']).optional(),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
@@ -64,25 +65,15 @@ const envSchema = z.object({
 });
 
 /**
- * loadEnv implements a named function within this file's runtime configuration boundary.
- *
- * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
- * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
- * Data/side effects: No database operation is implied unless explicitly present in the implementation.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
- */
-/**
  * Chooses the Prisma runtime URL for the actual deployment topology.
  *
  * Vercel uses Supavisor transaction pooling (`pooler.supabase.com:6543`) to
  * tolerate ephemeral serverless instances. Hostinger runs a persistent
- * Express process and can use either the IPv4-compatible session pooler
- * (`pooler.supabase.com:5432`) or the direct PostgreSQL endpoint. Migrations
- * reject transaction pooling but support direct and session-mode port 5432.
- *
- * The validation is intentionally fail-closed: starting against the wrong
- * endpoint creates intermittent connection failures that are difficult to
- * diagnose after deployment.
+ * Express process, so its runtime and migration connection both come from the
+ * dedicated direct/session URL (`SUPABASE_DIRECT_URL` -> `DIRECT_URL`) on port
+ * 5432. A generic DATABASE_URL can therefore remain a legacy/transaction
+ * pooler value without breaking a Hostinger build or accidentally becoming the
+ * runtime connection.
  */
 function resolveDatabaseTopology(config: z.infer<typeof envSchema>) {
   const target = process.env.VERCEL === '1' ? 'vercel' : config.DEPLOYMENT_TARGET ?? 'local';
@@ -108,20 +99,22 @@ function resolveDatabaseTopology(config: z.infer<typeof envSchema>) {
   }
 
   if (target === 'hostinger') {
-    const runtimeUrl = config.DATABASE_URL;
+    // Hostinger must not validate the generic DATABASE_URL here. The provider
+    // can retain a legacy transaction-pooler value while this persistent
+    // Express runtime deliberately uses the same 5432 direct/session endpoint
+    // that already passed the migration gate.
+    const runtimeUrl = directUrl;
     const runtime = new URL(runtimeUrl);
     const runtimeIsDirect = /^db\.[a-z0-9-]+\.supabase\.co$/i.test(runtime.hostname) && runtime.port === '5432';
     const runtimeIsSessionPooler = runtime.hostname.endsWith('.pooler.supabase.com') && runtime.port === '5432';
     if (!runtimeIsDirect && !runtimeIsSessionPooler) {
-      throw new Error('Hostinger DATABASE_URL must use Supabase direct or session pooler port 5432, never transaction pooler port 6543.');
+      throw new Error('Hostinger SUPABASE_DIRECT_URL/DIRECT_URL must use Supabase direct or session pooler port 5432.');
     }
-    const migration = new URL(directUrl);
-    const migrationIsDirect = /^db\.[a-z0-9-]+\.supabase\.co$/i.test(migration.hostname) && migration.port === '5432';
-    const migrationIsSessionPooler = migration.hostname.endsWith('.pooler.supabase.com') && migration.port === '5432';
-    if (!migrationIsDirect && !migrationIsSessionPooler) {
-      throw new Error('Hostinger DIRECT_URL must use Supabase direct or session pooler port 5432.');
-    }
-    return { target, databaseUrl: withPoolDefaults(runtimeUrl, 5), directUrl };
+    return {
+      target,
+      databaseUrl: withPoolDefaults(runtimeUrl, 5),
+      directUrl: runtimeUrl,
+    };
   }
 
   return { target, databaseUrl: withPoolDefaults(config.DATABASE_URL, 5), directUrl };

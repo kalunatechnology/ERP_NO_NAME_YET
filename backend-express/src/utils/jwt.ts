@@ -26,27 +26,26 @@ export interface TokenPair {
   refresh: string;
 }
 
-/**
- * Sign an access token (default: 30m, matches Django SIMPLE_JWT ACCESS_TOKEN_LIFETIME)
- */
+// ERP access sessions are intentionally fixed at 24 hours. Keeping this in the
+// signing boundary prevents a stale deployment environment variable from
+// silently shortening browser sessions after a redeploy.
+const ACCESS_TOKEN_LIFETIME: jwt.SignOptions['expiresIn'] = '24h';
+
+/** Sign an access token with a fixed 24-hour lifetime. */
 export function signAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
-    expiresIn: env.JWT_ACCESS_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+    expiresIn: ACCESS_TOKEN_LIFETIME,
   });
 }
 
-/**
- * Sign a refresh token (default: 7d, matches Django SIMPLE_JWT REFRESH_TOKEN_LIFETIME)
- */
+/** Sign a refresh token (default: 7d). */
 export function signRefreshToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
   return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions['expiresIn'],
   });
 }
 
-/**
- * Sign both access and refresh tokens for a user.
- */
+/** Sign both access and refresh tokens for a user. */
 export function signTokenPair(payload: Omit<JwtPayload, 'iat' | 'exp'>): TokenPair {
   return {
     access: signAccessToken(payload),
@@ -54,9 +53,7 @@ export function signTokenPair(payload: Omit<JwtPayload, 'iat' | 'exp'>): TokenPa
   };
 }
 
-/**
- * Verify and decode an access token. Returns null if invalid/expired.
- */
+/** Verify and decode an access token. Returns null if invalid/expired. */
 export function verifyAccessToken(token: string): JwtPayload | null {
   try {
     return jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
@@ -65,9 +62,7 @@ export function verifyAccessToken(token: string): JwtPayload | null {
   }
 }
 
-/**
- * Verify and decode a refresh token. Returns null if invalid/expired.
- */
+/** Verify and decode a refresh token. Returns null if invalid/expired. */
 export function verifyRefreshToken(token: string): JwtPayload | null {
   try {
     return jwt.verify(token, env.JWT_REFRESH_SECRET) as JwtPayload;
@@ -76,9 +71,7 @@ export function verifyRefreshToken(token: string): JwtPayload | null {
   }
 }
 
-/**
- * Decode a JWT without verifying the signature (for inspecting expired tokens, etc.)
- */
+/** Decode a JWT without verifying the signature (for inspecting expired tokens, etc.). */
 export function decodeToken(token: string): JwtPayload | null {
   try {
     return jwt.decode(token) as JwtPayload | null;

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { projects, users } from '../prisma/seed';
+import { projects, users } from '../prisma/seed.production';
 
 function dateValue(value: string | null): number {
   return value ? new Date(`${value}T00:00:00+07:00`).getTime() : Number.POSITIVE_INFINITY;
@@ -41,9 +41,21 @@ async function main(): Promise<void> {
     assert((weeklyByOwner.get(user.username) ?? 0) > 0, `${user.username} needs a personal Weekly Task for Daily Task creation.`);
     assert((dailyByOwner.get(user.username) ?? 0) > 0, `${user.username} needs at least one personal Daily Task.`);
   }
-  assert.deepEqual({ mainTaskCount, weeklyTaskCount, dailyTaskCount }, { mainTaskCount: 7, weeklyTaskCount: 12, dailyTaskCount: 26 });
 
-  console.log(JSON.stringify({ status: 'PASS', companyUsers: companyUsers.length, projects: projects.length, mainTaskCount, weeklyTaskCount, dailyTaskCount, activeProjectSupervisors: 0 }, null, 2));
+  assert.deepEqual(
+    { mainTaskCount, weeklyTaskCount, dailyTaskCount },
+    { mainTaskCount: 7, weeklyTaskCount: 12, dailyTaskCount: 26 },
+  );
+
+  console.log(JSON.stringify({
+    status: 'PASS',
+    companyUsers: companyUsers.length,
+    projects: projects.length,
+    mainTaskCount,
+    weeklyTaskCount,
+    dailyTaskCount,
+    activeProjectSupervisors: 0,
+  }, null, 2));
 }
 
 main().catch((error) => {

@@ -4,6 +4,11 @@
  * A Hostinger build runs pending Prisma migrations before compiling the
  * backend. Other environments compile only: Vercel must never run migrations
  * in a serverless build, and local builds must not touch a remote database.
+ *
+ * Deployment builds intentionally stop after migration/schema-audit/generate/
+ * compile. Unit and cross-project contract tests belong to CI/local validation
+ * and must not re-import the production runtime configuration during a
+ * Hostinger build.
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
@@ -34,10 +39,15 @@ function assertNoUuidCastsForTextIds(directory) {
 }
 
 function main() {
+  const isHostinger = process.env.VERCEL !== '1' && process.env.DEPLOYMENT_TARGET === 'hostinger';
+
   // The explicit target prevents accidental database writes from developer
-  // machines and prevents migration execution in Vercel builds.
-  if (process.env.VERCEL !== '1' && process.env.DEPLOYMENT_TARGET === 'hostinger') {
+  // machines and prevents migration execution in Vercel builds. Immediately
+  // audit the physical schema afterwards so Express can never start against a
+  // UUID-backed database while the production contract expects TEXT IDs.
+  if (isHostinger) {
     run(process.execPath, [path.join(__dirname, 'deploy_hostinger_migrations.js')]);
+    run(process.execPath, [path.join(__dirname, 'audit_database_architecture.js')]);
   }
 
   // Invoke local tool entry points through the current Node executable. This
@@ -54,19 +64,25 @@ function main() {
   run(process.execPath, [path.join(root, 'node_modules', 'prisma', 'build', 'index.js'), 'generate']);
   run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);
 
+  // Hostinger has already passed migration + physical architecture validation
+  // and TypeScript compilation. Running unit tests here re-imports env.ts with
+  // provider production variables and couples deployment availability to test
+  // harness assumptions. CI/local builds remain responsible for the full test
+  // suite.
+  if (isHostinger) {
+    console.log('Hostinger deployment build: migrations applied, production schema parity verified, Prisma generated, TypeScript compiled; unit tests are delegated to CI.');
+    return;
+  }
+
   if (process.env.SKIP_TESTS_ON_BUILD !== 'true') {
     // tests/q11-system-guardrails.ts imports contracts from the sibling frontend-next project.
-    // In isolated deployment environments (e.g., Hostinger / Docker / CI standalone backend),
-    // skip cross-project monorepo tests if the sibling folder does not exist or target is Hostinger.
-    if (hasFrontend && process.env.DEPLOYMENT_TARGET !== 'hostinger') {
+    if (hasFrontend) {
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/q11-system-guardrails.ts']);
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-financial-targets.unit.ts']);
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-input-validation.unit.ts']);
-      // This test also asserts frontend route/navigation contracts, therefore
-      // it cannot compile in a backend-only Hostinger deployment artifact.
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-acting-manager.unit.ts']);
     } else {
-      console.log('Skipping cross-project frontend contract tests (monorepo frontend-next not present or production deployment target).');
+      console.log('Skipping cross-project frontend contract tests (monorepo frontend-next not present).');
     }
 
     run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/reporting-global-scope.unit.ts']);

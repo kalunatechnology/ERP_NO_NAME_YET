@@ -668,12 +668,12 @@ function ExecutiveDashboard({ projects, finData, loading }: {
   const onTrackCount = Math.max(0, active - delayed);
 
   const executiveTabs = (
-    <div className="inline-flex w-full sm:w-auto items-center gap-1 rounded-[14px] border border-[#D9D9D9] bg-white p-1 shadow-xs">
+    <div className="inline-flex w-full items-center gap-1 rounded-[18px] border border-[#D9D9D9] bg-white p-1.5 shadow-xs">
       <button
         type="button"
         onClick={() => setActiveTab("overview")}
         className={cn(
-          "flex-1 sm:flex-none rounded-[10px] px-4 py-2 text-xs font-bold transition-colors",
+          "flex-1 sm:flex-none rounded-[14px] px-5 py-2.5 text-sm font-bold transition-colors",
           activeTab === "overview"
             ? "bg-[#294BB2] text-white shadow-sm"
             : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#294BB2]"
@@ -685,7 +685,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
         type="button"
         onClick={() => setActiveTab("daily_tasks")}
         className={cn(
-          "flex-1 sm:flex-none rounded-[10px] px-4 py-2 text-xs font-bold transition-colors",
+          "flex-1 sm:flex-none rounded-[14px] px-5 py-2.5 text-sm font-bold transition-colors",
           activeTab === "daily_tasks"
             ? "bg-[#294BB2] text-white shadow-sm"
             : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#294BB2]"
@@ -700,7 +700,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
     return (
       <div className="flex flex-col gap-5 pb-8">
         {executiveTabs}
-        <ExecutiveDailyTaskMonitor projects={projects} />
+        <ExecutiveDailyTaskMonitor projects={projects} loading={loading} />
       </div>
     );
   }

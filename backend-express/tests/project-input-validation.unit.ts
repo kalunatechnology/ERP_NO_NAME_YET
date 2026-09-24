@@ -62,7 +62,7 @@ async function main() {
     readFile(path.join(repositoryRoot, 'frontend-next/components/projects/ProjectWbsNode.tsx'), 'utf8'),
   ]);
   const migration = await readFile(
-    path.join(repositoryRoot, 'backend-express/prisma/migrations/20260922000000_production_baseline/migration.sql'),
+    path.join(repositoryRoot, 'backend-express/prisma/migrations/20260921020000_main_task_cost_owner_division/migration.sql'),
     'utf8',
   );
 
@@ -92,7 +92,7 @@ async function main() {
   assert.match(routes, /Assignment is additive/);
   assert.match(client, /await removeTaskAssignment\(assignmentId\)/);
   assert.match(schema, /cost_owner_division_id\s+String\?/);
-  assert.match(migration, /"cost_owner_division_id" TEXT/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "cost_owner_division_id" TEXT/);
 
   process.stdout.write('PASS: project funding, weekly task, and main task validation contract\n');
 }
