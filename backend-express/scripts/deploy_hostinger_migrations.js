@@ -20,6 +20,7 @@ const { createPrismaClient } = require('./prisma_client');
 const PRODUCTION_BASELINE = '20260922000000_production_baseline';
 const MASTER_LEGACY_TAIL = '20260921171000_marbot_ai_read_views';
 const TEXT_ID_CONVERGENCE = '20260924024500_align_uuid_storage_to_production_text';
+const READ_VIEW_REFRESH = '20260924031000_refresh_read_views_after_history_convergence';
 
 // These migrations are schema-equivalent to the production baseline at the
 // 2026-09-22 convergence point. They remain committed so both branches carry a
@@ -53,9 +54,14 @@ const MASTER_LEGACY_EQUIVALENT_MIGRATIONS = [
   TEXT_ID_CONVERGENCE,
 ];
 
+// Only migrations that are explicitly designed to be deterministic on retry
+// may be auto-resolved. Both convergence migrations are transactional. The
+// read-view refresh also drops and recreates only repository-owned views, so a
+// failed older attempt can be safely marked rolled back and retried.
 const SAFE_FAILED_MIGRATIONS = new Set([
   '20260911090000_backfill_employee_user_mapping',
   TEXT_ID_CONVERGENCE,
+  READ_VIEW_REFRESH,
 ]);
 
 function requireMigrationSupabaseUrl(value) {
@@ -124,7 +130,7 @@ async function resolveSafeFailedMigrations(prismaCli, directUrl, client) {
     const logTail = String(row.logs || '').trim().slice(-1200);
     if (logTail) console.warn(`Previous failure for ${migrationName}:\n${logTail}`);
 
-    console.log(`Resolving transaction-safe failed migration as rolled back: ${migrationName}`);
+    console.log(`Resolving retry-safe failed migration as rolled back: ${migrationName}`);
     runPrismaResolve(prismaCli, directUrl, '--rolled-back', migrationName);
     history = await refreshHistory(client);
   }
