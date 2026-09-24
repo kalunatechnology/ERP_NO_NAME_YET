@@ -183,8 +183,15 @@ async function convergeMigrationLineages(prismaCli, directUrl, client, history) 
 
   if (isApplied(history.get(PRODUCTION_BASELINE))) {
     console.log(`Production migration lineage detected via ${PRODUCTION_BASELINE}.`);
+    // information_schema identifiers are PostgreSQL `name`/sql_identifier values.
+    // Prisma's raw-query decoder does not support the wire type `name`, so cast
+    // them explicitly to TEXT. This mirrors the proven production deployment
+    // pattern used when reading information_schema.tables.
     const uuidColumns = await client.$queryRawUnsafe(`
-      SELECT table_name, column_name FROM information_schema.columns
+      SELECT
+        table_name::text AS table_name,
+        column_name::text AS column_name
+      FROM information_schema.columns
       WHERE table_schema = 'public' AND data_type = 'uuid'
     `);
     for (const migrationName of MASTER_LEGACY_EQUIVALENT_MIGRATIONS) {
