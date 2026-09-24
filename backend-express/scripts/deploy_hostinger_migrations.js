@@ -21,6 +21,7 @@ const PRODUCTION_BASELINE = '20260922000000_production_baseline';
 const MASTER_LEGACY_TAIL = '20260921171000_marbot_ai_read_views';
 const TEXT_ID_CONVERGENCE = '20260924024500_align_uuid_storage_to_production_text';
 const READ_VIEW_REFRESH = '20260924031000_refresh_read_views_after_history_convergence';
+const TEXT_ID_REPAIR = '20260924040000_repair_skipped_text_id_convergence';
 
 // These migrations are schema-equivalent to the production baseline at the
 // 2026-09-22 convergence point. They remain committed so both branches carry a
@@ -49,8 +50,7 @@ const MASTER_LEGACY_EQUIVALENT_MIGRATIONS = [
   '20260921030000_marbot_tenant_provisioning',
   '20260921170000_marbot_runtime_v2_permissions',
   MASTER_LEGACY_TAIL,
-  // Production baseline already uses TEXT IDs, so this master-only physical
-  // convergence must be skipped on a production-baselined or fresh database.
+  // Skip this physical conversion only after checking the actual column types.
   TEXT_ID_CONVERGENCE,
 ];
 
@@ -62,6 +62,7 @@ const SAFE_FAILED_MIGRATIONS = new Set([
   '20260911090000_backfill_employee_user_mapping',
   TEXT_ID_CONVERGENCE,
   READ_VIEW_REFRESH,
+  TEXT_ID_REPAIR,
 ]);
 
 function requireMigrationSupabaseUrl(value) {
@@ -157,7 +158,7 @@ async function recordApplied(prismaCli, directUrl, client, history, migrationNam
  *
  * Cases:
  * A. Existing production DB: baseline is applied -> mark legacy master names as
- *    applied, including the master-only UUID->TEXT migration.
+ *    applied; skip UUID->TEXT only when the physical schema has no UUID columns.
  * B. Existing master DB: legacy tail is applied -> mark production baseline as
  *    applied, then allow the corrected UUID->TEXT convergence migration to run.
  * C. Brand-new DB: no history -> choose the production baseline as bootstrap by
@@ -182,7 +183,15 @@ async function convergeMigrationLineages(prismaCli, directUrl, client, history) 
 
   if (isApplied(history.get(PRODUCTION_BASELINE))) {
     console.log(`Production migration lineage detected via ${PRODUCTION_BASELINE}.`);
+    const uuidColumns = await client.$queryRawUnsafe(`
+      SELECT table_name, column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND data_type = 'uuid'
+    `);
     for (const migrationName of MASTER_LEGACY_EQUIVALENT_MIGRATIONS) {
+      if (migrationName === TEXT_ID_CONVERGENCE && uuidColumns.length > 0) {
+        console.log('Physical UUID columns remain; preserving conversion history for migrate deploy and the forward repair migration.');
+        continue;
+      }
       history = await recordApplied(
         prismaCli,
         directUrl,
@@ -251,12 +260,11 @@ async function main() {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-try {
+if (require.main === module) {
   main().catch((error) => {
     console.error(`Database deployment blocked: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;
   });
-} catch (error) {
-  console.error(`Database deployment blocked: ${error instanceof Error ? error.message : String(error)}`);
-  process.exitCode = 1;
 }
+
+module.exports = { convergeMigrationLineages };

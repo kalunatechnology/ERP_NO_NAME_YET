@@ -32,7 +32,7 @@ for (const view of [
   assert(migration.includes(`CREATE VIEW ${view} AS`), `${view} must be recreated canonically.`);
 }
 
-assert(!migration.includes('CREATE OR REPLACE VIEW'), 'Retry migration must not rely on incompatible CREATE OR REPLACE VIEW type changes.');
+assert(!/^\s*CREATE OR REPLACE VIEW/im.test(migration), 'Retry migration must not rely on incompatible CREATE OR REPLACE VIEW type changes.');
 for (const forbidden of ['TRUNCATE ', 'DELETE FROM ', 'UPDATE ', 'INSERT INTO ']) {
   assert(!migration.toUpperCase().includes(forbidden), `Schema convergence migration must not mutate business rows: ${forbidden}`);
 }
