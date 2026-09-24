@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, CheckCircle2, ChevronDown, FileText, Filter, Search, UserRound, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { DailyTask, Project } from "@/lib/api/project.api";
 import { cn, normalizeDateKey } from "@/lib/utils";
 
@@ -23,6 +25,22 @@ function formatDate(value: string) {
   if (!value) return "-";
   const [year, month, day] = value.split("-");
   return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
+const MARKDOWN_TOKEN_PATTERN = /(```[\s\S]*?```|`[^`\n]+`|\[[^\]]+\]\([^)]+\))/g;
+const BARE_URL_PATTERN = /(^|[\s(])((?:https?:\/\/|www\.)[^\s<>{}\[\]()]*[A-Za-z0-9/#=_~-])/gi;
+
+function linkifyNoteMarkdown(value: string) {
+  return value
+    .split(MARKDOWN_TOKEN_PATTERN)
+    .map((segment) => {
+      if (/^```|^`|^\[[^\]]+\]\([^)]+\)$/.test(segment)) return segment;
+      return segment.replace(BARE_URL_PATTERN, (_match, prefix: string, url: string) => {
+        const href = url.toLowerCase().startsWith("www.") ? `https://${url}` : url;
+        return `${prefix}[${url}](${href})`;
+      });
+    })
+    .join("");
 }
 
 function taskStatus(record: DailyTaskRecord) {
@@ -60,6 +78,42 @@ function DetailItem({ label, children, wide = false }: { label: string; children
     <div className={cn("min-w-0", wide && "sm:col-span-2")}>
       <dt className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#777B82]">{label}</dt>
       <dd className="mt-1.5 whitespace-pre-wrap break-words text-[14px] leading-6 text-[#17191C]">{children || "-"}</dd>
+    </div>
+  );
+}
+
+function NoteDetail({ value }: { value?: string }) {
+  return (
+    <div className="min-w-0 sm:col-span-2">
+      <dt className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#777B82]">Catatan</dt>
+      <dd className="mt-1.5 min-w-0 break-words text-[14px] leading-6 text-[#17191C]">
+        {value?.trim() ? (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ children }) => <p className="whitespace-pre-wrap break-words">{children}</p>,
+              a: ({ href, children }) => {
+                const isExternal = /^https?:\/\//i.test(href || "");
+                return (
+                  <a
+                    href={href}
+                    target={isExternal ? "_blank" : undefined}
+                    rel={isExternal ? "noopener noreferrer" : undefined}
+                    className="break-all font-medium text-[#3157C8] underline decoration-[#8EA9F1] underline-offset-2 transition hover:text-[#193C9B] focus:rounded-sm focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]"
+                  >
+                    {children}
+                  </a>
+                );
+              },
+              ul: ({ children }) => <ul className="ml-5 list-disc space-y-1">{children}</ul>,
+              ol: ({ children }) => <ol className="ml-5 list-decimal space-y-1">{children}</ol>,
+              code: ({ children }) => <code className="break-all rounded bg-[#F1F3F5] px-1 py-0.5 text-[13px]">{children}</code>,
+            }}
+          >
+            {linkifyNoteMarkdown(value)}
+          </ReactMarkdown>
+        ) : "-"}
+      </dd>
     </div>
   );
 }
@@ -106,7 +160,7 @@ function DailyTaskDetail({ record, onClose }: { record: DailyTaskRecord; onClose
             <DetailItem label="Aktivitas" wide>{record.task.activity_input || record.task.title || "-"}</DetailItem>
             <DetailItem label="Deskripsi" wide>{record.task.description || "-"}</DetailItem>
             <DetailItem label="Output Hasil" wide>{record.task.output_result || "Belum ada output"}</DetailItem>
-            <DetailItem label="Catatan" wide>{record.task.notes || "-"}</DetailItem>
+            <NoteDetail value={record.task.notes} />
             {(record.task.is_blocked || String(record.task.status).toUpperCase() === "BLOCKED") && <DetailItem label="Kendala" wide>{record.task.block_reason || "Terkendala"}</DetailItem>}
           </dl>
         </div>
