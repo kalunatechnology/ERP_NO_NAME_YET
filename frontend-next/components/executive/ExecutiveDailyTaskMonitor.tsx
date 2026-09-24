@@ -82,10 +82,10 @@ function DetailItem({ label, children, wide = false }: { label: string; children
   );
 }
 
-function NoteDetail({ value }: { value?: string }) {
+function MarkdownDetail({ label, value, fallback = "-" }: { label: string; value?: string | null; fallback?: string }) {
   return (
     <div className="min-w-0 sm:col-span-2">
-      <dt className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#777B82]">Catatan</dt>
+      <dt className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#777B82]">{label}</dt>
       <dd className="mt-1.5 min-w-0 break-words text-[14px] leading-6 text-[#17191C]">
         {value?.trim() ? (
           <ReactMarkdown
@@ -112,7 +112,7 @@ function NoteDetail({ value }: { value?: string }) {
           >
             {linkifyNoteMarkdown(value)}
           </ReactMarkdown>
-        ) : "-"}
+        ) : fallback}
       </dd>
     </div>
   );
@@ -159,8 +159,8 @@ function DailyTaskDetail({ record, onClose }: { record: DailyTaskRecord; onClose
             <DetailItem label="Waktu">{record.timeSlot || "-"}</DetailItem>
             <DetailItem label="Aktivitas" wide>{record.task.activity_input || record.task.title || "-"}</DetailItem>
             <DetailItem label="Deskripsi" wide>{record.task.description || "-"}</DetailItem>
-            <DetailItem label="Output Hasil" wide>{record.task.output_result || "Belum ada output"}</DetailItem>
-            <NoteDetail value={record.task.notes} />
+            <MarkdownDetail label="Output Hasil" value={record.task.output_result} fallback="Belum ada output" />
+            <MarkdownDetail label="Catatan" value={record.task.notes} />
             {(record.task.is_blocked || String(record.task.status).toUpperCase() === "BLOCKED") && <DetailItem label="Kendala" wide>{record.task.block_reason || "Terkendala"}</DetailItem>}
           </dl>
         </div>
