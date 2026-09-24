@@ -1,32 +1,29 @@
 /**
  * Hostinger/Docker database deployment gate.
  *
- * The ERP currently has two historical migration lineages that must converge
- * without replaying equivalent DDL against the wrong database:
+ * Historical context
+ * ------------------
+ * The ERP temporarily had two equivalent migration histories:
  *
- * 1. Master legacy lineage: incremental migrations through 2026-09-21.
- * 2. Production lineage: one squashed 20260922000000_production_baseline.
+ * - master: incremental migrations through 20260921171000...
+ * - production: squashed 20260922000000_production_baseline
  *
- * Both lineages describe the same application schema at the convergence point,
- * but they are recorded differently in _prisma_migrations. This script bridges
- * the histories by recording equivalent migrations as applied when it detects
- * the production baseline. It never copies/seeds business data and never runs
- * legacy master DDL against a production-baselined database.
- *
- * After the convergence point, all new migrations are normal shared migrations
- * and must execute on both databases.
+ * Replaying one history on a database that already contains the other is not
+ * safe. This gate converges only the migration *history records* first, then
+ * lets Prisma execute migrations created after the convergence point normally.
+ * Business/application rows are never copied, seeded, truncated, or merged.
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const { createPrismaClient } = require('./prisma_client');
 
 const PRODUCTION_BASELINE = '20260922000000_production_baseline';
+const MASTER_LEGACY_TAIL = '20260921171000_marbot_ai_read_views';
 const TEXT_ID_CONVERGENCE = '20260924024500_align_uuid_storage_to_production_text';
 
-// These migrations existed on the master lineage before production was
-// squashed into PRODUCTION_BASELINE. When the production baseline is already
-// recorded, their structural effects are already present and they must be
-// resolved as applied rather than executed again.
+// These migrations are schema-equivalent to the production baseline at the
+// 2026-09-22 convergence point. They remain committed so both branches carry a
+// complete historical record, but the deployment gate prevents duplicate DDL.
 const MASTER_LEGACY_EQUIVALENT_MIGRATIONS = [
   '20260903060000_q3_access_and_tenant_scope',
   '20260903063000_q3_role_catalog_invariant',
@@ -50,14 +47,12 @@ const MASTER_LEGACY_EQUIVALENT_MIGRATIONS = [
   '20260921020000_main_task_cost_owner_division',
   '20260921030000_marbot_tenant_provisioning',
   '20260921170000_marbot_runtime_v2_permissions',
-  '20260921171000_marbot_ai_read_views',
-  // Production baseline already stores identifiers as TEXT, so this master-only
-  // physical convergence is also equivalent and must not run there.
+  MASTER_LEGACY_TAIL,
+  // Production baseline already uses TEXT IDs, so this master-only physical
+  // convergence must be skipped on a production-baselined or fresh database.
   TEXT_ID_CONVERGENCE,
 ];
 
-// These migrations are explicitly known to be transaction-safe to mark as
-// rolled back before retry/bridging. Do not add arbitrary migrations here.
 const SAFE_FAILED_MIGRATIONS = new Set([
   '20260911090000_backfill_employee_user_mapping',
   TEXT_ID_CONVERGENCE,
@@ -116,54 +111,110 @@ function isUnresolvedFailure(row) {
   return Boolean(row) && !row.finished_at && !row.rolled_back_at;
 }
 
+async function refreshHistory(client) {
+  return latestByName(await readMigrationHistory(client));
+}
+
 async function resolveSafeFailedMigrations(prismaCli, directUrl, client) {
-  let history = latestByName(await readMigrationHistory(client));
+  let history = await refreshHistory(client);
   for (const migrationName of SAFE_FAILED_MIGRATIONS) {
     const row = history.get(migrationName);
     if (!isUnresolvedFailure(row)) continue;
 
     const logTail = String(row.logs || '').trim().slice(-1200);
-    if (logTail) {
-      console.warn(`Previous failure for ${migrationName}:\n${logTail}`);
-    }
+    if (logTail) console.warn(`Previous failure for ${migrationName}:\n${logTail}`);
+
     console.log(`Resolving transaction-safe failed migration as rolled back: ${migrationName}`);
     runPrismaResolve(prismaCli, directUrl, '--rolled-back', migrationName);
-    history = latestByName(await readMigrationHistory(client));
+    history = await refreshHistory(client);
   }
   return history;
 }
 
-async function bridgeProductionBaselineHistory(prismaCli, directUrl, client, history) {
-  const baseline = history.get(PRODUCTION_BASELINE);
-  if (!isApplied(baseline)) return history;
-
-  console.log(`Production migration lineage detected via ${PRODUCTION_BASELINE}.`);
-  console.log('Bridging equivalent master history without replaying schema/data migrations.');
-
-  for (const migrationName of MASTER_LEGACY_EQUIVALENT_MIGRATIONS) {
-    let row = history.get(migrationName);
-    if (isApplied(row)) continue;
-
-    if (isUnresolvedFailure(row)) {
-      if (!SAFE_FAILED_MIGRATIONS.has(migrationName)) {
-        throw new Error(
-          `Migration ${migrationName} is failed and is not approved for automatic history recovery.`,
-        );
-      }
-      runPrismaResolve(prismaCli, directUrl, '--rolled-back', migrationName);
-      history = latestByName(await readMigrationHistory(client));
-      row = history.get(migrationName);
+async function recordApplied(prismaCli, directUrl, client, history, migrationName, reason) {
+  const row = history.get(migrationName);
+  if (isApplied(row)) return history;
+  if (isUnresolvedFailure(row)) {
+    if (!SAFE_FAILED_MIGRATIONS.has(migrationName)) {
+      throw new Error(`Cannot auto-resolve failed migration ${migrationName}; manual review is required.`);
     }
+    runPrismaResolve(prismaCli, directUrl, '--rolled-back', migrationName);
+    history = await refreshHistory(client);
+  }
+  console.log(`${reason}: ${migrationName}`);
+  runPrismaResolve(prismaCli, directUrl, '--applied', migrationName);
+  return refreshHistory(client);
+}
 
-    // The production baseline is a schema-equivalent squash of these legacy
-    // migrations. Resolve them as applied so a later master -> production merge
-    // cannot replay CREATE/ALTER/backfill SQL against the live production DB.
-    console.log(`Recording baseline-equivalent migration as applied: ${migrationName}`);
-    runPrismaResolve(prismaCli, directUrl, '--applied', migrationName);
-    history = latestByName(await readMigrationHistory(client));
+/**
+ * Reconciles the historical split without executing duplicate schema changes.
+ *
+ * Cases:
+ * A. Existing production DB: baseline is applied -> mark legacy master names as
+ *    applied, including the master-only UUID->TEXT migration.
+ * B. Existing master DB: legacy tail is applied -> mark production baseline as
+ *    applied, then allow the corrected UUID->TEXT convergence migration to run.
+ * C. Brand-new DB: no history -> choose the production baseline as bootstrap by
+ *    marking legacy/equivalent migrations applied before migrate deploy.
+ * D. Partial/unknown pre-baseline history -> hard stop rather than guessing.
+ */
+async function convergeMigrationLineages(prismaCli, directUrl, client, history) {
+  if (history.size === 0) {
+    console.log('Empty migration history detected. Bootstrapping from the production baseline lineage.');
+    for (const migrationName of MASTER_LEGACY_EQUIVALENT_MIGRATIONS) {
+      history = await recordApplied(
+        prismaCli,
+        directUrl,
+        client,
+        history,
+        migrationName,
+        'Recording pre-baseline equivalent as applied',
+      );
+    }
+    return history;
   }
 
-  return history;
+  if (isApplied(history.get(PRODUCTION_BASELINE))) {
+    console.log(`Production migration lineage detected via ${PRODUCTION_BASELINE}.`);
+    for (const migrationName of MASTER_LEGACY_EQUIVALENT_MIGRATIONS) {
+      history = await recordApplied(
+        prismaCli,
+        directUrl,
+        client,
+        history,
+        migrationName,
+        'Bridging baseline-equivalent master migration',
+      );
+    }
+    return history;
+  }
+
+  if (isApplied(history.get(MASTER_LEGACY_TAIL))) {
+    console.log(`Master legacy lineage detected via ${MASTER_LEGACY_TAIL}.`);
+    history = await recordApplied(
+      prismaCli,
+      directUrl,
+      client,
+      history,
+      PRODUCTION_BASELINE,
+      'Recording production squash baseline as schema-equivalent',
+    );
+    return history;
+  }
+
+  const knownPreBaselineRows = [...history.keys()].filter((name) =>
+    MASTER_LEGACY_EQUIVALENT_MIGRATIONS.includes(name),
+  );
+  if (knownPreBaselineRows.length) {
+    throw new Error(
+      `Partial pre-baseline migration history detected (${knownPreBaselineRows.length} known migration(s)). ` +
+      'Deployment stopped because neither the production baseline nor the complete master legacy tail is applied.',
+    );
+  }
+
+  throw new Error(
+    'Unknown migration lineage. Refusing to guess whether this database is master, production, or a partial restore.',
+  );
 }
 
 async function main() {
@@ -181,7 +232,7 @@ async function main() {
 
   try {
     let history = await resolveSafeFailedMigrations(prismaCli, directUrl, client);
-    history = await bridgeProductionBaselineHistory(prismaCli, directUrl, client, history);
+    history = await convergeMigrationLineages(prismaCli, directUrl, client, history);
   } finally {
     await client.$disconnect();
   }
