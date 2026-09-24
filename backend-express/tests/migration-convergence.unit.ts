@@ -50,10 +50,27 @@ assert(
   'Retry-safe failures must be resolved as rolled back before migrate deploy.',
 );
 
+// PostgreSQL information_schema identifier columns can be exposed as wire type
+// `name`. Prisma raw queries cannot deserialize that type. Keep explicit TEXT
+// casts here, matching the production deployment script's proven pattern.
+assert(
+  deployGate.includes('table_name::text AS table_name'),
+  'Deployment gate must cast information_schema table_name to TEXT before Prisma decoding.',
+);
+assert(
+  deployGate.includes('column_name::text AS column_name'),
+  'Deployment gate must cast information_schema column_name to TEXT before Prisma decoding.',
+);
+assert(
+  !deployGate.includes('SELECT table_name, column_name FROM information_schema.columns'),
+  'Deployment gate must not return PostgreSQL name/sql_identifier values directly through Prisma raw queries.',
+);
+
 console.log(JSON.stringify({
   status: 'PASS',
   migration: migrationName,
   transaction: true,
   retrySafe: true,
+  informationSchemaIdentifiers: 'cast-to-text',
   businessDataMutation: false,
 }, null, 2));
