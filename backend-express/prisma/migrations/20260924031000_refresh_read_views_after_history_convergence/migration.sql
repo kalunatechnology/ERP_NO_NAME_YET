@@ -4,8 +4,26 @@
 -- repository-owned views here ensures a fresh database bootstrapped from the
 -- production baseline receives the same reporting/MarBot read projections as
 -- an existing master or production database.
+--
+-- This migration is intentionally transactional and retry-safe. Older database
+-- lineages may already contain these views with UUID-backed output columns;
+-- PostgreSQL CREATE OR REPLACE VIEW cannot change an existing view column type.
+-- Drop the repository-owned projections first, then recreate their canonical
+-- TEXT-backed definitions. No business/application rows are modified.
 
-CREATE OR REPLACE VIEW view_finance_main_dashboard AS
+BEGIN;
+
+DROP VIEW IF EXISTS ai_crm_deals;
+DROP VIEW IF EXISTS ai_finance_summary;
+DROP VIEW IF EXISTS ai_project_finance_summary;
+DROP VIEW IF EXISTS ai_project_tasks;
+DROP VIEW IF EXISTS ai_projects;
+DROP VIEW IF EXISTS view_crm_sales_dashboard;
+DROP VIEW IF EXISTS view_project_timeline_cost;
+DROP VIEW IF EXISTS view_project_dashboard;
+DROP VIEW IF EXISTS view_finance_main_dashboard;
+
+CREATE VIEW view_finance_main_dashboard AS
 SELECT
   c.tenant_id,
   NULL::text AS created_by_id,
@@ -28,7 +46,7 @@ LEFT JOIN (
   FROM fin_project_cost_entry GROUP BY company_id
 ) e ON e.company_id = c.id;
 
-CREATE OR REPLACE VIEW view_project_dashboard AS
+CREATE VIEW view_project_dashboard AS
 SELECT
   p.tenant_id,
   p.company_id,
@@ -51,7 +69,7 @@ LEFT JOIN (
   FROM project_task GROUP BY project_id
 ) t ON t.project_id = p.id;
 
-CREATE OR REPLACE VIEW view_project_timeline_cost AS
+CREATE VIEW view_project_timeline_cost AS
 SELECT
   p.tenant_id,
   p.company_id,
@@ -82,7 +100,7 @@ LEFT JOIN (
   FROM fin_project_cost_entry WHERE status IN ('VALIDATED','APPROVED') GROUP BY project_id
 ) e ON e.project_id = p.id;
 
-CREATE OR REPLACE VIEW view_crm_sales_dashboard AS
+CREATE VIEW view_crm_sales_dashboard AS
 SELECT
   c.tenant_id,
   NULL::text AS created_by_id,
@@ -102,19 +120,19 @@ FROM core_company c
 LEFT JOIN crm_opportunity o ON o.company_id = c.id
 GROUP BY c.tenant_id, c.id;
 
-CREATE OR REPLACE VIEW ai_projects AS
+CREATE VIEW ai_projects AS
 SELECT p.id, p.tenant_id, p.company_id, p.project_code, p.project_name,
        p.project_manager_id, p.status, p.planned_start_date, p.planned_end_date,
        p.progress_percent, p.health_status
 FROM project_project p;
 
-CREATE OR REPLACE VIEW ai_project_tasks AS
+CREATE VIEW ai_project_tasks AS
 SELECT t.id, t.tenant_id, t.company_id, t.project_id, t.parent_task_id,
        t.task_code, t.task_name, t.priority, t.planned_start_at, t.planned_end_at,
        t.progress_percent, t.status
 FROM project_task t;
 
-CREATE OR REPLACE VIEW ai_project_finance_summary AS
+CREATE VIEW ai_project_finance_summary AS
 SELECT c.tenant_id, c.company_id, c.project_id,
        COALESCE(SUM(c.total_cost), 0) AS total_posted_cost,
        COUNT(*)::bigint AS posted_entry_count,
@@ -123,7 +141,7 @@ FROM fin_project_cost_entry c
 WHERE c.status = 'POSTED'
 GROUP BY c.tenant_id, c.company_id, c.project_id;
 
-CREATE OR REPLACE VIEW ai_finance_summary AS
+CREATE VIEW ai_finance_summary AS
 SELECT c.tenant_id, c.company_id,
        COALESCE(SUM(c.total_cost), 0) AS total_posted_cost,
        COUNT(DISTINCT c.project_id)::bigint AS project_count,
@@ -132,7 +150,7 @@ FROM fin_project_cost_entry c
 WHERE c.status = 'POSTED'
 GROUP BY c.tenant_id, c.company_id;
 
-CREATE OR REPLACE VIEW ai_crm_deals AS
+CREATE VIEW ai_crm_deals AS
 SELECT o.id, o.tenant_id, o.company_id, o.customer_party_id, o.owner_user_id,
        o.pipeline_stage, o.opportunity_name, o.probability_percent,
        o.expected_amount, o.expected_margin, o.expected_close_date, o.status
@@ -152,3 +170,5 @@ BEGIN
       ai_finance_summary, ai_crm_deals TO marbot_reader;
   END IF;
 END $$;
+
+COMMIT;
