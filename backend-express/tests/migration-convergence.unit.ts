@@ -70,7 +70,11 @@ assert(
   'TEXT-ID repair must execute as one PostgreSQL batch so the first database error is preserved.',
 );
 assert(
-  deployGate.includes('Transactional repair migration failed'),
+  deployGate.includes('await repairTextIdSchema(directUrl)'),
+  'Deployment must convert UUID tables in lock-bounded resumable phases before finalizing the migration.',
+);
+assert(
+  deployGate.includes('TEXT-ID repair migration failed'),
   'TEXT-ID repair must surface the original PostgreSQL failure instead of a masked aborted-transaction error.',
 );
 assert(

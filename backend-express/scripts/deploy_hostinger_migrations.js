@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
 const { createPrismaClient, postgresPoolConfig } = require('./prisma_client');
+const { repairTextIdSchema } = require('./repair_text_id_schema');
 
 const PRODUCTION_BASELINE = '20260922000000_production_baseline';
 const MASTER_LEGACY_TAIL = '20260921171000_marbot_ai_read_views';
@@ -137,34 +138,26 @@ async function readUuidColumns(client) {
 async function applyTextIdRepair(prismaCli, directUrl, client, history) {
   if (isApplied(history.get(TEXT_ID_REPAIR))) return history;
 
-  const uuidColumns = await readUuidColumns(client);
-  if (uuidColumns.length === 0) {
-    return recordApplied(
-      prismaCli,
-      directUrl,
-      client,
-      history,
-      TEXT_ID_REPAIR,
-      'Physical schema already uses TEXT IDs; recording forward repair as applied',
-    );
-  }
-
   // Prisma's migration runner can mask the first PostgreSQL error in an
   // explicit multi-statement transaction with SQLSTATE 25P02 (transaction
   // aborted). Send this exceptional convergence migration as one pg batch so
-  // PostgreSQL preserves atomic rollback and reports the real failing command.
+  // PostgreSQL preserves the real failing command. The lock-heavy UUID work is
+  // first performed table-by-table with a persistent recovery catalog, then the
+  // original migration performs its small final consistency transaction.
   const migrationSql = fs.readFileSync(
     path.join(__dirname, '..', 'prisma', 'migrations', TEXT_ID_REPAIR, 'migration.sql'),
     'utf8',
   );
   const pool = new Pool({ ...postgresPoolConfig(directUrl), max: 1 });
   try {
-    console.log(`Applying transactional repair migration directly: ${TEXT_ID_REPAIR}`);
+    console.log(`Applying lock-bounded repair migration: ${TEXT_ID_REPAIR}`);
+    await repairTextIdSchema(directUrl);
+    console.log(`Finalizing transactional repair migration: ${TEXT_ID_REPAIR}`);
     await pool.query(migrationSql);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     const code = error?.code ? ` [PostgreSQL ${error.code}]` : '';
-    throw new Error(`Transactional repair migration failed${code}: ${detail}`);
+    throw new Error(`TEXT-ID repair migration failed${code}: ${detail}`);
   } finally {
     await pool.end();
   }

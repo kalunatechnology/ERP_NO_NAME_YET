@@ -5,11 +5,13 @@ conversion. The new forward migration repairs databases whose earlier conversion
 was recorded as applied without executing its SQL. Applied migration files remain
 unchanged.
 
-The repair is submitted as one SQL batch through the PostgreSQL driver before
-the normal `prisma migrate deploy` step. This preserves its explicit transaction
-and prevents Prisma's statement runner from hiding the first database error
-behind SQLSTATE 25P02 (`current transaction is aborted`). After a successful
-batch, the gate records the repair migration as applied and Prisma continues.
+The lock-heavy conversion is executed one table or constraint at a time. A pair
+of persistent recovery catalogs preserves foreign-key and default definitions so
+an interrupted deployment can resume safely. This avoids exceeding managed
+PostgreSQL `max_locks_per_transaction`. The small final consistency migration is
+then submitted as one SQL batch, preventing Prisma's statement runner from hiding
+the first database error behind SQLSTATE 25P02 (`current transaction is aborted`).
+After successful finalization, the gate records the migration as applied.
 
 Run `npm run test:migration-convergence` for the deployment regression tests.
 `node tests/text-id-repair.integration.js` requires an empty, disposable PostgreSQL

@@ -27,6 +27,7 @@ async function scenario(uuid, alreadyApplied) {
         return { status: 0 };
       } };
       if (name === './prisma_client') return {};
+      if (name === './repair_text_id_schema') return { repairTextIdSchema: async () => {} };
       return require(name);
     },
   };
