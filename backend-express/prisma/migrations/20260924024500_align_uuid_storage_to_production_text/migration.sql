@@ -1,22 +1,62 @@
--- Align the physical PostgreSQL ID storage with the established production
--- baseline and the current Prisma schema.
+-- Converge the legacy/master physical PostgreSQL schema to the established
+-- production TEXT-backed identifier contract without changing identifier values.
 --
--- Context:
--- - Prisma models expose identifiers as String and do not declare @db.Uuid.
--- - Production was explicitly normalized to TEXT-backed IDs.
--- - Some historical migrations created UUID-backed columns, which can leave a
---   freshly migrated database with a different physical schema and cause
---   PostgreSQL 42883 errors such as `operator does not exist: uuid = text`.
+-- Why this exists:
+-- - production was baselined with Prisma String IDs stored as PostgreSQL TEXT;
+-- - older master migrations created several of the same identifiers as UUID;
+-- - raw SQL and cross-branch deployments therefore hit PostgreSQL 42883
+--   (uuid = text) even though schema.prisma is shared.
 --
--- This migration is intentionally data-preserving: PostgreSQL UUID values are
--- converted to their canonical textual representation. Foreign keys are
--- temporarily removed and recreated after both sides of each relationship have
--- been normalized. UUID defaults are restored as TEXT-producing defaults.
+-- Important:
+-- - this is schema-only; it does not seed, truncate, copy, or rewrite business data;
+-- - the migration is transactional, so a failure rolls all DDL back;
+-- - reporting/AI views are dropped and recreated because PostgreSQL will not
+--   ALTER the type of a column referenced by a view/rule.
 
 BEGIN;
 
--- Capture every FK that touches at least one UUID column on either side. These
--- constraints must be removed before changing the participating column types.
+-- Views created by the legacy master history reference UUID-backed columns and
+-- block ALTER COLUMN TYPE. Drop only repository-owned read views; they are
+-- recreated at the end with the production TEXT contract.
+DROP VIEW IF EXISTS ai_crm_deals;
+DROP VIEW IF EXISTS ai_finance_summary;
+DROP VIEW IF EXISTS ai_project_finance_summary;
+DROP VIEW IF EXISTS ai_project_tasks;
+DROP VIEW IF EXISTS ai_projects;
+DROP VIEW IF EXISTS view_crm_sales_dashboard;
+DROP VIEW IF EXISTS view_project_timeline_cost;
+DROP VIEW IF EXISTS view_project_dashboard;
+DROP VIEW IF EXISTS view_finance_main_dashboard;
+
+-- Fail before changing tables if another view outside the repository-owned set
+-- still depends on a UUID column. This keeps recovery deterministic instead of
+-- failing halfway through a sequence of ALTER TABLE statements.
+DO $$
+DECLARE
+  remaining_views text;
+BEGIN
+  SELECT string_agg(DISTINCT format('%I.%I', view_ns.nspname, view_cls.relname), ', ')
+    INTO remaining_views
+  FROM pg_depend dep
+  JOIN pg_rewrite rewrite ON rewrite.oid = dep.objid
+  JOIN pg_class view_cls ON view_cls.oid = rewrite.ev_class
+  JOIN pg_namespace view_ns ON view_ns.oid = view_cls.relnamespace
+  JOIN pg_attribute attr
+    ON attr.attrelid = dep.refobjid
+   AND attr.attnum = dep.refobjsubid
+  WHERE dep.classid = 'pg_rewrite'::regclass
+    AND dep.refclassid = 'pg_class'::regclass
+    AND view_ns.nspname = 'public'
+    AND view_cls.relkind IN ('v', 'm')
+    AND attr.atttypid = 'uuid'::regtype;
+
+  IF remaining_views IS NOT NULL THEN
+    RAISE EXCEPTION 'UUID-to-TEXT convergence blocked by dependent view(s): %', remaining_views;
+  END IF;
+END $$;
+
+-- Capture every FK that touches a UUID column on either side. Foreign keys must
+-- be removed before the participating columns can be converted.
 CREATE TEMP TABLE _erp_uuid_fk_restore ON COMMIT DROP AS
 SELECT
   c.oid AS constraint_oid,
@@ -58,9 +98,8 @@ BEGIN
   END LOOP;
 END $$;
 
--- Defaults returning UUID cannot remain attached while the column is changed
--- to TEXT. Preserve their expressions so the same generation semantics can be
--- restored as text after conversion.
+-- UUID-returning defaults cannot remain attached while a column changes to
+-- TEXT. Preserve them and restore the same generation semantics as text.
 CREATE TEMP TABLE _erp_uuid_default_restore ON COMMIT DROP AS
 SELECT
   cls.oid AS table_oid,
@@ -91,10 +130,9 @@ BEGIN
   END LOOP;
 END $$;
 
--- Current Prisma models represent these identifiers as String without
--- @db.Uuid. Normalize every remaining application UUID column in public to
--- PostgreSQL TEXT so a database produced from migrations has the same storage
--- contract as production.
+-- schema.prisma has no @db.Uuid identifier fields. Normalize every remaining
+-- application UUID column in public to the same TEXT storage used by the
+-- production baseline. UUID values keep their canonical textual value.
 DO $$
 DECLARE
   item record;
@@ -120,7 +158,6 @@ BEGIN
   END LOOP;
 END $$;
 
--- Preserve UUID-generation behavior, now producing the canonical UUID string.
 DO $$
 DECLARE
   item record;
@@ -135,8 +172,8 @@ BEGIN
   END LOOP;
 END $$;
 
--- Both ends of each FK are TEXT now, so the original constraints can be
--- restored verbatim (including delete/update actions and deferrability).
+-- Both sides of every captured FK now use TEXT, so the original definitions
+-- can be restored verbatim, preserving delete/update actions and deferrability.
 DO $$
 DECLARE
   item record;
@@ -151,9 +188,157 @@ BEGIN
   END LOOP;
 END $$;
 
--- Fail closed if a UUID column survived. The application schema intentionally
--- has no @db.Uuid fields; leaving one behind would recreate the same class of
--- runtime mismatch on a later endpoint.
+-- Recreate repository-owned reporting projections using the TEXT ID contract.
+CREATE OR REPLACE VIEW view_finance_main_dashboard AS
+SELECT
+  c.tenant_id,
+  NULL::text AS created_by_id,
+  NULL::timestamptz AS created_at,
+  NULL::timestamptz AS updated_at,
+  c.id AS company_id,
+  CURRENT_TIMESTAMP AS calculated_at,
+  COALESCE(b.revenue, 0) - COALESCE(e.cost, 0) AS profit_loss_amount,
+  COALESCE(b.revenue, 0) - COALESCE(e.cost, 0) AS net_cashflow_amount,
+  COALESCE(e.cost, 0) AS total_unit_hpp,
+  0::integer AS active_alert_count,
+  0::integer AS periodic_kpi_count
+FROM core_company c
+LEFT JOIN (
+  SELECT company_id, SUM(total_amount) FILTER (WHERE status IN ('APPROVED','PAID','COMPLETED')) AS revenue
+  FROM fin_billing_proposal GROUP BY company_id
+) b ON b.company_id = c.id
+LEFT JOIN (
+  SELECT company_id, SUM(total_cost) FILTER (WHERE status IN ('VALIDATED','APPROVED')) AS cost
+  FROM fin_project_cost_entry GROUP BY company_id
+) e ON e.company_id = c.id;
+
+CREATE OR REPLACE VIEW view_project_dashboard AS
+SELECT
+  p.tenant_id,
+  p.company_id,
+  p.created_by_id,
+  p.created_at,
+  p.updated_at,
+  p.id AS project_id,
+  CURRENT_TIMESTAMP AS calculated_at,
+  COALESCE(p.progress_percent, 0) AS overall_kpi_score,
+  COALESCE(p.progress_percent, 0) AS planned_progress_percent,
+  COALESCE(p.progress_percent, 0) AS actual_progress_percent,
+  p.health_status AS project_health_status,
+  COALESCE(t.overdue_task_count, 0)::integer AS overdue_task_count,
+  0::integer AS unread_notification_count
+FROM project_project p
+LEFT JOIN (
+  SELECT project_id, COUNT(*) FILTER (
+    WHERE planned_end_at < CURRENT_TIMESTAMP AND status NOT IN ('COMPLETED','DONE','CLOSED')
+  ) AS overdue_task_count
+  FROM project_task GROUP BY project_id
+) t ON t.project_id = p.id;
+
+CREATE OR REPLACE VIEW view_project_timeline_cost AS
+SELECT
+  p.tenant_id,
+  p.company_id,
+  p.created_by_id,
+  p.created_at,
+  p.updated_at,
+  p.id AS project_id,
+  CURRENT_TIMESTAMP AS calculated_at,
+  COALESCE(t.labor_hours, 0) AS labor_hours,
+  0::numeric AS machine_hours,
+  COALESCE(e.labor_cost, 0) AS labor_cost,
+  COALESCE(e.equipment_cost, 0) AS equipment_cost,
+  COALESCE(e.material_cost, 0) AS material_cost,
+  COALESCE(e.overhead_cost, 0) AS overhead_cost,
+  COALESCE(e.total_actual_cost, 0) AS total_actual_cost
+FROM project_project p
+LEFT JOIN (
+  SELECT project_id, SUM(COALESCE(actual_hours, 0)) AS labor_hours
+  FROM project_task GROUP BY project_id
+) t ON t.project_id = p.id
+LEFT JOIN (
+  SELECT project_id,
+    SUM(total_cost) FILTER (WHERE upper(cost_element) LIKE '%LABOR%' OR upper(cost_element) LIKE '%TENAGA%') AS labor_cost,
+    SUM(total_cost) FILTER (WHERE upper(cost_element) LIKE '%EQUIP%' OR upper(cost_element) LIKE '%MESIN%') AS equipment_cost,
+    SUM(total_cost) FILTER (WHERE upper(cost_element) LIKE '%MATERIAL%') AS material_cost,
+    SUM(total_cost) FILTER (WHERE upper(cost_element) LIKE '%OVERHEAD%') AS overhead_cost,
+    SUM(total_cost) AS total_actual_cost
+  FROM fin_project_cost_entry WHERE status IN ('VALIDATED','APPROVED') GROUP BY project_id
+) e ON e.project_id = p.id;
+
+CREATE OR REPLACE VIEW view_crm_sales_dashboard AS
+SELECT
+  c.tenant_id,
+  NULL::text AS created_by_id,
+  NULL::timestamptz AS created_at,
+  NULL::timestamptz AS updated_at,
+  c.id AS company_id,
+  CURRENT_TIMESTAMP AS calculated_at,
+  COALESCE(SUM(o.expected_amount * COALESCE(o.probability_percent, 0) / 100), 0) AS weighted_project_value,
+  CASE WHEN COUNT(o.id) = 0 THEN 0::numeric
+       ELSE COUNT(o.id) FILTER (WHERE o.status = 'WON')::numeric * 100 / COUNT(o.id) END AS win_rate_percent,
+  COUNT(o.id) FILTER (WHERE upper(o.pipeline_stage) LIKE '%PROSPECT%')::integer AS prospect_count,
+  COUNT(o.id) FILTER (WHERE upper(o.pipeline_stage) LIKE '%PITCH%')::integer AS pitch_count,
+  COUNT(o.id) FILTER (WHERE o.status = 'WON' OR upper(o.pipeline_stage) LIKE '%CLOS%')::integer AS closing_count,
+  CASE WHEN COALESCE(SUM(o.expected_amount), 0) = 0 THEN 0::numeric
+       ELSE COALESCE(SUM(o.expected_margin), 0) * 100 / SUM(o.expected_amount) END AS offering_margin_percent
+FROM core_company c
+LEFT JOIN crm_opportunity o ON o.company_id = c.id
+GROUP BY c.tenant_id, c.id;
+
+CREATE OR REPLACE VIEW ai_projects AS
+SELECT p.id, p.tenant_id, p.company_id, p.project_code, p.project_name,
+       p.project_manager_id, p.status, p.planned_start_date, p.planned_end_date,
+       p.progress_percent, p.health_status
+FROM project_project p;
+
+CREATE OR REPLACE VIEW ai_project_tasks AS
+SELECT t.id, t.tenant_id, t.company_id, t.project_id, t.parent_task_id,
+       t.task_code, t.task_name, t.priority, t.planned_start_at, t.planned_end_at,
+       t.progress_percent, t.status
+FROM project_task t;
+
+CREATE OR REPLACE VIEW ai_project_finance_summary AS
+SELECT c.tenant_id, c.company_id, c.project_id,
+       COALESCE(SUM(c.total_cost), 0) AS total_posted_cost,
+       COUNT(*)::bigint AS posted_entry_count,
+       MAX(c.transaction_date) AS latest_transaction_date
+FROM fin_project_cost_entry c
+WHERE c.status = 'POSTED'
+GROUP BY c.tenant_id, c.company_id, c.project_id;
+
+CREATE OR REPLACE VIEW ai_finance_summary AS
+SELECT c.tenant_id, c.company_id,
+       COALESCE(SUM(c.total_cost), 0) AS total_posted_cost,
+       COUNT(DISTINCT c.project_id)::bigint AS project_count,
+       MAX(c.transaction_date) AS latest_transaction_date
+FROM fin_project_cost_entry c
+WHERE c.status = 'POSTED'
+GROUP BY c.tenant_id, c.company_id;
+
+CREATE OR REPLACE VIEW ai_crm_deals AS
+SELECT o.id, o.tenant_id, o.company_id, o.customer_party_id, o.owner_user_id,
+       o.pipeline_stage, o.opportunity_name, o.probability_percent,
+       o.expected_amount, o.expected_margin, o.expected_close_date, o.status
+FROM crm_opportunity o;
+
+REVOKE ALL ON ai_projects, ai_project_tasks, ai_project_finance_summary,
+  ai_finance_summary, ai_crm_deals FROM PUBLIC;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'marbot_reader') THEN
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO marbot_reader', current_database());
+    ALTER ROLE marbot_reader SET default_transaction_read_only = on;
+    ALTER ROLE marbot_reader SET statement_timeout = '5s';
+    GRANT USAGE ON SCHEMA public TO marbot_reader;
+    GRANT SELECT ON ai_projects, ai_project_tasks, ai_project_finance_summary,
+      ai_finance_summary, ai_crm_deals TO marbot_reader;
+  END IF;
+END $$;
+
+-- Fail closed if a UUID column survived. Production baseline and schema.prisma
+-- intentionally use TEXT-backed identifiers.
 DO $$
 DECLARE
   remaining text;
