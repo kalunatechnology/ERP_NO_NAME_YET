@@ -5,9 +5,10 @@
  * backend. Other environments compile only: Vercel must never run migrations
  * in a serverless build, and local builds must not touch a remote database.
  *
- * Deployment builds intentionally stop after migration/generate/compile.
- * Unit and cross-project contract tests belong to CI/local validation and must
- * not re-import the production runtime configuration during a Hostinger build.
+ * Deployment builds intentionally stop after migration/schema-audit/generate/
+ * compile. Unit and cross-project contract tests belong to CI/local validation
+ * and must not re-import the production runtime configuration during a
+ * Hostinger build.
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
@@ -41,9 +42,12 @@ function main() {
   const isHostinger = process.env.VERCEL !== '1' && process.env.DEPLOYMENT_TARGET === 'hostinger';
 
   // The explicit target prevents accidental database writes from developer
-  // machines and prevents migration execution in Vercel builds.
+  // machines and prevents migration execution in Vercel builds. Immediately
+  // audit the physical schema afterwards so Express can never start against a
+  // UUID-backed database while the production contract expects TEXT IDs.
   if (isHostinger) {
     run(process.execPath, [path.join(__dirname, 'deploy_hostinger_migrations.js')]);
+    run(process.execPath, [path.join(__dirname, 'audit_database_architecture.js')]);
   }
 
   // Invoke local tool entry points through the current Node executable. This
@@ -60,13 +64,13 @@ function main() {
   run(process.execPath, [path.join(root, 'node_modules', 'prisma', 'build', 'index.js'), 'generate']);
   run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);
 
-  // Hostinger has already passed the only deployment-time database gate above
+  // Hostinger has already passed migration + physical architecture validation
   // and TypeScript compilation. Running unit tests here re-imports env.ts with
   // provider production variables and couples deployment availability to test
   // harness assumptions. CI/local builds remain responsible for the full test
   // suite.
   if (isHostinger) {
-    console.log('Hostinger deployment build: migrations applied, Prisma generated, TypeScript compiled; unit tests are delegated to CI.');
+    console.log('Hostinger deployment build: migrations applied, production schema parity verified, Prisma generated, TypeScript compiled; unit tests are delegated to CI.');
     return;
   }
 
