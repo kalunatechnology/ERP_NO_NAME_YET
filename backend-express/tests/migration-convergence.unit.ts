@@ -65,6 +65,18 @@ assert(
   !deployGate.includes('SELECT table_name, column_name FROM information_schema.columns'),
   'Deployment gate must not return PostgreSQL name/sql_identifier values directly through Prisma raw queries.',
 );
+assert(
+  deployGate.includes('await pool.query(migrationSql)'),
+  'TEXT-ID repair must execute as one PostgreSQL batch so the first database error is preserved.',
+);
+assert(
+  deployGate.includes('Transactional repair migration failed'),
+  'TEXT-ID repair must surface the original PostgreSQL failure instead of a masked aborted-transaction error.',
+);
+assert(
+  deployGate.includes('history = await applyTextIdRepair(prismaCli, directUrl, client, history)'),
+  'Deployment must apply the exceptional transactional repair before Prisma migrate deploy.',
+);
 
 console.log(JSON.stringify({
   status: 'PASS',
@@ -72,5 +84,6 @@ console.log(JSON.stringify({
   transaction: true,
   retrySafe: true,
   informationSchemaIdentifiers: 'cast-to-text',
+  repairExecution: 'single-postgresql-batch',
   businessDataMutation: false,
 }, null, 2));

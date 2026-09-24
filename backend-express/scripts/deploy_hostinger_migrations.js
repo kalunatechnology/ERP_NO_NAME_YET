@@ -14,8 +14,10 @@
  * Business/application rows are never copied, seeded, truncated, or merged.
  */
 const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
 const path = require('node:path');
-const { createPrismaClient } = require('./prisma_client');
+const { Pool } = require('pg');
+const { createPrismaClient, postgresPoolConfig } = require('./prisma_client');
 
 const PRODUCTION_BASELINE = '20260922000000_production_baseline';
 const MASTER_LEGACY_TAIL = '20260921171000_marbot_ai_read_views';
@@ -122,6 +124,62 @@ async function refreshHistory(client) {
   return latestByName(await readMigrationHistory(client));
 }
 
+async function readUuidColumns(client) {
+  return client.$queryRawUnsafe(`
+    SELECT
+      table_name::text AS table_name,
+      column_name::text AS column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND data_type = 'uuid'
+  `);
+}
+
+async function applyTextIdRepair(prismaCli, directUrl, client, history) {
+  if (isApplied(history.get(TEXT_ID_REPAIR))) return history;
+
+  const uuidColumns = await readUuidColumns(client);
+  if (uuidColumns.length === 0) {
+    return recordApplied(
+      prismaCli,
+      directUrl,
+      client,
+      history,
+      TEXT_ID_REPAIR,
+      'Physical schema already uses TEXT IDs; recording forward repair as applied',
+    );
+  }
+
+  // Prisma's migration runner can mask the first PostgreSQL error in an
+  // explicit multi-statement transaction with SQLSTATE 25P02 (transaction
+  // aborted). Send this exceptional convergence migration as one pg batch so
+  // PostgreSQL preserves atomic rollback and reports the real failing command.
+  const migrationSql = fs.readFileSync(
+    path.join(__dirname, '..', 'prisma', 'migrations', TEXT_ID_REPAIR, 'migration.sql'),
+    'utf8',
+  );
+  const pool = new Pool({ ...postgresPoolConfig(directUrl), max: 1 });
+  try {
+    console.log(`Applying transactional repair migration directly: ${TEXT_ID_REPAIR}`);
+    await pool.query(migrationSql);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const code = error?.code ? ` [PostgreSQL ${error.code}]` : '';
+    throw new Error(`Transactional repair migration failed${code}: ${detail}`);
+  } finally {
+    await pool.end();
+  }
+
+  history = await refreshHistory(client);
+  return recordApplied(
+    prismaCli,
+    directUrl,
+    client,
+    history,
+    TEXT_ID_REPAIR,
+    'Transactional repair completed; recording migration as applied',
+  );
+}
+
 async function resolveSafeFailedMigrations(prismaCli, directUrl, client) {
   let history = await refreshHistory(client);
   for (const migrationName of SAFE_FAILED_MIGRATIONS) {
@@ -187,13 +245,7 @@ async function convergeMigrationLineages(prismaCli, directUrl, client, history) 
     // Prisma's raw-query decoder does not support the wire type `name`, so cast
     // them explicitly to TEXT. This mirrors the proven production deployment
     // pattern used when reading information_schema.tables.
-    const uuidColumns = await client.$queryRawUnsafe(`
-      SELECT
-        table_name::text AS table_name,
-        column_name::text AS column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND data_type = 'uuid'
-    `);
+    const uuidColumns = await readUuidColumns(client);
     for (const migrationName of MASTER_LEGACY_EQUIVALENT_MIGRATIONS) {
       if (migrationName === TEXT_ID_CONVERGENCE && uuidColumns.length > 0) {
         console.log('Physical UUID columns remain; preserving conversion history for migrate deploy and the forward repair migration.');
@@ -255,6 +307,7 @@ async function main() {
   try {
     let history = await resolveSafeFailedMigrations(prismaCli, directUrl, client);
     history = await convergeMigrationLineages(prismaCli, directUrl, client, history);
+    history = await applyTextIdRepair(prismaCli, directUrl, client, history);
   } finally {
     await client.$disconnect();
   }
@@ -274,4 +327,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { convergeMigrationLineages };
+module.exports = { applyTextIdRepair, convergeMigrationLineages };

@@ -5,6 +5,12 @@ conversion. The new forward migration repairs databases whose earlier conversion
 was recorded as applied without executing its SQL. Applied migration files remain
 unchanged.
 
+The repair is submitted as one SQL batch through the PostgreSQL driver before
+the normal `prisma migrate deploy` step. This preserves its explicit transaction
+and prevents Prisma's statement runner from hiding the first database error
+behind SQLSTATE 25P02 (`current transaction is aborted`). After a successful
+batch, the gate records the repair migration as applied and Prisma continues.
+
 Run `npm run test:migration-convergence` for the deployment regression tests.
 `node tests/text-id-repair.integration.js` requires an empty, disposable PostgreSQL
 database on localhost:55439, user postgres. Set `TEXT_ID_TEST_DATABASE` to its name
