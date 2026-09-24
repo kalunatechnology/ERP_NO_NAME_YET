@@ -1,11 +1,63 @@
 "use client";
 
 import React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ChevronRight, UserCheck, Plus, Trash2, Check, Edit, RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProjectWbsSummary } from "./ProjectWbsSummary";
+
+const MARKDOWN_TOKEN_PATTERN = /(```[\s\S]*?```|`[^`\n]+`|\[[^\]]+\]\([^)]+\))/g;
+const BARE_URL_PATTERN = /(^|[\s(])((?:https?:\/\/|www\.)[^\s<>{}\[\]()]*[A-Za-z0-9/#=_~-])/gi;
+
+function linkifyMarkdown(value: string) {
+  return value
+    .split(MARKDOWN_TOKEN_PATTERN)
+    .map((segment) => {
+      if (/^```|^`|^\[[^\]]+\]\([^)]+\)$/.test(segment)) return segment;
+      return segment.replace(BARE_URL_PATTERN, (_match, prefix: string, url: string) => {
+        const href = url.toLowerCase().startsWith("www.") ? `https://${url}` : url;
+        return `${prefix}[${url}](${href})`;
+      });
+    })
+    .join("");
+}
+
+function MarkdownText({ value, fallback = "-", compact = false }: { value?: string | null; fallback?: string; compact?: boolean }) {
+  if (!value?.trim()) return <span className="italic text-[#9A9DA3]">{fallback}</span>;
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p className="whitespace-pre-wrap break-words">{children}</p>,
+        a: ({ href, children }) => {
+          const isExternal = /^https?:\/\//i.test(href || "");
+          return (
+            <a
+              href={href}
+              target={isExternal ? "_blank" : undefined}
+              rel={isExternal ? "noopener noreferrer" : undefined}
+              className={cn(
+                "break-all font-medium text-[#3157C8] underline decoration-[#8EA9F1] underline-offset-2 hover:text-[#193C9B]",
+                compact && "text-[11px]"
+              )}
+            >
+              {children}
+            </a>
+          );
+        },
+        ul: ({ children }) => <ul className="ml-4 list-disc space-y-0.5">{children}</ul>,
+        ol: ({ children }) => <ol className="ml-4 list-decimal space-y-0.5">{children}</ol>,
+        code: ({ children }) => <code className="break-all rounded bg-[#F1F3F5] px-1 py-0.5">{children}</code>,
+      }}
+    >
+      {linkifyMarkdown(value)}
+    </ReactMarkdown>
+  );
+}
 
 interface ProjectWbsNodeProps {
   main: any;
@@ -341,7 +393,7 @@ export function ProjectWbsNode({
 
                                         <td className="px-4 py-4 align-top">
                                           <div className="break-words text-[13px] leading-5 text-[#294BB2]">
-                                            {daily.output_result || <span className="italic text-[#9A9DA3]">Belum ada output</span>}
+                                            <MarkdownText value={daily.output_result} fallback="Belum ada output" />
                                           </div>
                                           {isBlocked && (
                                             <div className="mt-1.5 rounded-md bg-red-50 px-2 py-1 text-[11px] font-semibold leading-4 text-red-700">
@@ -350,7 +402,8 @@ export function ProjectWbsNode({
                                           )}
                                           {!isBlocked && daily.notes && (
                                             <div className="mt-1.5 text-[11px] leading-4 text-[#777B82]">
-                                              Catatan: {daily.notes}
+                                              <span className="font-semibold">Catatan: </span>
+                                              <MarkdownText value={daily.notes} compact />
                                             </div>
                                           )}
                                         </td>
