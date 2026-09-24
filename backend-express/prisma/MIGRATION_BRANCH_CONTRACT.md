@@ -13,29 +13,30 @@ Both histories now remain committed under `prisma/migrations/`. The deployment g
 
 `20260924024500_align_uuid_storage_to_production_text` is a master convergence migration. It converts legacy UUID-backed columns to the production TEXT-backed Prisma String contract. On a production-baselined database it is recorded as applied and is not executed because production already uses TEXT storage.
 
-`20260924031000_refresh_read_views_after_history_convergence` is the first shared post-convergence read-view migration. It ensures fresh, master, and production databases expose the same repository-owned reporting and MarBot read views.
+`20260924031000_refresh_read_views_after_history_convergence` is a historical post-convergence read-view migration. The production baseline contains several reporting `view_*` relations as physical tables, so this migration must not be blindly replayed there. `20260924040000_repair_skipped_text_id_convergence` preserves those physical tables, recreates the compatible read projections, and the deployment gate verifies the resulting relation kinds before recording the superseded read-view refresh as applied.
 
 ## Rules from the convergence point forward
 
 1. `prisma/schema.prisma` is shared by master and production.
 2. New schema changes use one normal migration history and must be committed under `prisma/migrations/`.
 3. Never create separate `migration-master` and `migration-production` variants for the same schema change.
-4. Never edit an already-successful migration. Fix it with a new migration.
+4. Never edit an already-successful migration. Fix it with a new migration or deployment reconciliation that verifies the physical state first.
 5. Never put demo/sample/reset data inside schema migrations.
-6. `prisma migrate deploy` may run during Hostinger/Docker deployment; seed/reset operations remain explicit and separate.
+6. **Application build and database migration are separate operations.** `npm run build` must never connect to or mutate a live database. Run `npm run deploy:hostinger:db` explicitly for a controlled database release.
 7. Master and production may contain different business rows, users, projects, invoices, and other data. Schema parity does not mean data parity.
-8. The physical architecture audit must pass after migrations. A database that still exposes UUID application columns is not allowed to start while the Prisma contract expects TEXT identifiers.
+8. Run `npm run audit:db-architecture` explicitly after a database migration when release operations require physical schema verification.
 
 ## Safe master -> production merge
 
 After source code is merged from master into production:
 
-1. Deployment reads `_prisma_migrations` from the target database.
-2. If `20260922000000_production_baseline` is present and successful, the deployment gate records the equivalent historical master migrations as applied without executing them.
-3. If the complete legacy master tail is present instead, the production squash baseline is recorded as schema-equivalent without executing it.
-4. A brand-new database selects the production baseline as its bootstrap lineage; legacy migrations are recorded as equivalent and are not replayed before the baseline.
-5. Only migrations created **after the convergence point** execute normally on both environments.
-6. `scripts/audit_database_architecture.js` verifies the resulting physical schema before Express compilation/startup completes.
+1. The application/frontend build can proceed independently and does not force Prisma migrations.
+2. When a database release is actually required, run `npm run deploy:hostinger:db` explicitly.
+3. The database gate reads `_prisma_migrations` from the target database.
+4. If `20260922000000_production_baseline` is present and successful, the deployment gate records the equivalent historical master migrations as applied without executing duplicate DDL.
+5. If the complete legacy master tail is present instead, the production squash baseline is recorded as schema-equivalent without executing it.
+6. The forward TEXT-ID repair handles legacy UUID storage and preserves production reporting tables; the gate verifies the resulting projections before reconciling the superseded read-view refresh.
+7. Only genuinely pending migrations after convergence are passed to `prisma migrate deploy`.
 
 The bridge exists only to reconcile the historical split. Do not add future migrations to the legacy-equivalence list.
 
@@ -60,4 +61,4 @@ npm run seed:master
 npm run seed:production
 ```
 
-A normal Hostinger deployment does **not** run either seed profile. Production data therefore cannot be overwritten by merging the master branch.
+A normal application build/deploy does **not** run either seed profile and does **not** run database migrations. Production data therefore cannot be overwritten by merging the master branch.
