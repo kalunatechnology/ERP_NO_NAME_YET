@@ -23,7 +23,7 @@ CHATBOT_ERP_READONLY_DATABASE_URL=postgresql://marbot_reader:.../erp
 MARBOT_ENCRYPTION_KEY=<32-byte-base64-or-64-hex-key>
 ```
 
-The published `chatbot-arsalynk.vercel.app` OpenAPI still documents the caller-token endpoints, but its `/.well-known/marbot-capabilities` contract advertises Runtime Context V2 as the preferred version and accepts versions 1 and 2. ERP therefore defaults to `CHATBOT_CONTRACT_MODE=v2`. Use `legacy` only as an explicit rollback for an older chatbot deployment; managed provisioning remains disabled in legacy mode.
+The published `chatbot-arsalynk.vercel.app` OpenAPI still documents the caller-token endpoints, but its `/.well-known/marbot-capabilities` contract advertises Runtime Context V2 as the preferred version and accepts versions 1 and 2. ERP therefore defaults to `CHATBOT_CONTRACT_MODE=v2` to enable managed provisioning. Contract selection remains per tenant: only a tenant with an active managed chatbot registration uses V2; existing `.env` or manual legacy credentials keep using Contract V1 until provisioned. This prevents an unprovisioned tenant from failing with an upstream 401 during the migration period.
 
 Production managed provisioning fails closed without `MARBOT_ENCRYPTION_KEY`. New credentials are stored as AES-256-GCM `enc:v1` values. Existing plaintext legacy rows remain readable during migration, but browser responses only contain masks/status metadata.
 
@@ -32,6 +32,8 @@ Production managed provisioning fails closed without `MARBOT_ENCRYPTION_KEY`. Ne
 The read-only credential must not be the ERP `DATABASE_URL`. Grant `marbot_reader` only `CONNECT`, schema `USAGE`, and `SELECT` on `ai_projects`, `ai_project_tasks`, `ai_project_finance_summary`, `ai_finance_summary`, and `ai_crm_deals`.
 
 The column contract of those views must match the chatbot `RESOURCE_POLICIES` registry exactly. Migration `20260925050000_align_marbot_ai_views_v2` supplies the expected aliases (`progress`, `title`, `expense`, `deal_name`, and related fields) while retaining hidden `tenant_id` and visible `company_id` columns for mandatory data-plane scoping.
+
+The ERP supports both first-time provisioning and adoption of an existing chatbot tenant. Adoption synchronizes tenant metadata, modules, and `ERP_MAIN`, then rotates the tenant API key and both signing keys because raw credentials cannot be read back from the chatbot. The previous signing keys retain the chatbot's 24-hour grace window; the previous API credential is revoked after the new datasource and module configuration succeed.
 
 The provisioning contract enforces the `company_id` scope column, allowlisted views, 100-row/30-column limits, a 256 KiB result limit, and a five-second statement timeout. Never expose base tables or a generic write/SQL tool.
 

@@ -53,6 +53,7 @@ export function MarbotConfigModal({
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
   const [lastContractSyncAt, setLastContractSyncAt] = useState<string | null>(null);
   const [managedProvisioningAvailable, setManagedProvisioningAvailable] = useState(false);
+  const [provisioningBlockers, setProvisioningBlockers] = useState<string[]>([]);
 
   // Form inputs
   const [externalTenantId, setExternalTenantId] = useState("");
@@ -88,6 +89,7 @@ export function MarbotConfigModal({
     setEnabledModules([]);
     setLastContractSyncAt(null);
     setManagedProvisioningAvailable(false);
+    setProvisioningBlockers([]);
     setExternalTenantId("");
     setChatbotUrl("");
     setChatbotApiKey("");
@@ -114,6 +116,7 @@ export function MarbotConfigModal({
       setEnabledModules(Array.isArray(payload.enabledModules) ? payload.enabledModules : []);
       setLastContractSyncAt(payload.lastContractSyncAt ?? null);
       setManagedProvisioningAvailable(Boolean(payload.managedProvisioningAvailable));
+      setProvisioningBlockers(Array.isArray(payload.provisioningBlockers) ? payload.provisioningBlockers : []);
 
       if (payload.data) {
         setExternalTenantId(payload.data.external_tenant_id || tenant.code);
@@ -314,6 +317,13 @@ export function MarbotConfigModal({
               <div className="col-span-2 text-[11px] text-[#64748B] sm:col-span-3">
                 Sinkronisasi kontrak terakhir: {lastContractSyncAt ? new Date(lastContractSyncAt).toLocaleString("id-ID") : "Belum tersedia"}. Credential dikelola server dan tidak pernah dikirim ke browser.
               </div>
+            </div>
+          )}
+
+          {!managedProvisioningAvailable && provisioningBlockers.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+              <div className="font-bold">Managed V2 dan MCP-Lite belum siap diprovision.</div>
+              <div className="mt-1">Lengkapi environment server: {provisioningBlockers.join(", ")}.</div>
             </div>
           )}
 

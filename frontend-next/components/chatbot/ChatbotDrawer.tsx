@@ -104,7 +104,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState("10.15");
-  const [connectionState, setConnectionState] = useState<"checking" | "online" | "offline">("checking");
+  const [connectionState, setConnectionState] = useState<"checking" | "database" | "knowledge" | "offline">("checking");
 
   // Streaming controller ref
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -141,7 +141,9 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
     const controller = new AbortController();
     setConnectionState("checking");
     getMarbotStatus(controller.signal)
-      .then((status) => setConnectionState(status.online ? "online" : "offline"))
+      .then((status) => setConnectionState(
+        status.online ? (status.mcpLiteReady ? "database" : "knowledge") : "offline"
+      ))
       .catch((error) => {
         if (error?.name !== "AbortError") setConnectionState("offline");
       });
@@ -311,14 +313,18 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
               </span>
               <span className="flex items-center gap-1.5 text-[11px] text-[#4F5050] font-medium leading-tight">
                 <span className={`w-1.5 h-1.5 rounded-full ${
-                  connectionState === "online"
+                  connectionState === "database"
                     ? "bg-emerald-500"
+                    : connectionState === "knowledge"
+                      ? "bg-sky-500"
                     : connectionState === "offline"
                       ? "bg-red-500"
                       : "bg-amber-400 animate-pulse"
                 }`} />
-                {connectionState === "online"
-                  ? "Online"
+                {connectionState === "database"
+                  ? "Online · Database aktif"
+                  : connectionState === "knowledge"
+                    ? "Online · Knowledge only"
                   : connectionState === "offline"
                     ? "Tidak terhubung"
                     : "Memeriksa koneksi"}

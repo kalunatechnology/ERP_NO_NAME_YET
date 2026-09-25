@@ -45,6 +45,17 @@ function protectSecret(secret: string): string {
   return secret;
 }
 
+function managedProvisioningBlockers(): string[] {
+  const blockers: string[] = [];
+  if (env.CHATBOT_CONTRACT_MODE !== 'v2') blockers.push('CHATBOT_CONTRACT_MODE=v2');
+  if (!env.CHATBOT_SERVICE_URL) blockers.push('CHATBOT_SERVICE_URL');
+  if (!env.CHATBOT_CONTROL_PLANE_SECRET) blockers.push('CHATBOT_CONTROL_PLANE_SECRET');
+  if (!env.CHATBOT_ERP_READONLY_DATABASE_URL) blockers.push('CHATBOT_ERP_READONLY_DATABASE_URL');
+  if (env.NODE_ENV === 'production' && !env.ERP_BASE_URL) blockers.push('ERP_BASE_URL');
+  if (env.NODE_ENV === 'production' && !hasMarbotEncryptionKey()) blockers.push('MARBOT_ENCRYPTION_KEY');
+  return blockers;
+}
+
 export class MarbotTenantService {
   /**
    * Asserts that a tenant is fully ready for MarBot operations by resolving its configuration.
@@ -65,6 +76,7 @@ export class MarbotTenantService {
     tenantId: string,
     db: any = prisma,
   ): Promise<TenantIntegrationStatus> {
+    const blockers = managedProvisioningBlockers();
     const dbRow = await db.marbot_tenant_config.findUnique({
       where: { tenant_id: tenantId },
     });
@@ -84,13 +96,18 @@ export class MarbotTenantService {
         activeKeyId: dbRow.active_key_id,
         lastSyncedAt: dbRow.last_synced_at,
         lastSyncError: dbRow.last_sync_error,
-        contractVersion: env.CHATBOT_CONTRACT_MODE === 'v2' ? (dbRow.contract_version ?? 2) : 1,
-        runtimeContextVersion: env.CHATBOT_CONTRACT_MODE === 'v2' ? (dbRow.runtime_context_version ?? 2) : 1,
+        contractVersion: mode === 'MANAGED' && env.CHATBOT_CONTRACT_MODE === 'v2'
+          ? (dbRow.contract_version ?? 2)
+          : 1,
+        runtimeContextVersion: mode === 'MANAGED' && env.CHATBOT_CONTRACT_MODE === 'v2'
+          ? (dbRow.runtime_context_version ?? 2)
+          : 1,
         datasourceSourceKey: dbRow.datasource_source_key,
         datasourceStatus: dbRow.datasource_status,
         lastContractSyncAt: dbRow.last_contract_sync_at,
         enabledModules,
-        managedProvisioningAvailable: env.CHATBOT_CONTRACT_MODE === 'v2',
+        managedProvisioningAvailable: blockers.length === 0,
+        provisioningBlockers: blockers,
         data: {
           tenant_id: dbRow.tenant_id,
           external_tenant_id: dbRow.external_tenant_id,
@@ -118,7 +135,8 @@ export class MarbotTenantService {
         lastSyncError: null,
         contractVersion: 1,
         runtimeContextVersion: 1,
-        managedProvisioningAvailable: env.CHATBOT_CONTRACT_MODE === 'v2',
+        managedProvisioningAvailable: blockers.length === 0,
+        provisioningBlockers: blockers,
         data: {
           tenant_id: tenantId,
           external_tenant_id: envConfig.externalTenantId,
@@ -144,7 +162,8 @@ export class MarbotTenantService {
       lastSyncError: null,
       contractVersion: null,
       runtimeContextVersion: null,
-      managedProvisioningAvailable: env.CHATBOT_CONTRACT_MODE === 'v2',
+      managedProvisioningAvailable: blockers.length === 0,
+      provisioningBlockers: blockers,
       data: null,
     };
   }
@@ -178,6 +197,14 @@ export class MarbotTenantService {
     client.assertConfigured();
     if (env.NODE_ENV === 'production' && !hasMarbotEncryptionKey()) {
       throw new ValidationError('MARBOT_ENCRYPTION_KEY wajib dikonfigurasi untuk managed provisioning.');
+    }
+    if (env.NODE_ENV === 'production' && !env.CHATBOT_ERP_READONLY_DATABASE_URL) {
+      throw new ValidationError(
+        'CHATBOT_ERP_READONLY_DATABASE_URL wajib dikonfigurasi agar MCP-Lite database aktif.',
+      );
+    }
+    if (env.NODE_ENV === 'production' && !env.ERP_BASE_URL) {
+      throw new ValidationError('ERP_BASE_URL wajib dikonfigurasi untuk managed provisioning production.');
     }
 
     const tenant = await db.core_tenant.findUnique({
@@ -285,16 +312,32 @@ export class MarbotTenantService {
     try {
       provisionRes = await client.provisionTenant(provisionPayload, operationId);
     } catch (provisionErr: any) {
+      // Existing legacy deployments may already own the externalTenantId. The
+      // control plane cannot reveal old raw keys, so adopt the existing tenant,
+      // sync its contract/datasource, and rotate credentials exactly once here.
+      if (provisionErr?.code === 'CHATBOT_TENANT_ALREADY_EXISTS') {
+        try {
+          provisionRes = await client.adoptExistingTenant(provisionPayload);
+        } catch (adoptErr: any) {
+          const sanitizedError = String(adoptErr?.message || 'Tenant adoption failed').slice(0, 500);
+          await db.marbot_tenant_config.update({
+            where: { tenant_id: tenantId },
+            data: { sync_status: 'ERROR', last_sync_error: sanitizedError },
+          }).catch(() => undefined);
+          throw adoptErr;
+        }
+      } else {
       // Sanitize error before storing (do not store tokens, secrets, or headers)
-      const sanitizedError = String(provisionErr?.message || 'Provisioning failed').slice(0, 500);
-      await db.marbot_tenant_config.update({
-        where: { tenant_id: tenantId },
-        data: {
-          sync_status: isManagedSync ? 'SYNC_ERROR' : 'ERROR',
-          last_sync_error: sanitizedError,
-        },
-      }).catch(() => undefined);
-      throw provisionErr;
+        const sanitizedError = String(provisionErr?.message || 'Provisioning failed').slice(0, 500);
+        await db.marbot_tenant_config.update({
+          where: { tenant_id: tenantId },
+          data: {
+            sync_status: isManagedSync ? 'SYNC_ERROR' : 'ERROR',
+            last_sync_error: sanitizedError,
+          },
+        }).catch(() => undefined);
+        throw provisionErr;
+      }
     }
 
     // 5. Persist credentials and transition to ACTIVE

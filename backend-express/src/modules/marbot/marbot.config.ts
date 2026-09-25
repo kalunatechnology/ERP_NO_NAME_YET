@@ -62,6 +62,7 @@ export async function resolveMarbotTenantConfig(
       outbound_tool_secret: true,
       role_map_json: true,
       sync_status: true,
+      chatbot_tenant_id: true,
       contract_version: true,
       runtime_context_version: true,
     },
@@ -92,8 +93,15 @@ export async function resolveMarbotTenantConfig(
       inboundContextSecret: decryptMarbotSecret(dbRow.inbound_context_secret),
       outboundToolSecret: decryptMarbotSecret(dbRow.outbound_tool_secret),
       roleMap,
-      contractVersion: env.CHATBOT_CONTRACT_MODE === 'v2' && dbRow.contract_version === 2 ? 2 : 1,
-      runtimeContextVersion: dbRow.runtime_context_version === 2 ? 2 : undefined,
+      // Contract V2 is a tenant capability, not a global switch. A manual
+      // legacy row carries secrets but has no chatbot tenant registration, so
+      // forcing it through the V2 middleware produces an upstream 401.
+      contractVersion: env.CHATBOT_CONTRACT_MODE === 'v2' && dbRow.chatbot_tenant_id && dbRow.contract_version === 2
+        ? 2
+        : 1,
+      runtimeContextVersion: dbRow.chatbot_tenant_id && dbRow.runtime_context_version === 2
+        ? 2
+        : undefined,
     };
   }
 
