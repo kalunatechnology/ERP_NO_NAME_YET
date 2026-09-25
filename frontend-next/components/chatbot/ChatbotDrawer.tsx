@@ -17,6 +17,7 @@ import {
   ChatMessage,
 } from "@/types/chatbot";
 import {
+  getMarbotStatus,
   streamChatCompletion,
 } from "@/services/chatbot.service";
 import ReactMarkdown from "react-markdown";
@@ -103,6 +104,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState("10.15");
+  const [connectionState, setConnectionState] = useState<"checking" | "online" | "offline">("checking");
 
   // Streaming controller ref
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -132,6 +134,18 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
         inputRef.current?.focus();
       }, 200);
     }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const controller = new AbortController();
+    setConnectionState("checking");
+    getMarbotStatus(controller.signal)
+      .then((status) => setConnectionState(status.online ? "online" : "offline"))
+      .catch((error) => {
+        if (error?.name !== "AbortError") setConnectionState("offline");
+      });
+    return () => controller.abort();
   }, [isOpen]);
 
   // Stop Generation
@@ -296,8 +310,18 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                 MarBot
               </span>
               <span className="flex items-center gap-1.5 text-[11px] text-[#4F5050] font-medium leading-tight">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#294BB2]" />
-                Online
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  connectionState === "online"
+                    ? "bg-emerald-500"
+                    : connectionState === "offline"
+                      ? "bg-red-500"
+                      : "bg-amber-400 animate-pulse"
+                }`} />
+                {connectionState === "online"
+                  ? "Online"
+                  : connectionState === "offline"
+                    ? "Tidak terhubung"
+                    : "Memeriksa koneksi"}
               </span>
             </div>
           </div>

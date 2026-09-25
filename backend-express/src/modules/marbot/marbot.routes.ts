@@ -351,6 +351,64 @@ marbotInternalRouter.get('/crm/tickets', async (req, res, next) => {
 export const marbotUserRouter = Router();
 marbotUserRouter.use(authenticate, resolveTenant);
 
+marbotUserRouter.get('/status', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user?.tenant_id || !req.companyId) throw new ForbiddenError();
+    const config = await resolveMarbotTenantConfig(req.user.tenant_id);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const [healthResult, capabilitiesResult] = await Promise.allSettled([
+        fetch(new URL('/health', config.chatbotUrl), {
+          method: 'GET',
+          redirect: 'manual',
+          signal: controller.signal,
+        }),
+        fetch(new URL('/.well-known/marbot-capabilities', config.chatbotUrl), {
+          method: 'GET',
+          redirect: 'manual',
+          signal: controller.signal,
+        }),
+      ]);
+
+      const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
+      const capabilitiesResponse = capabilitiesResult.status === 'fulfilled'
+        ? capabilitiesResult.value
+        : null;
+      let capabilities: any = null;
+      if (capabilitiesResponse?.ok) {
+        capabilities = await capabilitiesResponse.json().catch(() => null);
+      }
+
+      const preferredVersion = capabilities?.preferredVersion
+        ?? capabilities?.contract?.preferredVersion
+        ?? capabilities?.runtimeContext?.preferredVersion
+        ?? null;
+      const acceptedVersionCandidate = capabilities?.acceptedVersions
+        ?? capabilities?.acceptedContextVersions
+        ?? capabilities?.contract?.acceptedVersions
+        ?? capabilities?.runtimeContext?.acceptedVersions;
+      const acceptedVersions = Array.isArray(acceptedVersionCandidate)
+        ? acceptedVersionCandidate
+        : [];
+
+      res.json({
+        data: {
+          online: Boolean(health?.ok),
+          contractMode: env.CHATBOT_CONTRACT_MODE,
+          preferredVersion,
+          v2Supported: acceptedVersions.includes(2),
+        },
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
 marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, next: NextFunction) => {
   let auditNonce: string | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
