@@ -15,7 +15,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "deploy:hostinger:db": "node scripts/deploy_hostinger_migrations.js",
-    "deploy:hostinger": "npm run build",
+    "deploy:hostinger": "node scripts/deploy_hostinger_migrations.js && node scripts/build.js",
     "prisma:studio": "prisma studio",
     "typecheck": "tsc --noEmit",
     "test:q6": "ts-node --files tests/q6.integration.ts",

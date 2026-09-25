@@ -23,6 +23,7 @@ import { canAccessRoute, canRequestApi } from "@/lib/access/module-contract";
 import { getResourceEntity } from "@/lib/access/resource-catalog";
 import { canOpenReportTab } from "@/lib/access/report-tab-access";
 import { getNavigationEntries } from "@/lib/access/navigation-contract";
+import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
 
 interface SidebarProps {
   isMobile?: boolean;
@@ -236,17 +237,9 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
           <LogOut size={13} aria-hidden="true" className="flex-shrink-0 rotate-180" />
         </button>
 
-        {/* Brand Mark: Marka+ by Kaluna® 2026 */}
+        {/* Brand wordmark by Kaluna® 2026 */}
         <div className="flex flex-col items-center justify-center pt-1">
-          <div className="flex items-center gap-1.5 text-black">
-            <div className="w-5 h-5 rounded-md bg-[#0088FF] flex items-center justify-center text-white font-black text-xs shadow-2xs">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="7" y1="17" x2="17" y2="7" />
-                <polyline points="7 7 17 7 17 17" />
-              </svg>
-            </div>
-            <span className="font-extrabold text-sm tracking-tight text-[#0F172A]">Marka+</span>
-          </div>
+          <MarkaWordmark className="h-auto w-[86px] text-[#2649B3]" />
           <span className="text-[10px] text-[#4F5050] mt-0.5 font-medium">By Kaluna® 2026</span>
         </div>
       </div>

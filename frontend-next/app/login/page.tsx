@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
 import toast from "react-hot-toast";
 import markaIcon from "../icon.svg";
 
@@ -276,18 +277,14 @@ function LoginFormContent() {
             }}
           >
             <div className="z-10">
-              <h1 className="text-2xl sm:text-3xl lg:text-[38px] font-semibold tracking-tight text-white">
-                Marka+
-              </h1>
+              <MarkaWordmark className="h-auto w-[132px] sm:w-[154px] lg:w-[180px] text-white" />
             </div>
 
             <div className="flex flex-col gap-0.5 mt-auto z-10">
               <span className="text-xs sm:text-sm text-white/85 font-normal tracking-wide">
                 Welcome back to
               </span>
-              <span className="text-2xl sm:text-3xl lg:text-[40px] font-bold text-white tracking-tight leading-tight">
-                Marka+
-              </span>
+              <MarkaWordmark className="mt-1 h-auto w-[144px] sm:w-[166px] lg:w-[194px] text-white" />
             </div>
 
             <div className="absolute -top-24 -left-24 w-80 h-80 bg-[#3F528B]/30 rounded-full blur-3xl pointer-events-none" />
@@ -297,11 +294,11 @@ function LoginFormContent() {
           {/* ── SISI KANAN: FORM LOGIN & LOGO ASTERISK ── */}
           <div className="flex-1 flex flex-col justify-between py-1 lg:py-2 pr-0 lg:pr-4">
             
-            {/* Top Right: existing app/icon.svg */}
+            {/* Top Right: keep the standalone Marka M symbol */}
             <div className="mk-fade-up-1 flex justify-end w-full">
               <Image
                 src={markaIcon}
-                alt="Marka+"
+                alt="Marka"
                 width={60}
                 height={60}
                 priority

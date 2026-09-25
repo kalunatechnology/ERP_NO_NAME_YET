@@ -24,6 +24,7 @@ import { feedApi } from "@/lib/api/feed.api";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessRoute, canRequestApi } from "@/lib/access/module-contract";
 import { REPOSITORY_ENTITIES, ResourceEntity } from "@/lib/access/resource-catalog";
+import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
 
 const CATEGORIES = ["ALL", "Project", "Finance", "CRM", "Master", "Core"] as const;
 
@@ -143,8 +144,10 @@ export default function ResourcesClient() {
           <h1 className="page-title flex items-center gap-2">
             <FolderArchive size={22} className="text-brand-green" /> Enterprise Repository & Document Catalog
           </h1>
-          <p className="page-description">
-            Pusat arsip digital, katalog data transaksi, dan dokumentasi operasional terintegrasi Marka+ ERP
+          <p className="page-description flex flex-wrap items-center gap-x-1.5 gap-y-1">
+            <span>Pusat arsip digital, katalog data transaksi, dan dokumentasi operasional terintegrasi</span>
+            <MarkaWordmark className="h-auto w-14 text-[#2649B3]" />
+            <span>ERP</span>
           </p>
         </div>
 
