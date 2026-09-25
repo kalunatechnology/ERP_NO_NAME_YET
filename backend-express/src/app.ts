@@ -54,6 +54,9 @@ import { marbotInternalRouter, marbotUserRouter } from './modules/marbot/marbot.
 // Initialize Workflows
 import './workflows';
 
+const PRODUCT_CORS_ORIGIN_PATTERN = /^https?:\/\/([a-z0-9-]+\.)*(?:arsalynk|markasuite)\.com(:\d+)?$/i;
+const MARKASUIT_APP_ORIGIN_PATTERN = /^https?:\/\/app\.markasuit\.com(:\d+)?$/i;
+
 /**
  * createApp implements a named function within this file's application infrastructure boundary.
  *
@@ -86,7 +89,8 @@ export function createApp(): Express {
         if (!requestOrigin) return callback(null, true);
         if (
           env.CORS_ALLOWED_ORIGINS.includes(requestOrigin) ||
-          /^https?:\/\/([a-z0-9-]+\.)*arsalynk\.com(:\d+)?$/i.test(requestOrigin)
+          PRODUCT_CORS_ORIGIN_PATTERN.test(requestOrigin) ||
+          MARKASUIT_APP_ORIGIN_PATTERN.test(requestOrigin)
         ) {
           return callback(null, true);
         }
