@@ -94,19 +94,32 @@ assert(
   'MarBot AI projections must still be verified as actual views/materialized views before reconciliation.',
 );
 
-// Application builds must never force database migration. This is what keeps a
-// database-history problem from blocking an unrelated frontend/backend release.
+// CI, Vercel, and local builds remain database-mutation free. Hostinger is the
+// only build target allowed to invoke the guarded production migration because
+// Hostinger's deployment platform invokes only `npm run build`.
 assert(
-  !buildScript.includes("path.join(__dirname, 'deploy_hostinger_migrations.js')"),
-  'npm run build must not invoke database migrations.',
+  buildScript.includes("process.env.VERCEL !== '1' && process.env.DEPLOYMENT_TARGET === 'hostinger'"),
+  'Hostinger migration path must be gated by an explicit Hostinger target and excluded on Vercel.',
+);
+assert(
+  buildScript.includes("path.join(root, 'scripts', 'deploy_hostinger_migrations.js')"),
+  'Hostinger production build must invoke the guarded database migration gate before compilation.',
+);
+assert(
+  buildScript.includes("process.env.SUPABASE_DIRECT_URL || process.env.DIRECT_URL || process.env.DATABASE_URL"),
+  'Hostinger production build must resolve a migration-capable database URL explicitly.',
+);
+assert(
+  buildScript.includes("HOSTINGER_SKIP_DB_MIGRATION === 'true'"),
+  'Hostinger migration bypass must require an explicit emergency opt-out.',
 );
 assert(
   !buildScript.includes("path.join(__dirname, 'audit_database_architecture.js')"),
-  'npm run build must not require a live database architecture audit.',
+  'Application build must not require a live database architecture audit.',
 );
 assert(
-  buildScript.includes('Database migration is explicit via npm run deploy:hostinger:db'),
-  'Hostinger build output must state that database migration is an explicit release operation.',
+  buildScript.includes('database migration gate completed successfully'),
+  'Hostinger build output must confirm the migration gate completed before application publication.',
 );
 
 console.log(JSON.stringify({
@@ -115,6 +128,6 @@ console.log(JSON.stringify({
   productionReportingShape: 'physical-tables-preserved',
   readViewRefreshRecovery: 'verified-then-marked-applied',
   informationSchemaIdentifiers: 'cast-to-text',
-  applicationBuildDatabaseMutation: false,
+  applicationBuildDatabaseMutation: 'hostinger-production-only',
   businessDataMutation: false,
 }, null, 2));
