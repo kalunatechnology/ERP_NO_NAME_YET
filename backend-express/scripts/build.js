@@ -42,9 +42,7 @@ function assertNoUuidCastsForTextIds(directory) {
 function runHostingerProductionMigration(root) {
   const directUrl = process.env.SUPABASE_DIRECT_URL || process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!directUrl) {
-    throw new Error(
-      'Hostinger production deployment requires SUPABASE_DIRECT_URL, DIRECT_URL, or DATABASE_URL so pending Prisma migrations cannot be silently skipped.',
-    );
+    throw new Error('Hostinger production deployment requires SUPABASE_DIRECT_URL, DIRECT_URL, or DATABASE_URL so pending Prisma migrations cannot be silently skipped.');
   }
 
   console.log('Hostinger production build: applying pending database migrations before application compilation.');
@@ -68,11 +66,8 @@ function main() {
 
   assertNoUuidCastsForTextIds(path.join(root, 'src'));
 
-  if (isHostinger && !skipHostingerMigration) {
-    runHostingerProductionMigration(root);
-  } else if (isHostinger) {
-    console.warn('Hostinger database migration explicitly skipped via HOSTINGER_SKIP_DB_MIGRATION=true.');
-  }
+  if (isHostinger && !skipHostingerMigration) runHostingerProductionMigration(root);
+  else if (isHostinger) console.warn('Hostinger database migration explicitly skipped via HOSTINGER_SKIP_DB_MIGRATION=true.');
 
   run(process.execPath, [path.join(root, 'node_modules', 'prisma', 'build', 'index.js'), 'generate']);
   run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);
@@ -88,9 +83,7 @@ function main() {
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-financial-targets.unit.ts']);
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-input-validation.unit.ts']);
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-acting-manager.unit.ts']);
-    } else {
-      console.log('Skipping cross-project frontend contract tests (monorepo frontend-next not present).');
-    }
+    } else console.log('Skipping cross-project frontend contract tests (monorepo frontend-next not present).');
 
     run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/reporting-global-scope.unit.ts']);
     run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/cors-preflight.unit.ts']);
@@ -100,9 +93,7 @@ function main() {
   }
 }
 
-try {
-  main();
-} catch (error) {
+try { main(); } catch (error) {
   console.error(`Build failed: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
 }
