@@ -120,6 +120,7 @@ export interface TenantIntegrationStatus {
   lastContractSyncAt?: Date | null;
   enabledModules?: string[];
   managedProvisioningAvailable?: boolean;
+  provisioningBlockers?: string[];
   data: {
     tenant_id: string;
     external_tenant_id?: string;

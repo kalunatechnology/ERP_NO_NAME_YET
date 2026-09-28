@@ -49,6 +49,10 @@ export interface MarbotStatus {
   contractMode: 'legacy' | 'v2';
   preferredVersion: number | null;
   v2Supported: boolean;
+  managed: boolean;
+  datasourceSourceKey: string | null;
+  datasourceStatus: string | null;
+  mcpLiteReady: boolean;
 }
 
 function getErpAuthHeaders(): Record<string, string> {

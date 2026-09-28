@@ -40,6 +40,7 @@ import { RequestCardFeed } from "@/components/requests/RequestCardFeed";
 import { Sparkles, Plus } from "lucide-react";
 import { StaffOvertimeSummary } from "@/components/staff/StaffOvertimeSummary";
 import { ExecutiveDailyTaskMonitor } from "@/components/executive/ExecutiveDailyTaskMonitor";
+import { ExecutiveWeeklyTargetMonitor } from "@/components/executive/ExecutiveWeeklyTargetMonitor";
 
 /* ═══════════════════════════════════════════════════════════════
    SHARED COMPONENTS
@@ -593,7 +594,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
   finData: FinanceDashboardData | null;
   loading: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "daily_tasks">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "daily_tasks" | "weekly_targets">("overview");
   const today = localDateKey();
 
   if (loading) return <LoadingDashboard />;
@@ -693,6 +694,18 @@ function ExecutiveDashboard({ projects, finData, loading }: {
       >
         Daily Task Staff
       </button>
+      <button
+        type="button"
+        onClick={() => setActiveTab("weekly_targets")}
+        className={cn(
+          "flex-1 sm:flex-none rounded-[14px] px-5 py-2.5 text-sm font-bold transition-colors",
+          activeTab === "weekly_targets"
+            ? "bg-[#294BB2] text-white shadow-sm"
+            : "text-[#4F5050] hover:bg-[#F4F7FF] hover:text-[#294BB2]"
+        )}
+      >
+        Weekly Target Staff
+      </button>
     </div>
   );
 
@@ -701,6 +714,15 @@ function ExecutiveDashboard({ projects, finData, loading }: {
       <div className="flex flex-col gap-5 pb-8">
         {executiveTabs}
         <ExecutiveDailyTaskMonitor projects={projects} loading={loading} />
+      </div>
+    );
+  }
+
+  if (activeTab === "weekly_targets") {
+    return (
+      <div className="flex flex-col gap-5 pb-8">
+        {executiveTabs}
+        <ExecutiveWeeklyTargetMonitor projects={projects} loading={loading} />
       </div>
     );
   }

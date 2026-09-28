@@ -7,7 +7,7 @@ import { loadAllProjects, Project, DailyTask, DailyTaskStatusValue, DailyTaskUpd
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckCircle2, Search, Check, Layers, RefreshCw,
-  CalendarDays, AlertTriangle, Clock, ChevronDown, ChevronRight, Pencil, X, Save,
+  CalendarDays, AlertTriangle, ChevronDown, ChevronRight, Pencil, X, Save,
   Plus, FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -16,6 +16,7 @@ import { canAccessRoute } from "@/lib/access/module-contract";
 import { StaffTimesheetForm } from "@/components/staff/StaffTimesheetForm";
 import { StaffTimesheetTable } from "@/components/staff/StaffTimesheetTable";
 import { StaffOvertimeSummary } from "@/components/staff/StaffOvertimeSummary";
+import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
 
 /* ── Status helpers ─────────────────────────────── */
 /**
@@ -48,11 +49,13 @@ function QuickEdit({
   onSave: (id: string|number, patch: DailyTaskUpdatePayload) => Promise<void>;
   onClose: () => void;
 }) {
+  const [outputTarget, setOutputTarget] = useState(task.output_target || "");
   const [output, setOutput] = useState(task.output_result || "");
   const [notes, setNotes] = useState(task.notes || "");
   const [status, setStatus] = useState(task.status || "IN_PROGRESS");
   const [blockReason, setBlockReason] = useState(task.block_reason || "");
   const [saving, setSaving] = useState(false);
+  const outputComparison = useMemo(() => compareTaskOutput(outputTarget, output), [output, outputTarget]);
 
 /**
  * handleSave coordinates the UI behavior represented by this function.
@@ -66,9 +69,18 @@ function QuickEdit({
       toast.error("Alasan kendala wajib diisi sebelum task ditandai terblokir.");
       return;
     }
+    if (["COMPLETED", "DONE"].includes(status) && !output.trim()) {
+      toast.error("Output Hasil wajib diisi sebelum task diselesaikan.");
+      return;
+    }
+    if (["COMPLETED", "DONE"].includes(status) && !outputTarget.trim()) {
+      toast.error("Output Target wajib diisi sebelum task diselesaikan.");
+      return;
+    }
     setSaving(true);
     try {
       await onSave(task.id, {
+        ...(!task.output_target?.trim() ? { output_target: outputTarget.trim() } : {}),
         output_result: output,
         notes,
         status,
@@ -95,6 +107,15 @@ function QuickEdit({
         </div>
 
         {/* Output Hasil */}
+        <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5">
+          <p className="text-2xs font-bold uppercase tracking-wide text-blue-700">Output Target</p>
+          {task.output_target?.trim() ? (
+            <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-text-primary">{task.output_target}</p>
+          ) : (
+            <><textarea rows={2} value={outputTarget} onChange={e => setOutputTarget(e.target.value)} placeholder="Task lama: isi target output sekali untuk mengaktifkan perbandingan." className="mt-1 w-full resize-none rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-xs leading-5 outline-none focus:border-brand-green" /><p className="mt-1 text-2xs text-blue-700">Target ini akan dikunci setelah disimpan.</p></>
+          )}
+        </div>
+
         <div>
           <label className="text-xs font-semibold text-text-secondary mb-1.5 block">Output / Hasil Kerja</label>
           <textarea
@@ -105,6 +126,18 @@ function QuickEdit({
             className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green resize-none"
           />
         </div>
+
+        {output.trim() && outputTarget.trim() && (
+          <div className={cn(
+            "flex items-center justify-between rounded-xl border px-3 py-2.5 text-xs",
+            outputComparison.category === "SUFFICIENTLY_ALIGNED" ? "border-emerald-200 bg-emerald-50 text-emerald-800" :
+            outputComparison.category === "NEEDS_REVIEW" ? "border-amber-200 bg-amber-50 text-amber-800" :
+            "border-red-200 bg-red-50 text-red-800"
+          )}>
+            <span className="font-bold">{outputReviewLabel(outputComparison.category)}</span>
+            <span className="font-extrabold">Kemiripan {outputComparison.score}%</span>
+          </div>
+        )}
 
         {/* Catatan */}
         <div>
@@ -185,6 +218,7 @@ function NewDailyTaskModal({
   const [title, setTitle] = useState("");
   const [plannedDate, setPlannedDate] = useState(localDateKey());
   const [timeSlot, setTimeSlot] = useState("09.00 - 12.00");
+  const [outputTarget, setOutputTarget] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -227,6 +261,10 @@ function NewDailyTaskModal({
       toast.error("Nama / aktivitas tugas wajib diisi.");
       return;
     }
+    if (!outputTarget.trim()) {
+      toast.error("Output Target wajib diisi.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -236,11 +274,13 @@ function NewDailyTaskModal({
         time_slot: timeSlot,
         title: title.trim(),
         activity_input: title.trim(),
+        output_target: outputTarget.trim(),
         notes: notes.trim(),
         status: "ON_PROGRESS",
       });
       toast.success("✓ Tugas harian berhasil dibuat!");
       setTitle("");
+      setOutputTarget("");
       setNotes("");
       onClose();
       await onSuccess();
@@ -312,6 +352,19 @@ function NewDailyTaskModal({
               onChange={e => setTitle(e.target.value)}
               className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green"
             />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-text-primary block mb-1">Output Target *</label>
+            <textarea
+              rows={3}
+              required
+              placeholder="Jelaskan hasil/deliverable yang harus dihasilkan, misalnya: Laporan penjualan September dalam format PDF yang telah direview."
+              value={outputTarget}
+              onChange={e => setOutputTarget(e.target.value)}
+              className="w-full resize-none rounded-xl border border-text-tertiary px-3 py-2 text-sm focus:border-brand-green focus:outline-none"
+            />
+            <p className="mt-1 text-2xs text-text-secondary">Output hasil akan dibandingkan dengan target ini saat pekerjaan diperbarui.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -389,6 +442,9 @@ function TaskRow({
   const today = localDateKey();
   const taskDate = normalizeDateKey(task.planned_date);
   const isOverdue = Boolean(taskDate && taskDate < today && !isDone);
+  const outputComparison = task.output_review_category
+    ? { score: Number(task.output_similarity_score || 0), category: task.output_review_category }
+    : compareTaskOutput(task.output_target, task.output_result);
 
   return (
     <tr className={cn(
@@ -442,11 +498,28 @@ function TaskRow({
         </div>
       </td>
 
-      {/* Output */}
+      {/* Output Target */}
+      <td className="py-3 px-4 align-top max-w-44">
+        <span className={cn("text-xs", task.output_target ? "text-text-primary" : "text-text-secondary italic text-2xs")}>
+          {task.output_target || "Belum tersedia"}
+        </span>
+      </td>
+
+      {/* Output Hasil */}
       <td className="py-3 px-4 align-top max-w-40">
         <span className={cn("text-xs", task.output_result ? "text-brand-deep-green" : "text-text-secondary italic text-2xs")}>
           {task.output_result || "Belum diisi"}
         </span>
+        {outputComparison.category !== "NOT_EVALUATED" && (
+          <span className={cn(
+            "mt-2 block w-fit rounded-md px-2 py-1 text-[10px] font-bold",
+            outputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-emerald-100 text-emerald-800" :
+            outputComparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" :
+            "bg-red-100 text-red-800"
+          )}>
+            {outputReviewLabel(outputComparison.category)} · {outputComparison.score}%
+          </span>
+        )}
       </td>
 
       {/* Status */}
@@ -614,6 +687,7 @@ export default function TasksClient() {
         item.task.title,
         item.task.activity_input,
         item.task.description,
+        item.task.output_target,
         item.task.output_result,
         item.task.notes,
         item.task.time_slot,
@@ -681,6 +755,11 @@ export default function TasksClient() {
  */
   const handleToggle = async (task: DailyTask) => {
     const isDone = ["COMPLETED","DONE"].includes(task.status || "");
+    if (!isDone && !String(task.output_result || "").trim()) {
+      toast.error("Isi Output Hasil melalui tombol edit sebelum menandai task selesai.");
+      setEditingTask(task);
+      return;
+    }
     const nextStatus = isDone ? "ON_PROGRESS" : "COMPLETED";
     const prevStatus = task.status;
     const prevProg = task.progress;
@@ -719,6 +798,8 @@ export default function TasksClient() {
         ...patch,
         status: updated.status,
         progress: Number(updated.progress ?? 0),
+        output_similarity_score: Number(updated.output_similarity_score ?? 0),
+        output_review_category: updated.output_review_category || "NOT_EVALUATED",
       });
       toast.success("Task berhasil diperbarui.");
       setEditingTask(null);
@@ -763,12 +844,13 @@ export default function TasksClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const renderTable = (items: typeof filteredTasks) => (
-    <table className="w-full min-w-[760px] text-left text-xs">
+    <table className="w-full min-w-[980px] text-left text-xs">
       <thead>
         <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b border-gray-200">
           <th className="py-3 px-4 font-bold">Proyek & WBS</th>
           <th className="py-3 px-4 font-bold">Tanggal & Waktu</th>
           <th className="py-3 px-4 font-bold">Aktivitas / Task</th>
+          <th className="whitespace-nowrap px-4 py-3 font-bold">Output Target</th>
           <th className="whitespace-nowrap px-4 py-3 font-bold">Output Hasil</th>
           <th className="whitespace-nowrap px-4 py-3 font-bold">Status</th>
           <th className="py-3 px-4 font-bold"></th>

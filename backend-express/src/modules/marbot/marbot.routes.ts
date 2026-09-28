@@ -384,11 +384,17 @@ marbotUserRouter.get('/status', async (req: Request, res: Response, next: NextFu
       const preferredVersion = capabilities?.preferredVersion
         ?? capabilities?.contract?.preferredVersion
         ?? capabilities?.runtimeContext?.preferredVersion
+        ?? capabilities?.runtimeContextContract?.preferredVersion
         ?? null;
       const acceptedVersionCandidate = capabilities?.acceptedVersions
         ?? capabilities?.acceptedContextVersions
         ?? capabilities?.contract?.acceptedVersions
-        ?? capabilities?.runtimeContext?.acceptedVersions;
+        ?? capabilities?.runtimeContext?.acceptedVersions
+        ?? capabilities?.runtimeContextContract?.acceptedVersions;
+      const integration = await prisma.marbot_tenant_config.findUnique({
+        where: { tenant_id: req.user.tenant_id },
+        select: { sync_status: true, datasource_source_key: true, datasource_status: true },
+      });
       const acceptedVersions = Array.isArray(acceptedVersionCandidate)
         ? acceptedVersionCandidate
         : [];
@@ -396,9 +402,17 @@ marbotUserRouter.get('/status', async (req: Request, res: Response, next: NextFu
       res.json({
         data: {
           online: Boolean(health?.ok),
-          contractMode: env.CHATBOT_CONTRACT_MODE,
+          // A tenant that has not been provisioned remains on the compatible
+          // legacy contract even when V2 provisioning is globally enabled.
+          contractMode: config.contractVersion === 2 ? 'v2' : 'legacy',
           preferredVersion,
           v2Supported: acceptedVersions.includes(2),
+          managed: config.contractVersion === 2,
+          datasourceSourceKey: integration?.datasource_source_key ?? null,
+          datasourceStatus: integration?.datasource_status ?? null,
+          mcpLiteReady: config.contractVersion === 2
+            && integration?.sync_status === 'ACTIVE'
+            && integration?.datasource_status === 'ACTIVE',
         },
       });
     } finally {
@@ -431,7 +445,9 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
     const context = await buildMarbotRuntimeContextV2(
       req.user.id, req.user.tenant_id, req.companyId, config,
     );
-    const useContractV2 = env.CHATBOT_CONTRACT_MODE === 'v2';
+    // Never infer V2 solely from a process-level environment variable. The
+    // tenant must have a managed chatbot registration and V2 credentials.
+    const useContractV2 = config.contractVersion === 2;
     const signature = useContractV2
       ? signRuntimeContext(context, config.inboundContextSecret)
       : null;

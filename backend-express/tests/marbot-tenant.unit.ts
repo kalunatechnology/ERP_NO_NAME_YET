@@ -28,6 +28,9 @@ async function runMarbotTenantTests() {
           outbound_tool_secret: 'outbound-secret',
           role_map_json: JSON.stringify({ DIRECTOR: 'EXECUTIVE' }),
           sync_status: 'ACTIVE',
+          chatbot_tenant_id: 'cb-tenant-uuid-active',
+          contract_version: 2,
+          runtime_context_version: 2,
         }),
       },
       iam_company_module_access: { findMany: async () => [{ module_code: 'MARBOT' }] },
@@ -36,6 +39,7 @@ async function runMarbotTenantTests() {
     assert.strictEqual(activeCfg.externalTenantId, 'CORP_A');
     assert.strictEqual(activeCfg.chatbotUrl, 'https://chatbot.test.com');
     assert.strictEqual(activeCfg.roleMap?.DIRECTOR, 'EXECUTIVE');
+    assert.strictEqual(activeCfg.contractVersion, env.CHATBOT_CONTRACT_MODE === 'v2' ? 2 : 1);
     console.log('✓ Case 1A: DB ACTIVE with full credentials passed');
 
     // Case 1B: DB PROVISIONING without ENV fallback -> throws ForbiddenError
@@ -94,6 +98,7 @@ async function runMarbotTenantTests() {
     const fallbackCfg = await resolveMarbotTenantConfig('t-fallback', mockDbProvisioning);
     assert.strictEqual(fallbackCfg.externalTenantId, 'CORP_ENV');
     assert.strictEqual(fallbackCfg.chatbotUrl, 'https://chatbot-env.test.com');
+    assert.strictEqual(fallbackCfg.contractVersion, 1, 'ENV fallback must stay on the legacy contract');
     console.log('✓ Case 1D: DB unready with valid ENV fallback passed');
 
     // Case 1E: DB row does not exist -> uses ENV fallback
