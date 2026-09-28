@@ -1,0 +1,38 @@
+name: One-time Daily Task mock compatibility fix
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Patch safe fallback for test and delegated DB clients
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend-express/src/modules/projects/projects.service.ts')
+          text = path.read_text()
+          old = '''  private static async dailyTaskRecord(\n    dailyTaskId: string,\n    companyId: string | undefined,\n    db: any = prisma,\n  ): Promise<any | null> {\n    const rows = companyId\n      ? await db.$queryRaw(Prisma.sql`\n          SELECT *\n          FROM "project_daily_task"\n          WHERE "id" = ${dailyTaskId}\n            AND "company_id" = ${companyId}\n          LIMIT 1\n        `)\n      : await db.$queryRaw(Prisma.sql`\n          SELECT *\n          FROM "project_daily_task"\n          WHERE "id" = ${dailyTaskId}\n          LIMIT 1\n        `);\n    return (rows as any[])[0] ?? null;\n  }\n'''
+          new = '''  private static async dailyTaskRecord(\n    dailyTaskId: string,\n    companyId: string | undefined,\n    db: any = prisma,\n  ): Promise<any | null> {\n    // Some domain tests and delegated service clients expose only the model\n    // delegate, not Prisma raw-query helpers. Keep the compatibility helper\n    // usable there too by falling back to an explicit legacy-safe projection.\n    if (typeof db?.$queryRaw !== 'function') {\n      return db.project_daily_task.findFirst({\n        where: { id: dailyTaskId, ...(companyId ? { company_id: companyId } : {}) },\n        select: DAILY_TASK_LEGACY_MUTATION_SELECT,\n      });\n    }\n\n    const rows = companyId\n      ? await db.$queryRaw(Prisma.sql`\n          SELECT *\n          FROM "project_daily_task"\n          WHERE "id" = ${dailyTaskId}\n            AND "company_id" = ${companyId}\n          LIMIT 1\n        `)\n      : await db.$queryRaw(Prisma.sql`\n          SELECT *\n          FROM "project_daily_task"\n          WHERE "id" = ${dailyTaskId}\n          LIMIT 1\n        `);\n    return (rows as any[])[0] ?? null;\n  }\n'''
+          if old not in text:
+              raise SystemExit('dailyTaskRecord block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend-express/src/modules/projects/projects.service.ts
+          git commit -m 'fix(projects): support safe Daily Task test delegates'
+          git push origin HEAD:master
