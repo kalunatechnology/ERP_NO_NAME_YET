@@ -1,0 +1,41 @@
+name: One-time Projects visual contract fix
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Replace forbidden legacy success token
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('frontend-next/app/(app)/projects/ProjectsClient.tsx')
+          text = path.read_text()
+          old = 'editOutputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-emerald-100 text-emerald-800" :'
+          new = 'editOutputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-blue-100 text-[#2649B3]" :'
+          if old not in text:
+              raise SystemExit('Expected Daily Task comparison token was not found; refusing broad replacement.')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit exact visual contract fix
+        run: |
+          if git diff --quiet -- 'frontend-next/app/(app)/projects/ProjectsClient.tsx'; then
+            echo 'No change required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'frontend-next/app/(app)/projects/ProjectsClient.tsx'
+          git commit -m 'fix(ui): align Daily Task comparison with blue visual contract'
+          git push origin HEAD:master
