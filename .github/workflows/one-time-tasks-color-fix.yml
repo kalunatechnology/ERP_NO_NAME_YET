@@ -1,0 +1,45 @@
+name: One-time Tasks visual contract fix
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Replace forbidden legacy success tokens
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('frontend-next/app/(app)/tasks/TasksClient.tsx')
+          text = path.read_text()
+          replacements = {
+              'border-emerald-200 bg-emerald-50 text-emerald-800': 'border-blue-200 bg-blue-50 text-[#2649B3]',
+              'bg-emerald-100 text-emerald-800': 'bg-blue-100 text-[#2649B3]',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Expected Tasks visual token not found: {old}')
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
+      - name: Commit exact visual contract fix
+        run: |
+          if git diff --quiet -- 'frontend-next/app/(app)/tasks/TasksClient.tsx'; then
+            echo 'No change required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'frontend-next/app/(app)/tasks/TasksClient.tsx'
+          git commit -m 'fix(ui): align Task output comparison with blue visual contract'
+          git push origin HEAD:master
