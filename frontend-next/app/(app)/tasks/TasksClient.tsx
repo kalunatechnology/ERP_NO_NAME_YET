@@ -130,7 +130,7 @@ function QuickEdit({
         {output.trim() && outputTarget.trim() && (
           <div className={cn(
             "flex items-center justify-between rounded-xl border px-3 py-2.5 text-xs",
-            outputComparison.category === "SUFFICIENTLY_ALIGNED" ? "border-emerald-200 bg-emerald-50 text-emerald-800" :
+            outputComparison.category === "SUFFICIENTLY_ALIGNED" ? "border-blue-200 bg-blue-50 text-[#2649B3]" :
             outputComparison.category === "NEEDS_REVIEW" ? "border-amber-200 bg-amber-50 text-amber-800" :
             "border-red-200 bg-red-50 text-red-800"
           )}>
@@ -513,7 +513,7 @@ function TaskRow({
         {outputComparison.category !== "NOT_EVALUATED" && (
           <span className={cn(
             "mt-2 block w-fit rounded-md px-2 py-1 text-[10px] font-bold",
-            outputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-emerald-100 text-emerald-800" :
+            outputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-blue-100 text-[#2649B3]" :
             outputComparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" :
             "bg-red-100 text-red-800"
           )}>
