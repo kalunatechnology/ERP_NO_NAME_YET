@@ -1,0 +1,41 @@
+name: Patch Dashboard Output Contract
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/patch-dashboard-output-contract.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Patch dashboard Daily Task projection
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend-express/src/modules/dashboard/dashboard.routes.ts')
+          source = path.read_text()
+          old = '''              dt.time_slot,\n              dt.output_result,\n              dt.notes,'''
+          new = '''              dt.time_slot,\n              dt.output_target,\n              dt.output_result,\n              dt.output_similarity_score,\n              dt.output_review_category,\n              dt.notes,'''
+          count = source.count(old)
+          if count != 2:
+              raise SystemExit(f'Expected exactly 2 Daily Task projection matches, found {count}')
+          path.write_text(source.replace(old, new))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'kalunatechnology'
+          git config user.email '159101948+kalunatechnology@users.noreply.github.com'
+          git add backend-express/src/modules/dashboard/dashboard.routes.ts
+          git diff --cached --check
+          git commit -m 'fix(dashboard): expose Daily Task output comparison fields'
+          git push origin HEAD:master
