@@ -20,37 +20,6 @@ import { compareTaskOutput } from './output-comparison';
 
 export const projectsRouter = Router();
 
-// The list/retrieve endpoint intentionally selects only columns available in
-// the deployed project_daily_task table. This prevents Prisma's implicit
-// select-all from requesting newer model fields that are not physically
-// present yet.
-const DAILY_TASK_READ_SELECT = {
-  tenant_id: true,
-  company_id: true,
-  created_by_id: true,
-  id: true,
-  weekly_task_id: true,
-  owner_id: true,
-  title: true,
-  description: true,
-  planned_date: true,
-  time_slot: true,
-  output_result: true,
-  notes: true,
-  progress: true,
-  status: true,
-  is_blocked: true,
-  block_reason: true,
-  created_at: true,
-  updated_at: true,
-} as const;
-
-const DAILY_TASK_OUTPUT_FALLBACK = {
-  output_target: '',
-  output_similarity_score: 0,
-  output_review_category: 'NOT_EVALUATED',
-} as const;
-
 const PROJECT_FUNDING_CATEGORIES = new Set([
   'OPERATIONAL',
   'MATERIAL',
@@ -1703,11 +1672,10 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
 // Helper to normalize Daily Tasks
 projectsRouter.use('/daily-tasks', createCrudRouter({
   modelName: 'project_daily_task',
-  select: DAILY_TASK_READ_SELECT,
-  unavailableFields: ['output_target', 'output_similarity_score', 'output_review_category'],
   searchFields: [
     'title',
     'description',
+    'output_target',
     'notes',
     'output_result',
     'time_slot',
@@ -1821,10 +1789,6 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
   afterUpdate: async (req, rec) => {
     await ProjectsService.recalculateTaskTree({ dailyTaskId: rec.id, companyId: activeCompanyId(req) });
   },
-  transform: (record) => ({
-    ...record,
-    ...DAILY_TASK_OUTPUT_FALLBACK,
-  }),
 }));
 
 // Task Assignments with alias mapping
