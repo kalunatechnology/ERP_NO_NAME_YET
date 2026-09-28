@@ -629,6 +629,16 @@ export class ProjectsService {
     companyId: string | undefined,
     db: any = prisma,
   ): Promise<any | null> {
+    // Some domain tests and delegated service clients expose only the model
+    // delegate, not Prisma raw-query helpers. Keep the compatibility helper
+    // usable there too by falling back to an explicit legacy-safe projection.
+    if (typeof db?.$queryRaw !== 'function') {
+      return db.project_daily_task.findFirst({
+        where: { id: dailyTaskId, ...(companyId ? { company_id: companyId } : {}) },
+        select: DAILY_TASK_LEGACY_MUTATION_SELECT,
+      });
+    }
+
     const rows = companyId
       ? await db.$queryRaw(Prisma.sql`
           SELECT *
