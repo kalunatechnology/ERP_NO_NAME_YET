@@ -26,8 +26,6 @@ export interface CrudOptions {
   readOnly?: boolean;
   searchFields?: string[];
   defaultSort?: { field: string; order: 'asc' | 'desc' };
-  /** Prisma fields intentionally unavailable in the active physical schema. */
-  unavailableFields?: string[];
   select?: Record<string, unknown>;
   include?: Record<string, unknown>;
   beforeCreate?: (req: Request, data: any) => Promise<any> | any;
@@ -512,7 +510,6 @@ export function createCrudRouter(options: CrudOptions): Router {
  */
   const delegate = (prisma as any)[options.modelName];
   const modelNameStr = String(options.modelName);
-  const unavailableFields = new Set(options.unavailableFields ?? []);
 
 /**
  * assertFinancialRecordMutable implements this file's named function contract.
@@ -749,7 +746,7 @@ export function createCrudRouter(options: CrudOptions): Router {
           else if (key === 'warehouse') resolvedKey = 'warehouse_id';
 
           // Only include filter if field exists on model (or if cache is empty fallback)
-          if (!unavailableFields.has(resolvedKey) && (validFields.size === 0 || validFields.has(resolvedKey))) {
+          if (validFields.size === 0 || validFields.has(resolvedKey)) {
             if (val === 'true') where[resolvedKey] = true;
             else if (val === 'false') where[resolvedKey] = false;
             else if (val === 'null') where[resolvedKey] = null;
@@ -762,7 +759,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       const search = req.query['search'] as string | undefined;
       if (search && options.searchFields?.length) {
         const applicableSearchFields = options.searchFields.filter(
-          (f) => !unavailableFields.has(f) && (validFields.size === 0 || validFields.has(f))
+          (f) => validFields.size === 0 || validFields.has(f)
         );
         if (applicableSearchFields.length > 0) {
           andConditions.push({
@@ -784,7 +781,7 @@ export function createCrudRouter(options: CrudOptions): Router {
       if (ordering) {
         const isDesc = ordering.startsWith('-');
         const field = isDesc ? ordering.slice(1) : ordering;
-        if (!unavailableFields.has(field) && (validFields.size === 0 || validFields.has(field))) {
+        if (validFields.size === 0 || validFields.has(field)) {
           orderBy[field] = isDesc ? 'desc' : 'asc';
         } else if (validFields.has('id')) {
           orderBy['id'] = 'desc';
