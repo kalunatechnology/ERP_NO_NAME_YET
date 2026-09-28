@@ -17,27 +17,47 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
-      - name: Patch dashboard Daily Task projection
+      - name: Patch dashboard Daily Task projection and Executive comparison
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
 
-          path = Path('backend-express/src/modules/dashboard/dashboard.routes.ts')
-          source = path.read_text()
-          needle = '              dt.output_result,'
-          replacement = '''              dt.output_target,\n              dt.output_result,\n              dt.output_similarity_score,\n              dt.output_review_category,'''
-          count = source.count(needle)
-          if count != 2:
-              raise SystemExit(f'Expected exactly 2 Daily Task output_result projection lines, found {count}')
-          if source.count('dt.output_target,') != 0:
+          backend = Path('backend-express/src/modules/dashboard/dashboard.routes.ts')
+          source = backend.read_text()
+          if 'dt.output_target,' in source:
               raise SystemExit('Dashboard projection already contains output_target; refusing duplicate patch')
-          path.write_text(source.replace(needle, replacement))
+
+          pattern = re.compile(r'(?m)^(\s*)dt\.output_result,\s*$')
+          matches = list(pattern.finditer(source))
+          if len(matches) != 2:
+              raise SystemExit(f'Expected exactly 2 Daily Task output_result projection lines, found {len(matches)}')
+
+          def replace_projection(match):
+              indent = match.group(1)
+              return (
+                  f'{indent}dt.output_target,\n'
+                  f'{indent}dt.output_result,\n'
+                  f'{indent}dt.output_similarity_score,\n'
+                  f'{indent}dt.output_review_category,'
+              )
+
+          backend.write_text(pattern.sub(replace_projection, source))
+
+          frontend = Path('frontend-next/components/executive/ExecutiveDailyTaskMonitor.tsx')
+          ui = frontend.read_text()
+          old = '''  const comparison = record.task.output_review_category\n    ? { score: Number(record.task.output_similarity_score || 0), category: record.task.output_review_category }\n    : compareTaskOutput(record.task.output_target, record.task.output_result);'''
+          new = '''  const persistedComparisonCategory = record.task.output_review_category;\n  const comparison = persistedComparisonCategory && persistedComparisonCategory !== "NOT_EVALUATED"\n    ? { score: Number(record.task.output_similarity_score || 0), category: persistedComparisonCategory }\n    : compareTaskOutput(record.task.output_target, record.task.output_result);'''
+          count = ui.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly 1 Executive comparison block, found {count}')
+          frontend.write_text(ui.replace(old, new))
           PY
       - name: Commit patch
         run: |
           git config user.name 'kalunatechnology'
           git config user.email '159101948+kalunatechnology@users.noreply.github.com'
-          git add backend-express/src/modules/dashboard/dashboard.routes.ts
+          git add backend-express/src/modules/dashboard/dashboard.routes.ts frontend-next/components/executive/ExecutiveDailyTaskMonitor.tsx
           git diff --cached --check
-          git commit -m 'fix(dashboard): expose Daily Task output comparison fields'
+          git commit -m 'fix(dashboard): align Executive Daily Task output contract'
           git push origin HEAD:master
