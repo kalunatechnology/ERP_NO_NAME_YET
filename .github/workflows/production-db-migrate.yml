@@ -1,0 +1,126 @@
+name: Production DB Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type MIGRATE to run the production database migration'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-db-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOYMENT_TARGET: hostinger
+      SUPABASE_DIRECT_URL: ${{ secrets.SUPABASE_DIRECT_URL }}
+      DATABASE_URL: ${{ secrets.SUPABASE_DIRECT_URL }}
+      DIRECT_URL: ${{ secrets.SUPABASE_DIRECT_URL }}
+    steps:
+      - name: Confirm explicit production migration
+        run: |
+          if [ "${{ inputs.confirm }}" != "MIGRATE" ]; then
+            echo "Refusing production DB mutation. Re-run and type MIGRATE exactly."
+            exit 1
+          fi
+
+      - name: Verify migration credential is configured
+        run: |
+          if [ -z "$SUPABASE_DIRECT_URL" ]; then
+            echo "SUPABASE_DIRECT_URL GitHub Actions secret is not configured."
+            exit 1
+          fi
+
+      - name: Checkout production release
+        uses: actions/checkout@v4
+        with:
+          ref: production
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend-express/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend-express
+        run: npm ci
+
+      - name: Validate Prisma schema
+        working-directory: backend-express
+        run: npx prisma validate
+
+      - name: Deploy production migrations
+        working-directory: backend-express
+        run: npm run deploy:hostinger:db
+
+      - name: Verify Daily Task output contract
+        working-directory: backend-express
+        run: |
+          node <<'NODE'
+          const { Client } = require('pg');
+
+          async function main() {
+            const client = new Client({
+              connectionString: process.env.SUPABASE_DIRECT_URL,
+              ssl: { rejectUnauthorized: false },
+            });
+            await client.connect();
+            try {
+              const expected = [
+                'output_target',
+                'output_similarity_score',
+                'output_review_category',
+              ];
+              const columns = await client.query(`
+                SELECT column_name, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'project_daily_task'
+                  AND column_name = ANY($1::text[])
+                ORDER BY column_name
+              `, [expected]);
+
+              const present = new Set(columns.rows.map((row) => row.column_name));
+              const missing = expected.filter((name) => !present.has(name));
+              if (missing.length) {
+                throw new Error(`Daily Task output contract is still incomplete: ${missing.join(', ')}`);
+              }
+
+              const nullable = columns.rows.filter((row) => row.is_nullable !== 'NO');
+              if (nullable.length) {
+                throw new Error(`Daily Task output columns must be NOT NULL: ${nullable.map((row) => row.column_name).join(', ')}`);
+              }
+
+              const migration = await client.query(`
+                SELECT migration_name, finished_at, rolled_back_at
+                FROM "_prisma_migrations"
+                WHERE migration_name = '20260928043000_production_daily_task_output_contract'
+                ORDER BY started_at DESC
+                LIMIT 1
+              `);
+              const row = migration.rows[0];
+              if (!row || !row.finished_at || row.rolled_back_at) {
+                throw new Error('Production Daily Task output migration is not recorded as successfully applied.');
+              }
+
+              console.log('Production DB verified: Daily Task output comparison contract is ready.');
+            } finally {
+              await client.end();
+            }
+          }
+
+          main().catch((error) => {
+            console.error(error instanceof Error ? error.message : String(error));
+            process.exit(1);
+          });
+          NODE
