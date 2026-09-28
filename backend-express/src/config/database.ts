@@ -62,7 +62,7 @@ function isDailyTaskSchemaLag(error: unknown): boolean {
 
   const message = error instanceof Error ? error.message : String(error ?? '');
   return message.includes('does not exist in the current database')
-    || message.includes('column') && message.includes('does not exist');
+    || (message.includes('column') && message.includes('does not exist'));
 }
 
 function stripDailyTaskComparisonFields(value: unknown): any {
@@ -165,10 +165,16 @@ function createPrismaClient() {
   });
 }
 
-type AppPrismaClient = ReturnType<typeof createPrismaClient>;
-const globalForPrisma = globalThis as unknown as { prisma?: AppPrismaClient };
+/**
+ * Query extensions alter Prisma's inferred structural type even though the
+ * runtime client still fulfils the normal PrismaClient/TransactionClient
+ * contract used throughout this ERP. Keep that extension detail private here
+ * so existing service transaction signatures remain stable.
+ */
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const runtimePrisma = globalForPrisma.prisma ?? createPrismaClient();
 
-export const prisma = globalForPrisma.prisma || createPrismaClient();
+export const prisma = runtimePrisma as unknown as PrismaClient;
 globalForPrisma.prisma = prisma;
 
 export default prisma;
