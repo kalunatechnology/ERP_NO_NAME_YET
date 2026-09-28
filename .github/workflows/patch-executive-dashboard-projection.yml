@@ -1,0 +1,42 @@
+name: Patch Executive Dashboard Projection
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/patch-executive-dashboard-projection.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Patch non-staff Daily Task projection
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend-express/src/modules/dashboard/dashboard.routes.ts')
+          source = path.read_text()
+          old = '''            time_slot,\n            output_result,\n            notes,'''
+          new = '''            time_slot,\n            output_target,\n            output_result,\n            output_similarity_score,\n            output_review_category,\n            notes,'''
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly 1 non-staff Daily Task projection, found {count}')
+          path.write_text(source.replace(old, new))
+          PY
+      - name: Commit source patch and remove temporary workflow
+        run: |
+          git config user.name 'kalunatechnology'
+          git config user.email '159101948+kalunatechnology@users.noreply.github.com'
+          git add backend-express/src/modules/dashboard/dashboard.routes.ts
+          git rm .github/workflows/patch-executive-dashboard-projection.yml
+          git diff --cached --check
+          git commit -m 'fix(dashboard): expose output contract to Executive projection'
+          git push origin HEAD:master
