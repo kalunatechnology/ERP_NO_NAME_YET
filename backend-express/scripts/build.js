@@ -66,9 +66,6 @@ function main() {
   const root = path.resolve(__dirname, '..');
   const hasFrontend = fs.existsSync(path.resolve(root, '..', 'frontend-next', 'lib', 'access', 'module-contract.ts'));
 
-  // Prisma String IDs are stored as PostgreSQL TEXT in the production baseline.
-  // Rust-free driver parameters are text too; forcing them to UUID produces
-  // PostgreSQL 42883 (operator does not exist: text = uuid).
   assertNoUuidCastsForTextIds(path.join(root, 'src'));
 
   if (isHostinger && !skipHostingerMigration) {
@@ -86,7 +83,6 @@ function main() {
   }
 
   if (process.env.SKIP_TESTS_ON_BUILD !== 'true') {
-    // tests/q11-system-guardrails.ts imports contracts from the sibling frontend-next project.
     if (hasFrontend) {
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/q11-system-guardrails.ts']);
       run(process.execPath, [path.join(root, 'node_modules', 'ts-node', 'dist', 'bin.js'), '--files', 'tests/project-financial-targets.unit.ts']);
