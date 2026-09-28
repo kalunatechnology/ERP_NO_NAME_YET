@@ -2884,7 +2884,10 @@ model project_daily_task {
   description    String
   planned_date   DateTime?
   time_slot      String
+  output_target  String    @default("")
   output_result  String
+  output_similarity_score Decimal @default(0)
+  output_review_category String @default("NOT_EVALUATED")
   notes          String
   progress       Decimal
   status         String
