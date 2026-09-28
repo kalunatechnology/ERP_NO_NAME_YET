@@ -9,7 +9,7 @@
 import prisma from '../../config/database';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { compareTaskOutput } from './output-comparison';
 
 export const PROJECT_MANAGEMENT_ROLES = [
@@ -19,6 +19,27 @@ export const PROJECT_MANAGEMENT_ROLES = [
 ] as const;
 export const ACTING_PROJECT_MANAGER_ROLE = 'ACTING_PROJECT_MANAGER' as const;
 const PROJECT_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
+
+const DAILY_TASK_LEGACY_MUTATION_SELECT = {
+  tenant_id: true,
+  company_id: true,
+  created_by_id: true,
+  id: true,
+  weekly_task_id: true,
+  owner_id: true,
+  title: true,
+  description: true,
+  planned_date: true,
+  time_slot: true,
+  output_result: true,
+  notes: true,
+  progress: true,
+  status: true,
+  is_blocked: true,
+  block_reason: true,
+  created_at: true,
+  updated_at: true,
+} as const;
 
 export interface ProjectAuthority {
   project_id: string;
@@ -583,8 +604,50 @@ export class ProjectsService {
     return { id: { in: [] } };
   }
 
+  private static async dailyTaskOutputContractAvailable(db: any = prisma): Promise<boolean> {
+    try {
+      const rows = await db.$queryRaw(Prisma.sql`
+        SELECT COUNT(*)::int AS "count"
+        FROM information_schema.columns
+        WHERE table_schema = ANY (current_schemas(false))
+          AND table_name = 'project_daily_task'
+          AND column_name IN (
+            'output_target',
+            'output_similarity_score',
+            'output_review_category'
+          )
+      `) as Array<{ count: number | string | bigint }>;
+      return Number(rows[0]?.count ?? 0) === 3;
+    } catch (error) {
+      console.warn('[ProjectsService] Unable to inspect Daily Task output schema readiness:', error);
+      return false;
+    }
+  }
+
+  private static async dailyTaskRecord(
+    dailyTaskId: string,
+    companyId: string | undefined,
+    db: any = prisma,
+  ): Promise<any | null> {
+    const rows = companyId
+      ? await db.$queryRaw(Prisma.sql`
+          SELECT *
+          FROM "project_daily_task"
+          WHERE "id" = ${dailyTaskId}
+            AND "company_id" = ${companyId}
+          LIMIT 1
+        `)
+      : await db.$queryRaw(Prisma.sql`
+          SELECT *
+          FROM "project_daily_task"
+          WHERE "id" = ${dailyTaskId}
+          LIMIT 1
+        `);
+    return (rows as any[])[0] ?? null;
+  }
+
   private static async dailyTaskContext(dailyTaskId: string, companyId: string, db: any = prisma) {
-    const task = await db.project_daily_task.findFirst({ where: { id: dailyTaskId, company_id: companyId } });
+    const task = await this.dailyTaskRecord(dailyTaskId, companyId, db);
     if (!task) throw new NotFoundError('DailyTask');
     const weekly = await db.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } });
     const mainTask = weekly
@@ -968,9 +1031,7 @@ export class ProjectsService {
       let companyId = params.companyId;
 
       if (params.dailyTaskId) {
-        const dt = await tx.project_daily_task.findFirst({
-          where: { id: params.dailyTaskId, ...(companyId ? { company_id: companyId } : {}) },
-        });
+        const dt = await this.dailyTaskRecord(params.dailyTaskId, companyId, tx);
         companyId ??= dt?.company_id ?? undefined;
         if (dt?.weekly_task_id) {
           weeklyId = dt.weekly_task_id;
@@ -1000,6 +1061,7 @@ export class ProjectsService {
           await tx.project_daily_task.update({
             where: { id: dt.id },
             data: { progress: calculatedProgress, status: calculatedStatus, updated_at: new Date() },
+            select: { id: true },
           });
         }
       }
@@ -1014,6 +1076,7 @@ export class ProjectsService {
           if (!wt.is_progress_overridden) {
             const dailyTasks = await tx.project_daily_task.findMany({
               where: { weekly_task_id: weeklyId, ...(companyId ? { company_id: companyId } : {}) },
+              select: { progress: true, is_blocked: true, status: true },
             });
             if (dailyTasks.length > 0) {
               const avg =
@@ -1446,6 +1509,8 @@ export class ProjectsService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async updateDailyTaskProgress(dailyTaskId: string, data: any, user: any, companyId: string) {
+    const outputContractAvailable = await this.dailyTaskOutputContractAvailable();
+
     return prisma.$transaction(async (tx) => {
       const { task, projectId } = await this.assertCanOperateDailyTask(dailyTaskId, user, companyId, tx);
 
@@ -1475,17 +1540,12 @@ export class ProjectsService {
         ? Math.round((completedChecklistCount / checklist.length) * 10000) / 100
         : completedStates.has(String(status).toUpperCase()) ? 100 : 0;
 
-      // Once a checklist exists, its completion state is authoritative for both
-      // percentage and status. BLOCKED remains an explicit operational override.
       if (checklist.length > 0 && status !== 'BLOCKED') {
         status = completedChecklistCount === checklist.length
           ? 'COMPLETED'
           : completedChecklistCount > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
       }
 
-      // A BLOCKED status is a single operational state, never merely a label.
-      // Accept legacy callers that send status=BLOCKED, but require a reason so
-      // the task remains actionable and the resulting record is consistent.
       let isBlocked = data.is_blocked !== undefined
         ? Boolean(data.is_blocked)
         : status === 'BLOCKED' ? true : task.is_blocked;
@@ -1513,6 +1573,16 @@ export class ProjectsService {
       if (requestedOutputTarget !== undefined && !requestedOutputTarget) {
         throw new ValidationError('Output Target tidak boleh kosong.');
       }
+
+      const outputContractRequested = requestedOutputTarget !== undefined
+        || data.output_result !== undefined
+        || status === 'COMPLETED';
+      if (!outputContractAvailable && outputContractRequested) {
+        throw new ConflictError(
+          'Database production belum memiliki kontrak kolom Output Comparison Daily Task. Jalankan migration production (npm run deploy:hostinger:db) sebelum menyimpan Output Target/Hasil atau menyelesaikan Daily Task.',
+        );
+      }
+
       const outputTarget = existingOutputTarget || requestedOutputTarget || '';
       const outputResult = String(data.output_result !== undefined ? data.output_result : task.output_result ?? '').trim();
       if (status === 'COMPLETED' && !outputResult) {
@@ -1523,24 +1593,34 @@ export class ProjectsService {
       }
       const outputComparison = compareTaskOutput(outputTarget, outputResult);
 
-      const updated = await tx.project_daily_task.update({
-        where: { id: dailyTaskId },
-        data: {
-          title: data.title ?? data.activity_input ?? task.title,
-          description: data.description !== undefined ? data.description : task.description,
-          time_slot: data.time_slot !== undefined ? data.time_slot : task.time_slot,
-          output_target: outputTarget,
-          output_result: outputResult,
-          output_similarity_score: outputComparison.score,
-          output_review_category: outputComparison.category,
-          notes: data.notes !== undefined ? data.notes : task.notes,
-          progress,
-          status,
-          is_blocked: isBlocked,
-          block_reason: blockReason,
-          updated_at: new Date(),
-        },
-      });
+      const baseUpdateData = {
+        title: data.title ?? data.activity_input ?? task.title,
+        description: data.description !== undefined ? data.description : task.description,
+        time_slot: data.time_slot !== undefined ? data.time_slot : task.time_slot,
+        output_result: outputResult,
+        notes: data.notes !== undefined ? data.notes : task.notes,
+        progress,
+        status,
+        is_blocked: isBlocked,
+        block_reason: blockReason,
+        updated_at: new Date(),
+      };
+
+      const updated = outputContractAvailable
+        ? await tx.project_daily_task.update({
+            where: { id: dailyTaskId },
+            data: {
+              ...baseUpdateData,
+              output_target: outputTarget,
+              output_similarity_score: outputComparison.score,
+              output_review_category: outputComparison.category,
+            },
+          })
+        : await tx.project_daily_task.update({
+            where: { id: dailyTaskId },
+            data: baseUpdateData,
+            select: DAILY_TASK_LEGACY_MUTATION_SELECT,
+          });
 
       if (projectId) {
         await this.logActivity({
@@ -1585,6 +1665,7 @@ export class ProjectsService {
           block_reason: reason,
           updated_at: new Date(),
         },
+        select: DAILY_TASK_LEGACY_MUTATION_SELECT,
       });
 
       if (projectId) {
@@ -1690,6 +1771,7 @@ export class ProjectsService {
           owner_id: targetUserId,
           updated_at: new Date(),
         },
+        select: DAILY_TASK_LEGACY_MUTATION_SELECT,
       });
 
       if (projectId) {
@@ -1732,7 +1814,9 @@ export class ProjectsService {
         throw new ConflictError('Permintaan transfer ini sudah diproses.');
       }
 
-      const task = await tx.project_daily_task.findFirst({ where: { id: transfer.daily_task_id, company_id: companyId } });
+      const task = transfer.daily_task_id
+        ? await this.dailyTaskRecord(transfer.daily_task_id, companyId, tx)
+        : null;
       const weekly = task ? await tx.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } }) : null;
       const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
       const projectId = mainTask?.project_id;
@@ -1755,6 +1839,7 @@ export class ProjectsService {
           await tx.project_daily_task.update({
             where: { id: transfer.daily_task_id },
             data: { owner_id: transfer.target_user_id, updated_at: new Date() },
+            select: { id: true },
           });
         }
         if (projectId && task) {
