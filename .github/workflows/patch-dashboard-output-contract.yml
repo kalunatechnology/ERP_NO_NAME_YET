@@ -24,12 +24,14 @@ jobs:
 
           path = Path('backend-express/src/modules/dashboard/dashboard.routes.ts')
           source = path.read_text()
-          old = '''              dt.time_slot,\n              dt.output_result,\n              dt.notes,'''
-          new = '''              dt.time_slot,\n              dt.output_target,\n              dt.output_result,\n              dt.output_similarity_score,\n              dt.output_review_category,\n              dt.notes,'''
-          count = source.count(old)
+          needle = '              dt.output_result,'
+          replacement = '''              dt.output_target,\n              dt.output_result,\n              dt.output_similarity_score,\n              dt.output_review_category,'''
+          count = source.count(needle)
           if count != 2:
-              raise SystemExit(f'Expected exactly 2 Daily Task projection matches, found {count}')
-          path.write_text(source.replace(old, new))
+              raise SystemExit(f'Expected exactly 2 Daily Task output_result projection lines, found {count}')
+          if source.count('dt.output_target,') != 0:
+              raise SystemExit('Dashboard projection already contains output_target; refusing duplicate patch')
+          path.write_text(source.replace(needle, replacement))
           PY
       - name: Commit patch
         run: |
