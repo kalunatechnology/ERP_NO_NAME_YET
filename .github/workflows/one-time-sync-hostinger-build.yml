@@ -1,0 +1,7 @@
+name: One-time sync marker
+on: workflow_dispatch
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo sync
