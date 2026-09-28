@@ -10,6 +10,7 @@ import prisma from '../../config/database';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
 import type { Prisma } from '@prisma/client';
+import { compareTaskOutput } from './output-comparison';
 
 export const PROJECT_MANAGEMENT_ROLES = [
   'PROJECT_MANAGER',
@@ -981,14 +982,20 @@ export class ProjectsService {
             select: { status: true },
           });
           const completedStates = new Set(['DONE', 'COMPLETED', 'CHECKED', 'APPROVED']);
-          const calculatedProgress = checklist.length > 0
+          const checklistProgress = checklist.length > 0
             ? Math.round((checklist.filter((item) => completedStates.has(item.status.toUpperCase())).length / checklist.length) * 10000) / 100
             : completedStates.has(dt.status.toUpperCase()) ? 100 : 0;
+          // A Daily Task is not complete until its result has been documented.
+          // Preserve historical tasks completed before Output Target existed;
+          // only active/new records are held at 99% until documented.
+          const hasOutputResult = Boolean(String(dt.output_result ?? '').trim());
+          const legacyCompleted = dt.status === 'COMPLETED' && !String(dt.output_target ?? '').trim();
+          const calculatedProgress = checklistProgress >= 100 && !hasOutputResult && !legacyCompleted ? 99 : checklistProgress;
           const calculatedStatus = dt.status === 'BLOCKED'
             ? 'BLOCKED'
             : checklist.length === 0
               ? dt.status
-              : calculatedProgress >= 100 ? 'COMPLETED' : calculatedProgress > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
+              : checklistProgress >= 100 && (hasOutputResult || legacyCompleted) ? 'COMPLETED' : calculatedProgress > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
 
           await tx.project_daily_task.update({
             where: { id: dt.id },
@@ -1498,13 +1505,34 @@ export class ProjectsService {
         if (!blockReason) throw new ValidationError('Alasan kendala wajib diisi saat Daily Task diblokir.');
       }
 
+      const existingOutputTarget = String(task.output_target ?? '').trim();
+      const requestedOutputTarget = data.output_target === undefined ? undefined : String(data.output_target).trim();
+      if (requestedOutputTarget !== undefined && existingOutputTarget) {
+        throw new ValidationError('Output Target tidak dapat diubah setelah ditetapkan.');
+      }
+      if (requestedOutputTarget !== undefined && !requestedOutputTarget) {
+        throw new ValidationError('Output Target tidak boleh kosong.');
+      }
+      const outputTarget = existingOutputTarget || requestedOutputTarget || '';
+      const outputResult = String(data.output_result !== undefined ? data.output_result : task.output_result ?? '').trim();
+      if (status === 'COMPLETED' && !outputResult) {
+        throw new ValidationError('Output Hasil wajib diisi sebelum Daily Task dapat diselesaikan.');
+      }
+      if (status === 'COMPLETED' && !outputTarget) {
+        throw new ValidationError('Output Target wajib diisi sebelum Daily Task dapat diselesaikan.');
+      }
+      const outputComparison = compareTaskOutput(outputTarget, outputResult);
+
       const updated = await tx.project_daily_task.update({
         where: { id: dailyTaskId },
         data: {
           title: data.title ?? data.activity_input ?? task.title,
           description: data.description !== undefined ? data.description : task.description,
           time_slot: data.time_slot !== undefined ? data.time_slot : task.time_slot,
-          output_result: data.output_result !== undefined ? data.output_result : task.output_result,
+          output_target: outputTarget,
+          output_result: outputResult,
+          output_similarity_score: outputComparison.score,
+          output_review_category: outputComparison.category,
           notes: data.notes !== undefined ? data.notes : task.notes,
           progress,
           status,

@@ -43,6 +43,7 @@ import { ProjectMilestoneCard } from "@/components/ui/ProjectMilestoneCard";
 import { getCategoryStyle } from "@/lib/ui/semantic-styles";
 import { canPerform } from "@/lib/access/capability-contract";
 import { ProjectWbsTree } from "@/components/projects/ProjectWbsTree";
+import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
 
 /**
  * formatRupiah coordinates the UI behavior represented by this function.
@@ -166,6 +167,7 @@ export default function ProjectsClient() {
     title: "",
     time_slot: "09.00 - 12.00",
     planned_date: localDateKey(),
+    output_target: "",
     output_result: "",
     notes: "",
     status: "IN_PROGRESS"
@@ -174,11 +176,16 @@ export default function ProjectsClient() {
   const [editDailyForm, setEditDailyForm] = useState({
     status: "COMPLETED" as "NOT_STARTED" | "IN_PROGRESS" | "PENDING" | "ON_PROGRESS" | "COMPLETED" | "DONE" | "BLOCKED",
     progress: 100,
+    output_target: "",
     output_result: "",
     notes: "",
     is_blocked: false,
     block_reason: ""
   });
+  const editOutputComparison = useMemo(
+    () => compareTaskOutput(editDailyForm.output_target, editDailyForm.output_result),
+    [editDailyForm.output_target, editDailyForm.output_result],
+  );
   const [transferReason, setTransferReason] = useState("");
   const [transferTargetUserId, setTransferTargetUserId] = useState("");
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
@@ -890,6 +897,14 @@ export default function ProjectsClient() {
       toast.error("Mohon isi judul task / aktivitas");
       return;
     }
+    if (!dailyForm.output_target.trim()) {
+      toast.error("Output Target wajib diisi agar hasil pekerjaan dapat dibandingkan.");
+      return;
+    }
+    if (dailyForm.status === "COMPLETED" && !dailyForm.output_result.trim()) {
+      toast.error("Output Hasil wajib diisi untuk task yang langsung diselesaikan.");
+      return;
+    }
     if (dailySaving) return;
     setDailySaving(true);
     try {
@@ -899,6 +914,7 @@ export default function ProjectsClient() {
         time_slot: dailyForm.time_slot || "09.00 - 12.00",
         title: dailyForm.title.trim(),
         activity_input: dailyForm.title.trim(),
+        output_target: dailyForm.output_target.trim(),
         output_result: dailyForm.output_result.trim(),
         notes: dailyForm.notes.trim(),
         status: dailyForm.status
@@ -908,6 +924,7 @@ export default function ProjectsClient() {
         title: "",
         time_slot: "09.00 - 12.00",
         planned_date: localDateKey(),
+        output_target: "",
         output_result: "",
         notes: "",
         status: "IN_PROGRESS"
@@ -930,9 +947,18 @@ export default function ProjectsClient() {
  */
   const handleSaveEditDaily = async () => {
     if (!activeDailyTask) return;
+    if (["COMPLETED", "DONE"].includes(editDailyForm.status) && !editDailyForm.output_result.trim()) {
+      toast.error("Output Hasil wajib diisi sebelum Daily Task dapat diselesaikan.");
+      return;
+    }
+    if (["COMPLETED", "DONE"].includes(editDailyForm.status) && !editDailyForm.output_target.trim()) {
+      toast.error("Output Target wajib diisi sebelum Daily Task dapat diselesaikan.");
+      return;
+    }
     try {
       await updateDailyTask(activeDailyTask.id, {
         status: editDailyForm.status,
+        ...(!activeDailyTask.output_target?.trim() ? { output_target: editDailyForm.output_target.trim() } : {}),
         output_result: editDailyForm.output_result,
         notes: editDailyForm.notes,
         is_blocked: editDailyForm.is_blocked,
@@ -959,6 +985,10 @@ export default function ProjectsClient() {
       return;
     }
     const isDone = daily.status === "COMPLETED" || daily.status === "DONE";
+    if (!isDone && !String(daily.output_result || "").trim()) {
+      toast.error("Isi Output Hasil terlebih dahulu sebelum menandai task selesai.");
+      return;
+    }
     const nextStatus = isDone ? "ON_PROGRESS" : "COMPLETED";
     const nextProg = isDone ? 50 : 100;
     const prevStatus = daily.status;
@@ -1586,6 +1616,7 @@ export default function ProjectsClient() {
               title: "",
               time_slot: "09.00 - 12.00",
               planned_date: localDateKey(),
+              output_target: "",
               output_result: "",
               notes: "",
               status: "IN_PROGRESS"
@@ -1623,6 +1654,7 @@ export default function ProjectsClient() {
             setEditDailyForm({
               status: daily.status,
               progress: daily.progress || 0,
+              output_target: daily.output_target || "",
               output_result: daily.output_result || "",
               notes: daily.notes || "",
               is_blocked: !!daily.is_blocked,
@@ -1827,6 +1859,7 @@ export default function ProjectsClient() {
                                     setEditDailyForm({
                                       status: daily.status,
                                       progress: daily.progress || 0,
+                                      output_target: daily.output_target || "",
                                       output_result: daily.output_result || "",
                                       notes: daily.notes || "",
                                       is_blocked: !!daily.is_blocked,
@@ -2455,15 +2488,27 @@ export default function ProjectsClient() {
           </div>
 
           <div>
+            <label className="text-xs font-bold text-text-primary block mb-1">Output Target *</label>
+            <textarea
+              rows={2}
+              placeholder="Tuliskan deliverable yang wajib dihasilkan dari aktivitas ini..."
+              value={dailyForm.output_target}
+              onChange={e => setDailyForm({ ...dailyForm, output_target: e.target.value })}
+              className="input text-xs"
+            />
+            <p className="mt-1 text-3xs text-text-secondary">Digunakan sebagai acuan perbandingan dengan Output Hasil.</p>
+          </div>
+
+          <div>
             <div className="flex justify-between items-center mb-1">
               <label className="text-xs font-bold text-text-primary">
                 Output (Hasil yang Didapat / Deliverable)
               </label>
-              <span className="text-3xs text-text-secondary bg-gray-100 px-2 py-0.5 rounded">Opsional</span>
+              <span className="text-3xs text-text-secondary bg-gray-100 px-2 py-0.5 rounded">{dailyForm.status === "COMPLETED" ? "Wajib" : "Diisi saat tersedia"}</span>
             </div>
             <textarea
               rows={2}
-              placeholder="Opsional: Tuliskan hasil jika sudah selesai..."
+              placeholder="Tuliskan hasil aktual untuk dibandingkan dengan Output Target..."
               value={dailyForm.output_result}
               onChange={e => setDailyForm({ ...dailyForm, output_result: e.target.value })}
               className="input text-xs"
@@ -2515,6 +2560,14 @@ export default function ProjectsClient() {
       >
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,.75fr)]">
           <div className="lg:col-start-2 lg:row-start-1">
+            <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+              <div className="text-2xs font-bold uppercase tracking-wide text-blue-700">Output Target</div>
+              {activeDailyTask?.output_target?.trim() ? (
+                <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-text-primary">{activeDailyTask.output_target}</p>
+              ) : (
+                <><textarea rows={2} value={editDailyForm.output_target} onChange={e => setEditDailyForm({ ...editDailyForm, output_target: e.target.value })} placeholder="Task lama: isi target output sekali untuk mengaktifkan perbandingan." className="mt-1 w-full resize-none rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-green" /><p className="mt-1 text-3xs text-blue-700">Target akan dikunci setelah disimpan.</p></>
+              )}
+            </div>
             <label className="text-xs font-bold text-text-primary block mb-1">Output (Hasil yang Didapat / Deliverable)</label>
             <textarea
               rows={2}
@@ -2523,6 +2576,16 @@ export default function ProjectsClient() {
               onChange={e => setEditDailyForm({ ...editDailyForm, output_result: e.target.value })}
               className="input text-xs"
             />
+            {editDailyForm.output_result.trim() && editDailyForm.output_target.trim() && (
+              <div className={cn(
+                "mt-2 flex items-center justify-between rounded-lg px-3 py-2 text-2xs font-bold",
+                editOutputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-emerald-100 text-emerald-800" :
+                editOutputComparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"
+              )}>
+                <span>{outputReviewLabel(editOutputComparison.category)}</span>
+                <span>{editOutputComparison.score}% kemiripan</span>
+              </div>
+            )}
           </div>
 
           <section className="rounded-xl border border-[#d7ddd5] bg-white p-5 lg:col-start-1 lg:row-span-4 lg:row-start-1">

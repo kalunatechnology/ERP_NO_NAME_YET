@@ -8,7 +8,7 @@
 import api from "./axios";
 import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 import { normalizeList } from "./auth.api";
-import { localDateKey, normalizeDateKey } from "@/lib/utils";
+import { normalizeDateKey } from "@/lib/utils";
 
 export interface Project {
   id: string | number;
@@ -125,7 +125,10 @@ export interface DailyTask {
   title?: string;
   activity_input?: string;
   description?: string;
+  output_target?: string;
   output_result?: string;
+  output_similarity_score?: number;
+  output_review_category?: "NOT_EVALUATED" | "SUFFICIENTLY_ALIGNED" | "NEEDS_REVIEW" | "QUESTIONABLE";
   status: DailyTaskStatusValue;
   progress?: number;
   notes?: string;
@@ -145,7 +148,7 @@ export type DailyTaskStatusValue = DailyTaskStatus | "PENDING" | "ON_PROGRESS" |
  * Progress, hierarchy, and ownership are intentionally absent: those values are
  * owned by checklist completion and the audited assignment/transfer actions.
  */
-export type DailyTaskUpdatePayload = Pick<Partial<DailyTask>, "output_result" | "notes" | "is_blocked" | "block_reason"> & {
+export type DailyTaskUpdatePayload = Pick<Partial<DailyTask>, "output_target" | "output_result" | "notes" | "is_blocked" | "block_reason"> & {
   status?: DailyTaskStatusValue;
 };
 
@@ -387,6 +390,17 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
           d.output_result ||
           d.output ||
           "",
+
+        output_target:
+          d.output_target ||
+          "",
+
+        output_similarity_score:
+          Number(d.output_similarity_score || 0),
+
+        output_review_category:
+          d.output_review_category ||
+          "NOT_EVALUATED",
 
         status:
           (
@@ -762,6 +776,7 @@ export async function createDailyTask(payload: {
   time_slot?: string;
   title: string;
   activity_input?: string;
+  output_target: string;
   output_result?: string;
   notes?: string;
   status?: string;
@@ -777,6 +792,7 @@ export async function createDailyTask(payload: {
     planned_date: normalizeDateKey(payload.planned_date),
     time_slot: payload.time_slot || "09.00 - 12.00",
     title: payload.title || payload.activity_input,
+    output_target: payload.output_target.trim(),
     output_result: payload.output_result || "",
     notes: payload.notes || "",
     status: normStatus,
@@ -807,6 +823,7 @@ export async function updateDailyTask(id: string | number, payload: DailyTaskUpd
   // leaking into the backend contract.
   const cleanPayload: Record<string, unknown> = {};
   if (requestedStatus) cleanPayload.status = requestedStatus;
+  if (payload.output_target !== undefined) cleanPayload.output_target = payload.output_target;
   if (payload.output_result !== undefined) cleanPayload.output_result = payload.output_result;
   if (payload.notes !== undefined) cleanPayload.notes = payload.notes;
   if (payload.is_blocked !== undefined) cleanPayload.is_blocked = payload.is_blocked;
