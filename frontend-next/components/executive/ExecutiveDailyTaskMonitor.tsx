@@ -124,8 +124,9 @@ function MarkdownDetail({ label, value, fallback = "-" }: { label: string; value
 function DailyTaskDetail({ record, onClose }: { record: DailyTaskRecord; onClose: () => void }) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const status = taskStatus(record);
-  const comparison = record.task.output_review_category
-    ? { score: Number(record.task.output_similarity_score || 0), category: record.task.output_review_category }
+  const persistedComparisonCategory = record.task.output_review_category;
+  const comparison = persistedComparisonCategory && persistedComparisonCategory !== "NOT_EVALUATED"
+    ? { score: Number(record.task.output_similarity_score || 0), category: persistedComparisonCategory }
     : compareTaskOutput(record.task.output_target, record.task.output_result);
 
   useEffect(() => {
