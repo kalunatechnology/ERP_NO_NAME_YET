@@ -2579,7 +2579,7 @@ export default function ProjectsClient() {
             {editDailyForm.output_result.trim() && editDailyForm.output_target.trim() && (
               <div className={cn(
                 "mt-2 flex items-center justify-between rounded-lg px-3 py-2 text-2xs font-bold",
-                editOutputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-emerald-100 text-emerald-800" :
+                editOutputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-blue-100 text-[#2649B3]" :
                 editOutputComparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"
               )}>
                 <span>{outputReviewLabel(editOutputComparison.category)}</span>
