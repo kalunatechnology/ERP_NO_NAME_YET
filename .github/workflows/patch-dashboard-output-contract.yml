@@ -30,8 +30,8 @@ jobs:
 
           pattern = re.compile(r'(?m)^(\s*)dt\.output_result,\s*$')
           matches = list(pattern.finditer(source))
-          if len(matches) != 2:
-              raise SystemExit(f'Expected exactly 2 Daily Task output_result projection lines, found {len(matches)}')
+          if len(matches) != 1:
+              raise SystemExit(f'Expected exactly 1 canonical Daily Task output_result projection line, found {len(matches)}')
 
           def replace_projection(match):
               indent = match.group(1)
