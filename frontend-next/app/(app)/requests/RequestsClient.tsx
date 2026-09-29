@@ -1,126 +1,67 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, CheckCircle2, Clock3, FileText, Link2, MapPin, Plus, RefreshCw, Users, X } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Bold, CalendarDays, CheckCircle2, Clock3, FileDown, FileText, Italic, Link2, MapPin, Pencil, Plus, Save, Strikethrough, Trash2, UserCircle2, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { MeetingDetail, MeetingRequestSummary, requestApi } from "@/lib/api/request.api";
 
 type Member = { id: string; name: string; email: string; role: string };
-const initialMeeting = { title: "", description: "", start_at: "", end_at: "", location: "", meeting_url: "", meeting_type: "INTERNAL", notetaker_user_id: "", participant_ids: [] as string[], agenda: "" };
+type CreateForm = { title:string; description:string; date:string; startTime:string; endTime:string; location:string; meetingUrl:string; meetingType:string; assigneeId:string; notetakerId:string; participantIds:string[]; agenda:string };
+const initialCreate: CreateForm = { title:"",description:"",date:"",startTime:"",endTime:"",location:"",meetingUrl:"",meetingType:"MEETING",assigneeId:"",notetakerId:"",participantIds:[],agenda:"" };
+const initialMinutes = { summary:"",opening_notes:"",general_discussion:"",conclusion:"",decisions:"",action_items:"" };
 
-export default function RequestsClient() {
-  const [meetings, setMeetings] = useState<MeetingRequestSummary[]>([]);
-  const [selected, setSelected] = useState<MeetingDetail | null>(null);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
-  const [meetingForm, setMeetingForm] = useState(initialMeeting);
-  const [minutes, setMinutes] = useState({ summary: "", opening_notes: "", general_discussion: "", conclusion: "", decisions: "", action_items: "" });
+function localIso(date:string,time:string){const value=new Date(`${date}T${time}`);if(Number.isNaN(value.getTime()))throw new Error("Waktu tidak valid");return value.toISOString();}
+function displayDate(value:string){return new Date(value).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"});}
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [rows, team] = await Promise.all([requestApi.listMeetings(), requestApi.listTeamMembers()]);
-      setMeetings(rows); setMembers(team);
-    } catch { toast.error("Gagal memuat Meeting Request."); }
-    finally { setLoading(false); }
-  }, []);
-  useEffect(() => { void load(); }, [load]);
+export default function RequestsClient(){
+  const [meetings,setMeetings]=useState<MeetingRequestSummary[]>([]);
+  const [members,setMembers]=useState<Member[]>([]);
+  const [selected,setSelected]=useState<MeetingDetail|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState(false);
+  const [createOpen,setCreateOpen]=useState(false);
+  const [notesOpen,setNotesOpen]=useState(false);
+  const [createForm,setCreateForm]=useState<CreateForm>(initialCreate);
+  const [minutes,setMinutes]=useState(initialMinutes);
+  const [personInCharge,setPersonInCharge]=useState("");
+  const notesRef=useRef<HTMLTextAreaElement>(null);
 
-  async function openMeeting(id: string) {
-    try {
-      const detail = await requestApi.getMeeting(id); setSelected(detail);
-      setMinutes({
-        summary: detail.minutes?.summary ?? "", opening_notes: detail.minutes?.opening_notes ?? "",
-        general_discussion: detail.minutes?.general_discussion ?? "", conclusion: detail.minutes?.conclusion ?? "",
-        decisions: detail.minutes?.decisions.map((item) => item.decision_text).join("\n") ?? "",
-        action_items: detail.minutes?.action_items.map((item) => item.title).join("\n") ?? "",
-      });
-    } catch { toast.error("Detail meeting tidak dapat dimuat."); }
-  }
+  const openMeeting=useCallback(async(id:string)=>{try{const detail=await requestApi.getMeeting(id);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");setMinutes({summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:detail.minutes?.general_discussion??"",conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""});}catch{toast.error("Detail meeting tidak dapat dimuat.");}},[]);
+  const load=useCallback(async()=>{setLoading(true);try{const [rows,team]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers()]);setMeetings(rows);setMembers(team);const id=typeof window!=="undefined"?new URLSearchParams(window.location.search).get("meeting"):null;if(id)await openMeeting(id);}catch{toast.error("Meeting Request tidak dapat dimuat.");}finally{setLoading(false);}},[openMeeting]);
+  useEffect(()=>{void load();},[load]);
 
-  async function createMeeting(event: FormEvent) {
-    event.preventDefault(); setBusy(true);
-    try {
-      const participantSet = new Set(meetingForm.participant_ids);
-      if (meetingForm.notetaker_user_id) participantSet.add(meetingForm.notetaker_user_id);
-      await requestApi.createMeeting({
-        title: meetingForm.title, description: meetingForm.description,
-        start_at: new Date(meetingForm.start_at).toISOString(), end_at: new Date(meetingForm.end_at).toISOString(),
-        location: meetingForm.location, meeting_url: meetingForm.meeting_url, meeting_type: meetingForm.meeting_type,
-        notetaker_user_id: meetingForm.notetaker_user_id || undefined,
-        tagged_users: Array.from(participantSet).map((id) => ({ id, name: members.find((item) => item.id === id)?.name ?? id })),
-        agenda_items: meetingForm.agenda.split("\n").map((title) => title.trim()).filter(Boolean).map((title) => ({ title })),
-      });
-      toast.success("Meeting Request berhasil dibuat."); setShowCreate(false); setMeetingForm(initialMeeting); await load();
-    } catch { toast.error("Meeting Request gagal dibuat. Periksa waktu dan data wajib."); }
-    finally { setBusy(false); }
-  }
+  async function submitMeeting(event:FormEvent,draft:boolean){event.preventDefault();setBusy(true);try{const ids=new Set(createForm.participantIds);if(createForm.notetakerId)ids.add(createForm.notetakerId);await requestApi.createMeeting({title:createForm.title,description:createForm.description,start_at:localIso(createForm.date,createForm.startTime),end_at:localIso(createForm.date,createForm.endTime),location:createForm.location,meeting_url:createForm.meetingUrl,meeting_type:"INTERNAL",assignee_user_id:createForm.assigneeId||undefined,notetaker_user_id:createForm.notetakerId||undefined,is_draft:draft,tagged_users:Array.from(ids).map(id=>({id,name:members.find(member=>member.id===id)?.name??id})),agenda_items:createForm.agenda.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title}))});toast.success(draft?"Draft request berhasil disimpan.":"Meeting Request terkirim dan peserta telah diberi notifikasi.");setCreateOpen(false);setCreateForm(initialCreate);await load();}catch{toast.error("Gagal menyimpan request. Periksa tanggal, waktu, dan data wajib.");}finally{setBusy(false);}}
+  async function reassign(){if(!selected?.request||!personInCharge)return toast.error("Pilih person in charge.");setBusy(true);try{await requestApi.assignRequest(selected.request.id,personInCharge);toast.success("Person in charge diperbarui.");await openMeeting(selected.id);}catch{toast.error("Role aktif tidak memiliki izin reassign.");}finally{setBusy(false);}}
+  const minutesPayload=useMemo(()=>({summary:minutes.summary||minutes.general_discussion.split("\n")[0]||"Notulensi meeting",opening_notes:minutes.opening_notes,general_discussion:minutes.general_discussion,conclusion:minutes.conclusion,decisions:minutes.decisions.split("\n").map(text=>text.trim()).filter(Boolean).map(text=>({text})),action_items:minutes.action_items.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title}))}),[minutes]);
+  async function saveNotes(publish=false){if(!selected)return;setBusy(true);try{let detail=await requestApi.saveMinutes(selected.id,minutesPayload);if(publish)detail=await requestApi.publishMinutes(selected.id);setSelected(detail);setNotesOpen(false);toast.success(publish?"Notulensi dipublikasikan dan tindak lanjut dihasilkan.":"Notulensi berhasil disimpan.");await load();}catch{toast.error("Notulensi gagal disimpan. Pastikan Anda organizer atau notulis.");}finally{setBusy(false);}}
+  function wrapSelection(marker:string){const target=notesRef.current;if(!target)return;const start=target.selectionStart,end=target.selectionEnd,text=minutes.general_discussion.slice(start,end)||"teks";setMinutes(old=>({...old,general_discussion:`${old.general_discussion.slice(0,start)}${marker}${text}${marker}${old.general_discussion.slice(end)}`}));}
 
-  const minutesPayload = useMemo(() => ({
-    summary: minutes.summary, opening_notes: minutes.opening_notes, general_discussion: minutes.general_discussion, conclusion: minutes.conclusion,
-    decisions: minutes.decisions.split("\n").map((text) => text.trim()).filter(Boolean).map((text) => ({ text })),
-    action_items: minutes.action_items.split("\n").map((title) => title.trim()).filter(Boolean).map((title) => ({ title })),
-  }), [minutes]);
-
-  async function saveMinutes(publish = false) {
-    if (!selected) return; setBusy(true);
-    try {
-      let detail = await requestApi.saveMinutes(selected.id, minutesPayload);
-      if (publish) detail = await requestApi.publishMinutes(selected.id);
-      setSelected(detail); toast.success(publish ? "Notulensi dipublikasikan dan action item dihasilkan." : "Draft notulensi tersimpan."); await load();
-    } catch { toast.error("Notulensi gagal diproses. Pastikan Anda organizer/notulis dan ringkasan telah diisi."); }
-    finally { setBusy(false); }
-  }
-
-  return <div className="min-h-full bg-slate-50 p-4 md:p-7">
-    <div className="mx-auto max-w-7xl space-y-5">
-      <header className="flex flex-col gap-3 rounded-2xl bg-gradient-to-r from-slate-950 to-blue-950 p-6 text-white shadow-lg md:flex-row md:items-center md:justify-between">
-        <div><p className="text-xs font-semibold uppercase tracking-[.24em] text-blue-300">Request Management</p><h1 className="mt-1 text-2xl font-bold">Meeting Request & Notulensi</h1><p className="mt-1 text-sm text-slate-300">Ajukan rapat, catat keputusan, lalu hasilkan tindak lanjut yang terukur.</p></div>
-        <button onClick={() => setShowCreate(true)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold hover:bg-blue-400"><Plus size={17}/> Meeting Request</button>
-      </header>
-
-      <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Daftar Meeting</h2><button onClick={() => void load()} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><RefreshCw size={16}/></button></div>
-          <div className="space-y-2">
-            {loading && <p className="py-10 text-center text-sm text-slate-500">Memuat...</p>}
-            {!loading && meetings.length === 0 && <p className="rounded-xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">Belum ada Meeting Request.</p>}
-            {meetings.map((row) => <button key={row.id} onClick={() => void openMeeting(row.id)} className={`w-full rounded-xl border p-3 text-left transition ${selected?.id === row.id ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-blue-300"}`}>
-              <div className="flex items-start justify-between gap-2"><span className="text-xs font-semibold text-blue-700">{row.request?.request_number}</span><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{row.status}</span></div>
-              <p className="mt-1 font-semibold text-slate-900">{row.request?.title}</p><p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500"><CalendarDays size={13}/>{new Date(row.start_at).toLocaleString("id-ID")}</p>
-            </button>)}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          {!selected ? <div className="flex min-h-[430px] flex-col items-center justify-center text-center text-slate-500"><FileText size={42} className="mb-3 text-slate-300"/><p className="font-medium">Pilih meeting untuk melihat agenda dan membuat notulensi.</p></div> : <div className="space-y-5">
-            <div className="border-b border-slate-100 pb-4"><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-bold text-slate-900">{selected.request?.title}</h2>{selected.minutes?.status === "PUBLISHED" && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700"><CheckCircle2 size={13}/> Published</span>}</div><p className="mt-2 text-sm text-slate-600">{selected.request?.description}</p>
-              <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500"><span className="flex items-center gap-1"><Clock3 size={14}/>{new Date(selected.start_at).toLocaleString("id-ID")}</span>{selected.location && <span className="flex items-center gap-1"><MapPin size={14}/>{selected.location}</span>}{selected.meeting_url && <a className="flex items-center gap-1 text-blue-600" href={selected.meeting_url} target="_blank"><Link2 size={14}/>Buka meeting</a>}<span className="flex items-center gap-1"><Users size={14}/>{selected.participants.length} peserta</span></div>
-            </div>
-            <div><h3 className="mb-2 text-sm font-bold text-slate-800">Agenda</h3><ol className="space-y-1">{selected.agenda.map((item) => <li key={item.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm"><b className="mr-2 text-blue-600">{item.sequence_number}.</b>{item.title}</li>)}</ol></div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <TextArea label="Ringkasan" value={minutes.summary} onChange={(value) => setMinutes((old) => ({...old, summary:value}))}/><TextArea label="Catatan pembuka" value={minutes.opening_notes} onChange={(value) => setMinutes((old) => ({...old, opening_notes:value}))}/>
-              <TextArea label="Pembahasan" value={minutes.general_discussion} onChange={(value) => setMinutes((old) => ({...old, general_discussion:value}))}/><TextArea label="Kesimpulan" value={minutes.conclusion} onChange={(value) => setMinutes((old) => ({...old, conclusion:value}))}/>
-              <TextArea label="Keputusan (satu per baris)" value={minutes.decisions} onChange={(value) => setMinutes((old) => ({...old, decisions:value}))}/><TextArea label="Action item (satu per baris)" value={minutes.action_items} onChange={(value) => setMinutes((old) => ({...old, action_items:value}))}/>
-            </div>
-            <div className="flex justify-end gap-2"><button disabled={busy || selected.minutes?.status === "PUBLISHED"} onClick={() => void saveMinutes(false)} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50">Simpan Draft</button><button disabled={busy || selected.minutes?.status === "PUBLISHED"} onClick={() => void saveMinutes(true)} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Publikasikan</button></div>
-          </div>}
-        </section>
+  return <div className="min-h-[calc(100vh-120px)] bg-[#FDFDFD] text-[#090909]">
+    <div className="rounded-[24px] border border-[#E5E5E5] bg-white p-5 sm:p-7">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#4F5050]">Contents / Request</p><h1 className="mt-2 text-2xl font-extrabold text-[#294BB2]">Ticket Request</h1><p className="mt-1 text-sm text-[#4F5050]">Kelola permintaan meeting, peserta, dan notulensi dalam satu alur.</p></div><button onClick={()=>setCreateOpen(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#294BB2] px-5 text-sm font-bold text-white hover:bg-[#203d91]"><Plus size={18}/> New Ticket Request</button></div>
+      <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {loading&&[1,2,3].map(item=><div key={item} className="h-48 animate-pulse rounded-[18px] border border-[#E5E5E5] bg-[#FDFDFD] p-5"><div className="h-4 w-1/3 rounded bg-[#EAF6FF]"/><div className="mt-5 h-4 w-4/5 rounded bg-[#EFEFEF]"/><div className="mt-3 h-3 w-3/5 rounded bg-[#EFEFEF]"/></div>)}
+        {!loading&&meetings.length===0&&<div className="col-span-full rounded-[18px] border border-dashed border-[#D9D9D9] p-14 text-center text-sm text-[#4F5050]">Belum ada Meeting Request.</div>}
+        {meetings.map(row=><button key={row.id} onClick={()=>void openMeeting(row.id)} className="group rounded-[18px] border border-[#D9D9D9] bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-[#294BB2] hover:shadow-md"><div className="flex items-center justify-between"><span className="rounded-xl bg-[#294BB2] px-4 py-2 text-xs font-bold tracking-wide text-white">MEETING</span><span className="rounded-xl bg-[#EAF6FF] px-3 py-2 text-xs font-bold text-[#294BB2]">{row.status}</span></div><h2 className="mt-5 line-clamp-2 text-lg font-extrabold text-[#294BB2]">{row.request?.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-6 text-[#4F5050]">{row.request?.description||"Tanpa deskripsi"}</p><div className="mt-5 flex items-center justify-between border-t border-[#EFEFEF] pt-4 text-xs text-[#4F5050]"><span className="flex items-center gap-1.5"><CalendarDays size={14}/>{displayDate(row.start_at)}</span><ArrowRight size={16} className="text-[#294BB2] transition group-hover:translate-x-1"/></div></button>)}
       </div>
     </div>
-
-    {showCreate && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"><form onSubmit={createMeeting} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
-      <div className="mb-4 flex items-center justify-between"><div><h2 className="text-xl font-bold">Buat Meeting Request</h2><p className="text-sm text-slate-500">Peserta dan agenda akan tersimpan bersama request.</p></div><button type="button" onClick={() => setShowCreate(false)}><X/></button></div>
-      <div className="grid gap-4 md:grid-cols-2"><Field label="Judul" required value={meetingForm.title} onChange={(v) => setMeetingForm({...meetingForm,title:v})}/><label className="text-sm font-medium">Jenis<select className="mt-1 w-full rounded-lg border p-2.5" value={meetingForm.meeting_type} onChange={(e)=>setMeetingForm({...meetingForm,meeting_type:e.target.value})}><option>INTERNAL</option><option>CLIENT</option><option>VENDOR</option><option>PROJECT</option></select></label><Field label="Mulai" type="datetime-local" required value={meetingForm.start_at} onChange={(v)=>setMeetingForm({...meetingForm,start_at:v})}/><Field label="Selesai" type="datetime-local" required value={meetingForm.end_at} onChange={(v)=>setMeetingForm({...meetingForm,end_at:v})}/><Field label="Lokasi" value={meetingForm.location} onChange={(v)=>setMeetingForm({...meetingForm,location:v})}/><Field label="Link meeting" type="url" value={meetingForm.meeting_url} onChange={(v)=>setMeetingForm({...meetingForm,meeting_url:v})}/>
-        <label className="text-sm font-medium">Notulis<select className="mt-1 w-full rounded-lg border p-2.5" value={meetingForm.notetaker_user_id} onChange={(e)=>setMeetingForm({...meetingForm,notetaker_user_id:e.target.value})}><option value="">Pilih opsional</option>{members.map((m)=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
-        <label className="text-sm font-medium">Peserta<select multiple className="mt-1 h-28 w-full rounded-lg border p-2.5" value={meetingForm.participant_ids} onChange={(e)=>setMeetingForm({...meetingForm,participant_ids:Array.from(e.target.selectedOptions).map((o)=>o.value)})}>{members.map((m)=><option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}</select></label>
-      </div><div className="mt-4 grid gap-4 md:grid-cols-2"><TextArea label="Tujuan/deskripsi" value={meetingForm.description} onChange={(v)=>setMeetingForm({...meetingForm,description:v})}/><TextArea label="Agenda (satu per baris)" value={meetingForm.agenda} onChange={(v)=>setMeetingForm({...meetingForm,agenda:v})}/></div>
-      <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={()=>setShowCreate(false)} className="rounded-xl border px-4 py-2">Batal</button><button disabled={busy} className="rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-50">Buat Request</button></div>
-    </form></div>}
+    {createOpen&&<CreateRequestModal form={createForm} setForm={setCreateForm} members={members} busy={busy} onClose={()=>setCreateOpen(false)} onSubmit={submitMeeting}/>}
+    {selected&&!notesOpen&&<MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={()=>setSelected(null)} onReassign={reassign} onNotes={()=>setNotesOpen(true)}/>}
+    {selected&&notesOpen&&<NotesModal detail={selected} minutes={minutes} setMinutes={setMinutes} notesRef={notesRef} busy={busy} onClose={()=>setNotesOpen(false)} onSave={saveNotes} onFormat={wrapSelection}/>}
   </div>;
 }
 
-function Field({label,value,onChange,type="text",required=false}:{label:string;value:string;onChange:(v:string)=>void;type?:string;required?:boolean}) { return <label className="text-sm font-medium">{label}<input required={required} type={type} value={value} onChange={(e)=>onChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 outline-none focus:border-blue-500"/></label>; }
-function TextArea({label,value,onChange}:{label:string;value:string;onChange:(v:string)=>void}) { return <label className="text-sm font-medium text-slate-700">{label}<textarea rows={4} value={value} onChange={(e)=>onChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 outline-none focus:border-blue-500"/></label>; }
+function ModalBackdrop({children,wide=false}:{children:React.ReactNode;wide?:boolean}){return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#090909]/30 p-3 backdrop-blur-[1px]"><div className={`max-h-[94vh] w-full overflow-y-auto rounded-[30px] bg-white shadow-2xl ${wide?"max-w-[1160px]":"max-w-[980px]"}`}>{children}</div></div>;}
+
+function CreateRequestModal({form,setForm,members,busy,onClose,onSubmit}:{form:CreateForm;setForm:(form:CreateForm)=>void;members:Member[];busy:boolean;onClose:()=>void;onSubmit:(event:FormEvent,draft:boolean)=>void}){const [draft,setDraft]=useState(false);return <ModalBackdrop wide><form onSubmit={event=>onSubmit(event,draft)} className="grid min-h-[650px] gap-8 p-7 sm:p-10 lg:grid-cols-[2fr_1fr]">
+  <section><button type="button" onClick={onClose} className="mb-10 inline-flex items-center gap-4 text-xl font-extrabold text-[#294BB2]"><ArrowLeft size={20}/> New Ticket Request</button><div className="grid gap-5 md:grid-cols-[1.15fr_.75fr_.75fr]"><SelectField label="Request Type" value={form.meetingType} onChange={value=>setForm({...form,meetingType:value})}><option value="MEETING">Meeting</option></SelectField><Field label="Time" type="time" required value={form.startTime} onChange={value=>setForm({...form,startTime:value})}/><Field label="End" type="time" required value={form.endTime} onChange={value=>setForm({...form,endTime:value})}/></div><div className="mt-5 grid gap-5 md:grid-cols-2"><Field label="Date" type="date" required value={form.date} onChange={value=>setForm({...form,date:value})}/><Field label="Location" value={form.location} onChange={value=>setForm({...form,location:value})}/></div><label className="mt-5 block text-sm font-bold text-[#294BB2]">Meeting Link<div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-[#D9D9D9] px-4"><Link2 size={17}/><input type="url" value={form.meetingUrl} onChange={event=>setForm({...form,meetingUrl:event.target.value})} placeholder="Add meeting link" className="min-w-0 flex-1 outline-none"/></div></label><div className="mt-8 space-y-5"><Field label="Ticket Title" required value={form.title} onChange={value=>setForm({...form,title:value})}/><TextArea label="Request Details" rows={7} value={form.description} onChange={value=>setForm({...form,description:value})}/><TextArea label="Agenda — one item per line" rows={4} value={form.agenda} onChange={value=>setForm({...form,agenda:value})}/></div></section>
+  <aside className="flex flex-col"><div className="space-y-7"><SelectField icon={<UserCircle2 size={22}/>} label="Assign team" value={form.assigneeId} onChange={value=>setForm({...form,assigneeId:value})}><option value="">Pilih Staff</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</SelectField><SelectField icon={<FileText size={22}/>} label="Notulis" value={form.notetakerId} onChange={value=>setForm({...form,notetakerId:value})}><option value="">Pilih Staff</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</SelectField><label className="block text-sm font-bold text-[#4F5050]"><span className="mb-3 flex items-center gap-3"><Link2 size={22} className="text-[#1687EF]"/> Invite people</span><select multiple value={form.participantIds} onChange={event=>setForm({...form,participantIds:Array.from(event.target.selectedOptions).map(option=>option.value)})} className="h-36 w-full rounded-xl border-2 border-[#3154C7] bg-white px-4 py-3 text-[#294BB2] outline-none">{members.map(member=><option className="py-1" key={member.id} value={member.id}>{member.name} — {member.role}</option>)}</select></label></div><div className="mt-auto space-y-3 pt-10"><button disabled={busy} onClick={()=>setDraft(false)} className="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#294BB2] font-bold text-white disabled:opacity-50">Send Request <ArrowRight size={18}/></button><button disabled={busy} onClick={()=>setDraft(true)} className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border-2 border-[#3154C7] font-bold text-[#294BB2] disabled:opacity-50">Simpan Request <FileDown size={18}/></button></div></aside>
+</form></ModalBackdrop>;}
+
+function MeetingDetailModal({detail,members,personInCharge,setPersonInCharge,busy,onClose,onReassign,onNotes}:{detail:MeetingDetail;members:Member[];personInCharge:string;setPersonInCharge:(id:string)=>void;busy:boolean;onClose:()=>void;onReassign:()=>void;onNotes:()=>void}){return <ModalBackdrop><div><header className="flex items-center justify-between rounded-t-[30px] bg-[#EAF6FF] px-8 py-7"><h2 className="text-xl font-extrabold text-[#294BB2]">Scheduled Meeting</h2><button onClick={onClose}><X size={27}/></button></header><div className="p-8"><div className="flex justify-between"><span className="rounded-xl bg-[#294BB2] px-6 py-2 text-sm font-bold text-white">MEETING</span><span className="rounded-xl bg-[#EAF6FF] px-4 py-2 text-sm font-bold text-[#294BB2]">{detail.request?.status??detail.status}</span></div><h3 className="mt-7 text-2xl font-extrabold text-[#294BB2]">{detail.request?.title}</h3><p className="mt-3 text-sm text-[#4F5050]">{detail.request?.description}</p><div className="mt-5 flex flex-wrap gap-5 text-sm text-[#4F5050]"><span className="flex items-center gap-2"><Clock3 size={17}/>{displayDate(detail.start_at)}</span>{detail.location&&<span className="flex items-center gap-2"><MapPin size={17}/>{detail.location}</span>}</div><label className="mt-5 block text-sm font-bold text-[#294BB2]">PERSON IN CHARGE<div className="mt-2 flex gap-5"><select value={personInCharge} onChange={event=>setPersonInCharge(event.target.value)} className="h-12 min-w-0 flex-1 rounded-xl border border-[#D9D9D9] px-4 outline-none"><option value="">Pilih staff</option>{members.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</select><button disabled={busy||!personInCharge} onClick={onReassign} className="rounded-xl bg-[#294BB2] px-6 font-bold text-white disabled:opacity-50">Reassign</button></div></label><div className="mt-6"><p className="text-sm font-bold text-[#294BB2]">INVITED PEOPLE</p><div className="mt-3 flex flex-wrap gap-3">{detail.participants.filter(item=>item.participant_role!=="ORGANIZER").map(item=><span key={item.id} className="inline-flex items-center gap-2 rounded-xl bg-[#EAF6FF] px-4 py-2 text-sm font-bold text-[#294BB2]"><UserCircle2 size={19}/>{item.user?.full_name??item.user?.email??"Team member"}</span>)}</div></div><div className="mt-6"><p className="text-sm font-bold text-[#294BB2]">MEETING LINK</p><div className="mt-2 flex h-12 items-center rounded-xl border border-[#D9D9D9] px-4"><span className="min-w-0 flex-1 truncate text-[#4F5050]">{detail.meeting_url||"Belum ada meeting link"}</span><Pencil size={20} className="text-[#1687EF]"/></div></div><div className="mt-8 flex items-center justify-between"><button onClick={onClose} className="text-base text-[#4F5050]">Tutup</button><button onClick={onNotes} className="inline-flex h-12 items-center gap-3 rounded-xl bg-[#294BB2] px-7 font-bold text-white"><FileText size={20}/> Add Meeting Notes</button></div></div></div></ModalBackdrop>;}
+
+function NotesModal({detail,minutes,setMinutes,notesRef,busy,onClose,onSave,onFormat}:{detail:MeetingDetail;minutes:typeof initialMinutes;setMinutes:React.Dispatch<React.SetStateAction<typeof initialMinutes>>;notesRef:React.RefObject<HTMLTextAreaElement>;busy:boolean;onClose:()=>void;onSave:(publish?:boolean)=>void;onFormat:(marker:string)=>void}){const published=detail.minutes?.status==="PUBLISHED";return <div className="fixed inset-0 z-[60] bg-[#090909]/30 p-3 backdrop-blur-[1px]"><div className="mx-auto flex h-full max-w-[1260px] flex-col rounded-[30px] bg-white p-7 shadow-2xl sm:p-9"><header className="flex items-center justify-between gap-4"><button onClick={onClose} className="inline-flex min-w-0 items-center gap-4 text-left text-xl font-extrabold text-[#294BB2]"><ArrowLeft size={20}/><span className="truncate">{detail.request?.title}</span></button><button disabled={busy||published} onClick={()=>void onSave(false)} className="inline-flex h-14 items-center gap-3 rounded-xl bg-[#294BB2] px-8 text-lg font-extrabold text-white disabled:opacity-50"><Save size={22}/> Save</button></header><div className="mt-7 grid min-h-0 flex-1 gap-4 lg:grid-cols-[2fr_1fr]"><textarea ref={notesRef} disabled={published} value={minutes.general_discussion} onChange={event=>setMinutes(old=>({...old,general_discussion:event.target.value}))} placeholder="Tulis notulensi meeting di sini..." className="h-full min-h-[360px] resize-none rounded-[24px] border border-[#D9D9D9] p-7 text-base leading-7 outline-none focus:border-[#294BB2] disabled:bg-white"/><div className="grid min-h-0 gap-4"><TextArea label="Ringkasan" rows={4} value={minutes.summary} onChange={value=>setMinutes(old=>({...old,summary:value}))}/><TextArea label="Keputusan — satu per baris" rows={5} value={minutes.decisions} onChange={value=>setMinutes(old=>({...old,decisions:value}))}/><TextArea label="Action item — satu per baris" rows={5} value={minutes.action_items} onChange={value=>setMinutes(old=>({...old,action_items:value}))}/></div></div><footer className="mt-5 flex flex-wrap items-center justify-between gap-4"><div className="flex rounded-[22px] bg-[#EAF6FF] p-1"><button onClick={()=>onFormat("**")} className="h-12 w-16 text-[#294BB2]"><Bold className="mx-auto"/></button><button onClick={()=>onFormat("_")} className="h-12 w-16 text-[#294BB2]"><Italic className="mx-auto"/></button><button onClick={()=>onFormat("~~")} className="h-12 w-16 text-[#294BB2]"><Strikethrough className="mx-auto"/></button></div><div className="flex gap-3"><button disabled={published} onClick={()=>{if(window.confirm("Hapus seluruh isi draft notulensi?"))setMinutes(initialMinutes)}} className="inline-flex h-12 items-center gap-3 rounded-xl bg-[#FFD6D6] px-7 font-extrabold text-[#A50E0E] disabled:opacity-50"><Trash2/> Delete</button><button disabled={busy||published} onClick={()=>void onSave(true)} className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-[#294BB2] px-6 font-bold text-[#294BB2] disabled:opacity-50"><CheckCircle2 size={19}/> Publish</button></div></footer></div></div>;}
+
+function Field({label,value,onChange,type="text",required=false}:{label:string;value:string;onChange:(value:string)=>void;type?:string;required?:boolean}){return <label className="block text-sm font-bold text-[#294BB2]">{label}<input required={required} type={type} value={value} onChange={event=>onChange(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-[#D9D9D9] px-4 text-[#4F5050] outline-none focus:border-[#3154C7]"/></label>;}
+function SelectField({label,value,onChange,children,icon}:{label:string;value:string;onChange:(value:string)=>void;children:React.ReactNode;icon?:React.ReactNode}){return <label className="block text-sm font-bold text-[#4F5050]"><span className="mb-2 flex items-center gap-3">{icon&&<span className="text-[#1687EF]">{icon}</span>}{label}</span><select value={value} onChange={event=>onChange(event.target.value)} className="h-11 w-full rounded-xl border-2 border-[#3154C7] bg-white px-4 text-[#294BB2] outline-none">{children}</select></label>;}
+function TextArea({label,value,onChange,rows}:{label:string;value:string;onChange:(value:string)=>void;rows:number}){return <label className="block text-sm font-bold text-[#294BB2]">{label}<textarea rows={rows} value={value} onChange={event=>onChange(event.target.value)} className="mt-2 w-full resize-none rounded-xl border border-[#D9D9D9] p-4 font-normal leading-6 text-[#4F5050] outline-none focus:border-[#3154C7]"/></label>;}

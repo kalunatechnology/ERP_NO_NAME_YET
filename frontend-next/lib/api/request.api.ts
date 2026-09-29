@@ -10,7 +10,7 @@ export interface MeetingRequestSummary {
   location?: string | null;
   meeting_url?: string | null;
   status: string;
-  request: { id: string; request_number: string; title: string; description: string; priority: string; status: string } | null;
+  request: { id: string; request_number: string; title: string; description: string; priority: string; status: string; assignee_user_id?: string | null } | null;
 }
 
 export interface MeetingDetail extends MeetingRequestSummary {
@@ -28,7 +28,9 @@ export interface MeetingDetail extends MeetingRequestSummary {
 export interface CreateMeetingInput {
   title: string; description?: string; start_at: string; end_at: string; location?: string; meeting_url?: string;
   meeting_type?: string; notetaker_user_id?: string; tagged_users?: Array<{ id: string; name: string }>;
+  assignee_user_id?: string;
   agenda_items?: Array<{ title: string }>;
+  is_draft?: boolean;
 }
 
 export interface SaveMinutesInput {
@@ -44,4 +46,5 @@ export const requestApi = {
   createMeeting: async (input: CreateMeetingInput) => (await api.post("/api/v1/requests/meetings", input)).data,
   saveMinutes: async (id: string, input: SaveMinutesInput) => (await api.put<MeetingDetail>(`/api/v1/requests/meetings/${id}/minutes`, input)).data,
   publishMinutes: async (id: string) => (await api.post<MeetingDetail>(`/api/v1/requests/meetings/${id}/minutes/publish`)).data,
+  assignRequest: async (requestId: string, assigneeUserId: string) => (await api.patch(`/api/v1/requests/${requestId}/assignee`, { assignee_user_id: assigneeUserId })).data,
 };

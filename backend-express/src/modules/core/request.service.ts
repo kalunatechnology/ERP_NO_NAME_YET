@@ -259,6 +259,31 @@ static async createRequest(
     }
   });
 
+  // Every person involved in a meeting receives a personal notification. The
+  // creator is excluded because they are already looking at the newly-created
+  // request; assignee notifications remain handled by the existing flow below.
+  if (request_type === 'MEETING' && meetingStart && meetingEnd && !is_draft) {
+    const meeting = await prisma.request_meeting.findUnique({
+      where: { request_id: instanceId },
+      select: { id: true },
+    });
+    const relatedUserIds = Array.from(new Set([
+      organizer_user_id,
+      notetaker_user_id,
+      ...tagged_users.map((item) => item.id),
+    ].filter((id): id is string => Boolean(id) && id !== userId && id !== assignee_user_id)));
+    await Promise.all(relatedUserIds.map((recipientUserId) => this.createNotification({
+      title: `Undangan Meeting: ${title.trim()}`,
+      message: `${requestNumber} dijadwalkan ${meetingStart.toLocaleString('id-ID', { timeZone: timezone })}. Anda tercatat sebagai pihak yang terlibat.`,
+      action_url: meeting ? `/requests?meeting=${meeting.id}` : '/requests',
+      notification_type: 'MEETING_INVITATION',
+      priority: 'HIGH',
+      recipient_user_id: recipientUserId,
+      actor_user_id: userId,
+      company_id: companyId,
+    })));
+  }
+
   /**
    * Persistent request payload.
    */
@@ -395,13 +420,13 @@ static async createRequest(
     if (assignee_user_id) {
       await this.createNotification({
         title:
-          'Request Baru Ditugaskan kepada Anda',
+          request_type === 'MEETING' ? 'Meeting Baru Ditugaskan kepada Anda' : 'Request Baru Ditugaskan kepada Anda',
 
         message:
           `${requestNumber} — ${title}`,
 
         action_url:
-          `/dashboard?tab=requests&id=${instanceId}`,
+          request_type === 'MEETING' ? '/requests' : `/dashboard?tab=requests&id=${instanceId}`,
 
         notification_type:
           'REQUEST_ASSIGNED',
@@ -411,6 +436,9 @@ static async createRequest(
 
         recipient_user_id:
           assignee_user_id,
+
+        actor_user_id:
+          userId,
 
         company_id:
           companyId,
@@ -1745,6 +1773,7 @@ static async getRequests(params: {
     priority:           string;
     recipient_role_id?: string;
     recipient_user_id?: string;
+    actor_user_id?: string;
     company_id?:        string | null;
   }) {
     try {
@@ -1797,7 +1826,29 @@ static async getRequests(params: {
             notification_id:   notif.id,
             recipient_role_id: validRoleId,
             recipient_user_id: validUserId,
+            company_id: params.company_id && UUID_REGEX.test(params.company_id) ? params.company_id : null,
             delivery_status:   'UNREAD',
+          },
+        });
+      }
+
+      // The real-time sidebar reads core_app_notification. Keep the workflow
+      // notification ledger above and its user-facing projection in sync.
+      if (validUserId) {
+        const now = new Date();
+        await prisma.core_app_notification.create({
+          data: {
+            id: crypto.randomUUID(),
+            company_id: params.company_id && UUID_REGEX.test(params.company_id) ? params.company_id : null,
+            recipient_id: validUserId,
+            actor_id: params.actor_user_id && UUID_REGEX.test(params.actor_user_id) ? params.actor_user_id : null,
+            category: params.notification_type,
+            title: params.title,
+            description: params.message,
+            target_url: params.action_url,
+            is_read: false,
+            created_at: now,
+            updated_at: now,
           },
         });
       }
