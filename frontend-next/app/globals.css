@@ -255,15 +255,6 @@
   }
 }
 
-/* Login desktop density: keep the 100% browser view visually equivalent to
-   the previous comfortable ~90% zoom without shrinking mobile/tablet layouts. */
-@media (min-width: 1024px) {
-  .mk-card {
-    scale: 0.9;
-    transform-origin: center center;
-  }
-}
-
 /* ── Accessibility: Reduced Motion Support ───────── */
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {
