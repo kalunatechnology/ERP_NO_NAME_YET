@@ -1,35 +1,16 @@
 /**
  * File: frontend-next/app/layout.tsx
  *
- * Purpose: Root layout with global Fira Sans typography and a single Marka+
- * icon source shared by the browser tab and login page.
+ * Purpose: Root layout with network-independent system typography and a
+ * single Marka+ icon source shared by the browser tab and login page.
  */
 import type { Metadata } from "next";
-import { Fira_Sans, Fira_Sans_Condensed } from "next/font/google";
 
 import "./globals.css";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { Toaster } from "react-hot-toast";
-
-const firaSans = Fira_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  style: ["normal", "italic"],
-  variable: "--font-fira-sans",
-  display: "swap",
-  preload: true,
-});
-
-const firaSansCondensed = Fira_Sans_Condensed({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  style: ["normal", "italic"],
-  variable: "--font-fira-sans-condensed",
-  display: "swap",
-  preload: true,
-});
 
 export const metadata: Metadata = {
   title: {
@@ -39,12 +20,9 @@ export const metadata: Metadata = {
   description:
     "Sistem ERP terintegrasi: Project Management, Finance, CRM — Marka+",
   icons: {
-    icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico", sizes: "any" },
-    ],
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [{ url: "/brand/marka-logomark-blue.svg?v=legacy", type: "image/svg+xml" }],
+    shortcut: "/brand/marka-logomark-blue.svg?v=legacy",
+    apple: "/brand/marka-logomark-blue.png?v=legacy",
   },
 };
 
@@ -54,15 +32,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="id"
-      suppressHydrationWarning
-      className={`${firaSans.variable} ${firaSansCondensed.variable}`}
-    >
+    <html lang="id" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="icon" href="/brand/marka-logomark-blue.svg?v=legacy" type="image/svg+xml" />
+        <link rel="shortcut icon" href="/brand/marka-logomark-blue.svg?v=legacy" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/brand/marka-logomark-blue.png?v=legacy" />
       </head>
       <body>
         <LanguageProvider>
