@@ -13,7 +13,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderKanban, CheckSquare,
   DollarSign, Users, BarChart3, TrendingUp, Building2,
-  LogOut, ChevronRight, Clock, FileText, X
+  LogOut, ChevronRight, Clock, FileText, X, ClipboardList
 } from "lucide-react";
 import { useAuth, getRoleLabel, getRoleBadgeStyle } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -36,6 +36,7 @@ const NAV_ICONS: Record<string, React.ElementType> = {
   "/administration": Building2,
   "/projects": FolderKanban,
   "/tasks": CheckSquare,
+  "/requests": ClipboardList,
   "/crm": Users,
   "/finance": DollarSign,
   "/reporting": BarChart3,

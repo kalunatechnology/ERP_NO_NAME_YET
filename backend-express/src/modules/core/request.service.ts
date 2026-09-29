@@ -49,6 +49,14 @@ export interface CreateRequestPayload {
   tagged_users?: TaggedUser[];
   attachment_url?: string;
   is_draft?: boolean;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  meeting_type?: 'INTERNAL' | 'CLIENT' | 'VENDOR' | 'PROJECT' | 'OTHER';
+  timezone?: string;
+  location?: string;
+  meeting_url?: string;
+  organizer_user_id?: string;
+  notetaker_user_id?: string;
+  agenda_items?: Array<{ title: string; description?: string; presenter_user_id?: string; planned_duration_minutes?: number }>;
 }
 
 export class RequestService {
@@ -85,6 +93,14 @@ static async createRequest(
     tagged_users = [],
     attachment_url,
     is_draft,
+    priority = 'MEDIUM',
+    meeting_type = 'INTERNAL',
+    timezone = 'Asia/Jakarta',
+    location,
+    meeting_url,
+    organizer_user_id,
+    notetaker_user_id,
+    agenda_items = [],
   } = payload;
 
   if (!title || title.trim().length === 0) {
@@ -98,6 +114,17 @@ static async createRequest(
     throw new ValidationError(
       'Nominal dana (amount) wajib diisi lebih dari 0 untuk Fund Request.',
     );
+  }
+
+  const meetingStart = start_at ? new Date(start_at) : null;
+  const meetingEnd = end_at ? new Date(end_at) : null;
+  if (request_type === 'MEETING') {
+    if (!meetingStart || !meetingEnd || Number.isNaN(meetingStart.getTime()) || Number.isNaN(meetingEnd.getTime())) {
+      throw new ValidationError('Waktu mulai dan selesai wajib diisi untuk Meeting Request.');
+    }
+    if (meetingEnd <= meetingStart) {
+      throw new ValidationError('Waktu selesai meeting harus setelah waktu mulai.');
+    }
   }
 
   /**
@@ -151,8 +178,8 @@ static async createRequest(
    */
   const instanceId = crypto.randomUUID();
 
-  await prisma.core_workflow_instance.create({
-    data: {
+  await prisma.$transaction(async (tx) => {
+    await tx.core_workflow_instance.create({ data: {
       id: instanceId,
       tenant_id: tenantId ?? null,
       company_id: companyId,
@@ -166,7 +193,70 @@ static async createRequest(
         : 'IN_PROGRESS',
 
       started_at: new Date(),
-    },
+    } });
+
+    await tx.request_ticket.create({ data: {
+      id: instanceId,
+      tenant_id: tenantId ?? null,
+      company_id: companyId,
+      created_by_id: userId,
+      workflow_instance_id: instanceId,
+      request_number: requestNumber,
+      request_type,
+      title: title.trim(),
+      description: description?.trim() ?? '',
+      requester_user_id: userId,
+      assignee_user_id: assignee_user_id ?? null,
+      project_id: project_id ?? null,
+      priority,
+      status: initialStatus,
+      submitted_at: is_draft ? null : new Date(),
+    } });
+
+    if (request_type === 'MEETING' && meetingStart && meetingEnd) {
+      const meetingId = crypto.randomUUID();
+      await tx.request_meeting.create({ data: {
+        id: meetingId,
+        tenant_id: tenantId ?? null,
+        company_id: companyId,
+        created_by_id: userId,
+        request_id: instanceId,
+        organizer_user_id: organizer_user_id ?? userId,
+        notetaker_user_id: notetaker_user_id ?? null,
+        meeting_type,
+        start_at: meetingStart,
+        end_at: meetingEnd,
+        timezone,
+        location: location?.trim() || null,
+        meeting_url: meeting_url?.trim() || null,
+        agenda_summary: description?.trim() || null,
+        status: is_draft ? 'DRAFT' : 'SCHEDULED',
+      } });
+
+      const participantIds = Array.from(new Set([
+        organizer_user_id ?? userId,
+        notetaker_user_id,
+        ...tagged_users.map((item) => item.id),
+      ].filter((id): id is string => Boolean(id))));
+      if (participantIds.length) {
+        await tx.request_meeting_participant.createMany({ data: participantIds.map((participantId) => ({
+          id: crypto.randomUUID(), tenant_id: tenantId ?? null, company_id: companyId,
+          created_by_id: userId, meeting_id: meetingId, user_id: participantId,
+          participant_role: participantId === (organizer_user_id ?? userId) ? 'ORGANIZER' : participantId === notetaker_user_id ? 'NOTETAKER' : 'ATTENDEE',
+          invitation_status: participantId === userId ? 'ACCEPTED' : 'PENDING',
+        })) });
+      }
+      const cleanAgenda = agenda_items.filter((item) => item.title?.trim());
+      if (cleanAgenda.length) {
+        await tx.request_meeting_agenda.createMany({ data: cleanAgenda.map((item, index) => ({
+          id: crypto.randomUUID(), tenant_id: tenantId ?? null, company_id: companyId,
+          created_by_id: userId, meeting_id: meetingId, sequence_number: index + 1,
+          title: item.title.trim(), description: item.description?.trim() || null,
+          presenter_user_id: item.presenter_user_id ?? null,
+          planned_duration_minutes: item.planned_duration_minutes ?? null,
+        })) });
+      }
+    }
   });
 
   /**
@@ -366,6 +456,11 @@ static async createRequest(
         data:  { current_state: nextState },
       });
 
+      await tx.request_ticket.updateMany({
+        where: { id: requestId, company_id: companyId },
+        data: { status: nextState },
+      });
+
       await tx.core_workflow_approval.create({
         data: {
           id:                   crypto.randomUUID(),
@@ -471,6 +566,14 @@ static async createRequest(
           current_state: nextState,
           status:        decision === 'APPROVE' ? 'COMPLETED' : 'REJECTED',
           completed_at:  decision === 'APPROVE' ? new Date() : null,
+        },
+      });
+
+      await tx.request_ticket.updateMany({
+        where: { id: requestId, company_id: companyId },
+        data: {
+          status: nextState,
+          completed_at: decision === 'APPROVE' ? new Date() : null,
         },
       });
 
@@ -940,6 +1043,11 @@ static async assignRequest(params: {
       currentAssigneeUserId
         ? `Request dialihkan kepada ${assignee.full_name}.`
         : `Request ditugaskan kepada ${assignee.full_name}.`,
+  });
+
+  await prisma.request_ticket.updateMany({
+    where: { id: requestId, company_id: companyId },
+    data: { assignee_user_id: assigneeUserId },
   });
 
   /**

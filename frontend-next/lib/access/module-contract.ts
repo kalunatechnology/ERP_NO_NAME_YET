@@ -61,6 +61,7 @@ export interface RouteAccessContract {
 
 /** Route contracts are ordered from the most specific route to the broadest. */
 export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
+  { prefix: "/requests", module: "REQUESTS", roles: null },
   { prefix: "/administration", module: null, roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/resources", module: "ANALYTICS", roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin, ROLE_CODES.director], moduleBypassRoles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: false },
