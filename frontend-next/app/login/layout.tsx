@@ -20,9 +20,9 @@ export default function LoginLayout({ children }: { children: ReactNode }) {
           }
 
           .mk-card {
-            min-height: 100dvh !important;
-            height: 100dvh !important;
-            max-height: none !important;
+            min-height: 0 !important;
+            height: min(820px, calc(100dvh - 4rem)) !important;
+            max-height: calc(100dvh - 4rem) !important;
           }
         }
       `}</style>
