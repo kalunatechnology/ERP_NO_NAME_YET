@@ -149,7 +149,7 @@ const MODULE_DEFINITIONS: Record<
     category: "Finansial",
   },
   MARBOT: {
-    name: "MarBot AI Assistant",
+    name: "Marka Plus AI Assistant",
     description: "Asisten cerdas ERP dengan konteks data aman, query analitik, dan knowledge base",
     icon: Bot,
     category: "AI & Otomasi",

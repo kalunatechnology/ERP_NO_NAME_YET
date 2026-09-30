@@ -495,22 +495,22 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
           : { message, conversationId }),
       });
     } catch {
-      throw new AppError('Layanan MarBot tidak dapat dihubungi.', 502, 'MARBOT_NETWORK_ERROR');
+      throw new AppError('Layanan Marka Plus tidak dapat dihubungi.', 502, 'MARBOT_NETWORK_ERROR');
     }
 
     if (upstream.status === 401) {
       throw new AppError(
-        'Autentikasi integrasi MarBot gagal. Periksa tenant API key dan signed context.',
+        'Autentikasi integrasi Marka Plus gagal. Periksa tenant API key dan signed context.',
         502,
         'MARBOT_UPSTREAM_AUTH',
       );
     }
-    if (upstream.status === 403) throw new ForbiddenError('Akses MarBot ditolak untuk sesi ini.');
+    if (upstream.status === 403) throw new ForbiddenError('Akses Marka Plus ditolak untuk sesi ini.');
     if (upstream.status === 429) {
-      throw new AppError('Kapasitas MarBot sedang penuh. Coba lagi nanti.', 503, 'MARBOT_RATE_LIMIT');
+      throw new AppError('Kapasitas Marka Plus sedang penuh. Coba lagi nanti.', 503, 'MARBOT_RATE_LIMIT');
     }
     if (!upstream.ok || !upstream.body) {
-      throw new AppError('Layanan MarBot tidak tersedia.', 502, 'MARBOT_UPSTREAM_UNAVAILABLE');
+      throw new AppError('Layanan Marka Plus tidak tersedia.', 502, 'MARBOT_UPSTREAM_UNAVAILABLE');
     }
 
     res.status(200).set({

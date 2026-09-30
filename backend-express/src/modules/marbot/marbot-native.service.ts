@@ -120,38 +120,56 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
       } else if (tool === 'tasks') {
         requireTool(scope, 'PROJECTS', ['READ_TASK']);
         const self = !canUseDashboard(scope);
-        const employee = self ? await db.master_employee.findFirst({ where: { ...base, user_id: scope.userId }, select: { id: true } }) : null;
-        const assigneeIds = team ? [...team.userIds, ...team.employeeIds] : self ? [scope.userId, employee?.id].filter((id): id is string => Boolean(id)) : null;
-        const where: Prisma.project_taskWhereInput = { ...base, ...projectFilter, ...(assigneeIds ? { assigned_to_id: { in: assigneeIds } } : {}) };
         const weekly = /minggu|week/i.test(message);
-        const changed = weekly ? { ...where, updated_at: { gte: period.start, lt: period.end } } : where;
-        const [total, done, overdue, rows] = await Promise.all([
-          db.project_task.count({ where: changed }),
-          db.project_task.count({ where: { ...where, status: 'DONE', ...(weekly ? { actual_end_at: { gte: period.start, lt: period.end } } : {}) } }),
-          db.project_task.count({ where: { ...where, status: { notIn: ['DONE', 'CANCELLED'] }, planned_end_at: { lt: now } } }),
-          db.project_task.findMany({ where: changed, select: { task_name: true, status: true, progress_percent: true }, orderBy: { updated_at: 'desc' }, take: 15 }),
-        ]);
-        results.push(`${team ? `Tugas tim ${safe(team.name)}` : self ? 'Tugas saya' : 'Tugas pada proyek yang dapat Anda akses'}: ${total}${weekly ? ' task diperbarui pada periode ini' : ' task'}. Selesai${weekly ? ' berdasarkan tanggal selesai aktual' : ''}: ${done}. Terlambat saat ini: ${overdue}.\n${rows.map(r => `- ${safe(r.task_name)}: ${safe(r.status)} (${number(r.progress_percent)}%).`).join('\n')}\n${overdue ? 'Saran: periksa task terlambat, konfirmasi kendala dengan penanggung jawab, dan tinjau ulang jadwal.' : 'Tidak ada task terlambat berdasarkan tenggat yang tercatat.'}\nDaftar maksimal 15 task; pembaruan task bukan bukti seluruh aktivitas kerja tim.`);
-        if (weekly) {
-          const daily = await db.$queryRaw<Array<{ title: string; output_result: string; status: string; is_blocked: boolean; block_reason: string; total: bigint; blocked: bigint }>>(Prisma.sql`
-            SELECT d.title, d.output_result, d.status, d.is_blocked, d.block_reason,
+        const overdueOnly = /terlambat|overdue|carry[ -]?over/i.test(message);
+        const jakartaNow = new Date(now.getTime() + 7 * 3600000);
+        const todayStart = new Date(Date.UTC(jakartaNow.getUTCFullYear(), jakartaNow.getUTCMonth(), jakartaNow.getUTCDate()) - 7 * 3600000);
+        const daily = await db.$queryRaw<Array<{
+          title: string; output_result: string; status: string; progress: Prisma.Decimal;
+          planned_date: Date | null; is_blocked: boolean; block_reason: string;
+          total: bigint; completed: bigint; overdue: bigint; blocked: bigint;
+        }>>(Prisma.sql`
+            SELECT d.title, d.output_result, d.status, d.progress, d.planned_date,
+              d.is_blocked, d.block_reason,
               count(*) OVER () AS total,
-              count(*) FILTER (WHERE d.is_blocked) OVER () AS blocked
+              count(*) FILTER (WHERE d.status IN ('COMPLETED', 'DONE')) OVER () AS completed,
+              count(*) FILTER (
+                WHERE d.planned_date < ${todayStart}
+                  AND d.status NOT IN ('COMPLETED', 'DONE')
+              ) OVER () AS overdue,
+              count(*) FILTER (WHERE d.is_blocked OR d.status = 'BLOCKED') OVER () AS blocked
             FROM project_daily_task d
             JOIN project_weekly_task w ON w.id = d.weekly_task_id AND w.tenant_id = d.tenant_id AND w.company_id = d.company_id
             JOIN project_main_task m ON m.id = w.main_task_id AND m.tenant_id = d.tenant_id AND m.company_id = d.company_id
             WHERE d.tenant_id = ${scope.tenantId} AND d.company_id = ${scope.companyId}
-              AND d.planned_date >= ${period.start} AND d.planned_date < ${period.end}
               ${projectIds ? (projectIds.length ? Prisma.sql`AND m.project_id IN (${Prisma.join(projectIds)})` : Prisma.sql`AND FALSE`) : Prisma.empty}
               ${team ? (team.userIds.length ? Prisma.sql`AND d.owner_id IN (${Prisma.join(team.userIds)})` : Prisma.sql`AND FALSE`) : self ? Prisma.sql`AND d.owner_id = ${scope.userId}` : Prisma.empty}
-            ORDER BY d.planned_date DESC, d.id ASC LIMIT 20
-          `);
-          results.push(daily.length ? `Catatan kerja harian pada minggu tersebut: ${daily[0].total.toString()}; terhambat: ${daily[0].blocked.toString()}. Menampilkan maksimal 20 catatan berdasarkan tanggal rencana.\n${daily.map(d => `- ${safe(d.title)} (${safe(d.status)}): ${safe(d.output_result) || 'hasil belum diisi'}${d.is_blocked ? `; kendala: ${safe(d.block_reason)}` : ''}.`).join('\n')}` : 'Belum ada catatan kerja harian terjadwal pada minggu tersebut dalam cakupan akses Anda.');
-        }
+              ${weekly ? Prisma.sql`AND d.planned_date >= ${period.start} AND d.planned_date < ${period.end}` : Prisma.empty}
+              ${overdueOnly ? Prisma.sql`AND d.planned_date < ${todayStart} AND d.status NOT IN ('COMPLETED', 'DONE')` : Prisma.empty}
+            ORDER BY d.planned_date ASC NULLS LAST, d.id ASC LIMIT 20
+        `);
+        const total = daily[0]?.total ?? 0n;
+        const done = daily[0]?.completed ?? 0n;
+        const overdue = daily[0]?.overdue ?? 0n;
+        const blocked = daily[0]?.blocked ?? 0n;
+        results.push(daily.length
+          ? `${team ? `Task harian tim ${safe(team.name)}` : self ? 'Task harian saya' : 'Task harian pada proyek yang dapat Anda akses'}: ${total.toString()}${weekly ? ' pada minggu tersebut' : ''}. Selesai: ${done.toString()}. Terlambat: ${overdue.toString()}. Terkendala: ${blocked.toString()}.\n${daily.map(d => `- ${safe(d.title)} — ${d.planned_date ? d.planned_date.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' }) : 'tanpa tanggal'} — ${safe(d.status)} (${number(d.progress)}%)${safe(d.output_result) ? `; hasil: ${safe(d.output_result)}` : '; hasil belum diisi'}${d.is_blocked || d.status === 'BLOCKED' ? `; kendala: ${safe(d.block_reason) || 'belum dijelaskan'}` : ''}.`).join('\n')}\n${Number(overdue) > 0 ? 'Saran: buka filter Terlambat di Tugas Harian, lengkapi output hasil atau kendala, lalu perbarui status task.' : 'Tidak ada task terlambat berdasarkan tanggal rencana yang tercatat.'}\nDaftar maksimal 20 task dari sumber yang sama dengan layar Tugas Harian.`
+          : `${overdueOnly ? 'Tidak ada task harian terlambat' : 'Belum ada task harian'} dalam cakupan akses Anda${weekly ? ' pada minggu tersebut' : ''}.`);
       } else if (tool === 'finance') {
         requireTool(scope, 'FINANCE', ['READ_PROJECT_FINANCE', 'READ_COMPANY_FINANCE', 'READ_FINANCE_SUMMARY']);
-        const sum = await db.fin_project_cost_entry.aggregate({ where: { ...base, ...projectFilter, status: 'POSTED', transaction_date: { gte: period.start, lt: period.end } }, _sum: { total_cost: true } });
-        results.push(`Biaya proyek berstatus POSTED pada periode ini: ${number(sum._sum.total_cost)} (nilai mata uang pembukuan perusahaan). Cakupan hanya biaya proyek yang dapat Anda akses, bukan seluruh laporan keuangan perusahaan.`);
+        // Match ProjectsService.getFinancialSummary, which is the source used by the ERP
+        // financial-summary screen. DRAFT/REJECTED entries must never inflate actual cost.
+        const recognizedStatuses = ['VALIDATED', 'APPROVED', 'POSTED_TO_WIP'];
+        const sum = await db.fin_project_cost_entry.aggregate({
+          where: {
+            ...base,
+            ...projectFilter,
+            status: { in: recognizedStatuses },
+            transaction_date: { gte: period.start, lt: period.end },
+          },
+          _sum: { total_cost: true },
+        });
+        results.push(`Biaya aktual proyek yang diakui pada periode ini: ${number(sum._sum.total_cost)} (status VALIDATED, APPROVED, atau POSTED_TO_WIP; nilai mata uang pembukuan perusahaan). Cakupan hanya proyek yang dapat Anda akses, bukan seluruh laporan keuangan perusahaan.`);
       } else if (tool === 'tickets') {
         requireTool(scope, 'CRM', ['READ_TICKET']);
         if (![RoleCode.DIRECTOR, RoleCode.CRM_LEAD, RoleCode.SALES].includes(scope.roleCode as any)) throw new ForbiddenError();

@@ -28,12 +28,12 @@ function validateChatbotUrl(rawUrl: string, sourceName: string): URL {
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.hostname === 'localhost')) {
-      throw new ForbiddenError(`Endpoint MarBot ${sourceName} tidak aman (harus HTTPS).`);
+      throw new ForbiddenError(`Endpoint Marka Plus ${sourceName} tidak aman (harus HTTPS).`);
     }
     return url;
   } catch (err) {
     if (err instanceof ForbiddenError) throw err;
-    throw new ForbiddenError(`Endpoint MarBot ${sourceName} tidak valid.`);
+    throw new ForbiddenError(`Endpoint Marka Plus ${sourceName} tidak valid.`);
   }
 }
 
@@ -114,14 +114,14 @@ export async function resolveMarbotTenantConfig(
   }
 
   if (dbRow && dbRow.sync_status === 'PROVISIONING') {
-    throw new ForbiddenError('Layanan MarBot untuk tenant ini sedang dalam proses sinkronisasi.');
+    throw new ForbiddenError('Layanan Marka Plus untuk tenant ini sedang dalam proses sinkronisasi.');
   }
 
   if (dbRow && ['ERROR', 'SYNC_ERROR'].includes(dbRow.sync_status)) {
-    throw new ForbiddenError('Layanan MarBot untuk tenant ini mengalami kendala konfigurasi.');
+    throw new ForbiddenError('Layanan Marka Plus untuk tenant ini mengalami kendala konfigurasi.');
   }
 
-  throw new ForbiddenError('Integrasi MarBot belum dikonfigurasi untuk tenant ini.');
+  throw new ForbiddenError('Integrasi Marka Plus belum dikonfigurasi untuk tenant ini.');
 }
 
 /** @deprecated Use resolveMarbotTenantConfig() (async) instead. Kept for backwards compatibility. */

@@ -242,7 +242,7 @@ Object.assign(englishToId, {
   "Projects": "Proyek",
   "Finance": "Keuangan",
   "CRM & Sales": "CRM & Penjualan",
-  "Chat with MarBot": "Chat dengan MarBot",
+  "Chat with Marka Plus": "Chat dengan Marka Plus",
   "Menu": "Menu",
 });
 

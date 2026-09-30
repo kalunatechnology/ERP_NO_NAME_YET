@@ -24,6 +24,7 @@ import { getResourceEntity } from "@/lib/access/resource-catalog";
 import { canOpenReportTab } from "@/lib/access/report-tab-access";
 import { getNavigationEntries } from "@/lib/access/navigation-contract";
 import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
+import { MarkaPlusName } from "@/components/brand/MarkaPlusName";
 
 interface SidebarProps {
   isMobile?: boolean;
@@ -198,13 +199,13 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
 
       {/* ── Fixed Footer Section matching Screenshot Design ── */}
       <div className="px-3 pb-3 pt-2 border-t border-[#EFEFEF] flex flex-col gap-2.5 flex-shrink-0 bg-white">
-        {/* Chat with MarBot button */}
+        {/* Marka+ assistant button */}
         {user?.enabled_modules?.includes('MARBOT') && userRole !== 'super_admin' && <button
           type="button"
           onClick={onChatbotOpen}
           className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#EAF6FF] hover:bg-[#EAF6FF] border border-[#9FD6FF] text-[#2649B3] font-semibold text-xs transition-all shadow-2xs cursor-pointer active:scale-98"
           id="sidebar-marbot-btn"
-          title="Chat with MarBot"
+          title="Chat with Marka Plus"
         >
           <div className="w-5 h-5 rounded-full bg-[#294BB2] flex items-center justify-center text-white flex-shrink-0 shadow-2xs">
             <svg
@@ -223,7 +224,7 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
               <line x1="4.93" y1="19.07" x2="19.07" y2="4.93" />
             </svg>
           </div>
-          <span className="font-bold tracking-tight">Chat with MarBot</span>
+          <span className="font-bold tracking-tight">Chat dengan <MarkaPlusName compact /></span>
         </button>}
 
         {/* Log Out button */}
@@ -238,10 +239,10 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
           <LogOut size={13} aria-hidden="true" className="flex-shrink-0 rotate-180" />
         </button>
 
-        {/* Brand wordmark by Kaluna® 2026 */}
+        {/* Brand ownership */}
         <div className="flex flex-col items-center justify-center pt-1">
           <MarkaWordmark className="h-auto w-[86px] text-[#2649B3]" />
-          <span className="text-[10px] text-[#4F5050] mt-0.5 font-medium">By Kaluna® 2026</span>
+          <span className="text-[10px] text-[#4F5050] mt-0.5 font-medium">By Arsalynk® 2026</span>
         </div>
       </div>
     </aside>

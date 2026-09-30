@@ -28,7 +28,7 @@ export function encryptMarbotSecret(plaintext: string): string {
 export function decryptMarbotSecret(stored: string): string {
   if (!stored.startsWith(PREFIX)) return stored; // legacy rows remain readable during key rollout
   const [ivRaw, tagRaw, ciphertextRaw] = stored.slice(PREFIX.length).split(':');
-  if (!ivRaw || !tagRaw || !ciphertextRaw) throw new ValidationError('Format credential MarBot terenkripsi tidak valid.');
+  if (!ivRaw || !tagRaw || !ciphertextRaw) throw new ValidationError('Format credential Marka Plus terenkripsi tidak valid.');
   try {
     const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(ivRaw, 'base64'));
     decipher.setAuthTag(Buffer.from(tagRaw, 'base64'));
@@ -37,6 +37,6 @@ export function decryptMarbotSecret(stored: string): string {
       decipher.final(),
     ]).toString('utf8');
   } catch {
-    throw new ValidationError('Credential MarBot tidak dapat didekripsi.');
+    throw new ValidationError('Credential Marka Plus tidak dapat didekripsi.');
   }
 }

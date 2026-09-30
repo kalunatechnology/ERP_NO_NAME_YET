@@ -136,7 +136,7 @@ export function MarbotConfigModal({
       }
     } catch (err: any) {
       console.error("Error fetching MarBot config:", err);
-      toast.error(err.response?.data?.message || "Gagal memuat konfigurasi MarBot.");
+      toast.error(err.response?.data?.message || "Gagal memuat konfigurasi Marka Plus.");
     } finally {
       setLoading(false);
     }
@@ -147,11 +147,11 @@ export function MarbotConfigModal({
     setProvisioning(true);
     try {
       await api.post(`/api/v1/core/tenants/${tenant.id}/marbot-config/provision`, {});
-      toast.success(mode === "MANAGED" ? "Kontrak MarBot berhasil disinkronkan." : "Tenant berhasil diprovision ke MarBot.");
+      toast.success(mode === "MANAGED" ? "Kontrak Marka Plus berhasil disinkronkan." : "Tenant berhasil diprovision ke Marka Plus.");
       await fetchConfig();
       onConfigSaved?.();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Provisioning MarBot gagal.");
+      toast.error(err.response?.data?.message || "Provisioning Marka Plus gagal.");
     } finally {
       setProvisioning(false);
     }
@@ -177,12 +177,12 @@ export function MarbotConfigModal({
         role_map_json: roleMapJson.trim() ? roleMapJson.trim() : null,
       });
 
-      toast.success("Konfigurasi MarBot berhasil disimpan!");
+      toast.success("Konfigurasi Marka Plus berhasil disimpan!");
       await fetchConfig();
       if (onConfigSaved) onConfigSaved();
     } catch (err: any) {
       console.error("Error saving MarBot config:", err);
-      toast.error(err.response?.data?.message || "Gagal menyimpan konfigurasi MarBot.");
+      toast.error(err.response?.data?.message || "Gagal menyimpan konfigurasi Marka Plus.");
     } finally {
       setSaving(false);
     }
@@ -218,14 +218,14 @@ export function MarbotConfigModal({
 
   const handleDelete = async () => {
     if (!tenant) return;
-    if (!confirm(`Hapus konfigurasi MarBot untuk tenant ${tenant.name}? Chatbot tidak akan dapat digunakan oleh entitas di tenant ini.`)) {
+    if (!confirm(`Hapus konfigurasi Marka Plus untuk tenant ${tenant.name}? Chatbot tidak akan dapat digunakan oleh entitas di tenant ini.`)) {
       return;
     }
 
     setDeleting(true);
     try {
       await api.delete(`/api/v1/core/tenants/${tenant.id}/marbot-config`);
-      toast.success("Konfigurasi MarBot berhasil dihapus.");
+      toast.success("Konfigurasi Marka Plus berhasil dihapus.");
       resetForm();
       if (onConfigSaved) onConfigSaved();
       onClose();
@@ -240,7 +240,7 @@ export function MarbotConfigModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Integrasi MarBot Chatbot"
+      title="Integrasi Marka Plus Chatbot"
       subtitle={`Pengaturan koneksi AI Assistant untuk Tenant: ${tenant?.name || ""} (${tenant?.code || ""})`}
       maxWidth="lg"
     >
@@ -250,8 +250,8 @@ export function MarbotConfigModal({
         </div>
       ) : nativeStatus ? (
         <div className="space-y-3 py-4 text-sm text-slate-700">
-          <p className="font-semibold text-blue-800">MarBot berjalan di dalam ERP</p>
-          <p>{nativeStatus.ready ? 'Penyimpanan percakapan siap.' : 'Penyimpanan percakapan belum siap. Administrator server perlu memeriksa koneksi database dan menerapkan migrasi MarBot.'}</p>
+          <p className="font-semibold text-blue-800">Marka Plus berjalan di dalam ERP</p>
+          <p>{nativeStatus.ready ? 'Penyimpanan percakapan siap.' : 'Penyimpanan percakapan belum siap. Administrator server perlu memeriksa koneksi database dan menerapkan migrasi Marka Plus.'}</p>
           <p>{nativeStatus.ai ? 'Model AI sudah dikonfigurasi di server ERP.' : 'Panduan dan ringkasan data tersedia melalui mesin ERP. Model AI opsional belum dikonfigurasi.'}</p>
           <p>Akses pengguna mengikuti aktivasi modul MARBOT, permission USE_MARBOT, serta hak akses data perusahaan dan proyek.</p>
         </div>
@@ -281,7 +281,7 @@ export function MarbotConfigModal({
                   ? "Kredensial tersimpan secara aman di database platform. Tenant ini siap menggunakan modul MARBOT."
                   : source === "ENV"
                   ? "Konfigurasi saat ini dibaca dari file .env server. Anda dapat memperbarui form di bawah untuk memindahkan dan mengelola config langsung dari dashboard."
-                  : "Isi form di bawah ini agar company di bawah tenant ini dapat mengaktifkan dan menggunakan asisten AI MarBot."}
+                  : "Isi form di bawah ini agar company di bawah tenant ini dapat mengaktifkan dan menggunakan asisten AI Marka Plus."}
               </p>
               {updatedAt && (
                 <div className="mt-1 text-[11px] opacity-75">
@@ -448,7 +448,7 @@ export function MarbotConfigModal({
                 className="mt-1.5 w-full rounded-xl border border-[#E2E8F0] p-3 text-xs font-mono text-[#0F172A] outline-none transition focus:border-[#2649B3]"
               />
               <p className="mt-1 text-[11px] text-[#64748B]">
-                Mapping kode role internal ERP ke role yang dipahami oleh engine persona MarBot.
+                Mapping kode role internal ERP ke role yang dipahami oleh engine persona Marka Plus.
               </p>
             </div>
           </div>}

@@ -13,11 +13,19 @@ const delegate = (name: string, rows: any[] = []) => ({
   findFirst: async (args: any) => { calls.push({ model: name, args }); return { id: 'employee-a' }; },
 });
 const db: any = {
-  project_task: delegate('tasks', [{ task_name: 'Test task', status: 'OPEN', progress_percent: 10 }]),
   project_project: delegate('projects'), master_employee: delegate('employee'),
   core_organization: delegate('organizations'),
+  fin_project_cost_entry: {
+    aggregate: async (args: any) => {
+      calls.push({ model: 'project-cost', args });
+      return { _sum: { total_cost: 1250000 } };
+    },
+  },
   analytics_kpi_definition: delegate('kpi-def'), analytics_kpi_result: delegate('kpi-result'),
-  $queryRaw: async (query: any) => { calls.push({ model: 'daily', args: query }); return []; },
+  $queryRaw: async (query: any) => {
+    calls.push({ model: 'daily', args: query });
+    return [{ title: 'halo', output_result: '', status: 'ON_PROGRESS', progress: 0, planned_date: new Date('2026-09-16T00:00:00Z'), is_blocked: false, block_reason: '', total: 1n, completed: 0n, overdue: 1n, blocked: 0n }];
+  },
 };
 
 async function main() {
@@ -40,16 +48,13 @@ async function main() {
   assert.equal(week.end.toISOString(), '2026-10-04T17:00:00.000Z');
   assert.equal(queryPeriod('bulan lalu', new Date('2026-01-02T00:00:00Z')).start.toISOString(), '2025-11-30T17:00:00.000Z');
   const result = await answerNative('tugas minggu ini', 'HELPER', staff, db);
-  assert.match(result.content, /Tugas saya/);
-  for (const call of calls.filter(c => c.model === 'tasks')) {
-    assert.equal(call.args.where.tenant_id, staff.tenantId);
-    assert.equal(call.args.where.company_id, staff.companyId);
-    assert.deepEqual(call.args.where.project_id, { in: ['project-a'] });
-    assert.deepEqual(call.args.where.assigned_to_id, { in: ['user-a', 'employee-a'] });
-  }
+  assert.match(result.content, /Task harian saya/);
+  assert.match(result.content, /Terlambat: 1/);
   const daily = calls.find(c => c.model === 'daily')!;
   assert.ok(daily.args.values.includes('project-a'));
   assert.ok(daily.args.values.includes('user-a'));
+  assert.match(daily.args.strings.join(' '), /project_daily_task/);
+  assert.match(daily.args.strings.join(' '), /planned_date/);
   const before = calls.length;
   await assert.rejects(() => answerNative('tim A minggu ini sudah mengerjakan apa?', 'HELPER', staff, db));
   assert.equal(calls.length, before, 'Staff must be rejected before organization lookup');
@@ -58,8 +63,19 @@ async function main() {
   assert.equal(calls.length, before);
   const emptyScope = { ...staff, projectScope: { mode: 'LIST' as const, projectIds: [] } };
   await answerNative('tugas', 'HELPER', emptyScope, db);
-  assert.deepEqual(calls.filter(c => c.model === 'tasks').at(-1)!.args.where.project_id, { in: [] });
+  assert.match(calls.filter(c => c.model === 'daily').at(-1)!.args.strings.join(' '), /AND FALSE/);
   const director = { ...staff, roleCode: RoleCode.DIRECTOR };
+  const financeDirector: NativeScope = {
+    ...director,
+    enabledModules: [...director.enabledModules, 'FINANCE'],
+    permissions: [...director.permissions, 'READ_PROJECT_FINANCE'],
+  };
+  const financeResult = await answerNative('biaya proyek bulan ini', 'DASHBOARD', financeDirector, db);
+  assert.match(financeResult.content, /1\.250\.000/);
+  assert.deepEqual(calls.find(c => c.model === 'project-cost')!.args.where.status, {
+    in: ['VALIDATED', 'APPROVED', 'POSTED_TO_WIP'],
+  });
+  assert.deepEqual(calls.find(c => c.model === 'project-cost')!.args.where.project_id, { in: ['project-a'] });
   const teamDb: any = {
     ...db,
     core_organization: { findMany: async (args: any) => {
@@ -76,15 +92,13 @@ async function main() {
     },
   };
   const teamResult = await answerNative('tim A minggu ini sudah mengerjakan apa?', 'DASHBOARD', director, teamDb);
-  assert.match(teamResult.content, /Tugas tim A/);
-  const teamTask = calls.filter(c => c.model === 'tasks').at(-1)!;
-  assert.deepEqual(teamTask.args.where.assigned_to_id, { in: ['user-team-a', 'employee-team-a'] });
+  assert.match(teamResult.content, /Task harian tim A/);
   const teamDaily = calls.filter(c => c.model === 'daily').at(-1)!;
   assert.ok(teamDaily.args.values.includes('user-team-a'));
   const missing = await answerNative('KPI bulan ini', 'DASHBOARD', director, db);
   assert.match(missing.content, /belum dapat disimpulkan/);
   assert.deepEqual(calls.find(c => c.model === 'kpi-result')!.args.where.project_id, { in: ['project-a'] });
-  await assert.rejects(() => answerNative('tugas', 'HELPER', staff, { ...db, project_task: { count: async () => { throw new Error('DB offline'); }, findMany: async () => [] } }));
+  await assert.rejects(() => answerNative('tugas', 'HELPER', staff, { ...db, $queryRaw: async () => { throw new Error('DB offline'); } }));
   delete process.env.MARBOT_AI_API_KEY;
   assert.deepEqual(await renderNativeAnswer('hi', 'verified', new AbortController().signal), { content: 'verified', model: 'erp-native' });
   console.log('Native MarBot: scope, permissions, weekly data, periods, knowledge, multi-domain, clarification, and provider fallback passed.');

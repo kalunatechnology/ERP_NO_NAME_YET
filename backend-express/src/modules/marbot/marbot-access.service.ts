@@ -171,10 +171,10 @@ export async function getGrantedPermissions(
 }
 
 export function normalizeProjectScope(value: unknown): MarbotProjectScope {
-  if (!value || typeof value !== 'object') throw new ForbiddenError('Project scope MarBot tidak valid.');
+  if (!value || typeof value !== 'object') throw new ForbiddenError('Project scope Marka Plus tidak valid.');
   const input = value as { mode?: unknown; projectIds?: unknown };
   if (input.mode === 'ALL') return { mode: 'ALL', projectIds: [] };
-  if (input.mode !== 'LIST' || !Array.isArray(input.projectIds)) throw new ForbiddenError('Project scope MarBot tidak valid.');
+  if (input.mode !== 'LIST' || !Array.isArray(input.projectIds)) throw new ForbiddenError('Project scope Marka Plus tidak valid.');
   return { mode: 'LIST', projectIds: [...new Set(input.projectIds.map(String).filter(Boolean))].sort() };
 }
 

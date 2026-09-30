@@ -66,7 +66,12 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
     if (!conversation) conversation = await prisma.marbot_conversation.create({ data: { ...owner(scope), title: input.message.slice(0, 80) } });
     const previous = await prisma.marbot_message.findFirst({ where: { conversation_id: conversation.id, role: 'user', metadata: { path: ['authority'], equals: authorityKey(scope) } }, orderBy: { created_at: 'desc' } });
     const answer = await answerNative(followUpQuestion(input.message, previous?.content), input.mode, scope);
-    const rendered = await renderNativeAnswer(input.message, answer.content, controller.signal);
+    // Operational values must reach the user byte-for-byte from the ERP query.
+    // The optional language model may phrase static procedures, never numeric business data.
+    const hasOperationalData = answer.tools.some(tool => tool !== 'help.procedure');
+    const rendered = hasOperationalData
+      ? { content: answer.content, model: 'erp-native' }
+      : await renderNativeAnswer(input.message, answer.content, controller.signal);
     if (controller.signal.aborted) {
       await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'CANCELLED' } });
       return;

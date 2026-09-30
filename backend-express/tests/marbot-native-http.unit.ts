@@ -49,6 +49,7 @@ async function main() {
     assert.match(events, /"event":"done"/);
     assert.equal(stored.length, 2);
     assert.equal(stored[0].metadata.authority, stored[1].metadata.authority);
+    assert.equal(stored[1].metadata.model, 'erp-native');
     assert.equal((await send({ message: 'hi', mode: 'DASHBOARD' })).status, 403);
     assert.equal((await send({ message: '' })).status, 400);
     assert.equal((await send({ message: 'hi', companyId: 'company-b' })).status, 400);

@@ -74,7 +74,7 @@ export async function getMarbotStatus(signal?: AbortSignal): Promise<MarbotStatu
     headers: getErpAuthHeaders(),
     signal,
   });
-  if (!response.ok) throw new Error(`MarBot status check failed (${response.status})`);
+  if (!response.ok) throw new Error(`Pemeriksaan status Marka Plus gagal (${response.status})`);
   const payload = await response.json();
   return payload.data as MarbotStatus;
 }
@@ -183,7 +183,7 @@ export async function streamChatCompletion({
 
     if (buffer.trim()) processLine(buffer);
     if (!receivedDone && receivedChunk) onDone?.({});
-    if (!receivedDone && !receivedChunk) throw new Error('MarBot menutup stream tanpa respons.');
+    if (!receivedDone && !receivedChunk) throw new Error('Marka Plus menutup stream tanpa respons.');
   } catch (err: any) {
     if (err.name === 'AbortError') {
       // User aborted stream

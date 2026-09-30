@@ -24,6 +24,7 @@ import {
 } from "@/services/chatbot.service";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { MarkaPlusName } from "@/components/brand/MarkaPlusName";
 
 interface ChatbotDrawerProps {
   isOpen: boolean;
@@ -45,7 +46,7 @@ const QUICK_ACTIONS = [
   },
   {
     label: "Biaya proyek",
-    prompt: "Berapa total biaya proyek yang sudah diposting bulan ini untuk company aktif?",
+    prompt: "Berapa total biaya proyek yang diakui bulan ini untuk company aktif?",
   },
   {
     label: "Task berjalan",
@@ -273,7 +274,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                     isStreaming: false,
                     content:
                       msg.content ||
-                      error.message || "MarBot belum dapat menjawab. Silakan coba kembali.",
+                      error.message || "Marka Plus belum dapat menjawab. Silakan coba kembali.",
                   }
                 : msg
             )
@@ -340,7 +341,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
             <MarBotIcon size={34} />
             <div className="flex flex-col">
               <span className="font-bold text-[15px] text-[#1E293B] leading-snug">
-                MarBot
+                <MarkaPlusName />
               </span>
               <span className="flex items-center gap-1.5 text-[11px] text-[#4F5050] font-medium leading-tight">
                 <span className={`w-1.5 h-1.5 rounded-full ${
@@ -397,12 +398,12 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
               <div className="flex flex-col space-y-2">
                 <div className="flex items-center gap-2 text-xs font-semibold text-[#334155]">
                   <MarBotIcon size={20} />
-                  <span>MarBot</span>
+                  <MarkaPlusName compact />
                   <span className="text-[#94A3B8] font-normal">· {currentTime}</span>
                 </div>
 
                 <div className="rounded-2xl p-4 bg-[#F6F7F9] text-[#334155] text-[13px] leading-relaxed max-w-[95%]">
-                  {assistantMode === 'DASHBOARD' ? 'Saya membantu merangkum progres proyek, tugas, risiko, dan KPI yang tercatat sesuai hak akses Anda.' : 'Halo! Saya MarBot. Saya membantu panduan penggunaan ERP serta membaca data proyek, tugas, biaya proyek, dan tiket sesuai hak akses Anda.'}
+                  {assistantMode === 'DASHBOARD' ? 'Saya membantu merangkum progres proyek, tugas, risiko, dan KPI yang tercatat sesuai hak akses Anda.' : 'Halo! Saya Marka Plus. Saya membantu panduan penggunaan ERP serta membaca data proyek, tugas, biaya proyek, dan tiket sesuai hak akses Anda.'}
                 </div>
               </div>
 
@@ -440,7 +441,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                 {!isUser && (
                   <div className="flex items-center gap-2 text-xs font-semibold text-[#334155]">
                     <MarBotIcon size={20} />
-                    <span>MarBot</span>
+                    <MarkaPlusName compact />
                   </div>
                 )}
 
@@ -616,7 +617,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
 
           <div className="text-center">
             <span className="text-[11px] text-[#64748B] font-normal leading-tight">
-              Periksa sumber dan periode data pada jawaban MarBot.
+              Periksa sumber dan periode data pada jawaban Marka Plus.
             </span>
           </div>
         </div>

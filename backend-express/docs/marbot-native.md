@@ -1,4 +1,8 @@
-# MarBot di ERP
+# Marka Plus di ERP
+
+Nama produk yang tampil kepada pengguna adalah **Marka Plus**. Identifier teknis
+`MARBOT`, route `/api/v1/marbot`, tabel, dan nama environment dipertahankan agar
+kontrak API serta deployment lama tetap kompatibel.
 
 Runtime default adalah `native`. Chat, panduan, query data, audit, dan riwayat
 berjalan di backend ERP. Tidak memerlukan service Chatbot_Arsalynk atau credential
@@ -26,9 +30,16 @@ kode ini. Riwayat lama di service eksternal tidak otomatis dipindahkan.
 - AI Helper: panduan pengajuan cuti melalui Kartu Permintaan, laporan kerja,
   timesheet, tugas, notulensi, dan tautan halaman. Panduan dikurasi/versioned
   di `marbot-knowledge.ts` berdasarkan form dan route ERP yang aktif.
-- Data: portofolio, task, biaya proyek POSTED, tiket terbuka, KPI tercatat.
-- Mingguan: task yang diperbarui, selesai, dan catatan kerja harian dari hierarki
-  main/weekly/daily task, dibatasi proyek dan pemilik untuk pengguna individual.
+- Data: portofolio, task harian, biaya aktual proyek yang diakui, tiket terbuka,
+  dan KPI tercatat.
+  Jawaban data operasional dikirim langsung dari query ERP tanpa diringkas ulang
+  oleh model bahasa.
+- Task dan mingguan: memakai `project_daily_task` dari hierarki main/weekly/daily
+  yang juga menjadi sumber layar Tugas Harian. Terlambat berarti `planned_date`
+  sebelum awal hari Asia/Jakarta dan status bukan COMPLETED/DONE. Data dibatasi
+  proyek dan `owner_id` untuk pengguna individual.
+- Biaya: memakai sumber yang sama dengan ringkasan keuangan proyek. Hanya status
+  VALIDATED, APPROVED, dan POSTED_TO_WIP yang diakui; DRAFT/REJECTED tidak ikut.
 - Dashboard: director, operational manager dan project manager dengan izin data
   proyek. KPI finance memerlukan READ_COMPANY_FINANCE dan scope ALL.
 - Pertanyaan lintas domain dievaluasi per tool; penolakan satu domain tidak

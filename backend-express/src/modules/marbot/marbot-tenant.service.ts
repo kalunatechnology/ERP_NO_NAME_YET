@@ -190,7 +190,7 @@ export class MarbotTenantService {
     const client = options.client || marbotControlPlaneClient;
     if (env.CHATBOT_CONTRACT_MODE !== 'v2') {
       throw new ValidationError(
-        'Managed provisioning membutuhkan CHATBOT_CONTRACT_MODE=v2. Service MarBot production saat ini menggunakan konfigurasi legacy/caller token.',
+        'Managed provisioning membutuhkan CHATBOT_CONTRACT_MODE=v2. Service Marka Plus production saat ini menggunakan konfigurasi legacy/caller token.',
       );
     }
     // 1. Fail-closed guard on configuration
@@ -455,7 +455,7 @@ export class MarbotTenantService {
     if (!outboundSecret) throw new ValidationError('Outbound Tool Secret wajib diisi.');
 
     if (inboundSecret === outboundSecret) {
-      throw new ValidationError('Kunci konteks dan kunci tool MarBot harus berbeda demi keamanan.');
+      throw new ValidationError('Kunci konteks dan kunci tool Marka Plus harus berbeda demi keamanan.');
     }
 
     const saved = await db.marbot_tenant_config.upsert({

@@ -350,7 +350,7 @@ coreRouter.put('/tenants/:tenantId/marbot-config', authenticate, requireSuperuse
     const saved = await MarbotTenantService.saveLegacyConfig(tenantId, req.body || {}, req.user?.id);
     res.json({
       success: true,
-      message: 'Konfigurasi MarBot berhasil disimpan.',
+      message: 'Konfigurasi Marka Plus berhasil disimpan.',
       data: {
         tenant_id: saved.tenant_id,
         external_tenant_id: saved.external_tenant_id,
@@ -371,7 +371,7 @@ coreRouter.delete('/tenants/:tenantId/marbot-config', authenticate, requireSuper
   try {
     const { tenantId } = req.params;
     await MarbotTenantService.disconnectTenant(tenantId);
-    res.json({ success: true, message: 'Konfigurasi MarBot berhasil dihapus.' });
+    res.json({ success: true, message: 'Konfigurasi Marka Plus berhasil dihapus.' });
   } catch (err) {
     next(err);
   }
@@ -411,7 +411,7 @@ coreRouter.post('/tenants/:tenantId/marbot-config/provision', authenticate, requ
     });
     res.json({
       success: true,
-      message: 'Tenant berhasil diprovision ke layanan MarBot.',
+      message: 'Tenant berhasil diprovision ke layanan Marka Plus.',
       data: status,
     });
   } catch (err) {
