@@ -11,8 +11,6 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import {
-  Eye,
-  EyeOff,
   Ghost,
   ChevronDown,
   ChevronUp,
@@ -21,7 +19,6 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
-import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
 import toast from "react-hot-toast";
 
 /* ── Minimalist CSS Animations ── */
@@ -105,20 +102,14 @@ const ANIM_STYLES = `
     background-repeat: no-repeat;
     background-size: cover;
   }
-  .mk-photo-composition {
-    position: absolute;
-    inset-block: 0;
-    left: 50%;
-    height: 100%;
-    aspect-ratio: 1641 / 1101;
-    transform: translateX(-50%);
-    background: url('/login/marka-photo.webp') center / cover no-repeat;
-  }
   .mk-scene-indicator:first-child {
     animation: mk-indicator-first 16s cubic-bezier(0.76, 0, 0.24, 1) infinite;
   }
   .mk-scene-indicator:last-child {
     animation: mk-indicator-second 16s cubic-bezier(0.76, 0, 0.24, 1) infinite;
+  }
+  @media (min-width: 1024px) {
+    .mk-visual-slide { background-size: 100% 100%; }
   }
   @media (prefers-reduced-motion: reduce) {
     .mk-visual-track,
@@ -193,7 +184,6 @@ function LoginFormContent() {
   const callbackUrl = requestedCallback.startsWith("/") && !requestedCallback.startsWith("//")
     ? requestedCallback
     : "/dashboard";
-  const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showGhostPanel, setShowGhostPanel] = useState(false);
   const [filterCat, setFilterCat] = useState("sma");
@@ -218,8 +208,9 @@ function LoginFormContent() {
     register,
     handleSubmit,
     setValue,
-    formState: { errors },
+    formState: { errors, isValid },
   } = useForm<LoginForm>({
+    mode: "onChange",
     defaultValues: {
       email: "",
       password: "",
@@ -309,74 +300,48 @@ function LoginFormContent() {
         </div>
       )}
 
-      <div className="min-h-screen w-full bg-white flex flex-col items-center justify-center p-3 md:p-6 lg:px-8 lg:py-8 font-sans select-none overflow-x-hidden relative">
+      <div className="min-h-screen w-full bg-white flex flex-col items-center justify-center p-0 font-sans select-none overflow-x-hidden relative">
         {/* ── CARD UTAMA LOGIN ── */}
         <div
           className={cn(
-            "mk-card w-full max-w-[1380px] h-auto lg:h-[calc(100vh-4rem)] lg:min-h-[680px] lg:max-h-[820px] bg-white rounded-[24px] border border-[#D9D9D9] flex flex-col lg:flex-row overflow-hidden shadow-[0_8px_32px_rgba(15,23,42,0.04)] transition-all duration-300",
+            "mk-card w-full min-h-screen lg:h-screen lg:min-h-[640px] bg-white rounded-none lg:rounded-[16px] border border-[#090909] flex flex-col lg:flex-row overflow-hidden transition-all duration-300",
             isTransitioning && "opacity-40 scale-[0.99] pointer-events-none"
           )}
         >
           {/* ── SISI KIRI: DUA SCENE REFERENSI DENGAN CAROUSEL KIRI/KANAN ── */}
           <div
-            className="w-full lg:w-[420px] shrink-0 text-white relative overflow-hidden min-h-[320px] sm:min-h-[400px] lg:min-h-0 lg:h-full"
-            style={{
-              background:
-                "linear-gradient(180deg, #2649B3 0%, #294BB2 48%, #8BCBFB 100%)",
-            }}
+            className="h-[84vw] min-h-[300px] w-full shrink-0 overflow-hidden text-white relative lg:h-full lg:min-h-0 lg:w-[33.03%]"
           >
             <div className="absolute inset-0" aria-hidden="true">
               <div className="mk-visual-track">
                 <div className="mk-visual-slide">
-                  <div className="mk-photo-composition">
-                    <div
-                      className="absolute left-[47.1%] top-0 h-[47.9%] w-[32%] bg-contain bg-center bg-no-repeat opacity-80 mix-blend-multiply"
-                      style={{ backgroundImage: "url('/brand/marka-logomark-legacy.svg?v=2')" }}
-                    />
-                  </div>
+                  <div className="absolute inset-0 bg-top bg-no-repeat bg-[length:100%_auto] lg:hidden" style={{ backgroundImage: "url('/login/marka-login-photo-final.svg')" }} />
+                  <div className="absolute inset-0 hidden bg-left-top bg-no-repeat lg:block" style={{ backgroundImage: "url('/login/marka-login-photo-desktop.png')",backgroundSize:"302.75% 100%" }} />
                 </div>
-                <div
-                  className="mk-visual-slide bg-[position:50%_center]"
-                  style={{ backgroundImage: "url('/login/marka-workspace-scene.svg?v=2')" }}
-                />
-              </div>
-            </div>
-
-            <div className="absolute inset-0 bg-gradient-to-b from-[#0A1A48]/35 via-transparent to-[#0A1A48]/60 pointer-events-none" />
-
-            <div className="relative z-10 h-full min-h-[320px] sm:min-h-[400px] lg:min-h-0 flex flex-col justify-between p-7 sm:p-9 lg:p-10">
-              <MarkaWordmark className="h-auto w-[154px] lg:w-[194px] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.2)]" />
-
-              <div className="mt-auto flex items-end justify-between gap-4">
-                <p className="max-w-[220px] text-[22px] sm:text-[24px] font-semibold leading-[1.08] tracking-[-0.02em] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.22)]">
-                  Stay managed.
-                  <br />
-                  Everywhere
-                </p>
-                <div className="mb-1 flex items-center gap-2" aria-hidden="true">
-                  <span className="mk-scene-indicator h-2 rounded-full bg-white" />
-                  <span className="mk-scene-indicator h-2 rounded-full bg-white" />
+                <div className="mk-visual-slide">
+                  <div className="absolute inset-0 bg-top bg-no-repeat bg-[length:100%_auto] lg:hidden" style={{ backgroundImage: "url('/login/marka-login-workspace-final.svg')" }} />
+                  <div className="absolute inset-0 hidden bg-left-top bg-no-repeat lg:block" style={{ backgroundImage: "url('/login/marka-login-workspace-desktop.png')",backgroundSize:"302.75% 100%" }} />
                 </div>
               </div>
             </div>
           </div>
 
           {/* ── SISI KANAN: FORM LOGIN & LOGO ASTERISK ── */}
-          <div className="w-full min-w-0 flex-1 flex flex-col px-5 py-6 sm:px-8 sm:py-8 lg:px-[47px] lg:py-[56px]">
+          <div className="w-full min-w-0 flex-1 flex flex-col px-6 py-7 sm:px-8 sm:py-9 lg:px-[47px] lg:py-[58px]">
             
             {/* Top Right: keep the standalone Marka M symbol */}
             <div className="mk-fade-up-1 flex justify-end w-full">
               <div
                 role="img"
                 aria-label="Marka logomark"
-                className="w-12 h-12 sm:w-14 sm:h-14 lg:w-[72px] lg:h-[72px] bg-contain bg-center bg-no-repeat shrink-0"
+                className="w-14 h-14 lg:w-[84px] lg:h-[84px] bg-contain bg-center bg-no-repeat shrink-0"
                 style={{ backgroundImage: "url('/brand/marka-logomark-legacy.svg?v=2')" }}
               />
             </div>
 
             {/* Bottom Area: Full Width Form */}
-            <div className="w-full flex flex-col gap-5 mt-auto pb-1 lg:pb-0">
-              <h2 className="mk-fade-up-2 text-2xl sm:text-[32px] leading-none font-bold text-[#294BB2] tracking-tight">
+            <div className="w-full flex flex-col gap-6 mt-auto pb-1 lg:pb-0">
+              <h2 className="mk-fade-up-2 text-[32px] lg:text-[36px] leading-none font-bold text-[#294BB2] tracking-tight">
                 Log In
               </h2>
 
@@ -387,15 +352,14 @@ function LoginFormContent() {
               >
                 {/* Field 1: Your Email */}
                 <div className="mk-fade-up-3 flex flex-col gap-3">
-                  <label className="text-xs font-medium text-[#2649B3]">
+                  <label className="text-sm lg:text-base font-medium text-[#2649B3]">
                     Your Email
                   </label>
                   <input
                     type="text"
                     {...register("email", { required: "Email wajib diisi" })}
-                    placeholder="Email"
                     autoComplete="username"
-                    className="mk-input w-full h-[44px] rounded-[12px] bg-[#F5F5F5] border border-[#D9D9D9] px-4 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                    className="mk-input w-full h-[46px] rounded-[12px] bg-[#F5F5F5] border border-[#D9D9D9] px-4 text-sm text-slate-800 focus:outline-none"
                   />
                   {errors.email && (
                     <span className="text-[11px] text-red-500">
@@ -406,27 +370,18 @@ function LoginFormContent() {
 
                 {/* Field 2: Password */}
                 <div className="mk-fade-up-4 flex flex-col gap-3">
-                  <label className="text-xs font-medium text-[#2649B3]">
+                  <label className="text-sm lg:text-base font-medium text-[#2649B3]">
                     Password
                   </label>
                   <div className="relative flex items-center">
                     <input
-                      type={showPw ? "text" : "password"}
+                      type="password"
                       {...register("password", {
                         required: "Password wajib diisi",
                       })}
                       autoComplete="current-password"
-                      placeholder="Password"
-                      className="mk-input w-full h-[44px] rounded-[12px] bg-[#F5F5F5] border border-[#D9D9D9] px-4 pr-11 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                      className="mk-input w-full h-[46px] rounded-[12px] bg-[#F5F5F5] border border-[#D9D9D9] px-4 text-sm text-slate-800 focus:outline-none"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw(!showPw)}
-                      className="absolute right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-                      tabIndex={-1}
-                    >
-                      {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
                   </div>
                   {errors.password && (
                     <span className="text-[11px] text-red-500">
@@ -439,12 +394,14 @@ function LoginFormContent() {
                 <div className="mk-fade-up-5 flex flex-col gap-3">
                   <button
                     type="submit"
-                    disabled={submitting || isTransitioning}
+                    disabled={!isValid || submitting || isTransitioning}
                     className={cn(
                       "w-full h-[46px] lg:h-[50px] mt-0.5 rounded-[12px] text-white font-medium text-xs sm:text-sm transition-all duration-200 flex items-center justify-center cursor-pointer shadow-xs",
                       (submitting || isTransitioning)
                         ? "bg-[#1E293B] shadow-inner"
-                        : "bg-[#294BB2] hover:bg-[#2649B3] active:scale-[0.995]"
+                        : !isValid
+                          ? "bg-[#D9D9D9] cursor-not-allowed"
+                          : "bg-[#294BB2] hover:bg-[#2649B3] active:scale-[0.995]"
                     )}
                   >
                     {(submitting || isTransitioning) ? (
