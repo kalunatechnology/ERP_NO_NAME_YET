@@ -37,6 +37,7 @@ const getBaseUrl = (): string => {
 
 export interface StreamChatOptions {
   message: string;
+  mode?: 'HELPER' | 'DASHBOARD';
   conversationId?: string | null;
   signal?: AbortSignal;
   onChunk: (delta: string) => void;
@@ -46,7 +47,9 @@ export interface StreamChatOptions {
 
 export interface MarbotStatus {
   online: boolean;
-  contractMode: 'legacy' | 'v2';
+  contractMode: 'legacy' | 'v2' | 'native';
+  dashboardAvailable?: boolean;
+  aiConfigured?: boolean;
   preferredVersion: number | null;
   v2Supported: boolean;
   managed: boolean;
@@ -76,11 +79,27 @@ export async function getMarbotStatus(signal?: AbortSignal): Promise<MarbotStatu
   return payload.data as MarbotStatus;
 }
 
+export async function getNativeConversations(signal?: AbortSignal): Promise<Array<{ id: string; title: string }>> {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8001';
+  const response = await fetch(`${base}/api/v1/marbot/conversations`, { headers: getErpAuthHeaders(), signal });
+  if (!response.ok) throw new Error('Riwayat percakapan belum dapat dimuat.');
+  return (await response.json()).data;
+}
+
+export async function getNativeConversation(id: string, signal?: AbortSignal): Promise<ChatMessage[]> {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8001';
+  const response = await fetch(`${base}/api/v1/marbot/conversations/${encodeURIComponent(id)}`, { headers: getErpAuthHeaders(), signal });
+  if (!response.ok) throw new Error('Percakapan tidak tersedia untuk sesi ini.');
+  const payload = await response.json();
+  return payload.data.messages.map((message: { id: string; role: ChatMessage['role']; content: string; created_at: string }) => ({ id: message.id, role: message.role, content: message.content, createdAt: message.created_at }));
+}
+
 /**
  * Stream AI Chat Completions using Server-Sent Events (SSE)
  */
 export async function streamChatCompletion({
   message,
+  mode,
   conversationId,
   signal,
   onChunk,
@@ -100,6 +119,7 @@ export async function streamChatCompletion({
       headers,
       body: JSON.stringify({
         message,
+        mode,
         conversationId: conversationId || undefined,
       }),
       signal,

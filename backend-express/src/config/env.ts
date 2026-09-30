@@ -62,6 +62,9 @@ const envSchema = z.object({
   CHATBOT_ERP_READONLY_DATABASE_URL: z.string().optional(),
   MARBOT_ENCRYPTION_KEY: z.string().optional(),
   CHATBOT_CONTRACT_MODE: z.enum(['legacy', 'v2']).default('v2'),
+  MARBOT_RUNTIME: z.enum(['native', 'external']).default('native'),
+  MARBOT_AI_API_KEY: z.string().optional(),
+  MARBOT_AI_MODEL: z.string().optional(),
 });
 
 /**

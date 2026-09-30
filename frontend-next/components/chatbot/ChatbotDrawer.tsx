@@ -18,6 +18,8 @@ import {
 } from "@/types/chatbot";
 import {
   getMarbotStatus,
+  getNativeConversations,
+  getNativeConversation,
   streamChatCompletion,
 } from "@/services/chatbot.service";
 import ReactMarkdown from "react-markdown";
@@ -35,6 +37,8 @@ interface ChatbotDrawerProps {
 }
 
 const QUICK_ACTIONS = [
+  { label: "Panduan laporan kerja", prompt: "Laporan kerja di mana?" },
+  { label: "Panduan notulensi", prompt: "Bagaimana cara mengisi notulensi meeting?" },
   {
     label: "Task terlambat",
     prompt: "Berapa task proyek yang overdue untuk akses saya?",
@@ -103,6 +107,30 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
   const [inputMessage, setInputMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [assistantMode, setAssistantMode] = useState<'HELPER' | 'DASHBOARD'>('HELPER');
+  const [dashboardAvailable, setDashboardAvailable] = useState(false);
+  const [nativeRuntime, setNativeRuntime] = useState(false);
+  const [history, setHistory] = useState<Array<{ id: string; title: string }>>([]);
+  const [historyError, setHistoryError] = useState('');
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  useEffect(() => {
+    if (!isOpen || !nativeRuntime || isStreaming) return;
+    const controller = new AbortController();
+    getNativeConversations(controller.signal).then(setHistory).catch(error => {
+      if (error?.name !== 'AbortError') setHistoryError(error.message);
+    });
+    return () => controller.abort();
+  }, [isOpen, nativeRuntime, isStreaming, currentUser?.id, currentUser?.companyName]);
+  useEffect(() => {
+    abortControllerRef.current?.abort();
+    setMessages([]);
+    setCurrentConversationId(null);
+    setHistory([]);
+    setHistoryError('');
+    setIsStreaming(false);
+    setAssistantMode('HELPER');
+    return () => abortControllerRef.current?.abort();
+  }, [currentUser?.id, currentUser?.companyName]);
   const [currentTime, setCurrentTime] = useState("10.15");
   const [connectionState, setConnectionState] = useState<"checking" | "database" | "knowledge" | "offline">("checking");
 
@@ -141,9 +169,11 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
     const controller = new AbortController();
     setConnectionState("checking");
     getMarbotStatus(controller.signal)
-      .then((status) => setConnectionState(
-        status.online ? (status.mcpLiteReady ? "database" : "knowledge") : "offline"
-      ))
+      .then((status) => {
+        setNativeRuntime(status.contractMode === 'native');
+        setDashboardAvailable(Boolean(status.dashboardAvailable));
+        setConnectionState(status.online ? (status.mcpLiteReady ? "database" : "knowledge") : "offline");
+      })
       .catch((error) => {
         if (error?.name !== "AbortError") setConnectionState("offline");
       });
@@ -179,7 +209,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
  */
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || inputMessage).trim();
-    if (!query || isStreaming) return;
+    if (!query || isStreaming || loadingHistory) return;
 
     setInputMessage("");
 
@@ -212,6 +242,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
       // The signed enterprise chat endpoint creates an owned conversation.
       await streamChatCompletion({
         message: query,
+        ...(nativeRuntime ? { mode: assistantMode } : {}),
         conversationId: currentConversationId,
         signal: controller.signal,
         onChunk: (delta) => {
@@ -232,7 +263,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
           );
           setIsStreaming(false);
         },
-        onError: () => {
+        onError: (error) => {
           setIsStreaming(false);
           setMessages((prev) =>
             prev.map((msg) =>
@@ -242,7 +273,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                     isStreaming: false,
                     content:
                       msg.content ||
-                      "Maaf, terjadi kendala saat menghubungkan ke MarBot AI Engine. Silakan coba kembali.",
+                      error.message || "MarBot belum dapat menjawab. Silakan coba kembali.",
                   }
                 : msg
             )
@@ -322,9 +353,9 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                       : "bg-amber-400 animate-pulse"
                 }`} />
                 {connectionState === "database"
-                  ? "Online · Database aktif"
+                  ? "Online · Terhubung ke ERP"
                   : connectionState === "knowledge"
-                    ? "Online · Knowledge only"
+                    ? "Online · Panduan tersedia"
                   : connectionState === "offline"
                     ? "Tidak terhubung"
                     : "Memeriksa koneksi"}
@@ -342,6 +373,23 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
         </div>
 
         {/* ── Main Chat Scrollable Content ── */}
+        {nativeRuntime && <div className="flex items-center gap-2 border-b px-5 py-2 text-xs">
+          <button disabled={isStreaming} onClick={() => setAssistantMode('HELPER')} aria-pressed={assistantMode === 'HELPER'} className={`rounded-lg px-3 py-2 ${assistantMode === 'HELPER' ? 'bg-blue-100 text-blue-800' : ''}`}>AI Helper</button>
+          {dashboardAvailable && <button disabled={isStreaming} onClick={() => setAssistantMode('DASHBOARD')} aria-pressed={assistantMode === 'DASHBOARD'} className={`rounded-lg px-3 py-2 ${assistantMode === 'DASHBOARD' ? 'bg-blue-100 text-blue-800' : ''}`}>Dashboard Assistant</button>}
+          <button disabled={isStreaming} onClick={() => { setMessages([]); setCurrentConversationId(null); }} className="ml-auto text-blue-700">Chat baru</button>
+        </div>}
+        {nativeRuntime && history.length > 0 && <div className="px-5 py-2">
+          <select aria-label="Riwayat percakapan" className="w-full rounded-lg border p-2 text-xs" value={currentConversationId || ''} disabled={isStreaming || loadingHistory} onChange={async event => {
+            const id = event.target.value;
+            if (!id) { setMessages([]); setCurrentConversationId(null); return; }
+            setLoadingHistory(true);
+            setHistoryError('');
+            try { const restored = await getNativeConversation(id); setMessages(restored); setCurrentConversationId(id); }
+            catch (error) { setHistoryError(error instanceof Error ? error.message : 'Riwayat tidak tersedia.'); }
+            finally { setLoadingHistory(false); }
+          }}><option value="">Percakapan baru</option>{history.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>
+        </div>}
+        {historyError && <p role="status" className="px-5 text-xs text-red-600">{historyError}</p>}
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col space-y-4">
           {/* Default MarBot Intro Message & Quick Actions (Shown only on initial state) */}
           {messages.length === 0 && (
@@ -354,18 +402,22 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                 </div>
 
                 <div className="rounded-2xl p-4 bg-[#F6F7F9] text-[#334155] text-[13px] leading-relaxed max-w-[95%]">
-                  Hi! I&apos;m MarBot, your ERP assistant. I can help you with financial reports, inventory levels, order tracking, HR queries, and more. What do you need?
+                  {assistantMode === 'DASHBOARD' ? 'Saya membantu merangkum progres proyek, tugas, risiko, dan KPI yang tercatat sesuai hak akses Anda.' : 'Halo! Saya MarBot. Saya membantu panduan penggunaan ERP serta membaca data proyek, tugas, biaya proyek, dan tiket sesuai hak akses Anda.'}
                 </div>
               </div>
 
               {/* ── Quick Actions Section (Initial Screen Only) ── */}
               <div className="pt-2 flex flex-col space-y-2">
                 <span className="text-[13px] font-semibold text-[#4F5050]">
-                  Quick Actions
+                  Coba tanyakan
                 </span>
 
                 <div className="flex flex-col space-y-1.5">
-                  {QUICK_ACTIONS.map((item, idx) => (
+                  {(assistantMode === 'DASHBOARD' ? [
+                    { label: 'Ringkasan mingguan', prompt: 'Apa yang tim saya kerjakan minggu ini?' },
+                    { label: 'Progres dan risiko proyek', prompt: 'Ringkas progres proyek dan tugas terlambat.' },
+                    { label: 'KPI bulan ini', prompt: 'Bagaimana KPI dan target bulan ini?' },
+                  ] : QUICK_ACTIONS).map((item, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleSendMessage(item.prompt)}
@@ -546,7 +598,8 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask MarBot anything.."
+              placeholder="Tanyakan panduan atau data ERP…"
+              maxLength={4000}
               disabled={isStreaming}
               className="flex-1 bg-transparent text-[13px] text-[#1E293B] placeholder:text-[#94A3B8] focus:outline-hidden disabled:opacity-60"
             />
@@ -563,7 +616,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
 
           <div className="text-center">
             <span className="text-[11px] text-[#64748B] font-normal leading-tight">
-              MarBot can make mistakes. Please verify critical data
+              Periksa sumber dan periode data pada jawaban MarBot.
             </span>
           </div>
         </div>

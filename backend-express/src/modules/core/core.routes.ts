@@ -16,6 +16,7 @@ import { requireAdminForWrite, requireSuperAdminForWrite, requireSuperuser } fro
 import { isSuperAdmin, RoleCode } from '../../types/roles';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { MarbotTenantService } from '../marbot/marbot-tenant.service';
+import { env } from '../../config/env';
 
 const requireFinanceOrAdminForCompanyWrite = (req: Request, _res: Response, next: NextFunction): void => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
@@ -327,6 +328,11 @@ coreRouter.post('/companies/:id/modules/batch', authenticate, requireSuperuser, 
 coreRouter.get('/tenants/:tenantId/marbot-config', authenticate, requireSuperuser, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { tenantId } = req.params;
+    if (env.MARBOT_RUNTIME !== 'external') {
+      const persistenceReady = await prisma.marbot_conversation.count({ where: { tenant_id: tenantId } }).then(() => true).catch(() => false);
+      res.json({ tenantId, mode: 'NATIVE', source: 'ERP', configured: persistenceReady, persistenceReady, aiConfigured: Boolean(env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL) });
+      return;
+    }
     const status = await MarbotTenantService.getTenantIntegrationStatus(tenantId);
     res.json(status);
   } catch (err) {

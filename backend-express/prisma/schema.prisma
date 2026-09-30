@@ -61,6 +61,31 @@ model core_company {
 }
 
 // Replay protection and minimal technical audit for the ERP-owned Marbot gateway.
+model marbot_conversation {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  company_id String
+  user_id    String
+  title      String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  messages   marbot_message[]
+
+  @@index([tenant_id, company_id, user_id, updated_at])
+}
+
+model marbot_message {
+  id              String @id @default(uuid())
+  conversation_id String
+  role            String
+  content         String
+  metadata        Json
+  created_at      DateTime @default(now())
+  conversation    marbot_conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id, created_at])
+}
+
 model marbot_request {
   id         String   @id @default(uuid())
   nonce      String   @unique

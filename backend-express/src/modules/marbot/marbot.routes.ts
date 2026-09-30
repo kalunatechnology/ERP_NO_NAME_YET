@@ -23,6 +23,7 @@ import {
 import { MarbotToolScope } from './marbot.types';
 import { buildMarbotRuntimeContextV2 } from './marbot-runtime.service';
 import { env } from '../../config/env';
+import { nativeMarbotRouter } from './marbot-native.routes';
 
 // Re-export services for backwards compatibility with tests and callers
 export { canonicalJson, toolSignaturePayload, matchesHmac, resolveMarbotTenantConfig };
@@ -350,6 +351,11 @@ marbotInternalRouter.get('/crm/tickets', async (req, res, next) => {
 
 export const marbotUserRouter = Router();
 marbotUserRouter.use(authenticate, resolveTenant);
+// Native ERP is the default. Explicit rollback keeps the previous integration available.
+marbotUserRouter.use((req, res, next) => {
+  if (env.MARBOT_RUNTIME === 'external') return next();
+  return nativeMarbotRouter(req, res, next);
+});
 
 marbotUserRouter.get('/status', async (req: Request, res: Response, next: NextFunction) => {
   try {

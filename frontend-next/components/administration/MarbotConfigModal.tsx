@@ -36,6 +36,7 @@ export function MarbotConfigModal({
   onConfigSaved,
 }: MarbotConfigModalProps) {
   const [loading, setLoading] = useState(false);
+  const [nativeStatus, setNativeStatus] = useState<{ ready: boolean; ai: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -78,6 +79,7 @@ export function MarbotConfigModal({
   }, [isOpen, tenant]);
 
   const resetForm = () => {
+    setNativeStatus(null);
     setConfigured(false);
     setSource("NONE");
     setUpdatedAt(null);
@@ -106,6 +108,7 @@ export function MarbotConfigModal({
     try {
       const res = await api.get(`/api/v1/core/tenants/${tenant.id}/marbot-config`);
       const payload = res.data;
+      setNativeStatus(payload.mode === 'NATIVE' ? { ready: Boolean(payload.persistenceReady), ai: Boolean(payload.aiConfigured) } : null);
       setConfigured(Boolean(payload.configured));
       setSource(payload.source || "NONE");
       setMode(payload.mode || "UNCONFIGURED");
@@ -244,6 +247,13 @@ export function MarbotConfigModal({
       {loading ? (
         <div className="flex items-center justify-center py-12 text-sm text-[#64748B]">
           <RefreshCw className="mr-2 h-4 w-4 animate-spin text-[#2649B3]" /> Memuat konfigurasi chatbot...
+        </div>
+      ) : nativeStatus ? (
+        <div className="space-y-3 py-4 text-sm text-slate-700">
+          <p className="font-semibold text-blue-800">MarBot berjalan di dalam ERP</p>
+          <p>{nativeStatus.ready ? 'Penyimpanan percakapan siap.' : 'Penyimpanan percakapan belum siap. Administrator server perlu memeriksa koneksi database dan menerapkan migrasi MarBot.'}</p>
+          <p>{nativeStatus.ai ? 'Model AI sudah dikonfigurasi di server ERP.' : 'Panduan dan ringkasan data tersedia melalui mesin ERP. Model AI opsional belum dikonfigurasi.'}</p>
+          <p>Akses pengguna mengikuti aktivasi modul MARBOT, permission USE_MARBOT, serta hak akses data perusahaan dan proyek.</p>
         </div>
       ) : (
         <form onSubmit={handleSave} className="space-y-5 pt-2">
