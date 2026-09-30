@@ -16,6 +16,8 @@ export interface MeetingRequestSummary {
 export interface MeetingDetail extends MeetingRequestSummary {
   organizer_user_id: string;
   notetaker_user_id?: string | null;
+  notetaker?: { id: string; full_name: string; email: string } | null;
+  permissions?: { can_edit_minutes: boolean };
   participants: Array<{ id: string; user_id?: string | null; participant_role: string; invitation_status: string; attendance_status: string; user?: { id: string; full_name: string; email: string } | null }>;
   agenda: Array<{ id: string; sequence_number: number; title: string; description?: string | null; status: string }>;
   minutes: null | {

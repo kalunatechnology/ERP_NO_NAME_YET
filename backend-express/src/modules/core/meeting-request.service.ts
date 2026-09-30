@@ -65,7 +65,10 @@ export class MeetingRequestService {
       prisma.request_meeting_agenda.findMany({ where: { meeting_id: meetingId, company_id: companyId }, orderBy: { sequence_number: 'asc' } }),
       prisma.request_meeting_minutes.findFirst({ where: { meeting_id: meetingId, company_id: companyId }, orderBy: { version_number: 'desc' } }),
     ]);
-    const userIds = Array.from(new Set(participants.map((item) => item.user_id).filter((id): id is string => Boolean(id))));
+    const userIds = Array.from(new Set([
+      ...participants.map((item) => item.user_id),
+      meeting.notetaker_user_id,
+    ].filter((id): id is string => Boolean(id))));
     const users = userIds.length ? await prisma.iam_user.findMany({
       where: { id: { in: userIds } }, select: { id: true, full_name: true, email: true },
     }) : [];
@@ -77,6 +80,8 @@ export class MeetingRequestService {
     return {
       ...meeting, request,
       participants: participants.map((item) => ({ ...item, user: item.user_id ? userById.get(item.user_id) ?? null : null })),
+      notetaker: meeting.notetaker_user_id ? userById.get(meeting.notetaker_user_id) ?? null : null,
+      permissions: { can_edit_minutes: meeting.notetaker_user_id === userId },
       agenda,
       minutes: minutes ? { ...minutes, decisions, action_items: actionItems } : null,
     };
@@ -85,8 +90,8 @@ export class MeetingRequestService {
   static async saveMinutes(meetingId: string, payload: SaveMeetingMinutesPayload, companyId: string, userId: string, activeRole: string) {
     const detail = await this.getById(meetingId, companyId, userId, activeRole);
     if (!detail.request) throw new NotFoundError('Request');
-    if (!MANAGER_ROLES.has(activeRole) && detail.organizer_user_id !== userId && detail.notetaker_user_id !== userId) {
-      throw new ForbiddenError('Hanya organizer, notulis, atau pengelola yang dapat menyusun notulensi.');
+    if (detail.notetaker_user_id !== userId) {
+      throw new ForbiddenError('Hanya notulis yang ditugaskan yang dapat menyusun notulensi.');
     }
     if (detail.minutes?.status === 'PUBLISHED') throw new ValidationError('Notulensi sudah dipublikasikan dan tidak dapat ditimpa.');
     const decisions = (payload.decisions ?? []).filter((item) => item.text?.trim());
@@ -136,8 +141,8 @@ export class MeetingRequestService {
     if (!detail.minutes.summary.trim() && !detail.minutes.general_discussion.trim()) {
       throw new ValidationError('Ringkasan atau pembahasan notulensi wajib diisi sebelum publikasi.');
     }
-    if (!MANAGER_ROLES.has(activeRole) && detail.organizer_user_id !== userId && detail.notetaker_user_id !== userId) {
-      throw new ForbiddenError('Anda tidak memiliki akses untuk mempublikasikan notulensi.');
+    if (detail.notetaker_user_id !== userId) {
+      throw new ForbiddenError('Hanya notulis yang ditugaskan yang dapat mempublikasikan notulensi.');
     }
     const now = new Date();
     await prisma.$transaction([
