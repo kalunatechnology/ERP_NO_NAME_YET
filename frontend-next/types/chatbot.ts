@@ -7,6 +7,10 @@
  * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
  */
 export type MessageRole = 'user' | 'assistant' | 'system';
+export interface MarbotAction {
+  kind: 'project.create' | 'task.create' | 'weekly.create' | 'daily.create' | 'task.update';
+  payload: Record<string, unknown>;
+}
 
 export interface ChatMessage {
   id: string;
@@ -17,6 +21,8 @@ export interface ChatMessage {
   latencyMs?: number | null;
   createdAt: string;
   isStreaming?: boolean;
+  action?: MarbotAction;
+  actionState?: 'running' | 'verified' | 'failed';
 }
 
 export interface Conversation {

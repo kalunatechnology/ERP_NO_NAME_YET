@@ -12,7 +12,43 @@ import {
   ConversationDetail,
   KnowledgeDocument,
   SearchKnowledgeResultItem,
+  MarbotAction,
 } from '@/types/chatbot';
+import api from '@/lib/api/axios';
+
+export async function executeMarbotAction(action: MarbotAction): Promise<string> {
+  // Fixed routes only; neither an AI response nor a user can choose a URL or method.
+  let path: string;
+  let record: Record<string, unknown>;
+  const createRoutes = { 'project.create': 'projects', 'task.create': 'main-tasks', 'weekly.create': 'weekly-tasks', 'daily.create': 'daily-tasks' };
+  if (Object.prototype.hasOwnProperty.call(createRoutes, action.kind)) {
+    path = `/api/v1/projects/${createRoutes[action.kind as keyof typeof createRoutes]}/`;
+    const result = await api.post(path, action.payload);
+    record = result.data;
+    if (!record?.id) throw new Error('API belum memberikan ID. Jangan ulangi penyimpanan sebelum memeriksa daftar data di modul Projects.');
+    path += encodeURIComponent(String(record.id)) + '/';
+  } else if (action.kind === 'task.update' && typeof action.payload.id === 'string' && /^[a-f0-9-]{36}$/i.test(action.payload.id)) {
+    const { id, ...payload } = action.payload;
+    path = `/api/v1/projects/daily-tasks/${encodeURIComponent(id)}/`;
+    const result = await api.patch(`${path}update_progress`, payload);
+    record = result.data;
+  } else throw new Error('Operasi tidak didukung.');
+  try {
+    const verification = await api.get(path);
+    const actual = verification.data;
+    if (!actual?.id || String(actual.id) !== String(record.id)) throw new Error('Identitas hasil tidak cocok');
+    const fields = action.kind === 'project.create' ? ['project_name', 'customer_name', 'manager_name']
+      : action.kind === 'task.create' ? ['project_id', 'name']
+      : action.kind === 'weekly.create' ? ['main_task_id', 'assignee_id', 'target_description']
+      : action.kind === 'daily.create' ? ['weekly_task_id', 'title', 'output_target'] : ['output_result', 'notes'];
+    for (const field of fields) {
+      if (action.payload[field] !== undefined && actual[field] !== action.payload[field]) throw new Error(`Field ${field} belum cocok`);
+    }
+    return `Hasil tersimpan dan dibaca ulang dari ERP: ${String(actual.id)}.\nStatus aktual: ${String(actual.status ?? 'tidak tersedia')}.\n${action.kind === 'task.update' ? 'Status mengikuti perhitungan checklist dan validasi ERP.' : String(actual.project_name ?? actual.name ?? actual.title ?? actual.target_description ?? '')}`;
+  } catch {
+    throw new Error('API menerima operasi, tetapi pembacaan ulang belum dapat diverifikasi. Periksa data di modul Projects sebelum mencoba lagi.');
+  }
+}
 
 export const DEFAULT_CALLER_CONFIG = {
   callerName: 'PT Sinergi Muda Arsa',
@@ -41,7 +77,7 @@ export interface StreamChatOptions {
   conversationId?: string | null;
   signal?: AbortSignal;
   onChunk: (delta: string) => void;
-  onDone?: (meta: { model?: string; latencyMs?: number; totalTokens?: number; conversationId?: string }) => void;
+  onDone?: (meta: { model?: string; latencyMs?: number; totalTokens?: number; conversationId?: string; action?: MarbotAction }) => void;
   onError?: (error: Error) => void;
 }
 
@@ -182,8 +218,9 @@ export async function streamChatCompletion({
     }
 
     if (buffer.trim()) processLine(buffer);
-    if (!receivedDone && receivedChunk) onDone?.({});
-    if (!receivedDone && !receivedChunk) throw new Error('Marka Plus menutup stream tanpa respons.');
+    if (!receivedDone) throw new Error(receivedChunk
+      ? 'Respons terputus sebelum backend mengonfirmasi penyelesaian. Hasil belum lengkap.'
+      : 'Marka Plus menutup stream tanpa respons.');
   } catch (err: any) {
     if (err.name === 'AbortError') {
       // User aborted stream

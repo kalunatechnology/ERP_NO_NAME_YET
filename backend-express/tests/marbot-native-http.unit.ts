@@ -14,6 +14,8 @@ async function main() {
   const stored: any[] = [];
   let requestCount = 0;
   const db = prisma as any;
+  db.iam_field_permission.findMany = async () => [];
+  db.iam_role_data_scope.findMany = async () => [];
   db.marbot_request.count = async () => requestCount;
   db.marbot_request.create = async () => ({});
   db.marbot_request.update = async () => ({});

@@ -1,4 +1,21 @@
 // Reviewed against the ERP routes and forms. Versioned with the application.
+export const moduleKnowledge = [
+  { module: 'GENERAL', title: 'Dashboard', path: '/dashboard', keywords: /dashboard|beranda/i, content: 'Dashboard menampilkan konteks perusahaan aktif dan kartu permintaan. Data serta aksi yang tersedia mengikuti role aktif.' },
+  { module: 'PROJECTS', title: 'Projects', path: '/projects', keywords: /proyek|project|wbs|mingguan|assignment/i, content: 'Hierarki eksekusi: Project → Main Task → Weekly Task → Daily Task. Assignment Main Task menentukan peserta; Weekly Task memiliki assignee; Daily Task memiliki owner. Progres dihitung dari checklist dan digulung ke hierarki induk. Output hasil wajib untuk penyelesaian task; alasan wajib untuk task blocked. Perubahan assignment/transfer memakai aksi khusus dengan validasi authority.' },
+  { module: 'PROJECTS', title: 'Tugas Harian', path: '/tasks', keywords: /tugas|task|timesheet/i, content: 'Tugas Harian adalah eksekusi personal. Pembuatan task memerlukan assignment Main Task dan ownership Weekly Task. Timesheet terhubung ke employee; master_employee.user_id menghubungkan employee dengan akun user. Status task aktual mengikuti aturan checklist backend.' },
+  { module: 'FINANCE', title: 'Finance & Accounting', path: '/finance', keywords: /finance|keuangan|wip|billing|piutang|jurnal|biaya/i, content: 'Halaman mencakup costing & WIP, funding proyek, tagihan vendor, billing termin, piutang, kas & bank, buku besar, laporan keuangan, rekonsiliasi, perpajakan, aset, tutup buku dan audit trail. Biaya proyek aktual asisten hanya mengakui cost entry VALIDATED, APPROVED, POSTED_TO_WIP. Draft/rejected tidak dijumlahkan. Director memiliki akses preview Finance; mutasi operasional dibatasi backend.' },
+  { module: 'CRM', title: 'CRM & Commercial', path: '/crm', keywords: /crm|commercial|komersial|customer|pelanggan|deal|inquiry/i, content: 'Halaman mencakup Dashboard, Deals & Credit, Incoming Inquiry, Accounts dan Engagement. Estimating & Quoting serta Contracts & Orders memerlukan modul SALES; Support & Garansi memerlukan SERVICE. Keberadaan tab tidak memberikan permission untuk mengambil data.' },
+  { module: 'REPORTING', title: 'Reporting & Observability', path: '/reporting', keywords: /reporting|laporan|kehadiran|attendance/i, content: 'Tab laporan: Executive View, Project P&L, General Ledger, Ringkasan Berkala, Kehadiran dan Operasional. Sumber finance/proyek memerlukan akses modul asal; akses Reporting tidak memberi akses Finance secara otomatis.' },
+  { module: 'REQUESTS', title: 'Requests & Meetings', path: '/requests', keywords: /request|meeting|rapat|notulen/i, content: 'Permintaan dan meeting memiliki participant, agenda, minutes, decision serta action item. Editor notulensi dibatasi ke notulis yang ditunjuk. Draft dan publikasi adalah aksi terpisah.' },
+  { module: 'ANALYTICS', title: 'Enterprise Repository & Document Catalog', path: '/resources', keywords: /repository|arsip|dokumen|resources/i, content: 'Halaman merupakan pusat arsip digital, katalog transaksi dan dokumentasi operasional. Data katalog mengikuti akses sumbernya.' },
+] as const;
+
+export function systemKnowledgeAnswer(message: string, enabledModules: string[]) {
+  const available = moduleKnowledge.filter(item => enabledModules.includes(item.module));
+  const matches = /seluruh|semua|fitur sistem|modul sistem/i.test(message) ? available : available.filter(item => item.keywords.test(message));
+  if (!matches.length) return 'Referensi fitur tersebut belum tersedia dalam cakupan modul aktif Anda. Tidak ada kesimpulan mengenai data aktual yang dapat dibuat.';
+  return matches.map(item => `${item.title}\n\n${item.content}\n\n[Buka ${item.title}](${item.path})`).join('\n\n---\n\n') + '\n\nSumber: route, form, dan service ERP versi 2026-10-01. Data aktual harus dibaca dari database.';
+}
 export const procedures = [
   { id: 'reports', title: 'Laporan kerja', keywords: /laporan|report/i, path: '/reporting',
     content: 'Buka menu Laporan. Untuk laporan berkala, buka Tugas Harian lalu pilih Laporan Berkala. Data yang muncul mengikuti peran dan akses Anda. Jika menu tidak tersedia, hubungi admin perusahaan.' },

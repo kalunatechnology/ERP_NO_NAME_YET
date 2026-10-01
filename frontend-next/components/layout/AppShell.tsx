@@ -30,7 +30,7 @@ interface AppShellProps {
  * Side effects: updates the local React/browser state or invokes callbacks visible below.
  */
 export function AppShell({ children }: AppShellProps) {
-  const { user, userRole, isLoading, isAuthenticated } = useAuth();
+  const { user, company, userRole, isLoading, isAuthenticated } = useAuth();
   const pathname = usePathname();
 
   // Right panel state (desktop only ≥ lg)
@@ -218,6 +218,8 @@ export function AppShell({ children }: AppShellProps) {
           username: (user as any)?.username,
           email: user?.email,
           companyName: (user as any)?.company?.name || "Company aktif",
+          companyId: company || undefined,
+          authorityKey: JSON.stringify([company, user?.active_role_code, user?.enabled_modules]),
         }}
       />
     </div>

@@ -98,7 +98,9 @@ async function main() {
   const missing = await answerNative('KPI bulan ini', 'DASHBOARD', director, db);
   assert.match(missing.content, /belum dapat disimpulkan/);
   assert.deepEqual(calls.find(c => c.model === 'kpi-result')!.args.where.project_id, { in: ['project-a'] });
-  await assert.rejects(() => answerNative('tugas', 'HELPER', staff, { ...db, $queryRaw: async () => { throw new Error('DB offline'); } }));
+  const failure = await answerNative('tugas', 'HELPER', staff, { ...db, $queryRaw: async () => { throw new Error('DB offline'); } });
+  assert.match(failure.content, /query database gagal/);
+  assert.deepEqual(failure.tools, []);
   delete process.env.MARBOT_AI_API_KEY;
   assert.deepEqual(await renderNativeAnswer('hi', 'verified', new AbortController().signal), { content: 'verified', model: 'erp-native' });
   console.log('Native MarBot: scope, permissions, weekly data, periods, knowledge, multi-domain, clarification, and provider fallback passed.');

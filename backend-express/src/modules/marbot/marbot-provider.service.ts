@@ -17,8 +17,12 @@ export async function renderNativeAnswer(question: string, groundedAnswer: strin
     if (!response.ok) return { content: groundedAnswer, model: 'erp-native' };
     const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = data.choices?.[0]?.message?.content;
-    // Keep the authoritative reference visible; a model summary never replaces it.
-    return content ? { content: `${content}\n\n---\n\nReferensi ERP\n\n${groundedAnswer}`, model } : { content: groundedAnswer, model: 'erp-native' };
+    // An unverified paraphrase can still invent a menu, permission or workflow.
+    // Accept only an exact extract of the authoritative reference; retain it in full.
+    const extract = content?.trim();
+    return extract && groundedAnswer.includes(extract)
+      ? { content: extract === groundedAnswer ? groundedAnswer : `${extract}\n\n---\n\nReferensi ERP\n\n${groundedAnswer}`, model }
+      : { content: groundedAnswer, model: 'erp-native' };
   } catch {
     return { content: groundedAnswer, model: 'erp-native' };
   }
