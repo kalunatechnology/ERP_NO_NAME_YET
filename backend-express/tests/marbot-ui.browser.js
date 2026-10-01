@@ -41,12 +41,12 @@ async function main() {
         if (mode === 'error') return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Database fixture unavailable' } }) });
         await new Promise(resolve => setTimeout(resolve, 400));
         const content = mode === 'action' ? 'Usulan fixture. Belum disimpan.' : 'Hasil panjang\n\n' + '| Task | Keterangan |\n|---|---|\n' + Array.from({ length: 100 }, (_, i) => `| Task ${i} | ${'panjang'.repeat(35)} |`).join('\n');
-        const done = { conversationId: id, ...(mode === 'action' ? { action: { kind: 'project.create', payload } } : {}) };
+        const done = { conversationId: id, ...(mode === 'action' ? { action: { kind: 'project.create', ticketId: id, payload } } : {}) };
         return route.fulfill({ status: 200, contentType: 'text/event-stream', body: `data: ${JSON.stringify({ event: 'chunk', data: { delta: content } })}\n\ndata: ${JSON.stringify({ event: 'done', data: done })}\n\n` });
       }
-      if (url.includes('/projects/projects/')) {
+      if (url.includes('/marbot/actions/')) {
         if (request.method() === 'POST') writes++;
-        return json({ id, ...payload, status: 'IN_PROGRESS' });
+        return json({ data: { verified: true, content: 'Hasil tersimpan dan dibaca ulang dari ERP: ' + id } });
       }
       return json({ data: [] });
     });
@@ -106,3 +106,4 @@ async function main() {
   }
 }
 main().then(() => process.exit(0)).catch(error => { console.error(error); process.exit(1); });
+

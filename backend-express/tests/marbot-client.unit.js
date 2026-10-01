@@ -20,20 +20,17 @@ async function main() {
   const context = { exports, require: name => { assert.equal(name, '@/lib/api/axios'); return api; }, process: { env: {} }, localStorage: { getItem: () => '' }, TextDecoder, AbortSignal,
     fetch: async () => new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }), console };
   vm.runInNewContext(code, context);
-  const action = { kind: 'project.create', payload: { project_name: 'A', customer_name: 'B', manager_name: 'C' } };
+  const action = { ticketId: id, kind: 'project.create', payload: { project_name: 'A' } };
+  api.post = async (url, payload) => { calls.push({ url, payload }); return { data: { data: { verified: true, content: 'Hasil dibaca ulang ERP' } } }; };
   assert.match(await exports.executeMarbotAction(action), /dibaca ulang/);
-  assert.equal(calls[0].url, '/api/v1/projects/projects/');
-  assert.equal(calls[1].url, `/api/v1/projects/projects/${id}/`);
-  api.get = async () => { throw new Error('DB down'); };
-  await assert.rejects(() => exports.executeMarbotAction(action), /belum dapat diverifikasi/);
-  api.get = async () => ({ data: { ...stored, project_name: 'different' } });
-  await assert.rejects(() => exports.executeMarbotAction(action), /belum dapat diverifikasi/);
+  assert.equal(calls[0].url, `/api/v1/marbot/actions/${id}/execute`);
+  assert.equal(JSON.stringify(calls[0].payload), '{"confirmed":true}');
+  assert.equal(calls.length, 1, 'browser must not execute business mutations/readbacks itself');
+  await assert.rejects(() => exports.executeMarbotAction({ kind: 'project.create', payload: {} }), /Tiket backend/);
+  api.post = async () => ({ data: { data: { verified: false, content: 'unknown' } } });
+  await assert.rejects(() => exports.executeMarbotAction(action), /belum memverifikasi/);
   api.post = async () => { throw new Error('permission denied'); };
   await assert.rejects(() => exports.executeMarbotAction(action), /permission denied/);
-  await assert.rejects(() => exports.executeMarbotAction({ kind: '__proto__', payload: {} }), /tidak didukung/);
-  stored = { id, status: 'NOT_STARTED', output_result: 'hasil', notes: 'catatan' };
-  api.get = async () => ({ data: stored });
-  assert.match(await exports.executeMarbotAction({ kind: 'task.update', payload: { id, status: 'IN_PROGRESS', output_result: 'hasil' } }), /NOT_STARTED/);
   let done = 0;
   let chunks = '';
   let errors = 0;
@@ -47,6 +44,7 @@ async function main() {
   assert.equal(done, 1);
   stream = '';
   await assert.rejects(() => exports.streamChatCompletion(options), /tanpa respons/);
-  console.log('Marbot client: canonical routes, create readback, update derived status, permission denial, mismatch, DB failure, unknown action, complete/truncated/empty SSE passed.');
+  console.log('Marbot client: server tickets, no client business writes, verified result, permission denial, missing tickets, complete/truncated/empty SSE passed.');
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });
+

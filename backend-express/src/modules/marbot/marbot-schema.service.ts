@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { NativeScope } from './marbot-native.service';
+import { resourceCatalog } from './marbot-resource.service';
 
 // Discovery exposes metadata only for executable, permission-checked tools.
 // Column names are never inferred from *_id naming conventions.
@@ -13,11 +14,11 @@ export function readableTables(scope: NativeScope): string[] {
   if (scope.enabledModules.includes('FINANCE') && scope.permissions.some(p => ['READ_PROJECT_FINANCE', 'READ_COMPANY_FINANCE', 'READ_FINANCE_SUMMARY'].includes(p))) tables.push('fin_project_cost_entry');
   if (scope.enabledModules.includes('CRM') && scope.permissions.includes('READ_TICKET')) tables.push('service_case');
   const blocked = new Set(scope.blockedReadModules || []);
-  return tables.filter(table => !blocked.has(table.startsWith('project_') ? 'PROJECTS' : table.startsWith('fin_') ? 'FINANCE' : 'CRM'));
+  return [...new Set([...tables.filter(table => !blocked.has(table.startsWith('project_') ? 'PROJECTS' : table.startsWith('fin_') ? 'FINANCE' : 'CRM')), ...resourceCatalog(scope).map(item => item.model)])];
 }
 
-export async function discoverMarbotSchema(scope: NativeScope, db = prisma) {
-  const tables = readableTables(scope);
+export async function discoverMarbotSchema(scope: NativeScope, db = prisma, requestedTables?: string[]) {
+  const tables = readableTables(scope).filter(table => !requestedTables || requestedTables.includes(table));
   if (!tables.length) return { source: 'database', tables: [], columns: [], constraints: [] };
   const columns = await db.$queryRaw(Prisma.sql`
     SELECT table_name::text AS table_name, column_name::text AS column_name, data_type::text AS data_type, is_nullable::text AS is_nullable

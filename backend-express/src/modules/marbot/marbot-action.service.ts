@@ -11,10 +11,19 @@ const mainTask = z.object({ project_id: z.string().uuid(), name: text, weight: z
 const weekly = z.object({ main_task_id: z.string().uuid(), assignee_id: z.string().uuid(), week_number: z.number().int().min(1).max(52), start_date: date, end_date: date, target_description: text }).strict().refine(v => new Date(v.end_date) >= new Date(v.start_date), 'Rentang tanggal tidak valid');
 const daily = z.object({ weekly_task_id: z.string().uuid(), title: text, time_slot: text, output_target: text }).strict();
 const update = z.object({ id: z.string().uuid(), status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED']).optional(), output_result: text.optional(), block_reason: text.optional(), notes: text.optional() }).strict().refine(v => Object.keys(v).length > 1, 'Tidak ada perubahan');
-export type MarbotAction = { kind: 'project.create' | 'task.create' | 'weekly.create' | 'daily.create' | 'task.update'; payload: Record<string, unknown> };
+export type MarbotAction = { kind: 'project.create' | 'task.create' | 'weekly.create' | 'daily.create' | 'task.update' | 'resource.write' | 'task.assign'; payload: Record<string, unknown> };
 
 /** Proposals do not mutate. The canonical ERP API rechecks write authority on execution. */
 export function proposeAction(message: string, scope: NativeScope): { content: string; tools: string[]; sources: string[]; action?: MarbotAction } | null {
+  if (/^\s*(assign|tugaskan|assignment)\s+(task|tugas)\b/i.test(message)) {
+    const base = { tools: ['action.proposal'], sources: ['ERP:projects-api'] };
+    if (!scope.enabledModules.includes('PROJECTS') || scope.blockedReadModules?.includes('PROJECTS') || scope.blockedWriteModules?.includes('PROJECTS')) return { ...base, content: 'Assignment tidak tersedia dalam akses Anda.' };
+    try {
+      const start = message.indexOf('{');
+      const payload = z.object({ id: z.string().uuid(), user_ids: z.array(z.string().uuid()).min(1).max(30) }).strict().parse(start < 0 ? {} : JSON.parse(message.slice(start)));
+      return { ...base, content: `Usulan assignment tambahan Main Task (belum disimpan):\n\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\`\nKonfirmasi diperlukan. Backend memeriksa authority proyek dan keanggotaan aktif.`, action: { kind: 'task.assign', payload } };
+    } catch { return { ...base, content: 'Assignment memerlukan JSON dengan id Main Task (UUID) dan user_ids (array UUID user). Tidak ada perubahan.' }; }
+  }
   const createProject = /^\s*(?:buatkan|buat|tambahkan|create)\s+(?:project|proyek)\b/i.test(message);
   const updateTask = /^\s*(?:ubah|update|perbarui)\s+(?:task|tugas)\b/i.test(message);
   const createWeekly = /^\s*(?:buatkan|buat|tambahkan|create)\s+(?:weekly target|weekly task|target mingguan)\b/i.test(message);

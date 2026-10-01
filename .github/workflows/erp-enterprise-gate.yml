@@ -26,6 +26,9 @@ jobs:
       - run: npx prisma generate
       - run: npx prisma validate
       - run: npm run typecheck
+      - run: node scripts/generate_marbot_catalog.js --check
+      - run: npm run test:marbot-native
+      - run: npm run test:marbot-capabilities
       - run: npm run build
       - run: npm run test:production-seed
       - run: npm run test:migration-convergence

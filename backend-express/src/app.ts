@@ -108,6 +108,7 @@ export function createApp(): Express {
         'X-CSRFToken',
         'X-Requested-With',
         'Idempotency-Key',
+        'MCP-Protocol-Version',
       ],
       exposedHeaders: ['X-Request-ID', 'X-Idempotent-Replay', 'X-Dashboard-Cache', 'X-Request-Cache', 'Server-Timing'],
     }),

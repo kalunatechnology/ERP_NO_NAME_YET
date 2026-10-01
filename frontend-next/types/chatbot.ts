@@ -8,7 +8,8 @@
  */
 export type MessageRole = 'user' | 'assistant' | 'system';
 export interface MarbotAction {
-  kind: 'project.create' | 'task.create' | 'weekly.create' | 'daily.create' | 'task.update';
+  ticketId?: string;
+  kind: 'project.create' | 'task.create' | 'weekly.create' | 'daily.create' | 'task.update' | 'resource.write' | 'task.assign';
   payload: Record<string, unknown>;
 }
 
@@ -91,3 +92,4 @@ export interface ChatStreamErrorEvent {
     code?: string;
   };
 }
+

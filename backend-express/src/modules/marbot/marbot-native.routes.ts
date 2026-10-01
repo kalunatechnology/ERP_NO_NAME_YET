@@ -2,7 +2,7 @@ import { Router, Request } from 'express';
 import { createHash, randomUUID } from 'crypto';
 import { z } from 'zod';
 import prisma from '../../config/database';
-import { ForbiddenError, ValidationError } from '../../utils/errors';
+import { ConflictError, ForbiddenError, ValidationError } from '../../utils/errors';
 import { buildMarbotRuntimeAuthority } from './marbot-access.service';
 import { answerNative, canUseDashboard, followUpQuestion } from './marbot-native.service';
 import { renderNativeAnswer } from './marbot-provider.service';
@@ -11,6 +11,10 @@ import { discoverMarbotSchema } from './marbot-schema.service';
 import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
 import { loadNativePolicyRestrictions } from './marbot-policy.service';
 import { planNativeQuestion } from './marbot-planner.service';
+import { executeCanonicalAction } from './marbot-execution.service';
+import type { MarbotAction } from './marbot-action.service';
+import { createMarbotMcpRouter } from './marbot-mcp.routes';
+import { executeResourceRead, executeResourceWrite, planResourceQuestion, resourceCatalog, resourceDefinition } from './marbot-resource.service';
 
 export const nativeMarbotRouter = Router();
 // Authentication and company resolution are mounted by the parent router.
@@ -22,6 +26,60 @@ async function scopeFor(req: Request) {
 const owner = (scope: Awaited<ReturnType<typeof scopeFor>>) => ({ tenant_id: scope.tenantId, company_id: scope.companyId, user_id: scope.userId });
 const authorityKey = (scope: Awaited<ReturnType<typeof scopeFor>>) => createHash('sha256').update(JSON.stringify({ ...owner(scope), role: scope.roleCode, blockedReads: scope.blockedReadModules, blockedWrites: scope.blockedWriteModules, permissions: [...scope.permissions].sort(), modules: [...scope.enabledModules].sort(), projects: scope.projectScope.mode === 'ALL' ? 'ALL' : [...scope.projectScope.projectIds].sort() })).digest('hex');
 const inputSchema = z.object({ message: z.string().trim().min(1).max(4000), conversationId: z.string().uuid().optional(), mode: z.enum(['HELPER', 'DASHBOARD']).default('HELPER') }).strict();
+nativeMarbotRouter.use('/mcp', createMarbotMcpRouter(scopeFor));
+
+nativeMarbotRouter.post('/actions/:id/execute', async (req, res, next) => {
+  try {
+    if (!z.string().uuid().safeParse(req.params.id).success ||
+        !z.object({ confirmed: z.literal(true) }).strict().safeParse(req.body).success) {
+      throw new ValidationError('Konfirmasi eksplisit dan identitas tiket wajib valid.');
+    }
+    const scope = await scopeFor(req);
+    const message = await prisma.marbot_message.findFirst({ where: {
+      id: req.params.id, role: 'assistant', conversation: owner(scope),
+    } });
+    const metadata = message?.metadata as Record<string, any> | undefined;
+    if (!message || !metadata?.action || metadata.authority !== authorityKey(scope)) throw new ForbiddenError();
+    const action = metadata.action as MarbotAction;
+    const module = action.kind === 'resource.write' ? resourceDefinition(String(action.payload.resource), scope, true).module : 'PROJECTS';
+    if (scope.blockedReadModules.includes(module) || scope.blockedWriteModules.includes(module)) throw new ForbiddenError();
+    const prior = await prisma.marbot_request.findUnique({ where: { nonce: message.id } });
+    if (prior?.outcome === 'VERIFIED' && typeof metadata.result === 'string') {
+      res.json({ data: { content: metadata.result, verified: true } }); return;
+    }
+    if (Date.now() - message.created_at.getTime() > 15 * 60000) throw new ConflictError('Tiket kedaluwarsa. Buat usulan baru.');
+    // Atomic compare-and-set: a timeout/crash never permits a second mutation.
+    const claimed = await prisma.marbot_request.updateMany({ where: {
+      nonce: message.id, ...owner(scope), outcome: 'PROPOSED',
+    }, data: { outcome: 'EXECUTING' } });
+    if (claimed.count !== 1) throw new ConflictError('Tiket sudah digunakan atau sedang diproses. Periksa hasil di ERP; jangan mengulang operasi.');
+    let content: string;
+    let verified = false;
+    try {
+      content = action.kind === 'resource.write' ? await executeResourceWrite(req, action.payload, scope, message.id)
+        : await executeCanonicalAction(req, action, message.id);
+      verified = true;
+    } catch (error) {
+      const detail = error instanceof Error && /^(API ERP |API resource |Assignment belum|Identitas pembacaan|Pembacaan ulang field)/.test(error.message) ? `${error.message}\n` : '';
+      content = `${detail}Operasi belum dapat diverifikasi. API mungkin menolak, mengalami gangguan, atau sudah menyimpan sebagian hasil. Periksa data di modul ${module} sebelum membuat usulan baru.`;
+    }
+    await prisma.$transaction([
+      prisma.marbot_request.update({ where: { nonce: message.id }, data: { outcome: verified ? 'VERIFIED' : 'UNVERIFIED' } }),
+      prisma.marbot_message.update({ where: { id: message.id }, data: {
+        content: `${message.content}\n\n${content}`, metadata: { ...metadata, result: content, verified },
+      } }),
+      prisma.marbot_conversation.update({ where: { id: message.conversation_id }, data: { updated_at: new Date() } }),
+    ]);
+    res.status(verified ? 200 : 502).json({ data: { content, verified }, ...(!verified ? { error: { message: content } } : {}) });
+  } catch (error) { next(error); }
+});
+
+nativeMarbotRouter.get('/capabilities', async (req, res, next) => {
+  try { res.json({ data: resourceCatalog(await scopeFor(req)) }); } catch (error) { next(error); }
+});
+nativeMarbotRouter.post('/query', async (req, res, next) => {
+  try { res.json({ data: await executeResourceRead(req, req.body, await scopeFor(req)) }); } catch (error) { next(error); }
+});
 
 nativeMarbotRouter.get('/schema', async (req, res, next) => {
   try { res.json({ data: await discoverMarbotSchema(await scopeFor(req)) }); }
@@ -76,17 +134,29 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
     if (!conversation) conversation = await prisma.marbot_conversation.create({ data: { ...owner(scope), title: input.message.slice(0, 80) } });
     const previous = await prisma.marbot_message.findFirst({ where: { conversation_id: conversation.id, role: 'user', metadata: { path: ['authority'], equals: authorityKey(scope) } }, orderBy: { created_at: 'desc' } });
     const contextualQuestion = followUpQuestion(input.message, previous?.content);
-    const plannedQuestion = env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL
-      ? await planNativeQuestion(contextualQuestion, await discoverMarbotSchema(scope), controller.signal)
+    const resourcePlan = await planResourceQuestion(contextualQuestion, scope, controller.signal);
+    const plannedQuestion = !resourcePlan && env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL
+      ? await planNativeQuestion(contextualQuestion, await discoverMarbotSchema(scope, prisma, ['project_project', 'project_main_task', 'project_weekly_task', 'project_daily_task', 'fin_project_cost_entry', 'service_case']), controller.signal)
       : contextualQuestion;
-    const answer = /\b(schema|skema|foreign key|primary key|relasi tabel|kolom database)\b/i.test(input.message)
+    let resourceAnswer: { content: string; tools: string[]; sources: string[]; action?: MarbotAction } | undefined;
+    if (resourcePlan) {
+      const plan = resourcePlan;
+      if (['create', 'update'].includes(plan.operation)) {
+        resourceAnswer = { content: `Usulan perubahan ${plan.resource}:\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n\nBelum disimpan. Konfirmasi diperlukan; backend memvalidasi hak akses dan membaca ulang hasil.`, tools: ['resource.proposal'], sources: ['ERP:canonical-api'], action: { kind: 'resource.write', payload: plan } };
+      } else {
+        const result = await executeResourceRead(req, plan, scope);
+        resourceAnswer = { content: `Data aktual ${plan.resource}: ${result.aggregate ? 'agregasi database sesuai filter dan akses Anda' : `${result.count} record sesuai filter dan akses Anda`}.\n\n\`\`\`json\n${JSON.stringify(result.aggregate ?? result.rows, null, 2)}\n\`\`\`${result.truncated ? '\nDaftar dibatasi 30 record; jumlah berasal dari total query ERP.' : ''}`, tools: ['resource.query'], sources: [result.source] };
+      }
+    }
+    const answer = resourceAnswer ?? (/\b(schema|skema|foreign key|primary key|relasi tabel|kolom database)\b/i.test(input.message)
       ? { content: `Metadata database aktual sesuai permission tool Anda:\n\n\`\`\`json\n${JSON.stringify(await discoverMarbotSchema(scope), null, 2)}\n\`\`\`\n\nMetadata tidak memberikan akses query atau mutasi tambahan.`, tools: ['schema.discovery'], sources: ['ERP:database-metadata'] }
-      : await answerNative(plannedQuestion, input.mode, scope);
+      : await answerNative(plannedQuestion, input.mode, scope));
     if ('action' in answer && answer.action) {
       // Reject disabled company/user writes before a proposal reaches the UI.
       // Execution still traverses the complete canonical API authorization chain.
       await new Promise<void>((resolve, reject) => {
-        void requireModuleAccess('PROJECTS', 'write')(req, res, error => error ? reject(error) : resolve());
+        const module = answer.action!.kind === 'resource.write' ? resourceDefinition(String(answer.action!.payload.resource), scope, true).module : 'PROJECTS';
+        void requireModuleAccess(module, 'write')(req, res, error => error ? reject(error) : resolve());
       });
     }
     // Operational values must reach the user byte-for-byte from the ERP query.
@@ -99,15 +169,18 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
       await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'CANCELLED' } });
       return;
     }
+    const actionId = randomUUID();
+    const action = 'action' in answer ? answer.action : undefined;
     await prisma.$transaction([
       prisma.marbot_message.create({ data: { conversation_id: conversation.id, role: 'user', content: input.message, metadata: { mode: input.mode, authority: authorityKey(scope) } } }),
-      prisma.marbot_message.create({ data: { conversation_id: conversation.id, role: 'assistant', content: rendered.content, metadata: { mode: input.mode, authority: authorityKey(scope), tools: answer.tools, sources: answer.sources, model: rendered.model } } }),
+      prisma.marbot_message.create({ data: { id: actionId, conversation_id: conversation.id, role: 'assistant', content: rendered.content, metadata: { mode: input.mode, authority: authorityKey(scope), tools: answer.tools, sources: answer.sources, model: rendered.model, ...(action ? { action: JSON.parse(JSON.stringify(action)) } : {}) } } }),
+      ...(action ? [prisma.marbot_request.create({ data: { ...owner(scope), nonce: actionId, request_id: req.requestId || actionId, tool_name: 'native.action', outcome: 'PROPOSED' } })] : []),
       prisma.marbot_conversation.update({ where: { id: conversation.id }, data: { updated_at: new Date() } }),
       prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } }),
     ]);
     res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
     res.write(`data: ${JSON.stringify({ event: 'chunk', data: { delta: rendered.content } })}\n\n`);
-    res.write(`data: ${JSON.stringify({ event: 'done', data: { conversationId: conversation.id, model: rendered.model, sources: answer.sources, ...('action' in answer ? { action: answer.action } : {}) } })}\n\n`);
+    res.write(`data: ${JSON.stringify({ event: 'done', data: { conversationId: conversation.id, model: rendered.model, sources: answer.sources, ...(action ? { action: { ...action, ticketId: actionId } } : {}) } })}\n\n`);
     res.end();
   } catch (error) {
     if (nonce) await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'FAILED' } }).catch(() => undefined);
@@ -115,3 +188,4 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
     else res.end();
   } finally { res.off('close', onClose); }
 });
+
