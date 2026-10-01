@@ -181,6 +181,7 @@ export function ProjectWbsTree({
               canAssignTeam={canAssignTeam}
               canManageWeeklyTasks={canManageWeeklyTasks}
               currentUserId={currentUserId}
+              userRole={userRole}
               onAssignClick={onAssignClick}
               onRemoveAssignment={onRemoveAssignment}
               onCreateWeeklyClick={onCreateWeeklyClick}
