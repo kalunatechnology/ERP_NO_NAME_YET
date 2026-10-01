@@ -59,7 +59,7 @@ async function main() {
   await assert.rejects(() => answerNative('tim A minggu ini sudah mengerjakan apa?', 'HELPER', staff, db));
   assert.equal(calls.length, before, 'Staff must be rejected before organization lookup');
   const write = await answerNative('hapus tugas', 'HELPER', staff, db);
-  assert.match(write.content, /formulir ERP/);
+    assert.match(write.content, /belum dapat dipetakan/);
   assert.equal(calls.length, before);
   const emptyScope = { ...staff, projectScope: { mode: 'LIST' as const, projectIds: [] } };
   await answerNative('tugas', 'HELPER', emptyScope, db);

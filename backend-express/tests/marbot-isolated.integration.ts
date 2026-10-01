@@ -16,7 +16,7 @@ async function main() {
   const membership = await prisma.iam_user_company_membership.findFirstOrThrow({ where: { user_id: user.id } });
   const companyId = membership.company_id;
   const tenantId = user.tenant_id!;
-  for (const module of ['MARBOT', 'PROJECTS', 'PROCUREMENT']) await prisma.iam_company_module_access.upsert({
+  for (const module of ['MARBOT', 'PROJECTS', 'PROCUREMENT', 'IMPLEMENTATION']) await prisma.iam_company_module_access.upsert({
     where: { company_id_module_code: { company_id: companyId, module_code: module } },
     update: { enabled: true, allow_read: true, allow_write: true },
     create: { tenant_id: tenantId, company_id: companyId, module_code: module, enabled: true, allow_read: true, allow_write: true },
@@ -38,6 +38,10 @@ async function main() {
     method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${activeToken}`, 'Content-Type': 'application/json', 'X-Company-ID': company },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+  const mcp = (method: string, params: Record<string, unknown> = {}, id: number | null = 1, origin?: string) => fetch(base + '/mcp', {
+    method: 'POST', headers: { Authorization: `Bearer ${activeToken}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'X-Company-ID': companyId, 'MCP-Protocol-Version': '2025-11-25', ...(origin ? { Origin: origin } : {}) },
+    body: JSON.stringify({ jsonrpc: '2.0', ...(id === null ? {} : { id }), method, params }),
+  });
   const chat = async (message: string) => {
     const response = await request('/chat/completions', { message });
     const text = await response.text();
@@ -51,6 +55,18 @@ async function main() {
     assert.match((await chat('Apa role dan permission saya?')).text, /PROJECT_MANAGER/);
     assert.match((await chat('Jelaskan fitur proyek')).text, /Main Task/);
     assert.equal((await request('/chat/completions', { message: '' })).status, 400);
+    const initialized = await mcp('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+    assert.equal(initialized.status, 200, await initialized.clone().text());
+    assert.equal((await initialized.json() as any).result.protocolVersion, '2025-11-25');
+    const listed = await (await mcp('tools/list')).json() as any;
+    assert(listed.result.tools.some((tool: any) => tool.name === 'erp.query'));
+    assert.equal((await mcp('notifications/initialized', {}, null)).status, 202);
+    assert.equal((await mcp('tools/list', {}, 2, 'https://evil.example')).status, 403);
+    const mcpRead = await (await mcp('tools/call', { name: 'erp.query', arguments: { resource: 'procurement.purchase-orders', operation: 'count', filters: {} } })).json() as any;
+    assert.equal(mcpRead.result.isError, false, JSON.stringify(mcpRead));
+    assert.equal(JSON.parse(mcpRead.result.content[0].text).count, await prisma.proc_purchase_order.count({ where: { tenant_id: tenantId, company_id: companyId } }));
+    const mcpMutation = await (await mcp('tools/call', { name: 'erp.query', arguments: { resource: 'implementation.work-items', operation: 'create', payload: { title: 'forbidden' } } })).json() as any;
+    assert.equal(mcpMutation.result.isError, true, 'read-only MCP query tool must reject writes');
     const name = `Marka isolated ${randomUUID()}`;
     const proposal = await chat(`buat proyek ${JSON.stringify({ project_name: name, customer_name: 'Isolated customer', manager_name: user.full_name })}`);
     assert(proposal.done.action?.ticketId);
@@ -94,6 +110,19 @@ async function main() {
     const updateResult = await request(`/actions/${update.done.action.ticketId}/execute`, { confirmed: true });
     assert.equal(updateResult.status, 200, await updateResult.text());
     assert.equal((await prisma.project_daily_task.findUniqueOrThrow({ where: { id: daily.id } })).notes, 'Catatan uji terverifikasi');
+    activeToken = token;
+    const resourceTitle = `Implementation ${randomUUID()}`;
+    const resourceCreate = await chat(`data ${JSON.stringify({ resource: 'implementation.work-items', operation: 'create', payload: { module_code: 'MARBOT', work_item_type: 'TEST', title: resourceTitle, description: 'Isolated database write', status: 'OPEN' } })}`);
+    assert.equal(resourceCreate.done.action.kind, 'resource.write');
+    assert.equal(await prisma.implementation_work_item.count({ where: { title: resourceTitle } }), 0, 'resource proposal cannot mutate');
+    const createdResponse = await request(`/actions/${resourceCreate.done.action.ticketId}/execute`, { confirmed: true });
+    assert.equal(createdResponse.status, 200, await createdResponse.text());
+    const workItem = await prisma.implementation_work_item.findFirstOrThrow({ where: { title: resourceTitle, company_id: companyId } });
+    const resourceUpdate = await chat(`data ${JSON.stringify({ resource: 'implementation.work-items', operation: 'update', id: workItem.id, payload: { status: 'DONE', description: 'Verified update' } })}`);
+    const updatedResponse = await request(`/actions/${resourceUpdate.done.action.ticketId}/execute`, { confirmed: true });
+    assert.equal(updatedResponse.status, 200, await updatedResponse.text());
+    assert.deepEqual(await prisma.implementation_work_item.findUnique({ where: { id: workItem.id }, select: { status: true, description: true } }), { status: 'DONE', description: 'Verified update' });
+    activeToken = signAccessToken({ userId: assignee.id, email: assignee.email, full_name: assignee.full_name || '', tenant_id: tenantId, roles: [] });
     // Revocation after proposal must prevent execution even with the original authenticated token.
     const revoked = await chat(`ubah task ${JSON.stringify({ id: daily.id, notes: 'Must not save' })}`);
     const policy = await prisma.iam_field_permission.create({ data: { tenant_id: tenantId, company_id: companyId, role_id: assignee.active_role_id, module_code: 'PROJECTS', entity_name: 'project_daily_task', field_name: 'notes', can_view: true, can_edit: false, masking_type: 'NONE' } });
@@ -101,7 +130,7 @@ async function main() {
       assert.equal((await request(`/actions/${revoked.done.action.ticketId}/execute`, { confirmed: true })).status, 403);
       assert.notEqual((await prisma.project_daily_task.findUniqueOrThrow({ where: { id: daily.id } })).notes, 'Must not save');
     } finally { await prisma.iam_field_permission.delete({ where: { id: policy.id } }); }
-    console.log('Isolated PostgreSQL E2E passed: real auth, scope, aggregates, project/Main/Weekly/Daily creates, assignment, update/readback, concurrent replay, persisted verification and permission revocation.');
+    console.log('Isolated PostgreSQL E2E passed: MCP handshake/tools, real auth/scope, aggregates, cross-module create/update, project hierarchy, assignment, readback, concurrent replay, persisted verification and permission revocation.');
   } finally {
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));

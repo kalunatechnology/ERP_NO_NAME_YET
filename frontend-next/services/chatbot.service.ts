@@ -103,7 +103,14 @@ export async function getNativeConversation(id: string, signal?: AbortSignal): P
   const response = await fetch(`${base}/api/v1/marbot/conversations/${encodeURIComponent(id)}`, { headers: getErpAuthHeaders(), signal });
   if (!response.ok) throw new Error('Percakapan tidak tersedia untuk sesi ini.');
   const payload = await response.json();
-  return payload.data.messages.map((message: { id: string; role: ChatMessage['role']; content: string; created_at: string }) => ({ id: message.id, role: message.role, content: message.content, createdAt: message.created_at }));
+  return payload.data.messages.map((message: { id: string; role: ChatMessage['role']; content: string; created_at: string; metadata?: { action?: MarbotAction; result?: string; verified?: boolean } }) => {
+    const settled = typeof message.metadata?.result === 'string';
+    return {
+      id: message.id, role: message.role, content: message.content, createdAt: message.created_at,
+      ...(message.metadata?.action && !settled ? { action: { ...message.metadata.action, ticketId: message.id } } : {}),
+      ...(settled ? { actionState: message.metadata?.verified ? 'verified' as const : 'failed' as const } : {}),
+    };
+  });
 }
 
 /**

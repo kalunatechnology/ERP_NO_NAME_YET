@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { env } from '../../config/env';
 import prisma from '../../config/database';
 import { AppError } from '../../utils/errors';
-import type { NativeScope } from './marbot-native.service';
+import { answerNative, type NativeScope } from './marbot-native.service';
 import { discoverMarbotSchema } from './marbot-schema.service';
 import { executeResourceRead, resourceCatalog } from './marbot-resource.service';
 
@@ -42,11 +42,13 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
           { name: 'erp.query', description: 'Run a typed list/count/aggregate via canonical ERP APIs. No SQL. Uses actual fields and user scope. Mutation requests are rejected.', inputSchema: { type: 'object', properties: {
             resource: { type: 'string' }, operation: { enum: ['list', 'count', 'aggregate'] },
             filters: { type: 'object', additionalProperties: { type: ['string', 'boolean'] } }, search: { type: 'string' }, groupBy: { type: 'string' }, sum: { type: 'string' },
+            related: { type: 'object', properties: { resource: { type: 'string' }, sourceField: { type: 'string' }, targetField: { type: 'string' } }, required: ['resource', 'sourceField', 'targetField'], additionalProperties: false },
           }, required: ['resource', 'operation'], additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
+          { name: 'erp.readQuestion', description: 'Permission-scoped native project/task/finance/KPI/support reads and system knowledge. No mutations; requires a clear read question.', inputSchema: { type: 'object', properties: { question: { type: 'string', minLength: 1, maxLength: 2000 } }, required: ['question'], additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
         ] }); return;
       }
       if (method !== 'tools/call') { error(-32601, 'Method not found'); return; }
-      const call = z.object({ name: z.enum(['erp.capabilities', 'erp.schema', 'erp.query']), arguments: z.record(z.unknown()).default({}), _meta: z.record(z.unknown()).optional() }).strict().safeParse(params);
+      const call = z.object({ name: z.enum(['erp.capabilities', 'erp.schema', 'erp.query', 'erp.readQuestion']), arguments: z.record(z.unknown()).default({}), _meta: z.record(z.unknown()).optional() }).strict().safeParse(params);
       if (!call.success) { error(-32602, 'Invalid tool or parameters'); return; }
       const boundary = { tenant_id: scope.tenantId, company_id: scope.companyId, user_id: scope.userId };
       const count = await prisma.marbot_request.count({ where: { ...boundary, tool_name: 'native.mcp', created_at: { gte: new Date(Date.now() - 60000) } } });
@@ -62,6 +64,10 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
         } else if (call.data.name === 'erp.schema') {
           const schema = z.object({ tables: z.array(z.string()).max(20).optional() }).strict().parse(args);
           result = await discoverMarbotSchema(scope, prisma, schema.tables);
+        } else if (call.data.name === 'erp.readQuestion') {
+          const { question } = z.object({ question: z.string().trim().min(1).max(2000) }).strict().parse(args);
+          if (/\b(buat|buatkan|create|ubah|update|perbarui|hapus|delete|assign|tugaskan|tambahkan)\b/i.test(question)) throw new Error('Read tool cannot propose mutations');
+          result = await answerNative(question, 'HELPER', scope);
         } else result = await executeResourceRead(req, args, scope);
         await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } });
         reply({ content: [{ type: 'text', text: JSON.stringify(result) }], isError: false });

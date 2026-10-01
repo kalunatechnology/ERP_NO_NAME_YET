@@ -105,10 +105,10 @@ nativeMarbotRouter.get('/conversations', async (req, res, next) => {
 nativeMarbotRouter.get('/conversations/:id', async (req, res, next) => {
   try {
     const scope = await scopeFor(req);
-    const row = await prisma.marbot_conversation.findFirst({ where: { ...owner(scope), id: req.params.id }, include: { messages: { orderBy: { created_at: 'asc' }, take: 200 } } });
+    const row = await prisma.marbot_conversation.findFirst({ where: { ...owner(scope), id: req.params.id }, include: { messages: { orderBy: { created_at: 'desc' }, take: 200 } } });
     if (!row) throw new ForbiddenError();
     // A role change or revoked project must not replay earlier privileged results.
-    row.messages = row.messages.filter(message => (message.metadata as Record<string, unknown>)?.authority === authorityKey(scope));
+    row.messages = row.messages.reverse().filter(message => (message.metadata as Record<string, unknown>)?.authority === authorityKey(scope));
     res.json({ data: row });
   } catch (error) { next(error); }
 });
@@ -139,6 +139,10 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
       ? await planNativeQuestion(contextualQuestion, await discoverMarbotSchema(scope, prisma, ['project_project', 'project_main_task', 'project_weekly_task', 'project_daily_task', 'fin_project_cost_entry', 'service_case']), controller.signal)
       : contextualQuestion;
     let resourceAnswer: { content: string; tools: string[]; sources: string[]; action?: MarbotAction } | undefined;
+    if (!resourcePlan && /\b(procurement|pengadaan|inventory|inventori|stok|manufacturing|manufaktur|quality|inspeksi|assets|logistics|logistik|implementation|implementasi|sales|master data)\b/i.test(contextualQuestion) &&
+        !/\b(cara|panduan|fitur|workflow|schema|skema|permission|role|peran|modul|sistem)\b/i.test(contextualQuestion)) {
+      resourceAnswer = { content: 'Permintaan data modul tersebut belum dapat dipetakan ke resource dan filter yang valid. Tidak ada data yang diambil atau diubah. Sebutkan resource/field dari katalog kemampuan, atau berikan konteks yang lebih spesifik. Jika provider AI belum dikonfigurasi, gunakan format data {"resource":"module.resource","operation":"count","filters":{}} dengan nama resource aktual.', tools: ['resource.clarification'], sources: ['ERP:canonical-catalog'] };
+    }
     if (resourcePlan) {
       const plan = resourcePlan;
       if (['create', 'update'].includes(plan.operation)) {
@@ -169,6 +173,8 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
       await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'CANCELLED' } });
       return;
     }
+    // Provider latency or concurrent role/module changes must not return an old privileged result.
+    if (authorityKey(await scopeFor(req)) !== authorityKey(scope)) throw new ForbiddenError('Hak akses berubah selama pemrosesan. Kirim ulang pertanyaan sesuai sesi aktif.');
     const actionId = randomUUID();
     const action = 'action' in answer ? answer.action : undefined;
     await prisma.$transaction([

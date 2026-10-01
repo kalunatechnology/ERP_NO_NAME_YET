@@ -140,7 +140,7 @@ function loadSchemaModelMetadata(): Map<string, CrudModelMetadata> {
   return models;
 }
 
-function getCrudModelMetadata(modelName: string): CrudModelMetadata | undefined {
+export function getCrudModelMetadata(modelName: string): CrudModelMetadata | undefined {
   const key = String(modelName).toLowerCase();
   const schemaModel = loadSchemaModelMetadata().get(key);
   if (schemaModel) return schemaModel;
@@ -597,6 +597,7 @@ export function createCrudRouter(options: CrudOptions): Router {
         if (['group_by', 'sum', 'search'].includes(key)) continue;
         const field = known(key);
         if (!field || typeof value !== 'string' || !['String', 'Boolean'].includes(field.type) && field.kind !== 'enum') throw new ValidationError('Filter ringkasan tidak valid.');
+        if (field.type === 'Boolean' && !['true', 'false'].includes(value)) throw new ValidationError('Filter boolean harus true atau false.');
         where[key] = field.type === 'Boolean' ? value === 'true' : value;
       }
       if (req.query.search !== undefined) {

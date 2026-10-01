@@ -31,7 +31,8 @@ kode ini. Riwayat lama di service eksternal tidak otomatis dipindahkan.
   timesheet, tugas, notulensi, dan tautan halaman. Panduan dikurasi/versioned
   di `marbot-knowledge.ts` berdasarkan form dan route ERP yang aktif.
 - Data: portofolio, task harian, biaya aktual proyek yang diakui, tiket terbuka,
-  dan KPI tercatat.
+  KPI tercatat, serta 204 resource canonical pada modul bisnis yang ditemukan
+  langsung dari route dan schema aplikasi.
   Jawaban data operasional dikirim langsung dari query ERP tanpa diringkas ulang
   oleh model bahasa.
 - Task dan mingguan: memakai `project_daily_task` dari hierarki main/weekly/daily
@@ -48,21 +49,35 @@ kode ini. Riwayat lama di service eksternal tidak otomatis dipindahkan.
   meminta klarifikasi dan tidak menampilkan data agregat pengganti.
 - Periode: minggu ini/lalu, bulan ini/lalu, atau YYYY-MM, zona Asia/Jakarta.
 - Proyek tertentu: `proyek "Nama Lengkap"`; nama ambigu memerlukan klarifikasi.
-- Follow-up sederhana mempertahankan topik; belum merupakan perencana percakapan
-  bebas. LLM opsional menyusun bahasa dan tidak menjalankan tool/SQL.
+- Query resource mendukung list, count, equality filter, search, aggregate dan
+  satu relasi yang harus terbukti sebagai foreign key fisik. SQL, URL, nama tabel,
+  field, atau hasil bisnis yang dibuat model tidak pernah dieksekusi langsung.
+- MCP Streamable HTTP tersedia pada `POST /api/v1/marbot/mcp` dengan autentikasi
+  JWT ERP, company aktif, validasi Origin, versi protokol 2025-11-25, rate limit,
+  audit request, dan tool baca `erp.capabilities`, `erp.schema`, `erp.query`,
+  serta `erp.readQuestion`.
+- OpenRouter opsional hanya memilih plan terstruktur. Executor lokal memvalidasi
+  resource, field, literal input, permission dan hasil database.
 - Riwayat dimiliki tenant + perusahaan + pengguna. Perubahan authority menyaring
   pesan lama; data selalu dihitung ulang untuk pertanyaan baru.
 
 Jawaban model menyertakan referensi ERP aslinya. Data kosong tidak berarti target
 tercapai. Status KPI berasal dari hasil tersimpan, bukan asumsi higher-is-better.
-Daftar dibatasi dan batasnya disebutkan. Finance adalah biaya proyek, bukan total
-seluruh keuangan. Tidak ada aksi write bisnis melalui chatbot.
+Daftar dibatasi dan batasnya disebutkan. Finance native adalah biaya proyek,
+bukan total seluruh keuangan. Perubahan data memakai tiket backend berumur 15
+menit, konfirmasi eksplisit, claim atomik, API ERP canonical, idempotency key,
+readback, serta hasil verified/unverified yang disimpan ke riwayat. Delete, bulk
+mutation, aksi admin, dan transisi lifecycle tanpa adapter khusus tidak tersedia.
 
 ## Verifikasi
 
 `npm run test:marbot-native` menguji policy, scope, data mingguan, periode,
 klarifikasi, kegagalan data, fallback provider, SSE, persistence, kepemilikan
 percakapan, input, dan rate limit menggunakan database stub terisolasi.
+
+`npm run test:marbot-capabilities` memeriksa knowledge, seluruh resource generated,
+planner, client ticket/history dan streaming. `npm run test:marbot-isolated`
+menjalankan mutation E2E hanya terhadap PostgreSQL lokal `127.0.0.1:55439`.
 
 `npm run typecheck` memeriksa backend. Jalankan `npx tsc --noEmit` di frontend.
 Sesudah deploy, verifikasi status, pertanyaan SOP, ringkasan mingguan, KPI kosong,

@@ -85,7 +85,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
     return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['Panduan ERP 2026-09-30'] };
   }
   if (/^\s*(buatkan|buat|hapus|ubah|setujui|approve|delete|update|tambahkan)\b/i.test(message) && !/ringkasan|laporan|summary/i.test(message)) {
-    return { content: `Chat ini menyediakan panduan dan pembacaan data. Untuk melakukan perubahan, gunakan formulir ERP.\n\n${helperAnswer(message)}`, tools: [], sources: [] };
+    return { content: `Operasi tersebut belum dapat dipetakan ke input yang valid. Saya dapat menyiapkan usulan Project, Main/Weekly/Daily Task, assignment, dan pembaruan task dengan field serta identitas yang jelas. Perubahan memerlukan konfirmasi dan verifikasi backend. Sebutkan record dan perubahan yang diminta.`, tools: [], sources: [] };
   }
   const tools = detectTools(message);
   if (!tools.length) return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['Panduan ERP 2026-09-30'] };

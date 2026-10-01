@@ -31,6 +31,15 @@ async function main() {
   await assert.rejects(() => exports.executeMarbotAction(action), /belum memverifikasi/);
   api.post = async () => { throw new Error('permission denied'); };
   await assert.rejects(() => exports.executeMarbotAction(action), /permission denied/);
+  context.fetch = async () => new Response(JSON.stringify({ data: { messages: [
+    { id, role: 'assistant', content: 'pending', created_at: '2026-10-02T00:00:00Z', metadata: { action: { kind: 'project.create', payload: { project_name: 'A' } } } },
+    { id: 'b75d14c9-365c-49a8-b4c0-de618d827c26', role: 'assistant', content: 'done', created_at: '2026-10-02T00:01:00Z', metadata: { action: { kind: 'project.create', payload: {} }, result: 'verified', verified: true } },
+  ] } }), { headers: { 'Content-Type': 'application/json' } });
+  const history = await exports.getNativeConversation(id);
+  assert.equal(history[0].action.ticketId, id, 'pending server ticket must survive history reload');
+  assert.equal(history[1].action, undefined, 'settled ticket cannot be executed from history');
+  assert.equal(history[1].actionState, 'verified');
+  context.fetch = async () => new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
   let done = 0;
   let chunks = '';
   let errors = 0;

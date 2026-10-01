@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-01T08:21:03.556Z",
+  "generatedAt": "2026-10-01T19:08:57.929Z",
   "schemaHash": "cfd7219ea8647829c70c64c4102ac21f60882bfe91b8972871f80c2cd7b61d68",
   "models": [
     {
@@ -25484,8 +25484,53 @@
       ]
     },
     {
+      "file": "backend-express/src/modules/marbot/marbot-mcp.routes.ts",
+      "routes": [
+        {
+          "method": "get",
+          "path": "origin"
+        },
+        {
+          "method": "get",
+          "path": "MCP-Protocol-Version"
+        },
+        {
+          "method": "get",
+          "path": "/"
+        },
+        {
+          "method": "delete",
+          "path": "/"
+        },
+        {
+          "method": "post",
+          "path": "/"
+        },
+        {
+          "method": "get",
+          "path": "accept"
+        }
+      ]
+    },
+    {
       "file": "backend-express/src/modules/marbot/marbot-native.routes.ts",
       "routes": [
+        {
+          "method": "use",
+          "path": "/mcp"
+        },
+        {
+          "method": "post",
+          "path": "/actions/:id/execute"
+        },
+        {
+          "method": "get",
+          "path": "/capabilities"
+        },
+        {
+          "method": "post",
+          "path": "/query"
+        },
         {
           "method": "get",
           "path": "/schema"
