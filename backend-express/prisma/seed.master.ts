@@ -625,6 +625,16 @@ async function main() {
   // Gunakan Jundy sebagai supervisor/assignee tugas harian.
   const supervisorUser = userMap.get('jundy');
 
+  if (pmUser?.id) {
+    await prisma.project_project.updateMany({
+      data: {
+        created_by_id: pmUser.id,
+        project_manager_id: pmUser.id,
+        manager_name: pmUser.full_name ?? 'Arof Fudding',
+      },
+    });
+  }
+
   // Project 1
   let project1 = await prisma.project_project.findFirst({ where: { project_code: 'PRJ-2026-001' } });
   if (!project1) {

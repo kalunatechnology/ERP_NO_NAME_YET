@@ -201,9 +201,8 @@ export class MeetingRequestService {
     const isParticipant = Boolean(participant);
     const isOrganizer = meeting.organizer_user_id === userId;
 
-    // Notulensi terbuka hanya di recurring meeting (semua peserta, organizer, notetaker, executive dapat menyusun).
-    // Pada non-recurring meeting, hanya notulis yang ditugaskan (atau executive) yang dapat menyusun.
-    const canEditMinutes = meeting.recurrence_type === 'RECURRING'
+    // Notulensi terbuka di recurring meeting atau bila notulis belum ditentukan secara khusus (semua peserta, organizer, notetaker, executive dapat menyusun).
+    const canEditMinutes = meeting.recurrence_type === 'RECURRING' || !meeting.notetaker_user_id
       ? (isNotetaker || isOrganizer || isParticipant || isExecutive)
       : (isNotetaker || isExecutive);
 
@@ -231,8 +230,8 @@ export class MeetingRequestService {
     const detail = await this.getById(meetingId, companyId, userId, activeRole, payload.occurrence_date);
     if (!detail.request) throw new NotFoundError('Request');
     if (!detail.permissions?.can_edit_minutes) {
-      if (detail.recurrence_type === 'RECURRING') {
-        throw new ForbiddenError('Hanya peserta yang tergabung dalam recurring meeting ini yang dapat menyusun notulensi.');
+      if (detail.recurrence_type === 'RECURRING' || !detail.notetaker_user_id) {
+        throw new ForbiddenError('Hanya peserta yang tergabung dalam meeting ini yang dapat menyusun notulensi.');
       } else {
         throw new ForbiddenError('Hanya notulis yang ditugaskan yang dapat menyusun notulensi.');
       }

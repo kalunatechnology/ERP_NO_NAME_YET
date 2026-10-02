@@ -100,10 +100,6 @@ requestRouter.get('/meetings', async (req, res, next) => {
 
 requestRouter.post('/meetings', async (req, res, next) => {
   try {
-    // Pada recurring meeting, notulensi terbuka untuk siapa saja peserta yang hadir sehingga notulis tidak wajib ditentukan saat create.
-    if (req.body?.recurrence_type !== 'RECURRING' && (typeof req.body?.notetaker_user_id !== 'string' || !req.body.notetaker_user_id.trim())) {
-      throw new ValidationError('Notulis wajib dipilih sebelum Meeting Request disimpan.');
-    }
     const result = await RequestService.createRequest({ ...req.body, request_type: 'MEETING' }, activeUserId(req), activeCompanyId(req), req.user?.tenant_id);
     sendSuccess(res, result, 201);
   } catch (error) { next(error); }

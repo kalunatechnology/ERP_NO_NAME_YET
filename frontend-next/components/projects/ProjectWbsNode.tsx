@@ -243,7 +243,8 @@ export function ProjectWbsNode({
                 const dailyTasks = weekly.daily_tasks || [];
                 const isWeeklyExpanded = !collapsedWeeklyTasks[String(weekly.id)];
                 const isWeeklyPic = String(weekly.assignee_id || weekly.assignee || "") === String(currentUserId);
-                const canCreateDaily = userRole !== "executive" && isWeeklyPic;
+                const isPM = userRole === "pm";
+                const canCreateDaily = !isPM && isWeeklyPic;
 
                 return (
                   <div key={weekly.id} className="rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200">
