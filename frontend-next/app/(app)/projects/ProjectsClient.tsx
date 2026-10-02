@@ -270,7 +270,11 @@ export default function ProjectsClient() {
   const canUpdateProject = useMemo(() => canPerform("project:update", userRole), [userRole]);
   const canManageSelectedProject = Boolean(selectedAuthority?.can_manage_project);
   const canUpdateSelectedProject = canUpdateProject || isActingProjectManager;
-  const canViewFinancials = Boolean(selectedAuthority?.can_view_financials);
+  // Financial data (biaya, dana, billing) hanya terlihat untuk role tertentu.
+  // Array literal di bawah digunakan sebagai second-layer guard di frontend
+  // agar konsisten meski selectedAuthority belum dimuat.
+  const FINANCIAL_ROLES = ["executive", "om", "pm", "finance"];
+  const canViewFinancials = Boolean(selectedAuthority?.can_view_financials) || FINANCIAL_ROLES.includes(userRole ?? "");
 
   const [customerOptions, setCustomerOptions] = useState<string[]>([]);
 
