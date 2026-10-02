@@ -1,21 +1,35 @@
 /**
  * File: frontend-next/components/requests/NewCardRequestModal.tsx
  *
- * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
- * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
- * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ * Purpose: Enterprise Modal for creating new Meeting, Leave, or Other/Fund requests.
+ * Features:
+ *  - Modern, balanced 2-column layout with sleek segmented card selector.
+ *  - Dynamic form fields adapted per request type (Meeting vs Leave vs Other/Fund).
+ *  - Full-width standardized action footer (Simpan Draft & Kirim Request).
+ *  - Strict role-safe validation and clean responsive design.
  */
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import {
-  ChevronLeft, ChevronDown, FileText,
-  X, ArrowRight, Upload, UserPlus, Coins, Link2, Loader2
+  X,
+  Calendar,
+  Clock,
+  FileText,
+  ArrowRight,
+  Upload,
+  UserPlus,
+  Coins,
+  Link2,
+  Loader2,
+  Users,
+  Palmtree,
+  CheckCircle2,
+  Paperclip,
 } from "lucide-react";
 import { cn, localDateKey, extractApiError, parseFormDateTime } from "@/lib/utils";
 import api from "@/lib/api/axios";
-import { useAuth } from "@/contexts/AuthContext";
 
 export interface InvitedPerson {
   id: string;
@@ -28,31 +42,31 @@ export interface InvitedPerson {
 interface NewCardRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (data: any) => void;
+  onSuccess: (newReq: unknown) => void;
 }
 
 const BUDGET_CATEGORIES = [
-  { id: "PROJECT_MATERIAL", label: "Material & Bahan Proyek" },
-  { id: "OPERATIONAL", label: "Operasional Lapangan" },
-  { id: "TRANSPORT", label: "Transportasi & Logistik" },
-  { id: "EQUIPMENT", label: "Sewa Alat & Perlengkapan" },
-  { id: "OTHER", label: "Kebutuhan Lain-lain" },
+  { id: "PROJECT_MATERIAL", label: "Project Material / Peralatan" },
+  { id: "LOGISTICS_TRANSPORT", label: "Transportasi & Logistik" },
+  { id: "OFFICE_OPERATIONAL", label: "Operasional Kantor" },
+  { id: "VENDOR_SUBCON", label: "Vendor & Subkontraktor" },
+  { id: "CLIENT_ENTERTAINMENT", label: "Representasi & Client Meeting" },
+  { id: "TRAINING_CERTIFICATION", label: "Training & Pelatihan Staf" },
+  { id: "OTHER_EXPENSES", label: "Pengeluaran Lainnya" },
 ];
 
-/**
- * NewCardRequestModal owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
- */
 export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardRequestModalProps) {
-  const { userRole } = useAuth();
+
+
+  // Active Type: 'Meeting Request' | 'Leave Request' | 'Other Request' | 'Fund Request'
   const [requestType, setRequestType] = useState<string>("Meeting Request");
-  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
+
+  // Meeting & Scheduling states
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
   const [dateVal, setDateVal] = useState(() => localDateKey());
+
+  // Attachments
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedFileSize, setAttachedFileSize] = useState<string>("");
   const [attachmentLink, setAttachmentLink] = useState("");
@@ -63,7 +77,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
   const [budgetCategory, setBudgetCategory] = useState<string>("PROJECT_MATERIAL");
   const [bankTarget, setBankTarget] = useState<string>("");
 
-  // Assignee state
+  // Assignee state (PIC)
   const [teamMembers, setTeamMembers] = useState<InvitedPerson[]>([]);
   const [assigneeUserId, setAssigneeUserId] = useState<string>("");
 
@@ -79,14 +93,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Fetch team members from PostgreSQL via Axios
-/**
- * fetchMembers owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
- */
+  // Fetch team members from API
   const fetchMembers = async (searchQuery = "") => {
     setIsSearching(true);
     try {
@@ -106,11 +113,10 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     }
   };
 
-  // Reset entire form when modal opens (not closes) so each session starts fresh
+  // Reset form when modal opens
   useEffect(() => {
     if (!isOpen) return;
     setRequestType("Meeting Request");
-    setIsTypeDropdownOpen(false);
     setStartTime("09:00");
     setEndTime("10:00");
     setDateVal(localDateKey());
@@ -128,13 +134,10 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     setIsSearchDropdownOpen(false);
     setErrorMsg("");
     if (fileInputRef.current) fileInputRef.current.value = "";
-    // Fetch all team members once on open (for Assign dropdown + initial invite list)
     fetchMembers();
   }, [isOpen]);
 
-  // Debounced search for team members:
-  // Only calls the backend if there is an active search query (avoids redundant duplicate fetch on open).
-  // If search query is cleared, immediately restores searchResults from cached teamMembers without network request.
+  // Debounced search for team members
   useEffect(() => {
     if (!isOpen) return;
     const query = inviteSearch.trim();
@@ -148,29 +151,36 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     return () => clearTimeout(timer);
   }, [inviteSearch, isOpen, teamMembers]);
 
-
   if (!isOpen) return null;
 
-  const isFundRequest = requestType === "Fund Request";
+  const isMeeting = requestType === "Meeting Request";
+  const isLeave = requestType === "Leave Request";
+  const isFund = requestType === "Fund Request";
+  const isOther = requestType === "Other Request" || isFund;
 
-/**
- * handleRemovePerson owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
- */
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAttachedFileName(file.name);
+      const kb = Math.round(file.size / 1024);
+      setAttachedFileSize(`${kb}KB`);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setAttachedFileName(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const formatRupiahInput = (val: string) => {
+    const numbersOnly = val.replace(/\D/g, "");
+    return numbersOnly ? Number(numbersOnly).toLocaleString("id-ID") : "";
+  };
+
   const handleRemovePerson = (id: string) => {
     setInvitedList(prev => prev.filter(p => p.id !== id));
   };
 
-/**
- * handleAddPerson owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
- */
   const handleAddPerson = (person: InvitedPerson) => {
     if (!invitedList.some(p => p.id === person.id)) {
       setInvitedList(prev => [...prev, person]);
@@ -179,13 +189,6 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     setIsSearchDropdownOpen(false);
   };
 
-/**
- * handleAddCustomGuest owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
- */
   const handleAddCustomGuest = () => {
     if (!inviteSearch.trim()) return;
     const cleanName = inviteSearch.trim();
@@ -198,62 +201,15 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     handleAddPerson(customUser);
   };
 
-/**
- * handleFileUpload owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
- */
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setAttachedFileName(file.name);
-      const kb = Math.round(file.size / 1024);
-      setAttachedFileSize(`${kb}KB`);
-    }
-  };
-
-/**
- * handleRemoveFile owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
- */
-  const handleRemoveFile = () => {
-    setAttachedFileName(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-/**
- * formatRupiahInput owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
- */
-  const formatRupiahInput = (val: string) => {
-    const numbersOnly = val.replace(/\D/g, "");
-    return numbersOnly ? Number(numbersOnly).toLocaleString("id-ID") : "";
-  };
-
-/**
- * handleSubmit owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
- */
   const handleSubmit = async (isDraft = false) => {
     if (!requestDetails.trim()) {
-      setErrorMsg("Request Details wajib diisi.");
+      setErrorMsg("Rincian kebutuhan / agenda wajib diisi.");
       return;
     }
 
     const cleanNum = parseFloat(amountRaw.replace(/\./g, "").replace(/,/g, ".")) || 0;
-    if (isFundRequest && cleanNum <= 0) {
-      setErrorMsg("Nominal dana wajib diisi lebih dari 0 untuk Fund Request.");
+    if (isFund && cleanNum <= 0) {
+      setErrorMsg("Nominal dana wajib diisi lebih dari 0 untuk pengajuan dana.");
       return;
     }
 
@@ -266,10 +222,10 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
       return;
     }
 
-    const hasTimePermission = ["super_admin", "company_admin", "executive", "om", "pm"].includes(userRole);
-    if (hasTimePermission) {
+    // Only validate meeting time if this is a Meeting Request
+    if (isMeeting) {
       if (!startTime) {
-        setErrorMsg("Waktu mulai wajib diisi.");
+        setErrorMsg("Waktu mulai rapat wajib diisi.");
         return;
       }
       if (!/^\d{2}:\d{2}$/.test(startTime)) {
@@ -292,25 +248,25 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
     setErrorMsg("");
 
     try {
-      const typeCode = isFundRequest
+      const typeCode = isFund
         ? "FUND_REQUEST"
-        : requestType.includes("Meeting")
+        : isMeeting
         ? "MEETING"
-        : requestType.includes("Leave")
+        : isLeave
         ? "LEAVE"
         : "OTHER";
 
-      // Parse user-supplied date and structured time inputs into ISO timestamps
-      const startAt = parseFormDateTime(dateVal, startTime);
-      const endAt = endTime ? parseFormDateTime(dateVal, endTime) : undefined;
+      // Parse start and end timestamps
+      const startAt = isMeeting ? parseFormDateTime(dateVal, startTime) : parseFormDateTime(dateVal, "08:00");
+      const endAt = isMeeting && endTime ? parseFormDateTime(dateVal, endTime) : undefined;
 
       const res = await api.post("/api/v1/requests", {
         request_type: typeCode,
         title: requestDetails.slice(0, 60) || requestType,
         description: requestDetails,
-        amount: isFundRequest ? cleanNum : undefined,
-        budget_category: isFundRequest ? budgetCategory : undefined,
-        bank_target: isFundRequest ? bankTarget : undefined,
+        amount: isFund ? cleanNum : undefined,
+        budget_category: isFund ? budgetCategory : undefined,
+        bank_target: isFund ? bankTarget : undefined,
         start_at: startAt,
         end_at: endAt,
         tagged_users: invitedList,
@@ -323,7 +279,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
       onSuccess(responseData);
       onClose();
     } catch (err: unknown) {
-      setErrorMsg(extractApiError(err, "Gagal memproses request"));
+      setErrorMsg(extractApiError(err, "Gagal memproses permohonan"));
     } finally {
       setLoading(false);
     }
@@ -334,270 +290,385 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/65 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
       <div
-        className="relative w-full max-w-[880px] my-auto bg-white border border-[#EAF6FF] rounded-[28px] p-6 sm:p-8 shadow-2xl flex flex-col gap-6 animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-4xl my-auto bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
         onClick={() => setIsSearchDropdownOpen(false)}
       >
-        {/* Header INSIDE Modal Card */}
-        <div className="flex items-center justify-between pb-1">
+        {/* ── Modal Header ── */}
+        <div className="px-6 sm:px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50/80 via-white to-blue-50/40">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+              {isMeeting ? (
+                <Calendar size={22} strokeWidth={2.2} />
+              ) : isLeave ? (
+                <Palmtree size={22} strokeWidth={2.2} />
+              ) : isFund ? (
+                <Coins size={22} strokeWidth={2.2} />
+              ) : (
+                <FileText size={22} strokeWidth={2.2} />
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                  Buat Pengajuan Baru
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider bg-blue-100 text-blue-800">
+                  {requestType}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isMeeting
+                  ? "Atur jadwal pertemuan, tentukan PIC host, dan undang peserta rapat."
+                  : isLeave
+                  ? "Ajukan cuti tahunan, sakit, atau izin dengan persetujuan atasan."
+                  : "Ajukan permohonan operasional, anggaran biaya, atau kebutuhan kantor."}
+              </p>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center gap-2 text-base sm:text-lg font-bold text-[#2649B3] hover:text-[#2649B3] transition-colors group"
-          >
-            <ChevronLeft size={22} className="text-[#294BB2] group-hover:-translate-x-0.5 transition-transform" />
-            <span>New Card Request</span>
-          </button>
-          
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#4F5050] hover:text-[#4F5050] hover:bg-[#FDFDFD] transition-colors"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            aria-label="Tutup modal"
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* Two-Column Grid Form */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8 items-stretch">
-          
-          {/* ════════════ LEFT COLUMN (Col 1-7) ════════════ */}
-          <div className="md:col-span-7 flex flex-col gap-4 md:pr-6 md:border-r border-[#EFEFEF]">
-            {errorMsg && (
-              <div className="p-3 text-xs font-semibold rounded-xl bg-red-50 border border-red-200 text-red-700">
-                {errorMsg}
-              </div>
-            )}
-
-            {/* 1. Request Type */}
-            <div className="relative">
-              <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
-                Request Type
-              </label>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsTypeDropdownOpen(!isTypeDropdownOpen);
-                }}
-                className="w-full rounded-[14px] border border-[#D9D9D9] bg-white px-4 py-2.5 flex items-center justify-between text-xs font-medium text-[#4F5050] hover:border-[#294BB2]/60 transition-colors"
-              >
-                <span>{requestType}</span>
-                <ChevronDown size={17} className="text-[#4F5050]" />
-              </button>
-
-              {isTypeDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D9D9D9] rounded-[14px] shadow-xl py-1.5 z-30 animate-in fade-in-50 duration-100">
-                  {["Meeting Request", "Leave Request", "Other Request"].map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => {
-                        setRequestType(t);
-                        setIsTypeDropdownOpen(false);
-                      }}
-                      className={cn(
-                        "w-full text-left px-4 py-2 text-xs font-medium transition-colors",
-                        requestType === t ? "bg-[#FDFDFD] text-[#294BB2] font-bold" : "text-[#4F5050] hover:bg-[#FDFDFD]"
-                      )}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
+        {/* ── Type Selector Tabs ── */}
+        <div className="px-6 sm:px-8 pt-5 pb-3">
+          <label className="block text-2xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+            Pilih Kategori Permohonan
+          </label>
+          <div className="grid grid-cols-3 gap-2.5 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/80">
+            <button
+              type="button"
+              onClick={() => setRequestType("Meeting Request")}
+              className={cn(
+                "flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all",
+                isMeeting
+                  ? "bg-white text-blue-700 shadow-sm border border-slate-200/70"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               )}
-            </div>
+            >
+              <Calendar size={16} className={isMeeting ? "text-blue-600" : "text-slate-400"} />
+              <span>Meeting Request</span>
+            </button>
 
-            {/* FUND REQUEST SPECIFIC FIELDS */}
-            {isFundRequest && (
-              <div className="p-3.5 rounded-[18px] bg-[#FDFDFD] border border-[#D9D9D9] space-y-3 animate-in fade-in-50 duration-150">
-                {/* Nominal Dana */}
-                <div>
-                  <label className="block text-xs font-semibold text-[#2649B3] mb-1">
-                    Nominal Dana yang Diajukan (Rp)
-                  </label>
-                  <div className="rounded-[12px] border border-[#294BB2]/40 bg-white px-3.5 py-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-[#294BB2]/30">
-                    <Coins size={16} className="text-[#294BB2]" />
-                    <span className="text-xs font-bold text-[#4F5050]">Rp</span>
-                    <input
-                      type="text"
-                      value={formatRupiahInput(amountRaw)}
-                      onChange={e => setAmountRaw(e.target.value.replace(/\D/g, ""))}
-                      className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-bold"
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-
-                {/* Kategori Anggaran & Rekening */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-2xs font-semibold text-[#4F5050] mb-1">
-                      Kategori Anggaran
-                    </label>
-                    <select
-                      value={budgetCategory}
-                      onChange={e => setBudgetCategory(e.target.value)}
-                      className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-2xs font-medium text-[#4F5050] focus:outline-none focus:border-[#294BB2]"
-                    >
-                      {BUDGET_CATEGORIES.map(c => (
-                        <option key={c.id} value={c.id}>{c.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-2xs font-semibold text-[#4F5050] mb-1">
-                      Rekening Pencairan
-                    </label>
-                    <input
-                      type="text"
-                      value={bankTarget}
-                      onChange={e => setBankTarget(e.target.value)}
-                      placeholder="BCA 123456 a.n. Toko"
-                      className="w-full rounded-[12px] border border-[#D9D9D9] bg-white px-3 py-2 text-2xs font-medium text-[#4F5050] focus:outline-none focus:border-[#294BB2]"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 2. Time & Date (Side-by-Side) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {["super_admin", "company_admin", "executive", "om", "pm"].includes(userRole) && (
-                <div>
-                  <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
-                    Waktu (Mulai – Selesai)
-                  </label>
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
-                    <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3 py-2 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
-                      <input
-                        type="time"
-                        value={startTime}
-                        onChange={e => setStartTime(e.target.value)}
-                        className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
-                        aria-label="Waktu Mulai"
-                      />
-                    </div>
-                    <span className="text-xs font-semibold text-[#4F5050] text-center px-0.5">–</span>
-                    <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3 py-2 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
-                      <input
-                        type="time"
-                        value={endTime}
-                        onChange={e => setEndTime(e.target.value)}
-                        className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
-                        aria-label="Waktu Selesai"
-                      />
-                    </div>
-                  </div>
-                </div>
+            <button
+              type="button"
+              onClick={() => setRequestType("Leave Request")}
+              className={cn(
+                "flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all",
+                isLeave
+                  ? "bg-white text-emerald-700 shadow-sm border border-slate-200/70"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               )}
+            >
+              <Palmtree size={16} className={isLeave ? "text-emerald-600" : "text-slate-400"} />
+              <span>Leave / Cuti</span>
+            </button>
 
-              <div>
-                <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
-                  Date
-                </label>
-                <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3.5 py-2.5 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
-                  <input
-                    type="date"
-                    value={dateVal}
-                    onChange={e => setDateVal(e.target.value)}
-                    className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
-                    placeholder="YYYY-MM-DD"
-                  />
-                </div>
-              </div>
+            <button
+              type="button"
+              onClick={() => setRequestType("Other Request")}
+              className={cn(
+                "flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all",
+                isOther
+                  ? "bg-white text-violet-700 shadow-sm border border-slate-200/70"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+              )}
+            >
+              <FileText size={16} className={isOther ? "text-violet-600" : "text-slate-400"} />
+              <span>Other Request</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ── Form Body: Balanced 2-Column Grid ── */}
+        <div className="px-6 sm:px-8 py-2 overflow-y-auto max-h-[64vh]">
+          {errorMsg && (
+            <div className="mb-4 p-3.5 text-xs font-semibold rounded-2xl bg-red-50 border border-red-200 text-red-700 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+              <span>{errorMsg}</span>
             </div>
+          )}
 
-            {/* 3. Attached Files */}
-            <div>
-              <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
-                Attached Files
-              </label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-
-              {attachedFileName ? (
-                <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-4 py-2.5 flex items-center justify-between text-xs font-medium text-[#4F5050]">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <FileText size={18} className="text-[#294BB2] shrink-0" />
-                    <span className="font-semibold text-[#4F5050] truncate max-w-[180px] sm:max-w-[240px]">
-                      {attachedFileName}
-                    </span>
-                    <span className="text-[#4F5050] text-2xs shrink-0">{attachedFileSize}</span>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+            {/* ════════════ LEFT COLUMN (Col 1-7): Details & Schedule ════════════ */}
+            <div className="md:col-span-7 flex flex-col gap-4">
+              
+              {/* Optional Fund Request Toggle inside Other Request */}
+              {isOther && (
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-violet-50/70 border border-violet-100">
+                  <div className="flex items-center gap-2.5">
+                    <Coins size={18} className="text-violet-600" />
+                    <div>
+                      <p className="text-xs font-bold text-violet-950">Memerlukan Anggaran / Pencairan Dana?</p>
+                      <p className="text-3xs text-violet-700">Aktifkan jika permohonan ini melibatkan reimbursement atau procurement biaya</p>
+                    </div>
                   </div>
                   <button
                     type="button"
-                    onClick={handleRemoveFile}
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-[#4F5050] hover:text-red-500 hover:bg-red-50 transition-colors"
+                    onClick={() => setRequestType(isFund ? "Other Request" : "Fund Request")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl text-xs font-bold transition-all",
+                      isFund
+                        ? "bg-violet-600 text-white shadow-xs"
+                        : "bg-white text-violet-700 border border-violet-200 hover:bg-violet-100"
+                    )}
                   >
-                    <X size={16} />
+                    {isFund ? "Dana: Aktif" : "+ Ajukan Dana"}
                   </button>
                 </div>
-              ) : (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-[14px] border border-dashed border-[#D9D9D9] hover:border-[#294BB2] bg-[#EAF6FF] px-4 py-2.5 flex items-center justify-center gap-2 text-xs text-[#4F5050] cursor-pointer transition-colors"
-                >
-                  <Upload size={14} className="text-[#4F5050]" />
-                  <span>Attach Document (PDF, Word, Nota, etc)</span>
+              )}
+
+              {/* Fund Request Amount & Category Fields */}
+              {isFund && (
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3.5">
+                  <div>
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                      Nominal Dana yang Diajukan (Rp) <span className="text-red-500">*</span>
+                    </label>
+                    <div className="rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 flex items-center gap-2 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-600 transition-all">
+                      <span className="text-xs font-bold text-slate-500">Rp</span>
+                      <input
+                        type="text"
+                        value={formatRupiahInput(amountRaw)}
+                        onChange={e => setAmountRaw(e.target.value.replace(/\D/g, ""))}
+                        className="w-full bg-transparent focus:outline-none text-sm font-bold text-slate-900"
+                        placeholder="Contoh: 1.500.000"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                        Kategori Anggaran
+                      </label>
+                      <select
+                        value={budgetCategory}
+                        onChange={e => setBudgetCategory(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                      >
+                        {BUDGET_CATEGORIES.map(c => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                        Rekening / Vendor Tujuan
+                      </label>
+                      <input
+                        type="text"
+                        value={bankTarget}
+                        onChange={e => setBankTarget(e.target.value)}
+                        placeholder="BCA 123456 a.n. Toko"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
-              <div className="relative mt-2">
-                <Link2 size={15} className="absolute left-3 top-3 text-[#4F5050]" />
-                <input type="url" value={attachmentLink} onChange={(event) => setAttachmentLink(event.target.value)} className="w-full rounded-[14px] border border-[#D9D9D9] bg-white py-2.5 pl-9 pr-3 text-xs" placeholder="Atau tempel tautan Google Drive / dokumen" />
+
+              {/* Schedule & Date Section */}
+              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-3">
+                <div className="flex items-center gap-2 pb-1 border-b border-slate-200/60">
+                  <Clock size={15} className="text-slate-500" />
+                  <span className="text-2xs font-bold uppercase tracking-wider text-slate-600">
+                    {isMeeting ? "Jadwal Pertemuan" : isLeave ? "Periode Cuti / Izin" : "Tanggal Pelaksanaan"}
+                  </span>
+                </div>
+
+                {isMeeting ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div className="sm:col-span-5">
+                      <label className="block text-2xs font-medium text-slate-500 mb-1">
+                        Tanggal Rapat <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={dateVal}
+                        onChange={e => setDateVal(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                      />
+                    </div>
+                    <div className="sm:col-span-7 grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-2xs font-medium text-slate-500 mb-1">
+                          Waktu Mulai <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="time"
+                          value={startTime}
+                          onChange={e => setStartTime(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                          aria-label="Waktu Mulai"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-2xs font-medium text-slate-500 mb-1">
+                          Waktu Selesai
+                        </label>
+                        <input
+                          type="time"
+                          value={endTime}
+                          onChange={e => setEndTime(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                          aria-label="Waktu Selesai"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-2xs font-medium text-slate-500 mb-1">
+                      {isLeave ? "Tanggal Cuti / Izin" : "Tanggal Permohonan"} <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={dateVal}
+                      onChange={e => setDateVal(e.target.value)}
+                      className="w-full max-w-xs rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                    />
+                  </div>
+                )}
               </div>
-              {attachedFileName && !attachmentLink && <p className="mt-1 text-[10px] text-amber-700">File lokal dipilih. Tambahkan tautan dokumen agar reviewer dapat membukanya.</p>}
-            </div>
 
-            {/* 4. Request Details */}
-            <div className="flex-1 flex flex-col">
-              <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
-                Request Details
-              </label>
-              <textarea
-                value={requestDetails}
-                onChange={e => setRequestDetails(e.target.value)}
-                rows={3}
-                placeholder="Tuliskan rincian kebutuhan Anda..."
-                className="w-full flex-1 rounded-[14px] border border-[#D9D9D9] bg-white p-3.5 text-xs font-normal text-[#4F5050] placeholder:text-[#4F5050] leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2]"
-              />
-            </div>
-          </div>
-
-          {/* ════════════ RIGHT COLUMN (Invite People & Actions) ════════════ */}
-          <div className="md:col-span-5 flex flex-col justify-between gap-6">
-            
-            {/* Top: Assign & Invite People Section */}
-            <div className="flex flex-col gap-4">
-              {/* Assign ke Staff */}
+              {/* Request Details Textarea */}
               <div>
-                <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
-                  Assign ke Staff (PIC)
+                <label className="block text-2xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  {isMeeting
+                    ? "Agenda Rapat & Pembahasan"
+                    : isLeave
+                    ? "Alasan & Keterangan Cuti"
+                    : "Rincian Kebutuhan & Deskripsi"} <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={requestDetails}
+                  onChange={e => setRequestDetails(e.target.value)}
+                  rows={3}
+                  placeholder={
+                    isMeeting
+                      ? "Tuliskan topik bahasan, sasaran rapat, atau tautan Google Meet / Zoom..."
+                      : isLeave
+                      ? "Tuliskan keterangan cuti atau kebutuhan izin Anda secara jelas..."
+                      : "Jelaskan rincian barang, permohonan, atau keperluan operasional Anda..."
+                  }
+                  className="w-full rounded-2xl border border-slate-300 bg-white p-3.5 text-xs text-slate-900 placeholder:text-slate-400 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 transition-all"
+                />
+              </div>
+
+              {/* Attachments Section */}
+              <div className="p-3.5 rounded-2xl bg-slate-50/70 border border-slate-200/70 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Paperclip size={14} className="text-slate-500" />
+                    <span className="text-2xs font-bold uppercase tracking-wider text-slate-600">
+                      Lampiran Dokumen
+                    </span>
+                  </div>
+                  <span className="text-3xs text-slate-400">PDF, Word, Excel, Nota, atau Tautan Cloud</span>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+
+                {attachedFileName ? (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/60 px-3.5 py-2 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <FileText size={16} className="text-blue-600 shrink-0" />
+                      <span className="font-semibold text-slate-800 truncate max-w-[220px]">
+                        {attachedFileName}
+                      </span>
+                      <span className="text-slate-400 text-3xs shrink-0">{attachedFileSize}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveFile}
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      title="Hapus file"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-300 hover:border-blue-500 bg-white hover:bg-blue-50/40 text-xs font-semibold text-slate-600 hover:text-blue-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Upload size={14} />
+                    <span>Upload File Pendukung (Opsional)</span>
+                  </button>
+                )}
+
+                <div className="relative">
+                  <Link2 size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="url"
+                    value={attachmentLink}
+                    onChange={e => setAttachmentLink(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                    placeholder="Atau cantumkan link Google Drive / Notion / Dokumen cloud..."
+                  />
+                </div>
+              </div>
+
+            </div>
+
+            {/* ════════════ RIGHT COLUMN (Col 8-12): Assignee & Participants ════════════ */}
+            <div className="md:col-span-5 flex flex-col gap-4">
+              
+              {/* PIC / Host Assignment */}
+              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+                <label className="block text-2xs font-bold uppercase tracking-wider text-slate-600">
+                  {isMeeting ? "Host / Moderator Pertemuan" : isLeave ? "PIC Pengganti / Handover" : "Tugaskan ke Staff (PIC)"}
                 </label>
                 <select
                   value={assigneeUserId}
-                  onChange={(e) => setAssigneeUserId(e.target.value)}
-                  className="w-full rounded-[14px] border border-[#D9D9D9] bg-white px-3.5 py-2.5 text-xs text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2]"
+                  onChange={e => setAssigneeUserId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
                 >
-                  <option value="">-- Pilih Staff (Opsional) --</option>
-                  {teamMembers.map((m) => (
+                  <option value="">-- Pilih Staf Penanggung Jawab --</option>
+                  {teamMembers.map(m => (
                     <option key={m.id} value={m.id}>
                       {m.name} {m.role ? `(${m.role})` : ""}
                     </option>
                   ))}
                 </select>
+                <p className="text-3xs text-slate-400">
+                  {isMeeting
+                    ? "PIC akan bertanggung jawab memimpin jalannya rapat & mencatat notulen."
+                    : "Staf yang bertindak sebagai kontak darurat / pelaksana tugas."}
+                </p>
               </div>
 
-              {/* Invite People */}
-              <div>
-                <label className="block text-xs font-semibold text-[#4F5050] mb-1.5">
-                  Invite People
-                </label>
+              {/* Invite Participants Section */}
+              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Users size={15} className="text-slate-600" />
+                    <label className="text-2xs font-bold uppercase tracking-wider text-slate-600">
+                      {isMeeting ? "Peserta Rapat yang Diundang" : "Anggota Tim Terkait"}
+                    </label>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-3xs font-extrabold bg-blue-100 text-blue-700">
+                    {invitedList.length} orang
+                  </span>
+                </div>
+
+                {/* Search Bar */}
                 <div className="relative" onClick={e => e.stopPropagation()}>
                   <input
                     type="text"
@@ -607,57 +678,57 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                       setIsSearchDropdownOpen(true);
                     }}
                     onFocus={() => setIsSearchDropdownOpen(true)}
-                    placeholder="Add user account, email, etc"
-                    className="w-full rounded-[14px] border border-[#D9D9D9] bg-white px-4 py-2.5 text-xs text-[#4F5050] placeholder:text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2] pr-9"
+                    placeholder="Ketik nama atau email anggota..."
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 pr-9"
                   />
                   {isSearching && inviteSearch.trim().length > 0 && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <Loader2 size={14} className="animate-spin text-[#294BB2]" />
+                      <Loader2 size={14} className="animate-spin text-blue-600" />
                     </div>
                   )}
 
                   {/* Dropdown list for search */}
                   {isSearchDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D9D9D9] rounded-[16px] shadow-xl p-1.5 z-40 max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in duration-100">
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl p-1.5 z-40 max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in duration-100">
                       {selectableResults.length > 0 ? (
                         selectableResults.map(m => (
                           <button
                             key={m.id}
                             type="button"
                             onClick={() => handleAddPerson(m)}
-                            className="w-full flex items-center justify-between p-2 rounded-xl text-left hover:bg-[#FDFDFD] text-xs transition-colors group"
+                            className="w-full flex items-center justify-between p-2 rounded-xl text-left hover:bg-slate-50 text-xs transition-colors group"
                           >
                             <div className="flex items-center gap-2.5 truncate">
                               <Image
                                 src={m.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.id}`}
                                 alt={m.name}
-                                width={28}
-                                height={28}
+                                width={26}
+                                height={26}
                                 unoptimized
-                                className="w-7 h-7 rounded-full object-cover border border-[#EAF6FF] shrink-0"
+                                className="w-6.5 h-6.5 rounded-full object-cover border border-slate-200 shrink-0"
                               />
                               <div className="truncate">
-                                <span className="text-xs font-semibold text-[#4F5050] block truncate">{m.name}</span>
-                                <span className="text-3xs text-[#4F5050] block truncate">{m.role || "Anggota tim"}{m.email ? ` · ${m.email}` : ""}</span>
+                                <span className="text-xs font-semibold text-slate-800 block truncate">{m.name}</span>
+                                <span className="text-3xs text-slate-400 block truncate">{m.role || "Anggota tim"}{m.email ? ` · ${m.email}` : ""}</span>
                               </div>
                             </div>
-                            <span className="p-1 rounded-lg bg-[#EAF6FF] text-[#2649B3] text-3xs font-bold shrink-0">
-                              + Add
+                            <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-3xs font-bold shrink-0">
+                              + Tambah
                             </span>
                           </button>
                         ))
                       ) : (
                         <div className="p-3 text-center">
-                          <p className="text-xs text-[#4F5050] mb-1.5">
+                          <p className="text-xs text-slate-500 mb-1.5">
                             {inviteSearch.trim()
-                              ? `Tidak ada akun dengan nama "${inviteSearch}"`
-                              : "Ketik nama atau email user..."}
+                              ? `Tidak ada staf dengan nama "${inviteSearch}"`
+                              : "Ketik nama untuk mencari..."}
                           </p>
                           {inviteSearch.trim() && (
                             <button
                               type="button"
                               onClick={handleAddCustomGuest}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#EAF6FF] text-[#2649B3] text-xs font-bold hover:bg-[#EAF6FF] transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-colors"
                             >
                               <UserPlus size={13} />
                               <span>Undang &quot;{inviteSearch.trim()}&quot; (Tamu)</span>
@@ -668,98 +739,121 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* Invited People List */}
-              <div className="space-y-2 pt-1 min-h-[140px] max-h-[220px] overflow-y-auto">
-                {invitedList.length === 0 ? (
-                  <div className="p-4 rounded-xl border border-dashed border-[#D9D9D9] bg-[#EAF6FF] text-center text-xs text-[#4F5050]">
-                    Belum ada anggota yang diundang.<br />
-                    Ketik nama atau email pada kolom di atas untuk menambahkan.
-                  </div>
-                ) : (
-                  invitedList.map(person => (
-                    <div
-                      key={person.id}
-                      className="flex items-center justify-between py-1.5 px-2.5 rounded-xl bg-[#FDFDFD] border border-[#EFEFEF] hover:border-[#294BB2]/50 transition-colors group"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Image
-                          src={person.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${person.id}`}
-                          alt={person.name}
-                          width={28}
-                          height={28}
-                          unoptimized
-                          className="w-7 h-7 rounded-full object-cover border border-[#EAF6FF] shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <span className="text-xs font-semibold text-[#4F5050] block truncate">
-                            {person.name}
-                          </span>
-                          {person.email && (
-                            <span className="text-3xs text-[#4F5050] block truncate">
-                              {person.email}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemovePerson(person.id)}
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[#294BB2] hover:text-red-500 hover:bg-red-50 transition-colors"
-                        title={`Hapus ${person.name}`}
-                      >
-                        <X size={16} strokeWidth={2.2} />
-                      </button>
+                {/* Invited People Tag List */}
+                <div className="min-h-[110px] max-h-[160px] overflow-y-auto space-y-1.5 pr-0.5">
+                  {invitedList.length === 0 ? (
+                    <div className="p-3.5 rounded-xl border border-dashed border-slate-300 bg-white text-center text-xs text-slate-400">
+                      Belum ada anggota yang diundang.<br />
+                      Gunakan kolom di atas untuk menambahkan peserta.
                     </div>
-                  ))
-                )}
+                  ) : (
+                    invitedList.map(person => (
+                      <div
+                        key={person.id}
+                        className="flex items-center justify-between py-1.5 px-2.5 rounded-xl bg-white border border-slate-200 hover:border-blue-300 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Image
+                            src={person.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${person.id}`}
+                            alt={person.name}
+                            width={24}
+                            height={24}
+                            unoptimized
+                            className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <span className="text-xs font-semibold text-slate-800 block truncate leading-tight">
+                              {person.name}
+                            </span>
+                            {person.email && (
+                              <span className="text-3xs text-slate-400 block truncate leading-tight">
+                                {person.email}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePerson(person.id)}
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                          title={`Hapus ${person.name}`}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
+
+              {/* Informational Privacy Badge */}
+              <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-100 flex items-start gap-2">
+                <CheckCircle2 size={16} className="text-blue-600 shrink-0 mt-0.5" />
+                <p className="text-3xs text-blue-900 leading-relaxed">
+                  <strong>Privasi Terjamin:</strong> Data permohonan ini hanya dapat dilihat oleh Anda, PIC yang ditugaskan, dan peserta yang terdaftar.
+                </p>
+              </div>
+
             </div>
-
-            {/* Bottom: Action Buttons */}
-            <div className="flex flex-col gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => handleSubmit(false)}
-                disabled={loading}
-                className="w-full py-3 rounded-[14px] bg-[#294BB2] hover:bg-[#2649B3] text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all disabled:opacity-50"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 size={15} className="animate-spin" />
-                    <span>Mengirim...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Send Request</span>
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSubmit(true)}
-                disabled={loading}
-                className="w-full py-3 rounded-[14px] bg-white border border-[#294BB2] hover:bg-[#FDFDFD] text-[#294BB2] font-semibold text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 size={15} className="animate-spin text-[#294BB2]" />
-                    <span>Menyimpan Draft...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Save Draft</span>
-                    <FileText size={15} />
-                  </>
-                )}
-              </button>
-            </div>
-
           </div>
         </div>
+
+        {/* ── Modal Footer: Standardized Full-Width Bar ── */}
+        <div className="px-6 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/90 flex flex-col sm:flex-row items-center justify-between gap-3 mt-3">
+          <div className="text-3xs text-slate-500 order-2 sm:order-1 text-center sm:text-left">
+            Permohonan akan otomatis diverifikasi oleh sistem & diteruskan ke PIC.
+          </div>
+
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end order-1 sm:order-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 font-semibold text-xs transition-all"
+            >
+              Batal
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSubmit(true)}
+              disabled={loading}
+              className="px-4 py-2.5 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-blue-700 font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin text-blue-600" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <>
+                  <FileText size={14} />
+                  <span>Simpan Draft</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSubmit(false)}
+              disabled={loading}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30 transition-all disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Mengirim...</span>
+                </>
+              ) : (
+                <>
+                  <span>Kirim Permohonan</span>
+                  <ArrowRight size={15} />
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   );
