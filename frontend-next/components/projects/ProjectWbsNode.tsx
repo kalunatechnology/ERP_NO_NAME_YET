@@ -70,6 +70,7 @@ interface ProjectWbsNodeProps {
   canAssignTeam: boolean;
   canManageWeeklyTasks: boolean;
   currentUserId: string;
+  userRole: string;
   onAssignClick: (main: any) => void;
   onRemoveAssignment: (mainTask: any, assignmentId: any) => void;
   onCreateWeeklyClick: (main: any) => void;
@@ -88,11 +89,11 @@ export function ProjectWbsNode({
   onToggleExpand,
   collapsedWeeklyTasks,
   onToggleWeekly,
-  isPM,
   canManageWbs,
   canAssignTeam,
   canManageWeeklyTasks,
   currentUserId,
+  userRole,
   onAssignClick,
   onRemoveAssignment,
   onCreateWeeklyClick,
@@ -242,7 +243,7 @@ export function ProjectWbsNode({
                 const dailyTasks = weekly.daily_tasks || [];
                 const isWeeklyExpanded = !collapsedWeeklyTasks[String(weekly.id)];
                 const isWeeklyPic = String(weekly.assignee_id || weekly.assignee || "") === String(currentUserId);
-                const canCreateDaily = !isPM && isWeeklyPic;
+                const canCreateDaily = userRole !== "executive" && isWeeklyPic;
 
                 return (
                   <div key={weekly.id} className="rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200">

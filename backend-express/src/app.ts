@@ -2,8 +2,8 @@
  * File: backend-express/src/app.ts
  *
  * Purpose: Implements application infrastructure responsibilities for the platform domain.
- * Responsibility: Defines the executable contracts in this file and connects them to their callers without owning unrelated domain behavior.
- * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
+ * Responsibility: Defines the executable contracts in this file and connects them to framework discovery or explicit imports without changing unrelated domain state.
+ * Integration: Used through static imports, framework conventions, or an explicit script entry point.
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
 import express, { Express, Request, Response } from 'express';
@@ -35,6 +35,7 @@ import { salesRouter } from './modules/sales/sales.routes';
 import { projectsRouter } from './modules/projects/projects.routes';
 import { timesheetTimerRouter } from './modules/projects/timesheet-timer.routes';
 import { restrictProjectMutationsByAuthority } from './modules/projects/project-authority.middleware';
+import { projectExecutionPolicyRouter } from './modules/projects/project-execution-policy.routes';
 import { financeRouter } from './modules/finance/finance.routes';
 import { procurementRouter } from './modules/procurement/procurement.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
@@ -82,7 +83,7 @@ export function createApp(): Express {
  * Input/output: Uses the typed parameters in the signature and returns the value or Promise produced by the implementation.
  * Dependencies: Calls only the imported services/utilities and local helpers referenced in its body.
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
- * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
+ * Failure/side effects: propagates validation, authorization, persistence, or dependency failures according to the existing caller contract.
  */
     cors({
       origin: (requestOrigin, callback) => {
@@ -227,11 +228,6 @@ export function createApp(): Express {
     ),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
-      allowedMutationPaths: [
-        { path: /^\/api\/v1\/projects\/daily-tasks\/?$/, methods: ['POST'] },
-        { path: /^\/api\/v1\/projects\/daily-tasks\/[^/]+\/?$/, methods: ['PUT', 'PATCH', 'DELETE'] },
-        { path: /^\/api\/v1\/projects\/daily-tasks\/[^/]+\/(?:update[-_]progress|report[-_]blocked|request[-_]transfer)\/?$/ },
-      ],
       message: 'Role Director memiliki akses preview seluruh proyek.',
     }),
     // Timer self-service owns its own project/task validation and must run
@@ -239,6 +235,9 @@ export function createApp(): Express {
     // unknown Staff mutation paths.
     timesheetTimerRouter,
     restrictProjectMutationsByAuthority,
+    // Normalize the execution-assignee selector across functional roles and
+    // enforce the Executive read-only boundary before canonical Project CRUD.
+    projectExecutionPolicyRouter,
     projectsRouter,
   );
   apiV1.use(
