@@ -54,6 +54,7 @@ export interface ProjectAuthority {
   can_review_task_transfer: boolean;
   can_override_progress: boolean;
   can_manage_milestones: boolean;
+  can_view_financials: boolean;
   can_delegate_supervisor: boolean;
   can_create_project: boolean;
   can_delete_project: boolean;
@@ -974,6 +975,14 @@ export class ProjectsService {
 
     const isPm = isCreatorPm;
     const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && (isAdmin || isOm || isPm || isActing);
+    const canViewFinancials = isActing || ([
+      RoleCode.SUPER_ADMIN,
+      RoleCode.COMPANY_ADMIN,
+      RoleCode.DIRECTOR,
+      RoleCode.OPERATIONAL_MANAGER,
+      RoleCode.PROJECT_MANAGER,
+      RoleCode.FINANCE,
+    ] as RoleCode[]).includes(activeRole as RoleCode);
     const canDelegate = canManage && (isAdmin || isOm || isPm);
     const effectiveRole = isActing
       ? ACTING_PROJECT_MANAGER_ROLE
@@ -998,6 +1007,7 @@ export class ProjectsService {
       can_review_task_transfer: canManage,
       can_override_progress: canManage,
       can_manage_milestones: canManage,
+      can_view_financials: canViewFinancials,
       can_delegate_supervisor: canDelegate,
       can_create_project: isAdmin || isOm || isPm,
       can_delete_project: isAdmin || isOm || isPm,

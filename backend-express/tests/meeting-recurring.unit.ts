@@ -63,8 +63,11 @@ async function main() {
   const patch = (target: any, key: string, replacement: any) => { const old = target[key]; target[key] = replacement; patches.push(() => { target[key] = old; }); };
   patch(prisma.request_meeting, 'findFirst', async () => meeting);
   patch(prisma.request_meeting, 'update', tx.request_meeting.update);
-  patch(prisma.request_meeting_participant, 'findFirst', async ({ where }: any) => where.user_id === 'notetaker' ? { id: 'participant' } : null);
-  patch(prisma.request_meeting_participant, 'findMany', async () => [{ id: 'participant', meeting_id: 'meeting', company_id: 'company', user_id: 'notetaker', participant_role: 'NOTETAKER' }]);
+  patch(prisma.request_meeting_participant, 'findFirst', async ({ where }: any) => ['notetaker', 'attendee'].includes(where.user_id) ? { id: 'participant' } : null);
+  patch(prisma.request_meeting_participant, 'findMany', async () => [
+    { id: 'participant', meeting_id: 'meeting', company_id: 'company', user_id: 'notetaker', participant_role: 'NOTETAKER' },
+    { id: 'attendee-participant', meeting_id: 'meeting', company_id: 'company', user_id: 'attendee', participant_role: 'ATTENDEE' },
+  ]);
   patch(prisma.request_ticket, 'findFirst', async () => ticket);
   patch(prisma.request_ticket, 'update', async () => { ticketUpdateCount += 1; return ticket; });
   patch(prisma.request_meeting_agenda, 'findMany', async () => []);
@@ -72,7 +75,10 @@ async function main() {
   patch(prisma.request_meeting_minutes, 'update', tx.request_meeting_minutes.update);
   patch(prisma.request_meeting_decision, 'findMany', async ({ where }: any) => decisions.filter((item) => item.minutes_id === where.minutes_id));
   patch(prisma.request_meeting_action_item, 'findMany', async ({ where }: any) => actions.filter((item) => item.minutes_id === where.minutes_id));
-  patch(prisma.iam_user, 'findMany', async () => [{ id: 'notetaker', full_name: 'Notulis', email: 'note@example.test' }]);
+  patch(prisma.iam_user, 'findMany', async () => [
+    { id: 'notetaker', full_name: 'Notulis', email: 'note@example.test' },
+    { id: 'attendee', full_name: 'Peserta', email: 'attendee@example.test' },
+  ]);
   patch(prisma as any, '$transaction', async (input: any) => Array.isArray(input) ? Promise.all(input) : input(tx));
   patch(AuditService as any, 'logDeltaEvent', async () => undefined);
   try {
@@ -114,15 +120,23 @@ async function main() {
     await assert.rejects(() => MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-09-29', summary: 'Overwrite' }, 'company', 'notetaker', 'ROLE-STAFF'), /sudah dipublikasikan/);
     await assert.rejects(() => MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-10-03', summary: 'Weekend' }, 'company', 'notetaker', 'ROLE-STAFF'), /bukan occurrence/);
     await assert.rejects(() => MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-09-30', summary: 'No access' }, 'company', 'other', 'ROLE-STAFF'), /tidak terlibat/);
+    const attendeeView = await MeetingRequestService.getById('meeting', 'company', 'attendee', 'ROLE-STAFF', '2026-09-30');
+    assert.equal(attendeeView.permissions.can_edit_minutes, true, 'in recurring meeting, participants can edit minutes');
+    const attendeeSave = await MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-09-30', summary: 'Attendee edit' }, 'company', 'attendee', 'ROLE-STAFF');
+    assert.equal(attendeeSave.minutes?.summary, 'Attendee edit');
 
     meeting.recurrence_type = 'NON_RECURRING';
     meeting.recurrence_end_at = null;
+    const attendeeOneTime = await MeetingRequestService.getById('meeting', 'company', 'attendee', 'ROLE-STAFF', '2026-09-28');
+    assert.equal(attendeeOneTime.permissions.can_edit_minutes, false, 'in non-recurring meeting, only assigned notetaker can edit');
+    await assert.rejects(() => MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-09-28', summary: 'Attendee edit' }, 'company', 'attendee', 'ROLE-STAFF'), /Hanya notulis/);
+
     notes.splice(0);
     await MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-09-28', summary: 'One-time note' }, 'company', 'notetaker', 'ROLE-STAFF');
     const oneTime = await MeetingRequestService.publishMinutes('meeting', 'company', 'notetaker', 'ROLE-STAFF', '2026-09-28');
     assert.equal(oneTime.notes.length, 1);
     assert.equal(oneTime.notes[0].status, 'COMPLETED');
-    assert.equal(meetingUpdateCount, 5, 'one-time publish completes its meeting after the draft save');
+    assert.equal(meetingUpdateCount, 6, 'one-time publish completes its meeting after the draft save');
     assert.equal(ticketUpdateCount, 1, 'one-time publish completes its request ticket');
     console.log('Recurring meeting passed: weekday defaults, explicit weekend config, lazy notes, create/view/edit, refresh idempotency, date isolation, completion and permission checks.');
   } finally {

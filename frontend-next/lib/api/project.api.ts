@@ -57,6 +57,7 @@ export interface ProjectAuthority {
   can_review_task_transfer: boolean;
   can_override_progress: boolean;
   can_manage_milestones: boolean;
+  can_view_financials: boolean;
   can_delegate_supervisor: boolean;
   can_create_project: boolean;
   can_delete_project: boolean;

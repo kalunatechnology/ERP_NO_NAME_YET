@@ -22,6 +22,18 @@ export interface SaveMeetingMinutesPayload {
   }>;
 }
 
+// ---------------------------------------------------------------------------
+// STATUS HIERARCHY FOR MEETING MINUTES
+// ---------------------------------------------------------------------------
+// Per-occurrence status:  NOT_CREATED  →  DRAFT  →  COMPLETED (published)
+// Meeting request status: SCHEDULED  →  IN_MINUTES  →  COMPLETED
+//
+// saveMinutes()    → saves/updates DRAFT; NO notification sent
+// publishMinutes() → sets status to PUBLISHED; sends notification to all participants
+// Non-recurring    → publish also closes meeting + ticket (COMPLETED)
+// Recurring        → publish closes this occurrence only; series continues
+// ---------------------------------------------------------------------------
+
 // Only true executives may view all meetings regardless of participation.
 // Every other role (PM, OM, Supervisor, Staff, etc.) is restricted to meetings
 // they are directly involved in (organizer, notetaker, or participant).
@@ -29,6 +41,96 @@ const EXECUTIVE_ROLES = new Set([
   'SUPER_ADMIN', 'COMPANY_ADMIN', 'DIRECTOR',
   'ROLE-SUPER-ADMIN', 'ROLE-COMPANY-ADMIN', 'ROLE-DIRECTOR',
 ]);
+
+// ---------------------------------------------------------------------------
+// INTERNAL NOTIFICATION HELPER — notifyUser
+// Sends a targeted app notification to a single user. Non-blocking:
+// errors are caught and warned but never thrown to the caller.
+// ---------------------------------------------------------------------------
+async function notifyUser(params: {
+  recipient_user_id: string;
+  actor_user_id: string | null;
+  title: string;
+  message: string;
+  action_url: string;
+  notification_type: string;
+  priority: string;
+  company_id: string | null;
+}): Promise<void> {
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_REGEX.test(params.recipient_user_id)) return;
+  try {
+    const now = new Date();
+    const notifId = crypto.randomUUID();
+    const companyId = params.company_id && UUID_REGEX.test(params.company_id) ? params.company_id : null;
+    await prisma.core_notification.create({
+      data: {
+        id: notifId, title: params.title, message: params.message,
+        action_url: params.action_url, notification_type: params.notification_type,
+        priority: params.priority, company_id: companyId, created_at: now,
+      },
+    });
+    await prisma.core_notification_recipient.create({
+      data: {
+        id: crypto.randomUUID(), notification_id: notifId, recipient_role_id: null,
+        recipient_user_id: params.recipient_user_id, company_id: companyId, delivery_status: 'UNREAD',
+      },
+    });
+    // Real-time sidebar (core_app_notification)
+    await prisma.core_app_notification.create({
+      data: {
+        id: crypto.randomUUID(), company_id: companyId,
+        recipient_id: params.recipient_user_id,
+        actor_id: params.actor_user_id && UUID_REGEX.test(params.actor_user_id) ? params.actor_user_id : null,
+        category: params.notification_type, title: params.title,
+        description: params.message, target_url: params.action_url,
+        is_read: false, created_at: now, updated_at: now,
+      },
+    });
+  } catch (err) {
+    console.warn('[MeetingRequestService] Notification warning (non-blocking):', err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SEND MINUTES-PUBLISHED NOTIFICATION TO ALL PARTICIPANTS
+// Notifies organizer + notetaker + all participants (except the publisher)
+// that the minutes for a specific occurrence are now available.
+// ---------------------------------------------------------------------------
+async function notifyMinutesPublished(params: {
+  meetingId: string;
+  companyId: string;
+  organizer_user_id: string | null;
+  notetaker_user_id: string | null;
+  participants: Array<{ user_id: string | null }>;
+  requestNumber: string;
+  requestTitle: string;
+  occurrenceDate: string;
+  publisherUserId: string;
+}): Promise<void> {
+  const recipientIds = Array.from(new Set([
+    params.organizer_user_id,
+    params.notetaker_user_id,
+    ...params.participants.map((p) => p.user_id),
+  ].filter((id): id is string => Boolean(id) && id !== params.publisherUserId)));
+
+  const actionUrl = `/requests?meeting=${params.meetingId}`;
+  const title = `Notulensi Dipublikasikan: ${params.requestTitle}`;
+  let formattedDate = '';
+  try { formattedDate = new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(params.occurrenceDate)); } catch { /* ignore */ }
+  const message = `${params.requestNumber} — Notulensi meeting${formattedDate ? ` tanggal ${formattedDate}` : ''} telah dipublikasikan dan dapat dibaca oleh seluruh peserta.`;
+
+  await Promise.all(recipientIds.map((recipientUserId) =>
+    notifyUser({
+      recipient_user_id: recipientUserId,
+      actor_user_id: params.publisherUserId,
+      title, message, action_url: actionUrl,
+      notification_type: 'MINUTES_PUBLISHED',
+      priority: 'NORMAL',
+      company_id: params.companyId,
+    }),
+  ));
+}
 
 export class MeetingRequestService {
   static async list(companyId: string, userId: string, activeRole: string, query: { status?: string; search?: string }) {
@@ -94,11 +196,30 @@ export class MeetingRequestService {
       prisma.request_meeting_decision.findMany({ where: { minutes_id: minutes.id, company_id: companyId }, orderBy: { decision_number: 'asc' } }),
       prisma.request_meeting_action_item.findMany({ where: { minutes_id: minutes.id, company_id: companyId }, orderBy: { created_at: 'asc' } }),
     ]) : [[], []];
+    const isExecutive = EXECUTIVE_ROLES.has(activeRole);
+    const isNotetaker = meeting.notetaker_user_id === userId;
+    const isParticipant = Boolean(participant);
+    const isOrganizer = meeting.organizer_user_id === userId;
+
+    // Notulensi terbuka hanya di recurring meeting (semua peserta, organizer, notetaker, executive dapat menyusun).
+    // Pada non-recurring meeting, hanya notulis yang ditugaskan (atau executive) yang dapat menyusun.
+    const canEditMinutes = meeting.recurrence_type === 'RECURRING'
+      ? (isNotetaker || isOrganizer || isParticipant || isExecutive)
+      : (isNotetaker || isExecutive);
+
+    // can_publish: user has edit rights AND there is a DRAFT waiting to be published
+    const canPublish = canEditMinutes && Boolean(minutes) && minutes?.status !== 'PUBLISHED';
+
     return {
       ...meeting, request,
       participants: participants.map((item) => ({ ...item, user: item.user_id ? userById.get(item.user_id) ?? null : null })),
       notetaker: meeting.notetaker_user_id ? userById.get(meeting.notetaker_user_id) ?? null : null,
-      permissions: { can_edit_minutes: meeting.notetaker_user_id === userId },
+      permissions: {
+        can_edit_minutes: canEditMinutes,
+        // can_publish is true only when a saved draft exists and the user has rights to publish.
+        // This drives the enabled/disabled state of the Publikasikan button on the frontend.
+        can_publish: canPublish,
+      },
       agenda,
       selected_occurrence_date: selectedOccurrenceDate,
       notes,
@@ -109,8 +230,12 @@ export class MeetingRequestService {
   static async saveMinutes(meetingId: string, payload: SaveMeetingMinutesPayload, companyId: string, userId: string, activeRole: string) {
     const detail = await this.getById(meetingId, companyId, userId, activeRole, payload.occurrence_date);
     if (!detail.request) throw new NotFoundError('Request');
-    if (detail.notetaker_user_id !== userId) {
-      throw new ForbiddenError('Hanya notulis yang ditugaskan yang dapat menyusun notulensi.');
+    if (!detail.permissions?.can_edit_minutes) {
+      if (detail.recurrence_type === 'RECURRING') {
+        throw new ForbiddenError('Hanya peserta yang tergabung dalam recurring meeting ini yang dapat menyusun notulensi.');
+      } else {
+        throw new ForbiddenError('Hanya notulis yang ditugaskan yang dapat menyusun notulensi.');
+      }
     }
     const occurrenceDate = resolveMeetingOccurrenceDate(detail, payload.occurrence_date);
     if (detail.minutes?.status === 'PUBLISHED') throw new ValidationError('Notulensi pada tanggal ini sudah dipublikasikan dan tidak dapat ditimpa.');
@@ -150,37 +275,86 @@ export class MeetingRequestService {
       await tx.request_meeting.update({ where: { id: meetingId }, data: { status: 'IN_MINUTES' } });
       return record;
     });
+    // Audit: note that draft was saved WITHOUT sending any notification.
+    // Participants receive no notification at this stage — notification is sent only on publish.
     await AuditService.logDeltaEvent({ entity: 'request_meeting_minutes', entityId: minutes.id, action: 'SAVE_MINUTES', before: {},
-      after: { meeting_id: meetingId, occurrence_date: occurrenceDate, decision_count: decisions.length, action_item_count: actionItems.length }, userId, companyId,
-      description: `Draft notulensi ${detail.request.request_number} disimpan.`,
+      after: { meeting_id: meetingId, occurrence_date: occurrenceDate, status: 'DRAFT', decision_count: decisions.length, action_item_count: actionItems.length }, userId, companyId,
+      description: `Draft notulensi ${detail.request.request_number} (${occurrenceDate}) disimpan — belum dipublikasikan, notifikasi belum dikirim.`,
     });
+    // NO notifications dispatched — return refreshed detail only.
     return this.getById(meetingId, companyId, userId, activeRole, occurrenceDate);
   }
 
+  // ---------------------------------------------------------------------------
+  // publishMinutes — PUBLISHED status + NOTIFICATION to all participants
+  // ---------------------------------------------------------------------------
   static async publishMinutes(meetingId: string, companyId: string, userId: string, activeRole: string, occurrenceDate?: string) {
     const detail = await this.getById(meetingId, companyId, userId, activeRole, occurrenceDate);
-    if (!detail.minutes) throw new ValidationError('Simpan draft notulensi sebelum dipublikasikan.');
-    if (!detail.minutes.summary.trim() && !detail.minutes.general_discussion.trim()) {
-      throw new ValidationError('Ringkasan atau pembahasan notulensi wajib diisi sebelum publikasi.');
+
+    // Guard 1: a saved draft must exist
+    if (!detail.minutes) {
+      throw new ValidationError('Simpan draft notulensi terlebih dahulu sebelum dipublikasikan.');
     }
-    if (detail.notetaker_user_id !== userId) {
-      throw new ForbiddenError('Hanya notulis yang ditugaskan yang dapat mempublikasikan notulensi.');
+    // Guard 2: cannot republish an already-published occurrence
+    if (detail.minutes.status === 'PUBLISHED') {
+      throw new ValidationError('Notulensi pada tanggal ini sudah dipublikasikan sebelumnya.');
     }
+    // Guard 3: at least summary or general discussion must be filled
+    if (!detail.minutes.summary?.trim() && !detail.minutes.general_discussion?.trim()) {
+      throw new ValidationError('Ringkasan atau catatan utama notulensi wajib diisi sebelum publikasi.');
+    }
+    // Guard 4: permission check
+    if (!detail.permissions.can_edit_minutes) {
+      throw new ForbiddenError(
+        detail.recurrence_type === 'RECURRING'
+          ? 'Hanya peserta yang tergabung dalam recurring meeting ini yang dapat mempublikasikan notulensi.'
+          : 'Hanya notulis yang ditugaskan yang dapat mempublikasikan notulensi.',
+      );
+    }
+
     const now = new Date();
-    const updates: any[] = [
-      prisma.request_meeting_minutes.update({ where: { id: detail.minutes.id }, data: { status: 'PUBLISHED', published_at: now, approved_by_id: userId } }),
+
+    // Persist atomically: mark DRAFT as PUBLISHED
+    const dbUpdates: any[] = [
+      prisma.request_meeting_minutes.update({
+        where: { id: detail.minutes.id },
+        data: { status: 'PUBLISHED', published_at: now, approved_by_id: userId },
+      }),
     ];
+    // Non-recurring only: closing this one-time meeting also closes the parent ticket
     if (detail.recurrence_type !== 'RECURRING') {
-      updates.push(
+      dbUpdates.push(
         prisma.request_meeting.update({ where: { id: meetingId }, data: { status: 'COMPLETED' } }),
         prisma.request_ticket.update({ where: { id: detail.request_id }, data: { status: 'COMPLETED', completed_at: now } }),
       );
     }
-    await prisma.$transaction(updates);
-    await AuditService.logDeltaEvent({ entity: 'request_meeting_minutes', entityId: detail.minutes.id, action: 'PUBLISH_MINUTES',
-      before: { status: detail.minutes.status }, after: { status: 'PUBLISHED', meeting_id: meetingId, occurrence_date: detail.selected_occurrence_date }, userId, companyId,
-      description: `Notulensi ${detail.request?.request_number ?? meetingId} dipublikasikan.`,
+    await prisma.$transaction(dbUpdates);
+
+    // Audit
+    await AuditService.logDeltaEvent({
+      entity: 'request_meeting_minutes', entityId: detail.minutes.id, action: 'PUBLISH_MINUTES',
+      before: { status: 'DRAFT' },
+      after: { status: 'PUBLISHED', meeting_id: meetingId, occurrence_date: detail.selected_occurrence_date },
+      userId, companyId,
+      description: `Notulensi ${detail.request?.request_number ?? meetingId} (${detail.selected_occurrence_date}) dipublikasikan — notifikasi dikirim ke seluruh peserta.`,
     });
+
+    // Fire-and-forget: notify organizer + notetaker + all participants (excluding publisher)
+    // This is intentionally non-blocking; errors are logged but never thrown.
+    if (detail.request) {
+      void notifyMinutesPublished({
+        meetingId,
+        companyId,
+        organizer_user_id: detail.organizer_user_id ?? null,
+        notetaker_user_id: detail.notetaker_user_id ?? null,
+        participants: detail.participants,
+        requestNumber: detail.request.request_number,
+        requestTitle: detail.request.title,
+        occurrenceDate: detail.selected_occurrence_date,
+        publisherUserId: userId,
+      });
+    }
+
     return this.getById(meetingId, companyId, userId, activeRole, detail.selected_occurrence_date);
   }
 }

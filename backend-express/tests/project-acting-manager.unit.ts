@@ -37,8 +37,10 @@ function fakeDb(options: { actingActive?: boolean; originalPmId?: string } = {})
       },
       findFirst: async ({ where }: any) => {
         const id = where.id ?? where.AND?.[0]?.id;
+        const createdById = where.created_by_id
+          ?? where.AND?.find((condition: any) => condition?.created_by_id)?.created_by_id;
         if (where.company_id !== COMPANY_A || id !== PROJECT_A) return null;
-        if (where.created_by_id && where.created_by_id !== originalPmId) return null;
+        if (createdById && createdById !== originalPmId) return null;
         return { id: PROJECT_A, project_manager_id: originalPmId, created_by_id: originalPmId };
       },
     },
@@ -65,6 +67,7 @@ async function main() {
   assert.equal(authority.effective_role, 'ACTING_PROJECT_MANAGER');
   assert.equal(authority.is_acting_project_manager, true);
   assert.equal(authority.can_manage_project, true);
+  assert.equal(authority.can_view_financials, true);
   assert.equal(authority.can_delegate_supervisor, false);
   assert.equal(authority.can_create_project, false);
   assert.equal(authority.can_delete_project, false);
@@ -88,6 +91,7 @@ async function main() {
   } as any;
   const ordinaryAuthority = await ProjectsService.getProjectAuthority(staff, PROJECT_A, COMPANY_A, ordinaryMemberDb);
   assert.equal(ordinaryAuthority.can_manage_project, false);
+  assert.equal(ordinaryAuthority.can_view_financials, false);
   assert.equal(ordinaryAuthority.can_manage_wbs, false);
   assert.equal(ordinaryAuthority.can_create_project, false);
 
@@ -109,13 +113,16 @@ async function main() {
 
   assert.deepEqual(await ProjectsService.managedProjectIds(otherCompanyPm, COMPANY_A, db), []);
   assert.deepEqual(await ProjectsService.projectAccessWhere(otherCompanyPm, COMPANY_A, db), { created_by_id: 'pm-other', tenant_id: 'tenant-a' });
+  await assert.rejects(() => ProjectsService.assertCanViewProject(otherCompanyPm, PROJECT_A, COMPANY_A, db));
   await assert.rejects(() => ProjectsService.assertCanManageProject(otherCompanyPm, PROJECT_A, COMPANY_A, db));
 
+  await ProjectsService.assertCanViewProject(user('pm-a', RoleCode.PROJECT_MANAGER), PROJECT_A, COMPANY_A, db);
   const pmAuthority = await ProjectsService.getProjectAuthority(user('pm-a', RoleCode.PROJECT_MANAGER), PROJECT_A, COMPANY_A, db);
   assert.equal(pmAuthority.effective_role, 'PROJECT_MANAGER');
   assert.equal(pmAuthority.is_project_manager, true);
   assert.equal(pmAuthority.is_acting_project_manager, false);
   assert.equal(pmAuthority.can_manage_project, true);
+  assert.equal(pmAuthority.can_view_financials, true);
   assert.equal(pmAuthority.can_delegate_supervisor, true);
   assert.equal(pmAuthority.can_create_project, true);
   assert.equal(pmAuthority.can_delete_project, true);

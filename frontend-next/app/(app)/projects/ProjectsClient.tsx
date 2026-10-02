@@ -270,9 +270,7 @@ export default function ProjectsClient() {
   const canUpdateProject = useMemo(() => canPerform("project:update", userRole), [userRole]);
   const canManageSelectedProject = Boolean(selectedAuthority?.can_manage_project);
   const canUpdateSelectedProject = canUpdateProject || isActingProjectManager;
-  const canViewFinancials = useMemo(() => {
-    return ["super_admin", "company_admin", "executive", "om", "pm", "finance"].includes(userRole || "");
-  }, [userRole]);
+  const canViewFinancials = Boolean(selectedAuthority?.can_view_financials);
 
   const [customerOptions, setCustomerOptions] = useState<string[]>([]);
 
@@ -522,13 +520,18 @@ export default function ProjectsClient() {
       setFundingRequestsList([]);
       return;
     }
+    let cancelled = false;
+    setFinancialPerformance(null);
+    setFundingRequestsList([]);
     Promise.allSettled([
       fetchProjectFinancialPerformance(selectedId),
       fetchProjectFundingRequests(selectedId)
     ]).then(([perfRes, fundingRes]) => {
+      if (cancelled) return;
       if (perfRes.status === "fulfilled") setFinancialPerformance(perfRes.value);
       if (fundingRes.status === "fulfilled") setFundingRequestsList(Array.isArray(fundingRes.value) ? fundingRes.value : []);
     });
+    return () => { cancelled = true; };
   }, [canViewFinancials, selectedId]);
 
   useEffect(() => {

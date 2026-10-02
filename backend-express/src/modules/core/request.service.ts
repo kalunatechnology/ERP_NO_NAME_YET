@@ -148,6 +148,40 @@ static async createRequest(
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Leave routing: auto-assign ke HR (jika ada) atau Executive sebagai fallback.
+  // Pemohon tidak perlu memilih tujuan secara manual (Requirement §5).
+  // ---------------------------------------------------------------------------
+  let effectiveAssigneeUserId = assignee_user_id ?? null;
+  if (request_type === 'LEAVE' && !effectiveAssigneeUserId) {
+    // 1. Cari role HR
+    const hrRole = await prisma.iam_role.findFirst({
+      where: { role_code: { in: ['HR', 'HUMAN_RESOURCE', 'HR_MANAGER', 'HR_STAFF'] as any } },
+      select: { id: true },
+    }).catch(() => null);
+    if (hrRole) {
+      const hrUserRole = await prisma.iam_user_role.findFirst({
+        where: { role_id: hrRole.id, company_id: companyId },
+        select: { user_id: true },
+      }).catch(() => null);
+      if (hrUserRole?.user_id) effectiveAssigneeUserId = hrUserRole.user_id;
+    }
+    // 2. Fallback ke Executive/Director aktif di company jika tidak ada HR
+    if (!effectiveAssigneeUserId) {
+      const execRoles = await prisma.iam_role.findMany({
+        where: { role_code: { in: ['DIRECTOR', 'COMPANY_ADMIN'] as any } },
+        select: { id: true },
+      }).catch(() => []);
+      if (execRoles.length) {
+        const execUserRole = await prisma.iam_user_role.findFirst({
+          where: { role_id: { in: execRoles.map((r) => r.id) }, company_id: companyId },
+          select: { user_id: true },
+        }).catch(() => null);
+        if (execUserRole?.user_id) effectiveAssigneeUserId = execUserRole.user_id;
+      }
+    }
+  }
+
   /**
    * Kalau request langsung di-assign saat dibuat,
    * pastikan user tersebut:
@@ -155,11 +189,12 @@ static async createRequest(
    * - aktif
    * - memang anggota company yang sama
    */
-  if (assignee_user_id) {
+  if (effectiveAssigneeUserId) {
+    const assigneeToValidate = effectiveAssigneeUserId;
     const [assignee, membership] = await Promise.all([
       prisma.iam_user.findFirst({
         where: {
-          id: assignee_user_id,
+          id: assigneeToValidate,
           is_active: true,
         },
         select: {
@@ -170,7 +205,7 @@ static async createRequest(
 
       prisma.iam_user_role.findFirst({
         where: {
-          user_id: assignee_user_id,
+          user_id: assigneeToValidate,
           company_id: companyId,
         },
         select: {
@@ -227,7 +262,7 @@ static async createRequest(
       title: title.trim(),
       description: description?.trim() ?? '',
       requester_user_id: userId,
-      assignee_user_id: assignee_user_id ?? null,
+      assignee_user_id: effectiveAssigneeUserId,
       project_id: project_id ?? null,
       priority,
       status: initialStatus,
@@ -346,7 +381,7 @@ static async createRequest(
      * NEW
      */
     assignee_user_id:
-      assignee_user_id ?? null,
+      effectiveAssigneeUserId,
 
     start_at:
       start_at
@@ -411,62 +446,62 @@ static async createRequest(
   });
 
   /**
-   * Existing approval notification ke OM.
+   * Targeted notifications — hanya pihak yang benar-benar terlibat (Requirement §7).
+   * Tidak ada broadcast ke seluruh role.
    */
   if (!is_draft) {
-    await this.createNotification({
-      title:
-        `Permohonan ${request_type}: ${title}`,
-
-      message:
-        `Permohonan baru ${requestNumber} diajukan dan membutuhkan validasi Operations Manager.`,
-
-      action_url:
-        `/dashboard?tab=requests&id=${instanceId}`,
-
-      notification_type:
-        'APPROVAL_REQUEST',
-
-      priority:
-        'HIGH',
-
-      recipient_role_id:
-        'OPERATIONS_MANAGER',
-
-      company_id:
-        companyId ?? null,
-    });
-
-    /**
-     * Kalau langsung assigned, kirim notification
-     * juga ke user yang menerima assignment.
-     */
-    if (assignee_user_id) {
-      await this.createNotification({
-        title:
-          request_type === 'MEETING' ? 'Meeting Baru Ditugaskan kepada Anda' : 'Request Baru Ditugaskan kepada Anda',
-
-        message:
-          `${requestNumber} — ${title}`,
-
-        action_url:
-          request_type === 'MEETING' ? '/requests' : `/dashboard?tab=requests&id=${instanceId}`,
-
-        notification_type:
-          'REQUEST_ASSIGNED',
-
-        priority:
-          'MEDIUM',
-
-        recipient_user_id:
-          assignee_user_id,
-
-        actor_user_id:
-          userId,
-
-        company_id:
-          companyId,
-      });
+    if (request_type === 'LEAVE') {
+      if (effectiveAssigneeUserId && effectiveAssigneeUserId !== userId) {
+        await this.createNotification({
+          title: `Permohonan Cuti/Izin Baru: ${title}`,
+          message: `${requestNumber} memerlukan penanganan Anda.`,
+          action_url: `/dashboard?tab=requests&id=${instanceId}`,
+          notification_type: 'APPROVAL_REQUEST',
+          priority: 'HIGH',
+          recipient_user_id: effectiveAssigneeUserId,
+          actor_user_id: userId,
+          company_id: companyId ?? null,
+        });
+      }
+    } else if (request_type === 'OTHER') {
+      if (effectiveAssigneeUserId && effectiveAssigneeUserId !== userId) {
+        await this.createNotification({
+          title: `Permintaan Baru Ditugaskan kepada Anda: ${title}`,
+          message: `${requestNumber} — ${title}. Memerlukan tindak lanjut Anda.`,
+          action_url: `/dashboard?tab=requests&id=${instanceId}`,
+          notification_type: 'REQUEST_ASSIGNED',
+          priority: 'MEDIUM',
+          recipient_user_id: effectiveAssigneeUserId,
+          actor_user_id: userId,
+          company_id: companyId ?? null,
+        });
+      }
+    } else if (request_type === 'MEETING') {
+      if (effectiveAssigneeUserId && effectiveAssigneeUserId !== userId) {
+        await this.createNotification({
+          title: 'Meeting Baru Ditugaskan kepada Anda',
+          message: `${requestNumber} — ${title}`,
+          action_url: '/requests',
+          notification_type: 'REQUEST_ASSIGNED',
+          priority: 'MEDIUM',
+          recipient_user_id: effectiveAssigneeUserId,
+          actor_user_id: userId,
+          company_id: companyId ?? null,
+        });
+      }
+    } else {
+      if (effectiveAssigneeUserId && effectiveAssigneeUserId !== userId) {
+        await this.createNotification({
+          title: 'Request Baru Ditugaskan kepada Anda',
+          message: `${requestNumber} — ${title}`,
+          action_url: `/dashboard?tab=requests&id=${instanceId}`,
+          notification_type: 'REQUEST_ASSIGNED',
+          priority: 'MEDIUM',
+          recipient_user_id: effectiveAssigneeUserId,
+          actor_user_id: userId,
+          company_id: companyId ?? null,
+        });
+      }
     }
   }
 
@@ -540,26 +575,40 @@ static async createRequest(
       description: `OM ${decision === 'APPROVE' ? 'memvalidasi & meneruskan ke PM' : decision === 'REJECT' ? 'menolak permohonan' : 'meminta Re-checking'}: ${remarks}`,
     });
 
-    // Notifikasi
+    // Notifikasi strict per-user (Requirement §7)
     if (decision === 'APPROVE') {
-      await this.createNotification({
-        title:              `Persetujuan Eksekutif Diperlukan`,
-        message:            `Permohonan #${requestId.slice(0, 8)} telah divalidasi OM dan menunggu approval Executive/PM.`,
-        action_url:         `/dashboard?tab=requests&id=${requestId}`,
-        notification_type:  'EXECUTIVE_APPROVAL',
-        priority:           'HIGH',
-        recipient_role_id:  'PROJECT_MANAGER',
-        company_id:         companyId,
-      });
+      const execRolesForNotif = await prisma.iam_role.findMany({
+        where: { role_code: { in: ['DIRECTOR', 'PROJECT_MANAGER', 'COMPANY_ADMIN'] as any } },
+        select: { id: true },
+      }).catch(() => []);
+      const execUserRoles = execRolesForNotif.length ? await prisma.iam_user_role.findMany({
+        where: { role_id: { in: execRolesForNotif.map((r) => r.id) }, company_id: companyId },
+        select: { user_id: true },
+        take: 5,
+      }).catch(() => []) : [];
+      for (const execUR of execUserRoles) {
+        await this.createNotification({
+          title:              `Persetujuan Eksekutif Diperlukan`,
+          message:            `Permohonan #${requestId.slice(0, 8)} telah divalidasi OM dan menunggu approval Anda.`,
+          action_url:         `/dashboard?tab=requests&id=${requestId}`,
+          notification_type:  'EXECUTIVE_APPROVAL',
+          priority:           'HIGH',
+          recipient_user_id:  execUR.user_id ?? undefined,
+          company_id:         companyId,
+        });
+      }
     } else if (decision === 'RE_CHECK') {
-      await this.createNotification({
-        title:              `Permohonan Membutuhkan Perbaikan (Re-checking)`,
-        message:            `OM meminta perbaikan: "${remarks}". Silakan perbarui dan kirim ulang.`,
-        action_url:         `/dashboard?tab=requests&id=${requestId}`,
-        notification_type:  'REVISION_REQUESTED',
-        priority:           'MEDIUM',
-        company_id:         companyId,
-      });
+      if (instance.created_by_id) {
+        await this.createNotification({
+          title:              `Permohonan Membutuhkan Perbaikan`,
+          message:            `OM meminta perbaikan: "${remarks}". Silakan perbarui dan kirim ulang.`,
+          action_url:         `/dashboard?tab=requests&id=${requestId}`,
+          notification_type:  'REVISION_REQUESTED',
+          priority:           'MEDIUM',
+          recipient_user_id:  instance.created_by_id,
+          company_id:         companyId,
+        });
+      }
     } else {
       await this.createNotification({
         title:              'Permohonan Ditolak Operations Manager',
@@ -656,17 +705,20 @@ static async createRequest(
       description: `Executive/PM ${decision === 'APPROVE' ? 'menyetujui resmi (TICKET REGISTERED)' : 'menolak'}: ${remarks}`,
     });
 
-    // Notifikasi hasil akhir
-    await this.createNotification({
-      title:              decision === 'APPROVE' ? `🎉 Tiket Resmi Terdaftar!` : `Tiket Ditolak oleh Executive`,
-      message:            decision === 'APPROVE'
-        ? `Permohonan telah disetujui penuh oleh Executive & OM. Jadwal/Dana telah terdaftar resmi.`
-        : `Permohonan ditolak oleh Executive: ${remarks}`,
-      action_url:         `/dashboard?tab=requests&id=${requestId}`,
-      notification_type:  'FINAL_STATUS',
-      priority:           decision === 'APPROVE' ? 'MEDIUM' : 'HIGH',
-      company_id:         companyId,
-    });
+    // Notifikasi hasil akhir — hanya ke requester spesifik (Requirement §7)
+    if (instance.created_by_id) {
+      await this.createNotification({
+        title:              decision === 'APPROVE' ? `Permohonan Anda Disetujui` : `Permohonan Anda Ditolak`,
+        message:            decision === 'APPROVE'
+          ? `Permohonan telah disetujui penuh oleh Executive. Tiket resmi terdaftar.`
+          : `Permohonan ditolak oleh Executive: ${remarks}`,
+        action_url:         `/dashboard?tab=requests&id=${requestId}`,
+        notification_type:  'FINAL_STATUS',
+        priority:           decision === 'APPROVE' ? 'MEDIUM' : 'HIGH',
+        recipient_user_id:  instance.created_by_id,
+        company_id:         companyId,
+      });
+    }
 
     return {
       id:            requestId,
@@ -1234,15 +1286,27 @@ static async getRequests(params: {
     normalizedRole === 'STAFF' ||
     normalizedRole === 'ROLE-STAFF';
 
+  // Role-based visibility flags (Requirement §8)
+  const EXEC_ROLE_CODES_SET = new Set([
+    'SUPER_ADMIN', 'COMPANY_ADMIN', 'DIRECTOR',
+    'ROLE-SUPER-ADMIN', 'ROLE-COMPANY-ADMIN', 'ROLE-DIRECTOR',
+  ]);
+  const isExecutiveRole = EXEC_ROLE_CODES_SET.has(normalizedRole);
+  const isOMRole =
+    normalizedRole === 'OPERATIONAL_MANAGER' ||
+    normalizedRole === 'ROLE-OPERATIONAL-MANAGER' ||
+    normalizedRole === 'OPERATIONS_MANAGER' ||
+    normalizedRole === 'ROLE-OPERATIONS-MANAGER';
+  const isPMRole =
+    normalizedRole === 'PROJECT_MANAGER' ||
+    normalizedRole === 'ROLE-PROJECT-MANAGER';
+
   /**
-   * Staff feed tidak boleh dibuat tanpa identity.
+   * Non-executive harus memiliki identity untuk membaca feed.
    */
-  if (
-    isStaff &&
-    !requesterUserId
-  ) {
+  if (!isExecutiveRole && !requesterUserId) {
     throw new ForbiddenError(
-      'User Staff tidak tersedia untuk memuat Request Card.',
+      'User identity tidak tersedia untuk memuat Request Card.',
     );
   }
 
@@ -1301,6 +1365,13 @@ static async getRequests(params: {
         `
       : Prisma.empty;
 
+  const requestTypeClause =
+    type && type !== 'ALL'
+      ? Prisma.sql`
+          AND ae.after_data ->> 'request_type' = ${type}
+        `
+      : Prisma.empty;
+
   /**
    * Request feed:
    *
@@ -1334,6 +1405,8 @@ static async getRequests(params: {
             'CREATE_REQUEST'
 
           ${companyClause}
+
+          ${requestTypeClause}
       ),
 
       request_state AS (
@@ -1409,10 +1482,47 @@ static async getRequests(params: {
 
         WHERE
           (
-            ${isStaff}::boolean = false
+            -- Executive sees everything
+            ${isExecutiveRole}::boolean = true
 
-            OR rs.assignee_user_id =
-              ${requesterUserId ?? null}::text
+            -- OM: milik sendiri + di-assign ke sendiri + yang perlu review mereka
+            OR (
+              ${isOMRole}::boolean = true
+              AND (
+                rs.user_id = ${requesterUserId ?? null}::text
+                OR rs.assignee_user_id = ${requesterUserId ?? null}::text
+                OR EXISTS (
+                  SELECT 1 FROM core_workflow_instance wi_chk
+                  WHERE wi_chk.id = rs.entity_id
+                  AND wi_chk.current_state IN ('PENDING_OM', 'RE_CHECKING')
+                )
+              )
+            )
+
+            -- PM: milik sendiri + di-assign ke sendiri + pending exec approval
+            OR (
+              ${isPMRole}::boolean = true
+              AND (
+                rs.user_id = ${requesterUserId ?? null}::text
+                OR rs.assignee_user_id = ${requesterUserId ?? null}::text
+                OR EXISTS (
+                  SELECT 1 FROM core_workflow_instance wi_chk
+                  WHERE wi_chk.id = rs.entity_id
+                  AND wi_chk.current_state = 'PENDING_EXEC'
+                )
+              )
+            )
+
+            -- Supervisor / Staff / Finance / dll: hanya milik sendiri atau di-assign ke sendiri
+            OR (
+              NOT ${isExecutiveRole}::boolean
+              AND NOT ${isOMRole}::boolean
+              AND NOT ${isPMRole}::boolean
+              AND (
+                rs.user_id = ${requesterUserId ?? null}::text
+                OR rs.assignee_user_id = ${requesterUserId ?? null}::text
+              )
+            )
           )
 
         ORDER BY
