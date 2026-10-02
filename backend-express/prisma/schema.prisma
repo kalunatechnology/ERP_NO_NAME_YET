@@ -243,6 +243,9 @@ model request_meeting {
   organizer_user_id String
   notetaker_user_id String?
   meeting_type      String    @default("INTERNAL")
+  recurrence_type   String    @default("NON_RECURRING")
+  recurrence_end_at DateTime?
+  recurrence_days   Int[]     @default([1, 2, 3, 4, 5])
   start_at          DateTime
   end_at            DateTime
   timezone          String    @default("Asia/Jakarta")
@@ -304,6 +307,7 @@ model request_meeting_minutes {
   company_id         String
   created_by_id      String
   meeting_id         String
+  occurrence_date    DateTime  @db.Date
   version_number     Int       @default(1)
   status             String    @default("DRAFT")
   summary            String    @default("")
@@ -319,7 +323,7 @@ model request_meeting_minutes {
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
 
-  @@unique([meeting_id, version_number])
+  @@unique([meeting_id, occurrence_date])
   @@index([company_id, meeting_id, status])
 }
 

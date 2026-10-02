@@ -110,7 +110,8 @@ requestRouter.post('/meetings', async (req, res, next) => {
 
 requestRouter.get('/meetings/:meetingId', async (req, res, next) => {
   try {
-    sendSuccess(res, await MeetingRequestService.getById(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req)));
+    const occurrenceDate = typeof req.query.date === 'string' ? req.query.date : undefined;
+    sendSuccess(res, await MeetingRequestService.getById(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req), occurrenceDate));
   } catch (error) { next(error); }
 });
 
@@ -122,7 +123,7 @@ requestRouter.put('/meetings/:meetingId/minutes', async (req, res, next) => {
 
 requestRouter.post('/meetings/:meetingId/minutes/publish', async (req, res, next) => {
   try {
-    sendSuccess(res, await MeetingRequestService.publishMinutes(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req)));
+    sendSuccess(res, await MeetingRequestService.publishMinutes(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req), req.body?.occurrence_date));
   } catch (error) { next(error); }
 });
 

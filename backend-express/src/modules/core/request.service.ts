@@ -13,6 +13,7 @@ import { AuditService } from './audit.service';
 import { RoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
 import { postRequestDisbursement } from '../finance/request-disbursement.service';
+import { DEFAULT_RECURRING_DAYS, meetingOccurrenceDates, normalizeRecurringDays } from './meeting-occurrence.service';
 
 export interface TaggedUser {
   id: string;
@@ -51,6 +52,9 @@ export interface CreateRequestPayload {
   is_draft?: boolean;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   meeting_type?: 'INTERNAL' | 'CLIENT' | 'VENDOR' | 'PROJECT' | 'OTHER';
+  recurrence_type?: 'RECURRING' | 'NON_RECURRING';
+  recurrence_end_at?: string | Date | null;
+  recurrence_days?: number[];
   timezone?: string;
   location?: string;
   meeting_url?: string;
@@ -95,6 +99,9 @@ static async createRequest(
     is_draft,
     priority = 'MEDIUM',
     meeting_type = 'INTERNAL',
+    recurrence_type = 'NON_RECURRING',
+    recurrence_end_at,
+    recurrence_days,
     timezone = 'Asia/Jakarta',
     location,
     meeting_url,
@@ -118,12 +125,26 @@ static async createRequest(
 
   const meetingStart = start_at ? new Date(start_at) : null;
   const meetingEnd = end_at ? new Date(end_at) : null;
+  const recurrenceEnd = recurrence_end_at ? new Date(recurrence_end_at) : null;
+  const normalizedRecurringDays = recurrence_type === 'RECURRING'
+    ? normalizeRecurringDays(recurrence_days)
+    : [...DEFAULT_RECURRING_DAYS];
   if (request_type === 'MEETING') {
     if (!meetingStart || !meetingEnd || Number.isNaN(meetingStart.getTime()) || Number.isNaN(meetingEnd.getTime())) {
       throw new ValidationError('Waktu mulai dan selesai wajib diisi untuk Meeting Request.');
     }
     if (meetingEnd <= meetingStart) {
       throw new ValidationError('Waktu selesai meeting harus setelah waktu mulai.');
+    }
+    if (!['RECURRING', 'NON_RECURRING'].includes(recurrence_type)) {
+      throw new ValidationError('Tipe schedule meeting tidak valid.');
+    }
+    if (recurrence_type === 'RECURRING') {
+      if (!recurrenceEnd || Number.isNaN(recurrenceEnd.getTime())) {
+        throw new ValidationError('Tanggal akhir recurring wajib diisi.');
+      }
+      meetingOccurrenceDates({ recurrence_type, recurrence_end_at: recurrenceEnd, recurrence_days: normalizedRecurringDays,
+        start_at: meetingStart, timezone });
     }
   }
 
@@ -224,6 +245,9 @@ static async createRequest(
         organizer_user_id: organizer_user_id ?? userId,
         notetaker_user_id: notetaker_user_id ?? null,
         meeting_type,
+        recurrence_type,
+        recurrence_end_at: recurrence_type === 'RECURRING' ? recurrenceEnd : null,
+        recurrence_days: normalizedRecurringDays,
         start_at: meetingStart,
         end_at: meetingEnd,
         timezone,
