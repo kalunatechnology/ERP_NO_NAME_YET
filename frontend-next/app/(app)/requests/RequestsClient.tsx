@@ -192,15 +192,16 @@ export default function RequestsClient(){
         </div>
       </div>
 
-      {/* ── Unified Toolbar (Tabs, Search & Status Chips) ── */}
-      <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-[#D9D9D9] shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2.5">
+      {/* ── Unified Toolbar (Tabs, Type, Status & Search) ── */}
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-[#D9D9D9] shadow-xs flex flex-col gap-3">
+        {/* Top Row: Module Tabs & Search Input */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           {/* Main Module Tabs Switcher */}
           <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-xs font-bold">
             <button
               onClick={() => setActiveTab('meeting')}
               className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all",
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all",
                 activeTab === 'meeting'
                   ? "bg-white text-[#2649B3] shadow-2xs font-extrabold"
                   : "text-[#4F5050] hover:text-[#090909]"
@@ -219,7 +220,7 @@ export default function RequestsClient(){
             <button
               onClick={() => setActiveTab('request')}
               className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all",
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all",
                 activeTab === 'request'
                   ? "bg-white text-[#2B7A42] shadow-2xs font-extrabold"
                   : "text-[#4F5050] hover:text-[#090909]"
@@ -236,73 +237,85 @@ export default function RequestsClient(){
             </button>
           </div>
 
-          {/* Type Filter for Meeting */}
-          {activeTab === 'meeting' && (
-            <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
-              {(['ALL', 'RECURRING', 'NON_RECURRING'] as const).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTypeFilter(t)}
-                  className={cn(
-                    "px-2.5 py-1 rounded-lg transition-all",
-                    typeFilter === t ? "bg-white text-[#2649B3] shadow-2xs font-extrabold" : "hover:text-[#090909]"
-                  )}
-                >
-                  {t === 'ALL' ? 'Semua Tipe' : t === 'RECURRING' ? 'Recurring' : 'Sekali'}
-                </button>
-              ))}
+          {/* Search Box - Absolute icon in left-3.5 with generous pl-10 ensures ZERO overlap */}
+          <div className="relative min-w-[220px] flex-1 sm:w-72 sm:flex-initial">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400">
+              <Search size={15} />
             </div>
-          )}
-        </div>
-
-        {/* Search & Status Filters */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative min-w-[200px] flex-1 sm:w-60">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={activeTab === 'meeting' ? "Cari judul meeting..." : "Cari permohonan izin..."}
-              className="h-9 w-full rounded-xl border border-[#D9D9D9] bg-white pl-8.5 pr-7 text-xs text-[#090909] placeholder:text-[#4F5050]/60 outline-none focus:border-[#2649B3] transition-all"
+              placeholder={activeTab === 'meeting' ? "Cari judul meeting atau nomor..." : "Cari permohonan izin..."}
+              className="h-10 w-full rounded-xl border border-[#D9D9D9] bg-white pl-10 pr-9 text-xs text-[#090909] placeholder:text-[#4F5050]/60 outline-none focus:border-[#2649B3] focus:ring-1 focus:ring-[#2649B3]/20 transition-all"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600">
-                <X size={12} />
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                title="Hapus pencarian"
+              >
+                <X size={13} />
               </button>
             )}
           </div>
+        </div>
 
-          {activeTab === 'meeting' && (
-            <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0">
-              {(['ALL', 'SCHEDULED', 'DRAFT', 'COMPLETED'] as const).map(status => {
-                const count = status === 'ALL' ? meetingCounts.all : status === 'DRAFT' ? meetingCounts.draft : status === 'SCHEDULED' ? meetingCounts.scheduled : meetingCounts.completed;
-                const label = status === 'ALL' ? 'Semua' : status === 'DRAFT' ? 'Draft' : status === 'SCHEDULED' ? 'Terjadwal' : 'Selesai';
-                const isActive = statusFilter === status;
-                return (
+        {/* Bottom Row: Segmented Filters (Only in Meeting tab) */}
+        {activeTab === 'meeting' && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pt-2 border-t border-[#F0F0F0]">
+            {/* Type Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-3xs font-bold text-[#4F5050] uppercase tracking-wider hidden sm:inline">Tipe:</span>
+              <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
+                {(['ALL', 'RECURRING', 'NON_RECURRING'] as const).map(t => (
                   <button
-                    key={status}
-                    onClick={() => setStatusFilter(status)}
+                    key={t}
+                    onClick={() => setTypeFilter(t)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-2xs font-extrabold whitespace-nowrap transition-all border",
-                      isActive
-                        ? "bg-[#2649B3] text-white border-[#2649B3] shadow-2xs"
-                        : "bg-white text-[#4F5050] border-[#D9D9D9] hover:border-neutral-400 hover:text-[#090909]"
+                      "px-2.5 py-1 rounded-lg transition-all",
+                      typeFilter === t ? "bg-white text-[#2649B3] shadow-2xs font-extrabold" : "hover:text-[#090909]"
                     )}
                   >
-                    <span>{label}</span>
-                    <span className={cn(
-                      "px-1.5 py-0.2 rounded-full text-3xs",
-                      isActive ? "bg-white/20 text-white" : "bg-neutral-100 text-[#4F5050]"
-                    )}>
-                      {count}
-                    </span>
+                    {t === 'ALL' ? 'Semua Tipe' : t === 'RECURRING' ? 'Recurring' : 'Sekali'}
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Status Filter as Segmented Control */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-0.5 sm:pb-0">
+              <span className="text-3xs font-bold text-[#4F5050] uppercase tracking-wider hidden sm:inline">Status:</span>
+              <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
+                {(['ALL', 'SCHEDULED', 'DRAFT', 'COMPLETED'] as const).map(status => {
+                  const count = status === 'ALL' ? meetingCounts.all : status === 'DRAFT' ? meetingCounts.draft : status === 'SCHEDULED' ? meetingCounts.scheduled : meetingCounts.completed;
+                  const label = status === 'ALL' ? 'Semua' : status === 'DRAFT' ? 'Draft' : status === 'SCHEDULED' ? 'Terjadwal' : 'Selesai';
+                  const isActive = statusFilter === status;
+                  return (
+                    <button
+                      key={status}
+                      onClick={() => setStatusFilter(status)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all whitespace-nowrap",
+                        isActive
+                          ? "bg-white text-[#2649B3] shadow-2xs font-extrabold"
+                          : "text-[#4F5050] hover:text-[#090909]"
+                      )}
+                    >
+                      <span>{label}</span>
+                      <span className={cn(
+                        "px-1.5 py-0.2 rounded-full text-3xs font-extrabold",
+                        isActive ? "bg-[#EAF6FF] text-[#2649B3]" : "bg-neutral-200/80 text-neutral-600"
+                      )}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Meeting Tab Content ── */}
