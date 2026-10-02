@@ -1,10 +1,11 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock3, FileDown, FileText, Filter, Italic, Link2, MapPin, Pencil, Plus, Repeat, Save, Search, Send, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock, Clock3, Coffee, Briefcase, FileDown, FileText, Filter, Italic, Link2, MapPin, Pencil, Plus, Repeat, Save, Search, Send, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
 import toast from "react-hot-toast";
 import { MeetingDetail, MeetingRequestSummary, NonMeetingRequest, requestApi } from "@/lib/api/request.api";
 import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
 
 type Member = { id: string; name: string; email: string; role: string };
 type CreateForm = { title:string; description:string; date:string; recurrenceEndDate:string; startTime:string; endTime:string; location:string; meetingUrl:string; meetingType:string; recurrenceType:"RECURRING"|"NON_RECURRING"; recurringDays:number[]; assigneeId:string; notetakerId:string; participantIds:string[]; agenda:string };
@@ -152,46 +153,100 @@ export default function RequestsClient(){
   }
   async function openNotes(occurrenceDate:string){if(!selected)return;const detail=await openMeeting(selected.id,occurrenceDate);if(detail)setNotesOpen(true);}
 
-  return <div className="min-h-[calc(100vh-120px)] bg-[#FDFDFD] text-[#090909]">
-    <div className="rounded-[24px] border border-[#E5E5E5] bg-white p-5 sm:p-7 shadow-xs">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+  return (
+    <div className="flex flex-col gap-5 w-full max-w-full text-[#090909]">
+      {/* ── Page Header Card ── */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#D9D9D9] shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[.16em] text-[#4F5050]">Contents / Meeting</p>
-          <h1 className="mt-2 text-2xl font-extrabold text-[#294BB2]">Meeting & Request</h1>
-          <p className="mt-1 text-sm text-[#4F5050]">Kelola jadwal meeting, koordinasi harian, notulensi, dan request izin/cuti.</p>
+          <div className="flex items-center gap-2">
+            <span className="text-3xs font-extrabold uppercase tracking-widest text-[#2649B3] px-2 py-0.5 rounded-md bg-[#EAF6FF]">
+              MODUL REQUEST & KOORDINASI
+            </span>
+          </div>
+          <h1 className="mt-1.5 text-xl sm:text-2xl font-black text-[#090909] tracking-tight">
+            Meeting & Permintaan Tim
+          </h1>
+          <p className="mt-0.5 text-xs text-[#4F5050]">
+            Kelola agenda rapat rutin, notulensi hasil kesepakatan, serta pengajuan cuti dan izin kerja.
+          </p>
         </div>
-        {activeTab==='meeting'
-          ?<button onClick={()=>setCreateOpen(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#294BB2] px-5 text-sm font-bold text-white shadow-xs hover:bg-[#203d91] active:scale-95 transition-all"><Plus size={18}/> New Meeting</button>
-          :<button onClick={()=>setRequestModalOpen(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2B7A42] px-5 text-sm font-bold text-white shadow-xs hover:bg-[#226135] active:scale-95 transition-all"><Plus size={18}/> New Request</button>
-        }
+
+        <div className="flex items-center gap-2.5 shrink-0">
+          {activeTab === 'meeting' ? (
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2649B3] hover:bg-[#203D91] text-white text-xs font-bold shadow-xs active:scale-95 transition-all"
+            >
+              <Plus size={15} strokeWidth={2.5} />
+              <span>Meeting Baru</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setRequestModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2B7A42] hover:bg-[#226135] text-white text-xs font-bold shadow-xs active:scale-95 transition-all"
+            >
+              <Plus size={15} strokeWidth={2.5} />
+              <span>Ajukan Request</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Sub-tabs + Search & Filters Bar */}
-      <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-100 pb-5">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Main Module Tabs */}
-          <div className="flex gap-1 rounded-xl bg-[#F4F6FB] p-1">
-            <button onClick={()=>setActiveTab('meeting')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition ${activeTab==='meeting'?'bg-white text-[#294BB2] shadow-xs':'text-[#4F5050] hover:text-[#294BB2]'}`}>
-              <CalendarDays size={15}/> Meeting <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${activeTab==='meeting'?'bg-blue-100 text-[#294BB2]':'bg-slate-200 text-slate-600'}`}>{meetings.length}</span>
+      {/* ── Unified Toolbar (Tabs, Search & Status Chips) ── */}
+      <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-[#D9D9D9] shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Main Module Tabs Switcher */}
+          <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-xs font-bold">
+            <button
+              onClick={() => setActiveTab('meeting')}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all",
+                activeTab === 'meeting'
+                  ? "bg-white text-[#2649B3] shadow-2xs font-extrabold"
+                  : "text-[#4F5050] hover:text-[#090909]"
+              )}
+            >
+              <Calendar size={14} />
+              <span>Meeting</span>
+              <span className={cn(
+                "px-1.5 py-0.2 rounded-full text-3xs font-extrabold",
+                activeTab === 'meeting' ? "bg-[#EAF6FF] text-[#2649B3]" : "bg-neutral-200 text-neutral-600"
+              )}>
+                {meetings.length}
+              </span>
             </button>
-            <button onClick={()=>setActiveTab('request')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition ${activeTab==='request'?'bg-white text-[#2B7A42] shadow-xs':'text-[#4F5050] hover:text-[#2B7A42]'}`}>
-              <ClipboardList size={15}/> Request <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${activeTab==='request'?'bg-emerald-100 text-[#2B7A42]':'bg-slate-200 text-slate-600'}`}>{nonMeetingRequests.length}</span>
+
+            <button
+              onClick={() => setActiveTab('request')}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all",
+                activeTab === 'request'
+                  ? "bg-white text-[#2B7A42] shadow-2xs font-extrabold"
+                  : "text-[#4F5050] hover:text-[#090909]"
+              )}
+            >
+              <ClipboardList size={14} />
+              <span>Request Izin/Cuti</span>
+              <span className={cn(
+                "px-1.5 py-0.2 rounded-full text-3xs font-extrabold",
+                activeTab === 'request' ? "bg-emerald-100 text-[#2B7A42]" : "bg-neutral-200 text-neutral-600"
+              )}>
+                {nonMeetingRequests.length}
+              </span>
             </button>
           </div>
 
-          {/* Type Filter for Meetings */}
-          {activeTab==='meeting' && (
-            <div className="flex items-center gap-1 rounded-xl bg-slate-50 p-1 border border-slate-200/60 text-xs">
+          {/* Type Filter for Meeting */}
+          {activeTab === 'meeting' && (
+            <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
               {(['ALL', 'RECURRING', 'NON_RECURRING'] as const).map(t => (
                 <button
                   key={t}
                   onClick={() => setTypeFilter(t)}
-                  className={`rounded-lg px-2.5 py-1.5 font-bold transition ${
-                    typeFilter === t
-                      ? 'bg-white text-[#294BB2] shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg transition-all",
+                    typeFilter === t ? "bg-white text-[#2649B3] shadow-2xs font-extrabold" : "hover:text-[#090909]"
+                  )}
                 >
                   {t === 'ALL' ? 'Semua Tipe' : t === 'RECURRING' ? 'Recurring' : 'Sekali'}
                 </button>
@@ -200,45 +255,48 @@ export default function RequestsClient(){
           )}
         </div>
 
-        {/* Search Input & Status Filters */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Search & Status Filters */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <div className="relative min-w-[200px] flex-1 sm:w-60">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari judul meeting..."
-              className="h-9.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-9 pr-7 text-xs font-medium text-slate-700 outline-none focus:border-[#294BB2] focus:bg-white focus:ring-2 focus:ring-[#294BB2]/10 transition-all"
+              placeholder={activeTab === 'meeting' ? "Cari judul meeting..." : "Cari permohonan izin..."}
+              className="h-9 w-full rounded-xl border border-[#D9D9D9] bg-white pl-8.5 pr-7 text-xs text-[#090909] placeholder:text-[#4F5050]/60 outline-none focus:border-[#2649B3] transition-all"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                <X size={13} />
+              <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600">
+                <X size={12} />
               </button>
             )}
           </div>
 
-          {activeTab==='meeting' && (
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-              {(['ALL', 'DRAFT', 'SCHEDULED', 'COMPLETED'] as const).map(status => {
+          {activeTab === 'meeting' && (
+            <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0">
+              {(['ALL', 'SCHEDULED', 'DRAFT', 'COMPLETED'] as const).map(status => {
                 const count = status === 'ALL' ? meetingCounts.all : status === 'DRAFT' ? meetingCounts.draft : status === 'SCHEDULED' ? meetingCounts.scheduled : meetingCounts.completed;
                 const label = status === 'ALL' ? 'Semua' : status === 'DRAFT' ? 'Draft' : status === 'SCHEDULED' ? 'Terjadwal' : 'Selesai';
+                const isActive = statusFilter === status;
                 return (
                   <button
                     key={status}
                     onClick={() => setStatusFilter(status)}
-                    className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition whitespace-nowrap ${
-                      statusFilter === status
-                        ? status === 'DRAFT'
-                          ? 'bg-amber-100 text-amber-900 shadow-xs'
-                          : status === 'COMPLETED'
-                          ? 'bg-emerald-100 text-emerald-900 shadow-xs'
-                          : 'bg-[#294BB2] text-white shadow-xs'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                    }`}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-2xs font-extrabold whitespace-nowrap transition-all border",
+                      isActive
+                        ? "bg-[#2649B3] text-white border-[#2649B3] shadow-2xs"
+                        : "bg-white text-[#4F5050] border-[#D9D9D9] hover:border-neutral-400 hover:text-[#090909]"
+                    )}
                   >
                     <span>{label}</span>
-                    <span className={`rounded-full px-1.5 py-0.2 text-[10px] ${statusFilter === status ? 'bg-black/15 text-inherit' : 'bg-slate-200 text-slate-600'}`}>{count}</span>
+                    <span className={cn(
+                      "px-1.5 py-0.2 rounded-full text-3xs",
+                      isActive ? "bg-white/20 text-white" : "bg-neutral-100 text-[#4F5050]"
+                    )}>
+                      {count}
+                    </span>
                   </button>
                 );
               })}
@@ -247,153 +305,216 @@ export default function RequestsClient(){
         </div>
       </div>
 
-      {/* Meeting Tab */}
-      {activeTab==='meeting'&&<div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4.5">
-        {loading&&[1,2,3].map(item=><div key={item} className="h-44 animate-pulse rounded-2xl border border-slate-200 bg-slate-50 p-5"/>)}
-        {!loading&&filteredMeetings.length===0&&<div className="col-span-full rounded-2xl border border-dashed border-slate-300 p-14 text-center text-sm text-slate-500">Tidak ada meeting yang sesuai dengan filter atau pencarian.</div>}
-        {filteredMeetings.map(row=>{
-          const isDraft = row.status === "DRAFT" || row.request?.status === "DRAFT";
-          const isCompleted = row.status === "COMPLETED";
-          const isRecurring = row.recurrence_type === "RECURRING";
+      {/* ── Meeting Tab Content ── */}
+      {activeTab === 'meeting' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+          {loading && [1, 2, 3, 4, 5, 6].map(item => (
+            <div key={item} className="h-44 rounded-[20px] bg-white border border-[#D9D9D9] animate-pulse p-4.5" />
+          ))}
 
-          return (
-            <div
-              key={row.id}
-              onClick={()=>void openMeeting(row.id)}
-              className={`group relative flex flex-col justify-between rounded-2xl border bg-white p-5 text-left cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-[#294BB2]/5 ${
-                isDraft
-                  ? "border-amber-200/90 bg-gradient-to-b from-amber-50/20 to-white hover:border-amber-400"
-                  : isCompleted
-                  ? "border-emerald-100 bg-white hover:border-emerald-300"
-                  : "border-slate-200/90 hover:border-[#294BB2]/50 hover:ring-2 hover:ring-[#294BB2]/10"
-              }`}
-            >
-              <div>
-                {/* Top Badges Header: Guaranteed NO wrapping */}
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold tracking-wide whitespace-nowrap ${
-                      isRecurring
-                        ? "bg-[#EAF3FF] text-[#294BB2]"
-                        : "bg-slate-100 text-slate-700"
-                    }`}
-                  >
-                    {isRecurring ? <Repeat size={13} className="text-[#294BB2]" /> : <Calendar size={13} />}
-                    {isRecurring ? "Recurring" : "Sekali"}
-                  </span>
+          {!loading && filteredMeetings.length === 0 && (
+            <div className="col-span-full rounded-[20px] bg-white border border-[#D9D9D9] p-12 text-center text-xs text-[#4F5050]">
+              Tidak ada agenda meeting yang sesuai dengan filter atau kata kunci pencarian.
+            </div>
+          )}
 
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-extrabold whitespace-nowrap shadow-2xs ${
-                      isDraft
-                        ? "border border-amber-300/80 bg-[#FFF7E6] text-[#B45309]"
-                        : isCompleted
-                        ? "border border-emerald-200 bg-[#E6F8EE] text-[#147A43]"
-                        : "border border-blue-200 bg-[#EAF6FF] text-[#294BB2]"
-                    }`}
-                  >
-                    {isDraft ? (
-                      <>
-                        <Clock3 size={13} className="text-[#B45309]" />
-                        Draft
-                      </>
-                    ) : isCompleted ? (
-                      <>
-                        <CheckCircle2 size={13} className="text-[#147A43]" />
-                        Selesai
-                      </>
-                    ) : (
-                      <>
-                        <Check size={13} className="text-[#294BB2]" />
-                        Terjadwal
-                      </>
-                    )}
-                  </span>
+          {filteredMeetings.map(row => {
+            const isDraft = row.status === "DRAFT" || row.request?.status === "DRAFT";
+            const isCompleted = row.status === "COMPLETED";
+            const isRecurring = row.recurrence_type === "RECURRING";
+
+            return (
+              <div
+                key={row.id}
+                onClick={() => void openMeeting(row.id)}
+                className="group relative flex flex-col justify-between p-4.5 rounded-[20px] bg-white border border-[#D9D9D9] hover:border-[#2649B3]/60 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-150 cursor-pointer shadow-2xs gap-3"
+              >
+                <div className="space-y-2.5">
+                  {/* Card Top: Icon Box + Identifier + Status Badge */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={cn(
+                        "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border",
+                        isRecurring
+                          ? "bg-[#EAF6FF] border-[#D9D9D9] text-[#2649B3]"
+                          : "bg-[#F4F6FB] border-[#D9D9D9] text-[#4F5050]"
+                      )}>
+                        {isRecurring ? <Repeat size={16} /> : <Calendar size={16} />}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-3xs font-mono font-bold text-[#4F5050] uppercase block tracking-wider truncate">
+                          {row.request?.request_number || `REQ-${row.id.slice(0, 6)}`}
+                        </span>
+                        <span className={cn(
+                          "inline-block px-1.5 py-0.2 rounded text-[10px] font-extrabold uppercase",
+                          isRecurring ? "bg-[#EAF6FF] text-[#2649B3]" : "bg-neutral-100 text-neutral-600"
+                        )}>
+                          {isRecurring ? "Recurring" : "Sekali"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div className="shrink-0">
+                      {isDraft ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 text-3xs font-extrabold uppercase">
+                          <Clock3 size={11} /> DRAFT
+                        </span>
+                      ) : isCompleted ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-emerald-300 bg-emerald-800 text-emerald-800 text-3xs font-extrabold uppercase">
+                          <CheckCircle2 size={11} /> SELESAI
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-[#2649B3]/30 bg-[#EAF6FF] text-[#2649B3] text-3xs font-extrabold uppercase">
+                          <Check size={11} /> TERJADWAL
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Title & Description */}
+                  <div>
+                    <h4 className="text-sm font-bold text-[#090909] group-hover:text-[#2649B3] transition-colors line-clamp-1">
+                      {row.request?.title || "Tanpa Judul"}
+                    </h4>
+                    <p className="mt-1 text-xs text-[#4F5050] line-clamp-2 leading-relaxed min-h-[34px]">
+                      {row.request?.description || "Tanpa deskripsi"}
+                    </p>
+                  </div>
+
+                  {/* Location or Meet Link */}
+                  {(row.meeting_url || row.location) && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {row.meeting_url && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50/70 border border-blue-200/50 text-3xs font-semibold text-[#2649B3]">
+                          <Video size={11} /> Google Meet
+                        </span>
+                      )}
+                      {row.location && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-neutral-100 border border-neutral-200/60 text-3xs font-medium text-[#4F5050] truncate max-w-[170px]">
+                          <MapPin size={11} /> {row.location}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Title */}
-                <h2 className="mt-3.5 line-clamp-2 text-base font-extrabold text-[#1E293B] group-hover:text-[#294BB2] transition-colors leading-snug">
-                  {row.request?.title || "Tanpa Judul"}
-                </h2>
-
-                {/* Description */}
-                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500 min-h-[34px]">
-                  {row.request?.description || "Tanpa deskripsi"}
-                </p>
-
-                {/* Meet Link or Location */}
-                {(row.meeting_url || row.location) && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {row.meeting_url && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-[#294BB2]">
-                        <Video size={12} /> Google Meet
-                      </span>
-                    )}
-                    {row.location && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 truncate max-w-[150px]">
-                        <MapPin size={12} /> {row.location}
-                      </span>
-                    )}
+                {/* Footer: Date & Detail/Publish Action */}
+                <div className="border-t border-[#F0F0F0] pt-2.5 flex items-center justify-between gap-2 text-2xs">
+                  <div className="flex items-center gap-1.5 text-[#4F5050] font-medium">
+                    <Clock3 size={13} className="text-[#2649B3]" />
+                    <span>{displayDate(row.start_at)}</span>
                   </div>
-                )}
+
+                  {isDraft ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void publishMeeting(row.id);
+                      }}
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#2649B3] hover:bg-[#203D91] text-white text-2xs font-extrabold shadow-2xs hover:shadow-xs active:scale-95 transition-all"
+                    >
+                      <Send size={11} />
+                      <span>Publikasikan</span>
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-2xs font-bold text-[#2649B3] group-hover:translate-x-0.5 transition-transform">
+                      Detail <ArrowRight size={12} />
+                    </span>
+                  )}
+                </div>
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              {/* Footer */}
-              <div className="mt-4 border-t border-slate-100 pt-3 flex items-center justify-between gap-2 text-xs">
-                <span className="inline-flex items-center gap-1.5 font-medium text-slate-600">
-                  <CalendarDays size={14} className="text-[#294BB2]" />
-                  <span>{displayDate(row.start_at)}</span>
-                </span>
+      {/* ── Request Izin / Cuti Tab Content ── */}
+      {activeTab === 'request' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {loading && [1, 2, 3, 4].map(item => (
+            <div key={item} className="h-32 rounded-[20px] bg-white border border-[#D9D9D9] animate-pulse p-4.5" />
+          ))}
 
-                {isDraft ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void publishMeeting(row.id);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#294BB2] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#203D91] shadow-2xs hover:shadow-xs active:scale-95"
-                    title="Publikasikan draft meeting ini sekarang"
-                  >
-                    <Send size={12} /> Publikasikan
-                  </button>
-                ) : (
-                  <span className="inline-flex items-center gap-1 font-bold text-[#294BB2] group-hover:translate-x-1 transition-transform">
-                    Detail <ArrowRight size={14} />
+          {!loading && filteredNonMeeting.length === 0 && (
+            <div className="col-span-full rounded-[20px] bg-white border border-[#D9D9D9] p-12 text-center text-xs text-[#4F5050]">
+              Belum ada permohonan izin atau cuti yang diajukan.
+            </div>
+          )}
+
+          {filteredNonMeeting.map(req => {
+            const isLeave = req.request_type === 'LEAVE';
+            return (
+              <div
+                key={req.id}
+                className="p-4.5 rounded-[20px] bg-white border border-[#D9D9D9] hover:border-[#2B7A42]/60 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-150 shadow-2xs flex flex-col justify-between gap-3"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={cn(
+                        "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border",
+                        isLeave ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"
+                      )}>
+                        {isLeave ? <Coffee size={16} /> : <Briefcase size={16} />}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-3xs font-mono font-bold text-[#4F5050] uppercase block tracking-wider">
+                          #{req.request_number}
+                        </span>
+                        <span className={cn(
+                          "inline-block px-1.5 py-0.2 rounded text-[10px] font-extrabold uppercase",
+                          isLeave ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+                        )}>
+                          {isLeave ? "Cuti / Izin" : "Permohonan Lain"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <span className={cn(
+                      "px-2.5 py-0.5 rounded-full border text-3xs font-extrabold uppercase tracking-wide",
+                      req.status === 'COMPLETED' || req.status === 'REGISTERED'
+                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                        : req.status === 'PENDING_OM' || req.status === 'PENDING_EXEC'
+                        ? "bg-amber-50 text-amber-800 border-amber-200"
+                        : "bg-neutral-100 text-neutral-700 border-neutral-200"
+                    )}>
+                      {req.status}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-bold text-[#090909] line-clamp-1">{req.title}</h4>
+                    <p className="mt-1 text-xs text-[#4F5050] line-clamp-2 leading-relaxed">
+                      {req.description || "Tanpa deskripsi"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#F0F0F0] pt-2.5 flex items-center justify-between text-2xs text-[#4F5050]">
+                  <span>
+                    {req.created_at ? new Date(req.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
                   </span>
-                )}
+                  {req.assignee_user && (
+                    <span className="font-bold text-[#2649B3] px-2 py-0.5 rounded bg-[#EAF6FF]">
+                      PIC: {req.assignee_user.name}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>}
+            );
+          })}
+        </div>
+      )}
 
-      {/* Request Tab (Leave & Other) */}
-      {activeTab==='request'&&<div className="mt-6 space-y-3">
-        {loading&&[1,2,3].map(item=><div key={item} className="h-20 animate-pulse rounded-2xl border border-slate-200 bg-slate-50"/>)}
-        {!loading&&filteredNonMeeting.length===0&&<div className="rounded-2xl border border-dashed border-slate-300 p-14 text-center text-sm text-slate-500">Belum ada Leave/Other Request yang cocok dengan pencarian.</div>}
-        {filteredNonMeeting.map(req=><div key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-4.5 transition hover:border-[#2B7A42]/50 hover:shadow-md">
-          <div className="flex-1">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-bold ${req.request_type==='LEAVE'?'bg-amber-50 text-amber-800 border border-amber-200/60':'bg-emerald-50 text-emerald-800 border border-emerald-200/60'}`}>{req.request_type==='LEAVE'?'Cuti / Izin':'Other'}</span>
-              <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-bold ${req.status==='PENDING_OM'||req.status==='PENDING_EXEC'?'bg-amber-50 text-amber-700':req.status==='REGISTERED'||req.status==='COMPLETED'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-600'}`}>{req.status}</span>
-              <span className="text-xs font-medium text-slate-400">#{req.request_number}</span>
-            </div>
-            <p className="mt-2 font-bold text-slate-900 text-sm">{req.title}</p>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">{req.description||'Tanpa deskripsi'}</p>
-          </div>
-          <div className="shrink-0 text-left sm:text-right text-xs text-slate-500 border-t sm:border-t-0 pt-2 sm:pt-0">
-            {req.assignee_user&&<p className="font-semibold text-slate-700">{req.assignee_user.name}</p>}
-            <p className="mt-0.5">{req.created_at?new Date(req.created_at).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):''}</p>
-          </div>
-        </div>)}
-      </div>}
+      {createOpen && <CreateRequestModal form={createForm} setForm={setCreateForm} members={members} busy={busy} onClose={() => setCreateOpen(false)} onSubmit={submitMeeting} />}
+      {requestModalOpen && <NewNonMeetingRequestModal members={members} busy={busy} onClose={() => setRequestModalOpen(false)} onSuccess={() => { setRequestModalOpen(false); void load(); }} />}
+      {selected && !notesOpen && <MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={() => setSelected(null)} onReassign={reassign} onNotes={date => void openNotes(date)} onPublishMeeting={() => void publishMeeting(selected.id)} />}
+      {selected && notesOpen && <NotesModal detail={selected} minutes={minutes} setMinutes={setMinutes} busy={busy} onClose={() => setNotesOpen(false)} onSave={saveNotes} />}
     </div>
-    {createOpen&&<CreateRequestModal form={createForm} setForm={setCreateForm} members={members} busy={busy} onClose={()=>setCreateOpen(false)} onSubmit={submitMeeting}/>}
-    {requestModalOpen&&<NewNonMeetingRequestModal members={members} busy={busy} onClose={()=>setRequestModalOpen(false)} onSuccess={()=>{setRequestModalOpen(false);void load();}}/>}
-    {selected&&!notesOpen&&<MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={()=>setSelected(null)} onReassign={reassign} onNotes={date=>void openNotes(date)} onPublishMeeting={()=>void publishMeeting(selected.id)}/>}
-    {selected&&notesOpen&&<NotesModal detail={selected} minutes={minutes} setMinutes={setMinutes} busy={busy} onClose={()=>setNotesOpen(false)} onSave={saveNotes}/>}
-  </div>;
+  );
 }
 
 function ModalBackdrop({children,wide=false}:{children:React.ReactNode;wide?:boolean}){return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#090909]/30 p-3 backdrop-blur-[1px]"><div className={`max-h-[76vh] w-full overflow-y-auto rounded-[24px] bg-white shadow-2xl sm:w-[80vw] ${wide?"max-w-[928px]":"max-w-[784px]"}`}>{children}</div></div>;}
@@ -480,10 +601,10 @@ function NotesModal({detail,minutes,setMinutes,busy,onClose,onSave}:{detail:Meet
   </div></div>;
 }
 
-function Field({label,value,onChange,type="text",required=false}:{label:string;value:string;onChange:(value:string)=>void;type?:string;required?:boolean}){return <label className="block text-sm font-bold text-[#294BB2]">{label}<input required={required} type={type} value={value} onChange={event=>onChange(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-[#D9D9D9] px-4 text-[#4F5050] outline-none focus:border-[#3154C7]"/></label>;}
-function SelectField({label,value,onChange,children,icon}:{label:string;value:string;onChange:(value:string)=>void;children:React.ReactNode;icon?:React.ReactNode}){return <label className="block text-sm font-bold text-[#4F5050]"><span className="mb-2 flex items-center gap-3">{icon&&<span className="text-[#1687EF]">{icon}</span>}{label}</span><select value={value} onChange={event=>onChange(event.target.value)} className="h-11 w-full rounded-xl border-2 border-[#3154C7] bg-white px-4 text-[#294BB2] outline-none">{children}</select></label>;}
-function InvitePeoplePicker({members,selectedIds,onChange}:{members:Member[];selectedIds:string[];onChange:(ids:string[])=>void}){const selected=new Set(selectedIds);const toggle=(id:string)=>onChange(selected.has(id)?selectedIds.filter(item=>item!==id):[...selectedIds,id]);return <fieldset><legend className="flex w-full items-center justify-between gap-3 text-sm font-bold text-[#4F5050]"><span className="flex items-center gap-3"><Link2 size={22} className="text-[#1687EF]"/>Invite people</span>{selectedIds.length>0&&<button type="button" onClick={()=>onChange([])} className="text-xs font-semibold text-[#294BB2] hover:underline">Hapus semua</button>}</legend><p className="mt-2 text-xs font-normal leading-5 text-[#6B7280]">Klik nama anggota untuk memilih. Anda dapat memilih lebih dari satu orang.</p><div className="mt-3 max-h-52 space-y-1 overflow-y-auto rounded-[18px] border-2 border-[#3154C7] bg-white p-2" role="group" aria-label="Pilih anggota yang akan diundang">{members.length===0?<p className="px-3 py-5 text-center text-xs text-[#6B7280]">Belum ada anggota tim aktif.</p>:members.map(member=>{const checked=selected.has(member.id);return <button key={member.id} type="button" role="checkbox" aria-checked={checked} onClick={()=>toggle(member.id)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${checked?"bg-[#294BB2] text-white":"text-[#294BB2] hover:bg-[#EAF6FF]"}`}><span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${checked?"border-white bg-white text-[#294BB2]":"border-[#3154C7] bg-white"}`}>{checked&&<Check size={14} strokeWidth={3}/>}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{member.name}</strong><span className={`block truncate text-xs font-normal ${checked?"text-blue-100":"text-[#6B7280]"}`}>{member.role} · {member.email}</span></span></button>})}</div><div className="mt-2 flex items-center justify-between text-xs"><span className={selectedIds.length?"font-bold text-[#294BB2]":"text-[#6B7280]"}>{selectedIds.length} anggota dipilih</span>{selectedIds.length>0&&<span className="text-[#6B7280]">Klik lagi untuk membatalkan</span>}</div></fieldset>;}
-function TextArea({label,value,onChange,rows,hint,disabled=false}:{label:string;value:string;onChange:(value:string)=>void;rows:number;hint?:string;disabled?:boolean}){return <label className="block text-sm font-bold text-[#294BB2]">{label}{hint&&<span className="mt-1 block text-xs font-normal text-[#6B7280]">{hint}</span>}<textarea disabled={disabled} rows={rows} value={value} onChange={event=>onChange(event.target.value)} className="mt-2 w-full resize-none rounded-xl border border-[#D9D9D9] bg-white p-3 font-normal leading-6 text-[#4F5050] outline-none focus:border-[#3154C7] disabled:cursor-default disabled:bg-[#FAFAFA]"/></label>;}
+function Field({label,value,onChange,type="text",required=false}:{label:string;value:string;onChange:(value:string)=>void;type?:string;required?:boolean}){return <label className="block text-xs font-bold text-[#090909]">{label}<input required={required} type={type} value={value} onChange={event=>onChange(event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-[#D9D9D9] bg-white px-3.5 text-xs text-[#090909] outline-none focus:border-[#2649B3] focus:ring-1 focus:ring-[#2649B3]/20 transition-all"/></label>;}
+function SelectField({label,value,onChange,children,icon}:{label:string;value:string;onChange:(value:string)=>void;children:React.ReactNode;icon?:React.ReactNode}){return <label className="block text-xs font-bold text-[#090909]"><span className="mb-1.5 flex items-center gap-1.5">{icon&&<span className="text-[#2649B3]">{icon}</span>}{label}</span><select value={value} onChange={event=>onChange(event.target.value)} className="h-10 w-full rounded-xl border border-[#D9D9D9] bg-white px-3 text-xs font-semibold text-[#090909] outline-none focus:border-[#2649B3] focus:ring-1 focus:ring-[#2649B3]/20 transition-all">{children}</select></label>;}
+function InvitePeoplePicker({members,selectedIds,onChange}:{members:Member[];selectedIds:string[];onChange:(ids:string[])=>void}){const selected=new Set(selectedIds);const toggle=(id:string)=>onChange(selected.has(id)?selectedIds.filter(item=>item!==id):[...selectedIds,id]);return <fieldset><legend className="flex w-full items-center justify-between gap-3 text-xs font-bold text-[#090909]"><span className="flex items-center gap-2"><Link2 size={16} className="text-[#2649B3]"/>Undang Anggota</span>{selectedIds.length>0&&<button type="button" onClick={()=>onChange([])} className="text-3xs font-semibold text-[#2649B3] hover:underline">Hapus semua</button>}</legend><p className="mt-1 text-3xs font-normal text-[#6B7280]">Pilih anggota yang akan diundang ke meeting ini.</p><div className="mt-2.5 max-h-48 space-y-1 overflow-y-auto rounded-xl border border-[#D9D9D9] bg-white p-2" role="group" aria-label="Pilih anggota yang akan diundang">{members.length===0?<p className="px-3 py-4 text-center text-xs text-[#6B7280]">Belum ada anggota tim aktif.</p>:members.map(member=>{const checked=selected.has(member.id);return <button key={member.id} type="button" role="checkbox" aria-checked={checked} onClick={()=>toggle(member.id)} className={cn("flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition text-xs", checked?"bg-[#2649B3] text-white":"text-[#090909] hover:bg-[#EAF6FF]")}><span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", checked?"border-white bg-white text-[#2649B3]":"border-[#D9D9D9] bg-white")}>{checked&&<Check size={12} strokeWidth={3}/>}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs">{member.name}</strong><span className={cn("block truncate text-3xs font-normal", checked?"text-blue-100":"text-[#6B7280]")}>{member.role} · {member.email}</span></span></button>})}</div><div className="mt-1.5 flex items-center justify-between text-3xs"><span className={selectedIds.length?"font-bold text-[#2649B3]":"text-[#6B7280]"}>{selectedIds.length} anggota dipilih</span>{selectedIds.length>0&&<span className="text-[#6B7280]">Klik untuk membatalkan</span>}</div></fieldset>;}
+function TextArea({label,value,onChange,rows,hint,disabled=false}:{label:string;value:string;onChange:(value:string)=>void;rows:number;hint?:string;disabled?:boolean}){return <label className="block text-xs font-bold text-[#090909]">{label}{hint&&<span className="mt-0.5 block text-3xs font-normal text-[#6B7280]">{hint}</span>}<textarea disabled={disabled} rows={rows} value={value} onChange={event=>onChange(event.target.value)} className="mt-1.5 w-full resize-none rounded-xl border border-[#D9D9D9] bg-white p-3 text-xs leading-5 text-[#090909] outline-none focus:border-[#2649B3] focus:ring-1 focus:ring-[#2649B3]/20 disabled:cursor-default disabled:bg-neutral-50 transition-all"/></label>;}
 
 function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Member[];busy:boolean;onClose:()=>void;onSuccess:()=>void}){
   const [type,setType]=useState<'LEAVE'|'OTHER'>('LEAVE');
