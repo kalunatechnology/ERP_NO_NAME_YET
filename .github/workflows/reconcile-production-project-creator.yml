@@ -1,0 +1,56 @@
+name: Reconcile Production Project Creator
+
+on:
+  push:
+    branches:
+      - production
+    paths:
+      - 'backend-express/prisma/seed.production.ts'
+      - 'backend-express/scripts/reconcile_production_project_creator.ts'
+      - '.github/workflows/reconcile-production-project-creator.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-project-creator-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DIRECT_URL }}
+      DIRECT_URL: ${{ secrets.SUPABASE_DIRECT_URL }}
+    steps:
+      - name: Verify production database credential
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "SUPABASE_DIRECT_URL GitHub Actions secret is not configured."
+            exit 1
+          fi
+
+      - name: Checkout production release
+        uses: actions/checkout@v4
+        with:
+          ref: production
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend-express/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend-express
+        run: npm ci
+
+      - name: Validate Prisma schema
+        working-directory: backend-express
+        run: npx prisma validate
+
+      - name: Reconcile all production project creators to Arof
+        working-directory: backend-express
+        run: npx ts-node scripts/reconcile_production_project_creator.ts
