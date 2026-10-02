@@ -181,8 +181,10 @@ async function notifyMeetingPublished(params: {
 
 export class MeetingRequestService {
   static async list(companyId: string, userId: string, activeRole: string, query: { status?: string; search?: string }) {
-    const unrestricted = EXECUTIVE_ROLES.has(activeRole);
-    const participantRows = unrestricted ? [] : await prisma.request_meeting_participant.findMany({
+    // Hanya Super Admin yang memiliki hak bypass audit global.
+    // Seluruh peran lain hanya melihat meeting yang melibatkan mereka secara eksplisit (organizer, notetaker, atau peserta).
+    const isGlobalAuditor = activeRole === 'SUPER_ADMIN' || activeRole === 'ROLE-SUPER-ADMIN';
+    const participantRows = isGlobalAuditor ? [] : await prisma.request_meeting_participant.findMany({
       where: { company_id: companyId, user_id: userId }, select: { meeting_id: true },
     });
     const accessibleMeetingIds = participantRows.map((row) => row.meeting_id);
@@ -190,7 +192,7 @@ export class MeetingRequestService {
       where: {
         company_id: companyId,
         ...(query.status ? { status: query.status } : {}),
-        ...(unrestricted ? {} : { OR: [
+        ...(isGlobalAuditor ? {} : { OR: [
           { organizer_user_id: userId }, { notetaker_user_id: userId }, { id: { in: accessibleMeetingIds } },
         ] }),
       },
@@ -210,7 +212,8 @@ export class MeetingRequestService {
     const participant = await prisma.request_meeting_participant.findFirst({
       where: { meeting_id: meetingId, company_id: companyId, user_id: userId }, select: { id: true },
     });
-    if (!EXECUTIVE_ROLES.has(activeRole) && meeting.organizer_user_id !== userId && meeting.notetaker_user_id !== userId && !participant) {
+    const isGlobalAuditor = activeRole === 'SUPER_ADMIN' || activeRole === 'ROLE-SUPER-ADMIN';
+    if (!isGlobalAuditor && meeting.organizer_user_id !== userId && meeting.notetaker_user_id !== userId && !participant) {
       throw new ForbiddenError('Anda tidak terlibat dalam meeting ini.');
     }
     const [request, participants, agenda, allMinutes] = await Promise.all([

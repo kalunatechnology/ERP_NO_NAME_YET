@@ -10,7 +10,7 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import {
-  ChevronLeft, ChevronDown, Clock, Calendar, FileText,
+  ChevronLeft, ChevronDown, FileText,
   X, ArrowRight, Upload, UserPlus, Coins, Link2, Loader2
 } from "lucide-react";
 import { cn, localDateKey, extractApiError, parseFormDateTime } from "@/lib/utils";
@@ -478,7 +478,6 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                         className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
                         aria-label="Waktu Mulai"
                       />
-                      <Clock size={15} className="text-[#4F5050] shrink-0 ml-1 pointer-events-none" />
                     </div>
                     <span className="text-xs font-semibold text-[#4F5050] text-center px-0.5">–</span>
                     <div className="rounded-[14px] border border-[#D9D9D9] bg-white px-3 py-2 flex items-center justify-between text-xs font-medium text-[#4F5050] focus-within:ring-2 focus-within:ring-[#294BB2]/30 focus-within:border-[#294BB2]">
@@ -489,7 +488,6 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                         className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
                         aria-label="Waktu Selesai"
                       />
-                      <Clock size={15} className="text-[#4F5050] shrink-0 ml-1 pointer-events-none" />
                     </div>
                   </div>
                 </div>
@@ -507,7 +505,6 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                     className="w-full bg-transparent focus:outline-none text-xs text-[#4F5050] font-medium"
                     placeholder="YYYY-MM-DD"
                   />
-                  <Calendar size={17} className="text-[#4F5050] shrink-0 ml-2 pointer-events-none" />
                 </div>
               </div>
             </div>
@@ -613,7 +610,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                     placeholder="Add user account, email, etc"
                     className="w-full rounded-[14px] border border-[#D9D9D9] bg-white px-4 py-2.5 text-xs text-[#4F5050] placeholder:text-[#4F5050] focus:outline-none focus:ring-2 focus:ring-[#294BB2]/30 focus:border-[#294BB2] pr-9"
                   />
-                  {isSearching && (
+                  {isSearching && inviteSearch.trim().length > 0 && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                       <Loader2 size={14} className="animate-spin text-[#294BB2]" />
                     </div>

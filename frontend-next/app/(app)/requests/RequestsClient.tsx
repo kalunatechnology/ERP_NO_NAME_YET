@@ -43,6 +43,7 @@ export default function RequestsClient(){
   const [searchQuery,setSearchQuery]=useState("");
   const [statusFilter,setStatusFilter]=useState<'ALL'|'DRAFT'|'SCHEDULED'|'COMPLETED'>('ALL');
   const [typeFilter,setTypeFilter]=useState<'ALL'|'RECURRING'|'NON_RECURRING'>('ALL');
+  const [nonMeetingTypeFilter,setNonMeetingTypeFilter]=useState<'ALL'|'LEAVE'|'OTHER'>('ALL');
 
   const meetingCounts = useMemo(() => {
     let draft = 0;
@@ -55,6 +56,16 @@ export default function RequestsClient(){
     }
     return { all: meetings.length, draft, scheduled, completed };
   }, [meetings]);
+
+  const nonMeetingCounts = useMemo(() => {
+    let leave = 0;
+    let other = 0;
+    for (const r of nonMeetingRequests) {
+      if (r.request_type === 'LEAVE') leave++;
+      else other++;
+    }
+    return { all: nonMeetingRequests.length, leave, other };
+  }, [nonMeetingRequests]);
 
   const filteredMeetings = useMemo(() => {
     return meetings.filter(item => {
@@ -87,9 +98,12 @@ export default function RequestsClient(){
         const desc = item.description?.toLowerCase() ?? '';
         if (!title.includes(q) && !num.includes(q) && !desc.includes(q)) return false;
       }
+      if (nonMeetingTypeFilter !== 'ALL') {
+        if (item.request_type !== nonMeetingTypeFilter) return false;
+      }
       return true;
     });
-  }, [nonMeetingRequests, searchQuery]);
+  }, [nonMeetingRequests, searchQuery, nonMeetingTypeFilter]);
 
   const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");setMinutes({summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""});return detail;}catch{toast.error("Detail meeting tidak dapat dimuat.");return null;}},[]);
   const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);const id=typeof window!=="undefined"?new URLSearchParams(window.location.search).get("meeting"):null;if(id)await openMeeting(id);}catch{toast.error("Data tidak dapat dimuat.");}finally{setLoading(false);}},[openMeeting]);
@@ -227,7 +241,7 @@ export default function RequestsClient(){
               )}
             >
               <ClipboardList size={14} />
-              <span>Request Izin/Cuti</span>
+              <span>Request (Cuti & Other)</span>
               <span className={cn(
                 "px-1.5 py-0.2 rounded-full text-3xs font-extrabold",
                 activeTab === 'request' ? "bg-emerald-100 text-[#2B7A42]" : "bg-neutral-200 text-neutral-600"
@@ -246,7 +260,7 @@ export default function RequestsClient(){
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={activeTab === 'meeting' ? "Cari judul meeting atau nomor..." : "Cari permohonan izin..."}
+              placeholder={activeTab === 'meeting' ? "Cari judul meeting atau nomor..." : "Cari cuti atau permintaan..."}
               className="h-10 w-full rounded-xl border border-[#D9D9D9] bg-white pl-10 pr-9 text-xs text-[#090909] placeholder:text-[#4F5050]/60 outline-none focus:border-[#2649B3] focus:ring-1 focus:ring-[#2649B3]/20 transition-all"
             />
             {searchQuery && (
@@ -261,7 +275,7 @@ export default function RequestsClient(){
           </div>
         </div>
 
-        {/* Bottom Row: Segmented Filters (Only in Meeting tab) */}
+        {/* Bottom Row: Segmented Filters for Meeting */}
         {activeTab === 'meeting' && (
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pt-2 border-t border-[#F0F0F0]">
             {/* Type Filter */}
@@ -313,6 +327,45 @@ export default function RequestsClient(){
                   );
                 })}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Row: Segmented Filters for Request (Leave / Other) */}
+        {activeTab === 'request' && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pt-2 border-t border-[#F0F0F0]">
+            <div className="flex items-center gap-2">
+              <span className="text-3xs font-bold text-[#4F5050] uppercase tracking-wider hidden sm:inline">Kategori:</span>
+              <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
+                {(['ALL', 'LEAVE', 'OTHER'] as const).map(t => {
+                  const count = t === 'ALL' ? nonMeetingCounts.all : t === 'LEAVE' ? nonMeetingCounts.leave : nonMeetingCounts.other;
+                  const label = t === 'ALL' ? 'Semua Permohonan' : t === 'LEAVE' ? 'Cuti / Izin' : 'Other Request';
+                  const isActive = nonMeetingTypeFilter === t;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setNonMeetingTypeFilter(t)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all whitespace-nowrap",
+                        isActive
+                          ? "bg-white text-[#2B7A42] shadow-2xs font-extrabold"
+                          : "text-[#4F5050] hover:text-[#090909]"
+                      )}
+                    >
+                      <span>{label}</span>
+                      <span className={cn(
+                        "px-1.5 py-0.2 rounded-full text-3xs font-extrabold",
+                        isActive ? "bg-emerald-100 text-[#2B7A42]" : "bg-neutral-200/80 text-neutral-600"
+                      )}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="text-3xs text-[#4F5050]">
+              Total <strong>{filteredNonMeeting.length}</strong> request ditampilkan
             </div>
           </div>
         )}
