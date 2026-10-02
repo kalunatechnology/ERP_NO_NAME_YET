@@ -383,7 +383,7 @@ async function main() {
       update: {
         enabled: isEnabled,
         allow_read: isEnabled,
-        allow_write: false,
+        allow_write: isEnabled,
       },
       create: {
         id: crypto.randomUUID(),
@@ -392,7 +392,7 @@ async function main() {
         module_code: moduleCode,
         enabled: isEnabled,
         allow_read: isEnabled,
-        allow_write: false,
+        allow_write: isEnabled,
       },
     });
   }

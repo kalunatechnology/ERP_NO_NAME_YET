@@ -175,7 +175,7 @@ export class ProjectsService {
   }
 
   static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user)) return {};
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.FINANCE) return {};
     if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
       return { created_by_id: user.id, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
     }

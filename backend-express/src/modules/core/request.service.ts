@@ -326,14 +326,17 @@ static async createRequest(
       where: { request_id: instanceId },
       select: { id: true },
     });
+    // Seluruh orang yang di-invite di meeting (organizer, notulis, PIC/assignee, peserta)
+    // kecuali pembuat/creator meeting mendapatkan notifikasi undangan meeting.
     const relatedUserIds = Array.from(new Set([
       organizer_user_id,
       notetaker_user_id,
+      effectiveAssigneeUserId,
       ...tagged_users.map((item) => item.id),
-    ].filter((id): id is string => Boolean(id) && id !== userId && id !== assignee_user_id)));
+    ].filter((id): id is string => Boolean(id) && id !== userId)));
     await Promise.all(relatedUserIds.map((recipientUserId) => this.createNotification({
       title: `Undangan Meeting: ${title.trim()}`,
-      message: `${requestNumber} dijadwalkan ${meetingStart.toLocaleString('id-ID', { timeZone: timezone })}. Anda tercatat sebagai pihak yang terlibat.`,
+      message: `${requestNumber} dijadwalkan ${meetingStart.toLocaleString('id-ID', { timeZone: timezone })}. Anda diundang dalam meeting ini.`,
       action_url: meeting ? `/requests?meeting=${meeting.id}` : '/requests',
       notification_type: 'MEETING_INVITATION',
       priority: 'HIGH',
@@ -477,18 +480,7 @@ static async createRequest(
         });
       }
     } else if (request_type === 'MEETING') {
-      if (effectiveAssigneeUserId && effectiveAssigneeUserId !== userId) {
-        await this.createNotification({
-          title: 'Meeting Baru Ditugaskan kepada Anda',
-          message: `${requestNumber} — ${title}`,
-          action_url: '/requests',
-          notification_type: 'REQUEST_ASSIGNED',
-          priority: 'MEDIUM',
-          recipient_user_id: effectiveAssigneeUserId,
-          actor_user_id: userId,
-          company_id: companyId ?? null,
-        });
-      }
+      // Notifikasi sudah dikirimkan secara serentak kepada seluruh peserta yang di-invite di atas.
     } else {
       if (effectiveAssigneeUserId && effectiveAssigneeUserId !== userId) {
         await this.createNotification({
