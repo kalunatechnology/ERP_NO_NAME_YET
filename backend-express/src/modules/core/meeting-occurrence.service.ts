@@ -44,21 +44,34 @@ export function normalizeRecurringDays(days?: number[] | null): number[] {
 export function meetingOccurrenceDates(meeting: MeetingSchedule): string[] {
   const startKey = dateKeyInTimeZone(meeting.start_at, meeting.timezone);
   if (meeting.recurrence_type !== 'RECURRING') return [startKey];
-  if (!meeting.recurrence_end_at) throw new ValidationError('Tanggal akhir recurring wajib diisi.');
-  const endKey = dateKeyInTimeZone(meeting.recurrence_end_at, meeting.timezone);
+
+  const todayKey = dateKeyInTimeZone(new Date(), meeting.timezone);
+  let endKey: string;
+  if (meeting.recurrence_end_at) {
+    const rawEndKey = dateKeyInTimeZone(meeting.recurrence_end_at, meeting.timezone);
+    // Menyesuaikan dengan tanggal hari ini: jika meeting recurring masih berjalan atau hari ini melewati recurrence_end_at,
+    // perluas jangkauan hingga hari ini agar notulensi tanggal hari ini selalu tersedia.
+    endKey = rawEndKey < todayKey ? todayKey : rawEndKey;
+  } else {
+    // Jika tidak ada recurrence_end_at, defaultkan hingga hari ini atau 30 hari ke depan
+    const startDate = dateFromKey(startKey);
+    const thirtyDaysLater = new Date(startDate.getTime() + 30 * 86_400_000);
+    const defaultEndKey = dateKeyInTimeZone(thirtyDaysLater, meeting.timezone);
+    endKey = defaultEndKey < todayKey ? todayKey : defaultEndKey;
+  }
+
   const start = dateFromKey(startKey);
   const end = dateFromKey(endKey);
   const span = Math.floor((end.getTime() - start.getTime()) / 86_400_000);
-  if (span < 0) throw new ValidationError('Tanggal akhir recurring tidak boleh sebelum tanggal mulai.');
-  if (span > 3660) throw new ValidationError('Periode recurring maksimal 10 tahun.');
+  if (span < 0) return [startKey];
+  const boundedSpan = Math.min(span, 3660);
   const allowed = new Set(normalizeRecurringDays(meeting.recurrence_days));
   const dates: string[] = [];
-  for (let offset = 0; offset <= span; offset += 1) {
+  for (let offset = 0; offset <= boundedSpan; offset += 1) {
     const date = new Date(start.getTime() + offset * 86_400_000);
     if (allowed.has(date.getUTCDay())) dates.push(date.toISOString().slice(0, 10));
   }
-  if (!dates.length) throw new ValidationError('Periode recurring tidak memiliki tanggal pada hari yang dipilih.');
-  return dates;
+  return dates.length ? dates : [startKey];
 }
 
 export function resolveMeetingOccurrenceDate(meeting: MeetingSchedule, requested?: string | null): string {

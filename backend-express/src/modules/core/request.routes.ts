@@ -124,6 +124,19 @@ requestRouter.post('/meetings/:meetingId/minutes/publish', async (req, res, next
   } catch (error) { next(error); }
 });
 
+requestRouter.post('/meetings/:meetingId/submit', async (req, res, next) => {
+  try {
+    const meeting = await MeetingRequestService.submitDraftMeeting(
+      req.params.meetingId,
+      activeCompanyId(req),
+      activeUserId(req),
+      activeRoleCode(req),
+    );
+    invalidateRequestFeedCache();
+    sendSuccess(res, meeting, 200);
+  } catch (error) { next(error); }
+});
+
 // =============================================================================
 // MARKA+ INTERNAL REQUESTS & TICKETING ENDPOINTS
 // =============================================================================

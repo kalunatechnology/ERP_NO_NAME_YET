@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import prisma from '../../config/database';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { AuditService } from './audit.service';
-import { meetingOccurrenceDates, occurrenceDateForDatabase, resolveMeetingOccurrenceDate } from './meeting-occurrence.service';
+import { dateKeyInTimeZone, meetingOccurrenceDates, occurrenceDateForDatabase, resolveMeetingOccurrenceDate } from './meeting-occurrence.service';
 
 export interface SaveMeetingMinutesPayload {
   occurrence_date?: string;
@@ -132,6 +132,53 @@ async function notifyMinutesPublished(params: {
   ));
 }
 
+async function notifyMeetingPublished(params: {
+  meetingId: string;
+  companyId: string;
+  organizer_user_id: string | null;
+  notetaker_user_id: string | null;
+  assignee_user_id?: string | null;
+  participants: Array<{ user_id: string | null }>;
+  requestNumber: string;
+  requestTitle: string;
+  startAt: Date;
+  timezone: string;
+  publisherUserId: string;
+}): Promise<void> {
+  const recipientIds = Array.from(new Set([
+    params.organizer_user_id,
+    params.notetaker_user_id,
+    params.assignee_user_id,
+    ...params.participants.map((p) => p.user_id),
+  ].filter((id): id is string => Boolean(id) && id !== params.publisherUserId)));
+
+  const actionUrl = `/requests?meeting=${params.meetingId}`;
+  const title = `Undangan Meeting: ${params.requestTitle}`;
+  let formattedTime = '';
+  try {
+    formattedTime = params.startAt.toLocaleString('id-ID', { timeZone: params.timezone });
+  } catch {
+    formattedTime = params.startAt.toISOString();
+  }
+  const message = `${params.requestNumber} dijadwalkan ${formattedTime}. Anda diundang dalam meeting ini.`;
+
+  await Promise.all(
+    recipientIds.map((recipientId) =>
+      notifyUser({
+        recipient_user_id: recipientId,
+        actor_user_id: params.publisherUserId,
+        title,
+        message,
+        action_url: actionUrl,
+        notification_type: 'MEETING_INVITATION',
+        priority: 'HIGH',
+        company_id: params.companyId,
+      }),
+    ),
+  );
+}
+
+
 export class MeetingRequestService {
   static async list(companyId: string, userId: string, activeRole: string, query: { status?: string; search?: string }) {
     const unrestricted = EXECUTIVE_ROLES.has(activeRole);
@@ -181,15 +228,24 @@ export class MeetingRequestService {
     }) : [];
     const userById = new Map(users.map((item) => [item.id, item]));
     const occurrences = meetingOccurrenceDates(meeting);
+    const todayKey = dateKeyInTimeZone(new Date(), meeting.timezone);
     const selectedOccurrenceDate = resolveMeetingOccurrenceDate(meeting, occurrenceDate);
     const minutes = allMinutes.find((item) => item.occurrence_date.toISOString().slice(0, 10) === selectedOccurrenceDate) ?? null;
     const minutesByDate = new Map(allMinutes.map((item) => [item.occurrence_date.toISOString().slice(0, 10), item]));
-    const notes = [...occurrences].reverse().map((date) => {
+
+    // Tanggal notes harus dari tanggal terbaru dan menyesuaikan dengan tanggal hari ini.
+    // Tampilkan occurrence yang telah atau sedang berlangsung (<= todayKey) serta tanggal yang sudah memiliki notulensi.
+    const eligibleDates = occurrences.some((date) => date <= todayKey)
+      ? occurrences.filter((date) => date <= todayKey || minutesByDate.has(date))
+      : occurrences;
+
+    const notes = [...eligibleDates].reverse().map((date) => {
       const note = minutesByDate.get(date);
       return {
         occurrence_date: date,
         minutes_id: note?.id ?? null,
         status: !note ? 'NOT_CREATED' : note.status === 'PUBLISHED' ? 'COMPLETED' : 'DRAFT',
+        is_today: date === todayKey,
       };
     });
     const [decisions, actionItems] = minutes ? await Promise.all([
@@ -355,5 +411,89 @@ export class MeetingRequestService {
     }
 
     return this.getById(meetingId, companyId, userId, activeRole, detail.selected_occurrence_date);
+  }
+
+  static async submitDraftMeeting(meetingId: string, companyId: string, userId: string, activeRole: string) {
+    const meeting = await prisma.request_meeting.findFirst({
+      where: { id: meetingId, company_id: companyId },
+    });
+    if (!meeting) throw new NotFoundError('Meeting Request');
+
+    const ticket = await prisma.request_ticket.findFirst({
+      where: { id: meeting.request_id, company_id: companyId },
+    });
+    if (!ticket) throw new NotFoundError('Request Ticket');
+
+    if (ticket.status !== 'DRAFT' && meeting.status !== 'DRAFT') {
+      throw new ValidationError('Meeting ini sudah diposting / tidak berstatus draft.');
+    }
+
+    const isCreator = meeting.created_by_id === userId || ticket.created_by_id === userId || ticket.requester_user_id === userId;
+    const isOrganizer = meeting.organizer_user_id === userId;
+    const isExecutive = EXECUTIVE_ROLES.has(activeRole);
+
+    if (!isCreator && !isOrganizer && !isExecutive) {
+      throw new ForbiddenError('Hanya pembuat atau organizer meeting yang dapat mempublikasikan draft ini.');
+    }
+
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      await tx.request_ticket.update({
+        where: { id: ticket.id },
+        data: {
+          status: 'PENDING_OM',
+          submitted_at: now,
+        },
+      });
+
+      await tx.request_meeting.update({
+        where: { id: meeting.id },
+        data: {
+          status: 'SCHEDULED',
+        },
+      });
+
+      await tx.core_workflow_instance.updateMany({
+        where: { id: ticket.workflow_instance_id ?? ticket.id, company_id: companyId },
+        data: {
+          status: 'IN_PROGRESS',
+          current_state: 'PENDING_OM',
+        },
+      });
+    });
+
+    // Kirim notifikasi undangan meeting ke seluruh peserta kecuali yang mempublikasikan
+    const participants = await prisma.request_meeting_participant.findMany({
+      where: { meeting_id: meeting.id, company_id: companyId },
+      select: { user_id: true },
+    });
+
+    void notifyMeetingPublished({
+      meetingId: meeting.id,
+      companyId,
+      organizer_user_id: meeting.organizer_user_id ?? null,
+      notetaker_user_id: meeting.notetaker_user_id ?? null,
+      assignee_user_id: ticket.assignee_user_id ?? null,
+      participants,
+      requestNumber: ticket.request_number,
+      requestTitle: ticket.title,
+      startAt: meeting.start_at,
+      timezone: meeting.timezone,
+      publisherUserId: userId,
+    });
+
+    await AuditService.logDeltaEvent({
+      entity: 'request_meeting',
+      entityId: meeting.id,
+      action: 'PUBLISH_DRAFT_MEETING',
+      before: { status: 'DRAFT' },
+      after: { status: 'SCHEDULED' },
+      userId,
+      companyId,
+      description: `Draft meeting ${ticket.request_number} (${ticket.title}) dipublikasikan. Undangan dikirim ke seluruh peserta.`,
+    });
+
+    return this.getById(meeting.id, companyId, userId, activeRole);
   }
 }
