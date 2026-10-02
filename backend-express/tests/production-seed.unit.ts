@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { projects, users } from '../prisma/seed.production';
+import { PRODUCTION_PROJECT_CREATOR, projects, users } from '../prisma/seed.production';
 
 function dateValue(value: string | null): number {
   return value ? new Date(`${value}T00:00:00+07:00`).getTime() : Number.POSITIVE_INFINITY;
@@ -8,6 +8,8 @@ function dateValue(value: string | null): number {
 async function main(): Promise<void> {
   const companyUsers = users.filter((user) => !user.global);
   assert(companyUsers.every((user) => user.roleCodes.includes('ROLE-STAFF')), 'Every company user must explicitly inherit ROLE-STAFF.');
+  assert.equal(PRODUCTION_PROJECT_CREATOR, 'arof', 'Production project creator must remain Arof.');
+  assert(users.some((user) => user.username === PRODUCTION_PROJECT_CREATOR && !user.global), 'Production project creator must exist as a company user.');
   assert.equal(new Set(projects.map((project) => project.code)).size, projects.length, 'Project codes must be unique.');
   assert.equal(projects.length, 7);
 
@@ -55,6 +57,7 @@ async function main(): Promise<void> {
     weeklyTaskCount,
     dailyTaskCount,
     activeProjectSupervisors: 0,
+    productionProjectCreator: PRODUCTION_PROJECT_CREATOR,
   }, null, 2));
 }
 
