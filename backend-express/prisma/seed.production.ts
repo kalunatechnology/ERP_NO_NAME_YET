@@ -69,6 +69,8 @@ export const users: SeedUser[] = [
   { username: 'ilyas', email: 'ilyas@arsalynk.com', name: 'Ilyas', roleCodes: ['ROLE-STAFF'], activeRoleCode: 'ROLE-STAFF' },
 ];
 
+export const PRODUCTION_PROJECT_CREATOR = 'arof';
+
 export const projects: ProjectSpec[] = [
   {
     code: 'SMA-PRJ-001', name: 'Follow up SPG ANC Serang',
@@ -304,6 +306,9 @@ async function seedDatabase(db: Prisma.TransactionClient) {
     });
   }
 
+  const projectCreator = userMap.get(PRODUCTION_PROJECT_CREATOR);
+  if (!projectCreator) throw new Error(`Production project creator ${PRODUCTION_PROJECT_CREATOR} tidak ditemukan.`);
+
   for (const projectSpec of projects) {
     const manager = userMap.get(projectSpec.manager);
     if (!manager) throw new Error(`Project manager ${projectSpec.manager} tidak ditemukan.`);
@@ -317,7 +322,7 @@ async function seedDatabase(db: Prisma.TransactionClient) {
         customer_name: 'Internal PT Sinergi Muda Arsa', manager_name: manager.full_name,
         description: projectSpec.description, planned_start_date: d(projectSpec.start), planned_end_date: d(projectSpec.deadline),
         progress_percent: average(weeklyProgresses), status: 'ACTIVE', lifecycle_status: 'STARTED',
-        health_status: 'NORMAL', source_type: 'MANUAL', started_at: d(projectSpec.start), created_by_id: manager.id,
+        health_status: 'NORMAL', source_type: 'MANUAL', started_at: d(projectSpec.start), created_by_id: projectCreator.id,
       },
     });
 
