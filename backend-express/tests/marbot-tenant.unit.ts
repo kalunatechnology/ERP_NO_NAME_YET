@@ -290,6 +290,8 @@ async function runMarbotTenantTests() {
     assert.strictEqual(sentPayload.name, 'Alpha Corp');
     assert.strictEqual(sentPayload.contractVersion, 2);
     assert.strictEqual(sentPayload.erpBaseUrl, 'https://erp.test.com');
+    assert.strictEqual(sentPayload.dataSource, null, 'database credentials must not leave the ERP gateway');
+    assert.strictEqual(updatedRow.datasource_status, 'GATEWAY_ONLY');
     assert.strictEqual(provResult.mode, 'MANAGED');
     assert.strictEqual(provResult.syncStatus, 'ACTIVE');
     assert.strictEqual(provResult.chatbotTenantId, 'cb-alpha-id');

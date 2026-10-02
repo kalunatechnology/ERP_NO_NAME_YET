@@ -1,5 +1,5 @@
 import { Router, Request } from 'express';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import prisma from '../../config/database';
 import { ConflictError, ForbiddenError, ValidationError } from '../../utils/errors';
@@ -15,6 +15,8 @@ import { executeCanonicalAction } from './marbot-execution.service';
 import type { MarbotAction } from './marbot-action.service';
 import { createMarbotMcpRouter } from './marbot-mcp.routes';
 import { executeResourceRead, executeResourceWrite, planResourceQuestion, resourceCatalog, resourceDefinition } from './marbot-resource.service';
+import { reserveMarbotRequest } from './marbot-rate-limit.service';
+import { marbotOwner as owner, marbotAuthorityKey as authorityKey, visibleConversationTitle } from './marbot-authority.service';
 
 export const nativeMarbotRouter = Router();
 // Authentication and company resolution are mounted by the parent router.
@@ -23,8 +25,6 @@ async function scopeFor(req: Request) {
   const scope = { ...await buildMarbotRuntimeAuthority(req.user.id, req.user.tenant_id, req.companyId), tenantId: req.user.tenant_id, companyId: req.companyId, userId: req.user.id };
   return { ...scope, ...await loadNativePolicyRestrictions(scope) };
 }
-const owner = (scope: Awaited<ReturnType<typeof scopeFor>>) => ({ tenant_id: scope.tenantId, company_id: scope.companyId, user_id: scope.userId });
-const authorityKey = (scope: Awaited<ReturnType<typeof scopeFor>>) => createHash('sha256').update(JSON.stringify({ ...owner(scope), role: scope.roleCode, blockedReads: scope.blockedReadModules, blockedWrites: scope.blockedWriteModules, permissions: [...scope.permissions].sort(), modules: [...scope.enabledModules].sort(), projects: scope.projectScope.mode === 'ALL' ? 'ALL' : [...scope.projectScope.projectIds].sort() })).digest('hex');
 const inputSchema = z.object({ message: z.string().trim().min(1).max(4000), conversationId: z.string().uuid().optional(), mode: z.enum(['HELPER', 'DASHBOARD']).default('HELPER') }).strict();
 nativeMarbotRouter.use('/mcp', createMarbotMcpRouter(scopeFor));
 
@@ -78,7 +78,20 @@ nativeMarbotRouter.get('/capabilities', async (req, res, next) => {
   try { res.json({ data: resourceCatalog(await scopeFor(req)) }); } catch (error) { next(error); }
 });
 nativeMarbotRouter.post('/query', async (req, res, next) => {
-  try { res.json({ data: await executeResourceRead(req, req.body, await scopeFor(req)) }); } catch (error) { next(error); }
+  let auditNonce: string | undefined;
+  try {
+    const scope = await scopeFor(req);
+    const nonce = randomUUID();
+    await reserveMarbotRequest({ ...owner(scope), nonce, request_id: req.requestId || nonce, tool_name: 'native.query', outcome: 'STARTED' }, 60);
+    auditNonce = nonce;
+    const result = await executeResourceRead(req, req.body, scope);
+    if (authorityKey(await scopeFor(req)) !== authorityKey(scope)) throw new ForbiddenError();
+    await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } });
+    res.json({ data: result });
+  } catch (error) {
+    if (auditNonce) await prisma.marbot_request.update({ where: { nonce: auditNonce }, data: { outcome: 'FAILED' } }).catch(() => undefined);
+    next(error);
+  }
 });
 
 nativeMarbotRouter.get('/schema', async (req, res, next) => {
@@ -98,8 +111,12 @@ nativeMarbotRouter.get('/status', async (req, res, next) => {
 nativeMarbotRouter.get('/conversations', async (req, res, next) => {
   try {
     const scope = await scopeFor(req);
-    const rows = await prisma.marbot_conversation.findMany({ where: owner(scope), orderBy: { updated_at: 'desc' }, take: 30 });
-    res.json({ data: rows });
+    const visible = { role: 'user', metadata: { path: ['authority'], equals: authorityKey(scope) } };
+    const rows = await prisma.marbot_conversation.findMany({
+      where: { ...owner(scope), messages: { some: visible } }, orderBy: { updated_at: 'desc' }, take: 30,
+      include: { messages: { where: visible, orderBy: { created_at: 'asc' }, take: 1 } },
+    });
+    res.json({ data: rows.map(({ messages, ...row }) => ({ ...row, title: visibleConversationTitle(messages) })) });
   } catch (error) { next(error); }
 });
 nativeMarbotRouter.get('/conversations/:id', async (req, res, next) => {
@@ -109,6 +126,7 @@ nativeMarbotRouter.get('/conversations/:id', async (req, res, next) => {
     if (!row) throw new ForbiddenError();
     // A role change or revoked project must not replay earlier privileged results.
     row.messages = row.messages.reverse().filter(message => (message.metadata as Record<string, unknown>)?.authority === authorityKey(scope));
+    row.title = visibleConversationTitle(row.messages);
     res.json({ data: row });
   } catch (error) { next(error); }
 });
@@ -124,13 +142,10 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
     const input = parsed.data;
     const scope = await scopeFor(req);
     if (input.mode === 'DASHBOARD' && !canUseDashboard(scope)) throw new ForbiddenError();
-    // Persistent company/user limit works across ERP instances.
-    const recent = await prisma.marbot_request.count({ where: { ...owner(scope), tool_name: 'native.chat', created_at: { gte: new Date(Date.now() - 60000) } } });
-    if (recent >= 20) { res.status(429).json({ error: { message: 'Terlalu banyak pesan. Coba lagi dalam satu menit.' } }); return; }
     let conversation = input.conversationId ? await prisma.marbot_conversation.findFirst({ where: { ...owner(scope), id: input.conversationId } }) : null;
     if (input.conversationId && !conversation) throw new ForbiddenError();
     nonce = randomUUID();
-    await prisma.marbot_request.create({ data: { ...owner(scope), nonce, request_id: req.requestId || nonce, tool_name: 'native.chat', outcome: 'STARTED' } });
+    await reserveMarbotRequest({ ...owner(scope), nonce, request_id: req.requestId || nonce, tool_name: 'native.chat', outcome: 'STARTED' }, 20);
     if (!conversation) conversation = await prisma.marbot_conversation.create({ data: { ...owner(scope), title: input.message.slice(0, 80) } });
     const previous = await prisma.marbot_message.findFirst({ where: { conversation_id: conversation.id, role: 'user', metadata: { path: ['authority'], equals: authorityKey(scope) } }, orderBy: { created_at: 'desc' } });
     const contextualQuestion = followUpQuestion(input.message, previous?.content);

@@ -21,9 +21,19 @@ import {
   toolQueryKeys,
 } from './marbot-access.service';
 import { MarbotToolScope } from './marbot.types';
-import { buildMarbotRuntimeContextV2 } from './marbot-runtime.service';
 import { env } from '../../config/env';
 import { nativeMarbotRouter } from './marbot-native.routes';
+import { z } from 'zod';
+import { loadNativePolicyRestrictions } from './marbot-policy.service';
+import { marbotAuthorityKey, marbotOwner } from './marbot-authority.service';
+import { createMarbotRuntimeContextV2 } from './marbot-runtime.service';
+import { requireSignedExternalContract, externalConversationKey, readExternalAnswer } from './marbot-external-security.service';
+import { reserveMarbotRequest } from './marbot-rate-limit.service';
+
+async function externalScope(userId: string, tenantId: string, companyId: string) {
+  const scope = { ...await buildMarbotRuntimeAuthority(userId, tenantId, companyId), userId, tenantId, companyId };
+  return { ...scope, ...await loadNativePolicyRestrictions(scope) };
+}
 
 // Re-export services for backwards compatibility with tests and callers
 export { canonicalJson, toolSignaturePayload, matchesHmac, resolveMarbotTenantConfig };
@@ -79,6 +89,7 @@ async function verifyToolRequest(req: Request, toolName: string): Promise<Marbot
   }
 
   const config = await resolveMarbotTenantConfig(tenant.id);
+  requireSignedExternalContract(config);
   if (
     config.externalTenantId !== tenantClaim ||
     !matchesHmac(toolSignaturePayload(req, toolName, config), signature, config.outboundToolSecret)
@@ -98,8 +109,7 @@ async function verifyToolRequest(req: Request, toolName: string): Promise<Marbot
   const companyId = companyClaim;
 
   // Atomic unique insert blocks replay across instances. Denials after signature verification are also recorded.
-  await prisma.marbot_request.create({
-    data: {
+  await reserveMarbotRequest({
       nonce,
       tenant_id: tenant.id,
       company_id: companyId,
@@ -107,14 +117,16 @@ async function verifyToolRequest(req: Request, toolName: string): Promise<Marbot
       tool_name: toolName,
       request_id: requestId,
       outcome: 'VERIFIED',
-    },
-  }).catch(() => {
-    throw new UnauthorizedError();
+  }, 120).catch((error) => {
+    if (error?.code === 'P2002') throw new UnauthorizedError();
+    throw error;
   });
 
   try {
     const authority = await buildMarbotRuntimeAuthority(userId, tenant.id, companyId);
+    const policies = await loadNativePolicyRestrictions({ ...authority, userId, tenantId: tenant.id, companyId });
     if (
+      policies.blockedReadModules.includes(toolModules[toolName]) ||
       !authority.enabledModules.includes(toolModules[toolName]) ||
       mapRoleForChatbot(authority.roleCode, config) !== roles[0]
     ) {
@@ -353,7 +365,8 @@ export const marbotUserRouter = Router();
 marbotUserRouter.use(authenticate, resolveTenant);
 // Native ERP is the default. Explicit rollback keeps the previous integration available.
 marbotUserRouter.use((req, res, next) => {
-  if (env.MARBOT_RUNTIME === 'external') return next();
+  // The private MCP gateway always stays ERP-owned, regardless of chat provider.
+  if (env.MARBOT_RUNTIME === 'external' && !/^\/mcp(?:\/|$)/.test(req.path)) return next();
   return nativeMarbotRouter(req, res, next);
 });
 
@@ -361,6 +374,8 @@ marbotUserRouter.get('/status', async (req: Request, res: Response, next: NextFu
   try {
     if (!req.user?.tenant_id || !req.companyId) throw new ForbiddenError();
     const config = await resolveMarbotTenantConfig(req.user.tenant_id);
+    await externalScope(req.user.id, req.user.tenant_id, req.companyId);
+    requireSignedExternalContract(config);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
 
@@ -418,7 +433,7 @@ marbotUserRouter.get('/status', async (req: Request, res: Response, next: NextFu
           datasourceStatus: integration?.datasource_status ?? null,
           mcpLiteReady: config.contractVersion === 2
             && integration?.sync_status === 'ACTIVE'
-            && integration?.datasource_status === 'ACTIVE',
+            && integration?.datasource_status === 'GATEWAY_ONLY',
         },
       });
     } finally {
@@ -436,30 +451,23 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
   try {
     if (!req.user?.tenant_id || !req.companyId) throw new ForbiddenError();
     const config = await resolveMarbotTenantConfig(req.user.tenant_id);
-    const message = req.body?.message;
-    const conversationId = req.body?.conversationId;
+    requireSignedExternalContract(config);
+    const parsed = z.object({ message: z.string().trim().min(1).max(4000), conversationId: z.string().uuid().optional(), mode: z.literal('HELPER').optional() }).strict().safeParse(req.body);
+    if (!parsed.success) throw new ValidationError('Pesan, mode, atau conversationId tidak valid.');
+    const { message, conversationId } = parsed.data;
+    const scope = await externalScope(req.user.id, req.user.tenant_id, req.companyId);
+    // Unsupported field/data policies must not be delegated to an external model.
+    if (scope.blockedReadModules.length) throw new ForbiddenError('Kebijakan data khusus memerlukan chatbot native.');
+    const context = createMarbotRuntimeContextV2(req.user.id, req.companyId, config, scope);
+    const authority = marbotAuthorityKey(scope);
+    const owner = marbotOwner(scope);
+    let conversation = conversationId ? await prisma.marbot_conversation.findFirst({ where: {
+      ...owner, id: conversationId, messages: { some: { metadata: { path: ['authority'], equals: authority } } },
+    } }) : null;
+    if (conversationId && !conversation) throw new ForbiddenError();
+    const signature = signRuntimeContext(context, config.inboundContextSecret);
 
-    if (
-      typeof message !== 'string' ||
-      !message.trim() ||
-      message.length > 4000 ||
-      (conversationId !== undefined && (typeof conversationId !== 'string' || conversationId.length > 128))
-    ) {
-      throw new ValidationError('Pesan atau conversationId tidak valid.');
-    }
-
-    const context = await buildMarbotRuntimeContextV2(
-      req.user.id, req.user.tenant_id, req.companyId, config,
-    );
-    // Never infer V2 solely from a process-level environment variable. The
-    // tenant must have a managed chatbot registration and V2 credentials.
-    const useContractV2 = config.contractVersion === 2;
-    const signature = useContractV2
-      ? signRuntimeContext(context, config.inboundContextSecret)
-      : null;
-
-    await prisma.marbot_request.create({
-      data: {
+    await reserveMarbotRequest({
         nonce: context.jti,
         tenant_id: req.user.tenant_id,
         company_id: req.companyId,
@@ -467,9 +475,11 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
         tool_name: 'chat.completions',
         request_id: req.requestId || randomUUID(),
         outcome: 'FORWARDED',
-      },
-    });
+    }, 20);
     auditNonce = context.jti;
+    if (!conversation) conversation = await prisma.marbot_conversation.create({ data: { ...owner, title: message.slice(0, 80) } });
+    const localId = conversation.id;
+    await prisma.marbot_message.create({ data: { conversation_id: localId, role: 'user', content: message, metadata: { authority } } });
 
     const url = new URL('/api/v1/chat/completions', config.chatbotUrl);
     const controller = new AbortController();
@@ -484,15 +494,13 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
         'X-External-User-Id': req.user.id,
         'X-Request-Id': req.requestId || context.jti,
       };
-      if (signature) upstreamHeaders['X-Context-Signature'] = signature;
+      upstreamHeaders['X-Context-Signature'] = signature;
       upstream = await fetch(url, {
         method: 'POST',
         redirect: 'manual',
         signal: controller.signal,
         headers: upstreamHeaders,
-        body: JSON.stringify(useContractV2
-          ? { message, conversationId, context }
-          : { message, conversationId }),
+        body: JSON.stringify({ message, conversationId: externalConversationKey(localId, authority, config), context }),
       });
     } catch {
       throw new AppError('Layanan Marka Plus tidak dapat dihubungi.', 502, 'MARBOT_NETWORK_ERROR');
@@ -513,13 +521,17 @@ marbotUserRouter.post('/chat/completions', async (req: Request, res: Response, n
       throw new AppError('Layanan Marka Plus tidak tersedia.', 502, 'MARBOT_UPSTREAM_UNAVAILABLE');
     }
 
+    const answer = await readExternalAnswer(upstream);
+    if (marbotAuthorityKey(await externalScope(req.user.id, req.user.tenant_id, req.companyId)) !== authority) throw new ForbiddenError('Hak akses berubah selama pemrosesan.');
+    await prisma.marbot_message.create({ data: { conversation_id: localId, role: 'assistant', content: answer.content, metadata: { authority } } });
     res.status(200).set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       'X-Accel-Buffering': 'no',
     });
 
-    for await (const chunk of upstream.body) res.write(chunk);
+    res.write(`data: ${JSON.stringify({ event: 'chunk', data: { delta: answer.content } })}\n\n`);
+    res.write(`data: ${JSON.stringify({ event: 'done', data: { conversationId: localId, model: answer.model } })}\n\n`);
 
     clearTimeout(timer);
     timer = null;

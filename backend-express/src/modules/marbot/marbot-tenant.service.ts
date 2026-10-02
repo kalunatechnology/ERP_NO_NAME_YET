@@ -50,7 +50,6 @@ function managedProvisioningBlockers(): string[] {
   if (env.CHATBOT_CONTRACT_MODE !== 'v2') blockers.push('CHATBOT_CONTRACT_MODE=v2');
   if (!env.CHATBOT_SERVICE_URL) blockers.push('CHATBOT_SERVICE_URL');
   if (!env.CHATBOT_CONTROL_PLANE_SECRET) blockers.push('CHATBOT_CONTROL_PLANE_SECRET');
-  if (!env.CHATBOT_ERP_READONLY_DATABASE_URL) blockers.push('CHATBOT_ERP_READONLY_DATABASE_URL');
   if (env.NODE_ENV === 'production' && !env.ERP_BASE_URL) blockers.push('ERP_BASE_URL');
   if (env.NODE_ENV === 'production' && !hasMarbotEncryptionKey()) blockers.push('MARBOT_ENCRYPTION_KEY');
   return blockers;
@@ -198,11 +197,6 @@ export class MarbotTenantService {
     if (env.NODE_ENV === 'production' && !hasMarbotEncryptionKey()) {
       throw new ValidationError('MARBOT_ENCRYPTION_KEY wajib dikonfigurasi untuk managed provisioning.');
     }
-    if (env.NODE_ENV === 'production' && !env.CHATBOT_ERP_READONLY_DATABASE_URL) {
-      throw new ValidationError(
-        'CHATBOT_ERP_READONLY_DATABASE_URL wajib dikonfigurasi agar MCP-Lite database aktif.',
-      );
-    }
     if (env.NODE_ENV === 'production' && !env.ERP_BASE_URL) {
       throw new ValidationError('ERP_BASE_URL wajib dikonfigurasi untuk managed provisioning production.');
     }
@@ -238,20 +232,6 @@ export class MarbotTenantService {
     } catch {
       throw new ValidationError('ERP_BASE_URL tidak valid.');
     }
-    const dataSource = env.CHATBOT_ERP_READONLY_DATABASE_URL ? {
-      sourceKey: 'ERP_MAIN',
-      name: `${tenant.name} ERP Read Model`,
-      connectionUrl: env.CHATBOT_ERP_READONLY_DATABASE_URL,
-      isolationMode: 'COLUMN' as const,
-      scopeColumn: 'company_id',
-      scopeContextKey: 'companyId',
-      schemaAllowlist: ['public'],
-      tableAllowlist: ['ai_projects', 'ai_project_tasks', 'ai_project_finance_summary', 'ai_finance_summary', 'ai_crm_deals'],
-      maxRows: 100,
-      maxColumns: 30,
-      maxResultBytes: 262144,
-      statementTimeoutMs: 5000,
-    } : null;
     const provisionPayload = {
       contractVersion: 2 as const,
       externalTenantId: tenant.code,
@@ -261,7 +241,9 @@ export class MarbotTenantService {
       allowedInternalCidrs: [],
       credentialScopes: ['chat', 'knowledge:read', 'jobs:read'],
       modules,
-      dataSource,
+      // The external service must disable direct SQL. All operational data comes
+      // through signed, user-scoped ERP tools; no database credential is exported.
+      dataSource: null,
     };
     const isManagedSync = Boolean(existing?.chatbot_tenant_id);
     const payloadHash = createHash('sha256').update(JSON.stringify(provisionPayload)).digest('hex').slice(0, 20);
@@ -340,6 +322,12 @@ export class MarbotTenantService {
       }
     }
 
+    if (provisionRes.dataSource && !['DISABLED', 'DISCONNECTED'].includes(provisionRes.dataSource.status || '')) {
+      await db.marbot_tenant_config.update({ where: { tenant_id: tenantId }, data: {
+        sync_status: 'SYNC_ERROR', last_sync_error: 'External datasource masih aktif; mode gateway wajib tanpa akses database langsung.',
+      } });
+      throw new ValidationError('Layanan external belum menonaktifkan datasource database. Sinkronisasi gateway ditolak.');
+    }
     // 5. Persist credentials and transition to ACTIVE
     const saved = await db.marbot_tenant_config.update({
       where: { tenant_id: tenantId },
@@ -355,8 +343,8 @@ export class MarbotTenantService {
         last_synced_at: new Date(),
         contract_version: 2,
         runtime_context_version: 2,
-        datasource_source_key: provisionRes.dataSource?.sourceKey || (env.CHATBOT_ERP_READONLY_DATABASE_URL ? 'ERP_MAIN' : null),
-        datasource_status: provisionRes.dataSource?.status || (env.CHATBOT_ERP_READONLY_DATABASE_URL ? 'CONFIGURED' : null),
+        datasource_source_key: null,
+        datasource_status: 'GATEWAY_ONLY',
         last_contract_sync_at: new Date(),
         last_sync_error: null,
       },

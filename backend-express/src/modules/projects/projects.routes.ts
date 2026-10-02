@@ -2277,6 +2277,8 @@ projectsRouter.use('/projects', createCrudRouter({
       || req.user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk membuat project.');
     }
+    // Ownership is immutable and always derived from the authenticated creator.
+    data.created_by_id = activeUserId(req);
     // 1. Alias mappings
     if (!data.project_name && data.name) data.project_name = data.name;
     data.project_name = String(data.project_name ?? '').trim();

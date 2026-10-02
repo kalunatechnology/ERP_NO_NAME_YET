@@ -29,6 +29,7 @@
     "test:pagination": "ts-node --files tests/pagination.unit.ts",
     "test:marbot-signature": "ts-node --files tests/marbot-signature.unit.ts",
     "test:marbot-native": "ts-node --files tests/marbot-native.unit.ts && ts-node --files tests/marbot-native-http.unit.ts",
+    "test:marbot-security": "ts-node --files tests/marbot-security.unit.ts && ts-node --files tests/marbot-external-http.unit.ts && ts-node --files tests/marbot-staff-scope.unit.ts",
     "test:marbot-tenant": "ts-node --files tests/marbot-tenant.unit.ts",
     "test:marbot-runtime-v2": "ts-node --files tests/marbot-runtime-context-v2.unit.ts",
     "test:marbot-tool-hmac-v2": "ts-node --files tests/marbot-tool-hmac-v2.unit.ts",

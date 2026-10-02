@@ -3,10 +3,27 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { env } from '../../config/env';
 import prisma from '../../config/database';
-import { AppError } from '../../utils/errors';
+import { AppError, ForbiddenError } from '../../utils/errors';
 import { answerNative, type NativeScope } from './marbot-native.service';
-import { discoverMarbotSchema } from './marbot-schema.service';
+import { discoverMarbotSchema, readableTables } from './marbot-schema.service';
 import { executeResourceRead, resourceCatalog } from './marbot-resource.service';
+import { reserveMarbotRequest } from './marbot-rate-limit.service';
+import { marbotAuthorityKey } from './marbot-authority.service';
+
+export function allowedMcpTools(scope: NativeScope): Set<string> {
+  const tools = new Set(['erp.capabilities']);
+  if (resourceCatalog(scope).length) {
+    tools.add('erp.query');
+  }
+  if (readableTables(scope).length) tools.add('erp.schema');
+  const reads: Record<string, string[]> = {
+    GENERAL: ['READ_GENERAL'], PROJECTS: ['READ_PROJECT', 'READ_TASK'],
+    FINANCE: ['READ_PROJECT_FINANCE', 'READ_COMPANY_FINANCE', 'READ_FINANCE_SUMMARY'], CRM: ['READ_TICKET'],
+  };
+  if (Object.entries(reads).some(([module, permissions]) => scope.enabledModules.includes(module)
+    && !scope.blockedReadModules?.includes(module) && permissions.some(code => scope.permissions.includes(code)))) tools.add('erp.readQuestion');
+  return tools;
+}
 
 /** Private ERP-authenticated MCP Streamable HTTP, JSON response mode, version 2025-11-25. */
 export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<NativeScope>) {
@@ -36,6 +53,7 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
       }
       if (method === 'ping') { reply({}); return; }
       if (method === 'tools/list') {
+        const allowed = allowedMcpTools(scope);
         reply({ tools: [
           { name: 'erp.capabilities', description: 'Discover canonical resources and typed fields in the current user module scope. Canonical API authorization is rechecked at execution.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
           { name: 'erp.schema', description: 'Read live database columns and physical primary/foreign/check constraints for permitted resources.', inputSchema: { type: 'object', properties: { tables: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
@@ -45,16 +63,15 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
             related: { type: 'object', properties: { resource: { type: 'string' }, sourceField: { type: 'string' }, targetField: { type: 'string' } }, required: ['resource', 'sourceField', 'targetField'], additionalProperties: false },
           }, required: ['resource', 'operation'], additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
           { name: 'erp.readQuestion', description: 'Permission-scoped native project/task/finance/KPI/support reads and system knowledge. No mutations; requires a clear read question.', inputSchema: { type: 'object', properties: { question: { type: 'string', minLength: 1, maxLength: 2000 } }, required: ['question'], additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
-        ] }); return;
+        ].filter(tool => allowed.has(tool.name)) }); return;
       }
       if (method !== 'tools/call') { error(-32601, 'Method not found'); return; }
       const call = z.object({ name: z.enum(['erp.capabilities', 'erp.schema', 'erp.query', 'erp.readQuestion']), arguments: z.record(z.unknown()).default({}), _meta: z.record(z.unknown()).optional() }).strict().safeParse(params);
       if (!call.success) { error(-32602, 'Invalid tool or parameters'); return; }
+      if (!allowedMcpTools(scope).has(call.data.name)) throw new ForbiddenError('Tool MCP tidak diizinkan untuk sesi aktif.');
       const boundary = { tenant_id: scope.tenantId, company_id: scope.companyId, user_id: scope.userId };
-      const count = await prisma.marbot_request.count({ where: { ...boundary, tool_name: 'native.mcp', created_at: { gte: new Date(Date.now() - 60000) } } });
-      if (count >= 60) { error(-32000, 'Rate limit exceeded', 429); return; }
       const nonce = randomUUID();
-      await prisma.marbot_request.create({ data: { ...boundary, nonce, request_id: req.requestId || nonce, tool_name: 'native.mcp', outcome: 'STARTED' } });
+      await reserveMarbotRequest({ ...boundary, nonce, request_id: req.requestId || nonce, tool_name: 'native.mcp', outcome: 'STARTED' }, 60);
       try {
         const args = call.data.arguments;
         let result: unknown;
@@ -69,6 +86,7 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
           if (/\b(buat|buatkan|create|ubah|update|perbarui|hapus|delete|assign|tugaskan|tambahkan)\b/i.test(question)) throw new Error('Read tool cannot propose mutations');
           result = await answerNative(question, 'HELPER', scope);
         } else result = await executeResourceRead(req, args, scope);
+        if (marbotAuthorityKey(await scopeFor(req)) !== marbotAuthorityKey(scope)) throw new ForbiddenError('Hak akses berubah selama pemrosesan tool.');
         await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } });
         reply({ content: [{ type: 'text', text: JSON.stringify(result) }], isError: false });
       } catch (failure) {

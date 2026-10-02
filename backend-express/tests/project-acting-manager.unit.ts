@@ -32,12 +32,14 @@ function fakeDb(options: { actingActive?: boolean; originalPmId?: string } = {})
     project_project: {
       findMany: async ({ where }: any) => {
         if (where.company_id !== COMPANY_A) return [];
+        if (where.created_by_id && where.created_by_id !== originalPmId) return [];
         return [{ id: PROJECT_A }];
       },
       findFirst: async ({ where }: any) => {
         const id = where.id ?? where.AND?.[0]?.id;
         if (where.company_id !== COMPANY_A || id !== PROJECT_A) return null;
-        return { id: PROJECT_A, project_manager_id: originalPmId };
+        if (where.created_by_id && where.created_by_id !== originalPmId) return null;
+        return { id: PROJECT_A, project_manager_id: originalPmId, created_by_id: originalPmId };
       },
     },
     project_task_assignment: { findMany: async () => [] },
@@ -98,19 +100,18 @@ async function main() {
   await ProjectsService.assertCanDelegateProjectAuthority(user('pm-a', RoleCode.PROJECT_MANAGER), PROJECT_A, COMPANY_A, db);
   await ProjectsService.assertCanDelegateProjectAuthority(user('om-a', RoleCode.OPERATIONAL_MANAGER), PROJECT_A, COMPANY_A, db);
   await ProjectsService.assertCanDelegateProjectAuthority(user('admin-a', RoleCode.COMPANY_ADMIN), PROJECT_A, COMPANY_A, db);
-  // In our business rules, any PM in the active company has full authority and can delegate for company projects
+  // A PM cannot inherit another creator's authority, even in the same company.
   const otherCompanyPm = user('pm-other', RoleCode.PROJECT_MANAGER);
-  await ProjectsService.assertCanDelegateProjectAuthority(otherCompanyPm, PROJECT_A, COMPANY_A, db);
+  await assert.rejects(() => ProjectsService.assertCanDelegateProjectAuthority(otherCompanyPm, PROJECT_A, COMPANY_A, db));
   await assert.rejects(() => ProjectsService.assertCanDelegateProjectAuthority(
     otherCompanyPm, PROJECT_A, COMPANY_B, db,
   ));
 
-  // PM has company-wide scope
-  assert.deepEqual(await ProjectsService.managedProjectIds(otherCompanyPm, COMPANY_A, db), [PROJECT_A]);
-  assert.deepEqual(await ProjectsService.projectAccessWhere(otherCompanyPm, COMPANY_A, db), {});
-  await ProjectsService.assertCanManageProject(otherCompanyPm, PROJECT_A, COMPANY_A, db);
+  assert.deepEqual(await ProjectsService.managedProjectIds(otherCompanyPm, COMPANY_A, db), []);
+  assert.deepEqual(await ProjectsService.projectAccessWhere(otherCompanyPm, COMPANY_A, db), { created_by_id: 'pm-other', tenant_id: 'tenant-a' });
+  await assert.rejects(() => ProjectsService.assertCanManageProject(otherCompanyPm, PROJECT_A, COMPANY_A, db));
 
-  const pmAuthority = await ProjectsService.getProjectAuthority(otherCompanyPm, PROJECT_A, COMPANY_A, db);
+  const pmAuthority = await ProjectsService.getProjectAuthority(user('pm-a', RoleCode.PROJECT_MANAGER), PROJECT_A, COMPANY_A, db);
   assert.equal(pmAuthority.effective_role, 'PROJECT_MANAGER');
   assert.equal(pmAuthority.is_project_manager, true);
   assert.equal(pmAuthority.is_acting_project_manager, false);

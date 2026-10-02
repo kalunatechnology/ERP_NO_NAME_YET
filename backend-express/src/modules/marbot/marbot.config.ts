@@ -65,6 +65,7 @@ export async function resolveMarbotTenantConfig(
       chatbot_tenant_id: true,
       contract_version: true,
       runtime_context_version: true,
+      datasource_status: true,
     },
   });
 
@@ -102,6 +103,7 @@ export async function resolveMarbotTenantConfig(
       runtimeContextVersion: dbRow.chatbot_tenant_id && dbRow.runtime_context_version === 2
         ? 2
         : undefined,
+      dataAccessMode: dbRow.datasource_status === 'GATEWAY_ONLY' ? 'GATEWAY_ONLY' : undefined,
     };
   }
 

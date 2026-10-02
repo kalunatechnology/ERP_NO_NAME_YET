@@ -84,7 +84,7 @@ export class ProjectsService {
 
   private static hasPortfolioRead(user: any): boolean {
     return this.hasPlatformAdmin(user)
-      || ([RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.PROJECT_MANAGER] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
+      || ([RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
   }
 
   static async managedProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
@@ -96,7 +96,8 @@ export class ProjectsService {
       activeRole === RoleCode.PROJECT_MANAGER
     ) {
       const projects = await db.project_project.findMany({
-        where: { company_id: companyId },
+        where: { company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
+          ...(activeRole === RoleCode.PROJECT_MANAGER ? { created_by_id: user.id } : {}) },
         select: { id: true },
       });
       return projects.map((project: { id: string }) => project.id);
@@ -134,7 +135,8 @@ export class ProjectsService {
       activeRole === RoleCode.PROJECT_MANAGER
     ) {
       const project = await db.project_project.findFirst({
-        where: { id: projectId, company_id: companyId },
+        where: { id: projectId, company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
+          ...(activeRole === RoleCode.PROJECT_MANAGER ? { created_by_id: user.id } : {}) },
         select: { id: true },
       });
       if (project) return;
@@ -172,7 +174,10 @@ export class ProjectsService {
   }
 
   static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
+      return { created_by_id: user.id, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
+    }
     if (!this.hasBaseStaffAccess(user)) return { id: { in: [] } };
 
     const [memberships, assignments] = await Promise.all([
@@ -442,12 +447,25 @@ export class ProjectsService {
     }
   }
 
+  private static async creatorMainTaskIds(user: any, companyId: string, db: any): Promise<string[]> {
+    const projectIds = await this.managedProjectIds(user, companyId, db);
+    const tasks = await db.project_main_task.findMany({
+      where: { company_id: companyId, project_id: { in: projectIds } }, select: { id: true },
+    });
+    return tasks.map((task: { id: string }) => task.id);
+  }
+
   static async dailyTaskAccessWhere(
     user: any,
     companyId: string,
     db: any = prisma,
   ): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
+      const mainIds = await this.creatorMainTaskIds(user, companyId, db);
+      const weekly = await db.project_weekly_task.findMany({ where: { company_id: companyId, main_task_id: { in: mainIds } }, select: { id: true } });
+      return { weekly_task_id: { in: weekly.map((row: { id: string }) => row.id) } };
+    }
     if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
@@ -510,7 +528,8 @@ export class ProjectsService {
   }
 
   static async mainTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { project_id: { in: await this.managedProjectIds(user, companyId, db) } };
     if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
@@ -528,7 +547,8 @@ export class ProjectsService {
   }
 
   static async weeklyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { main_task_id: { in: await this.creatorMainTaskIds(user, companyId, db) } };
     if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
@@ -558,7 +578,8 @@ export class ProjectsService {
   }
 
   static async taskAssignmentAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { main_task_id: { in: await this.creatorMainTaskIds(user, companyId, db) } };
     if (this.hasBaseStaffAccess(user)) {
       const managedProjectIds = await this.managedProjectIds(user, companyId, db);
       if (!managedProjectIds.length) return { assignee_id: user.id };
@@ -577,7 +598,12 @@ export class ProjectsService {
   }
 
   static async taskTransferAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
+      const where = await this.dailyTaskAccessWhere(user, companyId, db);
+      const daily = await db.project_daily_task.findMany({ where: { company_id: companyId, ...where }, select: { id: true } });
+      return { daily_task_id: { in: daily.map((row: { id: string }) => row.id) } };
+    }
     if (this.hasBaseStaffAccess(user)) {
       const managedProjectIds = await this.managedProjectIds(user, companyId, db);
       if (!managedProjectIds.length) return { OR: [{ requested_by_id: user.id }, { target_user_id: user.id }] };
@@ -743,6 +769,7 @@ export class ProjectsService {
     if (!allowed) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk menunjuk atau mencabut Project Supervisor.');
     }
+    await this.assertCanManageProject(user, projectId, companyId, db);
   }
 
   static async getProjectSupervisor(projectId: string, companyId: string, db: any = prisma) {
@@ -921,12 +948,12 @@ export class ProjectsService {
   static async getProjectAuthority(user: any, projectId: string, companyId: string, db: any = prisma): Promise<ProjectAuthority> {
     const project = await db.project_project.findFirst({
       where: { id: projectId, company_id: companyId },
-      select: { id: true, project_manager_id: true },
+      select: { id: true, project_manager_id: true, created_by_id: true },
     });
     if (!project) throw new NotFoundError('Project');
     await this.assertCanViewProject(user, projectId, companyId, db);
     const activeRole = this.activeRole(user);
-    const isGlobalPm = activeRole === RoleCode.PROJECT_MANAGER;
+    const isCreatorPm = activeRole === RoleCode.PROJECT_MANAGER && project.created_by_id === user.id;
     const isOm = activeRole === RoleCode.OPERATIONAL_MANAGER;
     const isAdmin = this.isCompanyAdmin(user);
 
@@ -945,7 +972,7 @@ export class ProjectsService {
       isActing = Boolean(membership);
     }
 
-    const isPm = isGlobalPm;
+    const isPm = isCreatorPm;
     const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && (isAdmin || isOm || isPm || isActing);
     const canDelegate = canManage && (isAdmin || isOm || isPm);
     const effectiveRole = isActing
