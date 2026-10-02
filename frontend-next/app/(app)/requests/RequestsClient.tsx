@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Bold, CalendarDays, Check, CheckCircle2, Clock3, FileDown, FileText, Italic, Link2, MapPin, Pencil, Plus, Save, Send, Strikethrough, Trash2, UserCircle2, X, ClipboardList } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock3, FileDown, FileText, Filter, Italic, Link2, MapPin, Pencil, Plus, Repeat, Save, Search, Send, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
 import toast from "react-hot-toast";
 import { MeetingDetail, MeetingRequestSummary, NonMeetingRequest, requestApi } from "@/lib/api/request.api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -39,6 +39,56 @@ export default function RequestsClient(){
   const [minutes,setMinutes]=useState(initialMinutes);
   const [personInCharge,setPersonInCharge]=useState("");
   const [requestModalOpen,setRequestModalOpen]=useState(false);
+  const [searchQuery,setSearchQuery]=useState("");
+  const [statusFilter,setStatusFilter]=useState<'ALL'|'DRAFT'|'SCHEDULED'|'COMPLETED'>('ALL');
+  const [typeFilter,setTypeFilter]=useState<'ALL'|'RECURRING'|'NON_RECURRING'>('ALL');
+
+  const meetingCounts = useMemo(() => {
+    let draft = 0;
+    let scheduled = 0;
+    let completed = 0;
+    for (const m of meetings) {
+      if (m.status === 'DRAFT' || m.request?.status === 'DRAFT') draft++;
+      else if (m.status === 'COMPLETED') completed++;
+      else scheduled++;
+    }
+    return { all: meetings.length, draft, scheduled, completed };
+  }, [meetings]);
+
+  const filteredMeetings = useMemo(() => {
+    return meetings.filter(item => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const title = item.request?.title?.toLowerCase() ?? '';
+        const num = item.request?.request_number?.toLowerCase() ?? '';
+        const desc = item.request?.description?.toLowerCase() ?? '';
+        if (!title.includes(q) && !num.includes(q) && !desc.includes(q)) return false;
+      }
+      if (statusFilter !== 'ALL') {
+        const isDraft = item.status === 'DRAFT' || item.request?.status === 'DRAFT';
+        if (statusFilter === 'DRAFT' && !isDraft) return false;
+        if (statusFilter === 'SCHEDULED' && (isDraft || item.status === 'COMPLETED')) return false;
+        if (statusFilter === 'COMPLETED' && item.status !== 'COMPLETED') return false;
+      }
+      if (typeFilter !== 'ALL') {
+        if (item.recurrence_type !== typeFilter) return false;
+      }
+      return true;
+    });
+  }, [meetings, searchQuery, statusFilter, typeFilter]);
+
+  const filteredNonMeeting = useMemo(() => {
+    return nonMeetingRequests.filter(item => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const title = item.title?.toLowerCase() ?? '';
+        const num = item.request_number?.toLowerCase() ?? '';
+        const desc = item.description?.toLowerCase() ?? '';
+        if (!title.includes(q) && !num.includes(q) && !desc.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [nonMeetingRequests, searchQuery]);
 
   const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");setMinutes({summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""});return detail;}catch{toast.error("Detail meeting tidak dapat dimuat.");return null;}},[]);
   const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);const id=typeof window!=="undefined"?new URLSearchParams(window.location.search).get("meeting"):null;if(id)await openMeeting(id);}catch{toast.error("Data tidak dapat dimuat.");}finally{setLoading(false);}},[openMeeting]);
@@ -103,53 +153,238 @@ export default function RequestsClient(){
   async function openNotes(occurrenceDate:string){if(!selected)return;const detail=await openMeeting(selected.id,occurrenceDate);if(detail)setNotesOpen(true);}
 
   return <div className="min-h-[calc(100vh-120px)] bg-[#FDFDFD] text-[#090909]">
-    <div className="rounded-[24px] border border-[#E5E5E5] bg-white p-5 sm:p-7">
+    <div className="rounded-[24px] border border-[#E5E5E5] bg-white p-5 sm:p-7 shadow-xs">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[.16em] text-[#4F5050]">Contents / Meeting</p>
-          <h1 className="mt-2 text-2xl font-extrabold text-[#294BB2]">Meeting</h1>
-          <p className="mt-1 text-sm text-[#4F5050]">Kelola meeting, request cuti, dan kebutuhan lain dalam satu alur.</p>
+          <h1 className="mt-2 text-2xl font-extrabold text-[#294BB2]">Meeting & Request</h1>
+          <p className="mt-1 text-sm text-[#4F5050]">Kelola jadwal meeting, koordinasi harian, notulensi, dan request izin/cuti.</p>
         </div>
         {activeTab==='meeting'
-          ?<button onClick={()=>setCreateOpen(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#294BB2] px-5 text-sm font-bold text-white hover:bg-[#203d91]"><Plus size={18}/> New Meeting</button>
-          :<button onClick={()=>setRequestModalOpen(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2B7A42] px-5 text-sm font-bold text-white hover:bg-[#226135]"><Plus size={18}/> New Request</button>
+          ?<button onClick={()=>setCreateOpen(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#294BB2] px-5 text-sm font-bold text-white shadow-xs hover:bg-[#203d91] active:scale-95 transition-all"><Plus size={18}/> New Meeting</button>
+          :<button onClick={()=>setRequestModalOpen(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2B7A42] px-5 text-sm font-bold text-white shadow-xs hover:bg-[#226135] active:scale-95 transition-all"><Plus size={18}/> New Request</button>
         }
       </div>
 
-      {/* Sub-tabs */}
-      <div className="mt-6 flex gap-1 rounded-xl bg-[#F4F6FB] p-1 w-fit">
-        <button onClick={()=>setActiveTab('meeting')} className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold transition ${activeTab==='meeting'?'bg-white text-[#294BB2] shadow-sm':'text-[#4F5050] hover:text-[#294BB2]'}`}>
-          <CalendarDays size={16}/> Meeting
-        </button>
-        <button onClick={()=>setActiveTab('request')} className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold transition ${activeTab==='request'?'bg-white text-[#2B7A42] shadow-sm':'text-[#4F5050] hover:text-[#2B7A42]'}`}>
-          <ClipboardList size={16}/> Request
-        </button>
+      {/* Sub-tabs + Search & Filters Bar */}
+      <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-100 pb-5">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Main Module Tabs */}
+          <div className="flex gap-1 rounded-xl bg-[#F4F6FB] p-1">
+            <button onClick={()=>setActiveTab('meeting')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition ${activeTab==='meeting'?'bg-white text-[#294BB2] shadow-xs':'text-[#4F5050] hover:text-[#294BB2]'}`}>
+              <CalendarDays size={15}/> Meeting <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${activeTab==='meeting'?'bg-blue-100 text-[#294BB2]':'bg-slate-200 text-slate-600'}`}>{meetings.length}</span>
+            </button>
+            <button onClick={()=>setActiveTab('request')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition ${activeTab==='request'?'bg-white text-[#2B7A42] shadow-xs':'text-[#4F5050] hover:text-[#2B7A42]'}`}>
+              <ClipboardList size={15}/> Request <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${activeTab==='request'?'bg-emerald-100 text-[#2B7A42]':'bg-slate-200 text-slate-600'}`}>{nonMeetingRequests.length}</span>
+            </button>
+          </div>
+
+          {/* Type Filter for Meetings */}
+          {activeTab==='meeting' && (
+            <div className="flex items-center gap-1 rounded-xl bg-slate-50 p-1 border border-slate-200/60 text-xs">
+              {(['ALL', 'RECURRING', 'NON_RECURRING'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTypeFilter(t)}
+                  className={`rounded-lg px-2.5 py-1.5 font-bold transition ${
+                    typeFilter === t
+                      ? 'bg-white text-[#294BB2] shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {t === 'ALL' ? 'Semua Tipe' : t === 'RECURRING' ? 'Recurring' : 'Sekali'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Search Input & Status Filters */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[200px] flex-1 sm:w-60">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari judul meeting..."
+              className="h-9.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-9 pr-7 text-xs font-medium text-slate-700 outline-none focus:border-[#294BB2] focus:bg-white focus:ring-2 focus:ring-[#294BB2]/10 transition-all"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {activeTab==='meeting' && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              {(['ALL', 'DRAFT', 'SCHEDULED', 'COMPLETED'] as const).map(status => {
+                const count = status === 'ALL' ? meetingCounts.all : status === 'DRAFT' ? meetingCounts.draft : status === 'SCHEDULED' ? meetingCounts.scheduled : meetingCounts.completed;
+                const label = status === 'ALL' ? 'Semua' : status === 'DRAFT' ? 'Draft' : status === 'SCHEDULED' ? 'Terjadwal' : 'Selesai';
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition whitespace-nowrap ${
+                      statusFilter === status
+                        ? status === 'DRAFT'
+                          ? 'bg-amber-100 text-amber-900 shadow-xs'
+                          : status === 'COMPLETED'
+                          ? 'bg-emerald-100 text-emerald-900 shadow-xs'
+                          : 'bg-[#294BB2] text-white shadow-xs'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className={`rounded-full px-1.5 py-0.2 text-[10px] ${statusFilter === status ? 'bg-black/15 text-inherit' : 'bg-slate-200 text-slate-600'}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Meeting Tab */}
-      {activeTab==='meeting'&&<div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {loading&&[1,2,3].map(item=><div key={item} className="h-48 animate-pulse rounded-[18px] border border-[#E5E5E5] bg-[#FDFDFD] p-5"><div className="h-4 w-1/3 rounded bg-[#EAF6FF]"/><div className="mt-5 h-4 w-4/5 rounded bg-[#EFEFEF]"/><div className="mt-3 h-3 w-3/5 rounded bg-[#EFEFEF]"/></div>)}
-        {!loading&&meetings.length===0&&<div className="col-span-full rounded-[18px] border border-dashed border-[#D9D9D9] p-14 text-center text-sm text-[#4F5050]">Belum ada Meeting. Buat meeting baru dengan tombol di atas.</div>}
-        {meetings.map(row=><button key={row.id} onClick={()=>void openMeeting(row.id)} className="group rounded-[18px] border border-[#D9D9D9] bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-[#294BB2] hover:shadow-md"><div className="flex items-center justify-between"><span className="rounded-xl bg-[#294BB2] px-4 py-2 text-xs font-bold tracking-wide text-white">{row.recurrence_type==="RECURRING"?"RECURRING":"ONE-TIME"}</span><span className={`rounded-xl px-3 py-2 text-xs font-bold ${row.status==="DRAFT"?"border border-[#F5C842] bg-[#FFF5D9] text-[#8A6100]":"bg-[#EAF6FF] text-[#294BB2]"}`}>{row.status==="DRAFT"?"DRAFT (Belum Diposting)":row.status}</span></div><h2 className="mt-5 line-clamp-2 text-lg font-extrabold text-[#294BB2]">{row.request?.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-6 text-[#4F5050]">{row.request?.description||"Tanpa deskripsi"}</p><div className="mt-5 flex items-center justify-between border-t border-[#EFEFEF] pt-4 text-xs text-[#4F5050]"><span className="flex items-center gap-1.5"><CalendarDays size={14}/>{displayDate(row.start_at)}</span><ArrowRight size={16} className="text-[#294BB2] transition group-hover:translate-x-1"/></div></button>)}
+      {activeTab==='meeting'&&<div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4.5">
+        {loading&&[1,2,3].map(item=><div key={item} className="h-44 animate-pulse rounded-2xl border border-slate-200 bg-slate-50 p-5"/>)}
+        {!loading&&filteredMeetings.length===0&&<div className="col-span-full rounded-2xl border border-dashed border-slate-300 p-14 text-center text-sm text-slate-500">Tidak ada meeting yang sesuai dengan filter atau pencarian.</div>}
+        {filteredMeetings.map(row=>{
+          const isDraft = row.status === "DRAFT" || row.request?.status === "DRAFT";
+          const isCompleted = row.status === "COMPLETED";
+          const isRecurring = row.recurrence_type === "RECURRING";
+
+          return (
+            <div
+              key={row.id}
+              onClick={()=>void openMeeting(row.id)}
+              className={`group relative flex flex-col justify-between rounded-2xl border bg-white p-5 text-left cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-[#294BB2]/5 ${
+                isDraft
+                  ? "border-amber-200/90 bg-gradient-to-b from-amber-50/20 to-white hover:border-amber-400"
+                  : isCompleted
+                  ? "border-emerald-100 bg-white hover:border-emerald-300"
+                  : "border-slate-200/90 hover:border-[#294BB2]/50 hover:ring-2 hover:ring-[#294BB2]/10"
+              }`}
+            >
+              <div>
+                {/* Top Badges Header: Guaranteed NO wrapping */}
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold tracking-wide whitespace-nowrap ${
+                      isRecurring
+                        ? "bg-[#EAF3FF] text-[#294BB2]"
+                        : "bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    {isRecurring ? <Repeat size={13} className="text-[#294BB2]" /> : <Calendar size={13} />}
+                    {isRecurring ? "Recurring" : "Sekali"}
+                  </span>
+
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-extrabold whitespace-nowrap shadow-2xs ${
+                      isDraft
+                        ? "border border-amber-300/80 bg-[#FFF7E6] text-[#B45309]"
+                        : isCompleted
+                        ? "border border-emerald-200 bg-[#E6F8EE] text-[#147A43]"
+                        : "border border-blue-200 bg-[#EAF6FF] text-[#294BB2]"
+                    }`}
+                  >
+                    {isDraft ? (
+                      <>
+                        <Clock3 size={13} className="text-[#B45309]" />
+                        Draft
+                      </>
+                    ) : isCompleted ? (
+                      <>
+                        <CheckCircle2 size={13} className="text-[#147A43]" />
+                        Selesai
+                      </>
+                    ) : (
+                      <>
+                        <Check size={13} className="text-[#294BB2]" />
+                        Terjadwal
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                {/* Title */}
+                <h2 className="mt-3.5 line-clamp-2 text-base font-extrabold text-[#1E293B] group-hover:text-[#294BB2] transition-colors leading-snug">
+                  {row.request?.title || "Tanpa Judul"}
+                </h2>
+
+                {/* Description */}
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500 min-h-[34px]">
+                  {row.request?.description || "Tanpa deskripsi"}
+                </p>
+
+                {/* Meet Link or Location */}
+                {(row.meeting_url || row.location) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {row.meeting_url && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-[#294BB2]">
+                        <Video size={12} /> Google Meet
+                      </span>
+                    )}
+                    {row.location && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 truncate max-w-[150px]">
+                        <MapPin size={12} /> {row.location}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="mt-4 border-t border-slate-100 pt-3 flex items-center justify-between gap-2 text-xs">
+                <span className="inline-flex items-center gap-1.5 font-medium text-slate-600">
+                  <CalendarDays size={14} className="text-[#294BB2]" />
+                  <span>{displayDate(row.start_at)}</span>
+                </span>
+
+                {isDraft ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void publishMeeting(row.id);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#294BB2] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#203D91] shadow-2xs hover:shadow-xs active:scale-95"
+                    title="Publikasikan draft meeting ini sekarang"
+                  >
+                    <Send size={12} /> Publikasikan
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center gap-1 font-bold text-[#294BB2] group-hover:translate-x-1 transition-transform">
+                    Detail <ArrowRight size={14} />
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>}
 
       {/* Request Tab (Leave & Other) */}
-      {activeTab==='request'&&<div className="mt-7 space-y-3">
-        {loading&&[1,2,3].map(item=><div key={item} className="h-20 animate-pulse rounded-[18px] border border-[#E5E5E5] bg-[#FDFDFD]"/>)}
-        {!loading&&nonMeetingRequests.length===0&&<div className="rounded-[18px] border border-dashed border-[#D9D9D9] p-14 text-center text-sm text-[#4F5050]">Belum ada Leave/Other Request. Buat request baru dengan tombol di atas.</div>}
-        {nonMeetingRequests.map(req=><div key={req.id} className="flex items-center justify-between rounded-[18px] border border-[#E5E5E5] bg-white px-6 py-4 transition hover:border-[#2B7A42] hover:shadow-sm">
+      {activeTab==='request'&&<div className="mt-6 space-y-3">
+        {loading&&[1,2,3].map(item=><div key={item} className="h-20 animate-pulse rounded-2xl border border-slate-200 bg-slate-50"/>)}
+        {!loading&&filteredNonMeeting.length===0&&<div className="rounded-2xl border border-dashed border-slate-300 p-14 text-center text-sm text-slate-500">Belum ada Leave/Other Request yang cocok dengan pencarian.</div>}
+        {filteredNonMeeting.map(req=><div key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-4.5 transition hover:border-[#2B7A42]/50 hover:shadow-md">
           <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <span className={`rounded-lg px-3 py-1 text-xs font-bold ${req.request_type==='LEAVE'?'bg-[#FFF3E0] text-[#E65100]':'bg-[#E8F5E9] text-[#2B7A42]'}`}>{req.request_type==='LEAVE'?'Cuti / Izin':'Other'}</span>
-              <span className={`rounded-lg px-3 py-1 text-xs font-bold ${req.status==='PENDING_OM'||req.status==='PENDING_EXEC'?'bg-[#FFF9E6] text-[#B45309]':req.status==='REGISTERED'||req.status==='COMPLETED'?'bg-[#E8F5E9] text-[#2B7A42]':'bg-[#F4F6FB] text-[#4F5050]'}`}>{req.status}</span>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-bold ${req.request_type==='LEAVE'?'bg-amber-50 text-amber-800 border border-amber-200/60':'bg-emerald-50 text-emerald-800 border border-emerald-200/60'}`}>{req.request_type==='LEAVE'?'Cuti / Izin':'Other'}</span>
+              <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-bold ${req.status==='PENDING_OM'||req.status==='PENDING_EXEC'?'bg-amber-50 text-amber-700':req.status==='REGISTERED'||req.status==='COMPLETED'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-600'}`}>{req.status}</span>
+              <span className="text-xs font-medium text-slate-400">#{req.request_number}</span>
             </div>
-            <p className="mt-2 font-semibold text-[#090909]">{req.title}</p>
-            <p className="text-xs text-[#4F5050] mt-0.5">{req.description||'Tanpa deskripsi'}</p>
+            <p className="mt-2 font-bold text-slate-900 text-sm">{req.title}</p>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">{req.description||'Tanpa deskripsi'}</p>
           </div>
-          <div className="ml-6 text-right text-xs text-[#4F5050]">
-            {req.assignee_user&&<p className="font-medium">{req.assignee_user.name}</p>}
-            <p>{req.created_at?new Date(req.created_at).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):''}</p>
+          <div className="shrink-0 text-left sm:text-right text-xs text-slate-500 border-t sm:border-t-0 pt-2 sm:pt-0">
+            {req.assignee_user&&<p className="font-semibold text-slate-700">{req.assignee_user.name}</p>}
+            <p className="mt-0.5">{req.created_at?new Date(req.created_at).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):''}</p>
           </div>
         </div>)}
       </div>}
