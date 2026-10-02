@@ -17,10 +17,15 @@ import {
   ChatMessage,
 } from "@/types/chatbot";
 import {
+  getMarbotStatus,
+  getNativeConversations,
+  getNativeConversation,
   streamChatCompletion,
+  executeMarbotAction,
 } from "@/services/chatbot.service";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { MarkaPlusName } from "@/components/brand/MarkaPlusName";
 
 interface ChatbotDrawerProps {
   isOpen: boolean;
@@ -30,17 +35,21 @@ interface ChatbotDrawerProps {
     username?: string;
     email?: string;
     companyName?: string;
+    companyId?: string;
+    authorityKey?: string;
   };
 }
 
 const QUICK_ACTIONS = [
+  { label: "Panduan laporan kerja", prompt: "Laporan kerja di mana?" },
+  { label: "Panduan notulensi", prompt: "Bagaimana cara mengisi notulensi meeting?" },
   {
     label: "Task terlambat",
     prompt: "Berapa task proyek yang overdue untuk akses saya?",
   },
   {
     label: "Biaya proyek",
-    prompt: "Berapa total biaya proyek yang sudah diposting bulan ini untuk company aktif?",
+    prompt: "Berapa total biaya proyek yang diakui bulan ini untuk company aktif?",
   },
   {
     label: "Task berjalan",
@@ -102,7 +111,37 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
   const [inputMessage, setInputMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [assistantMode, setAssistantMode] = useState<'HELPER' | 'DASHBOARD'>('HELPER');
+  const [dashboardAvailable, setDashboardAvailable] = useState(false);
+  const [nativeRuntime, setNativeRuntime] = useState(false);
+  const [history, setHistory] = useState<Array<{ id: string; title: string }>>([]);
+  const [historyError, setHistoryError] = useState('');
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const historyControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!isOpen || !nativeRuntime || isStreaming) return;
+    const controller = new AbortController();
+    setHistoryError('');
+    getNativeConversations(controller.signal).then(setHistory).catch(error => {
+      if (error?.name !== 'AbortError') setHistoryError(error.message);
+    });
+    return () => controller.abort();
+  }, [isOpen, nativeRuntime, isStreaming, currentUser?.id, currentUser?.companyName, currentUser?.authorityKey, currentUser?.companyId]);
+  useEffect(() => {
+    abortControllerRef.current?.abort();
+    historyControllerRef.current?.abort();
+    historyControllerRef.current = null;
+    setLoadingHistory(false);
+    setMessages([]);
+    setCurrentConversationId(null);
+    setHistory([]);
+    setHistoryError('');
+    setIsStreaming(false);
+    setAssistantMode('HELPER');
+    return () => { abortControllerRef.current?.abort(); historyControllerRef.current?.abort(); };
+  }, [currentUser?.id, currentUser?.companyName, currentUser?.authorityKey, currentUser?.companyId]);
   const [currentTime, setCurrentTime] = useState("10.15");
+  const [connectionState, setConnectionState] = useState<"checking" | "database" | "knowledge" | "offline">("checking");
 
   // Streaming controller ref
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -132,7 +171,23 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
         inputRef.current?.focus();
       }, 200);
     }
-  }, [isOpen]);
+  }, [isOpen, currentUser?.id, currentUser?.companyName]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const controller = new AbortController();
+    setConnectionState("checking");
+    getMarbotStatus(controller.signal)
+      .then((status) => {
+        setNativeRuntime(status.contractMode === 'native');
+        setDashboardAvailable(Boolean(status.dashboardAvailable));
+        setConnectionState(status.online ? (status.mcpLiteReady ? "database" : "knowledge") : "offline");
+      })
+      .catch((error) => {
+        if (error?.name !== "AbortError") setConnectionState("offline");
+      });
+    return () => controller.abort();
+  }, [isOpen, currentUser?.id, currentUser?.authorityKey, currentUser?.companyId]);
 
   // Stop Generation
 /**
@@ -163,7 +218,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
  */
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || inputMessage).trim();
-    if (!query || isStreaming) return;
+    if (!query || isStreaming || loadingHistory) return;
 
     setInputMessage("");
 
@@ -196,9 +251,11 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
       // The signed enterprise chat endpoint creates an owned conversation.
       await streamChatCompletion({
         message: query,
+        ...(nativeRuntime ? { mode: assistantMode } : {}),
         conversationId: currentConversationId,
         signal: controller.signal,
         onChunk: (delta) => {
+          if (controller.signal.aborted || abortControllerRef.current !== controller) return;
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMsgId
@@ -208,15 +265,17 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
           );
         },
         onDone: (meta) => {
+          if (controller.signal.aborted || abortControllerRef.current !== controller) return;
           if (meta.conversationId) setCurrentConversationId(meta.conversationId);
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === assistantMsgId ? { ...msg, isStreaming: false } : msg
+              msg.id === assistantMsgId ? { ...msg, isStreaming: false, action: meta.action } : msg
             )
           );
           setIsStreaming(false);
         },
-        onError: () => {
+        onError: (error) => {
+          if (controller.signal.aborted || abortControllerRef.current !== controller) return;
           setIsStreaming(false);
           setMessages((prev) =>
             prev.map((msg) =>
@@ -225,8 +284,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                     ...msg,
                     isStreaming: false,
                     content:
-                      msg.content ||
-                      "Maaf, terjadi kendala saat menghubungkan ke MarBot AI Engine. Silakan coba kembali.",
+                      [msg.content, `Respons gagal: ${error.message || "Marka Plus belum dapat menjawab. Silakan coba kembali."}`].filter(Boolean).join('\n\n'),
                   }
                 : msg
             )
@@ -234,7 +292,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
         },
       });
     } catch (err: any) {
-      if (err.name !== "AbortError") {
+      if (err.name !== "AbortError" && !controller.signal.aborted) {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMsgId
@@ -249,9 +307,9 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
           )
         );
       }
-      setIsStreaming(false);
+      if (abortControllerRef.current === controller) setIsStreaming(false);
     } finally {
-      abortControllerRef.current = null;
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
     }
   };
 
@@ -282,22 +340,39 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
 
       {/* ── MarBot Slide-Over Panel ── */}
       <div
-        className="relative z-10 flex flex-col h-full w-full sm:w-[410px] bg-white shadow-2xl transition-all duration-300 animate-in slide-in-from-right-full font-sans"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Marka Plus assistant"
+        className="relative z-10 min-w-0 flex-shrink-0 overflow-hidden flex flex-col h-full w-full sm:w-[410px] bg-white shadow-2xl transition-all duration-300 animate-in slide-in-from-right-full font-sans"
         style={{
           boxShadow: "-4px 0 24px rgba(0,0,0,0.08)",
         }}
       >
         {/* ── Header Matching Screenshot ── */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F0F2F5] bg-white flex-shrink-0">
+        <div className="min-w-0 w-full flex items-center justify-between px-5 py-4 border-b border-[#F0F2F5] bg-white flex-shrink-0">
           <div className="flex items-center gap-3">
             <MarBotIcon size={34} />
             <div className="flex flex-col">
               <span className="font-bold text-[15px] text-[#1E293B] leading-snug">
-                MarBot
+                <MarkaPlusName />
               </span>
               <span className="flex items-center gap-1.5 text-[11px] text-[#4F5050] font-medium leading-tight">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#294BB2]" />
-                Online
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  connectionState === "database"
+                    ? "bg-emerald-500"
+                    : connectionState === "knowledge"
+                      ? "bg-sky-500"
+                    : connectionState === "offline"
+                      ? "bg-red-500"
+                      : "bg-amber-400 animate-pulse"
+                }`} />
+                {connectionState === "database"
+                  ? "Online · Terhubung ke ERP"
+                  : connectionState === "knowledge"
+                    ? "Online · Panduan tersedia"
+                  : connectionState === "offline"
+                    ? "Tidak terhubung"
+                    : "Memeriksa koneksi"}
               </span>
             </div>
           </div>
@@ -312,30 +387,55 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
         </div>
 
         {/* ── Main Chat Scrollable Content ── */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col space-y-4">
+        {nativeRuntime && <div className="min-w-0 w-full flex items-center gap-2 border-b px-5 py-2 text-xs">
+          <button disabled={isStreaming} onClick={() => setAssistantMode('HELPER')} aria-pressed={assistantMode === 'HELPER'} className={`rounded-lg px-3 py-2 ${assistantMode === 'HELPER' ? 'bg-blue-100 text-blue-800' : ''}`}>AI Helper</button>
+          {dashboardAvailable && <button disabled={isStreaming} onClick={() => setAssistantMode('DASHBOARD')} aria-pressed={assistantMode === 'DASHBOARD'} className={`rounded-lg px-3 py-2 ${assistantMode === 'DASHBOARD' ? 'bg-blue-100 text-blue-800' : ''}`}>Dashboard Assistant</button>}
+          <button disabled={isStreaming} onClick={() => { setMessages([]); setCurrentConversationId(null); }} className="ml-auto text-blue-700">Chat baru</button>
+        </div>}
+        {nativeRuntime && history.length > 0 && <div className="px-5 py-2">
+          <select aria-label="Riwayat percakapan" className="w-full rounded-lg border p-2 text-xs" value={currentConversationId || ''} disabled={isStreaming || loadingHistory} onChange={async event => {
+            const id = event.target.value;
+            if (!id) { setMessages([]); setCurrentConversationId(null); return; }
+            setLoadingHistory(true);
+            setHistoryError('');
+            historyControllerRef.current?.abort();
+            const controller = new AbortController();
+            historyControllerRef.current = controller;
+            try { const restored = await getNativeConversation(id, controller.signal); if (!controller.signal.aborted) { setMessages(restored); setCurrentConversationId(id); } }
+            catch (error) { if (!controller.signal.aborted) setHistoryError(error instanceof Error ? error.message : 'Riwayat tidak tersedia.'); }
+            finally { if (historyControllerRef.current === controller) { setLoadingHistory(false); historyControllerRef.current = null; } }
+          }}><option value="">Percakapan baru</option>{history.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>
+        </div>}
+        {historyError && <p role="status" className="px-5 text-xs text-red-600">{historyError}</p>}
+        <div role="log" aria-live="polite" aria-busy={isStreaming} className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-5 py-4 flex flex-col space-y-4">
           {/* Default MarBot Intro Message & Quick Actions (Shown only on initial state) */}
           {messages.length === 0 && (
             <div className="flex flex-col space-y-4">
               <div className="flex flex-col space-y-2">
                 <div className="flex items-center gap-2 text-xs font-semibold text-[#334155]">
                   <MarBotIcon size={20} />
-                  <span>MarBot</span>
+                  <MarkaPlusName compact />
                   <span className="text-[#94A3B8] font-normal">· {currentTime}</span>
                 </div>
 
                 <div className="rounded-2xl p-4 bg-[#F6F7F9] text-[#334155] text-[13px] leading-relaxed max-w-[95%]">
-                  Hi! I&apos;m MarBot, your ERP assistant. I can help you with financial reports, inventory levels, order tracking, HR queries, and more. What do you need?
+                  {assistantMode === 'DASHBOARD' ? 'Saya membantu merangkum progres proyek, tugas, risiko, dan KPI yang tercatat sesuai hak akses Anda.' : 'Halo! Saya Marka Plus. Saya membantu panduan penggunaan ERP serta membaca data proyek, tugas, biaya proyek, dan tiket sesuai hak akses Anda.'}
                 </div>
+
               </div>
 
               {/* ── Quick Actions Section (Initial Screen Only) ── */}
               <div className="pt-2 flex flex-col space-y-2">
                 <span className="text-[13px] font-semibold text-[#4F5050]">
-                  Quick Actions
+                  Coba tanyakan
                 </span>
 
                 <div className="flex flex-col space-y-1.5">
-                  {QUICK_ACTIONS.map((item, idx) => (
+                  {(assistantMode === 'DASHBOARD' ? [
+                    { label: 'Ringkasan mingguan', prompt: 'Apa yang tim saya kerjakan minggu ini?' },
+                    { label: 'Progres dan risiko proyek', prompt: 'Ringkas progres proyek dan tugas terlambat.' },
+                    { label: 'KPI bulan ini', prompt: 'Bagaimana KPI dan target bulan ini?' },
+                  ] : QUICK_ACTIONS).map((item, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleSendMessage(item.prompt)}
@@ -358,12 +458,13 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                 {!isUser && (
                   <div className="flex items-center gap-2 text-xs font-semibold text-[#334155]">
                     <MarBotIcon size={20} />
-                    <span>MarBot</span>
-                  </div>
+                    <MarkaPlusName compact />
+
+              </div>
                 )}
 
                 <div
-                  className={`rounded-2xl p-3.5 text-[13px] leading-relaxed max-w-[92%] ${
+                  className={`min-w-0 overflow-hidden rounded-2xl p-3.5 text-[13px] leading-relaxed max-w-[92%] ${
                     isUser
                       ? "ml-auto bg-[#294BB2] text-white rounded-br-xs"
                       : "bg-[#F6F7F9] text-[#334155] rounded-bl-xs"
@@ -372,7 +473,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                   {isUser ? (
                     <div className="whitespace-pre-wrap break-words">{msg.content}</div>
                   ) : (
-                    <div className="break-words">
+                    <div className="min-w-0 break-words [overflow-wrap:anywhere]">
                       {msg.content ? (
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
@@ -443,7 +544,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                             },
                             table: ({ children }) => (
                               <div className="overflow-x-auto my-2.5 border border-gray-200 rounded-lg shadow-2xs">
-                                <table className="min-w-full text-[12px] border-collapse text-left">
+                                <table className="min-w-[480px] w-full text-[12px] border-collapse text-left">
                                   {children}
                                 </table>
                               </div>
@@ -454,12 +555,12 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                               </thead>
                             ),
                             th: ({ children }) => (
-                              <th className="px-3 py-2 font-semibold">
+                              <th className="min-w-[96px] px-3 py-2 font-semibold">
                                 {children}
                               </th>
                             ),
                             td: ({ children }) => (
-                              <td className="px-3 py-2 border-b border-gray-100 last:border-b-0 text-[#334155]">
+                              <td className="min-w-[96px] align-top px-3 py-2 border-b border-gray-100 last:border-b-0 text-[#334155]">
                                 {children}
                               </td>
                             ),
@@ -487,6 +588,21 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                     </div>
                   )}
                 </div>
+                {msg.action && !msg.actionState && (
+                  <button type="button" disabled={isStreaming || loadingHistory} className="self-start rounded-lg bg-[#294BB2] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    onClick={async () => {
+                      if (!window.confirm('Simpan usulan ini ke ERP sesuai field yang ditampilkan?')) return;
+                      setMessages(prev => prev.map(item => item.id === msg.id ? { ...item, actionState: 'running' } : item));
+                      try {
+                        const result = await executeMarbotAction(msg.action!);
+                        setMessages(prev => prev.map(item => item.id === msg.id ? { ...item, actionState: 'verified', content: `${item.content}\n\n${result}` } : item));
+                      } catch (error: any) {
+                        const detail = error.response?.data?.error?.message || error.response?.data?.message || error.message;
+                        setMessages(prev => prev.map(item => item.id === msg.id ? { ...item, actionState: 'failed', content: `${item.content}\n\nOperasi belum terverifikasi: ${detail}` } : item));
+                      }
+                    }}>Konfirmasi dan simpan</button>
+                )}
+                {msg.actionState === 'running' && <p role="status" className="text-xs text-[#294BB2]">Menyimpan dan memverifikasi data ERP…</p>}
               </div>
             );
           })}
@@ -516,7 +632,8 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask MarBot anything.."
+              placeholder="Tanyakan panduan atau data ERP…"
+              maxLength={4000}
               disabled={isStreaming}
               className="flex-1 bg-transparent text-[13px] text-[#1E293B] placeholder:text-[#94A3B8] focus:outline-hidden disabled:opacity-60"
             />
@@ -533,7 +650,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
 
           <div className="text-center">
             <span className="text-[11px] text-[#64748B] font-normal leading-tight">
-              MarBot can make mistakes. Please verify critical data
+              Periksa sumber dan periode data pada jawaban Marka Plus.
             </span>
           </div>
         </div>

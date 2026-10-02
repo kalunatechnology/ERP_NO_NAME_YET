@@ -8,6 +8,9 @@
     --sidebar-w: 230px;
     --topbar-h: 64px;
     --right-panel-w: 260px;
+    /* Local/system fallbacks keep development independent from Google Fonts. */
+    --font-fira-sans: "Segoe UI", Arial, sans-serif;
+    --font-fira-sans-condensed: "Arial Narrow", "Segoe UI", Arial, sans-serif;
   }
 
   html {

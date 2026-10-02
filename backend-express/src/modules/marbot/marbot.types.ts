@@ -11,6 +11,7 @@ export interface MarbotTenantConfig {
   roleMap?: Partial<Record<RoleCode, string>>;
   contractVersion?: 1 | 2;
   runtimeContextVersion?: 2;
+  dataAccessMode?: 'GATEWAY_ONLY';
 }
 
 export interface MarbotProjectScope { mode: 'ALL' | 'LIST'; projectIds: string[]; }
@@ -120,6 +121,7 @@ export interface TenantIntegrationStatus {
   lastContractSyncAt?: Date | null;
   enabledModules?: string[];
   managedProvisioningAvailable?: boolean;
+  provisioningBlockers?: string[];
   data: {
     tenant_id: string;
     external_tenant_id?: string;

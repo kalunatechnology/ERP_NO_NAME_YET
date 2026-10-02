@@ -15,6 +15,7 @@ import { RoleCode } from '../../types/roles';
 import { requireActiveRole } from '../../middlewares/rbac.middleware';
 import { sendSuccess, sendError } from '../../utils/response';
 import prisma from '../../config/database';
+import { MeetingRequestService } from './meeting-request.service';
 
 export const requestRouter = Router();
 
@@ -79,6 +80,53 @@ function activeUserId(req: Request): string {
   if (!req.user?.id) throw new ForbiddenError('User terautentikasi diperlukan.');
   return req.user.id;
 }
+
+function activeRoleCode(req: Request): string {
+  if (!req.user?.active_role_code) throw new ForbiddenError('Role aktif diperlukan.');
+  return String(req.user.active_role_code);
+}
+
+// Dedicated Meeting Request module. These routes are intentionally declared
+// before the generic /:id handlers below.
+requestRouter.get('/meetings', async (req, res, next) => {
+  try {
+    const data = await MeetingRequestService.list(activeCompanyId(req), activeUserId(req), activeRoleCode(req), {
+      status: typeof req.query.status === 'string' ? req.query.status : undefined,
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+    });
+    sendSuccess(res, data);
+  } catch (error) { next(error); }
+});
+
+requestRouter.post('/meetings', async (req, res, next) => {
+  try {
+    // Pada recurring meeting, notulensi terbuka untuk siapa saja peserta yang hadir sehingga notulis tidak wajib ditentukan saat create.
+    if (req.body?.recurrence_type !== 'RECURRING' && (typeof req.body?.notetaker_user_id !== 'string' || !req.body.notetaker_user_id.trim())) {
+      throw new ValidationError('Notulis wajib dipilih sebelum Meeting Request disimpan.');
+    }
+    const result = await RequestService.createRequest({ ...req.body, request_type: 'MEETING' }, activeUserId(req), activeCompanyId(req), req.user?.tenant_id);
+    sendSuccess(res, result, 201);
+  } catch (error) { next(error); }
+});
+
+requestRouter.get('/meetings/:meetingId', async (req, res, next) => {
+  try {
+    const occurrenceDate = typeof req.query.date === 'string' ? req.query.date : undefined;
+    sendSuccess(res, await MeetingRequestService.getById(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req), occurrenceDate));
+  } catch (error) { next(error); }
+});
+
+requestRouter.put('/meetings/:meetingId/minutes', async (req, res, next) => {
+  try {
+    sendSuccess(res, await MeetingRequestService.saveMinutes(req.params.meetingId, req.body ?? {}, activeCompanyId(req), activeUserId(req), activeRoleCode(req)));
+  } catch (error) { next(error); }
+});
+
+requestRouter.post('/meetings/:meetingId/minutes/publish', async (req, res, next) => {
+  try {
+    sendSuccess(res, await MeetingRequestService.publishMinutes(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req), req.body?.occurrence_date));
+  } catch (error) { next(error); }
+});
 
 // =============================================================================
 // MARKA+ INTERNAL REQUESTS & TICKETING ENDPOINTS

@@ -359,23 +359,23 @@ export class CoreService {
 
     if (!config?.externalTenantId || !config?.chatbotUrl || !config?.chatbotApiKey ||
         !config?.inboundContextSecret || !config?.outboundToolSecret) {
-      throw new ValidationError('Koneksi MarBot untuk tenant ini belum dikonfigurasi di dashboard Super Admin atau server ERP.');
+      throw new ValidationError('Koneksi Marka Plus untuk tenant ini belum dikonfigurasi di dashboard Super Admin atau server ERP.');
     }
 
     const tenant = await tx.core_tenant.findUnique({ where: { id: tenantId }, select: { code: true } });
     if (!tenant || config.externalTenantId !== tenant.code) {
-      throw new ValidationError('ID tenant eksternal MarBot tidak cocok dengan kode tenant ERP.');
+      throw new ValidationError('ID tenant eksternal Marka Plus tidak cocok dengan kode tenant ERP.');
     }
     if (config.inboundContextSecret === config.outboundToolSecret) {
-      throw new ValidationError('Kunci konteks dan kunci tool MarBot harus berbeda.');
+      throw new ValidationError('Kunci konteks dan kunci tool Marka Plus harus berbeda.');
     }
     let url: URL;
-    try { url = new URL(config.chatbotUrl); } catch { throw new ValidationError('URL chatbot MarBot tidak valid.'); }
+    try { url = new URL(config.chatbotUrl); } catch { throw new ValidationError('URL chatbot Marka Plus tidak valid.'); }
     if (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.hostname === 'localhost')) {
-      throw new ValidationError('Koneksi chatbot MarBot harus menggunakan HTTPS.');
+      throw new ValidationError('Koneksi chatbot Marka Plus harus menggunakan HTTPS.');
     }
     try { await tx.marbot_request.count(); } catch {
-      throw new ValidationError('Migrasi audit MarBot belum diterapkan pada database ERP.');
+      throw new ValidationError('Migrasi audit Marka Plus belum diterapkan pada database ERP.');
     }
   }
 

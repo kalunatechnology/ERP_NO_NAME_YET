@@ -36,7 +36,7 @@ const envSchema = z.object({
   CORS_ALLOWED_ORIGINS: z
     .string()
     .default(
-      'http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://localhost:5500,http://127.0.0.1:5500,https://markha.arsalynk.com,http://markha.arsalynk.com,https://marka.arsalynk.com,http://marka.arsalynk.com,https://arsalynk.com,http://arsalynk.com',
+      'http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://localhost:5500,http://127.0.0.1:5500,https://markha.arsalynk.com,http://markha.arsalynk.com,https://marka.arsalynk.com,http://marka.arsalynk.com,https://arsalynk.com,http://arsalynk.com,https://markasuite.com,https://www.markasuite.com,https://app.markasuite.com,https://app.markasuit.com',
     )
     .transform((val) => val.split(',').map((s) => s.trim()).filter(Boolean)),
   CORS_ALLOW_CREDENTIALS: z
@@ -61,7 +61,10 @@ const envSchema = z.object({
   ERP_BASE_URL: z.string().optional(),
   CHATBOT_ERP_READONLY_DATABASE_URL: z.string().optional(),
   MARBOT_ENCRYPTION_KEY: z.string().optional(),
-  CHATBOT_CONTRACT_MODE: z.enum(['legacy', 'v2']).default('legacy'),
+  CHATBOT_CONTRACT_MODE: z.enum(['legacy', 'v2']).default('v2'),
+  MARBOT_RUNTIME: z.enum(['native', 'external']).default('native'),
+  MARBOT_AI_API_KEY: z.string().optional(),
+  MARBOT_AI_MODEL: z.string().optional(),
 });
 
 /**

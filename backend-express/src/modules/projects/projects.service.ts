@@ -9,7 +9,8 @@
 import prisma from '../../config/database';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { compareTaskOutput } from './output-comparison';
 
 export const PROJECT_MANAGEMENT_ROLES = [
   'PROJECT_MANAGER',
@@ -18,6 +19,27 @@ export const PROJECT_MANAGEMENT_ROLES = [
 ] as const;
 export const ACTING_PROJECT_MANAGER_ROLE = 'ACTING_PROJECT_MANAGER' as const;
 const PROJECT_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
+
+const DAILY_TASK_LEGACY_MUTATION_SELECT = {
+  tenant_id: true,
+  company_id: true,
+  created_by_id: true,
+  id: true,
+  weekly_task_id: true,
+  owner_id: true,
+  title: true,
+  description: true,
+  planned_date: true,
+  time_slot: true,
+  output_result: true,
+  notes: true,
+  progress: true,
+  status: true,
+  is_blocked: true,
+  block_reason: true,
+  created_at: true,
+  updated_at: true,
+} as const;
 
 export interface ProjectAuthority {
   project_id: string;
@@ -32,6 +54,7 @@ export interface ProjectAuthority {
   can_review_task_transfer: boolean;
   can_override_progress: boolean;
   can_manage_milestones: boolean;
+  can_view_financials: boolean;
   can_delegate_supervisor: boolean;
   can_create_project: boolean;
   can_delete_project: boolean;
@@ -62,7 +85,7 @@ export class ProjectsService {
 
   private static hasPortfolioRead(user: any): boolean {
     return this.hasPlatformAdmin(user)
-      || ([RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR, RoleCode.PROJECT_MANAGER] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
+      || ([RoleCode.OPERATIONAL_MANAGER, RoleCode.DIRECTOR] as RoleCode[]).includes(this.activeRole(user) as RoleCode);
   }
 
   static async managedProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
@@ -74,7 +97,8 @@ export class ProjectsService {
       activeRole === RoleCode.PROJECT_MANAGER
     ) {
       const projects = await db.project_project.findMany({
-        where: { company_id: companyId },
+        where: { company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
+          ...(activeRole === RoleCode.PROJECT_MANAGER ? { created_by_id: user.id } : {}) },
         select: { id: true },
       });
       return projects.map((project: { id: string }) => project.id);
@@ -112,7 +136,8 @@ export class ProjectsService {
       activeRole === RoleCode.PROJECT_MANAGER
     ) {
       const project = await db.project_project.findFirst({
-        where: { id: projectId, company_id: companyId },
+        where: { id: projectId, company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
+          ...(activeRole === RoleCode.PROJECT_MANAGER ? { created_by_id: user.id } : {}) },
         select: { id: true },
       });
       if (project) return;
@@ -150,7 +175,10 @@ export class ProjectsService {
   }
 
   static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.FINANCE) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
+      return { created_by_id: user.id, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
+    }
     if (!this.hasBaseStaffAccess(user)) return { id: { in: [] } };
 
     const [memberships, assignments] = await Promise.all([
@@ -420,12 +448,25 @@ export class ProjectsService {
     }
   }
 
+  private static async creatorMainTaskIds(user: any, companyId: string, db: any): Promise<string[]> {
+    const projectIds = await this.managedProjectIds(user, companyId, db);
+    const tasks = await db.project_main_task.findMany({
+      where: { company_id: companyId, project_id: { in: projectIds } }, select: { id: true },
+    });
+    return tasks.map((task: { id: string }) => task.id);
+  }
+
   static async dailyTaskAccessWhere(
     user: any,
     companyId: string,
     db: any = prisma,
   ): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
+      const mainIds = await this.creatorMainTaskIds(user, companyId, db);
+      const weekly = await db.project_weekly_task.findMany({ where: { company_id: companyId, main_task_id: { in: mainIds } }, select: { id: true } });
+      return { weekly_task_id: { in: weekly.map((row: { id: string }) => row.id) } };
+    }
     if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
@@ -488,7 +529,8 @@ export class ProjectsService {
   }
 
   static async mainTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { project_id: { in: await this.managedProjectIds(user, companyId, db) } };
     if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
@@ -506,7 +548,8 @@ export class ProjectsService {
   }
 
   static async weeklyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { main_task_id: { in: await this.creatorMainTaskIds(user, companyId, db) } };
     if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
@@ -536,7 +579,8 @@ export class ProjectsService {
   }
 
   static async taskAssignmentAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { main_task_id: { in: await this.creatorMainTaskIds(user, companyId, db) } };
     if (this.hasBaseStaffAccess(user)) {
       const managedProjectIds = await this.managedProjectIds(user, companyId, db);
       if (!managedProjectIds.length) return { assignee_id: user.id };
@@ -555,7 +599,12 @@ export class ProjectsService {
   }
 
   static async taskTransferAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
-    if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.PROJECT_MANAGER) return {};
+    if (this.hasPortfolioRead(user)) return {};
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
+      const where = await this.dailyTaskAccessWhere(user, companyId, db);
+      const daily = await db.project_daily_task.findMany({ where: { company_id: companyId, ...where }, select: { id: true } });
+      return { daily_task_id: { in: daily.map((row: { id: string }) => row.id) } };
+    }
     if (this.hasBaseStaffAccess(user)) {
       const managedProjectIds = await this.managedProjectIds(user, companyId, db);
       if (!managedProjectIds.length) return { OR: [{ requested_by_id: user.id }, { target_user_id: user.id }] };
@@ -582,8 +631,60 @@ export class ProjectsService {
     return { id: { in: [] } };
   }
 
+  private static async dailyTaskOutputContractAvailable(db: any = prisma): Promise<boolean> {
+    try {
+      const rows = await db.$queryRaw(Prisma.sql`
+        SELECT COUNT(*)::int AS "count"
+        FROM information_schema.columns
+        WHERE table_schema = ANY (current_schemas(false))
+          AND table_name = 'project_daily_task'
+          AND column_name IN (
+            'output_target',
+            'output_similarity_score',
+            'output_review_category'
+          )
+      `) as Array<{ count: number | string | bigint }>;
+      return Number(rows[0]?.count ?? 0) === 3;
+    } catch (error) {
+      console.warn('[ProjectsService] Unable to inspect Daily Task output schema readiness:', error);
+      return false;
+    }
+  }
+
+  private static async dailyTaskRecord(
+    dailyTaskId: string,
+    companyId: string | undefined,
+    db: any = prisma,
+  ): Promise<any | null> {
+    // Some domain tests and delegated service clients expose only the model
+    // delegate, not Prisma raw-query helpers. Keep the compatibility helper
+    // usable there too by falling back to an explicit legacy-safe projection.
+    if (typeof db?.$queryRaw !== 'function') {
+      return db.project_daily_task.findFirst({
+        where: { id: dailyTaskId, ...(companyId ? { company_id: companyId } : {}) },
+        select: DAILY_TASK_LEGACY_MUTATION_SELECT,
+      });
+    }
+
+    const rows = companyId
+      ? await db.$queryRaw(Prisma.sql`
+          SELECT *
+          FROM "project_daily_task"
+          WHERE "id" = ${dailyTaskId}
+            AND "company_id" = ${companyId}
+          LIMIT 1
+        `)
+      : await db.$queryRaw(Prisma.sql`
+          SELECT *
+          FROM "project_daily_task"
+          WHERE "id" = ${dailyTaskId}
+          LIMIT 1
+        `);
+    return (rows as any[])[0] ?? null;
+  }
+
   private static async dailyTaskContext(dailyTaskId: string, companyId: string, db: any = prisma) {
-    const task = await db.project_daily_task.findFirst({ where: { id: dailyTaskId, company_id: companyId } });
+    const task = await this.dailyTaskRecord(dailyTaskId, companyId, db);
     if (!task) throw new NotFoundError('DailyTask');
     const weekly = await db.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } });
     const mainTask = weekly
@@ -669,6 +770,7 @@ export class ProjectsService {
     if (!allowed) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk menunjuk atau mencabut Project Supervisor.');
     }
+    await this.assertCanManageProject(user, projectId, companyId, db);
   }
 
   static async getProjectSupervisor(projectId: string, companyId: string, db: any = prisma) {
@@ -847,12 +949,12 @@ export class ProjectsService {
   static async getProjectAuthority(user: any, projectId: string, companyId: string, db: any = prisma): Promise<ProjectAuthority> {
     const project = await db.project_project.findFirst({
       where: { id: projectId, company_id: companyId },
-      select: { id: true, project_manager_id: true },
+      select: { id: true, project_manager_id: true, created_by_id: true },
     });
     if (!project) throw new NotFoundError('Project');
     await this.assertCanViewProject(user, projectId, companyId, db);
     const activeRole = this.activeRole(user);
-    const isGlobalPm = activeRole === RoleCode.PROJECT_MANAGER;
+    const isCreatorPm = activeRole === RoleCode.PROJECT_MANAGER && project.created_by_id === user.id;
     const isOm = activeRole === RoleCode.OPERATIONAL_MANAGER;
     const isAdmin = this.isCompanyAdmin(user);
 
@@ -871,8 +973,16 @@ export class ProjectsService {
       isActing = Boolean(membership);
     }
 
-    const isPm = isGlobalPm;
+    const isPm = isCreatorPm;
     const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && (isAdmin || isOm || isPm || isActing);
+    const canViewFinancials = isActing || ([
+      RoleCode.SUPER_ADMIN,
+      RoleCode.COMPANY_ADMIN,
+      RoleCode.DIRECTOR,
+      RoleCode.OPERATIONAL_MANAGER,
+      RoleCode.PROJECT_MANAGER,
+      RoleCode.FINANCE,
+    ] as RoleCode[]).includes(activeRole as RoleCode);
     const canDelegate = canManage && (isAdmin || isOm || isPm);
     const effectiveRole = isActing
       ? ACTING_PROJECT_MANAGER_ROLE
@@ -897,6 +1007,7 @@ export class ProjectsService {
       can_review_task_transfer: canManage,
       can_override_progress: canManage,
       can_manage_milestones: canManage,
+      can_view_financials: canViewFinancials,
       can_delegate_supervisor: canDelegate,
       can_create_project: isAdmin || isOm || isPm,
       can_delete_project: isAdmin || isOm || isPm,
@@ -967,9 +1078,7 @@ export class ProjectsService {
       let companyId = params.companyId;
 
       if (params.dailyTaskId) {
-        const dt = await tx.project_daily_task.findFirst({
-          where: { id: params.dailyTaskId, ...(companyId ? { company_id: companyId } : {}) },
-        });
+        const dt = await this.dailyTaskRecord(params.dailyTaskId, companyId, tx);
         companyId ??= dt?.company_id ?? undefined;
         if (dt?.weekly_task_id) {
           weeklyId = dt.weekly_task_id;
@@ -981,18 +1090,25 @@ export class ProjectsService {
             select: { status: true },
           });
           const completedStates = new Set(['DONE', 'COMPLETED', 'CHECKED', 'APPROVED']);
-          const calculatedProgress = checklist.length > 0
+          const checklistProgress = checklist.length > 0
             ? Math.round((checklist.filter((item) => completedStates.has(item.status.toUpperCase())).length / checklist.length) * 10000) / 100
             : completedStates.has(dt.status.toUpperCase()) ? 100 : 0;
+          // A Daily Task is not complete until its result has been documented.
+          // Preserve historical tasks completed before Output Target existed;
+          // only active/new records are held at 99% until documented.
+          const hasOutputResult = Boolean(String(dt.output_result ?? '').trim());
+          const legacyCompleted = dt.status === 'COMPLETED' && !String(dt.output_target ?? '').trim();
+          const calculatedProgress = checklistProgress >= 100 && !hasOutputResult && !legacyCompleted ? 99 : checklistProgress;
           const calculatedStatus = dt.status === 'BLOCKED'
             ? 'BLOCKED'
             : checklist.length === 0
               ? dt.status
-              : calculatedProgress >= 100 ? 'COMPLETED' : calculatedProgress > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
+              : checklistProgress >= 100 && (hasOutputResult || legacyCompleted) ? 'COMPLETED' : calculatedProgress > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
 
           await tx.project_daily_task.update({
             where: { id: dt.id },
             data: { progress: calculatedProgress, status: calculatedStatus, updated_at: new Date() },
+            select: { id: true },
           });
         }
       }
@@ -1007,6 +1123,7 @@ export class ProjectsService {
           if (!wt.is_progress_overridden) {
             const dailyTasks = await tx.project_daily_task.findMany({
               where: { weekly_task_id: weeklyId, ...(companyId ? { company_id: companyId } : {}) },
+              select: { progress: true, is_blocked: true, status: true },
             });
             if (dailyTasks.length > 0) {
               const avg =
@@ -1439,6 +1556,8 @@ export class ProjectsService {
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
   static async updateDailyTaskProgress(dailyTaskId: string, data: any, user: any, companyId: string) {
+    const outputContractAvailable = await this.dailyTaskOutputContractAvailable();
+
     return prisma.$transaction(async (tx) => {
       const { task, projectId } = await this.assertCanOperateDailyTask(dailyTaskId, user, companyId, tx);
 
@@ -1468,17 +1587,12 @@ export class ProjectsService {
         ? Math.round((completedChecklistCount / checklist.length) * 10000) / 100
         : completedStates.has(String(status).toUpperCase()) ? 100 : 0;
 
-      // Once a checklist exists, its completion state is authoritative for both
-      // percentage and status. BLOCKED remains an explicit operational override.
       if (checklist.length > 0 && status !== 'BLOCKED') {
         status = completedChecklistCount === checklist.length
           ? 'COMPLETED'
           : completedChecklistCount > 0 ? 'IN_PROGRESS' : 'NOT_STARTED';
       }
 
-      // A BLOCKED status is a single operational state, never merely a label.
-      // Accept legacy callers that send status=BLOCKED, but require a reason so
-      // the task remains actionable and the resulting record is consistent.
       let isBlocked = data.is_blocked !== undefined
         ? Boolean(data.is_blocked)
         : status === 'BLOCKED' ? true : task.is_blocked;
@@ -1498,21 +1612,62 @@ export class ProjectsService {
         if (!blockReason) throw new ValidationError('Alasan kendala wajib diisi saat Daily Task diblokir.');
       }
 
-      const updated = await tx.project_daily_task.update({
-        where: { id: dailyTaskId },
-        data: {
-          title: data.title ?? data.activity_input ?? task.title,
-          description: data.description !== undefined ? data.description : task.description,
-          time_slot: data.time_slot !== undefined ? data.time_slot : task.time_slot,
-          output_result: data.output_result !== undefined ? data.output_result : task.output_result,
-          notes: data.notes !== undefined ? data.notes : task.notes,
-          progress,
-          status,
-          is_blocked: isBlocked,
-          block_reason: blockReason,
-          updated_at: new Date(),
-        },
-      });
+      const existingOutputTarget = String(task.output_target ?? '').trim();
+      const requestedOutputTarget = data.output_target === undefined ? undefined : String(data.output_target).trim();
+      if (requestedOutputTarget !== undefined && existingOutputTarget) {
+        throw new ValidationError('Output Target tidak dapat diubah setelah ditetapkan.');
+      }
+      if (requestedOutputTarget !== undefined && !requestedOutputTarget) {
+        throw new ValidationError('Output Target tidak boleh kosong.');
+      }
+
+      const outputContractRequested = requestedOutputTarget !== undefined
+        || data.output_result !== undefined
+        || status === 'COMPLETED';
+      if (!outputContractAvailable && outputContractRequested) {
+        throw new ConflictError(
+          'Database production belum memiliki kontrak kolom Output Comparison Daily Task. Jalankan migration production (npm run deploy:hostinger:db) sebelum menyimpan Output Target/Hasil atau menyelesaikan Daily Task.',
+        );
+      }
+
+      const outputTarget = existingOutputTarget || requestedOutputTarget || '';
+      const outputResult = String(data.output_result !== undefined ? data.output_result : task.output_result ?? '').trim();
+      if (status === 'COMPLETED' && !outputResult) {
+        throw new ValidationError('Output Hasil wajib diisi sebelum Daily Task dapat diselesaikan.');
+      }
+      if (status === 'COMPLETED' && !outputTarget) {
+        throw new ValidationError('Output Target wajib diisi sebelum Daily Task dapat diselesaikan.');
+      }
+      const outputComparison = compareTaskOutput(outputTarget, outputResult);
+
+      const baseUpdateData = {
+        title: data.title ?? data.activity_input ?? task.title,
+        description: data.description !== undefined ? data.description : task.description,
+        time_slot: data.time_slot !== undefined ? data.time_slot : task.time_slot,
+        output_result: outputResult,
+        notes: data.notes !== undefined ? data.notes : task.notes,
+        progress,
+        status,
+        is_blocked: isBlocked,
+        block_reason: blockReason,
+        updated_at: new Date(),
+      };
+
+      const updated = outputContractAvailable
+        ? await tx.project_daily_task.update({
+            where: { id: dailyTaskId },
+            data: {
+              ...baseUpdateData,
+              output_target: outputTarget,
+              output_similarity_score: outputComparison.score,
+              output_review_category: outputComparison.category,
+            },
+          })
+        : await tx.project_daily_task.update({
+            where: { id: dailyTaskId },
+            data: baseUpdateData,
+            select: DAILY_TASK_LEGACY_MUTATION_SELECT,
+          });
 
       if (projectId) {
         await this.logActivity({
@@ -1557,6 +1712,7 @@ export class ProjectsService {
           block_reason: reason,
           updated_at: new Date(),
         },
+        select: DAILY_TASK_LEGACY_MUTATION_SELECT,
       });
 
       if (projectId) {
@@ -1662,6 +1818,7 @@ export class ProjectsService {
           owner_id: targetUserId,
           updated_at: new Date(),
         },
+        select: DAILY_TASK_LEGACY_MUTATION_SELECT,
       });
 
       if (projectId) {
@@ -1704,7 +1861,9 @@ export class ProjectsService {
         throw new ConflictError('Permintaan transfer ini sudah diproses.');
       }
 
-      const task = await tx.project_daily_task.findFirst({ where: { id: transfer.daily_task_id, company_id: companyId } });
+      const task = transfer.daily_task_id
+        ? await this.dailyTaskRecord(transfer.daily_task_id, companyId, tx)
+        : null;
       const weekly = task ? await tx.project_weekly_task.findFirst({ where: { id: task.weekly_task_id, company_id: companyId } }) : null;
       const mainTask = weekly ? await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } }) : null;
       const projectId = mainTask?.project_id;
@@ -1727,6 +1886,7 @@ export class ProjectsService {
           await tx.project_daily_task.update({
             where: { id: transfer.daily_task_id },
             data: { owner_id: transfer.target_user_id, updated_at: new Date() },
+            select: { id: true },
           });
         }
         if (projectId && task) {

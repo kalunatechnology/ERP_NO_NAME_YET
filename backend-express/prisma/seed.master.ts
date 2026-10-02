@@ -383,7 +383,7 @@ async function main() {
       update: {
         enabled: isEnabled,
         allow_read: isEnabled,
-        allow_write: false,
+        allow_write: isEnabled,
       },
       create: {
         id: crypto.randomUUID(),
@@ -392,7 +392,7 @@ async function main() {
         module_code: moduleCode,
         enabled: isEnabled,
         allow_read: isEnabled,
-        allow_write: false,
+        allow_write: isEnabled,
       },
     });
   }
@@ -618,8 +618,12 @@ async function main() {
   // 6. PROJECTS & 5-LEVEL WBS HIERARCHY DATA
   // ===========================================================================
   console.log('  -> [6/7] Seeding Projects & Complete 5-Level WBS Task Trees...');
-  const pmUser = userMap.get('pm');
-  const supervisorUser = userMap.get('supervisor');
+  // Gunakan Arof Fudding (arof@arsalynk.com, role PM) sebagai PM tunggal
+  // untuk seluruh proyek seed. Hal ini memastikan created_by_id konsisten
+  // dan logika dailyTaskAccessWhere (filter by created_by_id) bekerja.
+  const pmUser = userMap.get('arof');
+  // Gunakan Jundy sebagai supervisor/assignee tugas harian.
+  const supervisorUser = userMap.get('jundy');
 
   // Project 1
   let project1 = await prisma.project_project.findFirst({ where: { project_code: 'PRJ-2026-001' } });
@@ -633,7 +637,8 @@ async function main() {
         customer_name: customer1.display_name,
         description: 'Implementasi portal CRM, manajemen proyek, pelaporan, dan integrasi operasional',
         project_manager_id: pmUser?.id,
-        manager_name: pmUser?.full_name ?? 'Rina Sari PM',
+        manager_name: pmUser?.full_name ?? 'Arof Fudding',
+        created_by_id: pmUser?.id,
         project_code: 'PRJ-2026-001',
         project_name: 'Implementasi Portal Operasional Terintegrasi',
         budget_amount: 850000000,
@@ -648,6 +653,12 @@ async function main() {
         planned_end_date: new Date('2026-08-30'),
         started_at: new Date('2026-01-15'),
       },
+    });
+  } else if (!project1.created_by_id && pmUser?.id) {
+    // Backfill created_by_id jika proyek sudah ada tapi belum terisi.
+    project1 = await prisma.project_project.update({
+      where: { id: project1.id },
+      data: { created_by_id: pmUser.id, project_manager_id: pmUser.id },
     });
   }
 
@@ -776,7 +787,8 @@ async function main() {
         customer_name: customer2.display_name,
         description: 'Pengembangan dashboard KPI, workflow approval, dan laporan lintas modul',
         project_manager_id: pmUser?.id,
-        manager_name: pmUser?.full_name ?? 'Rina Sari PM',
+        manager_name: pmUser?.full_name ?? 'Arof Fudding',
+        created_by_id: pmUser?.id,
         project_code: 'PRJ-2026-002',
         project_name: 'Pengembangan Dashboard Eksekutif dan Pelaporan',
         budget_amount: 1250000000,
@@ -791,6 +803,12 @@ async function main() {
         planned_end_date: new Date('2026-10-15'),
         started_at: new Date('2026-02-01'),
       },
+    });
+  } else if (!project2.created_by_id && pmUser?.id) {
+    // Backfill created_by_id jika proyek sudah ada tapi belum terisi.
+    project2 = await prisma.project_project.update({
+      where: { id: project2.id },
+      data: { created_by_id: pmUser.id, project_manager_id: pmUser.id },
     });
   }
 

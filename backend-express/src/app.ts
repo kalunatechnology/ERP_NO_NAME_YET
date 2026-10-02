@@ -23,6 +23,7 @@ import { requireModuleAccess } from './middlewares/entitlement.middleware';
 import { errorHandler } from './middlewares/error.middleware';
 import { enforceTransactionIdempotency } from './middlewares/idempotency.middleware';
 import { notFound } from './middlewares/not-found.middleware';
+import { normalizeRequestPath } from './middlewares/path-normalization.middleware';
 
 // Domain Routers
 import { authRouter, publicAuthRouter, accountsRouter } from './modules/accounts/accounts.routes';
@@ -53,6 +54,9 @@ import { marbotInternalRouter, marbotUserRouter } from './modules/marbot/marbot.
 // Initialize Workflows
 import './workflows';
 
+const PRODUCT_CORS_ORIGIN_PATTERN = /^https?:\/\/([a-z0-9-]+\.)*(?:arsalynk|markasuite)\.com(:\d+)?$/i;
+const MARKASUIT_APP_ORIGIN_PATTERN = /^https?:\/\/app\.markasuit\.com(:\d+)?$/i;
+
 /**
  * createApp implements a named function within this file's application infrastructure boundary.
  *
@@ -63,6 +67,11 @@ import './workflows';
  */
 export function createApp(): Express {
   const app = express();
+
+  // Canonicalize paths before any route/security middleware. A client that
+  // combines a base URL ending in `/` with `/api/...` otherwise reaches Express
+  // as `//api/...` and misses an otherwise valid route.
+  app.use(normalizeRequestPath);
 
   // 1. Core security & performance middleware
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -80,7 +89,8 @@ export function createApp(): Express {
         if (!requestOrigin) return callback(null, true);
         if (
           env.CORS_ALLOWED_ORIGINS.includes(requestOrigin) ||
-          /^https?:\/\/([a-z0-9-]+\.)*arsalynk\.com(:\d+)?$/i.test(requestOrigin)
+          PRODUCT_CORS_ORIGIN_PATTERN.test(requestOrigin) ||
+          MARKASUIT_APP_ORIGIN_PATTERN.test(requestOrigin)
         ) {
           return callback(null, true);
         }
@@ -98,6 +108,7 @@ export function createApp(): Express {
         'X-CSRFToken',
         'X-Requested-With',
         'Idempotency-Key',
+        'MCP-Protocol-Version',
       ],
       exposedHeaders: ['X-Request-ID', 'X-Idempotent-Replay', 'X-Dashboard-Cache', 'X-Request-Cache', 'Server-Timing'],
     }),

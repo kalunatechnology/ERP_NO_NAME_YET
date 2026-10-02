@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessRoute } from "@/lib/access/module-contract";
+import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -232,7 +233,10 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             <span><b>Enter</b> Buka</span>
             <span><b>ESC</b> Tutup</span>
           </div>
-          <span className="font-semibold text-brand-deep-green">Marka+ ERP Quick Access</span>
+          <span className="flex items-center gap-1.5 font-semibold text-brand-deep-green">
+            <MarkaWordmark className="h-auto w-12 text-[#2649B3]" />
+            <span>ERP Quick Access</span>
+          </span>
         </div>
       </div>
     </div>

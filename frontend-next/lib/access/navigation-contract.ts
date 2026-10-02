@@ -14,12 +14,14 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
   ],
   [ROLE_CODES.companyAdmin]: [
     { href: "/dashboard", label: "Company Dashboard" },
+    { href: "/requests", label: "Meeting" },
     { href: "/administration", label: "User & Access" },
     { href: "/reporting", label: "Reports" },
     { href: "/resources", label: "Data Explorer" },
   ],
   [ROLE_CODES.director]: [
     { href: "/dashboard", label: "Executive Dashboard" },
+    { href: "/requests", label: "Meeting" },
     { href: "/projects", label: "All Projects" },
     { href: "/finance", label: "Finance Preview" },
     { href: "/crm", label: "CRM Preview" },
@@ -29,6 +31,7 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
   ],
   [ROLE_CODES.operationalManager]: [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/requests", label: "Meeting" },
     { href: "/projects", label: "Projects" },
     { href: "/tasks", label: "Daily Tasks" },
     { href: "/reporting", label: "Reports" },
@@ -36,6 +39,7 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
   ],
   [ROLE_CODES.projectManager]: [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/requests", label: "Meeting" },
     { href: "/projects", label: "Projects" },
     { href: "/tasks", label: "Daily Tasks" },
     { href: "/crm", label: "CRM" },
@@ -43,28 +47,33 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
   ],
   [ROLE_CODES.supervisor]: [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/requests", label: "Meeting" },
     { href: "/projects", label: "Assigned Projects" },
     { href: "/tasks", label: "Daily Tasks" },
     { href: "/reporting", label: "Reports" },
   ],
   [ROLE_CODES.staff]: [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/requests", label: "Meeting" },
     { href: "/projects", label: "Assigned Projects" },
     { href: "/tasks", label: "Daily Tasks" },
     { href: "/reporting", label: "Reports" },
   ],
   [ROLE_CODES.finance]: [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/requests", label: "Meeting" },
     { href: "/finance", label: "Finance" },
     { href: "/reporting", label: "Reports" },
   ],
   [ROLE_CODES.crmLead]: [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/requests", label: "Meeting" },
     { href: "/crm", label: "CRM & Sales" },
     { href: "/reporting", label: "Reports" },
   ],
   [ROLE_CODES.sales]: [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/requests", label: "Meeting" },
     { href: "/crm", label: "CRM & Sales" },
     { href: "/reporting", label: "Reports" },
   ],

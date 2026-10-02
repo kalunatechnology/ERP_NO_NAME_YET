@@ -1,0 +1,2116 @@
+{
+  "sources": {
+    "src/modules/crm/crm.routes.ts": "be2a1efdf47695d742d2ddbb254c97ca858aa9fe85fcf8b986476f4e899e5a57",
+    "src/modules/sales/sales.routes.ts": "41d170d7c3fd30e9293407a9005a7f236e4ccbd90e33ddc75e8e4a28f3a34ac1",
+    "src/modules/procurement/procurement.routes.ts": "60d36ab3204b530771e7a4eb6650b76a755d5935a0ca49bd99864017cf99eb3d",
+    "src/modules/inventory/inventory.routes.ts": "92ddbc9dc7e4770ad5d0fb2770b5fab86b842236f0dfceac2ef739d3a90cd978",
+    "src/modules/manufacturing/manufacturing.routes.ts": "56483f829d3d4c20de527111f219072222fb2af1142d2c93098348bab6433039",
+    "src/modules/quality/quality.routes.ts": "0c21194b5c24f7adf7990fb79d1face5c5d45cc3ca0d0efff9d7e2a960cc766f",
+    "src/modules/assets/assets.routes.ts": "16dab8071a2b845277a10e2e975fddda245b56169705fe74eee33667b42e638c",
+    "src/modules/service/service.routes.ts": "ad7fdd3393d3fda41e7f6eb289a5db99db0b553dca47313e762f79983f7635c8",
+    "src/modules/logistics/logistics.routes.ts": "eed42cbbe18761afcc3877d5cd3279cac395ba3195a51d901655a1a6a9370dd1",
+    "src/modules/analytics/analytics.routes.ts": "1c2580393407411276cd5c8b31619d10212c77b11259dcf4d5dab463cacbbc19",
+    "src/modules/implementation/implementation.routes.ts": "5a6ad3c2ca86f7b256d0032aee036cf05b00a33f1ababf2d303d43657d901d9c",
+    "src/modules/finance/finance.routes.ts": "433432cc5905d997fd12eb588327817680c8a6e64aef670fd199ee2d3b07bcaa",
+    "src/modules/projects/projects.routes.ts": "6a24a047101d3f0d2bdd34d0f854390f71e155994f992d326e3192cba9c5fc9a",
+    "src/modules/master_data/master_data.routes.ts": "d6a09a8ed26dd06e4f382eb7f20ac30dbd276bcf1de2de58cf4b99b02bd89080",
+    "src/modules/reporting/reporting.routes.ts": "d9b05602e3213b809226a0913c3f0e2b22a88f37fc19001e65812bffb1dc81bc",
+    "prisma/schema.prisma": "4fd101401afee51c120025d73c4ed6fef0a39667c023ad50c5fa8787d1ba7afc"
+  },
+  "resources": [
+    {
+      "key": "crm.customer-inquiries",
+      "module": "CRM",
+      "path": "/api/v1/crm/customer-inquiries/",
+      "model": "crm_customer_inquiry",
+      "readOnly": false,
+      "searchFields": [
+        "inquiry_number",
+        "subject",
+        "customer_name"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.inquiry-requirements",
+      "module": "CRM",
+      "path": "/api/v1/crm/inquiry-requirements/",
+      "model": "crm_inquiry_requirement",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.cost-estimates",
+      "module": "CRM",
+      "path": "/api/v1/crm/cost-estimates/",
+      "model": "crm_cost_estimate",
+      "readOnly": false,
+      "searchFields": [
+        "estimate_number"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.cost-estimate-lines",
+      "module": "CRM",
+      "path": "/api/v1/crm/cost-estimate-lines/",
+      "model": "crm_cost_estimate_line",
+      "readOnly": false,
+      "searchFields": [
+        "description",
+        "cost_element"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.opportunities",
+      "module": "CRM",
+      "path": "/api/v1/crm/opportunities/",
+      "model": "crm_opportunity",
+      "readOnly": false,
+      "searchFields": [
+        "opportunity_name",
+        "pipeline_stage"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.opportunity-products",
+      "module": "CRM",
+      "path": "/api/v1/crm/opportunity-products/",
+      "model": "crm_opportunity_product",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.activities",
+      "module": "CRM",
+      "path": "/api/v1/crm/activities/",
+      "model": "crm_activity",
+      "readOnly": false,
+      "searchFields": [
+        "subject",
+        "activity_type"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.pipelines",
+      "module": "CRM",
+      "path": "/api/v1/crm/pipelines/",
+      "model": "crm_pipeline",
+      "readOnly": false,
+      "searchFields": [
+        "pipeline_name",
+        "pipeline_code"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.pipeline-stages",
+      "module": "CRM",
+      "path": "/api/v1/crm/pipeline-stages/",
+      "model": "crm_pipeline_stage",
+      "readOnly": false,
+      "searchFields": [
+        "stage_name",
+        "stage_code"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.opportunity-stage-histories",
+      "module": "CRM",
+      "path": "/api/v1/crm/opportunity-stage-histories/",
+      "model": "crm_opportunity_stage_history",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.executive-approvals",
+      "module": "CRM",
+      "path": "/api/v1/crm/executive-approvals/",
+      "model": "crm_executive_approval",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.credit-status-snapshots",
+      "module": "CRM",
+      "path": "/api/v1/crm/credit-status-snapshots/",
+      "model": "crm_credit_status_snapshot",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.channel-accounts",
+      "module": "CRM",
+      "path": "/api/v1/crm/channel-accounts/",
+      "model": "crm_channel_account",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.conversations",
+      "module": "CRM",
+      "path": "/api/v1/crm/conversations/",
+      "model": "crm_conversation",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.conversation-participants",
+      "module": "CRM",
+      "path": "/api/v1/crm/conversation-participants/",
+      "model": "crm_conversation_participant",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.messages",
+      "module": "CRM",
+      "path": "/api/v1/crm/messages/",
+      "model": "crm_message",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.message-attachments",
+      "module": "CRM",
+      "path": "/api/v1/crm/message-attachments/",
+      "model": "crm_message_attachment",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.message-delivery-statuses",
+      "module": "CRM",
+      "path": "/api/v1/crm/message-delivery-statuses/",
+      "model": "crm_message_delivery_status",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.feedbacks",
+      "module": "CRM",
+      "path": "/api/v1/crm/feedbacks/",
+      "model": "crm_feedback",
+      "readOnly": false,
+      "searchFields": [
+        "subject",
+        "feedback_text"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.surveys",
+      "module": "CRM",
+      "path": "/api/v1/crm/surveys/",
+      "model": "crm_survey",
+      "readOnly": false,
+      "searchFields": [
+        "title"
+      ],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.survey-questions",
+      "module": "CRM",
+      "path": "/api/v1/crm/survey-questions/",
+      "model": "crm_survey_question",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.survey-responses",
+      "module": "CRM",
+      "path": "/api/v1/crm/survey-responses/",
+      "model": "crm_survey_response",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.survey-answers",
+      "module": "CRM",
+      "path": "/api/v1/crm/survey-answers/",
+      "model": "crm_survey_answer",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.quotation-versions",
+      "module": "CRM",
+      "path": "/api/v1/crm/quotation-versions/",
+      "model": "crm_quotation_version",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.quotation-deliveries",
+      "module": "CRM",
+      "path": "/api/v1/crm/quotation-deliveries/",
+      "model": "crm_quotation_delivery",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.workflow-events",
+      "module": "CRM",
+      "path": "/api/v1/crm/workflow-events/",
+      "model": "crm_workflow_event",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "crm.customer-feedbacks",
+      "module": "CRM",
+      "path": "/api/v1/crm/customer-feedbacks/",
+      "model": "crm_customer_feedback",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/crm/crm.routes.ts"
+    },
+    {
+      "key": "sales.quotations",
+      "module": "SALES",
+      "path": "/api/v1/sales/quotations/",
+      "model": "sales_quotation",
+      "readOnly": false,
+      "searchFields": [
+        "status"
+      ],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.quotation-lines",
+      "module": "SALES",
+      "path": "/api/v1/sales/quotation-lines/",
+      "model": "sales_quotation_line",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.quotation-costs",
+      "module": "SALES",
+      "path": "/api/v1/sales/quotation-costs/",
+      "model": "sales_quotation_cost",
+      "readOnly": false,
+      "searchFields": [
+        "cost_element"
+      ],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.contracts",
+      "module": "SALES",
+      "path": "/api/v1/sales/contracts/",
+      "model": "sales_contract",
+      "readOnly": false,
+      "searchFields": [
+        "contract_number"
+      ],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.contract-lines",
+      "module": "SALES",
+      "path": "/api/v1/sales/contract-lines/",
+      "model": "sales_contract_line",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.orders",
+      "module": "SALES",
+      "path": "/api/v1/sales/orders/",
+      "model": "sales_order",
+      "readOnly": false,
+      "searchFields": [
+        "status"
+      ],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.order-lines",
+      "module": "SALES",
+      "path": "/api/v1/sales/order-lines/",
+      "model": "sales_order_line",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.deliveries",
+      "module": "SALES",
+      "path": "/api/v1/sales/deliveries/",
+      "model": "sales_delivery",
+      "readOnly": false,
+      "searchFields": [
+        "delivery_status"
+      ],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.delivery-lines",
+      "module": "SALES",
+      "path": "/api/v1/sales/delivery-lines/",
+      "model": "sales_delivery_line",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.demand-supply-links",
+      "module": "SALES",
+      "path": "/api/v1/sales/demand-supply-links/",
+      "model": "sales_demand_supply_link",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.order-change-requests",
+      "module": "SALES",
+      "path": "/api/v1/sales/order-change-requests/",
+      "model": "sales_order_change_request",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.recurring-order-rules",
+      "module": "SALES",
+      "path": "/api/v1/sales/recurring-order-rules/",
+      "model": "sales_recurring_order_rule",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "sales.recurring-order-runs",
+      "module": "SALES",
+      "path": "/api/v1/sales/recurring-order-runs/",
+      "model": "sales_recurring_order_run",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/sales/sales.routes.ts"
+    },
+    {
+      "key": "procurement.purchase-requisitions",
+      "module": "PROCUREMENT",
+      "path": "/api/v1/procurement/purchase-requisitions/",
+      "model": "proc_purchase_requisition",
+      "readOnly": false,
+      "searchFields": [
+        "requisition_number"
+      ],
+      "source": "src/modules/procurement/procurement.routes.ts"
+    },
+    {
+      "key": "procurement.purchase-requisition-lines",
+      "module": "PROCUREMENT",
+      "path": "/api/v1/procurement/purchase-requisition-lines/",
+      "model": "proc_purchase_requisition_line",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/procurement/procurement.routes.ts"
+    },
+    {
+      "key": "procurement.rfqs",
+      "module": "PROCUREMENT",
+      "path": "/api/v1/procurement/rfqs/",
+      "model": "proc_rfq",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/procurement/procurement.routes.ts"
+    },
+    {
+      "key": "procurement.supplier-quotations",
+      "module": "PROCUREMENT",
+      "path": "/api/v1/procurement/supplier-quotations/",
+      "model": "proc_supplier_quotation",
+      "readOnly": false,
+      "searchFields": [
+        "quotation_reference"
+      ],
+      "source": "src/modules/procurement/procurement.routes.ts"
+    },
+    {
+      "key": "procurement.purchase-orders",
+      "module": "PROCUREMENT",
+      "path": "/api/v1/procurement/purchase-orders/",
+      "model": "proc_purchase_order",
+      "readOnly": false,
+      "searchFields": [
+        "po_number"
+      ],
+      "source": "src/modules/procurement/procurement.routes.ts"
+    },
+    {
+      "key": "procurement.purchase-order-lines",
+      "module": "PROCUREMENT",
+      "path": "/api/v1/procurement/purchase-order-lines/",
+      "model": "proc_purchase_order_line",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/procurement/procurement.routes.ts"
+    },
+    {
+      "key": "procurement.goods-receipts",
+      "module": "PROCUREMENT",
+      "path": "/api/v1/procurement/goods-receipts/",
+      "model": "proc_goods_receipt",
+      "readOnly": false,
+      "searchFields": [
+        "receipt_number"
+      ],
+      "source": "src/modules/procurement/procurement.routes.ts"
+    },
+    {
+      "key": "procurement.goods-receipt-lines",
+      "module": "PROCUREMENT",
+      "path": "/api/v1/procurement/goods-receipt-lines/",
+      "model": "proc_goods_receipt_line",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/procurement/procurement.routes.ts"
+    },
+    {
+      "key": "procurement.three-way-matches",
+      "module": "PROCUREMENT",
+      "path": "/api/v1/procurement/three-way-matches/",
+      "model": "proc_three_way_match",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/procurement/procurement.routes.ts"
+    },
+    {
+      "key": "inventory.stock-move-lines",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/stock-move-lines/",
+      "model": "inv_stock_move_line",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.stock-moves",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/stock-moves/",
+      "model": "inv_stock_move",
+      "readOnly": false,
+      "searchFields": [
+        "movement_number",
+        "movement_type"
+      ],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.stock-movements",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/stock-movements/",
+      "model": "inv_stock_move",
+      "readOnly": false,
+      "searchFields": [
+        "movement_number",
+        "movement_type"
+      ],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.stock-reservations",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/stock-reservations/",
+      "model": "inv_stock_reservation",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.reservations",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/reservations/",
+      "model": "inv_stock_reservation",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.stock-ledgers",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/stock-ledgers/",
+      "model": "inv_stock_ledger_entry",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.stock-balances",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/stock-balances/",
+      "model": "inv_stock_balance",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.stock-counts",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/stock-counts/",
+      "model": "inv_stock_count",
+      "readOnly": false,
+      "searchFields": [
+        "count_number"
+      ],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.stock-count-lines",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/stock-count-lines/",
+      "model": "inv_stock_count_line",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.valuation-layers",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/valuation-layers/",
+      "model": "inv_valuation_layer",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.lots",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/lots/",
+      "model": "inv_lot",
+      "readOnly": false,
+      "searchFields": [
+        "lot_number"
+      ],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "inventory.serial-numbers",
+      "module": "INVENTORY",
+      "path": "/api/v1/inventory/serial-numbers/",
+      "model": "inv_serial_number",
+      "readOnly": false,
+      "searchFields": [
+        "serial_number"
+      ],
+      "source": "src/modules/inventory/inventory.routes.ts"
+    },
+    {
+      "key": "manufacturing.boms",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/boms/",
+      "model": "mfg_bom",
+      "readOnly": false,
+      "searchFields": [
+        "bom_name",
+        "bom_code"
+      ],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.bom-versions",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/bom-versions/",
+      "model": "mfg_bom_version",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.bom-lines",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/bom-lines/",
+      "model": "mfg_bom_line",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.routings",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/routings/",
+      "model": "mfg_routing",
+      "readOnly": false,
+      "searchFields": [
+        "routing_name",
+        "routing_code"
+      ],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.routing-operations",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/routing-operations/",
+      "model": "mfg_routing_operation",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.production-orders",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/production-orders/",
+      "model": "mfg_production_order",
+      "readOnly": false,
+      "searchFields": [
+        "order_number"
+      ],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.production-materials",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/production-materials/",
+      "model": "mfg_production_material",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.work-orders",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/work-orders/",
+      "model": "mfg_work_order",
+      "readOnly": false,
+      "searchFields": [
+        "work_order_number"
+      ],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.labor-logs",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/labor-logs/",
+      "model": "mfg_labor_log",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.machine-logs",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/machine-logs/",
+      "model": "mfg_machine_log",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.production-outputs",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/production-outputs/",
+      "model": "mfg_production_output",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.scraps",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/scraps/",
+      "model": "mfg_scrap",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "manufacturing.cost-ledger-entries",
+      "module": "MANUFACTURING",
+      "path": "/api/v1/manufacturing/cost-ledger-entries/",
+      "model": "mfg_cost_ledger_entry",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/manufacturing/manufacturing.routes.ts"
+    },
+    {
+      "key": "quality.quality-plans",
+      "module": "QUALITY",
+      "path": "/api/v1/quality/quality-plans/",
+      "model": "qa_quality_plan",
+      "readOnly": false,
+      "searchFields": [
+        "plan_name",
+        "plan_code"
+      ],
+      "source": "src/modules/quality/quality.routes.ts"
+    },
+    {
+      "key": "quality.quality-plan-points",
+      "module": "QUALITY",
+      "path": "/api/v1/quality/quality-plan-points/",
+      "model": "qa_quality_plan_point",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/quality/quality.routes.ts"
+    },
+    {
+      "key": "quality.inspections",
+      "module": "QUALITY",
+      "path": "/api/v1/quality/inspections/",
+      "model": "qa_inspection",
+      "readOnly": false,
+      "searchFields": [
+        "inspection_number"
+      ],
+      "source": "src/modules/quality/quality.routes.ts"
+    },
+    {
+      "key": "quality.inspection-results",
+      "module": "QUALITY",
+      "path": "/api/v1/quality/inspection-results/",
+      "model": "qa_inspection_result",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/quality/quality.routes.ts"
+    },
+    {
+      "key": "quality.nonconformances",
+      "module": "QUALITY",
+      "path": "/api/v1/quality/nonconformances/",
+      "model": "qa_nonconformance",
+      "readOnly": false,
+      "searchFields": [
+        "ncr_number",
+        "description"
+      ],
+      "source": "src/modules/quality/quality.routes.ts"
+    },
+    {
+      "key": "quality.corrective-actions",
+      "module": "QUALITY",
+      "path": "/api/v1/quality/corrective-actions/",
+      "model": "qa_corrective_action",
+      "readOnly": false,
+      "searchFields": [
+        "capa_number",
+        "description"
+      ],
+      "source": "src/modules/quality/quality.routes.ts"
+    },
+    {
+      "key": "assets.assets",
+      "module": "ASSETS",
+      "path": "/api/v1/assets/assets/",
+      "model": "asset_asset",
+      "readOnly": false,
+      "searchFields": [
+        "asset_name",
+        "asset_code",
+        "serial_number"
+      ],
+      "source": "src/modules/assets/assets.routes.ts"
+    },
+    {
+      "key": "assets.asset-categories",
+      "module": "ASSETS",
+      "path": "/api/v1/assets/asset-categories/",
+      "model": "asset_category",
+      "readOnly": false,
+      "searchFields": [
+        "category_name",
+        "category_code"
+      ],
+      "source": "src/modules/assets/assets.routes.ts"
+    },
+    {
+      "key": "assets.books",
+      "module": "ASSETS",
+      "path": "/api/v1/assets/books/",
+      "model": "asset_book",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/assets/assets.routes.ts"
+    },
+    {
+      "key": "assets.depreciation-lines",
+      "module": "ASSETS",
+      "path": "/api/v1/assets/depreciation-lines/",
+      "model": "asset_depreciation_line",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/assets/assets.routes.ts"
+    },
+    {
+      "key": "assets.maintenances",
+      "module": "ASSETS",
+      "path": "/api/v1/assets/maintenances/",
+      "model": "asset_maintenance",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/assets/assets.routes.ts"
+    },
+    {
+      "key": "assets.disposals",
+      "module": "ASSETS",
+      "path": "/api/v1/assets/disposals/",
+      "model": "asset_disposal",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/assets/assets.routes.ts"
+    },
+    {
+      "key": "service.cases",
+      "module": "SERVICE",
+      "path": "/api/v1/service/cases/",
+      "model": "service_case",
+      "readOnly": false,
+      "searchFields": [
+        "case_number",
+        "subject",
+        "status"
+      ],
+      "source": "src/modules/service/service.routes.ts"
+    },
+    {
+      "key": "service.case-messages",
+      "module": "SERVICE",
+      "path": "/api/v1/service/case-messages/",
+      "model": "service_case_message",
+      "readOnly": false,
+      "searchFields": [
+        "message_text"
+      ],
+      "source": "src/modules/service/service.routes.ts"
+    },
+    {
+      "key": "service.case-approvals",
+      "module": "SERVICE",
+      "path": "/api/v1/service/case-approvals/",
+      "model": "service_case_approval",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/service/service.routes.ts"
+    },
+    {
+      "key": "service.resolutions",
+      "module": "SERVICE",
+      "path": "/api/v1/service/resolutions/",
+      "model": "service_resolution",
+      "readOnly": false,
+      "searchFields": [
+        "resolution_summary"
+      ],
+      "source": "src/modules/service/service.routes.ts"
+    },
+    {
+      "key": "logistics.shipments",
+      "module": "LOGISTICS",
+      "path": "/api/v1/logistics/shipments/",
+      "model": "logistics_shipment",
+      "readOnly": false,
+      "searchFields": [
+        "tracking_number"
+      ],
+      "source": "src/modules/logistics/logistics.routes.ts"
+    },
+    {
+      "key": "logistics.shipment-lines",
+      "module": "LOGISTICS",
+      "path": "/api/v1/logistics/shipment-lines/",
+      "model": "logistics_shipment_line",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/logistics/logistics.routes.ts"
+    },
+    {
+      "key": "logistics.tracking-events",
+      "module": "LOGISTICS",
+      "path": "/api/v1/logistics/tracking-events/",
+      "model": "logistics_tracking_event",
+      "readOnly": false,
+      "searchFields": [
+        "event_type"
+      ],
+      "source": "src/modules/logistics/logistics.routes.ts"
+    },
+    {
+      "key": "logistics.proof-of-deliveries",
+      "module": "LOGISTICS",
+      "path": "/api/v1/logistics/proof-of-deliveries/",
+      "model": "logistics_proof_of_delivery",
+      "readOnly": false,
+      "searchFields": [
+        "receiver_name"
+      ],
+      "source": "src/modules/logistics/logistics.routes.ts"
+    },
+    {
+      "key": "analytics.kpis",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/kpis/",
+      "model": "analytics_kpi_definition",
+      "readOnly": false,
+      "searchFields": [
+        "kpi_name",
+        "kpi_code"
+      ],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.kpi-definitions",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/kpi-definitions/",
+      "model": "analytics_kpi_definition",
+      "readOnly": false,
+      "searchFields": [
+        "kpi_name",
+        "kpi_code"
+      ],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.kpi-targets",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/kpi-targets/",
+      "model": "analytics_kpi_target",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.kpi-results",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/kpi-results/",
+      "model": "analytics_kpi_result",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.dashboards",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/dashboards/",
+      "model": "analytics_dashboard",
+      "readOnly": false,
+      "searchFields": [
+        "dashboard_name"
+      ],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.dashboard-roles",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/dashboard-roles/",
+      "model": "analytics_dashboard_role",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.widgets",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/widgets/",
+      "model": "analytics_widget",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.dashboard-widgets",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/dashboard-widgets/",
+      "model": "analytics_widget",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.alerts",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/alerts/",
+      "model": "analytics_alert_rule",
+      "readOnly": false,
+      "searchFields": [
+        "alert_name"
+      ],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.alert-rules",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/alert-rules/",
+      "model": "analytics_alert_rule",
+      "readOnly": false,
+      "searchFields": [
+        "alert_name"
+      ],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "analytics.alert-events",
+      "module": "ANALYTICS",
+      "path": "/api/v1/analytics/alert-events/",
+      "model": "analytics_alert_event",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/analytics/analytics.routes.ts"
+    },
+    {
+      "key": "implementation.releases",
+      "module": "IMPLEMENTATION",
+      "path": "/api/v1/implementation/releases/",
+      "model": "implementation_release",
+      "readOnly": false,
+      "searchFields": [
+        "release_name",
+        "release_code"
+      ],
+      "source": "src/modules/implementation/implementation.routes.ts"
+    },
+    {
+      "key": "implementation.phases",
+      "module": "IMPLEMENTATION",
+      "path": "/api/v1/implementation/phases/",
+      "model": "implementation_phase",
+      "readOnly": false,
+      "searchFields": [
+        "phase_name"
+      ],
+      "source": "src/modules/implementation/implementation.routes.ts"
+    },
+    {
+      "key": "implementation.phase-items",
+      "module": "IMPLEMENTATION",
+      "path": "/api/v1/implementation/phase-items/",
+      "model": "implementation_phase_item",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/implementation/implementation.routes.ts"
+    },
+    {
+      "key": "implementation.workflows",
+      "module": "IMPLEMENTATION",
+      "path": "/api/v1/implementation/workflows/",
+      "model": "implementation_workflow",
+      "readOnly": false,
+      "searchFields": [
+        "workflow_name"
+      ],
+      "source": "src/modules/implementation/implementation.routes.ts"
+    },
+    {
+      "key": "implementation.workflow-stages",
+      "module": "IMPLEMENTATION",
+      "path": "/api/v1/implementation/workflow-stages/",
+      "model": "implementation_workflow_stage",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/implementation/implementation.routes.ts"
+    },
+    {
+      "key": "implementation.work-items",
+      "module": "IMPLEMENTATION",
+      "path": "/api/v1/implementation/work-items/",
+      "model": "implementation_work_item",
+      "readOnly": false,
+      "searchFields": [
+        "title"
+      ],
+      "source": "src/modules/implementation/implementation.routes.ts"
+    },
+    {
+      "key": "implementation.test-cycles",
+      "module": "IMPLEMENTATION",
+      "path": "/api/v1/implementation/test-cycles/",
+      "model": "implementation_test_cycle",
+      "readOnly": false,
+      "searchFields": [
+        "cycle_name"
+      ],
+      "source": "src/modules/implementation/implementation.routes.ts"
+    },
+    {
+      "key": "implementation.gtm-milestones",
+      "module": "IMPLEMENTATION",
+      "path": "/api/v1/implementation/gtm-milestones/",
+      "model": "implementation_gtm_milestone",
+      "readOnly": false,
+      "searchFields": [
+        "milestone_name"
+      ],
+      "source": "src/modules/implementation/implementation.routes.ts"
+    },
+    {
+      "key": "finance.accounts",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/accounts/",
+      "model": "fin_account",
+      "readOnly": false,
+      "searchFields": [
+        "account_code",
+        "account_name"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.journals",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/journals/",
+      "model": "fin_journal",
+      "readOnly": false,
+      "searchFields": [
+        "journal_code",
+        "journal_name"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.journal-entries",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/journal-entries/",
+      "model": "fin_journal_entry",
+      "readOnly": false,
+      "searchFields": [
+        "entry_number",
+        "description"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.journal-lines",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/journal-lines/",
+      "model": "fin_journal_line",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.fiscal-years",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/fiscal-years/",
+      "model": "fin_fiscal_year",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.fiscal-periods",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/fiscal-periods/",
+      "model": "fin_fiscal_period",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.billing-documents",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/billing-documents/",
+      "model": "fin_billing_document",
+      "readOnly": false,
+      "searchFields": [
+        "invoice_number",
+        "billing_type"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.billing-document-lines",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/billing-document-lines/",
+      "model": "fin_billing_document_line",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.billing-proposals",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/billing-proposals/",
+      "model": "fin_billing_proposal",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.payments",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/payments/",
+      "model": "fin_payment",
+      "readOnly": false,
+      "searchFields": [
+        "reference_number"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.customer-receipts",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/customer-receipts/",
+      "model": "fin_payment",
+      "readOnly": false,
+      "searchFields": [
+        "reference_number"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.vendor-payments",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/vendor-payments/",
+      "model": "fin_payment",
+      "readOnly": false,
+      "searchFields": [
+        "reference_number"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.payment-lines",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/payment-lines/",
+      "model": "fin_payment_allocation",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.payment-allocations",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/payment-allocations/",
+      "model": "fin_payment_allocation",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.bank-accounts",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/bank-accounts/",
+      "model": "fin_bank_account",
+      "readOnly": false,
+      "searchFields": [
+        "account_number",
+        "bank_name"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.bank-statements",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/bank-statements/",
+      "model": "fin_bank_statement",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.bank-statement-lines",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/bank-statement-lines/",
+      "model": "fin_bank_statement_line",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.bank-reconciliations",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/bank-reconciliations/",
+      "model": "fin_bank_reconciliation",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.tax-transactions",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/tax-transactions/",
+      "model": "fin_tax_transaction",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.budgets",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/budgets/",
+      "model": "fin_budget",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.budget-lines",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/budget-lines/",
+      "model": "fin_budget_line",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.project-cost-entries",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/project-cost-entries/",
+      "model": "fin_project_cost_entry",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.project-fundings",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/project-fundings/",
+      "model": "fin_project_funding",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.credit-facilities",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/credit-facilities/",
+      "model": "fin_credit_facility",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.recurring-payment-rules",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/recurring-payment-rules/",
+      "model": "fin_recurring_payment_rule",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "finance.overhead-rules",
+      "module": "FINANCE",
+      "path": "/api/v1/finance/overhead-rules/",
+      "model": "fin_overhead_rule",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/finance/finance.routes.ts"
+    },
+    {
+      "key": "projects.main-tasks",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/main-tasks/",
+      "model": "project_main_task",
+      "readOnly": false,
+      "searchFields": [
+        "name",
+        "description"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.weekly-tasks",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/weekly-tasks/",
+      "model": "project_weekly_task",
+      "readOnly": false,
+      "searchFields": [
+        "target_description"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.daily-tasks",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/daily-tasks/",
+      "model": "project_daily_task",
+      "readOnly": false,
+      "searchFields": [
+        "title",
+        "description",
+        "output_target",
+        "notes",
+        "output_result",
+        "time_slot",
+        "block_reason"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.task-assignments",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/task-assignments/",
+      "model": "project_task_assignment",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.task-transfers",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/task-transfers/",
+      "model": "project_task_transfer_request",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.projects",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/projects/",
+      "model": "project_project",
+      "readOnly": false,
+      "searchFields": [
+        "project_name",
+        "project_code",
+        "status",
+        "customer_name"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.control-items",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/control-items/",
+      "model": "project_control_item",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.expenses",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/expenses/",
+      "model": "project_expense",
+      "readOnly": false,
+      "searchFields": [
+        "description"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.lifecycle-events",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/lifecycle-events/",
+      "model": "project_lifecycle_event",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.readiness-checks",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/readiness-checks/",
+      "model": "project_readiness_check",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.members",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/members/",
+      "model": "project_member",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.tasks",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/tasks/",
+      "model": "project_task",
+      "readOnly": false,
+      "searchFields": [
+        "task_name",
+        "task_code"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.task-dependencies",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/task-dependencies/",
+      "model": "project_task_dependency",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.milestones",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/milestones/",
+      "model": "project_milestone",
+      "readOnly": false,
+      "searchFields": [
+        "milestone_name"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.material-requirements",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/material-requirements/",
+      "model": "project_material_requirement",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.budget-lines",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/budget-lines/",
+      "model": "project_budget_line",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.timesheets",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/timesheets/",
+      "model": "project_timesheet",
+      "readOnly": false,
+      "searchFields": [
+        "approval_status",
+        "overtime_reason"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.change-requests",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/change-requests/",
+      "model": "project_change_request",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.change-request-materials",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/change-request-materials/",
+      "model": "project_change_request_material",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.boards",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/boards/",
+      "model": "project_board",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.board-columns",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/board-columns/",
+      "model": "project_board_column",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.task-board-positions",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/task-board-positions/",
+      "model": "project_task_board_position",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.health-rules",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/health-rules/",
+      "model": "project_health_rule",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.health-snapshots",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/health-snapshots/",
+      "model": "project_health_snapshot",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.risks",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/risks/",
+      "model": "project_risk",
+      "readOnly": false,
+      "searchFields": [
+        "risk_title"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.issues",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/issues/",
+      "model": "project_issue",
+      "readOnly": false,
+      "searchFields": [
+        "issue_title"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.issue-actions",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/issue-actions/",
+      "model": "project_issue_action",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.dispatches",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/dispatches/",
+      "model": "project_dispatch",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.technical-briefs",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/technical-briefs/",
+      "model": "project_technical_brief",
+      "readOnly": false,
+      "searchFields": [
+        "title"
+      ],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.technical-brief-versions",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/technical-brief-versions/",
+      "model": "project_technical_brief_version",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.requirements",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/requirements/",
+      "model": "project_requirement",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.acceptance-criterias",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/acceptance-criterias/",
+      "model": "project_acceptance_criteria",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.resource-requests",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/resource-requests/",
+      "model": "project_resource_request",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.resource-request-lines",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/resource-request-lines/",
+      "model": "project_resource_request_line",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.resource-allocations",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/resource-allocations/",
+      "model": "project_resource_allocation",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.progress-snapshots",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/progress-snapshots/",
+      "model": "project_progress_snapshot",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.weekly-progress",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/weekly-progress/",
+      "model": "project_weekly_progress",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.equipment-usages",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/equipment-usages/",
+      "model": "project_equipment_usage",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.weight-indicators",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/weight-indicators/",
+      "model": "project_weight_indicator",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.weight-components",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/weight-components/",
+      "model": "project_weight_component",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "projects.task-activity-logs",
+      "module": "PROJECTS",
+      "path": "/api/v1/projects/task-activity-logs/",
+      "model": "project_task_activity_log",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/projects/projects.routes.ts"
+    },
+    {
+      "key": "master_data.parties",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/parties/",
+      "model": "master_party",
+      "readOnly": false,
+      "searchFields": [
+        "party_name",
+        "party_code",
+        "tax_id"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.party-roles",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/party-roles/",
+      "model": "master_party_role",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.contacts",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/contacts/",
+      "model": "master_contact",
+      "readOnly": false,
+      "searchFields": [
+        "contact_name",
+        "email",
+        "phone"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.addresses",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/addresses/",
+      "model": "master_address",
+      "readOnly": false,
+      "searchFields": [
+        "address_line1",
+        "city"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.customer-profiles",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/customer-profiles/",
+      "model": "master_customer_profile",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.supplier-profiles",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/supplier-profiles/",
+      "model": "master_supplier_profile",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.product-categories",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/product-categories/",
+      "model": "master_product_category",
+      "readOnly": false,
+      "searchFields": [
+        "category_name",
+        "category_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.uoms",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/uoms/",
+      "model": "master_uom",
+      "readOnly": false,
+      "searchFields": [
+        "uom_name",
+        "uom_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.products",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/products/",
+      "model": "master_product",
+      "readOnly": false,
+      "searchFields": [
+        "product_name",
+        "product_code",
+        "sku"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.currencies",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/currencies/",
+      "model": "master_currency",
+      "readOnly": false,
+      "searchFields": [
+        "currency_code",
+        "currency_name"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.exchange-rates",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/exchange-rates/",
+      "model": "master_exchange_rate",
+      "readOnly": false,
+      "searchFields": [],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.payment-terms",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/payment-terms/",
+      "model": "master_payment_term",
+      "readOnly": false,
+      "searchFields": [
+        "term_name",
+        "term_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.tax-codes",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/tax-codes/",
+      "model": "master_tax_code",
+      "readOnly": false,
+      "searchFields": [
+        "tax_name",
+        "tax_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.cost-centers",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/cost-centers/",
+      "model": "master_cost_center",
+      "readOnly": false,
+      "searchFields": [
+        "cost_center_name",
+        "cost_center_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.departments",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/departments/",
+      "model": "master_department",
+      "readOnly": false,
+      "searchFields": [
+        "department_name",
+        "department_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.employees",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/employees/",
+      "model": "master_employee",
+      "readOnly": false,
+      "searchFields": [
+        "employee_name",
+        "employee_number",
+        "email"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.warehouses",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/warehouses/",
+      "model": "master_warehouse",
+      "readOnly": false,
+      "searchFields": [
+        "warehouse_name",
+        "warehouse_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.warehouse-locations",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/warehouse-locations/",
+      "model": "master_warehouse_location",
+      "readOnly": false,
+      "searchFields": [
+        "location_name",
+        "location_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.work-centers",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/work-centers/",
+      "model": "master_work_center",
+      "readOnly": false,
+      "searchFields": [
+        "work_center_name",
+        "work_center_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "master_data.machines",
+      "module": "MASTER_DATA",
+      "path": "/api/v1/master-data/machines/",
+      "model": "master_machine",
+      "readOnly": false,
+      "searchFields": [
+        "machine_name",
+        "machine_code"
+      ],
+      "source": "src/modules/master_data/master_data.routes.ts"
+    },
+    {
+      "key": "reporting.finance-main-dashboards",
+      "module": "REPORTING",
+      "path": "/api/v1/reporting/finance-main-dashboards/",
+      "model": "view_finance_main_dashboard",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/reporting/reporting.routes.ts"
+    },
+    {
+      "key": "reporting.project-dashboards",
+      "module": "REPORTING",
+      "path": "/api/v1/reporting/project-dashboards/",
+      "model": "view_project_dashboard",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/reporting/reporting.routes.ts"
+    },
+    {
+      "key": "reporting.project-timeline-costs",
+      "module": "REPORTING",
+      "path": "/api/v1/reporting/project-timeline-costs/",
+      "model": "view_project_timeline_cost",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/reporting/reporting.routes.ts"
+    },
+    {
+      "key": "reporting.crm-sales-dashboards",
+      "module": "REPORTING",
+      "path": "/api/v1/reporting/crm-sales-dashboards/",
+      "model": "view_crm_sales_dashboard",
+      "readOnly": true,
+      "searchFields": [],
+      "source": "src/modules/reporting/reporting.routes.ts"
+    }
+  ]
+}

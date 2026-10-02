@@ -22,7 +22,7 @@ Both histories now remain committed under `prisma/migrations/`. The deployment g
 3. Never create separate `migration-master` and `migration-production` variants for the same schema change.
 4. Never edit an already-successful migration. Fix it with a new migration or deployment reconciliation that verifies the physical state first.
 5. Never put demo/sample/reset data inside schema migrations.
-6. **Application build and database migration are separate operations.** `npm run build` must never connect to or mutate a live database. Run `npm run deploy:hostinger:db` explicitly for a controlled database release.
+6. **Application build and database migration are separate operations.** `npm run build` and `npm run deploy:hostinger` must never connect to or mutate a live database. Run `npm run deploy:hostinger:db` explicitly for a controlled database release.
 7. Master and production may contain different business rows, users, projects, invoices, and other data. Schema parity does not mean data parity.
 8. Run `npm run audit:db-architecture` explicitly after a database migration when release operations require physical schema verification.
 
@@ -31,7 +31,7 @@ Both histories now remain committed under `prisma/migrations/`. The deployment g
 After source code is merged from master into production:
 
 1. The application/frontend build can proceed independently and does not force Prisma migrations.
-2. When a database release is actually required, run `npm run deploy:hostinger:db` explicitly.
+2. When a database release is actually required, run `npm run deploy:hostinger:db` explicitly before the application release and verify the database gate succeeds.
 3. The database gate reads `_prisma_migrations` from the target database.
 4. If `20260922000000_production_baseline` is present and successful, the deployment gate records the equivalent historical master migrations as applied without executing duplicate DDL.
 5. If the complete legacy master tail is present instead, the production squash baseline is recorded as schema-equivalent without executing it.

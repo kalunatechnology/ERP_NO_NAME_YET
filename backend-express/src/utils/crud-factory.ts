@@ -140,7 +140,7 @@ function loadSchemaModelMetadata(): Map<string, CrudModelMetadata> {
   return models;
 }
 
-function getCrudModelMetadata(modelName: string): CrudModelMetadata | undefined {
+export function getCrudModelMetadata(modelName: string): CrudModelMetadata | undefined {
   const key = String(modelName).toLowerCase();
   const schemaModel = loadSchemaModelMetadata().get(key);
   if (schemaModel) return schemaModel;
@@ -582,6 +582,39 @@ export function createCrudRouter(options: CrudOptions): Router {
       table: modelNameStr,
       searchFields: options.searchFields ?? [],
     });
+  });
+
+  // Bounded aggregates use exactly the same tenant and domain visibility as list/detail.
+  // Resources with custom projections/transforms must supply a domain-specific aggregate.
+  router.get('/summary', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (options.transform || options.select || options.include) throw new ForbiddenError('Ringkasan resource ini memerlukan adapter khusus.');
+      const fields = getCrudModelMetadata(modelNameStr)?.fields ?? [];
+      const forbidden = /password|secret|token|credential|private_key|api_key|access_key|authorization|cookie|connection_string/;
+      const known = (name: string) => fields.find(f => f.name === name && f.kind !== 'object' && !forbidden.test(name));
+      const where: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(req.query)) {
+        if (['group_by', 'sum', 'search'].includes(key)) continue;
+        const field = known(key);
+        if (!field || typeof value !== 'string' || !['String', 'Boolean'].includes(field.type) && field.kind !== 'enum') throw new ValidationError('Filter ringkasan tidak valid.');
+        if (field.type === 'Boolean' && !['true', 'false'].includes(value)) throw new ValidationError('Filter boolean harus true atau false.');
+        where[key] = field.type === 'Boolean' ? value === 'true' : value;
+      }
+      if (req.query.search !== undefined) {
+        if (typeof req.query.search !== 'string' || !options.searchFields?.length) throw new ValidationError('Pencarian tidak tersedia.');
+        where.OR = options.searchFields.map(field => ({ [field]: { contains: req.query.search, mode: 'insensitive' } }));
+      }
+      const group = typeof req.query.group_by === 'string' ? req.query.group_by : undefined;
+      const sum = typeof req.query.sum === 'string' ? req.query.sum : undefined;
+      if (group && (!known(group) || !['String', 'Boolean'].includes(known(group)!.type) && known(group)!.kind !== 'enum')) throw new ValidationError('Field grouping tidak valid.');
+      if (sum && (!known(sum) || !['Int', 'Float', 'Decimal', 'BigInt'].includes(known(sum)!.type))) throw new ValidationError('Field penjumlahan tidak valid.');
+      const scoped = await authorizedWhere(req, where);
+      const result = group
+        ? await delegate.groupBy({ by: [group], where: scoped, _count: { _all: true }, ...(sum ? { _sum: { [sum]: true } } : {}), orderBy: { [group]: 'asc' }, take: 101 })
+        : await delegate.aggregate({ where: scoped, _count: { _all: true }, ...(sum ? { _sum: { [sum]: true } } : {}) });
+      if (Array.isArray(result) && result.length > 100) throw new ValidationError('Grouping melebihi 100 kelompok. Persempit filter.');
+      res.json(JSON.parse(JSON.stringify(result, (_key, value) => typeof value === 'bigint' ? value.toString() : value)));
+    } catch (error) { next(error); }
   });
 
   // 2. Bulk Create

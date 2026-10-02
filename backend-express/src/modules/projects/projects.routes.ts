@@ -16,6 +16,7 @@ import {
   EmployeeProvisioningService,
 } from '../master_data/employee-provisioning.service';
 import { invalidateDashboardCache } from '../dashboard/dashboard.routes';
+import { compareTaskOutput } from './output-comparison';
 
 export const projectsRouter = Router();
 
@@ -1674,6 +1675,7 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
   searchFields: [
     'title',
     'description',
+    'output_target',
     'notes',
     'output_result',
     'time_slot',
@@ -1728,7 +1730,14 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     if (!String(data.title ?? '').trim()) throw new ValidationError('Aktivitas harian wajib diisi.');
     if (data.description === undefined) data.description = '';
     if (!String(data.time_slot ?? '').trim()) throw new ValidationError('Slot waktu aktivitas wajib diisi.');
-    if (data.output_result === undefined) data.output_result = '';
+    const outputResult = String(data.output_result ?? '').trim();
+    data.output_result = outputResult;
+    const outputTarget = String(data.output_target ?? '').trim();
+    if (!outputTarget) throw new ValidationError('Output Target wajib diisi agar hasil pekerjaan dapat dibandingkan.');
+    data.output_target = outputTarget;
+    const comparison = compareTaskOutput(outputTarget, outputResult);
+    data.output_similarity_score = comparison.score;
+    data.output_review_category = comparison.category;
     if (data.notes === undefined) data.notes = '';
     if (data.is_blocked === undefined) data.is_blocked = false;
     if (data.block_reason === undefined) data.block_reason = '';
@@ -1736,6 +1745,7 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     // Normalize status
     const st = String(data.status ?? '').toUpperCase();
     if (['DONE', 'COMPLETED', 'SELESAI'].includes(st)) {
+      if (!outputResult) throw new ValidationError('Output Hasil wajib diisi sebelum Daily Task dapat diselesaikan.');
       data.status = 'COMPLETED';
       if (data.progress === undefined) data.progress = 100;
     } else if (['ON_PROGRESS', 'PENDING', 'IN PROGRESS', 'ON-PROGRESS'].includes(st)) {
@@ -1764,6 +1774,9 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     delete data.status;
     delete data.is_blocked;
     delete data.block_reason;
+    delete data.output_target;
+    delete data.output_similarity_score;
+    delete data.output_review_category;
     if (data.activity_input && !data.title) data.title = data.activity_input;
     return data;
   },
@@ -2264,6 +2277,8 @@ projectsRouter.use('/projects', createCrudRouter({
       || req.user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk membuat project.');
     }
+    // Ownership is immutable and always derived from the authenticated creator.
+    data.created_by_id = activeUserId(req);
     // 1. Alias mappings
     if (!data.project_name && data.name) data.project_name = data.name;
     data.project_name = String(data.project_name ?? '').trim();

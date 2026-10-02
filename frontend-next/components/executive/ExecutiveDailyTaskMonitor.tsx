@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CheckCircle2, ChevronDown, FileText, Filter, Search, UserRound, X } from "lucide-react";
+import { CalendarDays, ChevronDown, FileText, Search, UserRound, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { DailyTask, Project } from "@/lib/api/project.api";
-import { cn, normalizeDateKey } from "@/lib/utils";
+import { cn, localDateKey, normalizeDateKey } from "@/lib/utils";
+import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
+
+type TaskCategory = "TODAY" | "OVERDUE" | "ACTIVE" | "COMPLETED" | "BLOCKED" | "ALL";
 
 type DailyTaskRecord = {
   id: string;
@@ -121,6 +124,10 @@ function MarkdownDetail({ label, value, fallback = "-" }: { label: string; value
 function DailyTaskDetail({ record, onClose }: { record: DailyTaskRecord; onClose: () => void }) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const status = taskStatus(record);
+  const persistedComparisonCategory = record.task.output_review_category;
+  const comparison = persistedComparisonCategory && persistedComparisonCategory !== "NOT_EVALUATED"
+    ? { score: Number(record.task.output_similarity_score || 0), category: persistedComparisonCategory }
+    : compareTaskOutput(record.task.output_target, record.task.output_result);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -159,7 +166,13 @@ function DailyTaskDetail({ record, onClose }: { record: DailyTaskRecord; onClose
             <DetailItem label="Waktu">{record.timeSlot || "-"}</DetailItem>
             <DetailItem label="Aktivitas" wide>{record.task.activity_input || record.task.title || "-"}</DetailItem>
             <DetailItem label="Deskripsi" wide>{record.task.description || "-"}</DetailItem>
+            <MarkdownDetail label="Output Target" value={record.task.output_target} fallback="Belum tersedia pada task lama" />
             <MarkdownDetail label="Output Hasil" value={record.task.output_result} fallback="Belum ada output" />
+            <DetailItem label="Kesesuaian Output" wide>
+              {comparison.category === "NOT_EVALUATED"
+                ? "Belum dinilai"
+                : `${outputReviewLabel(comparison.category)} · ${comparison.score}% kemiripan`}
+            </DetailItem>
             <MarkdownDetail label="Catatan" value={record.task.notes} />
             {(record.task.is_blocked || String(record.task.status).toUpperCase() === "BLOCKED") && <DetailItem label="Kendala" wide>{record.task.block_reason || "Terkendala"}</DetailItem>}
           </dl>
@@ -173,8 +186,10 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
   const [selectedUserId, setSelectedUserId] = useState("all");
   const [selectedProjectId, setSelectedProjectId] = useState("all");
   const [selectedDate, setSelectedDate] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState<TaskCategory>("ALL");
   const [search, setSearch] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<DailyTaskRecord | null>(null);
+  const today = localDateKey();
 
   const records = useMemo<DailyTaskRecord[]>(() => {
     const result: DailyTaskRecord[] = [];
@@ -206,19 +221,50 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
   }, [records]);
   const dateOptions = useMemo(() => Array.from(new Set(records.map((row) => row.plannedDate).filter(Boolean))).sort((a, b) => b.localeCompare(a)), [records]);
 
-  const filteredRecords = useMemo(() => {
+  const scopedRecords = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("id-ID");
     return records.filter((row) => {
       if (selectedUserId !== "all" && row.ownerId !== selectedUserId) return false;
       if (selectedProjectId !== "all" && row.projectId !== selectedProjectId) return false;
       if (selectedDate !== "all" && row.plannedDate !== selectedDate) return false;
       if (!query) return true;
-      return [row.projectName, row.projectCode, row.mainTaskName, row.ownerName, row.task.title, row.task.activity_input, row.task.description]
+      return [row.projectName, row.projectCode, row.mainTaskName, row.ownerName, row.task.title, row.task.activity_input, row.task.description, row.task.output_target, row.task.output_result]
         .filter(Boolean).some((value) => String(value).toLocaleLowerCase("id-ID").includes(query));
     });
   }, [records, search, selectedDate, selectedProjectId, selectedUserId]);
 
-  const completedCount = filteredRecords.filter((row) => taskStatus(row).label === "Finished").length;
+  const categoryCounts = useMemo(() => ({
+    TODAY: scopedRecords.filter((row) => row.plannedDate === today).length,
+    OVERDUE: scopedRecords.filter((row) => Boolean(row.plannedDate && row.plannedDate < today && !isCompleted(row))).length,
+    ACTIVE: scopedRecords.filter((row) => !isCompleted(row) && !isBlocked(row)).length,
+    COMPLETED: scopedRecords.filter(isCompleted).length,
+    BLOCKED: scopedRecords.filter(isBlocked).length,
+    ALL: scopedRecords.length,
+  }), [scopedRecords, today]);
+
+  const filteredRecords = useMemo(() => scopedRecords.filter((row) => {
+    if (selectedCategory === "TODAY") return row.plannedDate === today;
+    if (selectedCategory === "OVERDUE") return Boolean(row.plannedDate && row.plannedDate < today && !isCompleted(row));
+    if (selectedCategory === "ACTIVE") return !isCompleted(row) && !isBlocked(row);
+    if (selectedCategory === "COMPLETED") return isCompleted(row);
+    if (selectedCategory === "BLOCKED") return isBlocked(row);
+    return true;
+  }), [scopedRecords, selectedCategory, today]);
+
+  const completedCount = scopedRecords.filter(isCompleted).length;
+  const unfinishedCount = scopedRecords.length - completedCount;
+  const monitoringCount = scopedRecords.filter((row) =>
+    isBlocked(row) || Boolean(row.plannedDate && row.plannedDate < today && !isCompleted(row))
+  ).length;
+
+  const categories: { id: TaskCategory; label: string }[] = [
+    { id: "TODAY", label: "Hari Ini" },
+    { id: "OVERDUE", label: "Terlambat" },
+    { id: "ACTIVE", label: "Berjalan" },
+    { id: "COMPLETED", label: "Selesai" },
+    { id: "BLOCKED", label: "Terkendala" },
+    { id: "ALL", label: "Semua" },
+  ];
 
   return (
     <>
@@ -241,10 +287,43 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between lg:mt-10">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="inline-flex h-[34px] items-center gap-3 rounded-[12px] bg-[#E9E9EA] px-4 text-[12px] font-medium text-[#5A5B5D] sm:text-[13px]"><Filter size={15} /> {filteredRecords.length} task terlihat</span>
-            <span className="inline-flex h-[34px] items-center gap-3 rounded-[12px] bg-[#EAF6FF] px-4 text-[12px] font-medium text-[#3157C8] sm:text-[13px]"><CheckCircle2 size={15} fill="#2F80ED" className="text-white" /> {completedCount} selesai</span>
+        <div className="mt-8 grid grid-cols-2 gap-3 lg:mt-10 lg:grid-cols-4">
+          <div className="rounded-[16px] border border-[#D9D9D9] bg-[#FAFAFA] px-4 py-4 text-center">
+            <p className="text-[26px] font-extrabold leading-none text-[#111318]">{scopedRecords.length}</p>
+            <p className="mt-2 text-xs font-medium text-[#5A5B5D]">Total Daily Task</p>
+          </div>
+          <div className="rounded-[16px] border border-[#BFE8C9] bg-[#F2FFF5] px-4 py-4 text-center">
+            <p className="text-[26px] font-extrabold leading-none text-[#237A3B]">{completedCount}</p>
+            <p className="mt-2 text-xs font-semibold text-[#237A3B]">Selesai</p>
+          </div>
+          <div className="rounded-[16px] border border-[#BDD7FF] bg-[#F4F8FF] px-4 py-4 text-center">
+            <p className="text-[26px] font-extrabold leading-none text-[#3157C8]">{unfinishedCount}</p>
+            <p className="mt-2 text-xs font-semibold text-[#3157C8]">Belum Selesai</p>
+          </div>
+          <div className="rounded-[16px] border border-[#F5C2C2] bg-[#FFF5F5] px-4 py-4 text-center">
+            <p className="text-[26px] font-extrabold leading-none text-[#B42318]">{monitoringCount}</p>
+            <p className="mt-2 text-xs font-semibold text-[#B42318]">Perlu Dipantau</p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1" aria-label="Filter kategori Daily Task">
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => setSelectedCategory(category.id)}
+                aria-pressed={selectedCategory === category.id}
+                className={cn(
+                  "shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]",
+                  selectedCategory === category.id
+                    ? "bg-[#3157C8] text-white shadow-sm"
+                    : "bg-[#F1F2F4] text-[#4F5050] hover:bg-[#E4E8F0]"
+                )}
+              >
+                {category.label} ({categoryCounts[category.id]})
+              </button>
+            ))}
           </div>
           <label className="relative block w-full sm:w-[330px] lg:w-[360px]">
             <span className="sr-only">Cari Task</span>
@@ -253,19 +332,19 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
           </label>
         </div>
 
-        <div className="mt-8 overflow-hidden rounded-[14px] border border-[#D9D9D9] sm:mt-10">
+        <div className="mt-7 overflow-hidden rounded-[14px] border border-[#D9D9D9]">
           <div className="max-h-[560px] overflow-auto overscroll-contain">
-            <table className="w-full min-w-[820px] table-fixed text-left">
+            <table className="w-full min-w-[980px] table-fixed text-left">
               <thead className="sticky top-0 z-10 bg-[#F5F5F5]">
                 <tr className="h-[42px] text-[13px] font-bold text-[#4F5050]">
-                  <th className="w-[54px] px-5">#</th><th className="w-[45%] px-3">Project Name</th><th className="w-[28%] px-4">Aktivitas</th><th className="w-[120px] px-3 text-center">Status</th><th className="w-[125px] px-3">Action</th>
+                  <th className="w-[54px] px-5">#</th><th className="w-[31%] px-3">Project Name</th><th className="w-[23%] px-4">Aktivitas</th><th className="w-[180px] px-3">Kesesuaian Output</th><th className="w-[120px] px-3 text-center">Status</th><th className="w-[125px] px-3">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? Array.from({ length: 4 }).map((_, index) => (
-                  <tr key={index} className="h-[116px] border-t border-[#F0F0F0]"><td className="px-5"><div className="h-4 w-4 animate-pulse rounded bg-[#E6E8EB]" /></td><td className="px-3"><div className="h-4 w-1/2 animate-pulse rounded bg-[#E6E8EB]" /><div className="mt-3 h-3 w-2/3 animate-pulse rounded bg-[#EEF0F2]" /></td><td className="px-4"><div className="h-4 w-4/5 animate-pulse rounded bg-[#E6E8EB]" /></td><td className="px-3"><div className="mx-auto h-7 w-24 animate-pulse rounded-[9px] bg-[#EEF0F2]" /></td><td className="px-3"><div className="h-7 w-20 animate-pulse rounded-full bg-[#EEF0F2]" /></td></tr>
+                  <tr key={index} className="h-[116px] border-t border-[#F0F0F0]"><td className="px-5"><div className="h-4 w-4 animate-pulse rounded bg-[#E6E8EB]" /></td><td className="px-3"><div className="h-4 w-1/2 animate-pulse rounded bg-[#E6E8EB]" /><div className="mt-3 h-3 w-2/3 animate-pulse rounded bg-[#EEF0F2]" /></td><td className="px-4"><div className="h-4 w-4/5 animate-pulse rounded bg-[#E6E8EB]" /></td><td className="px-3"><div className="h-7 w-32 animate-pulse rounded bg-[#EEF0F2]" /></td><td className="px-3"><div className="mx-auto h-7 w-24 animate-pulse rounded-[9px] bg-[#EEF0F2]" /></td><td className="px-3"><div className="h-7 w-20 animate-pulse rounded-full bg-[#EEF0F2]" /></td></tr>
                 )) : filteredRecords.length === 0 ? (
-                  <tr><td colSpan={5} className="h-[220px] px-6 text-center"><CalendarDays size={30} className="mx-auto text-[#AEB2B8]" /><p className="mt-3 text-sm font-bold text-[#4F5050]">Tidak ada Daily Task untuk filter ini.</p><p className="mt-1 text-xs text-[#8A8E95]">Ubah filter atau kata pencarian untuk melihat aktivitas lain.</p></td></tr>
+                  <tr><td colSpan={6} className="h-[220px] px-6 text-center"><CalendarDays size={30} className="mx-auto text-[#AEB2B8]" /><p className="mt-3 text-sm font-bold text-[#4F5050]">Tidak ada Daily Task untuk filter ini.</p><p className="mt-1 text-xs text-[#8A8E95]">Ubah filter atau kata pencarian untuk melihat aktivitas lain.</p></td></tr>
                 ) : filteredRecords.map((row, index) => {
                   const status = taskStatus(row);
                   return (
@@ -273,6 +352,7 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
                       <td className="px-5 text-[12px] text-[#4F5050]">{index + 1}</td>
                       <td className="min-w-0 px-3 py-5"><p className="break-words text-[14px] font-bold leading-5 text-[#111318]">{row.projectName}</p><p className="mt-2 break-words text-[12px] leading-5 text-[#17191C]">{row.mainTaskName}</p><p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-[#4F5050]"><span>{formatDate(row.plannedDate)}</span><span aria-hidden="true">|</span><span className="font-medium text-[#42ACFB]">{row.timeSlot || "-"}</span></p></td>
                       <td className="px-4 py-5 text-[13px] leading-5 text-[#17191C]"><p className="line-clamp-3 break-words">{row.task.activity_input || row.task.title || "Aktivitas harian"}</p></td>
+                      <td className="px-3 py-5">{(() => { const comparison = row.task.output_review_category ? { score: Number(row.task.output_similarity_score || 0), category: row.task.output_review_category } : compareTaskOutput(row.task.output_target, row.task.output_result); return comparison.category === "NOT_EVALUATED" ? <span className="text-xs italic text-[#8A8E95]">Belum dinilai</span> : <span className={cn("inline-flex rounded-lg px-2.5 py-1.5 text-[11px] font-bold", comparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-emerald-100 text-emerald-800" : comparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800")}>{outputReviewLabel(comparison.category)} · {comparison.score}%</span>; })()}</td>
                       <td className="px-3 text-center"><span className={cn("inline-flex whitespace-nowrap rounded-[9px] px-3 py-1.5 text-[11px] font-medium", status.className)}>{status.label}</span></td>
                       <td className="px-3"><button type="button" onClick={() => setSelectedRecord(row)} className="inline-flex items-center gap-2 rounded-full bg-[#EAF6FF] px-3 py-1.5 text-[12px] font-medium text-[#3157C8] transition hover:bg-[#DCEEFF] focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]" aria-label={`Lihat detail ${row.task.title || row.task.activity_input || "Daily Task"}`}><FileText size={15} className="text-[#2F80ED]" /> Details</button></td>
                     </tr>
@@ -286,4 +366,13 @@ export function ExecutiveDailyTaskMonitor({ projects, loading = false }: { proje
       {selectedRecord && <DailyTaskDetail record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
     </>
   );
+}
+
+function isCompleted(record: DailyTaskRecord) {
+  const status = String(record.task.status || "").toUpperCase();
+  return status === "COMPLETED" || status === "DONE";
+}
+
+function isBlocked(record: DailyTaskRecord) {
+  return Boolean(record.task.is_blocked) || String(record.task.status || "").toUpperCase() === "BLOCKED";
 }

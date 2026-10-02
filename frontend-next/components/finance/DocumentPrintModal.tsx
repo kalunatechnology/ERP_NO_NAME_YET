@@ -13,6 +13,7 @@ import {
   Calendar, FileText, Landmark
 } from "lucide-react";
 import { formatRupiah, formatDate } from "@/lib/utils";
+import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
 
 interface DocumentPrintModalProps {
   isOpen: boolean;
@@ -236,7 +237,10 @@ export function DocumentPrintModal({ isOpen, onClose, documentData }: DocumentPr
               <div className="text-3xs text-[#4F5050] space-y-0.5">
                 <span className="font-bold text-[#2649B3] block">DIGITALLY VERIFIED</span>
                 <span>Dokumen sah & diterbitkan oleh</span>
-                <span className="font-mono block">System ERP Marka+</span>
+                <span className="flex items-center gap-1">
+                  <span className="font-mono">System ERP</span>
+                  <MarkaWordmark className="h-auto w-12 text-[#2649B3]" />
+                </span>
               </div>
             </div>
 

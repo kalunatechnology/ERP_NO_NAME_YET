@@ -171,10 +171,10 @@ export async function getGrantedPermissions(
 }
 
 export function normalizeProjectScope(value: unknown): MarbotProjectScope {
-  if (!value || typeof value !== 'object') throw new ForbiddenError('Project scope MarBot tidak valid.');
+  if (!value || typeof value !== 'object') throw new ForbiddenError('Project scope Marka Plus tidak valid.');
   const input = value as { mode?: unknown; projectIds?: unknown };
   if (input.mode === 'ALL') return { mode: 'ALL', projectIds: [] };
-  if (input.mode !== 'LIST' || !Array.isArray(input.projectIds)) throw new ForbiddenError('Project scope MarBot tidak valid.');
+  if (input.mode !== 'LIST' || !Array.isArray(input.projectIds)) throw new ForbiddenError('Project scope Marka Plus tidak valid.');
   return { mode: 'LIST', projectIds: [...new Set(input.projectIds.map(String).filter(Boolean))].sort() };
 }
 
@@ -236,7 +236,8 @@ export async function checkedModule(
  * NOTE: Preserves exact MarBot read scope semantics:
  * - DIRECTOR / OPERATIONAL_MANAGER: null (full company portfolio)
  * - FINANCE: project IDs on fin_project_cost_entry WITHOUT status = POSTED filter
- * - PM / others: managed + explicit access window + active project member
+ * - PM: only projects created by this authenticated identity
+ * - others: managed + explicit access window + active project member
  */
 export async function getVisibleProjectIds(
   tenantId: string,
@@ -247,6 +248,12 @@ export async function getVisibleProjectIds(
 ): Promise<string[] | null> {
   if (new Set<RoleCode>([RoleCode.DIRECTOR, RoleCode.OPERATIONAL_MANAGER]).has(role)) {
     return null;
+  }
+  if (role === RoleCode.PROJECT_MANAGER) {
+    const projects = await db.project_project.findMany({
+      where: { tenant_id: tenantId, company_id: companyId, created_by_id: userId }, select: { id: true },
+    });
+    return projects.map((row: { id: string }) => row.id);
   }
 
   if (role === RoleCode.FINANCE) {

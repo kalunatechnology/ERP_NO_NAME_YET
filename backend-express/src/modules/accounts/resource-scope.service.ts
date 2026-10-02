@@ -9,7 +9,8 @@
 import { Request } from 'express';
 import prisma from '../../config/database';
 import { ForbiddenError } from '../../utils/errors';
-import { isSuperAdmin } from '../../types/roles';
+import { isSuperAdmin, RoleCode } from '../../types/roles';
+import { ProjectsService } from '../projects/projects.service';
 
 type ScopeWhere = Record<string, unknown>;
 
@@ -17,6 +18,12 @@ const GLOBAL_REFERENCE_MODELS = new Set([
   'iam_permission',
   'master_currency',
 ]);
+
+function isProjectScopedRole(req: Request): boolean {
+  return !isSuperAdmin(req.user?.roles ?? []) &&
+    ([RoleCode.PROJECT_MANAGER, RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[])
+      .includes(req.user?.active_role_code as RoleCode);
+}
 
 /**
  * denyAll implements a named function within this file's domain service boundary.
@@ -40,10 +47,15 @@ function denyAll(fields: ReadonlySet<string>): ScopeWhere {
  */
 async function accessibleProjectIds(req: Request): Promise<string[]> {
   const superAdmin = isSuperAdmin(req.user?.roles ?? []);
+  if (isProjectScopedRole(req) && (!req.companyId || !req.user?.id)) return [];
+  const projectWhere = isProjectScopedRole(req)
+    ? await ProjectsService.projectAccessWhere(req.user, req.companyId!)
+    : {};
   const rows = await prisma.project_project.findMany({
     where: {
       ...(!superAdmin && req.user?.tenant_id ? { tenant_id: req.user.tenant_id } : {}),
       ...(req.companyId ? { company_id: req.companyId } : {}),
+      ...projectWhere,
     },
     select: { id: true },
   });
@@ -138,7 +150,11 @@ export async function buildResourceScope(
   if (fields.has('tenant_id') && user.tenant_id && !isSuperAdmin(user.roles)) scope['tenant_id'] = user.tenant_id;
   if (fields.has('company_id') && req.companyId) scope['company_id'] = req.companyId;
 
-  if (!fields.has('company_id')) {
+  const creatorPm = user.active_role_code === RoleCode.PROJECT_MANAGER && !isSuperAdmin(user.roles);
+  const projectScoped = isProjectScopedRole(req);
+  if (creatorPm && modelName === 'project_project') scope['created_by_id'] = user.id;
+  if (projectScoped && !creatorPm && modelName === 'project_project') scope['id'] = { in: await accessibleProjectIds(req) };
+  if (!fields.has('company_id') || projectScoped) {
     if (fields.has('project_id')) {
       scope['project_id'] = { in: await accessibleProjectIds(req) };
     } else if (fields.has('main_task_id')) {
@@ -147,6 +163,10 @@ export async function buildResourceScope(
       scope['weekly_task_id'] = { in: await idsForProjectHierarchy(req, 'weekly_task_id') };
     } else if (fields.has('daily_task_id')) {
       scope['daily_task_id'] = { in: await idsForProjectHierarchy(req, 'daily_task_id') };
+    } else if (projectScoped && modelName.startsWith('project_') && modelName !== 'project_project') {
+      // Company membership does not grant access to every project's resources.
+      // Unknown project ancestry is denied for every project-scoped role.
+      return { ...scope, ...denyAll(fields) };
     }
   }
 
@@ -222,6 +242,10 @@ export async function applyAndValidateWriteScope(
   }
 
   const scope = await buildResourceScope(req, modelName, fields);
+  if (isProjectScopedRole(req) && modelName.startsWith('project_')
+      && (scope.id as { in?: unknown[] } | undefined)?.in?.length === 0) {
+    throw new ForbiddenError('Resource proyek ini tidak memiliki cakupan akses proyek yang dapat diverifikasi untuk pengguna.');
+  }
   for (const [field, rule] of Object.entries(scope)) {
     if (field === 'id' || data[field] === undefined) continue;
     if (!valueAllowed(rule, data[field])) {

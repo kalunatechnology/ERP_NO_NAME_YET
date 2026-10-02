@@ -389,7 +389,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
 
               {isTypeDropdownOpen && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D9D9D9] rounded-[14px] shadow-xl py-1.5 z-30 animate-in fade-in-50 duration-100">
-                  {["Meeting Request", "Fund Request", "Leave Request", "Other Request"].map(t => (
+                  {["Meeting Request", "Leave Request", "Other Request"].map(t => (
                     <button
                       key={t}
                       type="button"

@@ -28,12 +28,12 @@ function validateChatbotUrl(rawUrl: string, sourceName: string): URL {
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.hostname === 'localhost')) {
-      throw new ForbiddenError(`Endpoint MarBot ${sourceName} tidak aman (harus HTTPS).`);
+      throw new ForbiddenError(`Endpoint Marka Plus ${sourceName} tidak aman (harus HTTPS).`);
     }
     return url;
   } catch (err) {
     if (err instanceof ForbiddenError) throw err;
-    throw new ForbiddenError(`Endpoint MarBot ${sourceName} tidak valid.`);
+    throw new ForbiddenError(`Endpoint Marka Plus ${sourceName} tidak valid.`);
   }
 }
 
@@ -62,8 +62,10 @@ export async function resolveMarbotTenantConfig(
       outbound_tool_secret: true,
       role_map_json: true,
       sync_status: true,
+      chatbot_tenant_id: true,
       contract_version: true,
       runtime_context_version: true,
+      datasource_status: true,
     },
   });
 
@@ -92,8 +94,16 @@ export async function resolveMarbotTenantConfig(
       inboundContextSecret: decryptMarbotSecret(dbRow.inbound_context_secret),
       outboundToolSecret: decryptMarbotSecret(dbRow.outbound_tool_secret),
       roleMap,
-      contractVersion: env.CHATBOT_CONTRACT_MODE === 'v2' && dbRow.contract_version === 2 ? 2 : 1,
-      runtimeContextVersion: dbRow.runtime_context_version === 2 ? 2 : undefined,
+      // Contract V2 is a tenant capability, not a global switch. A manual
+      // legacy row carries secrets but has no chatbot tenant registration, so
+      // forcing it through the V2 middleware produces an upstream 401.
+      contractVersion: env.CHATBOT_CONTRACT_MODE === 'v2' && dbRow.chatbot_tenant_id && dbRow.contract_version === 2
+        ? 2
+        : 1,
+      runtimeContextVersion: dbRow.chatbot_tenant_id && dbRow.runtime_context_version === 2
+        ? 2
+        : undefined,
+      dataAccessMode: dbRow.datasource_status === 'GATEWAY_ONLY' ? 'GATEWAY_ONLY' : undefined,
     };
   }
 
@@ -106,14 +116,14 @@ export async function resolveMarbotTenantConfig(
   }
 
   if (dbRow && dbRow.sync_status === 'PROVISIONING') {
-    throw new ForbiddenError('Layanan MarBot untuk tenant ini sedang dalam proses sinkronisasi.');
+    throw new ForbiddenError('Layanan Marka Plus untuk tenant ini sedang dalam proses sinkronisasi.');
   }
 
   if (dbRow && ['ERROR', 'SYNC_ERROR'].includes(dbRow.sync_status)) {
-    throw new ForbiddenError('Layanan MarBot untuk tenant ini mengalami kendala konfigurasi.');
+    throw new ForbiddenError('Layanan Marka Plus untuk tenant ini mengalami kendala konfigurasi.');
   }
 
-  throw new ForbiddenError('Integrasi MarBot belum dikonfigurasi untuk tenant ini.');
+  throw new ForbiddenError('Integrasi Marka Plus belum dikonfigurasi untuk tenant ini.');
 }
 
 /** @deprecated Use resolveMarbotTenantConfig() (async) instead. Kept for backwards compatibility. */

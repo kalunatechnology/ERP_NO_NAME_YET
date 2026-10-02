@@ -25,6 +25,9 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/favicon.ico') ||
     pathname.startsWith('/fonts') ||
     pathname.startsWith('/images') ||
+    pathname.startsWith('/brand') ||
+    pathname.startsWith('/login/') ||
+    /\.(?:svg|png|jpe?g|webp|gif|ico)$/i.test(pathname) ||
     pathname.startsWith('/api')
   ) {
     return NextResponse.next();

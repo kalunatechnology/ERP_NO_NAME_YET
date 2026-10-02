@@ -190,11 +190,17 @@ async function main(): Promise<void> {
       project_main_task: { findMany: async () => [{ id: 'main-a' }] },
       project_weekly_task: { findMany: async () => [{ id: 'weekly-a' }] },
     };
-    // Project Manager retains company-portfolio read scope; mutation authority
-    // is enforced separately against the original/acting project relationship.
-    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(pm, 'company-a', pmDb), {});
-    assert.deepEqual(await ProjectsService.projectAccessWhere(pm, 'company-a', pmDb), {});
-    assert.deepEqual(await ProjectsService.taskAssignmentAccessWhere(pm, 'company-a', pmDb), {});
+    // Project Manager access is scoped to managed/created projects;
+    // mutation authority is enforced separately against the original/acting project relationship.
+    assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(pm, 'company-a', pmDb), {
+      weekly_task_id: { in: ['weekly-a'] },
+    });
+    assert.deepEqual(await ProjectsService.projectAccessWhere(pm, 'company-a', pmDb), {
+      created_by_id: 'pm-a',
+    });
+    assert.deepEqual(await ProjectsService.taskAssignmentAccessWhere(pm, 'company-a', pmDb), {
+      main_task_id: { in: ['main-a'] },
+    });
 
     const superAdmin = { id: 'root', roles: [RoleCode.SUPER_ADMIN], active_role_code: RoleCode.SUPER_ADMIN };
     assert.deepEqual(await ProjectsService.dailyTaskAccessWhere(superAdmin, 'company-a', pmDb), {});

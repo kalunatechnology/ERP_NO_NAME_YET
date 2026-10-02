@@ -12,8 +12,20 @@ import {
   ConversationDetail,
   KnowledgeDocument,
   SearchKnowledgeResultItem,
+  MarbotAction,
 } from '@/types/chatbot';
+import api from '@/lib/api/axios';
 
+export async function executeMarbotAction(action: MarbotAction): Promise<string> {
+  if (!action.ticketId || !/^[a-f0-9-]{36}$/i.test(action.ticketId)) {
+    throw new Error('Tiket backend tidak tersedia. Minta usulan baru sebelum menyimpan.');
+  }
+  const result = await api.post(`/api/v1/marbot/actions/${encodeURIComponent(action.ticketId)}/execute`, { confirmed: true });
+  if (result.data?.data?.verified !== true || typeof result.data.data.content !== 'string') {
+    throw new Error('Backend belum memverifikasi hasil operasi. Periksa data ERP sebelum mengulang.');
+  }
+  return result.data.data.content;
+}
 export const DEFAULT_CALLER_CONFIG = {
   callerName: 'PT Sinergi Muda Arsa',
   callerId: '',
@@ -37,11 +49,68 @@ const getBaseUrl = (): string => {
 
 export interface StreamChatOptions {
   message: string;
+  mode?: 'HELPER' | 'DASHBOARD';
   conversationId?: string | null;
   signal?: AbortSignal;
   onChunk: (delta: string) => void;
-  onDone?: (meta: { model?: string; latencyMs?: number; totalTokens?: number; conversationId?: string }) => void;
+  onDone?: (meta: { model?: string; latencyMs?: number; totalTokens?: number; conversationId?: string; action?: MarbotAction }) => void;
   onError?: (error: Error) => void;
+}
+
+export interface MarbotStatus {
+  online: boolean;
+  contractMode: 'legacy' | 'v2' | 'native';
+  dashboardAvailable?: boolean;
+  aiConfigured?: boolean;
+  preferredVersion: number | null;
+  v2Supported: boolean;
+  managed: boolean;
+  datasourceSourceKey: string | null;
+  datasourceStatus: string | null;
+  mcpLiteReady: boolean;
+}
+
+function getErpAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${localStorage.getItem('erp.access') || localStorage.getItem('access_token') || ''}`,
+  };
+  const companyId = localStorage.getItem('erp.company') || localStorage.getItem('active_company_id');
+  if (companyId) headers['X-Company-ID'] = companyId;
+  return headers;
+}
+
+export async function getMarbotStatus(signal?: AbortSignal): Promise<MarbotStatus> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8001';
+  const response = await fetch(`${baseUrl}/api/v1/marbot/status`, {
+    method: 'GET',
+    headers: getErpAuthHeaders(),
+    signal,
+  });
+  if (!response.ok) throw new Error(`Pemeriksaan status Marka Plus gagal (${response.status})`);
+  const payload = await response.json();
+  return payload.data as MarbotStatus;
+}
+
+export async function getNativeConversations(signal?: AbortSignal): Promise<Array<{ id: string; title: string }>> {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8001';
+  const response = await fetch(`${base}/api/v1/marbot/conversations`, { headers: getErpAuthHeaders(), signal });
+  if (!response.ok) throw new Error('Riwayat percakapan belum dapat dimuat.');
+  return (await response.json()).data;
+}
+
+export async function getNativeConversation(id: string, signal?: AbortSignal): Promise<ChatMessage[]> {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8001';
+  const response = await fetch(`${base}/api/v1/marbot/conversations/${encodeURIComponent(id)}`, { headers: getErpAuthHeaders(), signal });
+  if (!response.ok) throw new Error('Percakapan tidak tersedia untuk sesi ini.');
+  const payload = await response.json();
+  return payload.data.messages.map((message: { id: string; role: ChatMessage['role']; content: string; created_at: string; metadata?: { action?: MarbotAction; result?: string; verified?: boolean } }) => {
+    const settled = typeof message.metadata?.result === 'string';
+    return {
+      id: message.id, role: message.role, content: message.content, createdAt: message.created_at,
+      ...(message.metadata?.action && !settled ? { action: { ...message.metadata.action, ticketId: message.id } } : {}),
+      ...(settled ? { actionState: message.metadata?.verified ? 'verified' as const : 'failed' as const } : {}),
+    };
+  });
 }
 
 /**
@@ -49,6 +118,7 @@ export interface StreamChatOptions {
  */
 export async function streamChatCompletion({
   message,
+  mode,
   conversationId,
   signal,
   onChunk,
@@ -59,17 +129,16 @@ export async function streamChatCompletion({
 
   try {
     const headers: Record<string, string> = {
+      ...getErpAuthHeaders(),
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('erp.access') || localStorage.getItem('access_token') || ''}`,
     };
-    const companyId = localStorage.getItem('erp.company') || localStorage.getItem('active_company_id');
-    if (companyId) headers['X-Company-ID'] = companyId;
 
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         message,
+        mode,
         conversationId: conversationId || undefined,
       }),
       signal,
@@ -95,38 +164,46 @@ export async function streamChatCompletion({
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
+    let receivedChunk = false;
+    let receivedDone = false;
+
+    const processLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(':') || !trimmed.startsWith('data:')) return;
+
+      const rawData = trimmed.replace(/^data:\s*/, '').trim();
+      if (!rawData || rawData === '[DONE]') return;
+
+      let parsed: any;
+      try { parsed = JSON.parse(rawData); } catch { return; }
+      if (parsed?.event === 'chunk' && parsed.data?.delta) {
+        receivedChunk = true;
+        onChunk(parsed.data.delta);
+      } else if (parsed?.event === 'done') {
+        receivedDone = true;
+        onDone?.(parsed.data || {});
+      } else if (parsed?.event === 'error') {
+        throw new Error(parsed.data?.message || 'Chatbot streaming error');
+      }
+    };
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) continue; // skip keep-alive comments
-
-        if (trimmed.startsWith('data:')) {
-          const rawData = trimmed.replace(/^data:\s*/, '').trim();
-
-          if (rawData === '[DONE]') {
-            continue;
-          }
-
-          let parsed: any;
-          try { parsed = JSON.parse(rawData); } catch { parsed = null; }
-          if (parsed?.event === 'chunk' && parsed.data?.delta) {
-            onChunk(parsed.data.delta);
-          } else if (parsed?.event === 'done') {
-            onDone?.(parsed.data || {});
-          } else if (parsed?.event === 'error') {
-            throw new Error(parsed.data?.message || 'Chatbot streaming error');
-          }
-        }
-      }
+      for (const line of lines) processLine(line);
     }
+
+    if (buffer.trim()) processLine(buffer);
+    if (!receivedDone) throw new Error(receivedChunk
+      ? 'Respons terputus sebelum backend mengonfirmasi penyelesaian. Hasil belum lengkap.'
+      : 'Marka Plus menutup stream tanpa respons.');
   } catch (err: any) {
     if (err.name === 'AbortError') {
       // User aborted stream
@@ -341,3 +418,4 @@ export async function searchKnowledge(
   const json = await res.json();
   return json.data?.results || [];
 }
+

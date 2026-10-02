@@ -17,19 +17,23 @@ Server-only configuration:
 ```env
 CHATBOT_SERVICE_URL=https://marbot.example.com
 CHATBOT_CONTROL_PLANE_SECRET=<high-entropy-control-plane-secret>
-CHATBOT_CONTRACT_MODE=legacy
+CHATBOT_CONTRACT_MODE=v2
 ERP_BASE_URL=https://erp.example.com
 CHATBOT_ERP_READONLY_DATABASE_URL=postgresql://marbot_reader:.../erp
 MARBOT_ENCRYPTION_KEY=<32-byte-base64-or-64-hex-key>
 ```
 
-The currently published `chatbot-arsalynk.vercel.app` OpenAPI is version 1.0 and documents the caller-token contract (`message`, `conversationId`, and `X-External-User-Id`). Keep `CHATBOT_CONTRACT_MODE=legacy` for that deployment. ERP still validates its own user/module/permission/project authority before forwarding. Change the value to `v2` only after the target deployment accepts Runtime Context V2 and its control-plane endpoint; managed provisioning is intentionally disabled in legacy mode.
+The published `chatbot-arsalynk.vercel.app` OpenAPI still documents the caller-token endpoints, but its `/.well-known/marbot-capabilities` contract advertises Runtime Context V2 as the preferred version and accepts versions 1 and 2. ERP therefore defaults to `CHATBOT_CONTRACT_MODE=v2` to enable managed provisioning. Contract selection remains per tenant: only a tenant with an active managed chatbot registration uses V2; existing `.env` or manual legacy credentials keep using Contract V1 until provisioned. This prevents an unprovisioned tenant from failing with an upstream 401 during the migration period.
 
 Production managed provisioning fails closed without `MARBOT_ENCRYPTION_KEY`. New credentials are stored as AES-256-GCM `enc:v1` values. Existing plaintext legacy rows remain readable during migration, but browser responses only contain masks/status metadata.
 
 ## Safe datasource
 
 The read-only credential must not be the ERP `DATABASE_URL`. Grant `marbot_reader` only `CONNECT`, schema `USAGE`, and `SELECT` on `ai_projects`, `ai_project_tasks`, `ai_project_finance_summary`, `ai_finance_summary`, and `ai_crm_deals`.
+
+The column contract of those views must match the chatbot `RESOURCE_POLICIES` registry exactly. Migration `20260925050000_align_marbot_ai_views_v2` supplies the expected aliases (`progress`, `title`, `expense`, `deal_name`, and related fields) while retaining hidden `tenant_id` and visible `company_id` columns for mandatory data-plane scoping.
+
+The ERP supports both first-time provisioning and adoption of an existing chatbot tenant. Adoption synchronizes tenant metadata, modules, and `ERP_MAIN`, then rotates the tenant API key and both signing keys because raw credentials cannot be read back from the chatbot. The previous signing keys retain the chatbot's 24-hour grace window; the previous API credential is revoked after the new datasource and module configuration succeed.
 
 The provisioning contract enforces the `company_id` scope column, allowlisted views, 100-row/30-column limits, a 256 KiB result limit, and a five-second statement timeout. Never expose base tables or a generic write/SQL tool.
 
@@ -39,6 +43,6 @@ Legacy `READ_FINANCE_SUMMARY` remains supported. Contract V2 adds `READ_PROJECT_
 
 ## Release order
 
-Run `prisma migrate deploy` before starting the new application revision. The migrations add lifecycle fields/permissions and then safe views. Create the restricted database role outside the application migration if it does not exist; the view migration grants access only when `marbot_reader` already exists. Configure secrets, provision/sync from Super Admin, test connectivity, and only then enable the MARBOT company entitlement.
+Keep application build and database release separate. `npm run build` and `npm run deploy:hostinger` compile the application without mutating the live database. When the MarBot V2 read-view migration is required in an environment, run `npm run deploy:hostinger:db` explicitly and verify the migration gate succeeds before releasing the application revision that depends on it. The migrations add lifecycle fields/permissions and safe views. Create the restricted database role outside the application migration if it does not exist; the view migration grants access only when `marbot_reader` already exists. Configure secrets, provision/sync from Super Admin, test connectivity, and only then enable the MARBOT company entitlement.
 
 Regression commands are defined in `backend-express/package.json`: signature, tenant lifecycle, runtime V2, tool HMAC V2, control plane V2, project scope, and project authority. The enterprise CI workflow validates Prisma, backend type/build/tests, and the frontend build.

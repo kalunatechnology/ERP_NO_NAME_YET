@@ -63,7 +63,7 @@ const MODULE_LABELS: Record<string, { name: string; description: string }> = {
   ANALYTICS: { name: "Analytics", description: "Analisis lintas modul" },
   IMPLEMENTATION: { name: "Implementation", description: "Implementasi dan handover" },
   REPORTING: { name: "Reporting", description: "Laporan operasional dan eksekutif" },
-  MARBOT: { name: "MarBot Assistant", description: "Asisten ERP dengan akses baca sesuai modul, role, dan scope data user" },
+  MARBOT: { name: "Marka Plus Assistant", description: "Asisten ERP dengan akses baca sesuai modul, role, dan scope data user" },
 };
 
 /** Extracts the backend's stable error detail across validation/error shapes. */
@@ -828,7 +828,7 @@ export function AccessAdministration() {
                       const choices: Array<{ mode: AccessMode; label: string; icon: typeof Check }> = [
                         { mode: "inherit", label: "Role default", icon: KeyRound },
                         { mode: "blocked", label: "No access", icon: LockKeyhole },
-                        { mode: "read", label: module.module_code === "MARBOT" ? "Use MarBot" : "View only", icon: Eye },
+                        { mode: "read", label: module.module_code === "MARBOT" ? "Use Marka Plus" : "View only", icon: Eye },
                         ...(module.module_code === "MARBOT"
                           ? []
                           : [{ mode: "write" as AccessMode, label: "View & manage", icon: Pencil }]),

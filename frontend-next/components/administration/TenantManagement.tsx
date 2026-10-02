@@ -358,9 +358,9 @@ export function TenantManagement({
                               setMarbotModalOpen(true);
                             }}
                             className="inline-flex items-center gap-1 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-2.5 py-1 text-xs font-semibold text-[#4338CA] transition hover:bg-[#E0E7FF]"
-                            title="Konfigurasi integrasi Chatbot MarBot"
+                            title="Konfigurasi integrasi Chatbot Marka Plus"
                           >
-                            <Bot size={13} /> MarBot
+                            <Bot size={13} /> Marka Plus
                           </button>
                           <button
                             onClick={() => onSelectTenantForCompany(tenant.id)}

@@ -1,23 +1,24 @@
 /**
  * Unified application build entry point.
  *
- * IMPORTANT: an application build must be database-mutation free. Hostinger,
- * Vercel, CI, and local builds only generate Prisma Client and compile the
- * application. Database migrations are an explicit release operation via
- * `npm run deploy:hostinger:db`; they are never forced by `npm run build`.
+ * Hostinger production deploys are the one exception to the normal
+ * database-mutation-free build rule: Hostinger only invokes `npm run build`, so
+ * pending production migrations must be applied here before the new application
+ * binary is published. Vercel, CI, and local builds remain database-mutation
+ * free.
  *
- * This separation prevents a migration-history problem from blocking a frontend
- * or backend code release and prevents ordinary rebuilds from mutating a live
- * database. CI remains responsible for validating the migration contract.
+ * The Hostinger path delegates to `scripts/deploy_hostinger_migrations.js`,
+ * which validates the direct PostgreSQL connection, reconciles the historical
+ * production/master Prisma lineage, and then runs `prisma migrate deploy`.
  */
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 
-function run(command, args) {
+function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: path.resolve(__dirname, '..'),
-    env: process.env,
+    env: options.env ?? process.env,
     stdio: 'inherit',
   });
   if (result.error) throw result.error;
@@ -38,28 +39,49 @@ function assertNoUuidCastsForTextIds(directory) {
   }
 }
 
+function runHostingerProductionMigration(root) {
+  const directUrl = process.env.SUPABASE_DIRECT_URL || process.env.DIRECT_URL || process.env.DATABASE_URL;
+  if (!directUrl) {
+    throw new Error(
+      'Hostinger production deployment requires SUPABASE_DIRECT_URL, DIRECT_URL, or DATABASE_URL so pending Prisma migrations cannot be silently skipped.',
+    );
+  }
+
+  console.log('Hostinger production build: applying pending database migrations before application compilation.');
+  run(process.execPath, [path.join(root, 'scripts', 'deploy_hostinger_migrations.js')], {
+    env: {
+      ...process.env,
+      DEPLOYMENT_TARGET: 'hostinger',
+      SUPABASE_DIRECT_URL: process.env.SUPABASE_DIRECT_URL || directUrl,
+      DIRECT_URL: process.env.DIRECT_URL || directUrl,
+      DATABASE_URL: process.env.DATABASE_URL || directUrl,
+    },
+  });
+  console.log('Hostinger production build: database migration gate completed successfully.');
+}
+
 function main() {
   const isHostinger = process.env.VERCEL !== '1' && process.env.DEPLOYMENT_TARGET === 'hostinger';
-
-  // Never connect to or mutate a database from an application build. Migrations
-  // are intentionally explicit (`npm run deploy:hostinger:db`) so failed
-  // migration history cannot prevent unrelated frontend/backend code from being
-  // built and published.
+  const skipHostingerMigration = process.env.HOSTINGER_SKIP_DB_MIGRATION === 'true';
   const root = path.resolve(__dirname, '..');
   const hasFrontend = fs.existsSync(path.resolve(root, '..', 'frontend-next', 'lib', 'access', 'module-contract.ts'));
 
-  // Prisma String IDs are stored as PostgreSQL TEXT in the production
-  // baseline. Rust-free driver parameters are text too; forcing them to UUID
-  // produces PostgreSQL 42883 (operator does not exist: text = uuid).
+  // Prisma String IDs are stored as PostgreSQL TEXT in the production baseline.
+  // Rust-free driver parameters are text too; forcing them to UUID produces
+  // PostgreSQL 42883 (operator does not exist: text = uuid).
   assertNoUuidCastsForTextIds(path.join(root, 'src'));
+
+  if (isHostinger && !skipHostingerMigration) {
+    runHostingerProductionMigration(root);
+  } else if (isHostinger) {
+    console.warn('Hostinger database migration explicitly skipped via HOSTINGER_SKIP_DB_MIGRATION=true.');
+  }
 
   run(process.execPath, [path.join(root, 'node_modules', 'prisma', 'build', 'index.js'), 'generate']);
   run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);
 
-  // Hostinger application builds stop after deterministic, database-free
-  // compilation. Database migration/audit is a separate release operation.
   if (isHostinger) {
-    console.log('Hostinger application build: Prisma generated and TypeScript compiled. Database migration is explicit via npm run deploy:hostinger:db and is not executed by npm run build.');
+    console.log('Hostinger application build: production migrations checked/applied, Prisma generated, and TypeScript compiled.');
     return;
   }
 
