@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
-import { Layers, Plus, ChevronsDown, ChevronsUp } from "lucide-react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
+import { Layers, Plus, ChevronsDown, ChevronsUp, Search } from "lucide-react";
 import { ProjectWbsNode } from "./ProjectWbsNode";
 
 interface ProjectWbsTreeProps {
@@ -45,6 +45,18 @@ export function ProjectWbsTree({
   onTransferDailyClick,
   onDeleteDailyTask,
 }: ProjectWbsTreeProps) {
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLocaleLowerCase("id-ID");
+  // Keep complete matching branches so progress and parent-child context remain intact.
+  const visibleMainTasks = useMemo(() => mainTasks.filter((main) => {
+    if (!query) return true;
+    const weeklyTasks = main.weekly_tasks || main.weekly_plans || [];
+    const values = [main.title, main.name, main.description, main.cost_owner_division_name,
+      ...(main.assignments || []).flatMap((assignment: any) => [assignment.assignee_name, assignment.user_name]),
+      ...weeklyTasks.flatMap((weekly: any) => [weekly.target_description, weekly.target_output, weekly.assignee_name, `Minggu ${weekly.week_number}`,
+        ...(weekly.daily_tasks || []).flatMap((daily: any) => [daily.title, daily.activity_input, daily.description, daily.output_target, daily.owner_name])])];
+    return values.some((value) => String(value ?? "").toLocaleLowerCase("id-ID").includes(query));
+  }), [mainTasks, query]);
   // By default, Main Tasks are collapsed (true means collapsed) to prevent page from looking full/overwhelming
   const [collapsedMain, setCollapsedMain] = useState<Record<string, boolean>>({});
   const [collapsedWeekly, setCollapsedWeekly] = useState<Record<string, boolean>>({});
@@ -53,6 +65,11 @@ export function ProjectWbsTree({
   // Note: if not explicitly toggled, by default main tasks are COLLAPSED (false)
   // unless user clicked "Expand All".
   const [defaultAllExpanded, setDefaultAllExpanded] = useState<boolean>(false);
+  useEffect(() => {
+    setCollapsedMain({});
+    setCollapsedWeekly({});
+    setDefaultAllExpanded(Boolean(query));
+  }, [query]);
 
   const isMainExpanded = useCallback((id: string) => {
     if (collapsedMain[id] !== undefined) {
@@ -103,7 +120,16 @@ export function ProjectWbsTree({
   }, [mainTasks]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="rounded-2xl border border-text-tertiary bg-white p-4 shadow-sm">
+        <label htmlFor="wbs-search" className="block text-sm font-bold text-text-primary">Cari dalam struktur pekerjaan</label>
+        <p className="mt-1 mb-3 text-xs text-text-secondary">Cari tugas, target, divisi, atau anggota dalam paket kerja lengkap.</p>
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
+          <input id="wbs-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari tugas, target, atau anggota…" className="h-10 w-full min-w-0 rounded-xl border border-text-tertiary bg-gray-50 pl-9 pr-3 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-green/40" />
+        </div>
+        <p role="status" className="mt-2 text-xs text-text-secondary">{visibleMainTasks.length} dari {mainTasks.length} paket kerja{query ? " cocok · Hierarki hasil dibuka otomatis" : " · Main Task → Weekly Plan → Daily Task"}</p>
+      </div>
       {/* WBS Action Toolbar & Global Expand/Collapse controls */}
       <div className="flex items-center justify-between flex-wrap gap-2.5 pb-1">
         <div className="flex min-w-0 items-center gap-2">
@@ -168,7 +194,14 @@ export function ProjectWbsTree({
         </div>
       ) : (
         <div className="flex flex-col gap-3.5">
-          {mainTasks.map((main) => (
+          {visibleMainTasks.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-text-tertiary bg-gray-50 p-8 text-center">
+              <Search size={24} className="mx-auto mb-2 text-text-secondary" />
+              <p className="text-sm font-semibold text-text-primary">Tidak ada paket kerja yang cocok</p>
+              <button type="button" onClick={() => setSearch("")} className="btn-secondary mt-3 text-xs">Hapus pencarian</button>
+            </div>
+          )}
+          {visibleMainTasks.map((main) => (
             <ProjectWbsNode
               key={main.id}
               main={main}

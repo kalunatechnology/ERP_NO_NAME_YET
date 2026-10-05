@@ -122,7 +122,7 @@ export function ProjectWbsNode({
     <div className="card rounded-2xl border border-text-tertiary overflow-hidden shadow-xs bg-white transition-all duration-200 hover:border-gray-300">
       {/* Level 1 Header: Main Task */}
       <div className="p-3.5 sm:p-4 bg-gray-50/90 border-b border-text-tertiary flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+        <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1">
           <button
             type="button"
             onClick={onToggleExpand}

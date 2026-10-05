@@ -95,6 +95,12 @@ export default function ProjectsClient() {
   const [activeTab, setActiveTab] = useState("TREE");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
+  const filteredProjects = useMemo(() => {
+    const query = projectSearch.trim().toLocaleLowerCase("id-ID");
+    return projects.filter((project) => !query || [project.name, project.project_name, project.code, project.project_code, project.project_manager_name, project.pm_name]
+      .some((value) => value?.toLocaleLowerCase("id-ID").includes(query)));
+  }, [projects, projectSearch]);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [supervisorSaving, setSupervisorSaving] = useState(false);
   const [weeklySaving, setWeeklySaving] = useState(false);
@@ -1189,19 +1195,38 @@ export default function ProjectsClient() {
   const currentStepIdx = LIFECYCLE_STEPS.findIndex(s => s.key === selectedProject?.status);
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-full">
+    <div className="flex min-w-0 flex-col gap-6 w-full max-w-full">
 
       {/* ── Top Selector & Action Toolbar ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3.5 rounded-2xl border border-text-tertiary shadow-sm">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <label htmlFor="project-selector" className="text-xs font-bold text-text-secondary whitespace-nowrap">Pilih Proyek:</label>
+      <div>
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-text-primary">Workspace Proyek</h1>
+          <p className="mt-1 text-xs text-text-secondary">Pilih proyek, tinjau progres, lalu kelola paket kerja hingga tugas harian.</p>
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-col gap-4 bg-white p-4 rounded-2xl border border-text-tertiary shadow-sm">
+        <div className="grid min-w-0 grid-cols-1 items-start gap-3 md:grid-cols-2">
+          <div className="min-w-0">
+            <label htmlFor="project-search" className="sr-only">Cari proyek berdasarkan nama, kode, atau PM</label>
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
+              <input id="project-search" type="search" value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Cari nama proyek, kode, atau PM…" className="w-full rounded-xl border border-text-tertiary bg-gray-50 py-2.5 pl-9 pr-3 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-green/40" />
+            </div>
+            <p role="status" className="mt-1.5 text-2xs text-text-secondary">{filteredProjects.length} dari {projects.length} proyek tersedia{projectSearch.trim() && " · Pencarian tidak mengubah proyek aktif"}</p>
+          </div>
+          <div className="min-w-0">
+          <label htmlFor="project-selector" className="sr-only">Pilih Proyek</label>
           <select
             id="project-selector"
             value={selectedId ?? ""}
             onChange={(e) => setSelectedId(e.target.value)}
-            className="px-3 py-1.5 rounded-xl border border-text-tertiary bg-white text-xs font-bold text-text-primary outline-none focus:border-brand-green flex-1 sm:flex-initial min-w-[200px] sm:min-w-[280px]"
+            className="block h-10 w-full min-w-0 max-w-full truncate px-3 rounded-xl border border-text-tertiary bg-white text-xs font-semibold text-text-primary outline-none focus:ring-2 focus:ring-brand-green/40"
           >
-            {projects.map((proj) => {
+            {filteredProjects.length === 0 && <option disabled value="">Tidak ada proyek yang cocok</option>}
+            {selectedProject && !filteredProjects.some((project) => String(project.id) === String(selectedProject.id)) && (
+              <option value={selectedProject.id}>Aktif: [{selectedProject.project_code || selectedProject.code || "PRJ"}] {selectedProject.project_name || selectedProject.name}</option>
+            )}
+            {filteredProjects.map((proj) => {
               const code = proj.project_code || proj.code || "PRJ";
               const name = proj.project_name || proj.name || "Proyek";
               return (
@@ -1211,7 +1236,11 @@ export default function ProjectsClient() {
               );
             })}
           </select>
+          <p className="mt-1.5 text-2xs text-text-secondary">Proyek aktif · Aksi sesuai kewenangan Anda</p>
+          </div>
+        </div>
 
+        <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-text-tertiary pt-3 [&>button]:min-h-9 [&>button]:max-w-full [&>button]:whitespace-normal [&>button]:text-left [&>button>svg]:shrink-0">
           {canCreateProject && (
             <button
               onClick={() => setIsCreateProjOpen(true)}
@@ -1226,9 +1255,6 @@ export default function ProjectsClient() {
               Executive Overseer · View Only
             </span>
           )}
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap justify-end">
           {/* Tombol Target Finansial (Hanya PM/OM/Finance Operasional) */}
           {canUpdateSelectedProject && canViewFinancials && (
             <button
@@ -1245,7 +1271,7 @@ export default function ProjectsClient() {
               onClick={() => setIsFundingRequestOpen(true)}
               className="btn-primary text-xs gap-1.5 py-1.5 px-3 bg-brand-green text-white hover:opacity-90 whitespace-nowrap font-semibold shadow-xs"
             >
-              <Wallet size={14} /> Funding Request / Pengajuan Dana
+              <Wallet size={14} /> Pengajuan Dana
             </button>
           )}
 
@@ -1302,9 +1328,9 @@ export default function ProjectsClient() {
                 )}
               </div>
 
-              <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
+              <h2 className="break-words text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
                 {selectedProject.project_name}
-              </h1>
+              </h2>
               <p className="text-xs text-white/80 line-clamp-2">
                 {selectedProject.description || "Tidak ada catatan deskripsi proyek."}
               </p>
@@ -1559,6 +1585,7 @@ export default function ProjectsClient() {
          ══════════════════════════════════════════════════════════════ */}
       {activeTab === "TREE" && (
         <ProjectWbsTree
+          key={String(selectedProject?.id ?? "")}
           mainTasks={mainTasks}
           isPM={isPM}
           canManageWbs={Boolean(selectedAuthority?.can_manage_wbs)}
