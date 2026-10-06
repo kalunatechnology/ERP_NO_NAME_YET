@@ -1903,9 +1903,16 @@ export default function FinanceClient() {
           onSubmit={async (e) => {
             e.preventDefault();
             try {
+              const amount = Number(fundingForm.amount);
+              if (!Number.isFinite(amount) || amount <= 0) {
+                toast.error("Jumlah dana harus lebih dari Rp 0");
+                return;
+              }
+
               await api.post("/api/v1/finance/project-fundings/", {
                 ...fundingForm,
-                requested_amount: fundingForm.amount,
+                amount,
+                requested_amount: amount,
               });
               toast.success("Request dana berhasil diajukan!");
               setIsFundingModalOpen(false);
@@ -1921,9 +1928,16 @@ export default function FinanceClient() {
             <input
               type="number"
               required
-              value={fundingForm.amount}
-              onChange={e => setFundingForm({ ...fundingForm, amount: Number(e.target.value) })}
+              min={1}
+              value={fundingForm.amount === 0 ? "" : fundingForm.amount}
+              onChange={e =>
+                setFundingForm({
+                  ...fundingForm,
+                  amount: e.target.value === "" ? 0 : Number(e.target.value),
+                })
+              }
               className="input"
+              placeholder="Masukkan jumlah dana"
             />
           </div>
           <div>
@@ -1931,7 +1945,7 @@ export default function FinanceClient() {
             <select
               value={fundingForm.purpose}
               onChange={e => setFundingForm({ ...fundingForm, purpose: e.target.value })}
-              className="input mb-2"
+              className="input"
               required
             >
               <option value="">Pilih jenis kebutuhan</option>
@@ -1942,14 +1956,6 @@ export default function FinanceClient() {
               <option value="Perangkat Lunak dan Infrastruktur Digital">Perangkat Lunak dan Infrastruktur Digital</option>
               <option value="Lainnya">Lainnya</option>
             </select>
-            <input
-              type="text"
-              required
-              value={fundingForm.purpose}
-              onChange={e => setFundingForm({ ...fundingForm, purpose: e.target.value })}
-              className="input"
-              placeholder="Detail kebutuhan pendanaan"
-            />
           </div>
           <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-2">
             Ajukan Request Dana
