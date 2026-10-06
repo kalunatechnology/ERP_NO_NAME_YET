@@ -444,6 +444,9 @@ async function main(): Promise<void> {
     assert(financeClient.includes('/project-fundings/${selectedFunding.id}/draw/'), 'Funding draw must use the backend FSM action.');
     assert(financeClient.includes('/billing-documents/${selectedBillForPay.id}/create-payment'), 'AP payment must use the atomic backend command.');
     assert(financeClient.includes('/project-cost-entries/${entry.id}/post-to-wip'), 'WIP posting must use the named backend command.');
+    assert(financeClient.includes('getApiErrorDetail('), 'WIP failures must surface the backend validation detail.');
+    assert(financeClient.includes('Menunggu checker'), 'WIP maker-checker restriction must be clear before the user submits.');
+    assert(financeClient.includes('POSTED_TO_WIP'), 'WIP-posted entries must show their final accounting state.');
     assert(financeClient.includes('/billing-proposals/${proposal.id}/issue-billing-document'), 'Billing issuance must use the named backend command.');
     assert(financeClient.includes('organization_type=DIVISION') && financeClient.includes('division.organization_name'), 'Finance division options must use the Core organization contract.');
     assert(!financeClient.includes('PENDING_MATCH'));

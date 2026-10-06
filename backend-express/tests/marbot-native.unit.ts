@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
-import { answerNative, canUseDashboard, detectTools, followUpQuestion, NativeScope, queryPeriod } from '../src/modules/marbot/marbot-native.service';
+import { answerNative, canUseDashboard, detectTools, followUpQuestion, isNativeTaskReadQuestion, NativeScope, queryPeriod, taskDateIntent } from '../src/modules/marbot/marbot-native.service';
 import { helperAnswer } from '../src/modules/marbot/marbot-knowledge';
 import { renderNativeAnswer } from '../src/modules/marbot/marbot-provider.service';
 import prisma from '../src/config/database';
@@ -78,6 +78,38 @@ async function main() {
   assert.equal(week.start.toISOString(), '2026-09-27T17:00:00.000Z');
   assert.equal(week.end.toISOString(), '2026-10-04T17:00:00.000Z');
   assert.equal(queryPeriod('bulan lalu', new Date('2026-01-02T00:00:00Z')).start.toISOString(), '2025-11-30T17:00:00.000Z');
+  const reference = new Date('2026-10-06T03:00:00Z');
+  for (const phrase of ['bukan hari ini', 'selain hari ini', 'not today']) {
+    const intent = taskDateIntent(`daily task saya ${phrase}`, reference);
+    assert.equal(intent.excludeToday, true);
+    assert.equal(intent.hasPeriod, false);
+  }
+  assert.equal(taskDateIntent('seluruh daily task saya', reference).hasPeriod, false);
+  assert.equal(taskDateIntent('tugas "Review hari ini"', reference).hasPeriod, false);
+  assert.equal(taskDateIntent('seluruh daily task saya hari ini', reference).period.start.toISOString(), '2026-10-05T17:00:00.000Z');
+  assert.equal(taskDateIntent('bulan ini selain hari ini', reference).hasPeriod, true);
+  for (const phrase of ['hari ini saya memiliki berapa daily task', 'bagaimana dengan daily task lain yang bukan hari ini', 'maksud saya adalah seluruh daily task saya']) assert(isNativeTaskReadQuestion(phrase));
+  for (const phrase of ['cara membuat daily task', 'ubah tugas "Login"', 'data {"resource":"projects.daily-tasks"}', 'tugas dan biaya', 'modul daily task']) assert(!isNativeTaskReadQuestion(phrase));
+  const outsideToday = await answerNative('bagaimana dengan daily task lain yang bukan hari ini', 'HELPER', staff, db);
+  assert.deepEqual(outsideToday.tools, ['tasks']);
+  assert.match(outsideToday.content, /hari ini dikecualikan/);
+  assert.doesNotMatch(outsideToday.content, /Periode filter waktu/);
+  let lastQuery = calls.filter(c => c.model === 'daily').at(-1)!.args;
+  assert.match(lastQuery.sql, /planned_date IS NULL OR d.planned_date </);
+  assert.doesNotMatch(lastQuery.sql, /AND d.planned_date >=/);
+  await answerNative('maksud saya adalah seluruh daily task saya', 'HELPER', { ...staff, roleCode: RoleCode.PROJECT_MANAGER }, db);
+  lastQuery = calls.filter(c => c.model === 'daily').at(-1)!.args;
+  assert.match(lastQuery.sql, /AND d.owner_id =/);
+  assert(lastQuery.values.includes(staff.userId));
+  assert(lastQuery.values.includes(staff.companyId) && lastQuery.values.includes('project-a'));
+  assert.doesNotMatch(lastQuery.sql, /AND d.planned_date >=/);
+  assert.doesNotMatch(lastQuery.sql, /planned_date IS NULL OR/);
+  await answerNative('tugas "Review 2026-02-30"', 'HELPER', staff, db);
+  lastQuery = calls.filter(c => c.model === 'daily').at(-1)!.args;
+  assert(lastQuery.values.includes('Review 2026-02-30'));
+  assert.doesNotMatch(lastQuery.sql, /AND d.planned_date >=/);
+  await answerNative('hari ini saya memiliki berapa daily task', 'HELPER', staff, db);
+  assert.match(calls.filter(c => c.model === 'daily').at(-1)!.args.sql, /AND d.planned_date >=/);
   const result = await answerNative('tugas minggu ini', 'HELPER', staff, db);
   assert.match(result.content, /Task harian saya/);
   assert.match(result.content, /Terlambat: 1/);

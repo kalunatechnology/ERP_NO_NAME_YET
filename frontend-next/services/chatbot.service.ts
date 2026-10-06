@@ -57,6 +57,31 @@ export interface StreamChatOptions {
   onError?: (error: Error) => void;
 }
 
+export class ChatbotRequestError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code?: string) {
+    super(message);
+    this.name = 'ChatbotRequestError';
+  }
+}
+
+async function chatRequestError(response: Response): Promise<ChatbotRequestError> {
+  let message = response.status === 401 ? 'Sesi login berakhir. Silakan masuk kembali.'
+    : response.status === 403 ? 'Akses chat ditolak. Periksa akun, company aktif, dan hak akses Anda.'
+    : response.status === 429 ? 'Terlalu banyak permintaan. Tunggu sebentar sebelum mengirim kembali.'
+    : `Marka Plus gagal merespons (HTTP ${response.status}). Coba kembali nanti.`;
+  let code: string | undefined;
+  try {
+    const payload = await response.json();
+    const detail = payload?.detail ?? payload?.error?.message ?? payload?.message;
+    if (typeof detail === 'string' && detail.trim()) message = detail;
+    code = typeof payload?.error === 'string' ? payload.error
+      : typeof payload?.error?.code === 'string' ? payload.error.code : undefined;
+  } catch {
+    // A proxy can return HTML or an empty body; do not expose it as chat content.
+  }
+  return new ChatbotRequestError(message, response.status, code);
+}
+
 export interface MarbotStatus {
   online: boolean;
   contractMode: 'legacy' | 'v2' | 'native';
@@ -145,16 +170,7 @@ export async function streamChatCompletion({
     });
 
     if (!response.ok) {
-      let errorMessage = `HTTP Error ${response.status}: ${response.statusText}`;
-      try {
-        const errorJson = await response.json();
-        if (errorJson?.error?.message) {
-          errorMessage = errorJson.error.message;
-        }
-      } catch {
-        // ignore json parse error
-      }
-      throw new Error(errorMessage);
+      throw await chatRequestError(response);
     }
 
     if (!response.body) {

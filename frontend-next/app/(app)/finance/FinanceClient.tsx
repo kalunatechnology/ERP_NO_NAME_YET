@@ -21,6 +21,7 @@ import {
 import { cn, formatMoney, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
+import { getApiErrorDetail } from "@/lib/api/project.api";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
@@ -61,6 +62,14 @@ const FINANCE_TABS = [
   { id: "period_closing", label: "Tutup Buku", icon: CalendarRange },
   { id: "audit_trail", label: "Audit Trail", icon: ShieldCheck },
 ];
+
+function isCostEntryCreator(entry: { created_by_id?: string | number | null }, userId?: string | number) {
+  return Boolean(entry.created_by_id && userId && String(entry.created_by_id) === String(userId));
+}
+
+function isWipPosted(status?: string) {
+  return ["POSTED", "POSTED_TO_WIP"].includes(String(status || "").toUpperCase());
+}
 
 interface FinanceBankAccount {
   id: string;
@@ -387,6 +396,10 @@ export default function FinanceClient() {
         await api.post(`/api/v1/finance/project-cost-entries/${entry.id}/validate`);
         toast.success("Cost entry berhasil divalidasi.");
       } else if (entry.status === "VALIDATED") {
+        if (isCostEntryCreator(entry, user?.id)) {
+          toast.error("Posting WIP menunggu checker: Anda adalah pembuat cost entry ini. Minta user Finance lain untuk melakukan posting.");
+          return;
+        }
         if (!costCreditAccountId) {
           toast.error("Pilih akun sumber kredit sebelum posting WIP.");
           return;
@@ -395,8 +408,13 @@ export default function FinanceClient() {
         toast.success("Cost entry berhasil diposting ke WIP dan jurnal.");
       }
       await loadFinanceData(true);
-    } catch {
-      toast.error("Lifecycle cost entry gagal diproses.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(
+        error,
+        entry.status === "VALIDATED"
+          ? "Posting WIP ditolak. Periksa status entry, akun kredit, dan periode fiskal."
+          : "Validasi cost entry gagal diproses.",
+      ));
     }
   };
 
@@ -739,6 +757,9 @@ export default function FinanceClient() {
               </button>
             )}
           </div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-2xs text-amber-900">
+            Posting ke WIP membuat jurnal akuntansi. Untuk menjaga kontrol Maker–Checker, cost entry yang Anda buat sendiri harus diposting oleh user Finance lain.
+          </div>
           {canOperateFinance && (
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-text-secondary">Akun sumber kredit posting WIP</label>
@@ -763,7 +784,9 @@ export default function FinanceClient() {
                 </tr>
               </thead>
               <tbody>
-                {costEntries.map(c => (
+                {costEntries.map(c => {
+                  const waitingForChecker = c.status === "VALIDATED" && isCostEntryCreator(c, user?.id);
+                  return (
                 <tr key={c.id}>
                   <td><strong>{c.description || "Pengeluaran"}</strong><br/><span className="text-2xs text-text-secondary">Proyek #{c.project_id || c.project || "—"}</span></td>
                   <td><span className="badge badge-neutral">{c.cost_element || c.category || "OPERATIONAL"}</span></td>
@@ -779,18 +802,26 @@ export default function FinanceClient() {
                   <td className="font-semibold text-red-600">{formatMoney(c.total_cost ?? c.amount ?? c.cost_amount ?? 0)}</td>
                   <td><span className={cn("badge", getStatusColor(c.status || "DRAFT"))}>{c.status || "DRAFT"}</span></td>
                   <td>
-                    {canOperateFinance && ["DRAFT", "VALIDATED"].includes(c.status) ? (
+                    {waitingForChecker ? (
+                      <span
+                        className="text-2xs font-semibold text-amber-700"
+                        title="Anda adalah pembuat cost entry ini. Posting WIP harus dilakukan user Finance lain."
+                      >
+                        Menunggu checker
+                      </span>
+                    ) : canOperateFinance && ["DRAFT", "VALIDATED"].includes(c.status) ? (
                       <button onClick={() => handleCostLifecycle(c)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
                         <Zap size={12} /> {c.status === "DRAFT" ? "Validasi" : "Post ke WIP"}
                       </button>
-                    ) : c.status === "POSTED" ? (
-                      <span className="text-2xs text-brand-deep-green font-bold">✓ Terposting</span>
+                    ) : isWipPosted(c.status) ? (
+                      <span className="text-2xs text-brand-deep-green font-bold">✓ Terposting ke WIP</span>
                     ) : (
                       <span className="text-2xs text-text-secondary italic">{c.status || "—"}</span>
                     )}
                   </td>
                 </tr>
-              ))}
+              );
+              })}
               {!costEntries.length && <tr><td colSpan={6} className="text-center py-6 text-xs text-text-secondary">Belum ada cost entry.</td></tr>}
             </tbody>
           </table>

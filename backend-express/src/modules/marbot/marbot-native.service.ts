@@ -24,6 +24,26 @@ export function detectTools(message: string): string[] {
   return tools;
 }
 
+// Keep supported task reads deterministic: a provider must not add a date or
+// drop an explicit owner from these questions. Structured resource requests and
+// write/procedure requests continue through their existing handlers.
+export function isNativeTaskReadQuestion(message: string) {
+  return /\b(task|tasks|tugas)\b/i.test(message)
+    && detectTools(message).join(',') === 'tasks'
+    && !/\b(buatkan|buat|hapus|ubah|setujui|approve|delete|update|tambahkan)\b/i.test(message)
+    && !/\b(cara|panduan|dimana|di mana|how to|fitur|modul|workflow|alur|fungsi|sistem|schema|skema|resource|permission|role|peran)\b/i.test(message)
+    && !/[{}]/.test(message);
+}
+
+export function taskDateIntent(message: string, now = new Date()) {
+  const unquoted = message.replace(/["“][^"”]*["”]/g, '');
+  const exclusion = /\b(?:bukan|selain|kecuali|di luar|not|except)\s+(?:hari ini|today)\b/gi;
+  const excludeToday = exclusion.test(unquoted);
+  const periodText = unquoted.replace(exclusion, '');
+  const hasPeriod = /hari ini|today|kemarin|yesterday|besok|tomorrow|minggu|week|bulan|month|\b20\d{2}-\d{2}(?:-\d{2})?\b/i.test(periodText);
+  return { excludeToday, hasPeriod, period: queryPeriod(periodText, now) };
+}
+
 // Business periods follow Asia/Jakarta, independent of the server timezone.
 export function queryPeriod(message: string, now = new Date()) {
   const jakarta = new Date(now.getTime() + 7 * 3600000);
@@ -84,14 +104,14 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
   if (/\b(role|peran|permission|hak akses|izin akses)\b/i.test(message)) {
     return { content: `Peran aktif: ${scope.roleCode}.\nModul aktif: ${scope.enabledModules.join(', ')}.\nPermission efektif untuk asisten: ${scope.permissions.join(', ')}.\nCakupan proyek: ${scope.projectScope.mode === 'ALL' ? 'seluruh proyek company aktif' : `${scope.projectScope.projectIds.length} proyek yang diizinkan`}.\nHak operasi tetap divalidasi backend pada setiap permintaan.`, tools: ['access.context'], sources: ['ERP:authority'] };
   }
-  if (/\b(cara|bagaimana|panduan|dimana|di mana|how)\b/i.test(message) && !/progres|progress|kinerja|kpi|target/i.test(message)) {
-    return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['Panduan ERP 2026-09-30'] };
+  if (/\b(cara|bagaimana|panduan|dimana|di mana|how)\b/i.test(message) && !isNativeTaskReadQuestion(message) && !/progres|progress|kinerja|kpi|target/i.test(message)) {
+    return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
   }
   if (/^\s*(buatkan|buat|hapus|ubah|setujui|approve|delete|update|tambahkan)\b/i.test(message) && !/ringkasan|laporan|summary/i.test(message)) {
     return { content: `Operasi tersebut belum dapat dipetakan ke input yang valid. Saya dapat menyiapkan usulan Project, Main/Weekly/Daily Task, assignment, dan pembaruan task dengan field serta identitas yang jelas. Perubahan memerlukan konfirmasi dan verifikasi backend. Sebutkan record dan perubahan yang diminta.`, tools: [], sources: [] };
   }
   const tools = detectTools(message);
-  if (!tools.length) return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['Panduan ERP 2026-09-30'] };
+  if (!tools.length) return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
   const requestsPeriod = /hari ini|today|kemarin|yesterday|besok|tomorrow|minggu|week|bulan|month|tahun|year|kuartal|quarter|\b20\d{2}-\d{2}(?:-\d{2})?\b/i.test(message);
   if (tools.includes('projects') && requestsPeriod) return {
     content: 'Periode proyek perlu diperjelas: apakah berdasarkan tanggal dibuat, jadwal pelaksanaan, atau status historis? Ringkasan proyek saat ini membaca status terkini dan belum menyediakan snapshot status masa lalu. Untuk aktivitas pada periode tertentu, tanyakan tugas atau biaya proyek; untuk status saat ini, tanyakan "Berapa proyek yang sedang berjalan?". Tidak ada query proyek dijalankan.',
@@ -140,7 +160,8 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
   }
   const projectFilter = projectIds ? { project_id: { in: projectIds } } : {};
   const now = new Date();
-  const period = queryPeriod(message, now);
+  const taskDates = taskDateIntent(message, now);
+  const period = tools.some(tool => tool === 'finance' || tool === 'kpi') ? queryPeriod(message, now) : taskDates.period;
   const explicitStatus = message.match(/status\s+["“]([A-Z_]+)["”]/i)?.[1]?.toUpperCase();
   if (explicitStatus && !['DRAFT', 'VERIFIED', 'RESERVED', 'STARTED', 'ACTIVE', 'NOT_STARTED', 'IN_PROGRESS', 'ON_PROGRESS', 'COMPLETED', 'DONE', 'BLOCKED', 'CLOSED', 'RESOLVED', 'OPEN'].includes(explicitStatus)) return { content: 'Status tersebut belum didukung pada query ini. Sebutkan status aktual yang valid. Tidak ada query dijalankan.', tools: [], sources: [] };
   const results: string[] = [];
@@ -166,9 +187,8 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
         results.push(`Proyek dalam akses Anda${status ? ` dengan status ${status.join('/')}` : ''}: ${count}. Menampilkan maksimal 20.\n${rows.map(r => `- ${safe(r.project_name)}: ${safe(r.status)}, progres ${number(r.progress_percent)}%.${r.planned_end_date && r.planned_end_date < now && Number(r.progress_percent) < 100 ? ' Melewati rencana selesai; periksa blocker dan jadwal.' : ''}`).join('\n')}`);
       } else if (tool === 'tasks') {
         requireTool(scope, 'PROJECTS', ['READ_TASK']);
-        const self = !canUseDashboard(scope);
-        const weekly = /minggu|week/i.test(message);
-        if (requestsPeriod) periodDomains.push('tasks');
+        const self = !canUseDashboard(scope) || /\b(saya|my|mine)\b/i.test(message.replace(/["“][^"”]*["”]/g, ''));
+        const weekly = taskDates.hasPeriod && /minggu|week/i.test(message);
         const overdueOnly = /terlambat|overdue|carry[ -]?over/i.test(message);
         const statuses = explicitStatus ? [explicitStatus] : /in[ _-]?progress|berjalan|sedang dikerjakan/i.test(message) ? ['IN_PROGRESS', 'ON_PROGRESS']
           : /belum mulai|not[ _-]?started/i.test(message) ? ['NOT_STARTED']
@@ -197,8 +217,8 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
             WHERE d.tenant_id = ${scope.tenantId} AND d.company_id = ${scope.companyId}
               ${projectIds ? (projectIds.length ? Prisma.sql`AND m.project_id IN (${Prisma.join(projectIds)})` : Prisma.sql`AND FALSE`) : Prisma.empty}
               ${team ? (team.userIds.length ? Prisma.sql`AND d.owner_id IN (${Prisma.join(team.userIds)})` : Prisma.sql`AND FALSE`) : self ? Prisma.sql`AND d.owner_id = ${scope.userId}` : Prisma.empty}
-              ${weekly ? Prisma.sql`AND d.planned_date >= ${period.start} AND d.planned_date < ${period.end}` : Prisma.empty}
-              ${/bulan|month|hari ini|today|kemarin|yesterday|besok|tomorrow|\b20\d{2}-\d{2}\b/i.test(message) && !weekly ? Prisma.sql`AND d.planned_date >= ${period.start} AND d.planned_date < ${period.end}` : Prisma.empty}
+              ${taskDates.hasPeriod ? Prisma.sql`AND d.planned_date >= ${taskDates.period.start} AND d.planned_date < ${taskDates.period.end}` : Prisma.empty}
+              ${taskDates.excludeToday ? Prisma.sql`AND (d.planned_date IS NULL OR d.planned_date < ${todayStart} OR d.planned_date >= ${new Date(todayStart.getTime() + 86400000)})` : Prisma.empty}
               ${statuses ? Prisma.sql`AND d.status IN (${Prisma.join(statuses)})` : Prisma.empty}
               ${taskName ? Prisma.sql`AND lower(d.title) = lower(${taskName})` : Prisma.empty}
               ${overdueOnly ? Prisma.sql`AND d.planned_date < ${todayStart} AND d.status NOT IN ('COMPLETED', 'DONE')` : Prisma.empty}
@@ -257,5 +277,6 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
   const date = (d: Date) => d.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' });
   const filteredDomains = periodDomains.filter(domain => used.includes(domain));
   const periodLabel = filteredDomains.length ? `Periode filter waktu (${filteredDomains.join(', ')}): ${date(period.start)}–${date(new Date(period.end.getTime() - 1))}.\n` : '';
-  return { content: `${results.join('\n\n')}\n\n${periodLabel}Sumber: data ERP sesuai akses Anda • ${now.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB.`, tools: used, sources: used.map(t => `ERP:${t}`) };
+  const taskPeriodLabel = used.includes('tasks') ? `${taskDates.hasPeriod ? `Periode filter waktu (tasks): ${date(taskDates.period.start)}–${date(new Date(taskDates.period.end.getTime() - 1))}.` : 'Periode tugas: seluruh tanggal, termasuk tugas tanpa tanggal.'}${taskDates.excludeToday ? ' Tugas bertanggal hari ini dikecualikan (Asia/Jakarta).' : ''}\n` : '';
+  return { content: `${results.join('\n\n')}\n\n${periodLabel}${taskPeriodLabel}Sumber: data ERP sesuai akses Anda • ${now.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB.`, tools: used, sources: used.map(t => `ERP:${t}`) };
 }

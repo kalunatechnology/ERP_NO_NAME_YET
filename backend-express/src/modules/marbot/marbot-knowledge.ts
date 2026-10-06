@@ -32,8 +32,8 @@ export function systemKnowledgeAnswer(message: string, enabledModules: string[])
   }).join('\n\n---\n\n') + '\n\nSumber: route, form, service dan katalog schema ERP. Data aktual harus dibaca dari database.';
 }
 export const procedures = [
-  { id: 'reports', title: 'Laporan kerja', keywords: /laporan|report/i, path: '/reporting',
-    content: 'Buka menu Laporan. Untuk laporan berkala, buka Tugas Harian lalu pilih Laporan Berkala. Data yang muncul mengikuti peran dan akses Anda. Jika menu tidak tersedia, hubungi admin perusahaan.' },
+  { id: 'reports', title: 'Laporan kerja', keywords: /laporan|report/i, path: '/reporting?tab=periodic', version: '2026-10-06',
+    content: 'Buka menu Laporan lalu pilih tab Ringkasan Berkala untuk melihat ringkasan aktivitas dari task harian pada periode berjalan. Tombol Laporan Berkala di Tugas Harian, jika tersedia, merupakan pintasan ke halaman yang sama. Data yang muncul mengikuti peran dan akses Anda. Jika menu tidak tersedia, hubungi admin perusahaan.' },
   { id: 'timesheet', title: 'Timesheet dan lembur', keywords: /timesheet|timer|lembur|jam kerja/i, path: '/tasks',
     content: 'Sebagai Staff, buka Tugas Harian lalu bagian Timesheet & Lembur Saya. Pilih proyek, tanggal kerja, dan task bila diperlukan, lalu mulai timer kerja. Hentikan timer saat selesai. Untuk lembur, mulai dan hentikan timer lembur serta isi alasannya. Kirim catatan setelah timer berhenti, lalu periksa riwayat dan status approval. Durasi dihitung server dari waktu mulai/selesai; jangan mengisi durasi manual.' },
   { id: 'invoice', title: 'Invoice dan billing termin', keywords: /invoice|faktur|billing|tagihan/i, path: '/finance',
@@ -49,5 +49,5 @@ export const procedures = [
 export function helperAnswer(message: string): string {
   const matches = procedures.filter(item => item.keywords.test(message));
   if (!matches.length) return 'Saya dapat membantu panduan pengajuan cuti, laporan kerja, tugas harian, timesheet, dan notulensi meeting. Sebutkan fitur yang ingin Anda gunakan. Untuk data terkini, tanyakan progres proyek, task terlambat, biaya proyek, KPI, atau tiket support sesuai akses Anda.';
-  return matches.map(item => `${item.title}\n\n${item.content}${item.path ? `\n\n[Buka ${item.title}](${item.path})` : ''}\n\nSumber: panduan ERP • versi 2026-09-30.`).join('\n\n---\n\n');
+  return matches.map(item => `${item.title}\n\n${item.content}${item.path ? `\n\n[Buka ${item.title}](${item.path})` : ''}\n\nSumber: panduan ERP • versi ${'version' in item ? item.version : '2026-09-30'}.`).join('\n\n---\n\n');
 }

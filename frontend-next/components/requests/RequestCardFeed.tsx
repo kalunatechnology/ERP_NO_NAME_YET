@@ -143,11 +143,9 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
     const labels: Record<string, string> = {
       COMPLETED: "CLOSED",
       PENDING_LPJ_VERIFICATION: "WAITING LPJ OM",
-      PENDING_EXEC: "WAITING EXEC",
-      RE_CHECKING: "RE-CHECKING",
       LPJ_REVISION: "RE-CHECKING",
     };
-    return <span className={cn("px-2.5 py-0.5 rounded-full border text-3xs font-extrabold", getStatusColor(status))}>{labels[status] || status.replace(/_/g, " ") || "WAITING OM"}</span>;
+    return <span className={cn("px-2.5 py-0.5 rounded-full border text-3xs font-extrabold", getStatusColor(status))}>{labels[status] || status.replace(/_/g, " ") || "REGISTERED"}</span>;
   };
 
   return (

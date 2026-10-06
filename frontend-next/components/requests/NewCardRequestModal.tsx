@@ -322,8 +322,8 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                 {isMeeting
                   ? "Atur jadwal pertemuan, tentukan PIC host, dan undang peserta rapat."
                   : isLeave
-                  ? "Ajukan cuti tahunan, sakit, atau izin dengan persetujuan atasan."
-                  : "Ajukan permohonan operasional, anggaran biaya, atau kebutuhan kantor."}
+                  ? "Buat request cuti tahunan, sakit, atau izin."
+                  : "Buat request operasional, anggaran biaya, atau kebutuhan kantor."}
               </p>
             </div>
           </div>

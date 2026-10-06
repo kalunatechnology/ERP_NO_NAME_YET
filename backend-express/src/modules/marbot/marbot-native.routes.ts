@@ -2,9 +2,9 @@ import { Router, Request } from 'express';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import prisma from '../../config/database';
-import { ConflictError, ForbiddenError, ValidationError } from '../../utils/errors';
+import { AppError, ConflictError, ForbiddenError, ValidationError } from '../../utils/errors';
 import { buildMarbotRuntimeAuthority } from './marbot-access.service';
-import { answerNative, canUseDashboard, followUpQuestion } from './marbot-native.service';
+import { answerNative, canUseDashboard, followUpQuestion, isNativeTaskReadQuestion } from './marbot-native.service';
 import { renderNativeAnswer } from './marbot-provider.service';
 import { env } from '../../config/env';
 import { discoverMarbotSchema } from './marbot-schema.service';
@@ -92,7 +92,7 @@ nativeMarbotRouter.post('/query', async (req, res, next) => {
     await reserveMarbotRequest({ ...owner(scope), nonce, request_id: req.requestId || nonce, tool_name: 'native.query', outcome: 'STARTED' }, 60);
     auditNonce = nonce;
     const result = await executeResourceRead(req, req.body, scope);
-    if (authorityKey(await scopeFor(req)) !== authorityKey(scope)) throw new ForbiddenError();
+    if (!canReadMarbotMessage(marbotMessageAuthority(scope), await scopeFor(req))) throw new AppError('Hak akses berubah selama pemrosesan. Kirim ulang pertanyaan sesuai sesi aktif.', 403, 'MARBOT_AUTHORITY_CHANGED');
     await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } });
     res.json({ data: result });
   } catch (error) {
@@ -157,7 +157,7 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
     const scope = await scopeFor(req);
     if (input.mode === 'DASHBOARD' && !canUseDashboard(scope)) throw new ForbiddenError();
     let conversation = input.conversationId ? await prisma.marbot_conversation.findFirst({ where: { ...owner(scope), id: input.conversationId } }) : null;
-    if (input.conversationId && !conversation) throw new ForbiddenError();
+    if (input.conversationId && !conversation) throw new AppError('Percakapan tidak tersedia untuk akun dan company aktif. Pesan berikutnya akan membuka chat baru.', 403, 'MARBOT_CONVERSATION_UNAVAILABLE');
     nonce = randomUUID();
     await reserveMarbotRequest({ ...owner(scope), nonce, request_id: req.requestId || nonce, tool_name: 'native.chat', outcome: 'STARTED' }, 20);
     if (!conversation) conversation = await prisma.marbot_conversation.create({ data: { ...owner(scope), title: input.message.slice(0, 80) } });
@@ -166,8 +166,9 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
       { metadata: { path: ['authorityBase'], equals: marbotAuthorityBaseKey(scope) } },
     ] }, orderBy: { created_at: 'desc' } });
     const contextualQuestion = followUpQuestion(input.message, previous && canReadMarbotMessage(previous.metadata, scope) ? previous.content : undefined);
-    const resourcePlan = await planResourceQuestion(contextualQuestion, scope, controller.signal);
-    const plannedQuestion = !resourcePlan && env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL
+    const nativeTaskRead = isNativeTaskReadQuestion(contextualQuestion);
+    const resourcePlan = nativeTaskRead ? null : await planResourceQuestion(contextualQuestion, scope, controller.signal);
+    const plannedQuestion = !nativeTaskRead && !resourcePlan && env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL
       ? await planNativeQuestion(contextualQuestion, await discoverMarbotSchema(scope, prisma, ['project_project', 'project_main_task', 'project_weekly_task', 'project_daily_task', 'fin_project_cost_entry', 'service_case']), controller.signal)
       : contextualQuestion;
     let resourceAnswer: { content: string; tools: string[]; sources: string[]; action?: MarbotAction } | undefined;
@@ -206,7 +207,7 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
       return;
     }
     // Provider latency or concurrent role/module changes must not return an old privileged result.
-    if (authorityKey(await scopeFor(req)) !== authorityKey(scope)) throw new ForbiddenError('Hak akses berubah selama pemrosesan. Kirim ulang pertanyaan sesuai sesi aktif.');
+    if (!canReadMarbotMessage(marbotMessageAuthority(scope), await scopeFor(req))) throw new AppError('Hak akses berubah selama pemrosesan. Kirim ulang pertanyaan sesuai sesi aktif.', 403, 'MARBOT_AUTHORITY_CHANGED');
     const actionId = randomUUID();
     const action = 'action' in answer ? answer.action : undefined;
     await prisma.$transaction([

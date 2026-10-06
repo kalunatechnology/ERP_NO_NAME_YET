@@ -5,6 +5,10 @@ import prisma from '../src/config/database';
 import * as authority from '../src/modules/marbot/marbot-access.service';
 import { nativeMarbotRouter } from '../src/modules/marbot/marbot-native.routes';
 import { marbotAuthorityKey } from '../src/modules/marbot/marbot-authority.service';
+import { errorHandler } from '../src/middlewares/error.middleware';
+import * as resource from '../src/modules/marbot/marbot-resource.service';
+import * as planner from '../src/modules/marbot/marbot-planner.service';
+import { env } from '../src/config/env';
 
 async function main() {
   // Hermetic HTTP test: no production database, provider, or ERP writes.
@@ -37,7 +41,7 @@ async function main() {
   app.use(express.json());
   app.use((req, _res, next) => { (req as any).user = { id: 'user-a', tenant_id: 'tenant-a' }; req.companyId = 'company-a'; next(); });
   app.use(nativeMarbotRouter);
-  app.use((error: any, _req: any, res: any, _next: any) => res.status(error.statusCode || 500).json({ error: { message: error.message } }));
+  app.use(errorHandler);
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const port = (server.address() as any).port;
@@ -57,7 +61,57 @@ async function main() {
     assert.equal((await send({ message: 'hi', mode: 'DASHBOARD' })).status, 403);
     assert.equal((await send({ message: '' })).status, 400);
     assert.equal((await send({ message: 'hi', companyId: 'company-b' })).status, 400);
-    assert.equal((await send({ message: 'hi', conversationId: id })).status, 403);
+    const unavailable = await send({ message: 'hi', conversationId: id });
+    assert.equal(unavailable.status, 403);
+    assert.equal((await unavailable.json() as any).error, 'MARBOT_CONVERSATION_UNAVAILABLE');
+    const taskScope = { ...scope, roleCode: RoleCode.STAFF as RoleCode, enabledModules: ['MARBOT', 'PROJECTS'], permissions: ['USE_MARBOT', 'READ_TASK'], projectScope: { mode: 'LIST' as const, projectIds: ['project-a'] } };
+    let scopes = [taskScope, taskScope];
+    (authority as any).buildMarbotRuntimeAuthority = async () => scopes.length > 1 ? scopes.shift()! : scopes[0];
+    const originalResourcePlanner = resource.planResourceQuestion, originalNativePlanner = planner.planNativeQuestion;
+    const savedKey = env.MARBOT_AI_API_KEY, savedModel = env.MARBOT_AI_MODEL;
+    (env as any).MARBOT_AI_API_KEY = 'fixture-key'; (env as any).MARBOT_AI_MODEL = 'fixture-model';
+    (resource as any).planResourceQuestion = async () => { throw new Error('Task read must not use provider resource planning'); };
+    (planner as any).planNativeQuestion = async () => { throw new Error('Task read must not rewrite ownership or period'); };
+    const originalQuery = db.$queryRaw;
+    let taskReads = 0;
+    db.$queryRaw = async (query: any) => {
+      if (!query.sql.includes('FROM project_daily_task')) return originalQuery(query);
+      taskReads++;
+      assert(query.values.includes('company-a') && query.values.includes('project-a') && query.values.includes('user-a'));
+      return [{ title: 'Fixture task', owner_id: 'user-a', status: 'NOT_STARTED', progress: 0, total: 1n, completed: 0n, overdue: 0n, blocked: 0n }];
+    };
+    try {
+      for (const message of ['hari ini saya memiliki berapa daily task', 'bagaimana dengan daily task lain yang bukan hari ini', 'maksud saya adalah seluruh daily task saya']) {
+        scopes = [taskScope, taskScope];
+        const result = await send({ message }); assert.equal(result.status, 200);
+        assert.match(await result.text(), /Fixture task/);
+      }
+      assert.equal(taskReads, 3);
+      scopes = [taskScope, { ...taskScope, projectScope: { mode: 'LIST', projectIds: ['project-a', 'new-project'] } }];
+      const expanded = await send({ message: 'seluruh daily task saya' });
+      assert.equal(expanded.status, 200, 'An added project cannot invalidate data from the original allowed scope');
+      await expanded.text();
+      for (const changed of [
+        { ...taskScope, projectScope: { mode: 'LIST' as const, projectIds: [] } },
+        { ...taskScope, permissions: ['USE_MARBOT'] },
+        { ...taskScope, roleCode: RoleCode.PROJECT_MANAGER },
+        { ...taskScope, enabledModules: ['MARBOT'] },
+      ]) {
+        scopes = [taskScope, changed]; const beforeStored: number = stored.length;
+        const revoked = await send({ message: 'seluruh daily task saya' });
+        assert.equal(revoked.status, 403);
+        const body = await revoked.json() as any;
+        assert.equal(body.error, 'MARBOT_AUTHORITY_CHANGED');
+        assert(!JSON.stringify(body).includes('Fixture task'));
+        assert.equal(stored.length, beforeStored, 'Revoked results cannot enter conversation history');
+      }
+    } finally {
+      (resource as any).planResourceQuestion = originalResourcePlanner;
+      (planner as any).planNativeQuestion = originalNativePlanner;
+      (env as any).MARBOT_AI_API_KEY = savedKey; (env as any).MARBOT_AI_MODEL = savedModel;
+      db.$queryRaw = originalQuery;
+      (authority as any).buildMarbotRuntimeAuthority = async () => scope;
+    }
     const activeAuthority = marbotAuthorityKey({ ...scope, userId: 'user-a', tenantId: 'tenant-a', companyId: 'company-a' });
     db.marbot_conversation.findMany = async ({ where, include }: any) => {
       assert.equal(where.messages.some.OR[0].metadata.equals, activeAuthority);
