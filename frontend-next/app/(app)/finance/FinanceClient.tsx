@@ -2018,8 +2018,11 @@ export default function FinanceClient() {
                 tax_scheme: "PROPORTIONAL",
               });
               await loadFinanceData(true);
-            } catch {
-              toast.error("Gagal membuat proposal tagihan");
+            } catch (error) {
+              toast.error(getApiErrorDetail(
+                error,
+                "Gagal membuat proposal tagihan. Periksa project, customer, dan nilai termin.",
+              ));
             }
           }}
           className="flex flex-col gap-4 p-1 text-xs"
