@@ -41,6 +41,45 @@ async function financeUserCount(companyId: string) {
   });
 }
 
+type WipPostingReadiness = {
+  entry_id: string;
+  can_post: boolean;
+  reason: 'READY' | 'MAKER_CHECKER_REQUIRED' | 'INVALID_STATUS';
+  message: string;
+};
+
+function describeWipPostingReadiness(
+  entry: { id: string; status: string; created_by_id: string | null },
+  userId: string,
+): WipPostingReadiness {
+  if (entry.status !== 'VALIDATED') {
+    return {
+      entry_id: entry.id,
+      can_post: false,
+      reason: 'INVALID_STATUS',
+      message: entry.status === 'POSTED_TO_WIP'
+        ? 'Cost entry ini sudah diposting ke WIP.'
+        : `Cost entry berstatus ${entry.status}; hanya status VALIDATED yang dapat diposting ke WIP.`,
+    };
+  }
+
+  if (entry.created_by_id === userId) {
+    return {
+      entry_id: entry.id,
+      can_post: false,
+      reason: 'MAKER_CHECKER_REQUIRED',
+      message: 'Anda adalah pembuat cost entry ini. Sesuai kontrol Maker–Checker, posting WIP harus dilakukan oleh user Finance lain.',
+    };
+  }
+
+  return {
+    entry_id: entry.id,
+    can_post: true,
+    reason: 'READY',
+    message: 'Cost entry siap diposting ke WIP.',
+  };
+}
+
 /**
  * POST route handler: `/period-closings/request`.
  *
@@ -654,13 +693,46 @@ financeRouter.post(
   },
 );
 
+financeRouter.get(
+  '/project-cost-entries/wip-readiness',
+  requireFinanceRole([RoleCode.FINANCE]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const companyId = activeCompanyId(req);
+      const userId = req.user?.id;
+      if (!userId) throw new ForbiddenError('Autentikasi diperlukan untuk memeriksa kesiapan posting WIP.');
+      const entryId = typeof req.query.entry_id === 'string' ? req.query.entry_id.trim() : '';
+      const entries = await prisma.fin_project_cost_entry.findMany({
+        where: {
+          company_id: companyId,
+          ...(entryId ? { id: entryId } : { status: { in: ['DRAFT', 'VALIDATED', 'POSTED_TO_WIP'] } }),
+        },
+        select: { id: true, status: true, created_by_id: true },
+        take: entryId ? 1 : 200,
+      });
+      if (entryId && entries.length === 0) throw new NotFoundError('ProjectCostEntry');
+      sendSuccess(res, entries.map((entry) => describeWipPostingReadiness(entry, userId)));
+    } catch (err) { next(err); }
+  },
+);
+
 financeRouter.post(
   '/project-cost-entries/:id/post-to-wip',
   requireFinanceRole([RoleCode.FINANCE]),
-  enforceSoD({
-    getCreatorId: async (req) => (await prisma.fin_project_cost_entry.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { created_by_id: true } }))?.created_by_id ?? null,
-    action: 'post-to-wip',
-  }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return sendError(res, 'Autentikasi diperlukan untuk posting WIP.', 403);
+      const entry = await prisma.fin_project_cost_entry.findFirst({
+        where: { id: req.params.id, company_id: activeCompanyId(req) },
+        select: { id: true, status: true, created_by_id: true },
+      });
+      if (!entry) throw new NotFoundError('ProjectCostEntry');
+      const readiness = describeWipPostingReadiness(entry, userId);
+      if (!readiness.can_post) return sendError(res, readiness.message, readiness.reason === 'INVALID_STATUS' ? 409 : 403);
+      next();
+    } catch (err) { next(err); }
+  },
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       sendSuccess(res, await FinanceHardeningService.postProjectCostEntryToWip(

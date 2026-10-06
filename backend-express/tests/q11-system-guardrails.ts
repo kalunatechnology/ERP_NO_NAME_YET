@@ -447,6 +447,10 @@ async function main(): Promise<void> {
     assert(financeClient.includes('getApiErrorDetail('), 'WIP failures must surface the backend validation detail.');
     assert(financeClient.includes('Menunggu checker'), 'WIP maker-checker restriction must be clear before the user submits.');
     assert(financeClient.includes('POSTED_TO_WIP'), 'WIP-posted entries must show their final accounting state.');
+    assert(financeClient.includes('project-cost-entries/wip-readiness'), 'WIP UI must verify server-side posting readiness before submitting.');
+    assert(financeRoutes.includes("'/project-cost-entries/wip-readiness'"), 'Finance API must expose WIP posting readiness.');
+    assert(financeRoutes.includes("reason: 'MAKER_CHECKER_REQUIRED'"), 'WIP readiness must identify maker-checker blocking explicitly.');
+    assert(financeRoutes.includes("return sendError(res, readiness.message"), 'Blocked WIP posting must return a deterministic business response.');
     assert(financeClient.includes('/billing-proposals/${proposal.id}/issue-billing-document'), 'Billing issuance must use the named backend command.');
     assert(financeClient.includes('organization_type=DIVISION') && financeClient.includes('division.organization_name'), 'Finance division options must use the Core organization contract.');
     assert(!financeClient.includes('PENDING_MATCH'));

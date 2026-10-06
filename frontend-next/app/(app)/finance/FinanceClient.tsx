@@ -71,6 +71,13 @@ function isWipPosted(status?: string) {
   return ["POSTED", "POSTED_TO_WIP"].includes(String(status || "").toUpperCase());
 }
 
+type WipPostingReadiness = {
+  entry_id: string;
+  can_post: boolean;
+  reason: "READY" | "MAKER_CHECKER_REQUIRED" | "INVALID_STATUS";
+  message: string;
+};
+
 interface FinanceBankAccount {
   id: string;
   name: string;
@@ -158,6 +165,7 @@ export default function FinanceClient() {
 
   /* Data states */
   const [costEntries, setCostEntries] = useState<any[]>([]);
+  const [wipPostingReadiness, setWipPostingReadiness] = useState<Record<string, WipPostingReadiness>>({});
   const [fundings, setFundings] = useState<any[]>([]);
   const [proposals, setProposals] = useState<any[]>([]);
   const [vendorBills, setVendorBills] = useState<any[]>([]);
@@ -261,8 +269,11 @@ export default function FinanceClient() {
         }
       };
 
-      const [costRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
+      const [costRes, wipReadinessRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
         safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
+        canOperateFinance
+          ? safeGet("/api/v1/finance/project-cost-entries/wip-readiness", "costing")
+          : Promise.resolve({ data: [] }),
         safeGet("/api/v1/finance/project-fundings/?page_size=50", "fundings"),
         safeGet("/api/v1/finance/billing-proposals/?page_size=50", "billing"),
         safeGet("/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50", "ap"),
@@ -281,6 +292,9 @@ export default function FinanceClient() {
       ]);
 
       setCostEntries(normalizeList(costRes.data).rows);
+      setWipPostingReadiness(Object.fromEntries(
+        normalizeList<WipPostingReadiness>(wipReadinessRes.data).rows.map((item) => [item.entry_id, item]),
+      ));
       setFundings(normalizeList(fundRes.data).rows);
       setProposals(normalizeList(propRes.data).rows);
 
@@ -398,6 +412,17 @@ export default function FinanceClient() {
       } else if (entry.status === "VALIDATED") {
         if (isCostEntryCreator(entry, user?.id)) {
           toast.error("Posting WIP menunggu checker: Anda adalah pembuat cost entry ini. Minta user Finance lain untuk melakukan posting.");
+          return;
+        }
+        const readinessResponse = await api.get(
+          `/api/v1/finance/project-cost-entries/wip-readiness?entry_id=${encodeURIComponent(String(entry.id))}`,
+        );
+        const readiness = normalizeList<WipPostingReadiness>(readinessResponse.data).rows[0];
+        if (!readiness?.can_post) {
+          toast.error(readiness?.message || "Cost entry belum siap diposting ke WIP.");
+          if (readiness) {
+            setWipPostingReadiness((current) => ({ ...current, [readiness.entry_id]: readiness }));
+          }
           return;
         }
         if (!costCreditAccountId) {
@@ -785,7 +810,10 @@ export default function FinanceClient() {
               </thead>
               <tbody>
                 {costEntries.map(c => {
-                  const waitingForChecker = c.status === "VALIDATED" && isCostEntryCreator(c, user?.id);
+                  const readiness = wipPostingReadiness[String(c.id)];
+                  const waitingForChecker = c.status === "VALIDATED" && (
+                    readiness?.reason === "MAKER_CHECKER_REQUIRED" || isCostEntryCreator(c, user?.id)
+                  );
                   return (
                 <tr key={c.id}>
                   <td><strong>{c.description || "Pengeluaran"}</strong><br/><span className="text-2xs text-text-secondary">Proyek #{c.project_id || c.project || "—"}</span></td>
@@ -805,7 +833,7 @@ export default function FinanceClient() {
                     {waitingForChecker ? (
                       <span
                         className="text-2xs font-semibold text-amber-700"
-                        title="Anda adalah pembuat cost entry ini. Posting WIP harus dilakukan user Finance lain."
+                        title={readiness?.message || "Anda adalah pembuat cost entry ini. Posting WIP harus dilakukan user Finance lain."}
                       >
                         Menunggu checker
                       </span>
