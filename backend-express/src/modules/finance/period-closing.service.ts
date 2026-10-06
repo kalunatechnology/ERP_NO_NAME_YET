@@ -8,6 +8,7 @@
  */
 import prisma from '../../config/database';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { AccountingError, NotFoundError, ValidationError } from '../../utils/errors';
 import { AuditService } from '../core/audit.service';
 
@@ -25,6 +26,151 @@ import { AuditService } from '../core/audit.service';
 // =============================================================================
 
 export class PeriodClosingService {
+
+  /**
+   * Resolve an OPEN fiscal period for a posting date.
+   *
+   * Bootstrap rule:
+   * - If a covering period already exists, it must be OPEN.
+   * - If no covering period exists, create/reuse the calendar fiscal year and
+   *   generate only missing monthly periods as OPEN.
+   * - CLOSED/LOCKED periods are never reopened automatically.
+   *
+   * This keeps first-time company setup usable without weakening period-close
+   * controls after accounting periods have been established.
+   */
+  static async ensureOpenPostingPeriod(
+    tx: Prisma.TransactionClient,
+    postingDate: Date,
+    companyId: string,
+    tenantId: string | null,
+    userId: string,
+  ) {
+    const existing = await tx.fin_fiscal_period.findFirst({
+      where: {
+        company_id: companyId,
+        start_date: { lte: postingDate },
+        end_date: { gte: postingDate },
+      },
+    });
+
+    if (existing) {
+      if (existing.status !== 'OPEN') {
+        throw new AccountingError(
+          `Periode fiskal #${existing.period_number ?? 'N/A'} berstatus ${existing.status} dan tidak dapat menerima posting.`,
+        );
+      }
+      return existing;
+    }
+
+    const year = postingDate.getUTCFullYear();
+    const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
+    const yearEnd = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0, 0) - 1);
+
+    let fiscalYear = await tx.fin_fiscal_year.findFirst({
+      where: {
+        company_id: companyId,
+        start_date: { lte: postingDate },
+        end_date: { gte: postingDate },
+      },
+    });
+
+    if (fiscalYear && ['CLOSED', 'LOCKED'].includes(fiscalYear.status)) {
+      throw new AccountingError(
+        `Tahun fiskal ${fiscalYear.fiscal_year_name} berstatus ${fiscalYear.status} dan tidak dapat menerima posting.`,
+      );
+    }
+
+    if (!fiscalYear) {
+      fiscalYear = await tx.fin_fiscal_year.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: tenantId,
+          company_id: companyId,
+          created_by_id: userId,
+          fiscal_year_name: String(year),
+          start_date: yearStart,
+          end_date: yearEnd,
+          status: 'OPEN',
+        },
+      });
+    }
+
+    const periods = await tx.fin_fiscal_period.findMany({
+      where: {
+        company_id: companyId,
+        fiscal_year_id: fiscalYear.id,
+      },
+      select: {
+        id: true,
+        period_number: true,
+        start_date: true,
+        end_date: true,
+        status: true,
+      },
+    });
+
+    const existingPeriodNumbers = new Set(
+      periods
+        .map((period) => period.period_number)
+        .filter((periodNumber): periodNumber is number => periodNumber != null),
+    );
+
+    for (let month = 0; month < 12; month += 1) {
+      const periodNumber = month + 1;
+      if (existingPeriodNumbers.has(periodNumber)) continue;
+
+      const startDate = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+      const endDate = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0) - 1);
+
+      const overlapping = await tx.fin_fiscal_period.findFirst({
+        where: {
+          company_id: companyId,
+          start_date: { lte: endDate },
+          end_date: { gte: startDate },
+        },
+        select: { id: true },
+      });
+
+      if (overlapping) continue;
+
+      await tx.fin_fiscal_period.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: tenantId,
+          company_id: companyId,
+          created_by_id: userId,
+          fiscal_year_id: fiscalYear.id,
+          period_number: periodNumber,
+          start_date: startDate,
+          end_date: endDate,
+          status: 'OPEN',
+        },
+      });
+    }
+
+    const resolved = await tx.fin_fiscal_period.findFirst({
+      where: {
+        company_id: companyId,
+        start_date: { lte: postingDate },
+        end_date: { gte: postingDate },
+      },
+    });
+
+    if (!resolved) {
+      throw new AccountingError(
+        'Periode fiskal untuk tanggal posting gagal disiapkan.',
+      );
+    }
+
+    if (resolved.status !== 'OPEN') {
+      throw new AccountingError(
+        `Periode fiskal #${resolved.period_number ?? 'N/A'} berstatus ${resolved.status} dan tidak dapat menerima posting.`,
+      );
+    }
+
+    return resolved;
+  }
 
   // ---------------------------------------------------------------------------
   // 1. PERIOD GUARD (Defense-in-Depth)
