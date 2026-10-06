@@ -18,6 +18,7 @@ import { DocumentFSM } from '../../utils/fsm';
 import { sendSuccess, sendError } from '../../utils/response';
 import { RoleCode } from '../../types/roles';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { CustomerPartyService } from '../projects/customer-party.service';
 
 export const financeRouter = Router();
 
@@ -1174,7 +1175,57 @@ financeRouter.use('/billing-documents', createCrudRouter({ modelName: 'fin_billi
   rejection_reason: '',
 }) }));
 financeRouter.use('/billing-document-lines', createCrudRouter({ modelName: 'fin_billing_document_line', searchFields: ['description'] }));
-financeRouter.use('/billing-proposals', createCrudRouter({ modelName: 'fin_billing_proposal', searchFields: ['description'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/billing-proposals', createCrudRouter({
+  modelName: 'fin_billing_proposal',
+  searchFields: ['description'],
+  beforeCreate: async (req, data) => {
+    const companyId = activeCompanyId(req);
+    const userId = authenticatedFinanceUserId(req);
+    const projectId = String(data.project_id ?? data.project ?? '').trim();
+
+    if (!projectId) {
+      throw new ValidationError('Project wajib dipilih untuk membuat proposal tagihan.');
+    }
+
+    const { project, party } = await CustomerPartyService.ensureForProject(prisma, {
+      projectId,
+      companyId,
+      userId,
+    });
+
+    const subtotal = Number(data.subtotal ?? 0);
+    const taxRate = Number(data.tax_rate ?? 0);
+    const taxAmount = Number(data.tax_amount ?? 0);
+    const totalAmount = Number(data.total_amount ?? subtotal + taxAmount);
+
+    if (!Number.isFinite(subtotal) || subtotal <= 0) {
+      throw new ValidationError('Nilai termin harus lebih dari 0.');
+    }
+
+    if (!Number.isFinite(taxRate) || taxRate < 0) {
+      throw new ValidationError('Tarif pajak tidak valid.');
+    }
+
+    if (!Number.isFinite(taxAmount) || taxAmount < 0) {
+      throw new ValidationError('Nilai pajak tidak valid.');
+    }
+
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      throw new ValidationError('Total tagihan tidak valid.');
+    }
+
+    data.project_id = project.id;
+    data.customer_id = party.id;
+    data.requested_by_id = userId;
+    data.status = 'DRAFT';
+
+    delete data.project;
+    delete data.customer;
+    delete data.customer_party_id;
+
+    return data;
+  },
+}));
 financeRouter.use('/payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
 financeRouter.use('/customer-receipts', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
 financeRouter.use('/vendor-payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
