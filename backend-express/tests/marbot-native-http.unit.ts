@@ -60,9 +60,9 @@ async function main() {
     assert.equal((await send({ message: 'hi', conversationId: id })).status, 403);
     const activeAuthority = marbotAuthorityKey({ ...scope, userId: 'user-a', tenantId: 'tenant-a', companyId: 'company-a' });
     db.marbot_conversation.findMany = async ({ where, include }: any) => {
-      assert.equal(where.messages.some.metadata.equals, activeAuthority);
-      assert.equal(include.messages.where.metadata.equals, activeAuthority);
-      return [{ id, title: 'Rahasia director dari role lama', messages: [{ role: 'user', content: 'Pertanyaan staff sekarang' }] }];
+      assert.equal(where.messages.some.OR[0].metadata.equals, activeAuthority);
+      assert.equal(include.messages.where.OR[0].metadata.equals, activeAuthority);
+      return [{ id, title: 'Rahasia director dari role lama', messages: [{ role: 'user', content: 'Pertanyaan staff sekarang', metadata: { authority: activeAuthority } }] }];
     };
     const list = await fetch(`http://127.0.0.1:${port}/conversations`);
     assert.equal((await list.json() as any).data[0].title, 'Pertanyaan staff sekarang');

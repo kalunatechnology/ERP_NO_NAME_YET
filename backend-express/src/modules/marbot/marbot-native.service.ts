@@ -4,6 +4,7 @@ import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { MarbotRuntimeAuthority } from './marbot.types';
 import { helperAnswer, systemKnowledgeAnswer } from './marbot-knowledge';
 import { proposeAction } from './marbot-action.service';
+import { proposeNamedTaskAction } from './marbot-named-action.service';
 
 export type NativeScope = MarbotRuntimeAuthority & { tenantId: string; companyId: string; userId: string; blockedReadModules?: string[]; blockedWriteModules?: string[] };
 export const dashboardRoles: RoleCode[] = [RoleCode.DIRECTOR, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER];
@@ -73,6 +74,8 @@ export function followUpQuestion(message: string, previous?: string): string {
 
 export async function answerNative(message: string, mode: AssistantMode, scope: NativeScope, db = prisma) {
   if (mode === 'DASHBOARD' && !canUseDashboard(scope)) throw new ForbiddenError('Dashboard Assistant hanya tersedia untuk pimpinan dengan akses data proyek.');
+  const namedProposal = await proposeNamedTaskAction(message, scope, db);
+  if (namedProposal) return namedProposal;
   const proposal = proposeAction(message, scope);
   if (proposal) return proposal;
   if (/\b(fitur|modul|workflow|alur|fungsi|sistem)\b/i.test(message) && !/berapa|jumlah|total|tampilkan/i.test(message)) {
@@ -89,6 +92,11 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
   }
   const tools = detectTools(message);
   if (!tools.length) return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['Panduan ERP 2026-09-30'] };
+  const requestsPeriod = /hari ini|today|kemarin|yesterday|besok|tomorrow|minggu|week|bulan|month|tahun|year|kuartal|quarter|\b20\d{2}-\d{2}(?:-\d{2})?\b/i.test(message);
+  if (tools.includes('projects') && requestsPeriod) return {
+    content: 'Periode proyek perlu diperjelas: apakah berdasarkan tanggal dibuat, jadwal pelaksanaan, atau status historis? Ringkasan proyek saat ini membaca status terkini dan belum menyediakan snapshot status masa lalu. Untuk aktivitas pada periode tertentu, tanyakan tugas atau biaya proyek; untuk status saat ini, tanyakan "Berapa proyek yang sedang berjalan?". Tidak ada query proyek dijalankan.',
+    tools: [], sources: [],
+  };
   if (/tahun|year|kuartal|quarter/i.test(message)) return { content: 'Rentang tahunan/kuartalan belum didukung pada query ini. Sebutkan tanggal YYYY-MM-DD, bulan YYYY-MM, hari ini, minggu ini/lalu/depan, atau bulan ini/lalu/depan. Tidak ada query dijalankan.', tools: [], sources: [] };
   if ((message.match(/\b20\d{2}-\d{2}(?:-\d{2})?\b/g) || []).length > 1) return { content: 'Query rentang beberapa tanggal belum didukung. Sebutkan satu tanggal, satu bulan, atau periode mingguan. Tidak ada query dijalankan.', tools: [], sources: [] };
   if (/\b(?:task|tugas) ini\b/i.test(message) && !/(?:task|tugas)\s+["“]/i.test(message)) return { content: 'Task yang dimaksud belum teridentifikasi. Tulis nama lengkap dalam tanda kutip, misalnya tugas "Nama task". Tidak ada data task diasumsikan.', tools: [], sources: [] };
@@ -137,6 +145,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
   if (explicitStatus && !['DRAFT', 'VERIFIED', 'RESERVED', 'STARTED', 'ACTIVE', 'NOT_STARTED', 'IN_PROGRESS', 'ON_PROGRESS', 'COMPLETED', 'DONE', 'BLOCKED', 'CLOSED', 'RESOLVED', 'OPEN'].includes(explicitStatus)) return { content: 'Status tersebut belum didukung pada query ini. Sebutkan status aktual yang valid. Tidak ada query dijalankan.', tools: [], sources: [] };
   const results: string[] = [];
   const used: string[] = [];
+  const periodDomains: string[] = [];
   for (const tool of tools) {
     try {
       if (tool === 'projects') {
@@ -159,6 +168,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
         requireTool(scope, 'PROJECTS', ['READ_TASK']);
         const self = !canUseDashboard(scope);
         const weekly = /minggu|week/i.test(message);
+        if (requestsPeriod) periodDomains.push('tasks');
         const overdueOnly = /terlambat|overdue|carry[ -]?over/i.test(message);
         const statuses = explicitStatus ? [explicitStatus] : /in[ _-]?progress|berjalan|sedang dikerjakan/i.test(message) ? ['IN_PROGRESS', 'ON_PROGRESS']
           : /belum mulai|not[ _-]?started/i.test(message) ? ['NOT_STARTED']
@@ -205,6 +215,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
           : `${overdueOnly ? 'Tidak ada task harian terlambat' : 'Belum ada task harian'} dalam cakupan akses Anda${weekly ? ' pada minggu tersebut' : ''}.`);
       } else if (tool === 'finance') {
         requireTool(scope, 'FINANCE', ['READ_PROJECT_FINANCE', 'READ_COMPANY_FINANCE', 'READ_FINANCE_SUMMARY']);
+        periodDomains.push('finance');
         // Match ProjectsService.getFinancialSummary, which is the source used by the ERP
         // financial-summary screen. DRAFT/REJECTED entries must never inflate actual cost.
         const recognizedStatuses = ['VALIDATED', 'APPROVED', 'POSTED_TO_WIP'];
@@ -226,6 +237,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
         const [total, urgent] = await Promise.all([db.service_case.count({ where }), db.service_case.count({ where: { ...where, priority: 'URGENT' } })]);
         results.push(`Tiket support ${explicitStatus ? `berstatus ${explicitStatus}` : closed ? 'selesai/ditutup' : 'terbuka'}: ${total}. Prioritas URGENT: ${urgent}.${urgent && !closed ? ' Saran: tinjau tiket urgent terlebih dahulu.' : ''}`);
       } else if (tool === 'kpi') {
+        periodDomains.push('kpi');
         // Company KPI includes HR/finance: restrict each definition to an authorized domain.
         if (!canUseDashboard(scope)) throw new ForbiddenError();
         const allowed = [];
@@ -243,5 +255,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
     }
   }
   const date = (d: Date) => d.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' });
-  return { content: `${results.join('\n\n')}\n\nPeriode filter waktu (untuk query yang meminta periode dan biaya/KPI): ${date(period.start)}–${date(new Date(period.end.getTime() - 1))}.\nSumber: data ERP sesuai akses Anda • ${now.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB.`, tools: used, sources: used.map(t => `ERP:${t}`) };
+  const filteredDomains = periodDomains.filter(domain => used.includes(domain));
+  const periodLabel = filteredDomains.length ? `Periode filter waktu (${filteredDomains.join(', ')}): ${date(period.start)}–${date(new Date(period.end.getTime() - 1))}.\n` : '';
+  return { content: `${results.join('\n\n')}\n\n${periodLabel}Sumber: data ERP sesuai akses Anda • ${now.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB.`, tools: used, sources: used.map(t => `ERP:${t}`) };
 }

@@ -225,7 +225,18 @@ async function main(): Promise<void> {
     assert(appSource.includes('restrictProjectMutationsByAuthority'), 'Project-aware mutation middleware is not mounted');
     assert(projectAuthorityMiddleware.includes("methods: ['POST']"), 'Staff Daily Task create allow-list is missing');
     assert(projectAuthorityMiddleware.includes("methods: ['PUT', 'PATCH', 'DELETE']"), 'Staff must retain full CRUD for owned Daily Tasks');
-    assert(!projectAuthorityMiddleware.includes("path: /^\\/weekly-tasks\\/?$/, methods: ['POST']"), 'Staff must not create Weekly Tasks without project authority');
+    assert(projectAuthorityMiddleware.includes("path: /^\\/weekly-tasks\\/?$/, methods: ['POST']"), 'Weekly self-submission allow-list is missing');
+    assert(routesSource.includes('ProjectsService.weeklyCreationStatus'), 'Weekly create must enforce scoped self-submission');
+    const submissionDb = {
+      project_member: { findFirst: async () => null, findMany: async () => [{ project_id: 'project-a' }] },
+      project_project: { findFirst: async () => ({ id: 'project-a' }) },
+      project_task_assignment: { findMany: async () => [], findFirst: async ({ where }: any) => where.assignee_id === staff.id ? { id: 'assignment-a' } : null },
+      iam_user_company_membership: { findFirst: async () => ({ id: 'membership-a', tenant_id: 'tenant-a' }) },
+    };
+    assert.equal(await ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: 'project-a' }, 'company-a', staff.id, submissionDb), 'PENDING_APPROVAL');
+    await assert.rejects(() => ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: 'project-a' }, 'company-a', 'staff-b', submissionDb), /diri sendiri/);
+    assert.throws(() => ProjectsService.assertWeeklyTaskActive('PENDING_APPROVAL'), /belum disetujui/);
+    assert.throws(() => ProjectsService.assertWeeklyTaskActive('REJECTED'), /belum disetujui/);
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.dailyTaskAccessWhere'));
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.taskAssignmentAccessWhere'));
     assert(routesSource.includes('Assignment harus dibuat melalui aksi assign-members'), 'Generic assignment create bypass must remain closed.');
@@ -264,8 +275,8 @@ async function main(): Promise<void> {
     assert(crmRoutes.includes("'/opportunities/:id/executive-override', requireActiveRole(RoleCode.DIRECTOR)"));
     assert(requestService.includes('instance.created_by_id !== requesterUserId'));
     assert(
-      projectWbsNode.includes('const canCreateDaily = !isPM && isWeeklyPic;'),
-      'Daily Task create UI must be restricted to the Weekly Task owner',
+      projectWbsNode.includes("const canCreateDaily = isWeeklyPic && !['PENDING_APPROVAL', 'REJECTED'].includes(weekly.status);"),
+      'Daily Task create UI must require Weekly ownership and an approved/active Weekly Task',
     );
     assert(managementReportRoutes.includes("requireActiveRole(RoleCode.OPERATIONAL_MANAGER)"));
     assert(managementReportRoutes.includes("requireActiveRole(RoleCode.DIRECTOR)"));

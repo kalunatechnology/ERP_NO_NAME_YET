@@ -34,8 +34,10 @@ export function systemKnowledgeAnswer(message: string, enabledModules: string[])
 export const procedures = [
   { id: 'reports', title: 'Laporan kerja', keywords: /laporan|report/i, path: '/reporting',
     content: 'Buka menu Laporan. Untuk laporan berkala, buka Tugas Harian lalu pilih Laporan Berkala. Data yang muncul mengikuti peran dan akses Anda. Jika menu tidak tersedia, hubungi admin perusahaan.' },
-  { id: 'timesheet', title: 'Timesheet dan lembur', keywords: /timesheet|lembur|jam kerja/i, path: '/tasks',
-    content: 'Buka Tugas Harian, lalu bagian Timesheet & Lembur Saya. Pilih proyek dan task yang sesuai pada formulir pencatatan waktu. Isi data wajib pada formulir, simpan, lalu periksa catatan di tabel timesheet. Persetujuan mengikuti alur perusahaan.' },
+  { id: 'timesheet', title: 'Timesheet dan lembur', keywords: /timesheet|timer|lembur|jam kerja/i, path: '/tasks',
+    content: 'Sebagai Staff, buka Tugas Harian lalu bagian Timesheet & Lembur Saya. Pilih proyek, tanggal kerja, dan task bila diperlukan, lalu mulai timer kerja. Hentikan timer saat selesai. Untuk lembur, mulai dan hentikan timer lembur serta isi alasannya. Kirim catatan setelah timer berhenti, lalu periksa riwayat dan status approval. Durasi dihitung server dari waktu mulai/selesai; jangan mengisi durasi manual.' },
+  { id: 'invoice', title: 'Invoice dan billing termin', keywords: /invoice|faktur|billing|tagihan/i, path: '/finance',
+    content: 'Untuk faktur penagihan klien, buka Finance lalu tab Billing Termin. Pilih Buat Proposal dan isi data yang diminta pada formulir. Proposal DRAFT diproses melalui Submit, lalu pihak yang berwenang melakukan Approve. Proposal APPROVED dapat diproses melalui Terbitkan Billing. Periksa dokumen dan status hasil sebelum mencatat pembayaran. Aksi yang tersedia mengikuti peran, entitlement, dan status dokumen; hubungi admin jika tab atau tombol tidak tersedia. Panduan ini tidak menyetujui atau menerbitkan invoice secara otomatis.' },
   { id: 'minutes', title: 'Notulensi meeting', keywords: /notulen|notulis|meeting|rapat/i, path: '/requests',
     content: 'Buka Requests & Meetings dan pilih meeting. Periksa nama Notulis. Hanya notulis yang ditunjuk dapat membuka editor. Pilih Tambah Notulensi atau Edit Notulensi, isi pembahasan, ringkasan, keputusan dan tindak lanjut. Simpan draft atau pilih Publikasikan setelah diperiksa.' },
   { id: 'tasks', title: 'Tugas harian', keywords: /tugas|task|pekerjaan/i, path: '/tasks',

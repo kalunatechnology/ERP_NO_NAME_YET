@@ -1571,6 +1571,14 @@ projectsRouter.use('/main-tasks', createCrudRouter({
 }));
 
 // Helper to normalize Weekly Tasks
+projectsRouter.post('/weekly-tasks/:id/review', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await ProjectsService.reviewWeeklyTask(req.params.id, req.body.decision, req.user, activeCompanyId(req));
+    invalidateDashboardCache();
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
 projectsRouter.use('/weekly-tasks', createCrudRouter({
   modelName: 'project_weekly_task',
   searchFields: ['target_description'],
@@ -1593,9 +1601,9 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     }
     data.tenant_id = mainTask.tenant_id;
     data.company_id = mainTask.company_id;
-    await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
     if (!data.assignee_id) throw new ValidationError('Assignee Weekly Task wajib dipilih dari assignment Main Task.');
+    const creationStatus = await ProjectsService.weeklyCreationStatus(req.user, mainTask, companyId, String(data.assignee_id));
     await ProjectsService.assertOperationalCompanyMember(String(data.assignee_id), activeCompanyId(req));
     const assignment = await prisma.project_task_assignment.findFirst({
       where: {
@@ -1615,7 +1623,8 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     data.week_number = schedule.weekNumber;
     // Progress is derived from Daily Tasks; API payloads cannot seed it.
     data.progress = 0;
-    if (!data.status) data.status = 'PLANNED';
+    if (creationStatus === 'PENDING_APPROVAL' || !data.status) data.status = creationStatus;
+    data.created_by_id = req.user!.id;
     // Weekly progress is controlled by Daily Task completion only. Ignoring
     // caller-supplied override flags prevents a hidden manual-progress path.
     data.is_progress_overridden = false;
@@ -1629,6 +1638,9 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     });
     if (!mainTask) throw new ValidationError('Hierarchy Weekly Task tidak valid.');
     await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
+    if (['PENDING_APPROVAL', 'REJECTED'].includes(existing.status) || ['PENDING_APPROVAL', 'REJECTED'].includes(String(data.status))) {
+      throw new ValidationError('Gunakan aksi approval untuk Weekly Task yang menunggu review; Weekly rejected tetap tercatat.');
+    }
     if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
     if (data.target_description !== undefined) {
@@ -1652,6 +1664,7 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
       select: { project_id: true },
     });
     await ProjectsService.assertCanManageProject(req.user, mainTask?.project_id, activeCompanyId(req));
+    if (existing.status === 'REJECTED') throw new ConflictError('Weekly Task yang ditolak tetap disimpan sebagai catatan pengajuan.');
     const dailyTaskCount = await prisma.project_daily_task.count({
       where: { weekly_task_id: existing.id, company_id: activeCompanyId(req) },
     });
@@ -1670,6 +1683,14 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
 }));
 
 // Helper to normalize Daily Tasks
+projectsRouter.delete('/daily-tasks/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ProjectsService.deleteDailyTask(req.params.id, req.user, activeCompanyId(req));
+    invalidateDashboardCache();
+    res.status(204).send();
+  } catch (error) { next(error); }
+});
+
 projectsRouter.use('/daily-tasks', createCrudRouter({
   modelName: 'project_daily_task',
   searchFields: [
@@ -1698,6 +1719,7 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
         })
       : null;
     if (!weeklyTask) throw new ValidationError('Weekly Task tidak valid atau berada di luar company aktif.');
+    ProjectsService.assertWeeklyTaskActive(weeklyTask.status);
     if (!weeklyTask.tenant_id || !weeklyTask.company_id) {
       throw new ValidationError('Weekly Task belum memiliki tenant/company scope yang valid.');
     }

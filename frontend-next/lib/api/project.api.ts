@@ -151,6 +151,9 @@ export type DailyTaskStatusValue = DailyTaskStatus | "PENDING" | "ON_PROGRESS" |
  */
 export type DailyTaskUpdatePayload = Pick<Partial<DailyTask>, "output_target" | "output_result" | "notes" | "is_blocked" | "block_reason"> & {
   status?: DailyTaskStatusValue;
+  title?: string;
+  time_slot?: string;
+  planned_date?: string;
 };
 
 const DAILY_TASK_STATUS_ALIASES: Record<string, DailyTaskStatus> = {
@@ -484,6 +487,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
       .map((m: any) => {
         const mId = String(m.id);
         const wTasks = weeklyByMain[mId] || [];
+        const activeWeeklyTasks = wTasks.filter(w => !['PENDING_APPROVAL', 'REJECTED'].includes(w.status));
         const assigns = assignmentsByMain[mId] || [];
         return {
           id: m.id,
@@ -493,8 +497,8 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
           description: m.description || "",
           weight: Number(m.weight || 10),
           // Main Task progress exists only as a roll-up of its Weekly Tasks.
-          progress: wTasks.length
-            ? Math.round((wTasks.reduce((sum, weekly) => sum + Number(weekly.progress || 0), 0) / wTasks.length) * 100) / 100
+          progress: activeWeeklyTasks.length
+            ? Math.round((activeWeeklyTasks.reduce((sum, weekly) => sum + Number(weekly.progress || 0), 0) / activeWeeklyTasks.length) * 100) / 100
             : 0,
           status: m.status || "PLANNED",
           priority: m.priority || "MEDIUM",
@@ -762,6 +766,11 @@ export async function deleteWeeklyTask(id: string | number) {
   await api.delete(`/api/v1/projects/weekly-tasks/${id}/`);
 }
 
+export async function reviewWeeklyTask(id: string | number, decision: "APPROVE" | "REJECT") {
+  const { data } = await api.post(`/api/v1/projects/weekly-tasks/${id}/review`, { decision });
+  return data;
+}
+
 /* ── Level 3: Daily Task CRUD ────────────────────── */
 /**
  * createDailyTask adapts a frontend operation to its HTTP API contract.
@@ -823,6 +832,9 @@ export async function updateDailyTask(id: string | number, payload: DailyTaskUpd
   // state (such as manual `progress`, task IDs, or hierarchy fields) from
   // leaking into the backend contract.
   const cleanPayload: Record<string, unknown> = {};
+  if (payload.title !== undefined) cleanPayload.title = payload.title;
+  if (payload.time_slot !== undefined) cleanPayload.time_slot = payload.time_slot;
+  if (payload.planned_date !== undefined) cleanPayload.planned_date = payload.planned_date;
   if (requestedStatus) cleanPayload.status = requestedStatus;
   if (payload.output_target !== undefined) cleanPayload.output_target = payload.output_target;
   if (payload.output_result !== undefined) cleanPayload.output_result = payload.output_result;

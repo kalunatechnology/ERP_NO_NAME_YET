@@ -79,6 +79,12 @@ async function main() {
     assert.equal(await prisma.project_project.count({ where: { project_name: name } }), 1, 'duplicate confirmation must create once');
     const history = await (await request(`/conversations/${proposal.done.conversationId}`)).json() as any;
     assert(history.data.messages.some((m: any) => /dibaca ulang/.test(m.content)), 'persisted verified result');
+    const conversationList = await (await request('/conversations')).json() as any;
+    assert(conversationList.data.some((c: any) => c.id === proposal.done.conversationId), 'created project conversation remains discoverable');
+    assert.equal((await execute()).status, 200, 'a verified action stays idempotently readable after project scope expansion');
+    const historicalAnswer = await chat('Berapa proyek berjalan bulan lalu?');
+    assert.match(historicalAnswer.text, /status historis/);
+    assert.doesNotMatch(historicalAnswer.text, /Proyek dalam akses Anda.*: \d/);
     const project = await prisma.project_project.findFirstOrThrow({ where: { project_name: name } });
     const task = await chat(`buat task ${JSON.stringify({ project_id: project.id, name: 'Isolated task', weight: 10 })}`);
     assert(task.done.action?.ticketId, task.text);
@@ -89,7 +95,8 @@ async function main() {
     const assignResult = await request(`/actions/${assignment.done.action.ticketId}/execute`, { confirmed: true });
     assert.equal(assignResult.status, 200, await assignResult.text());
     assert.equal(await prisma.project_task_assignment.count({ where: { main_task_id: main.id, assignee_id: assignee.id } }), 1);
-    const weeklyProposal = await chat(`buat target mingguan ${JSON.stringify({ main_task_id: main.id, assignee_id: assignee.id, week_number: 40, start_date: '2026-09-28', end_date: '2026-10-04', target_description: 'Output uji lokal' })}`);
+    const weeklyTitle = `Output uji lokal ${randomUUID()}`;
+    const weeklyProposal = await chat(`buat target mingguan ${JSON.stringify({ main_task_id: main.id, assignee_id: assignee.id, week_number: 40, start_date: '2026-09-28', end_date: '2026-10-04', target_description: weeklyTitle })}`);
     const weeklyResult = await request(`/actions/${weeklyProposal.done.action.ticketId}/execute`, { confirmed: true });
     assert.equal(weeklyResult.status, 200, await weeklyResult.text());
     const weekly = await prisma.project_weekly_task.findFirstOrThrow({ where: { main_task_id: main.id } });
@@ -102,7 +109,8 @@ async function main() {
     assert.equal(aggregate.status, 200, await aggregate.clone().text());
     assert.deepEqual((await aggregate.json() as any).data.aggregate, await prisma.proc_purchase_order.groupBy({ by: ['status'], where: { tenant_id: tenantId, company_id: companyId }, _count: { _all: true }, orderBy: { status: 'asc' } }));
     activeToken = signAccessToken({ userId: assignee.id, email: assignee.email, full_name: assignee.full_name || '', tenant_id: tenantId, roles: [] });
-    const dailyProposal = await chat(`buat tugas harian ${JSON.stringify({ weekly_task_id: weekly.id, title: 'Isolated daily', time_slot: '08:00-09:00', output_target: 'Output uji lokal' })}`);
+    const dailyTitle = `Isolated daily ${randomUUID()}`;
+    const dailyProposal = await chat(`buat tugas harian ${JSON.stringify({ weekly_task_id: weekly.id, title: dailyTitle, time_slot: '08:00-09:00', output_target: 'Output uji lokal' })}`);
     const dailyResult = await request(`/actions/${dailyProposal.done.action.ticketId}/execute`, { confirmed: true });
     assert.equal(dailyResult.status, 200, await dailyResult.text());
     const daily = await prisma.project_daily_task.findFirstOrThrow({ where: { weekly_task_id: weekly.id } });
@@ -110,6 +118,16 @@ async function main() {
     const updateResult = await request(`/actions/${update.done.action.ticketId}/execute`, { confirmed: true });
     assert.equal(updateResult.status, 200, await updateResult.text());
     assert.equal((await prisma.project_daily_task.findUniqueOrThrow({ where: { id: daily.id } })).notes, 'Catatan uji terverifikasi');
+    const namedUpdate = await chat(`Ubah tugas "${dailyTitle}" catatan "Pembaruan melalui nama"`);
+    assert(namedUpdate.done.action, namedUpdate.text);
+    assert.equal(namedUpdate.done.action.payload.id, daily.id);
+    assert.equal((await request(`/actions/${namedUpdate.done.action.ticketId}/execute`, { confirmed: true })).status, 200);
+    assert.equal((await prisma.project_daily_task.findUniqueOrThrow({ where: { id: daily.id } })).notes, 'Pembaruan melalui nama');
+    const namedDaily = await chat(`Buat tugas harian "Named daily" untuk target mingguan "${weeklyTitle}" jam "10:00-11:00" hasil "Hasil berdasarkan nama"`);
+    assert(namedDaily.done.action, namedDaily.text);
+    assert.equal(namedDaily.done.action.payload.weekly_task_id, weekly.id);
+    assert.equal((await request(`/actions/${namedDaily.done.action.ticketId}/execute`, { confirmed: true })).status, 200);
+    assert.equal(await prisma.project_daily_task.count({ where: { weekly_task_id: weekly.id, title: 'Named daily' } }), 1);
     activeToken = token;
     const resourceTitle = `Implementation ${randomUUID()}`;
     const resourceCreate = await chat(`data ${JSON.stringify({ resource: 'implementation.work-items', operation: 'create', payload: { module_code: 'MARBOT', work_item_type: 'TEST', title: resourceTitle, description: 'Isolated database write', status: 'OPEN' } })}`);
@@ -130,6 +148,14 @@ async function main() {
       assert.equal((await request(`/actions/${revoked.done.action.ticketId}/execute`, { confirmed: true })).status, 403);
       assert.notEqual((await prisma.project_daily_task.findUniqueOrThrow({ where: { id: daily.id } })).notes, 'Must not save');
     } finally { await prisma.iam_field_permission.delete({ where: { id: policy.id } }); }
+    // Results for a newly created project must disappear when that project is revoked.
+    activeToken = token;
+    await prisma.project_project.update({ where: { id: project.id }, data: { created_by_id: assignee.id } });
+    try {
+      const revokedHistory = await (await request(`/conversations/${proposal.done.conversationId}`)).json() as any;
+      assert(!revokedHistory.data.messages.some((m: any) => /dibaca ulang/.test(m.content)), 'revoked project result cannot replay');
+      assert.equal((await execute()).status, 403, 'verified result replay also rechecks revoked authority');
+    } finally { await prisma.project_project.update({ where: { id: project.id }, data: { created_by_id: user.id } }); }
     console.log('Isolated PostgreSQL E2E passed: MCP handshake/tools, real auth/scope, aggregates, cross-module create/update, project hierarchy, assignment, readback, concurrent replay, persisted verification and permission revocation.');
   } finally {
     server.closeAllConnections();

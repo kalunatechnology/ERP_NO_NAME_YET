@@ -14,6 +14,9 @@ async function main() {
   assert.deepEqual(meetingOccurrenceDates({ ...schedule, recurrence_days: [0, 6] }), ['2026-10-03', '2026-10-04']);
   assert.deepEqual(meetingOccurrenceDates({ ...schedule, recurrence_type: 'NON_RECURRING' }), ['2026-09-28']);
   assert.throws(() => resolveMeetingOccurrenceDate(schedule, '2026-10-03'), /bukan occurrence/);
+  assert.throws(() => resolveMeetingOccurrenceDate(schedule, '2026-10-05'), /bukan occurrence/, 'An ended series must not accept a later weekday');
+  assert.deepEqual(meetingOccurrenceDates({ ...schedule, start_at: new Date('2020-01-05T17:00:00Z'), recurrence_end_at: new Date('2020-01-10T16:59:00Z') }),
+    ['2020-01-06', '2020-01-07', '2020-01-08', '2020-01-09', '2020-01-10'], 'Past series must stay bounded independently of the current date');
   assert.throws(() => meetingOccurrenceDates({ ...schedule, timezone: 'Invalid/Timezone' }), /Timezone/);
 
   const meeting: any = {

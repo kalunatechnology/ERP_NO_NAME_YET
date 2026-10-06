@@ -5,6 +5,8 @@ import { ForbiddenError, NotFoundError, UnauthorizedError } from '../../utils/er
 import { ProjectsService } from './projects.service';
 
 const SELF_SERVICE_MUTATIONS: Array<{ path: RegExp; methods?: string[] }> = [
+  // The canonical create hook validates self-submission and forces pending status.
+  { path: /^\/weekly-tasks\/?$/, methods: ['POST'] },
   { path: /^\/daily-tasks\/[^/]+\/(update[-_]progress|report[-_]blocked|request[-_]transfer)\/?$/ },
   { path: /^\/daily-tasks\/?$/, methods: ['POST'] },
   { path: /^\/daily-tasks\/[^/]+\/?$/, methods: ['PUT', 'PATCH', 'DELETE'] },

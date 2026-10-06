@@ -10,6 +10,7 @@ interface ProjectWbsTreeProps {
   canManageWbs: boolean;
   canAssignTeam: boolean;
   canManageWeeklyTasks: boolean;
+  onReviewWeeklyTask: (id: string | number, decision: "APPROVE" | "REJECT") => Promise<void>;
   currentUserId: string;
   userRole: string;
   onCreateMainTaskClick: () => void;
@@ -31,6 +32,7 @@ export function ProjectWbsTree({
   canManageWbs,
   canAssignTeam,
   canManageWeeklyTasks,
+  onReviewWeeklyTask,
   currentUserId,
   userRole,
   onCreateMainTaskClick,
@@ -213,6 +215,7 @@ export function ProjectWbsTree({
               canManageWbs={canManageWbs}
               canAssignTeam={canAssignTeam}
               canManageWeeklyTasks={canManageWeeklyTasks}
+              onReviewWeeklyTask={onReviewWeeklyTask}
               currentUserId={currentUserId}
               userRole={userRole}
               onAssignClick={onAssignClick}

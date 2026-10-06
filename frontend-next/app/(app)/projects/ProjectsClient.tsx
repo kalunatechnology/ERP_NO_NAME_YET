@@ -8,7 +8,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Plus, RefreshCw, Trash2, CheckCircle2,
   TrendingUp, Users, ShieldCheck, Play,
@@ -19,7 +19,7 @@ import {
   Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, ProjectAuthority, ProjectSupervisor,
   loadAllProjects, createProject, deleteProject,
   createMainTask, deleteMainTask,
-  createWeeklyTask, deleteWeeklyTask,
+  createWeeklyTask, deleteWeeklyTask, reviewWeeklyTask,
   createDailyTask, updateDailyTask, deleteDailyTask,
   requestTaskTransfer, directReassignDailyTask, getTransferRequests, approveTransfer, rejectTransfer,
   recalculateProjectHealth,
@@ -86,13 +86,15 @@ function CategoryLabel({ label }: { label?: string | null }) {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function ProjectsClient() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, company } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const requestedProjectId = searchParams.get("project");
   const requestedProjectTab = searchParams.get("tab");
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedId, setSelectedId] = useState<string | number | null>(null);
-  const [activeTab, setActiveTab] = useState("TREE");
+  const [selectedId, setSelectedId] = useState<string | number | null>(requestedProjectId);
+  const [activeTab, setActiveTab] = useState(requestedProjectTab || "TREE");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
@@ -180,6 +182,9 @@ export default function ProjectsClient() {
   });
 
   const [editDailyForm, setEditDailyForm] = useState({
+    title: "",
+    planned_date: "",
+    time_slot: "",
     status: "COMPLETED" as "NOT_STARTED" | "IN_PROGRESS" | "PENDING" | "ON_PROGRESS" | "COMPLETED" | "DONE" | "BLOCKED",
     progress: 100,
     output_target: "",
@@ -208,7 +213,7 @@ export default function ProjectsClient() {
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [transfers, setTransfers] = useState<TaskTransfer[]>([]);
 
-  const selectedProject = projects.find(p => String(p.id) === String(selectedId)) || projects[0] || null;
+  const selectedProject = projects.find(p => String(p.id) === String(selectedId)) || null;
   const completedChecklistCount = checklistItems.filter((item) => ['DONE', 'COMPLETED', 'CHECKED', 'APPROVED'].includes(String(item.status).toUpperCase())).length;
   const checklistProgress = checklistItems.length > 0 ? Math.round((completedChecklistCount / checklistItems.length) * 100) : 0;
 
@@ -292,8 +297,29 @@ export default function ProjectsClient() {
   const activeRoleCode = user?.active_role_code || "";
 
   // Stable ref to the current selectedId so fetchProjects can read it without being in its deps
-  const selectedIdRef = useRef<string | number | null>(null);
+  const selectedIdRef = useRef<string | number | null>(requestedProjectId);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+  const lastRouteProjectRef = useRef(requestedProjectId);
+  useEffect(() => {
+    if (lastRouteProjectRef.current !== requestedProjectId) {
+      lastRouteProjectRef.current = requestedProjectId;
+      if (requestedProjectId) {
+        selectedIdRef.current = requestedProjectId;
+        setSelectedId(requestedProjectId);
+      }
+    }
+  }, [requestedProjectId]);
+  useEffect(() => { if (requestedProjectTab) setActiveTab(requestedProjectTab); }, [requestedProjectTab]);
+
+  const navigateProject = (id: string | number, tab = activeTab) => {
+    selectedIdRef.current = id;
+    setSelectedId(id);
+    setActiveTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("project", String(id));
+    params.set("tab", tab);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   // Request-version counter: prevents a slow response from overwriting a newer one.
   const fetchVersionRef = useRef(0);
@@ -340,16 +366,13 @@ export default function ProjectsClient() {
 
       // Read current selectedId via ref (not dep) to preserve selection across silent refreshes
       const currentSelectedId = selectedIdRef.current;
-      const targetId = requestedProjectId && data.some(p => String(p.id) === requestedProjectId)
-        ? requestedProjectId
-        : currentSelectedId && data.some(p => String(p.id) === String(currentSelectedId))
-        ? currentSelectedId
-        : data[0]?.id ?? null;
+      // A selected project is never replaced by the first row on a refresh/tab change.
+      const targetId = currentSelectedId ?? data[0]?.id ?? null;
 
       if (targetId) {
+        selectedIdRef.current = targetId;
         setSelectedId(targetId);
       }
-      if (requestedProjectTab) setActiveTab(requestedProjectTab);
 
       void auxiliaryData.then((auxiliary) => {
         if (version !== fetchVersionRef.current) return;
@@ -387,7 +410,7 @@ export default function ProjectsClient() {
       }
     }
     // selectedId intentionally excluded: read via ref to avoid re-creating this callback on selection change
-  }, [activeRoleCode, delegatedModulesKey, enabledModulesKey, requestedProjectId, requestedProjectTab, userRole]);
+  }, [activeRoleCode, delegatedModulesKey, enabledModulesKey, userRole]);
 
 /**
  * openAssignModal coordinates the UI behavior represented by this function.
@@ -451,14 +474,13 @@ export default function ProjectsClient() {
       activeRoleCode,
       delegatedModulesKey,
       enabledModulesKey,
-      requestedProjectId || "",
-      requestedProjectTab || "",
+      company || "",
       userRole,
     ].join("::");
     if (automaticFetchKeyRef.current === automaticFetchKey) return;
     automaticFetchKeyRef.current = automaticFetchKey;
     fetchProjects();
-  }, [activeRoleCode, delegatedModulesKey, enabledModulesKey, fetchProjects, requestedProjectId, requestedProjectTab, userRole]);
+  }, [activeRoleCode, company, delegatedModulesKey, enabledModulesKey, fetchProjects, userRole]);
 
   useEffect(() => {
     const projectId = selectedProjectId;
@@ -886,7 +908,7 @@ export default function ProjectsClient() {
             : main,
         ),
       })));
-      toast.success(`Target minggu #${weeklyForm.week_number} berhasil dibuat.`);
+      toast.success(createdWeekly?.status === 'PENDING_APPROVAL' ? "Target mingguan diajukan dan menunggu approval PM." : `Target minggu #${weeklyForm.week_number} berhasil dibuat.`);
       setWeeklyForm({ week_number: "1", target_description: "", start_date: "", end_date: "", assignee_id: "" });
       setWeeklyErrors({});
       setIsCreateWeeklyOpen(false);
@@ -960,6 +982,7 @@ export default function ProjectsClient() {
  */
   const handleSaveEditDaily = async () => {
     if (!activeDailyTask) return;
+    if (!editDailyForm.title.trim() || !editDailyForm.time_slot.trim()) { toast.error("Aktivitas dan slot waktu wajib diisi."); return; }
     if (["COMPLETED", "DONE"].includes(editDailyForm.status) && !editDailyForm.output_result.trim()) {
       toast.error("Output Hasil wajib diisi sebelum Daily Task dapat diselesaikan.");
       return;
@@ -970,6 +993,9 @@ export default function ProjectsClient() {
     }
     try {
       await updateDailyTask(activeDailyTask.id, {
+        title: editDailyForm.title.trim(),
+        time_slot: editDailyForm.time_slot.trim(),
+        ...(editDailyForm.planned_date ? { planned_date: editDailyForm.planned_date.slice(0, 10) } : {}),
         status: editDailyForm.status,
         ...(!activeDailyTask.output_target?.trim() ? { output_target: editDailyForm.output_target.trim() } : {}),
         output_result: editDailyForm.output_result,
@@ -1107,7 +1133,7 @@ export default function ProjectsClient() {
         planned_end_date: localDateKey(new Date(Date.now() + 30 * 86400000))
       });
       await fetchProjects(true);
-      if (res?.id) setSelectedId(res.id);
+      if (res?.id) navigateProject(res.id);
     } catch {
       toast.error("Gagal membuat proyek baru");
     }
@@ -1219,7 +1245,7 @@ export default function ProjectsClient() {
           <select
             id="project-selector"
             value={selectedId ?? ""}
-            onChange={(e) => setSelectedId(e.target.value)}
+            onChange={(e) => navigateProject(e.target.value)}
             className="block h-10 w-full min-w-0 max-w-full truncate px-3 rounded-xl border border-text-tertiary bg-white text-xs font-semibold text-text-primary outline-none focus:ring-2 focus:ring-brand-green/40"
           >
             {filteredProjects.length === 0 && <option disabled value="">Tidak ada proyek yang cocok</option>}
@@ -1537,7 +1563,7 @@ export default function ProjectsClient() {
         {/* Widget 3: Project List & Milestone Stepper (Full Width Live Project Data) */}
         {(userRole !== "staff" || isActingProjectManager) && <ProjectMilestoneCard
           selectedProjectId={selectedId ?? ""}
-          onSelectProject={(id) => setSelectedId(id)}
+          onSelectProject={(id) => navigateProject(id)}
           milestones={realMilestones}
           projects={projects.map((p) => ({
             id: String(p.id),
@@ -1561,7 +1587,7 @@ export default function ProjectsClient() {
         ]).map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => selectedId != null ? navigateProject(selectedId, tab.key) : setActiveTab(tab.key)}
             className={cn(
               "px-4 py-2 text-xs font-bold rounded-xl whitespace-nowrap transition-all flex items-center gap-2",
               activeTab === tab.key
@@ -1591,6 +1617,13 @@ export default function ProjectsClient() {
           canManageWbs={Boolean(selectedAuthority?.can_manage_wbs)}
           canAssignTeam={Boolean(selectedAuthority?.can_assign_team)}
           canManageWeeklyTasks={Boolean(selectedAuthority?.can_manage_weekly_tasks)}
+          onReviewWeeklyTask={async (weeklyId, decision) => {
+            try {
+              await reviewWeeklyTask(weeklyId, decision);
+              toast.success(decision === "APPROVE" ? "Weekly Task disetujui." : "Weekly Task ditolak.");
+              await fetchProjects(true);
+            } catch (error) { toast.error(getApiErrorDetail(error, "Gagal mereview Weekly Task.")); }
+          }}
           currentUserId={String(user?.id || "")}
           userRole={userRole}
           onCreateMainTaskClick={() => setIsCreateMainTaskOpen(true)}
@@ -1606,7 +1639,9 @@ export default function ProjectsClient() {
           }}
           onCreateWeeklyClick={(main) => {
             setActiveMainTask(main);
-            const defaultAssigneeId = main.assignments?.[0]?.assignee || main.assignments?.[0]?.assignee_id || "";
+            const defaultAssigneeId = selectedAuthority?.can_manage_weekly_tasks
+              ? main.assignments?.[0]?.assignee || main.assignments?.[0]?.assignee_id || ""
+              : user?.id || "";
             const today = localDateKey();
             const nextWeek = localDateKey(new Date(Date.now() + 6 * 86400000));
             setWeeklyForm({
@@ -1686,6 +1721,9 @@ export default function ProjectsClient() {
           onEditDailyClick={(daily) => {
             setActiveDailyTask(daily);
             setEditDailyForm({
+              title: daily.title || daily.activity_input || "",
+              planned_date: daily.planned_date?.slice(0, 10) || "",
+              time_slot: daily.time_slot || "",
               status: daily.status,
               progress: daily.progress || 0,
               output_target: daily.output_target || "",
@@ -1891,6 +1929,9 @@ export default function ProjectsClient() {
                                   onClick={() => {
                                     setActiveDailyTask(daily);
                                     setEditDailyForm({
+                                      title: daily.title || daily.activity_input || "",
+                                      planned_date: daily.planned_date?.slice(0, 10) || "",
+                                      time_slot: daily.time_slot || "",
                                       status: daily.status,
                                       progress: daily.progress || 0,
                                       output_target: daily.output_target || "",
@@ -1920,6 +1961,11 @@ export default function ProjectsClient() {
                                   <RefreshCw size={12} />
                                 </button>
                               )}
+                              {isDailyOwner && <button type="button" onClick={async () => {
+                                if (!confirm(`Hapus Daily Task "${daily.title || daily.activity_input}"?`)) return;
+                                try { await deleteDailyTask(daily.id); toast.success("Daily Task dihapus."); await fetchProjects(true); }
+                                catch (error) { toast.error(getApiErrorDetail(error, "Gagal menghapus Daily Task.")); }
+                              }} className="p-1 rounded text-text-secondary hover:text-red-600" title="Hapus Daily Task"><Trash2 size={12} /></button>}
                             </div>
                           </td>
                         </tr>
@@ -2400,6 +2446,7 @@ export default function ProjectsClient() {
               <label className="text-xs font-bold text-text-primary block mb-1">Assignee / PIC Mingguan *</label>
               <select
                 value={weeklyForm.assignee_id}
+                disabled={!selectedAuthority?.can_manage_weekly_tasks}
                 onChange={e => {
                   setWeeklyForm({ ...weeklyForm, assignee_id: e.target.value });
                   setWeeklyErrors((current) => ({ ...current, assignee_id: "" }));
@@ -2471,7 +2518,7 @@ export default function ProjectsClient() {
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => { setIsCreateWeeklyOpen(false); setWeeklyErrors({}); }} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
             <button disabled={weeklySaving} onClick={handleAddWeeklyPlan} className="btn-primary py-1.5 px-4 text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
-              {weeklySaving ? "Menyimpan..." : "Simpan Target Mingguan"}
+              {weeklySaving ? "Menyimpan..." : selectedAuthority?.can_manage_weekly_tasks ? "Simpan Target Mingguan" : "Ajukan Target Mingguan"}
             </button>
           </div>
         </div>
@@ -2592,6 +2639,11 @@ export default function ProjectsClient() {
         subtitle={`${activeDailyTask?.title || activeDailyTask?.activity_input || "Daily Task"} · ${selectedProject?.project_name || "Project"}`}
         maxWidth="4xl"
       >
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <label className="text-xs font-semibold">Aktivitas Harian<input value={editDailyForm.title} onChange={event => setEditDailyForm({ ...editDailyForm, title: event.target.value })} className="input mt-1 text-xs" /></label>
+          <label className="text-xs font-semibold">Tanggal<input type="date" value={editDailyForm.planned_date} onChange={event => setEditDailyForm({ ...editDailyForm, planned_date: event.target.value })} className="input mt-1 text-xs" /></label>
+          <label className="text-xs font-semibold">Slot Waktu<input value={editDailyForm.time_slot} onChange={event => setEditDailyForm({ ...editDailyForm, time_slot: event.target.value })} className="input mt-1 text-xs" /></label>
+        </div>
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,.75fr)]">
           <div className="lg:col-start-2 lg:row-start-1">
             <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3">

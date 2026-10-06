@@ -170,6 +170,66 @@ export class ProjectsService {
     }
   }
 
+  static async weeklyCreationStatus(user: any, mainTask: { id: string; project_id: string }, companyId: string, assigneeId: string, db: any = prisma): Promise<string> {
+    if (await this.hasProjectManagementAuthority(user, mainTask.project_id, companyId, db)) return 'PLANNED';
+    if (!user?.id || user.roles?.includes(RoleCode.SUPER_ADMIN) || this.activeRole(user) === RoleCode.DIRECTOR) {
+      throw new ForbiddenError('User ini tidak dapat mengajukan Weekly Task.');
+    }
+    await this.assertActiveCompanyMember(user.id, companyId, db);
+    await this.assertCanViewProject(user, mainTask.project_id, companyId, db);
+    const assignment = await db.project_task_assignment.findFirst({
+      where: { main_task_id: mainTask.id, company_id: companyId, assignee_id: user.id },
+      select: { id: true },
+    });
+    if (!assignment || assigneeId !== user.id) {
+      throw new ForbiddenError('Weekly Task hanya dapat diajukan untuk diri sendiri pada Main Task yang ditugaskan kepada Anda.');
+    }
+    return 'PENDING_APPROVAL';
+  }
+
+  static assertWeeklyTaskActive(status: string) {
+    if (['PENDING_APPROVAL', 'REJECTED'].includes(status)) {
+      throw new ValidationError('Weekly Task belum disetujui; belum dapat digunakan untuk Daily Task.');
+    }
+  }
+
+  static async reviewWeeklyTask(id: string, decision: string, user: any, companyId: string) {
+    if (!['APPROVE', 'REJECT'].includes(decision)) throw new ValidationError('Keputusan approval Weekly Task tidak valid.');
+    return prisma.$transaction(async (tx) => {
+      const weekly = await tx.project_weekly_task.findFirst({ where: { id, company_id: companyId, tenant_id: user?.tenant_id } });
+      if (!weekly) throw new NotFoundError('WeeklyTask');
+      const main = await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } });
+      if (!main) throw new ValidationError('Hierarchy Weekly Task tidak valid.');
+      await this.assertCanManageProject(user, main.project_id, companyId, tx);
+      const status = decision === 'APPROVE' ? 'PLANNED' : 'REJECTED';
+      const changed = await tx.project_weekly_task.updateMany({
+        where: { id, company_id: companyId, status: 'PENDING_APPROVAL' },
+        data: { status, updated_at: new Date() },
+      });
+      if (changed.count !== 1) throw new ConflictError('Weekly Task tidak lagi menunggu approval.');
+      await this.logActivity({ projectId: main.project_id, tenantId: weekly.tenant_id, companyId,
+        actorId: user.id, taskLevel: 'WEEKLY', taskId: id, taskTitle: weekly.target_description,
+        action: decision === 'APPROVE' ? 'WEEKLY_APPROVED' : 'WEEKLY_REJECTED',
+        fieldName: 'status', oldValue: 'PENDING_APPROVAL', newValue: status }, tx);
+      await this.recalculateTaskTree({ weeklyTaskId: id, companyId }, tx);
+      return tx.project_weekly_task.findFirst({ where: { id, company_id: companyId } });
+    }, PROJECT_TRANSACTION_OPTIONS);
+  }
+
+  static async deleteDailyTask(id: string, user: any, companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      const { task, projectId } = await this.assertCanOperateDailyTask(id, user, companyId, tx);
+      await tx.project_control_item.deleteMany({ where: { daily_task_id: id, company_id: companyId } });
+      await tx.project_task_transfer_request.deleteMany({ where: { daily_task_id: id, company_id: companyId } });
+      // Preserve meeting action items while removing their link to the deleted task.
+      await tx.request_meeting_action_item.updateMany({ where: { daily_task_id: id, company_id: companyId }, data: { daily_task_id: null } });
+      await tx.project_daily_task.delete({ where: { id } });
+      await this.logActivity({ projectId, tenantId: task.tenant_id, companyId, actorId: user.id,
+        taskLevel: 'DAILY', taskId: id, taskTitle: task.title, action: 'DAILY_DELETED' }, tx);
+      await this.recalculateTaskTree({ weeklyTaskId: task.weekly_task_id, companyId }, tx);
+    }, PROJECT_TRANSACTION_OPTIONS);
+  }
+
   static async assertCanAssignProjectMembers(user: any, projectId: string, companyId: string, db: any = prisma): Promise<void> {
     await this.assertCanManageProject(user, projectId, companyId, db);
   }
@@ -1120,7 +1180,7 @@ export class ProjectsService {
         companyId ??= wt?.company_id ?? undefined;
         if (wt) {
           mainId = wt.main_task_id ?? undefined;
-          if (!wt.is_progress_overridden) {
+          if (!wt.is_progress_overridden && !['PENDING_APPROVAL', 'REJECTED'].includes(wt.status)) {
             const dailyTasks = await tx.project_daily_task.findMany({
               where: { weekly_task_id: weeklyId, ...(companyId ? { company_id: companyId } : {}) },
               select: { progress: true, is_blocked: true, status: true },
@@ -1168,7 +1228,7 @@ export class ProjectsService {
           projId = mt.project_id ?? undefined;
           if (!mt.is_progress_overridden) {
             const weeklyTasks = await tx.project_weekly_task.findMany({
-              where: { main_task_id: mainId, ...(companyId ? { company_id: companyId } : {}) },
+              where: { main_task_id: mainId, status: { notIn: ['PENDING_APPROVAL', 'REJECTED'] }, ...(companyId ? { company_id: companyId } : {}) },
             });
             if (weeklyTasks.length > 0) {
               const avg =
@@ -1640,10 +1700,22 @@ export class ProjectsService {
       }
       const outputComparison = compareTaskOutput(outputTarget, outputResult);
 
+      if (data.title !== undefined && !String(data.title).trim()) throw new ValidationError('Aktivitas harian wajib diisi.');
+      if (data.time_slot !== undefined && !String(data.time_slot).trim()) throw new ValidationError('Slot waktu aktivitas wajib diisi.');
+      let plannedDate = task.planned_date;
+      if (data.planned_date !== undefined) {
+        const value = String(data.planned_date);
+        const date = new Date(value);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+          throw new ValidationError('Tanggal Daily Task tidak valid.');
+        }
+        plannedDate = date;
+      }
       const baseUpdateData = {
         title: data.title ?? data.activity_input ?? task.title,
         description: data.description !== undefined ? data.description : task.description,
         time_slot: data.time_slot !== undefined ? data.time_slot : task.time_slot,
+        planned_date: plannedDate,
         output_result: outputResult,
         notes: data.notes !== undefined ? data.notes : task.notes,
         progress,
