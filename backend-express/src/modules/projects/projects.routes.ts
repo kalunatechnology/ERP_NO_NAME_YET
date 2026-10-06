@@ -17,6 +17,7 @@ import {
 } from '../master_data/employee-provisioning.service';
 import { invalidateDashboardCache } from '../dashboard/dashboard.routes';
 import { compareTaskOutput } from './output-comparison';
+import { CustomerPartyService } from './customer-party.service';
 
 export const projectsRouter = Router();
 
@@ -2309,45 +2310,30 @@ projectsRouter.use('/projects', createCrudRouter({
     if (!data.project_code && data.code) data.project_code = data.code;
     if (!data.project_code) data.project_code = `PRJ-${Date.now().toString().slice(-4)}`;
 
-    // 2. Default required schema fields
-    if (data.customer_name === undefined || data.customer_name === null || data.customer_name === '') {
-      data.customer_name = String(data.client_name ?? '').trim();
-      if (!data.customer_name) throw new ValidationError('Nama customer wajib diisi.');
-    } else {
-      // Auto-register to database master_party if it's a new client (Strict Tenant Scoped)
-      const clientName = String(data.customer_name).trim();
-      const tenantId = req.user?.tenant_id;
-      if (!tenantId) throw new ForbiddenError('Tenant aktif diperlukan.');
-      const companyId = activeCompanyId(req);
-      const existing = await prisma.master_party.findFirst({
-        where: {
-          tenant_id: tenantId,
-          company_id: companyId,
-          OR: [
-            { display_name: { equals: clientName, mode: 'insensitive' } },
-            { legal_name: { equals: clientName, mode: 'insensitive' } },
-          ],
-        },
-      });
+    // 2. Customer master relation.
+    // customer_name remains the human-readable project snapshot, while
+    // customer_party_id is the authoritative Finance/CRM relation.
+    const clientName = String(
+      data.customer_name ?? data.client_name ?? '',
+    ).trim();
 
-      if (!existing && clientName) {
-        const cleanCode = clientName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
-        await prisma.master_party.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenant_id: tenantId,
-            company_id: companyId,
-            created_by_id: req.user?.id,
-            party_code: `CUST-${cleanCode || Date.now().toString().slice(-4)}`,
-            party_type: 'CUSTOMER',
-            legal_name: clientName,
-            display_name: clientName,
-            tax_number: '',
-            status: 'ACTIVE',
-          },
-        });
-      }
+    if (!clientName) {
+      throw new ValidationError('Nama customer wajib diisi.');
     }
+
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new ForbiddenError('Tenant aktif diperlukan.');
+
+    const companyId = activeCompanyId(req);
+    const customerParty = await CustomerPartyService.ensureByName(prisma, {
+      customerName: clientName,
+      companyId,
+      tenantId,
+      userId: req.user?.id ?? null,
+    });
+
+    data.customer_name = clientName;
+    data.customer_party_id = customerParty.id;
     if (data.manager_name === undefined || data.manager_name === null || data.manager_name === '') {
       data.manager_name = data.pm_name || data.project_manager_name || (req.user as any)?.full_name;
       if (!String(data.manager_name ?? '').trim()) throw new ValidationError('Nama Project Manager wajib diisi.');
@@ -2384,9 +2370,38 @@ projectsRouter.use('/projects', createCrudRouter({
     return data;
   },
   beforeUpdate: async (req, data, existing) => {
-    await ProjectsService.assertCanManageProject(req.user, existing.id, activeCompanyId(req));
+    const companyId = activeCompanyId(req);
+    await ProjectsService.assertCanManageProject(req.user, existing.id, companyId);
     if (data.name && !data.project_name) data.project_name = data.name;
     if (data.code && !data.project_code) data.project_code = data.code;
+
+    // Never trust a client-supplied party FK. Resolve it from the customer name
+    // inside the active company so Project and Finance cannot drift apart.
+    if (data.customer_name !== undefined || data.client_name !== undefined) {
+      const clientName = String(
+        data.customer_name ?? data.client_name ?? '',
+      ).trim();
+
+      if (!clientName) {
+        throw new ValidationError('Nama customer wajib diisi.');
+      }
+
+      const tenantId = req.user?.tenant_id ?? existing.tenant_id;
+      const customerParty = await CustomerPartyService.ensureByName(prisma, {
+        customerName: clientName,
+        companyId,
+        tenantId,
+        userId: req.user?.id ?? null,
+      });
+
+      data.customer_name = clientName;
+      data.customer_party_id = customerParty.id;
+    } else {
+      delete data.customer_party_id;
+    }
+
+    delete data.client_name;
+
     if (data.planned_start_date && typeof data.planned_start_date === 'string') {
       data.planned_start_date = new Date(data.planned_start_date);
     }
