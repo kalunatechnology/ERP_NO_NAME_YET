@@ -11,6 +11,40 @@ import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../utils/errors';
 
+type DriverAdapterErrorLike =
+  Error & {
+    cause?: {
+      kind?: unknown;
+      constraint?: unknown;
+      originalCode?: unknown;
+      originalMessage?: unknown;
+    };
+  };
+
+function getDriverAdapterErrorKind(
+  err: unknown,
+): string | null {
+  if (!(err instanceof Error)) {
+    return null;
+  }
+
+  if (err.name !== 'DriverAdapterError') {
+    return null;
+  }
+
+  const adapterError =
+    err as DriverAdapterErrorLike;
+
+  const kind =
+    adapterError.cause?.kind;
+
+  if (typeof kind === 'string') {
+    return kind;
+  }
+
+  return err.message || null;
+}
+
 /**
  * Global Error Handler Middleware.
  *
@@ -148,7 +182,43 @@ export function errorHandler(
   }
 
   // -----------------------------------------------------------------------
-  // 4. Generic / Unknown Errors
+  // 4. Prisma Driver Adapter Errors (Neon/Pg adapter error interception)
+  // -----------------------------------------------------------------------
+  const driverAdapterErrorKind = getDriverAdapterErrorKind(err);
+  if (driverAdapterErrorKind) {
+    console.error('[prisma-driver-adapter]', driverAdapterErrorKind);
+
+    if (driverAdapterErrorKind.includes('ForeignKeyConstraintViolation')) {
+      res.status(400).json({
+        success: false,
+        error: 'FOREIGN_KEY_ERROR',
+        detail: 'Relasi database tidak valid. Salah satu ID referensi tidak ditemukan pada tabel tujuan.',
+        request_id: req.requestId,
+      });
+      return;
+    }
+
+    if (driverAdapterErrorKind.includes('UniqueConstraintViolation')) {
+      res.status(409).json({
+        success: false,
+        error: 'UNIQUE_CONSTRAINT_ERROR',
+        detail: 'Data dengan referensi yang sama sudah tersedia.',
+        request_id: req.requestId,
+      });
+      return;
+    }
+
+    res.status(400).json({
+      success: false,
+      error: 'DATABASE_DRIVER_ERROR',
+      detail: 'Operasi database gagal karena constraint database.',
+      request_id: req.requestId,
+    });
+    return;
+  }
+
+  // -----------------------------------------------------------------------
+  // 5. Generic / Unknown Errors
   // -----------------------------------------------------------------------
   if (err instanceof Error) {
     console.error('[unhandled]', err.stack ?? err.message);
