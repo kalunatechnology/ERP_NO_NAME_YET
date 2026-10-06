@@ -123,17 +123,13 @@ export async function postRequestDisbursement(
         throw new ValidationError('Referensi pencairan telah digunakan.');
       }
 
-      const period = await tx.fin_fiscal_period.findFirst({
-        where: {
-          company_id: companyId,
-          start_date: { lte: date },
-          end_date: { gte: date },
-        },
-      });
-
-      if (!period || ['CLOSED', 'LOCKED'].includes(period.status)) {
-        throw new ValidationError('Periode fiskal terbuka wajib tersedia.');
-      }
+      const period = await PeriodClosingService.ensureOpenPostingPeriod(
+        tx,
+        date,
+        companyId,
+        instance.tenant_id,
+        userId,
+      );
 
       const amount = new Prisma.Decimal(amountNumber);
       const scope = {

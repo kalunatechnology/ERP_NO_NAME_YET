@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { AccountingError, ConflictError, NotFoundError, ValidationError } from '../../utils/errors';
 import { FinanceDocumentService } from './finance-document.service';
+import { PeriodClosingService } from './period-closing.service';
 import { FinanceService } from './finance.service';
 
 export type PaymentInput = {
@@ -28,31 +29,16 @@ export class FinanceHardeningService {
     tx: Prisma.TransactionClient,
     companyId: string,
     date: Date,
+    tenantId: string | null,
+    userId: string,
   ) {
-    const period = await tx.fin_fiscal_period.findFirst({
-      where: {
-        company_id: companyId,
-        start_date: { lte: date },
-        end_date: { gte: date },
-      },
-      select: {
-        id: true,
-        status: true,
-        period_number: true,
-      },
-    });
-
-    if (!period) {
-      throw new AccountingError(
-        'Periode fiskal untuk tanggal posting belum tersedia.',
-      );
-    }
-
-    if (period.status !== 'OPEN') {
-      throw new AccountingError(
-        `Periode fiskal #${period.period_number ?? 'N/A'} berstatus ${period.status} dan tidak dapat menerima posting.`,
-      );
-    }
+    const period = await PeriodClosingService.ensureOpenPostingPeriod(
+      tx,
+      date,
+      companyId,
+      tenantId,
+      userId,
+    );
 
     return period.id;
   }
@@ -291,6 +277,8 @@ export class FinanceHardeningService {
           tx,
           companyId,
           postingDate,
+          entry.tenant_id,
+          userId,
         );
 
         const journal = await this.journal(
@@ -901,6 +889,8 @@ export class FinanceHardeningService {
             tx,
             companyId,
             postingDate,
+            payment.tenant_id,
+            userId,
           );
 
         const journal =
