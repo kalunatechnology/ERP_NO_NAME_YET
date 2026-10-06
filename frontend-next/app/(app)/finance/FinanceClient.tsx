@@ -1989,8 +1989,8 @@ export default function FinanceClient() {
                 (project) => String(project.id) === String(billingForm.project),
               );
 
-              if (!selectedProject?.customer_party_id) {
-                toast.error("Project harus memiliki customer sebelum tagihan dibuat.");
+              if (!selectedProject) {
+                toast.error("Project wajib dipilih.");
                 return;
               }
 
@@ -1999,7 +1999,6 @@ export default function FinanceClient() {
 
               await api.post("/api/v1/finance/billing-proposals/", {
                 project_id: selectedProject.id,
-                customer_id: selectedProject.customer_party_id,
                 tax_scheme: billingForm.tax_scheme,
                 trigger_type: "MANUAL_MILESTONE",
                 description: billingForm.description.trim(),
@@ -2042,6 +2041,16 @@ export default function FinanceClient() {
                 </option>
               ))}
             </select>
+            {billingForm.project && (() => {
+              const project = financeProjectOptions.find(
+                (item) => String(item.id) === String(billingForm.project),
+              );
+              return project?.customer_name ? (
+                <p className="mt-1 text-[11px] text-text-secondary">
+                  Customer: <span className="font-semibold text-slate-700">{project.customer_name}</span>
+                </p>
+              ) : null;
+            })()}
           </div>
 
           <div>
