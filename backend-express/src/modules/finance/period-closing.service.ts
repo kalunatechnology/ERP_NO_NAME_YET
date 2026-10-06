@@ -63,9 +63,8 @@ export class PeriodClosingService {
       return existing;
     }
 
-    const year = postingDate.getUTCFullYear();
-    const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
-    const yearEnd = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0, 0) - 1);
+    const postingYear = postingDate.getUTCFullYear();
+    const postingMonth = postingDate.getUTCMonth();
 
     let fiscalYear = await tx.fin_fiscal_year.findFirst({
       where: {
@@ -81,14 +80,19 @@ export class PeriodClosingService {
       );
     }
 
+    const createdFiscalYear = !fiscalYear;
+
     if (!fiscalYear) {
+      const yearStart = new Date(Date.UTC(postingYear, 0, 1, 0, 0, 0, 0));
+      const yearEnd = new Date(Date.UTC(postingYear + 1, 0, 1, 0, 0, 0, 0) - 1);
+
       fiscalYear = await tx.fin_fiscal_year.create({
         data: {
           id: crypto.randomUUID(),
           tenant_id: tenantId,
           company_id: companyId,
           created_by_id: userId,
-          fiscal_year_name: String(year),
+          fiscal_year_name: String(postingYear),
           start_date: yearStart,
           end_date: yearEnd,
           status: 'OPEN',
@@ -96,32 +100,44 @@ export class PeriodClosingService {
       });
     }
 
-    const periods = await tx.fin_fiscal_period.findMany({
-      where: {
-        company_id: companyId,
-        fiscal_year_id: fiscalYear.id,
-      },
-      select: {
-        id: true,
-        period_number: true,
-        start_date: true,
-        end_date: true,
-        status: true,
-      },
-    });
+    if (createdFiscalYear) {
+      // First-time bootstrap for a calendar fiscal year: prepare all 12 periods.
+      for (let month = 0; month < 12; month += 1) {
+        const startDate = new Date(Date.UTC(postingYear, month, 1, 0, 0, 0, 0));
+        const endDate = new Date(Date.UTC(postingYear, month + 1, 1, 0, 0, 0, 0) - 1);
 
-    const existingPeriodNumbers = new Set(
-      periods
-        .map((period) => period.period_number)
-        .filter((periodNumber): periodNumber is number => periodNumber != null),
-    );
+        await tx.fin_fiscal_period.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: tenantId,
+            company_id: companyId,
+            created_by_id: userId,
+            fiscal_year_id: fiscalYear.id,
+            period_number: month + 1,
+            start_date: startDate,
+            end_date: endDate,
+            status: 'OPEN',
+          },
+        });
+      }
+    } else {
+      // Existing/custom fiscal year with a missing month: create only the
+      // posting period and keep its boundaries inside that fiscal year.
+      const monthStart = new Date(Date.UTC(postingYear, postingMonth, 1, 0, 0, 0, 0));
+      const monthEnd = new Date(Date.UTC(postingYear, postingMonth + 1, 1, 0, 0, 0, 0) - 1);
 
-    for (let month = 0; month < 12; month += 1) {
-      const periodNumber = month + 1;
-      if (existingPeriodNumbers.has(periodNumber)) continue;
+      const fiscalStart = fiscalYear.start_date ?? monthStart;
+      const fiscalEnd = fiscalYear.end_date ?? monthEnd;
+      const startDate = monthStart < fiscalStart ? fiscalStart : monthStart;
+      const endDate = monthEnd > fiscalEnd ? fiscalEnd : monthEnd;
 
-      const startDate = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-      const endDate = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0) - 1);
+      const fiscalStartYear = fiscalStart.getUTCFullYear();
+      const fiscalStartMonth = fiscalStart.getUTCMonth();
+      const monthOffset =
+        (postingYear - fiscalStartYear) * 12 +
+        (postingMonth - fiscalStartMonth);
+
+      const periodNumber = Math.max(monthOffset + 1, 1);
 
       const overlapping = await tx.fin_fiscal_period.findFirst({
         where: {
@@ -129,10 +145,16 @@ export class PeriodClosingService {
           start_date: { lte: endDate },
           end_date: { gte: startDate },
         },
-        select: { id: true },
       });
 
-      if (overlapping) continue;
+      if (overlapping) {
+        if (overlapping.status !== 'OPEN') {
+          throw new AccountingError(
+            `Periode fiskal #${overlapping.period_number ?? 'N/A'} berstatus ${overlapping.status} dan tidak dapat menerima posting.`,
+          );
+        }
+        return overlapping;
+      }
 
       await tx.fin_fiscal_period.create({
         data: {
