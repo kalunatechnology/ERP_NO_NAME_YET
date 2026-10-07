@@ -15,7 +15,9 @@ import { useSearchParams } from "next/navigation";
 const Requests = dynamic(() => import("@/app/(app)/requests/RequestsClient"), { ssr: false });
 const Review = dynamic(() => import("@/components/requests/RequestReviewModal").then(m=>m.RequestReviewModal), { ssr: false });
 const Success = dynamic(() => import("@/components/requests/RequestSuccessModal").then(m=>m.RequestSuccessModal), { ssr: false });
+const Feed = dynamic(() => import("@/components/requests/RequestCardFeed").then(m=>m.RequestCardFeed), { ssr: false });
 function Surface(){const mode=useSearchParams().get("mode");const [closed,setClosed]=useState(false);
+ if(mode==="feed")return closed?<p>Meeting detail opened</p>:<Feed onRequestClick={()=>setClosed(true)} onOpenNewModal={()=>{}}/>;
  if(mode==="review")return closed?<p>Meeting removed</p>:<Review isOpen onClose={()=>setClosed(true)} onActionComplete={()=>setClosed(true)} request={{id:"ticket-dashboard",request_type:"MEETING",title:"Dashboard meeting",status:"REGISTERED",tagged_users:[],approvals:[]}}/>;
  if(mode==="success")return <Success isOpen onClose={()=>{}} requestData={{request_type:"MEETING",title:"Created meeting",request_number:"QA-1"}}/>;
  return <Requests/>;}
@@ -64,7 +66,10 @@ export default function Fixture(){return <Suspense><Surface/></Suspense>;}`);
         return route.fulfill({ status: 204 });
       }
       if (/\/requests\/meetings\/[^/]+$/.test(endpoint)) return json(detail(meetings.find(row => row.id === endpoint.split('/').at(-1))));
-      if (endpoint.endsWith('/requests')) return json({ success: true, data: { rows: [], total: 0 } });
+      if (endpoint.endsWith('/requests')) return json({ success: true, data: { rows: [
+        { id:'feed-meeting',request_number:'QA-FEED-MEETING',request_type:'MEETING',title:'Meeting card without approval badge',status:'PENDING_OM',tagged_users:[] },
+        { id:'feed-fund',request_number:'QA-FEED-FUND',request_type:'FUND_REQUEST',title:'Funding retains status',status:'PENDING_OM',tagged_users:[] },
+      ], total: 2 } });
       return json({ results: [] });
     });
     const origin = 'http://127.0.0.1:3013/request-auto-fixture';
@@ -104,6 +109,12 @@ export default function Fixture(){return <Suspense><Surface/></Suspense>;}`);
     await page.goto(`${origin}?mode=success`, { waitUntil: 'networkidle' });
     await page.getByText('Meeting Created', { exact: true }).waitFor();
     await page.getByText('Scheduled', { exact: true }).waitFor();
+    await page.goto(`${origin}?mode=feed`, { waitUntil: 'networkidle' });
+    await page.getByText('Meeting card without approval badge', { exact: true }).waitFor();
+    assert.equal(await page.getByText('PENDING OM', { exact: true }).count(), 1, 'Only the non-meeting card keeps its status badge');
+    assert.equal(await page.getByText('View', { exact: true }).count(), 0);
+    await page.getByText('Meeting card without approval badge', { exact: true }).click();
+    await page.getByText('Meeting detail opened', { exact: true }).waitFor();
     assert(!calls.some(call => /approve-exec|validate-om/.test(call)));
     assert.deepEqual(errors, []);
     console.log('PASS: real React browser fixture — automatic meeting creation, Staff permissions, PM cancel/confirm deletion, Executive deletion, dashboard deletion, and success status without approval.');

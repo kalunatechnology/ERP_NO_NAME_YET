@@ -1,6 +1,7 @@
 import type { Request } from 'express';
 import type { MarbotAction } from './marbot-action.service';
 import { ValidationError } from '../../utils/errors';
+import { callMarbotErp } from './marbot-api-transport';
 
 /** Calls the same authenticated HTTP pipeline as the ERP UI. No caller-selected origin or route. */
 export async function executeCanonicalAction(req: Request, action: MarbotAction, ticketId: string) {
@@ -8,14 +9,9 @@ export async function executeCanonicalAction(req: Request, action: MarbotAction,
     'project.create': 'projects', 'task.create': 'main-tasks',
     'weekly.create': 'weekly-tasks', 'daily.create': 'daily-tasks',
   };
-  const port = req.socket.localPort;
-  if (!port || !req.headers.authorization) throw new ValidationError('Koneksi API lokal tidak tersedia.');
-  const base = `http://127.0.0.1:${port}/api/v1/projects/`;
-  const headers = { Authorization: req.headers.authorization, 'X-Company-ID': req.companyId!,
-    'Content-Type': 'application/json', 'Idempotency-Key': `marbot-${ticketId}` };
+  const base = '/api/v1/projects/';
   const call = async (path: string, method = 'GET', body?: unknown) => {
-    const response = await fetch(base + path, { method, headers, redirect: 'error',
-      signal: AbortSignal.timeout(30000), ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const response = await callMarbotErp(req, base + path, method, body, ticketId);
     if (!response.ok) throw new Error(`API ERP menolak/gagal (${response.status}). Hasil belum terverifikasi; periksa modul terkait sebelum mengulang.`);
     return await response.json() as Record<string, any>;
   };

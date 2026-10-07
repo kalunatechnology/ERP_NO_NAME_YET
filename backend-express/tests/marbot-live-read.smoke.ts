@@ -4,6 +4,7 @@ import { buildMarbotRuntimeAuthority } from '../src/modules/marbot/marbot-access
 import { answerNative, NativeScope } from '../src/modules/marbot/marbot-native.service';
 import { discoverMarbotSchema } from '../src/modules/marbot/marbot-schema.service';
 import { loadNativePolicyRestrictions } from '../src/modules/marbot/marbot-policy.service';
+import { assertNativeMarbotStorageReady } from '../src/modules/marbot/marbot-runtime.service';
 
 // Explicit read-only smoke test. Never create fixtures in the connected database.
 async function main() {
@@ -21,6 +22,7 @@ async function main() {
     } catch { /* Ineligible active context: continue without exposing identities. */ }
   }
   if (!scope) throw new Error('No eligible Marka Plus project reader found; live business-data verification unavailable.');
+  await assertNativeMarbotStorageReady({ tenant_id: scope.tenantId, company_id: scope.companyId, user_id: scope.userId });
   const schema = await discoverMarbotSchema(scope);
   assert.ok((schema.columns as any[]).some(c => c.table_name === 'project_daily_task' && c.column_name === 'planned_date'));
   const where = { tenant_id: scope.tenantId, company_id: scope.companyId, status: { in: ['IN_PROGRESS', 'STARTED', 'ACTIVE'] }, ...(scope.projectScope.mode === 'LIST' ? { id: { in: scope.projectScope.projectIds } } : {}) };

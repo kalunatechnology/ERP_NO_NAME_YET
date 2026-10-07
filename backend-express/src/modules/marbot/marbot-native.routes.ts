@@ -16,6 +16,7 @@ import type { MarbotAction } from './marbot-action.service';
 import { createMarbotMcpRouter } from './marbot-mcp.routes';
 import { executeResourceRead, executeResourceWrite, planResourceQuestion, resourceCatalog, resourceDefinition } from './marbot-resource.service';
 import { reserveMarbotRequest } from './marbot-rate-limit.service';
+import { assertNativeMarbotStorageReady } from './marbot-runtime.service';
 import { marbotOwner as owner, marbotAuthorityKey as authorityKey, visibleConversationTitle,
   marbotAuthorityBaseKey, marbotMessageAuthority, canReadMarbotMessage } from './marbot-authority.service';
 
@@ -110,7 +111,7 @@ nativeMarbotRouter.get('/status', async (req, res, next) => {
   try {
     const scope = await scopeFor(req);
     // Verify persistence readiness instead of reporting a configured URL as online.
-    await prisma.marbot_conversation.count({ where: owner(scope) });
+    await assertNativeMarbotStorageReady(owner(scope));
     res.json({ data: { online: true, contractMode: 'native', preferredVersion: null, v2Supported: false, managed: false, datasourceSourceKey: 'ERP', datasourceStatus: 'ACTIVE', mcpLiteReady: true, dashboardAvailable: canUseDashboard(scope), aiConfigured: Boolean(env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL) } });
   } catch (error) { next(error); }
 });

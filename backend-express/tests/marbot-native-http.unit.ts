@@ -25,6 +25,7 @@ async function main() {
   db.marbot_request.create = async () => ({});
   db.marbot_request.update = async () => ({});
   db.marbot_conversation.count = async () => 0;
+  db.marbot_message.count = async () => 0;
   db.marbot_conversation.create = async ({ data }: any) => ({ id, ...data });
   db.marbot_conversation.update = async () => ({});
   db.marbot_conversation.findFirst = async ({ where }: any) => {
@@ -49,6 +50,11 @@ async function main() {
   try {
     const status = await fetch(`http://127.0.0.1:${port}/status`);
     assert.equal((await status.json() as any).data.contractMode, 'native');
+    db.marbot_message.count = async () => { throw new Error('Missing message table'); };
+    const unavailableStorage = await fetch(`http://127.0.0.1:${port}/status`);
+    assert.equal(unavailableStorage.status, 503, 'Conversation storage alone must not report the agent online');
+    assert.equal((await unavailableStorage.json() as any).error, 'MARBOT_DATABASE_UNAVAILABLE');
+    db.marbot_message.count = async () => 0;
     const good = await send({ message: 'Laporan kerja di mana?' });
     assert.equal(good.status, 200);
     assert.match(good.headers.get('content-type')!, /event-stream/);

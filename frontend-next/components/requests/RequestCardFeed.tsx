@@ -240,7 +240,7 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
                     <h4 className="text-xs font-bold text-[#090909] truncate">{req.title}</h4>
                   </div>
                 </div>
-                {getStatusBadge(req.status)}
+                {req.request_type !== "MEETING" && getStatusBadge(req.status)}
               </div>
 
               {/* Fund Request Amount Display */}

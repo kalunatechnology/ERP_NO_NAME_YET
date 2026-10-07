@@ -31,6 +31,12 @@ async function main() {
   let activeToken = token;
   const app = createApp();
   app.locals.databaseReady = true;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (...args: Parameters<typeof fetch>) => {
+    const url = new URL(typeof args[0] === 'string' ? args[0] : args[0] instanceof URL ? args[0].href : args[0].url);
+    assert(url.pathname.startsWith('/api/v1/marbot/'), 'Canonical ERP calls must work inside the app without loopback HTTP');
+    return originalFetch(...args);
+  };
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${(server.address() as any).port}/api/v1/marbot`;
@@ -158,6 +164,7 @@ async function main() {
     } finally { await prisma.project_project.update({ where: { id: project.id }, data: { created_by_id: user.id } }); }
     console.log('Isolated PostgreSQL E2E passed: MCP handshake/tools, real auth/scope, aggregates, cross-module create/update, project hierarchy, assignment, readback, concurrent replay, persisted verification and permission revocation.');
   } finally {
+    globalThis.fetch = originalFetch;
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));
     await prisma.$disconnect();
