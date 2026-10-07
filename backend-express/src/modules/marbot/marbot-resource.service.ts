@@ -8,6 +8,7 @@ import { env } from '../../config/env';
 import prisma from '../../config/database';
 import { getCrudModelMetadata } from '../../utils/crud-factory';
 import { callMarbotErp } from './marbot-api-transport';
+import { isExplicitWriteRequest, isProcedureQuestion } from './marbot-intent';
 
 const sensitive = /password|secret|token|credential|private_key|api_key|access_key|authorization|cookie|connection_string/i;
 const projectFinancialModels = new Set(['project_expense', 'project_budget_line', 'project_financial_snapshot', 'project_evm_record']);
@@ -159,7 +160,8 @@ export async function executeResourceRead(req: Request, raw: unknown, scope: Nat
 }
 
 /** A model can select a catalogue entry; it cannot invent a route, SQL or successful result. */
-export async function planResourceQuestion(request: string, scope: NativeScope, signal: AbortSignal): Promise<ResourcePlan | null> {
+export async function planResourceQuestion(request: string, scope: NativeScope, signal: AbortSignal, allowProvider = true): Promise<ResourcePlan | null> {
+  if (isProcedureQuestion(request)) return null;
   const explicit = /^\s*(?:data|resource)\s+(\{[\s\S]*\})\s*$/i.exec(request);
   if (explicit) {
     try { return validateResourcePlan(JSON.parse(explicit[1]), scope); }
@@ -174,7 +176,7 @@ export async function planResourceQuestion(request: string, scope: NativeScope, 
     const rest = request.replace(/^(?:berapa|jumlah|tampilkan|daftar|list|count)\s+/i, '').replace(literalMatch[0].key, '').replace(/[?.]/g, '').trim();
     if (!rest) return validateResourcePlan({ resource: literalMatch[0].key, operation: /berapa|jumlah|count/i.test(request) ? 'count' : 'list' }, scope);
   }
-  if (!env.MARBOT_AI_API_KEY || !env.MARBOT_AI_MODEL || !available.length) return null;
+  if (!allowProvider || !env.MARBOT_AI_API_KEY || !env.MARBOT_AI_MODEL || !available.length) return null;
   // Pick the domain first from available modules; full schemas for the selected domain are bounded.
   const domain = available.filter(item => request.toLowerCase().includes(item.module.toLowerCase()));
   const candidates = domain.length ? domain : available;
@@ -193,16 +195,21 @@ export async function planResourceQuestion(request: string, scope: NativeScope, 
     const body = await response.json() as any;
     const raw = JSON.parse(body.choices?.[0]?.message?.content || '{}');
     if (raw.unsupported) return null;
-    const plan = validateResourcePlan(raw, scope);
-    const values = [...Object.values(plan.filters), ...(plan.search ? [plan.search] : []), ...Object.values(plan.payload || {}), ...(plan.id ? [plan.id] : [])];
-    const literal = (value: unknown) => {
-      const escaped = String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'iu').test(request);
-    };
-    if (!values.every(literal)) return null;
-    if (['create', 'update'].includes(plan.operation) && !/^\s*(buat|buatkan|tambah|tambahkan|create|ubah|update|perbarui)\b/i.test(request)) return null;
-    return plan;
+    return validateGroundedResourcePlan(raw, scope, request);
   } catch { return null; }
+}
+
+/** Shared by both planners; literal IDs/filters/payload never come from model guesses. */
+export function validateGroundedResourcePlan(raw: unknown, scope: NativeScope, request: string): ResourcePlan | null {
+  const plan = validateResourcePlan(raw, scope);
+  const values = [...Object.values(plan.filters), ...(plan.search ? [plan.search] : []), ...Object.values(plan.payload || {}), ...(plan.id ? [plan.id] : [])];
+  const literal = (value: unknown) => {
+    const escaped = String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'iu').test(request);
+  };
+  if (!values.every(literal)) return null;
+  if (['create', 'update'].includes(plan.operation) && !isExplicitWriteRequest(request)) return null;
+  return plan;
 }
 
 export async function executeResourceWrite(req: Request, raw: unknown, scope: NativeScope, ticketId: string) {

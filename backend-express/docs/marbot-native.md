@@ -16,14 +16,37 @@ antarserver. Endpoint lama hanya dipakai bila `MARBOT_RUNTIME=external`.
 3. Build backend/frontend dan restart melalui prosedur deployment ERP.
 4. Aktifkan modul MARBOT dan permission USE_MARBOT pada perusahaan/peran yang
    membutuhkan. Izin PROJECTS, FINANCE, CRM tetap diperiksa di server.
-5. Opsional: atur `MARBOT_AI_API_KEY` dan `MARBOT_AI_MODEL` di secret environment
-   backend. Provider saat ini OpenRouter; pertanyaan dan referensi ERP yang telah
-   dibatasi akses dikirim untuk penyusunan bahasa. Tanpa credential, jawaban
+5. Untuk pemahaman bahasa dengan LLM, atur `MARBOT_AI_API_KEY` dan `MARBOT_AI_MODEL` di secret environment
+   backend. Provider saat ini OpenRouter; pertanyaan, pertanyaan sebelumnya yang
+   masih diizinkan dan katalog kemampuan yang dibatasi akses dikirim untuk memahami intent. Data hasil query bisnis, JWT dan credential database tidak dimasukkan ke prompt. Tanpa credential, jawaban
    terverifikasi tetap tersedia melalui mesin lokal. Jangan gunakan NEXT_PUBLIC
    untuk secret. Jangan menyalin credential chatbot lama sebagai key model.
 
 Tidak ada migrasi database jarak jauh atau deployment yang dijalankan oleh perubahan
 kode ini. Riwayat lama di service eksternal tidak otomatis dipindahkan.
+
+## Pemahaman intent, pemilihan tool dan retrieval
+
+Alur chat native: **pertanyaan → LLM memahami maksud → validasi rencana → retrieval referensi atau tool ERP → jawaban berdasarkan bukti**.
+
+`marbot-understanding.service.ts` melakukan satu panggilan model yang mengembalikan JSON, bukan jawaban bisnis. Rencana dibedakan menjadi:
+
+- `guide`: topic + operation, misalnya `meeting/delete` berbeda dari `minutes/create`. Backend mengambil referensi spesifik melalui `helperAnswer` dengan pilihan terstruktur; tidak mencocokkan ulang kata pengguna sebagai penentu utama.
+- `knowledge`: mengambil referensi umum untuk modul yang tersedia pada scope aktif.
+- `native`: menjalankan pembacaan hierarki task/project/cost/KPI/support yang ada, atau menyiapkan usulan aksi yang didukung.
+- `resource`: memilih resource/field/operasi dari katalog aktual, kemudian menggunakan API canonical yang memeriksa permission dan aturan domain.
+- `access` / `schema`: membaca konteks akses atau metadata tabel yang diizinkan.
+- `clarify`: meminta penjelasan ketika record, data input, tujuan atau kemampuan belum jelas. Confidence di bawah 0,75 juga masuk klarifikasi; angka confidence model bukan jaminan akurasi.
+
+`marbot-orchestrator.service.ts` memilih eksekutor dari rencana yang tervalidasi. Identitas, filter dan payload tidak boleh dibuat-buat oleh model. Company, tenant dan user berasal dari authority backend, bukan dari prompt atau hasil LLM. Pertanyaan tentang boleh/cara melakukan aksi tidak berubah menjadi write. Usulan create/update tetap membutuhkan tiket dan konfirmasi eksplisit melalui endpoint eksekusi lama; permission diperiksa kembali dan hasil dibaca ulang. Operasi domain yang belum didukung tidak diganti menjadi CRUD generik.
+
+Untuk task, pemeriksaan lokal tetap memverifikasi ownership, Weekly/Daily, rentang tanggal dan pengecualian hari ini yang dinyatakan eksplisit. Model tidak dapat menghilangkan kata “saya” atau menambahkan default “hari ini” pada pembacaan seluruh task. Perintah terstruktur `data {...}` menggunakan validasi tool langsung karena sudah eksplisit.
+
+Retrieval saat ini memakai referensi lokal terkurasi/versioned dari kode ERP, dipilih melalui intent terstruktur. Ini retrieval referensi untuk grounding; **belum merupakan pencarian embedding/vector atas semua dokumen perusahaan**, dan tidak ada tabel vector, crawler atau pipeline upload dokumen baru. Sumber dan version referensi ikut dikirim pada jawaban. Hasil operasional dan batas permission tidak ditulis ulang oleh LLM.
+
+Tanpa konfigurasi model, ketika provider gagal, atau JSON/rencana tidak valid, aplikasi memakai fallback lokal terverifikasi satu kali tanpa mencoba planner model kedua. Jika fallback tidak bisa menentukan maksud, pengguna diminta memperjelas. Metadata pesan menyimpan sumber pemahaman (`llm`, `local`, `explicit`), route, status, confidence dan model untuk penelusuran, tanpa menyimpan chain-of-thought. Riwayat dan metadata tetap dibatasi authority yang berlaku.
+
+Contoh: “agenda tadi udah nggak kepake, langkah nyingkirinnya gimana?” dapat dipetakan LLM ke `guide/meeting/delete`, kemudian jawaban diambil dari aturan penghapusan meeting dan role aktif. Keberhasilan pemetaan bahasa pada model nyata tetap memerlukan evaluasi dengan model/server yang dipakai deployment.
 
 ## Kemampuan
 
@@ -78,6 +101,10 @@ percakapan, input, dan rate limit menggunakan database stub terisolasi.
 `npm run test:marbot-capabilities` memeriksa knowledge, seluruh resource generated,
 planner, client ticket/history dan streaming. `npm run test:marbot-isolated`
 menjalankan mutation E2E hanya terhadap PostgreSQL lokal `127.0.0.1:55439`.
+
+`npm run test:marbot-understanding` memakai respons model tiruan untuk menguji pemilihan referensi/tool, parafrasa/konteks, literal field/ID, ownership/periode, rencana salah, confidence rendah, kegagalan provider dan usulan yang tidak mengeksekusi write. Pengujian HTTP juga memeriksa intent dan sumber tersimpan di pesan. E2E PostgreSQL QA memasukkan rencana model tiruan pada query, retrieval dan create dengan konfirmasi. Pengujian ini membuktikan orchestration/guard, bukan kualitas pemahaman model nyata.
+
+Format JSON provider mengikuti [dokumentasi resmi OpenRouter](https://openrouter.ai/docs/api/reference/overview). Backend tetap memvalidasi schema sendiri; JSON valid saja belum berarti intent, permission atau payload sudah benar.
 
 `npm run typecheck` memeriksa backend. Jalankan `npx tsc --noEmit` di frontend.
 Sesudah deploy, verifikasi status, pertanyaan SOP, ringkasan mingguan, KPI kosong,

@@ -3,9 +3,11 @@ import prisma from '../../config/database';
 import type { NativeScope } from './marbot-native.service';
 import type { MarbotAction } from './marbot-action.service';
 import { proposeAction } from './marbot-action.service';
+import { isProcedureQuestion } from './marbot-intent';
 
 /** Resolve only explicitly quoted, unique names inside current authority. No defaults or fuzzy identities. */
 export async function proposeNamedTaskAction(message: string, scope: NativeScope, db = prisma) {
+  if (isProcedureQuestion(message)) return null;
   const daily = message.match(/^\s*(?:buat|buatkan|tambahkan)\s+tugas harian\s+["“]([^"”]+)["”]\s+untuk\s+target mingguan\s+["“]([^"”]+)["”]\s+jam\s+["“]([^"”]+)["”]\s+hasil\s+["“]([^"”]+)["”]\s*$/i);
   const update = message.match(/^\s*(?:ubah|update|perbarui)\s+(?:task|tugas)\s+["“]([^"”]+)["”]\s+(catatan|hasil|kendala|status)\s+["“]([^"”]+)["”]\s*$/i);
   if (!daily && !update) return null;

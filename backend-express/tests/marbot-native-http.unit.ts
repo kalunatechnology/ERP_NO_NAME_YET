@@ -9,6 +9,7 @@ import { errorHandler } from '../src/middlewares/error.middleware';
 import * as resource from '../src/modules/marbot/marbot-resource.service';
 import * as planner from '../src/modules/marbot/marbot-planner.service';
 import { env } from '../src/config/env';
+import * as understanding from '../src/modules/marbot/marbot-understanding.service';
 
 async function main() {
   // Hermetic HTTP test: no production database, provider, or ERP writes.
@@ -16,7 +17,7 @@ async function main() {
   const scope = { roleCode: RoleCode.STAFF, roleId: 'role', enabledModules: ['MARBOT'], permissions: ['USE_MARBOT'], projectScope: { mode: 'LIST' as const, projectIds: [] } };
   (authority as any).buildMarbotRuntimeAuthority = async () => scope;
   const id = 'b75d14c9-365c-49a8-b4c0-de618d827c25';
-  const stored: any[] = [];
+    const stored: any[] = [];
   let requestCount = 0;
   const db = prisma as any;
   db.iam_field_permission.findMany = async () => [];
@@ -70,14 +71,61 @@ async function main() {
     const unavailable = await send({ message: 'hi', conversationId: id });
     assert.equal(unavailable.status, 403);
     assert.equal((await unavailable.json() as any).error, 'MARBOT_CONVERSATION_UNAVAILABLE');
+    // Exercise the same SSE path as the screenshot, including a configured
+    // provider. Help questions must bypass both data planners and action tickets.
+    const helpResourcePlanner = resource.planResourceQuestion, helpNativePlanner = planner.planNativeQuestion;
+    const helpKey = env.MARBOT_AI_API_KEY, helpModel = env.MARBOT_AI_MODEL, helpFetch = global.fetch;
+    let helpProviderCalls = 0;
+    let helpPlan: unknown;
+    try {
+      env.MARBOT_AI_API_KEY = 'fixture-key'; env.MARBOT_AI_MODEL = 'fixture-model';
+      (resource as any).planResourceQuestion = async () => { throw new Error('Help must not plan a resource operation'); };
+      (planner as any).planNativeQuestion = async () => { throw new Error('Help must not be rewritten to a data/action plan'); };
+      global.fetch = async (url, options) => {
+        if (!String(url).startsWith('https://openrouter.ai/')) return helpFetch(url, options);
+        helpProviderCalls++;
+        return new Response(JSON.stringify({ choices: [{ message: { content: helpPlan ? JSON.stringify(helpPlan) : 'Tambah Notulensi. Meeting sudah dihapus.' } }] }), { status: 200 });
+      };
+      for (const roleCode of [RoleCode.STAFF, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR, RoleCode.COMPANY_ADMIN]) {
+        (authority as any).buildMarbotRuntimeAuthority = async () => ({ ...scope, roleCode, enabledModules: ['MARBOT', 'REQUESTS'] });
+        const result = await send({ message: 'apakah saya bisa hapus meeting yang sudah dibuat?' });
+        assert.equal(result.status, 200);
+        const text = await result.text();
+        assert.match(text, /Hapus Meeting/);
+        assert.match(text, [RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR].includes(roleCode as any) ? /memenuhi syarat role/ : /tidak diizinkan menghapus meeting/);
+        assert.doesNotMatch(text, /Tambah Notulensi|Meeting sudah dihapus|"action":/);
+        assert.equal(stored.at(-1).metadata.action, undefined);
+      }
+      const guide = await send({ message: 'bisa edit notulensi yang sudah dipublikasikan?' });
+      assert.equal(guide.status, 200);
+      assert.match(await guide.text(), /PUBLISHED[\s\S]*tidak dapat/);
+      assert.equal(stored.at(-1).metadata.action, undefined);
+      assert.equal(helpProviderCalls, 5, 'One intent call per question, with no final model rewriting or secondary planner');
+      assert.equal(stored.at(-1).metadata.understanding.status, 'invalid', 'Malformed model output uses the local verified fallback');
+      helpPlan = { route: 'guide', topic: 'meeting', operation: 'delete', confidence: 0.98 };
+      (authority as any).buildMarbotRuntimeAuthority = async () => ({ ...scope, roleCode: RoleCode.PROJECT_MANAGER, enabledModules: ['MARBOT', 'REQUESTS'] });
+      const semanticGuide = await send({ message: 'agenda tadi udah nggak kepake, langkah nyingkirinnya gimana ya?' });
+      assert.equal(semanticGuide.status, 200);
+      assert.match(await semanticGuide.text(), /Hapus Meeting/);
+      assert.deepEqual(stored.at(-1).metadata.understanding, { source: 'llm', route: 'guide', status: 'ready', confidence: 0.98, model: 'fixture-model' });
+      assert.deepEqual(stored.at(-1).metadata.sources, ['ERP:procedure:meeting:delete:2026-10-07']);
+      assert.equal(helpProviderCalls, 6);
+    } finally {
+      (resource as any).planResourceQuestion = helpResourcePlanner; (planner as any).planNativeQuestion = helpNativePlanner;
+      env.MARBOT_AI_API_KEY = helpKey; env.MARBOT_AI_MODEL = helpModel; global.fetch = helpFetch;
+      (authority as any).buildMarbotRuntimeAuthority = async () => scope;
+    }
     const taskScope = { ...scope, roleCode: RoleCode.STAFF as RoleCode, enabledModules: ['MARBOT', 'PROJECTS'], permissions: ['USE_MARBOT', 'READ_TASK'], projectScope: { mode: 'LIST' as const, projectIds: ['project-a'] } };
     let scopes = [taskScope, taskScope];
     (authority as any).buildMarbotRuntimeAuthority = async () => scopes.length > 1 ? scopes.shift()! : scopes[0];
     const originalResourcePlanner = resource.planResourceQuestion, originalNativePlanner = planner.planNativeQuestion;
     const savedKey = env.MARBOT_AI_API_KEY, savedModel = env.MARBOT_AI_MODEL;
+    const savedUnderstanding = understanding.understandMarbotQuestion;
     (env as any).MARBOT_AI_API_KEY = 'fixture-key'; (env as any).MARBOT_AI_MODEL = 'fixture-model';
     (resource as any).planResourceQuestion = async () => { throw new Error('Task read must not use provider resource planning'); };
     (planner as any).planNativeQuestion = async () => { throw new Error('Task read must not rewrite ownership or period'); };
+    (understanding as any).understandMarbotQuestion = async () => ({ status: 'ready', model: 'fixture-model',
+      intent: { route: 'native', plan: { type: 'read', domains: ['tasks'], period: 'today', owner: false }, confidence: 1 } });
     const originalQuery = db.$queryRaw;
     let taskReads = 0;
     db.$queryRaw = async (query: any) => {
@@ -93,6 +141,7 @@ async function main() {
         assert.match(await result.text(), /Fixture task/);
       }
       assert.equal(taskReads, 3);
+      assert.equal(stored.at(-1).metadata.understanding.source, 'llm');
       scopes = [taskScope, { ...taskScope, projectScope: { mode: 'LIST', projectIds: ['project-a', 'new-project'] } }];
       const expanded = await send({ message: 'seluruh daily task saya' });
       assert.equal(expanded.status, 200, 'An added project cannot invalidate data from the original allowed scope');
@@ -114,6 +163,7 @@ async function main() {
     } finally {
       (resource as any).planResourceQuestion = originalResourcePlanner;
       (planner as any).planNativeQuestion = originalNativePlanner;
+      (understanding as any).understandMarbotQuestion = savedUnderstanding;
       (env as any).MARBOT_AI_API_KEY = savedKey; (env as any).MARBOT_AI_MODEL = savedModel;
       db.$queryRaw = originalQuery;
       (authority as any).buildMarbotRuntimeAuthority = async () => scope;

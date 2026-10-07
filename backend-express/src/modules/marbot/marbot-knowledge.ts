@@ -1,4 +1,5 @@
 import resourceInventory from './resource-catalog.generated.json';
+import { intentText, procedureOperation, procedureTopic, type ProcedureTopic, type ProcedureOperation } from './marbot-intent';
 // Reviewed against the ERP routes and forms. Versioned with the application.
 export const moduleKnowledge = [
   { module: 'GENERAL', title: 'Dashboard', path: '/dashboard', keywords: /dashboard|beranda/i, content: 'Dashboard menampilkan konteks perusahaan aktif dan kartu permintaan. Data serta aksi yang tersedia mengikuti role aktif.' },
@@ -7,7 +8,7 @@ export const moduleKnowledge = [
   { module: 'FINANCE', title: 'Finance & Accounting', path: '/finance', keywords: /finance|keuangan|wip|billing|piutang|jurnal|biaya/i, content: 'Halaman mencakup costing & WIP, funding proyek, tagihan vendor, billing termin, piutang, kas & bank, buku besar, laporan keuangan, rekonsiliasi, perpajakan, aset, tutup buku dan audit trail. Biaya proyek aktual asisten hanya mengakui cost entry VALIDATED, APPROVED, POSTED_TO_WIP. Draft/rejected tidak dijumlahkan. Tanpa override Admin, Director memiliki akses preview Finance. Pengaturan akses modul oleh Admin diprioritaskan: kelola penuh mengizinkan aksi modul, baca saja membatasi perubahan. Backend tetap memeriksa company, status dokumen, ownership dan Maker–Checker; pembuat tidak dapat memeriksa transaksinya sendiri.' },
   { module: 'CRM', title: 'CRM & Commercial', path: '/crm', keywords: /crm|commercial|komersial|customer|pelanggan|deal|inquiry/i, content: 'Halaman mencakup Dashboard, Deals & Credit, Incoming Inquiry, Accounts dan Engagement. Estimating & Quoting serta Contracts & Orders memerlukan modul SALES; Support & Garansi memerlukan SERVICE. Keberadaan tab tidak memberikan permission untuk mengambil data.' },
   { module: 'REPORTING', title: 'Reporting & Observability', path: '/reporting', keywords: /reporting|laporan|kehadiran|attendance/i, content: 'Tab laporan: Executive View, Project P&L, General Ledger, Ringkasan Berkala, Kehadiran dan Operasional. Sumber finance/proyek memerlukan akses modul asal; akses Reporting tidak memberi akses Finance secara otomatis.' },
-  { module: 'REQUESTS', title: 'Requests & Meetings', path: '/requests', keywords: /request|meeting|rapat|notulen/i, content: 'Permintaan dan meeting memiliki participant, agenda, minutes, decision serta action item. Editor notulensi dibatasi ke notulis yang ditunjuk. Draft dan publikasi adalah aksi terpisah.' },
+  { module: 'REQUESTS', title: 'Requests & Meetings', path: '/requests', keywords: /request|meeting|rapat|notulen/i, content: 'Meeting memiliki peserta, agenda, notulensi per tanggal, keputusan dan tindak lanjut. Pada meeting sekali dengan notulis khusus, notulis dan role executive administratif yang diizinkan dapat menyusun draft. Pada recurring atau tanpa notulis khusus, organizer/peserta yang terkait juga dapat menyusun. Draft dapat diedit; notulensi PUBLISHED tidak dapat ditimpa. Publikasi meeting sekali menutup meeting dan tiket; pada recurring hanya occurrence terkait. Hapus meeting hanya untuk PM atau Director pada company aktif; meeting/tiket menjadi CANCELLED dan catatan tetap disimpan.' },
   { module: 'ANALYTICS', title: 'Enterprise Repository & Document Catalog', path: '/resources', keywords: /repository|arsip|dokumen|resources/i, content: 'Halaman merupakan pusat arsip digital, katalog transaksi dan dokumentasi operasional. Data katalog mengikuti akses sumbernya.' },
   { module: 'PROCUREMENT', title: 'Procurement', path: '', keywords: /procurement|pengadaan|purchase|requisition|rfq/i, content: 'API pengadaan mencakup purchase requisition dan baris, RFQ, supplier quotation, purchase order dan baris, goods receipt dan baris. Convert-to-RFQ adalah aksi khusus berdasarkan requisition di company aktif; RFQ yang sudah ada dikembalikan. Three-way-match memeriksa purchase order, goods receipt, dan supplier invoice melalui service khusus; hasil matching bersifat read-only.' },
   { module: 'INVENTORY', title: 'Inventory', path: '', keywords: /inventory|inventori|stok|stock|warehouse|fifo/i, content: 'Posting stock move memvalidasi jenis RECEIPT, ISSUE atau TRANSFER, lokasi, product FIFO dan UOM dasar, kuantitas positif serta ketersediaan FIFO layer/stok bebas. Posting membentuk ledger dan balance; movement yang sudah selesai tidak boleh diubah sebagai draft. Lot/serial memerlukan posting traceability khusus dan tidak boleh dianggap stok umum.' },
@@ -21,9 +22,10 @@ export const moduleKnowledge = [
   { module: 'MASTER_DATA', title: 'Master Data', path: '', keywords: /master data|employee|pegawai|currency|party|product|produk/i, content: 'Master data menjadi referensi bagi transaksi: party/customer/vendor, product dan UOM, currency, employee dan referensi organisasi. employee.user_id menghubungkan data pegawai dengan akun. Relasi user/company dan foreign key harus divalidasi; nama mirip tidak membuktikan identitas yang sama.' },
 ] as const;
 
-export function systemKnowledgeAnswer(message: string, enabledModules: string[]) {
+export function systemKnowledgeAnswer(message: string, enabledModules: string[], selectedModules?: string[]) {
   const available = moduleKnowledge.filter(item => enabledModules.includes(item.module));
-  const matches = /seluruh|semua|fitur sistem|modul sistem/i.test(message) ? available : available.filter(item => item.keywords.test(message));
+  const matches = selectedModules ? available.filter(item => selectedModules.includes(item.module))
+    : /seluruh|semua|fitur sistem|modul sistem/i.test(message) ? available : available.filter(item => item.keywords.test(message));
   if (!matches.length) return 'Referensi fitur tersebut belum tersedia dalam cakupan modul aktif Anda. Tidak ada kesimpulan mengenai data aktual yang dapat dibuat.';
   return matches.map(item => {
     const resources = resourceInventory.resources.filter(resource => resource.module === item.module);
@@ -40,18 +42,67 @@ export const procedures = [
     content: 'Sebagai Staff, buka Tugas Harian lalu bagian Timesheet & Lembur Saya. Pilih proyek, tanggal kerja, dan task bila diperlukan, lalu mulai timer kerja. Hentikan timer saat selesai. Untuk lembur, mulai dan hentikan timer lembur serta isi alasannya. Kirim catatan setelah timer berhenti, lalu periksa riwayat dan status approval. Durasi dihitung server dari waktu mulai/selesai; jangan mengisi durasi manual.' },
   { id: 'invoice', title: 'Invoice dan billing termin', keywords: /invoice|faktur|billing|tagihan/i, path: '/finance',
     content: 'Untuk faktur penagihan klien, buka Finance lalu tab Billing Termin. Pilih Buat Proposal dan isi data yang diminta pada formulir. Proposal DRAFT diproses melalui Submit, lalu pihak yang berwenang melakukan Approve. Proposal APPROVED dapat diproses melalui Terbitkan Billing. Periksa dokumen dan status hasil sebelum mencatat pembayaran. Aksi yang tersedia mengikuti peran, entitlement, dan status dokumen; hubungi admin jika tab atau tombol tidak tersedia. Panduan ini tidak menyetujui atau menerbitkan invoice secara otomatis.' },
-  { id: 'minutes', title: 'Notulensi meeting', keywords: /notulen|notulis|meeting|rapat/i, path: '/requests',
-    content: 'Buka Requests & Meetings dan pilih meeting. Periksa nama Notulis. Hanya notulis yang ditunjuk dapat membuka editor. Pilih Tambah Notulensi atau Edit Notulensi, isi pembahasan, ringkasan, keputusan dan tindak lanjut. Simpan draft atau pilih Publikasikan setelah diperiksa.' },
+  { id: 'minutes', title: 'Notulensi meeting', keywords: /notulen|notulis|minutes|notes?|catatan rapat/i, path: '/requests', version: '2026-10-07',
+    content: 'Buka Requests & Meetings, pilih meeting dan tanggal pertemuan yang benar. Pilih Tambah Notulensi atau Edit Notulensi, isi pembahasan, ringkasan, keputusan dan tindak lanjut, lalu simpan draft. Pada meeting sekali dengan notulis khusus, notulis yang ditunjuk serta role executive administratif yang diizinkan dapat menyusun. Pada recurring atau tanpa notulis khusus, organizer/peserta yang terkait juga dapat menyusun. Hak editor mengikuti permission detail meeting. Notulensi PUBLISHED tidak dapat diedit atau ditimpa. Publikasikan draft setelah diperiksa; diperlukan ringkasan atau pembahasan. Publikasi meeting sekali menutup meeting dan tiket, sedangkan recurring hanya mempublikasikan tanggal terkait dan seri tetap berjalan.' },
   { id: 'tasks', title: 'Tugas harian', keywords: /tugas|task|pekerjaan/i, path: '/tasks',
     content: 'Buka Tugas Harian. Pilih task yang ditugaskan kepada Anda, catat hasil pekerjaan, bukti atau kendala pada formulir yang tersedia, lalu kirim pembaruan. Periksa status pengajuan setelah tersimpan.' },
   { id: 'leave', title: 'Pengajuan cuti', keywords: /cuti|izin|leave/i, path: '/dashboard',
     content: 'Buka Dashboard, cari Kartu Permintaan Aktif, lalu pilih Tambahkan Kartu. Pada Request Type pilih Leave Request. Isi tanggal pelaksanaan dan Request Details; lampirkan tautan dokumen bila diperlukan. Pilih Simpan Draft untuk menyimpan sementara atau Kirim Request untuk mengajukan. Setelah terkirim, status dapat dilihat pada kartu permintaan. Persetujuan dilakukan oleh pejabat yang berwenang sesuai alur perusahaan.' },
 ] as const;
 
-export function helperAnswer(message: string): string {
-  const dailyMatch = /daily\s+tasks?|(?:tugas|task)\s+harian/i.test(message.replace(/["“][^"”]*["”]/g, ''));
-  const weeklyMatch = !dailyMatch && procedures.some(item => item.id === 'weekly' && item.keywords.test(message));
-  const matches = procedures.filter(item => item.keywords.test(message) && !(weeklyMatch && item.id === 'tasks') && !(dailyMatch && item.id === 'weekly'));
-  if (!matches.length) return 'Saya dapat membantu panduan pengajuan cuti, laporan kerja, tugas harian, timesheet, dan notulensi meeting. Sebutkan fitur yang ingin Anda gunakan. Untuk data terkini, tanyakan progres proyek, task terlambat, biaya proyek, KPI, atau tiket support sesuai akses Anda.';
-  return matches.map(item => `${item.title}\n\n${item.content}${item.path ? `\n\n[Buka ${item.title}](${item.path})` : ''}\n\nSumber: panduan ERP • versi ${'version' in item ? item.version : '2026-09-30'}.`).join('\n\n---\n\n');
+type HelpContext = { roleCode: string; enabledModules?: string[]; blockedWriteModules?: string[] };
+const operationNames = { delete: 'menghapus', cancel: 'membatalkan', edit: 'mengedit', publish: 'mempublikasikan/menerbitkan',
+  approve: 'menyetujui/menolak', submit: 'mengajukan', stop: 'menghentikan', start: 'memulai', pay: 'membayar/mencairkan', export: 'mengekspor',
+  restore: 'memulihkan', transfer: 'memindahkan', archive: 'mengarsipkan', create: 'membuat' };
+
+export type ProcedureSelection = { topic: ProcedureTopic; operation?: ProcedureOperation };
+/** A validated semantic selection retrieves the exact local reference, without re-matching keywords. */
+export function helperAnswer(message: string, context?: HelpContext, selection?: ProcedureSelection): string {
+  if (!selection && /\b(?:dan|atau|serta)\s+(?:hapus|menghapus|delete|edit|mengedit|ubah|update|buat|membuat|create|publikasikan|publish|approve|setujui|bayar|batalkan)\b/.test(intentText(message))) {
+    return 'Ada beberapa tindakan dalam pertanyaan Anda. Tanyakan satu tindakan dan jenis record terlebih dahulu agar hak akses serta hasilnya jelas. Belum ada data diubah.';
+  }
+  const selectedNames: Record<ProcedureTopic, string> = { minutes: 'notulensi', meeting: 'meeting', weekly: 'weekly task', daily: 'daily task',
+    timesheet: 'timesheet', reports: 'laporan kerja', invoice: 'invoice', leave: 'cuti', tasks: 'task' };
+  const topic = selection ? { id: selection.topic, name: selectedNames[selection.topic] } : procedureTopic(message);
+  const operation = selection ? selection.operation : procedureOperation(message);
+  if (!topic) return 'Maksud fitur atau tindakan belum jelas. Sebutkan fitur dan tujuan Anda, misalnya "cara hapus meeting", "edit daily task milik saya", atau "buat notulensi". Saya belum menjalankan query atau mengubah data.';
+  const reference = (title: string, content: string, path?: string) => `${title}\n\n${content}${path ? `\n\n[Buka ${title}](${path})` : ''}\n\nSumber: panduan ERP • versi 2026-10-07.`;
+  const unavailable = () => `Panduan untuk ${operation ? operationNames[operation] : 'menggunakan'} ${topic.name} belum dapat dipastikan dari referensi yang tersedia. Saya tidak akan menggantinya dengan panduan tindakan lain. Perjelas tujuan dan status dokumennya; belum ada data diubah.`;
+  if (topic.id === 'meeting') {
+    if (operation === 'delete' || operation === 'cancel') {
+      const role = context?.roleCode.replace(/^ROLE-/, '');
+      const allowedRole = role && ['PROJECT_MANAGER', 'DIRECTOR'].includes(role);
+      const accessBlocked = context && (!context.enabledModules?.includes('REQUESTS') || context.blockedWriteModules?.includes('REQUESTS'));
+      const personal = role ? !allowedRole ? `Peran aktif Anda ${role} tidak diizinkan menghapus meeting, meskipun Anda pembuat atau pesertanya. Minta PM atau Director menindaklanjuti.`
+        : accessBlocked ? `Peran aktif Anda ${role} memenuhi syarat role, tetapi akses perubahan Requests belum tersedia dalam konteks asisten. Hak akses aplikasi tetap harus diperiksa.`
+        : `Peran aktif Anda ${role} memenuhi syarat role untuk menghapus meeting. Meeting tertentu tetap harus ada dalam company aktif dan belum CANCELLED.` : 'Meeting yang sudah dibuat dapat dihapus oleh PM atau Director pada company aktif.';
+      return reference('Hapus meeting', `${personal}\n\nBuka Requests & Meetings → Meeting, pilih Hapus pada meeting yang dimaksud, lalu konfirmasi. Dari detail kartu permintaan meeting di Dashboard, tombolnya bernama Hapus Meeting. Meeting, tiket dan workflow ditandai CANCELLED sehingga hilang dari daftar aktif; notulensi dan tautan tindak lanjut tetap disimpan. Pada recurring, tindakan ini membatalkan meeting/seri, bukan hanya satu tanggal. Ini penjelasan hak dan langkah aplikasi; saya belum menghapus meeting.`, '/requests');
+    }
+    if (operation === 'create') return reference('Membuat meeting', 'Buka Requests & Meetings → Meeting → Meeting Baru. Isi judul, waktu mulai/selesai, jenis meeting, peserta, organizer/notulis dan agenda sesuai form. Waktu selesai harus setelah waktu mulai. Pilih sekali atau recurring; recurring memerlukan tanggal akhir dan hari pengulangan. Simpan draft atau kirim sesuai tombol form. Ini panduan; belum ada meeting dibuat melalui chat.', '/requests');
+    if (operation === 'submit' || operation === 'publish') return reference('Mengirim draft meeting', 'Buka detail meeting DRAFT, periksa jadwal dan peserta, lalu gunakan Publikasikan Meeting atau Kirim / Publikasikan Meeting. Pengiriman draft diperiksa berdasarkan pembuat/organizer atau role administratif yang diizinkan. Hasil aktif menjadi SCHEDULED dan tiket REGISTERED; peserta menerima undangan. Tidak diperlukan approval awal OM untuk mengaktifkan meeting baru. Ini pengiriman meeting, bukan publikasi notulensi.', '/requests');
+    if (operation) return unavailable();
+    if (/\b(?:berapa|jumlah|tampilkan|daftar|kapan|siapa)\b/.test(intentText(message))) return 'Data meeting aktual belum dibaca untuk pertanyaan ini. Buka Requests & Meetings untuk melihat daftar/jadwal yang sesuai akses Anda. Saya belum dapat menyimpulkan jumlah, peserta, atau jadwal dari panduan statis.';
+    return reference('Meeting', 'Buka Requests & Meetings → Meeting untuk melihat agenda yang dapat Anda akses. Sebutkan tujuan Anda: membuat meeting, menghapus meeting, atau membuat/edit/publikasi notulensi. Ketiga tindakan tersebut mempunyai hak akses dan hasil berbeda.', '/requests');
+  }
+  if (topic.id === 'daily') {
+    if (operation === 'edit') return reference('Edit Daily Task', 'Daily Task hanya dapat diedit oleh pemiliknya pada company aktif. Buka Projects, pilih project dan Weekly Task induknya, lalu pilih Update Daily Task pada task milik Anda. Simpan hasil pekerjaan, catatan atau kendala sesuai form. Status/progress mengikuti checklist; penyelesaian memerlukan output hasil dan blocked memerlukan alasan. Owner dan Weekly induk tidak dapat diganti melalui edit biasa. Setelah tersimpan, progress Weekly dan dashboard dihitung ulang. Hak akses tetap diperiksa ketika menyimpan.', '/projects');
+    if (operation === 'delete') return reference('Hapus Daily Task', 'Daily Task hanya dapat dihapus oleh pemiliknya, termasuk ketika PM melihat task orang lain. Buka Projects, pilih project dan Weekly induk, lalu klik Hapus Daily Task dan konfirmasi. Task dihapus, progress induk/dashboard dihitung ulang. Action item meeting tetap disimpan, tetapi tautannya ke Daily Task yang dihapus dilepas. Periksa hasil setelah refresh; saya belum menghapus task.', '/projects');
+    if (operation === 'create' || operation === 'submit') return reference('Membuat Daily Task', 'Buka Tugas Harian → Buat Task Harian. Pilih project, Main Task yang ditugaskan kepada Anda dan Weekly Task milik Anda. Weekly PENDING_APPROVAL atau REJECTED belum dapat dipakai. Isi judul, jam dan output target, lalu simpan. Task dibuat dengan Anda sebagai owner; project dan periode mengikuti Weekly induk. Saya belum membuat task melalui penjelasan ini.', '/tasks');
+    if (operation) return unavailable();
+  }
+  if (topic.id === 'tasks' && operation) return 'Jenis task perlu diperjelas: Main Task, Weekly Task, atau Daily Task? Hak create/edit/delete berbeda untuk setiap tingkat. Sebutkan jenis task dan tujuan; belum ada data diubah.';
+  if (topic.id === 'weekly' && operation === 'approve') return reference('Approval Weekly Task', 'PM/pengelola yang mempunyai kewenangan atas project meninjau Weekly PENDING_APPROVAL melalui Approve atau Reject. Approve mengaktifkan menjadi PLANNED; Reject menjadi REJECTED. Weekly pending/rejected belum dapat dipakai untuk Daily Task. Menjadi assignee tidak otomatis memberikan hak approval.', '/projects');
+  if (topic.id === 'minutes' && operation === 'publish') return reference('Publikasi notulensi', 'Buka meeting dan pilih tanggal pertemuan yang benar. Simpan draft terlebih dahulu, isi ringkasan atau pembahasan, lalu pilih Publikasikan jika hak editor tersedia. Draft yang dipublikasikan menjadi PUBLISHED dan tidak dapat ditimpa. Meeting sekali beserta tiket menjadi COMPLETED; recurring hanya menyelesaikan notulensi tanggal terkait dan seri tetap berjalan. Saya belum mempublikasikan apa pun.', '/requests');
+  if (topic.id === 'minutes' && (operation === 'create' || operation === 'edit')) {
+    const step = operation === 'edit' ? 'Draft notulensi dapat diedit. Buka meeting dan tanggal yang benar, pilih Edit Notulensi, perbarui isinya, lalu simpan draft. Notulensi PUBLISHED sudah dipublikasikan dan tidak dapat diedit atau ditimpa.'
+      : 'Notulensi baru dapat dibuat pada tanggal pertemuan yang belum mempunyai catatan. Buka meeting dan tanggal yang benar, pilih Tambah Notulensi, isi pembahasan, ringkasan, keputusan dan tindak lanjut, lalu simpan draft.';
+    return reference(operation === 'edit' ? 'Edit notulensi' : 'Membuat notulensi', `${step}\n\nPada meeting sekali dengan notulis khusus, notulis yang ditunjuk serta Super Admin, Company Admin atau Director dapat menyusun. Pada recurring atau tanpa notulis khusus, organizer/peserta yang terkait juga dapat menyusun. Hak editor mengikuti permission detail meeting; menjadi PM saja tidak otomatis memberikan hak editor untuk meeting sekali dengan notulis lain. Simpan draft tidak mengirim notifikasi publikasi. Ini panduan; belum ada catatan diubah.`, '/requests');
+  }
+  const supported: Record<string, string[]> = {
+    weekly: ['create', 'submit'], minutes: ['create', 'edit'], reports: [],
+    timesheet: ['create', 'start', 'stop', 'submit'], invoice: ['create', 'submit', 'approve', 'publish'], leave: ['create', 'submit'],
+  };
+  if (operation && !(supported[topic.id] || []).includes(operation)) return unavailable();
+  const item = procedures.find(item => item.id === (topic.id === 'daily' ? 'tasks' : topic.id));
+  return item ? reference(item.title, item.content, item.path) : unavailable();
 }

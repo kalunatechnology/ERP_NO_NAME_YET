@@ -5,6 +5,7 @@ import { MarbotRuntimeAuthority } from './marbot.types';
 import { helperAnswer, systemKnowledgeAnswer } from './marbot-knowledge';
 import { proposeAction } from './marbot-action.service';
 import { proposeNamedTaskAction } from './marbot-named-action.service';
+import { isProcedureQuestion, procedureOperation, procedureTopic } from './marbot-intent';
 
 export type NativeScope = MarbotRuntimeAuthority & { tenantId: string; companyId: string; userId: string; blockedReadModules?: string[]; blockedWriteModules?: string[] };
 export const dashboardRoles: RoleCode[] = [RoleCode.DIRECTOR, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER];
@@ -33,7 +34,7 @@ export function detectTools(message: string): string[] {
 export function isNativeTaskReadQuestion(message: string) {
   return (/\b(task|tasks|tugas)\b/i.test(message) || isWeeklyTaskQuestion(message))
     && detectTools(message).join(',') === 'tasks'
-    && !/\b(buatkan|buat|membuat|mengajukan|ajukan|hapus|menghapus|ubah|mengubah|setujui|approve|delete|update|tambahkan)\b/i.test(message)
+    && !procedureOperation(message)
     && !/\b(cara|panduan|dimana|di mana|how to|fitur|modul|workflow|alur|fungsi|sistem|schema|skema|resource|permission|role|peran)\b/i.test(message)
     && !/[{}]/.test(message);
 }
@@ -88,6 +89,10 @@ const number = (value: unknown) => Number(value || 0).toLocaleString('id-ID');
 
 export function followUpQuestion(message: string, previous?: string): string {
   if (!previous || !/^(dan|kalau|bagaimana dengan|lalu|yang)\b/i.test(message)) return message;
+  const previousTopic = procedureTopic(previous);
+  if (previousTopic && isProcedureQuestion(previous) && !procedureTopic(message) && !detectTools(message).length) {
+    return `${message} ${previousTopic.name}`;
+  }
   // Reuse only the topic; dates are parsed from the new question, never stale results.
   const currentTools = detectTools(message);
   if (currentTools.length) {
@@ -104,6 +109,10 @@ export function followUpQuestion(message: string, previous?: string): string {
 
 export async function answerNative(message: string, mode: AssistantMode, scope: NativeScope, db = prisma) {
   if (mode === 'DASHBOARD' && !canUseDashboard(scope)) throw new ForbiddenError('Dashboard Assistant hanya tersedia untuk pimpinan dengan akses data proyek.');
+  if (isProcedureQuestion(message) && !isNativeTaskReadQuestion(message)
+      && (procedureOperation(message) || !/\b(fitur|modul|workflow|alur|fungsi|sistem|role|peran|permission|hak akses|izin akses)\b/i.test(message))) {
+    return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge:2026-10-07'] };
+  }
   const namedProposal = await proposeNamedTaskAction(message, scope, db);
   if (namedProposal) return namedProposal;
   const proposal = proposeAction(message, scope);
@@ -115,13 +124,13 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
     return { content: `Peran aktif: ${scope.roleCode}.\nModul aktif: ${scope.enabledModules.join(', ')}.\nPermission efektif untuk asisten: ${scope.permissions.join(', ')}.\nCakupan proyek: ${scope.projectScope.mode === 'ALL' ? 'seluruh proyek company aktif' : `${scope.projectScope.projectIds.length} proyek yang diizinkan`}.\nHak operasi tetap divalidasi backend pada setiap permintaan.`, tools: ['access.context'], sources: ['ERP:authority'] };
   }
   if (/\b(cara|bagaimana|panduan|dimana|di mana|how)\b/i.test(message) && !isNativeTaskReadQuestion(message) && (!/progres|progress|kinerja|kpi|target/i.test(message) || isWeeklyTaskQuestion(message))) {
-    return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+    return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
   }
   if (/^\s*(buatkan|buat|hapus|ubah|setujui|approve|delete|update|tambahkan)\b/i.test(message) && !/ringkasan|laporan|summary/i.test(message)) {
     return { content: `Operasi tersebut belum dapat dipetakan ke input yang valid. Saya dapat menyiapkan usulan Project, Main/Weekly/Daily Task, assignment, dan pembaruan task dengan field serta identitas yang jelas. Perubahan memerlukan konfirmasi dan verifikasi backend. Sebutkan record dan perubahan yang diminta.`, tools: [], sources: [] };
   }
   const tools = detectTools(message);
-  if (!tools.length) return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+  if (!tools.length) return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
   const unquotedTaskIntent = message.replace(/["“][^"”]*["”]/g, '');
   if (isWeeklyTaskQuestion(unquotedTaskIntent) && /daily\s+tasks?|(?:tugas|task)\s+harian/i.test(unquotedTaskIntent) && isNativeTaskReadQuestion(message)) {
     return { content: 'Weekly Task dan Daily Task adalah record berbeda. Tanyakan jumlah atau daftar masing-masing secara terpisah agar hasil tidak mencampurkan kedua jenis task. Tidak ada query dijalankan.', tools: [], sources: [] };

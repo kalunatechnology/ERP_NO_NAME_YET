@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { NativeScope } from './marbot-native.service';
+import { isProcedureQuestion } from './marbot-intent';
 
 const text = z.string().trim().min(1).max(2000);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => {
@@ -15,6 +16,7 @@ export type MarbotAction = { kind: 'project.create' | 'task.create' | 'weekly.cr
 
 /** Proposals do not mutate. The canonical ERP API rechecks write authority on execution. */
 export function proposeAction(message: string, scope: NativeScope): { content: string; tools: string[]; sources: string[]; action?: MarbotAction } | null {
+  if (isProcedureQuestion(message)) return null;
   if (/^\s*(assign|tugaskan|assignment)\s+(task|tugas)\b/i.test(message)) {
     const base = { tools: ['action.proposal'], sources: ['ERP:projects-api'] };
     if (!scope.enabledModules.includes('PROJECTS') || scope.blockedReadModules?.includes('PROJECTS') || scope.blockedWriteModules?.includes('PROJECTS')) return { ...base, content: 'Assignment tidak tersedia dalam akses Anda.' };

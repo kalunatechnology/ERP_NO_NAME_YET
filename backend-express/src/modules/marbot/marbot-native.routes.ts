@@ -4,19 +4,18 @@ import { z } from 'zod';
 import prisma from '../../config/database';
 import { AppError, ConflictError, ForbiddenError, ValidationError } from '../../utils/errors';
 import { buildMarbotRuntimeAuthority } from './marbot-access.service';
-import { answerNative, canUseDashboard, followUpQuestion, isNativeTaskReadQuestion } from './marbot-native.service';
-import { renderNativeAnswer } from './marbot-provider.service';
+import { canUseDashboard } from './marbot-native.service';
 import { env } from '../../config/env';
 import { discoverMarbotSchema } from './marbot-schema.service';
 import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
 import { loadNativePolicyRestrictions } from './marbot-policy.service';
-import { planNativeQuestion } from './marbot-planner.service';
 import { executeCanonicalAction } from './marbot-execution.service';
 import type { MarbotAction } from './marbot-action.service';
 import { createMarbotMcpRouter } from './marbot-mcp.routes';
-import { executeResourceRead, executeResourceWrite, planResourceQuestion, resourceCatalog, resourceDefinition } from './marbot-resource.service';
+import { executeResourceRead, executeResourceWrite, resourceCatalog, resourceDefinition } from './marbot-resource.service';
 import { reserveMarbotRequest } from './marbot-rate-limit.service';
 import { assertNativeMarbotStorageReady } from './marbot-runtime.service';
+import { answerMarbotQuestion } from './marbot-orchestrator.service';
 import { marbotOwner as owner, marbotAuthorityKey as authorityKey, visibleConversationTitle,
   marbotAuthorityBaseKey, marbotMessageAuthority, canReadMarbotMessage } from './marbot-authority.service';
 
@@ -166,29 +165,8 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
       { metadata: { path: ['authority'], equals: authorityKey(scope) } },
       { metadata: { path: ['authorityBase'], equals: marbotAuthorityBaseKey(scope) } },
     ] }, orderBy: { created_at: 'desc' } });
-    const contextualQuestion = followUpQuestion(input.message, previous && canReadMarbotMessage(previous.metadata, scope) ? previous.content : undefined);
-    const nativeTaskRead = isNativeTaskReadQuestion(contextualQuestion);
-    const resourcePlan = nativeTaskRead ? null : await planResourceQuestion(contextualQuestion, scope, controller.signal);
-    const plannedQuestion = !nativeTaskRead && !resourcePlan && env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL
-      ? await planNativeQuestion(contextualQuestion, await discoverMarbotSchema(scope, prisma, ['project_project', 'project_main_task', 'project_weekly_task', 'project_daily_task', 'fin_project_cost_entry', 'service_case']), controller.signal)
-      : contextualQuestion;
-    let resourceAnswer: { content: string; tools: string[]; sources: string[]; action?: MarbotAction } | undefined;
-    if (!resourcePlan && /\b(procurement|pengadaan|inventory|inventori|stok|manufacturing|manufaktur|quality|inspeksi|assets|logistics|logistik|implementation|implementasi|sales|master data)\b/i.test(contextualQuestion) &&
-        !/\b(cara|panduan|fitur|workflow|schema|skema|permission|role|peran|modul|sistem)\b/i.test(contextualQuestion)) {
-      resourceAnswer = { content: 'Permintaan data modul tersebut belum dapat dipetakan ke resource dan filter yang valid. Tidak ada data yang diambil atau diubah. Sebutkan resource/field dari katalog kemampuan, atau berikan konteks yang lebih spesifik. Jika provider AI belum dikonfigurasi, gunakan format data {"resource":"module.resource","operation":"count","filters":{}} dengan nama resource aktual.', tools: ['resource.clarification'], sources: ['ERP:canonical-catalog'] };
-    }
-    if (resourcePlan) {
-      const plan = resourcePlan;
-      if (['create', 'update'].includes(plan.operation)) {
-        resourceAnswer = { content: `Usulan perubahan ${plan.resource}:\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n\nBelum disimpan. Konfirmasi diperlukan; backend memvalidasi hak akses dan membaca ulang hasil.`, tools: ['resource.proposal'], sources: ['ERP:canonical-api'], action: { kind: 'resource.write', payload: plan } };
-      } else {
-        const result = await executeResourceRead(req, plan, scope);
-        resourceAnswer = { content: `Data aktual ${plan.resource}: ${result.aggregate ? 'agregasi database sesuai filter dan akses Anda' : `${result.count} record sesuai filter dan akses Anda`}.\n\n\`\`\`json\n${JSON.stringify(result.aggregate ?? result.rows, null, 2)}\n\`\`\`${result.truncated ? '\nDaftar dibatasi 30 record; jumlah berasal dari total query ERP.' : ''}`, tools: ['resource.query'], sources: [result.source] };
-      }
-    }
-    const answer = resourceAnswer ?? (/\b(schema|skema|foreign key|primary key|relasi tabel|kolom database)\b/i.test(input.message)
-      ? { content: `Metadata database aktual sesuai permission tool Anda:\n\n\`\`\`json\n${JSON.stringify(await discoverMarbotSchema(scope), null, 2)}\n\`\`\`\n\nMetadata tidak memberikan akses query atau mutasi tambahan.`, tools: ['schema.discovery'], sources: ['ERP:database-metadata'] }
-      : await answerNative(plannedQuestion, input.mode, scope));
+    const previousQuestion = previous && canReadMarbotMessage(previous.metadata, scope) ? previous.content : undefined;
+    const { answer, understanding } = await answerMarbotQuestion(req, input.message, input.mode, scope, controller.signal, previousQuestion);
     if ('action' in answer && answer.action) {
       // Reject disabled company/user writes before a proposal reaches the UI.
       // Execution still traverses the complete canonical API authorization chain.
@@ -197,12 +175,9 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
         void requireModuleAccess(module, 'write')(req, res, error => error ? reject(error) : resolve());
       });
     }
-    // Operational values must reach the user byte-for-byte from the ERP query.
-    // The optional language model may phrase static procedures, never numeric business data.
-    const hasOperationalData = !answer.tools.includes('help.procedure');
-    const rendered = hasOperationalData
-      ? { content: answer.content, model: 'erp-native' }
-      : await renderNativeAnswer(input.message, answer.content, controller.signal);
+    // LLM chooses intent, tools supply evidence. Final facts/permissions are not
+    // rewritten by a model, and only the confirmed execution endpoint mutates.
+    const rendered = { content: answer.content, model: 'erp-native' };
     if (controller.signal.aborted) {
       await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'CANCELLED' } });
       return;
@@ -213,7 +188,7 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
     const action = 'action' in answer ? answer.action : undefined;
     await prisma.$transaction([
       prisma.marbot_message.create({ data: { conversation_id: conversation.id, role: 'user', content: input.message, metadata: { mode: input.mode, ...marbotMessageAuthority(scope) } } }),
-      prisma.marbot_message.create({ data: { id: actionId, conversation_id: conversation.id, role: 'assistant', content: rendered.content, metadata: { mode: input.mode, ...marbotMessageAuthority(scope), tools: answer.tools, sources: answer.sources, model: rendered.model, ...(action ? { action: JSON.parse(JSON.stringify(action)) } : {}) } } }),
+      prisma.marbot_message.create({ data: { id: actionId, conversation_id: conversation.id, role: 'assistant', content: rendered.content, metadata: { mode: input.mode, ...marbotMessageAuthority(scope), tools: answer.tools, sources: answer.sources, model: rendered.model, understanding, ...(action ? { action: JSON.parse(JSON.stringify(action)) } : {}) } } }),
       ...(action ? [prisma.marbot_request.create({ data: { ...owner(scope), nonce: actionId, request_id: req.requestId || actionId, tool_name: 'native.action', outcome: 'PROPOSED' } })] : []),
       prisma.marbot_conversation.update({ where: { id: conversation.id }, data: { updated_at: new Date() } }),
       prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } }),

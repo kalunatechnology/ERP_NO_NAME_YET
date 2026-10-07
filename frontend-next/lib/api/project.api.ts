@@ -266,6 +266,25 @@ export interface ProjectDashboardBundle {
   costEntries: any[]; proposals: any[]; fundings: any[]; users: any[];
 }
 
+/** Combine authorized projections without duplicating shared WBS records.
+ * Management rows take precedence because they contain the richer read model. */
+export function mergeProjectDashboardBundles(
+  management: ProjectDashboardBundle | undefined,
+  personal: ProjectDashboardBundle,
+): ProjectDashboardBundle {
+  const merged = {} as ProjectDashboardBundle;
+  for (const key of Object.keys(personal) as (keyof ProjectDashboardBundle)[]) {
+    if (!Array.isArray(personal[key])) continue;
+    const rows = new Map<string, any>();
+    for (const row of [...(management?.[key] || []), ...personal[key]]) {
+      const id = String(row.id);
+      if (!rows.has(id)) rows.set(id, row);
+    }
+    merged[key] = Array.from(rows.values());
+  }
+  return merged;
+}
+
 export async function loadAllProjects(enabledModules: string[] = [], bundle?: ProjectDashboardBundle, access?: Omit<FrontendAccessContext, "enabledModules">): Promise<Project[]> {
   const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", { ...access, enabledModules });
 /**
