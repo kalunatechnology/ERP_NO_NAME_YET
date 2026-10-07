@@ -9,6 +9,7 @@ import api from "./axios";
 import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contract";
 import { normalizeList } from "./auth.api";
 import { normalizeDateKey } from "@/lib/utils";
+import { weeklyProgress } from "../weekly-dashboard";
 
 export interface Project {
   id: string | number;
@@ -459,10 +460,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
       if (!weeklyByMain[mId]) weeklyByMain[mId] = [];
       const wId = String(w.id);
       const wDailies = dailyByWeekly[wId] || [];
-      const doneDailies = wDailies.filter(d => d.status === "COMPLETED" || d.status === "DONE");
-      // Weekly progress is exclusively rolled up from Daily Tasks. A stale
-      // persisted percentage must not create progress when no Daily Task exists.
-      const calcProg = wDailies.length ? Math.round((doneDailies.length / wDailies.length) * 100) : 0;
+      const calcProg = weeklyProgress(w, wDailies);
 
       weeklyByMain[mId].push({
         id: w.id,
@@ -475,7 +473,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
         end_date: w.end_date || w.planned_end || "",
         status: w.status || "PLANNED",
         progress: calcProg,
-        assignee_name: w.assignee_name || w.assignee_username || w.owner_name || "",
+        assignee_name: w.assignee_name || w.assignee_username || userMap[String(w.assignee_id || w.assignee || w.assigned_to)] || "",
         assignee_id: w.assignee_id || w.assignee || w.assigned_to,
         daily_tasks: wDailies,
       });

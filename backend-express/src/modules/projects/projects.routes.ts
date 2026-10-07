@@ -1607,6 +1607,11 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     data.tenant_id = mainTask.tenant_id;
     data.company_id = mainTask.company_id;
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
+    // Personal submissions may omit the PIC; the existing policy still rejects
+    // an explicit different user and keeps PM-created assignments unchanged.
+    if (!data.assignee_id && !await ProjectsService.hasProjectManagementAuthority(req.user, mainTask.project_id, companyId)) {
+      data.assignee_id = req.user!.id;
+    }
     if (!data.assignee_id) throw new ValidationError('Assignee Weekly Task wajib dipilih dari assignment Main Task.');
     const creationStatus = await ProjectsService.weeklyCreationStatus(req.user, mainTask, companyId, String(data.assignee_id));
     await ProjectsService.assertOperationalCompanyMember(String(data.assignee_id), activeCompanyId(req));
@@ -1688,6 +1693,10 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
 }));
 
 // Helper to normalize Daily Tasks
+// Reuse the owner-only domain command for ordinary edits as well. Generic CRUD
+// previously ignored operational fields and skipped output comparison updates.
+projectsRouter.put('/daily-tasks/:id', handleUpdateDailyProgress);
+projectsRouter.patch('/daily-tasks/:id', handleUpdateDailyProgress);
 projectsRouter.delete('/daily-tasks/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     await ProjectsService.deleteDailyTask(req.params.id, req.user, activeCompanyId(req));

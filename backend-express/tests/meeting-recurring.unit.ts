@@ -141,6 +141,14 @@ async function main() {
     assert.equal(oneTime.notes[0].status, 'COMPLETED');
     assert.equal(meetingUpdateCount, 6, 'one-time publish completes its meeting after the draft save');
     assert.equal(ticketUpdateCount, 1, 'one-time publish completes its request ticket');
+    // A directly assigned notulis must retain rights without a redundant
+    // participant row; responsibility comes from the meeting relationship.
+    notes.splice(0);
+    patch(prisma.request_meeting_participant, 'findFirst', async () => null);
+    const assignedOnly = await MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-09-28', summary: 'Assigned notulis' }, 'company', 'notetaker', 'ROLE-STAFF');
+    assert.equal(assignedOnly.minutes?.prepared_by_id, 'notetaker');
+    const assignedEdit = await MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-09-28', summary: 'Assigned edit' }, 'company', 'notetaker', 'ROLE-STAFF');
+    assert.equal(assignedEdit.minutes?.id, assignedOnly.minutes?.id); assert.equal(assignedEdit.minutes?.summary, 'Assigned edit');
     console.log('Recurring meeting passed: weekday defaults, explicit weekend config, lazy notes, create/view/edit, refresh idempotency, date isolation, completion and permission checks.');
   } finally {
     patches.reverse().forEach((restore) => restore());

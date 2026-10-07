@@ -1,36 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AlertTriangle, CalendarDays, CheckCircle2, Search, Target, UserRound } from "lucide-react";
-import type { Project, WeeklyTask } from "@/lib/api/project.api";
-import { cn, formatDate, localDateKey, normalizeDateKey } from "@/lib/utils";
+import { Fragment, useMemo, useState } from "react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Search, Target, UserRound, ChevronDown, ChevronRight } from "lucide-react";
+import type { Project } from "@/lib/api/project.api";
+import { cn, formatDate, localDateKey } from "@/lib/utils";
 
-type WeeklyTargetState = "ALL" | "COMPLETED" | "IN_PROGRESS" | "NOT_STARTED" | "ATTENTION";
+import { calendarWeek, weeklyTargetRecords, weeklyTargetsInPeriod, type WeeklyTargetRecord } from "@/lib/weekly-dashboard";
 
-type WeeklyTargetRecord = {
-  id: string;
-  code: string;
-  projectId: string;
-  projectCode: string;
-  projectName: string;
-  mainTaskName: string;
-  assigneeId: string;
-  assigneeName: string;
-  startDate: string;
-  endDate: string;
-  progress: number;
-  dailyCount: number;
-  completedDailyCount: number;
-  hasBlockedDaily: boolean;
-  weeklyTask: WeeklyTask;
-};
-
-function clampProgress(value: number) {
-  return Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0));
-}
+type WeeklyTargetState = "ALL" | "COMPLETED" | "IN_PROGRESS" | "NOT_STARTED" | "ATTENTION" | "PENDING_APPROVAL" | "REJECTED";
 
 function recordState(record: WeeklyTargetRecord, today: string): Exclude<WeeklyTargetState, "ALL"> {
   const status = String(record.weeklyTask.status || "").toUpperCase();
+  if (status === "PENDING_APPROVAL" || status === "REJECTED") return status;
   if (record.progress >= 100 || ["COMPLETED", "DONE"].includes(status)) return "COMPLETED";
   if (record.hasBlockedDaily || Boolean(record.endDate && record.endDate < today)) return "ATTENTION";
   if (record.progress > 0 || ["IN_PROGRESS", "ON_PROGRESS", "ACTIVE", "STARTED"].includes(status)) return "IN_PROGRESS";
@@ -38,6 +19,8 @@ function recordState(record: WeeklyTargetRecord, today: string): Exclude<WeeklyT
 }
 
 function statusPresentation(state: Exclude<WeeklyTargetState, "ALL">) {
+  if (state === "PENDING_APPROVAL") return { label: "Menunggu Approval", className: "bg-amber-50 text-amber-700" };
+  if (state === "REJECTED") return { label: "Ditolak", className: "bg-red-50 text-red-700" };
   if (state === "COMPLETED") return { label: "Selesai", className: "bg-[#E8F8EC] text-[#237A3B]" };
   if (state === "ATTENTION") return { label: "Perlu Dipantau", className: "bg-[#FFF0F0] text-[#B42318]" };
   if (state === "IN_PROGRESS") return { label: "Berjalan", className: "bg-[#EAF6FF] text-[#3157C8]" };
@@ -50,64 +33,16 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
   const [selectedState, setSelectedState] = useState<WeeklyTargetState>("ALL");
   const [search, setSearch] = useState("");
   const today = localDateKey();
+  const [selectedWeek, setSelectedWeek] = useState(() => calendarWeek(localDateKey()).start);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const period = calendarWeek(selectedWeek);
 
-  const records = useMemo<WeeklyTargetRecord[]>(() => {
-    const result: WeeklyTargetRecord[] = [];
-
-    projects.forEach((project) => {
-      const projectId = String(project.id);
-      const projectCode = project.project_code || project.code || "PROJECT";
-      const projectName = project.project_name || project.name || "Project";
-
-      (project.main_tasks || []).forEach((mainTask) => {
-        (mainTask.weekly_tasks || mainTask.weekly_plans || []).forEach((weeklyTask) => {
-          const dailyTasks = weeklyTask.daily_tasks || [];
-          const completedDailyCount = dailyTasks.filter((task) =>
-            ["COMPLETED", "DONE"].includes(String(task.status || "").toUpperCase())
-          ).length;
-          const derivedProgress = dailyTasks.length
-            ? Math.round((completedDailyCount / dailyTasks.length) * 100)
-            : Number(weeklyTask.progress || 0);
-          const assigneeId = String(weeklyTask.assignee_id || "");
-          const assignmentName = (mainTask.assignments || []).find((assignment) =>
-            String(assignment.assignee_id ?? assignment.assignee ?? "") === assigneeId
-          )?.assignee_name;
-          const dailyOwnerName = dailyTasks.find((task) => task.owner_name)?.owner_name;
-
-          result.push({
-            id: String(weeklyTask.id),
-            code: `${projectCode} · W#${weeklyTask.week_number || 1}`,
-            projectId,
-            projectCode,
-            projectName,
-            mainTaskName: mainTask.name || mainTask.title || "Main Task",
-            assigneeId,
-            assigneeName: weeklyTask.assignee_name || assignmentName || dailyOwnerName || "Belum ditentukan",
-            startDate: normalizeDateKey(weeklyTask.start_date) || "",
-            endDate: normalizeDateKey(weeklyTask.end_date) || "",
-            progress: clampProgress(derivedProgress),
-            dailyCount: dailyTasks.length,
-            completedDailyCount,
-            hasBlockedDaily: dailyTasks.some((task) =>
-              Boolean(task.is_blocked) || String(task.status || "").toUpperCase() === "BLOCKED"
-            ),
-            weeklyTask,
-          });
-        });
-      });
-    });
-
-    return result.sort((a, b) =>
-      a.assigneeName.localeCompare(b.assigneeName) ||
-      a.projectName.localeCompare(b.projectName) ||
-      a.code.localeCompare(b.code)
-    );
-  }, [projects]);
+  const records = useMemo(() => weeklyTargetRecords(projects), [projects]);
 
   const users = useMemo(() => {
     const values = new Map<string, string>();
     records.forEach((record) => {
-      const key = record.assigneeId || `name:${record.assigneeName}`;
+      const key = record.assigneeId || "unassigned";
       values.set(key, record.assigneeName);
     });
     return Array.from(values, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
@@ -121,19 +56,18 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
 
   const scopedRecords = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("id-ID");
-    return records.filter((record) => {
-      const userKey = record.assigneeId || `name:${record.assigneeName}`;
-      if (selectedUserId !== "all" && userKey !== selectedUserId) return false;
-      if (selectedProjectId !== "all" && record.projectId !== selectedProjectId) return false;
+    return weeklyTargetsInPeriod(records, selectedWeek, selectedUserId, selectedProjectId).filter((record) => {
       if (!query) return true;
       return [record.code, record.projectCode, record.projectName, record.mainTaskName, record.assigneeName, record.weeklyTask.target_description, record.weeklyTask.target_output]
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase("id-ID").includes(query));
     });
-  }, [records, search, selectedProjectId, selectedUserId]);
+  }, [records, search, selectedProjectId, selectedUserId, selectedWeek]);
 
   const counts = useMemo(() => ({
     ALL: scopedRecords.length,
+    PENDING_APPROVAL: scopedRecords.filter((record) => recordState(record, today) === "PENDING_APPROVAL").length,
+    REJECTED: scopedRecords.filter((record) => recordState(record, today) === "REJECTED").length,
     COMPLETED: scopedRecords.filter((record) => recordState(record, today) === "COMPLETED").length,
     IN_PROGRESS: scopedRecords.filter((record) => recordState(record, today) === "IN_PROGRESS").length,
     NOT_STARTED: scopedRecords.filter((record) => recordState(record, today) === "NOT_STARTED").length,
@@ -155,6 +89,8 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
     { id: "COMPLETED", label: "Selesai" },
     { id: "NOT_STARTED", label: "Belum Mulai" },
     { id: "ATTENTION", label: "Perlu Dipantau" },
+    { id: "PENDING_APPROVAL", label: "Menunggu Approval" },
+    { id: "REJECTED", label: "Ditolak" },
   ];
 
   return (
@@ -170,12 +106,17 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
           </div>
         </div>
 
-        <div className="grid w-full gap-3 sm:grid-cols-2 lg:max-w-[650px] lg:grid-cols-3">
+        <div className="grid w-full gap-3 sm:grid-cols-2 lg:max-w-[750px] lg:grid-cols-4">
+          <label className="text-xs font-semibold text-[#3157C8]">
+            <span className="sr-only">Minggu aktif</span>
+            <input aria-label="Minggu aktif" type="date" value={selectedWeek} onChange={event => { if (event.target.value) setSelectedWeek(calendarWeek(event.target.value).start); }} className="h-11 w-full rounded-xl border border-[#BDD7FF] bg-white px-3 outline-none focus:ring-2 focus:ring-[#DCEEFF]" />
+            <span className="mt-1 block text-[10px]">{formatDate(period.start)} – {formatDate(period.end)}</span>
+          </label>
           <label className="relative">
             <span className="sr-only">Filter staf</span>
             <UserRound size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#3157C8]" />
             <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} className="h-11 w-full appearance-none rounded-xl border border-[#BDD7FF] bg-white pl-10 pr-3 text-xs font-semibold text-[#3157C8] outline-none focus:ring-2 focus:ring-[#DCEEFF]">
-              <option value="all">Semua Staff</option>
+              <option value="all">Semua User</option>
               {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
             </select>
           </label>
@@ -232,14 +173,18 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
                 const state = recordState(record, today);
                 const status = statusPresentation(state);
                 return (
-                  <tr key={record.id} className="border-t border-[#ECEDEF] align-middle transition-colors hover:bg-[#F7FAFF]">
+                  <Fragment key={record.id}><tr className="border-t border-[#ECEDEF] align-middle transition-colors hover:bg-[#F7FAFF]">
                     <td className="px-4 py-5"><span className="inline-flex rounded-lg bg-[#EAF6FF] px-2.5 py-1.5 text-xs font-extrabold text-[#3157C8]">{record.code}</span></td>
                     <td className="px-4 py-5"><p className="text-sm font-bold text-[#111318]">{record.projectName}</p><p className="mt-1 text-xs font-semibold text-[#4F5050]">{record.mainTaskName}</p><p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[#777B82]">{record.weeklyTask.target_description || record.weeklyTask.target_output || "Target mingguan belum memiliki deskripsi."}</p></td>
                     <td className="px-4 py-5"><div className="flex items-center gap-2.5"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[#3157C8]"><UserRound size={15} /></span><span className="text-xs font-semibold text-[#292B30]">{record.assigneeName}</span></div></td>
                     <td className="px-4 py-5 text-xs text-[#4F5050]"><p>{record.startDate ? formatDate(record.startDate) : "-"}</p><p className="my-1 text-[10px] text-[#9A9DA3]">sampai</p><p>{record.endDate ? formatDate(record.endDate) : "-"}</p></td>
-                    <td className="px-4 py-5"><div className="flex items-center justify-between gap-3"><span className="text-xs text-[#5A5B5D]">{record.completedDailyCount}/{record.dailyCount} Daily Task</span><strong className="text-sm text-[#3157C8]">{record.progress}%</strong></div><div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#E7EAF0]" role="progressbar" aria-label={`Progress ${record.code}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={record.progress}><div className={cn("h-full rounded-full transition-all", state === "COMPLETED" ? "bg-[#37A451]" : state === "ATTENTION" ? "bg-[#E14B4B]" : "bg-[#3157C8]")} style={{ width: `${record.progress}%` }} /></div></td>
+                    <td className="px-4 py-5"><button type="button" aria-expanded={expandedIds.has(record.id)} onClick={() => setExpandedIds(previous => { const next = new Set(previous); if (next.has(record.id)) next.delete(record.id); else next.add(record.id); return next; })} className="mb-2 flex items-center gap-1 text-xs font-semibold text-[#3157C8]">{expandedIds.has(record.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}Lihat Daily Task</button><div className="flex items-center justify-between gap-3"><span className="text-xs text-[#5A5B5D]">{record.completedDailyCount}/{record.dailyCount} Daily Task</span><strong className="text-sm text-[#3157C8]">{record.progress}%</strong></div><div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#E7EAF0]" role="progressbar" aria-label={`Progress ${record.code}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={record.progress}><div className={cn("h-full rounded-full transition-all", state === "COMPLETED" ? "bg-[#37A451]" : state === "ATTENTION" ? "bg-[#E14B4B]" : "bg-[#3157C8]")} style={{ width: `${record.progress}%` }} /></div></td>
                     <td className="px-4 py-5"><span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-bold", status.className)}>{state === "COMPLETED" ? <CheckCircle2 size={13} /> : state === "ATTENTION" ? <AlertTriangle size={13} /> : null}{status.label}</span></td>
                   </tr>
+                  {expandedIds.has(record.id) && <tr className="border-t border-[#ECEDEF] bg-[#F7FAFF]"><td colSpan={6} className="px-6 py-4">
+                    {record.dailyTasks.length === 0 ? <p className="text-xs text-[#777B82]">Belum ada Daily Task.</p> : <table className="w-full text-xs"><thead><tr className="text-[#4F5050]"><th className="pb-2 text-left">Daily Task</th><th className="pb-2 text-left">Pemilik</th><th className="pb-2 text-left">Tanggal</th><th className="pb-2 text-left">Status</th><th className="pb-2 text-left">Progress</th></tr></thead><tbody>{record.dailyTasks.map(daily => <tr key={daily.id} className="border-t border-[#ECEDEF]"><td className="py-2">{daily.title || daily.activity_input}</td><td>{daily.owner_name || String(daily.owner_id || "Belum ditentukan")}</td><td>{daily.planned_date ? formatDate(daily.planned_date) : "-"}</td><td>{daily.status}</td><td>{daily.progress ?? 0}%</td></tr>)}</tbody></table>}
+                  </td></tr>}
+                  </Fragment>
                 );
               })}
             </tbody>
