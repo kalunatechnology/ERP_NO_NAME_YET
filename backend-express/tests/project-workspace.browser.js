@@ -21,14 +21,14 @@ async function main() {
     browser = await chromium.launch({ headless: true, channel: 'msedge' });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    let role = 'ROLE-PM', bootstraps = 0, edits = 0, deletes = 0, submissions = 0, reviews = 0;
+    let role = 'ROLE-PM', bootstraps = 0, edits = 0, deletes = 0, submissions = 0, reviews = 0, supervisorActive = true;
     const company = '10000000-0000-0000-0000-000000000099';
     const actorId = '20000000-0000-0000-0000-000000000099';
-    const profile = () => ({ id: actorId, email: 'fixture@qa.invalid', full_name: 'Fixture User', company_id: company, active_role_code: role, enabled_modules: ['PROJECTS'], delegated_modules: [], roles: [{ role_code: 'ROLE-STAFF', company_id: company }, { role_code: role, company_id: company }] });
-    const projects = ['a', 'b'].map(id => ({ id, project_name: `Project ${id.toUpperCase()}`, project_code: id.toUpperCase(), customer_name: 'QA', manager_name: 'Fixture User', progress: 0, status: 'IN_PROGRESS' }));
-    const mainTasks = ['a', 'b'].map(id => ({ id: `main-${id}`, project_id: id, name: `Main ${id}`, title: `Main ${id}`, weight: 100, status: 'PLANNED' }));
-    const assignments = ['a', 'b'].map(id => ({ id: `assign-${id}`, main_task_id: `main-${id}`, assignee_id: actorId, assignee_name: 'Fixture User' }));
-    const weeklies = [{ id: 'week-a', main_task_id: 'main-a', assignee_id: actorId, week_number: 1, target_description: 'Approved weekly', start_date: '2026-10-05', end_date: '2026-10-11', status: 'PLANNED', progress: 0 }];
+    const profile = () => ({ id: actorId, email: 'fixture@qa.invalid', full_name: 'Fixture User', company_id: company, active_role_code: role, enabled_modules: ['PROJECTS'], delegated_modules: role === 'ROLE-SUPERVISOR' ? ['PROJECTS'] : [], roles: [{ role_code: 'ROLE-STAFF', company_id: company }, { role_code: role, company_id: company }] });
+    const projects = ['a', 'b', 'c'].map(id => ({ id, project_name: `Project ${id.toUpperCase()}`, project_code: id.toUpperCase(), customer_name: 'QA', manager_name: 'Fixture User', progress: 0, status: 'IN_PROGRESS' }));
+    const mainTasks = ['a', 'b', 'c'].map(id => ({ id: `main-${id}`, project_id: id, name: `Main ${id}`, title: `Main ${id}`, weight: 100, status: 'PLANNED' }));
+    const assignments = [{ id: 'other-first', main_task_id: 'main-b', assignee_id: 'other-user', assignee_name: 'Other User' }, ...['a', 'b', 'c'].map(id => ({ id: `assign-${id}`, main_task_id: `main-${id}`, assignee_id: actorId, assignee_name: 'Fixture User' }))];
+    const weeklies = [{ id: 'week-a', main_task_id: 'main-a', assignee_id: actorId, week_number: 1, target_description: 'Approved weekly', start_date: '2026-10-05', end_date: '2026-10-11', status: 'PLANNED', progress: 0 }, { id: 'other-week-c', main_task_id: 'main-c', assignee_id: 'other-user', target_description: 'Other user weekly', status: 'PLANNED', progress: 0 }];
     let dailies = [{ id: 'daily-a', weekly_task_id: 'week-a', owner_id: actorId, title: 'Daily editable', time_slot: '09:00-10:00', planned_date: '2026-10-06', output_target: 'Report', output_result: '', notes: '', status: 'IN_PROGRESS', progress: 0 }];
     const bundle = () => ({ projects, mainTasks, assignments, weeklyTasks: weeklies, dailyTasks: dailies, tasks: [], milestones: [], stages: [], costEntries: [], proposals: [], fundings: [], users: [] });
     const token = `e30.${Buffer.from(JSON.stringify({ exp: 4102444800 })).toString('base64url')}.fixture`;
@@ -41,14 +41,25 @@ async function main() {
       if (endpoint.includes('/dashboard/bootstrap')) {
         bootstraps++;
         if (role === 'ROLE-STAFF') assert.equal(url.searchParams.has('project_workspace'), false, 'Ordinary Staff must request personal project data');
+        if (role === 'ROLE-SUPERVISOR') {
+          if (url.searchParams.get('project_workspace') === 'management') {
+            if (!supervisorActive) return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ detail: 'No active supervision' }) });
+            return json({ data: { projects: { ...bundle(), projects: projects.filter(p => p.id === 'a'), mainTasks: mainTasks.filter(m => m.project_id === 'a'), assignments: assignments.filter(a => a.main_task_id === 'main-a'), weeklyTasks: weeklies.filter(w => w.main_task_id === 'main-a') } } });
+          }
+          return json({ data: { projects: { ...bundle(), weeklyTasks: weeklies.filter(w => w.assignee_id === actorId) } } });
+        }
         return json({ data: { projects: bundle() } });
       }
-      if (endpoint.endsWith('/authority')) return json({ project_id: endpoint.split('/').at(-2), can_manage_project: role === 'ROLE-PM', can_manage_wbs: role === 'ROLE-PM', can_manage_weekly_tasks: role === 'ROLE-PM', can_assign_team: false, can_view_financials: role === 'ROLE-PM' });
+      if (endpoint.endsWith('/authority')) {
+        const projectId = endpoint.split('/').at(-2);
+        const manage = role === 'ROLE-PM' || (role === 'ROLE-SUPERVISOR' && supervisorActive && projectId === 'a');
+        return json({ project_id: projectId, is_acting_project_manager: role === 'ROLE-SUPERVISOR' && manage, can_manage_project: manage, can_manage_wbs: manage, can_manage_weekly_tasks: manage, can_assign_team: false, can_view_financials: manage });
+      }
       if (endpoint.endsWith('/supervisor')) return json(null);
       if (/\/weekly-tasks\/?$/.test(endpoint) && request.method() === 'POST') {
         submissions++; const body = request.postDataJSON();
         assert.equal(body.assignee, actorId);
-        const row = { ...body, id: 'submitted', main_task_id: body.main_task, assignee_id: actorId, status: 'PENDING_APPROVAL', progress: 0 };
+        const row = { ...body, id: `submitted-${submissions}`, main_task_id: body.main_task, assignee_id: actorId, status: 'PENDING_APPROVAL', progress: 0 };
         weeklies.push(row); return json(row);
       }
       if (endpoint.endsWith('/review')) { reviews++; const row = weeklies.find(w => w.id === endpoint.split('/').at(-2)); row.status = request.postDataJSON().decision === 'APPROVE' ? 'PLANNED' : 'REJECTED'; return json(row); }
@@ -82,6 +93,12 @@ async function main() {
     await page.evaluate(user => localStorage.setItem('erp.user', JSON.stringify(user)), profile());
     await page.reload({ waitUntil: 'networkidle' });
     await page.locator('nav a[href="/projects"]').waitFor();
+    await page.locator('#project-selector').selectOption('b'); await page.waitForURL(/project=b/);
+    await page.getByRole('heading', { name: 'Main b', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Ajukan Target Mingguan' }).click();
+    assert.equal(await page.getByRole('dialog').locator('select').inputValue(), actorId, 'Shared Main Task with another assignee first must still default to self');
+    await page.keyboard.press('Escape');
+    await page.locator('#project-selector').selectOption('a'); await page.waitForURL(/project=a/);
     await page.getByRole('button', { name: 'Ajukan Target Mingguan' }).click();
     const modal = page.getByRole('dialog');
     await modal.locator('textarea').fill('Staff proposed weekly');
@@ -98,6 +115,25 @@ async function main() {
     await page.reload({ waitUntil: 'networkidle' }); await page.getByRole('button', { name: 'Buka Semua' }).click();
     await page.getByRole('button', { name: 'Approve', exact: true }).click();
     await page.getByText('Weekly Task disetujui.', { exact: true }).waitFor(); assert.equal(reviews, 1);
+    role = 'ROLE-SUPERVISOR'; await page.evaluate(user => localStorage.setItem('erp.user', JSON.stringify(user)), profile());
+    await page.reload({ waitUntil: 'networkidle' });
+    assert.equal(await page.locator('#project-selector option').count(), 3, 'Supervisor must receive personal projects as well as managed projects, deduplicated');
+    await page.locator('#project-selector').selectOption('b'); await page.waitForURL(/project=b/);
+    await page.getByRole('button', { name: 'Ajukan Target Mingguan' }).click();
+    assert.equal(await modal.locator('select').inputValue(), actorId); assert(await modal.locator('select').isDisabled());
+    await modal.locator('textarea').fill('Shared Main personal proposal');
+    await modal.getByRole('button', { name: 'Ajukan Target Mingguan' }).click();
+    await page.getByText('Target mingguan diajukan dan menunggu approval PM.', { exact: true }).waitFor();
+    assert.equal(submissions, 2);
+    assert.equal(await page.getByRole('button', { name: 'Tambah Main Task', exact: true }).count(), 0, 'Personal assignment cannot grant project management');
+    await page.locator('#project-selector').selectOption('c'); await page.waitForURL(/project=c/);
+    await page.getByRole('button', { name: 'Ajukan Target Mingguan' }).waitFor();
+    assert.equal(await page.getByText('Other user weekly', { exact: true }).count(), 0);
+    supervisorActive = false;
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'Ajukan Target Mingguan' }).waitFor();
+    assert.equal(await page.locator('#project-selector option').count(), 3, 'No management scope must not suppress personal assignment data');
+    role = 'ROLE-PM'; await page.evaluate(user => localStorage.setItem('erp.user', JSON.stringify(user)), profile());
     await page.goto(`${origin}?surface=tasks`, { waitUntil: 'networkidle' });
     await page.getByRole('button', { name: /^Semua \(/ }).click();
     await page.setViewportSize({ width: 390, height: 844 });
@@ -114,7 +150,7 @@ async function main() {
     page.once('dialog', dialog => dialog.accept()); await page.getByTitle(/^Hapus (Daily Task|Tugas Harian)$/).click();
     await page.getByText(/^(Daily Task|Tugas Harian) dihapus\.$/).waitFor(); assert.equal(deletes, 1);
     assert.deepEqual(errors, []);
-    console.log('PASS: real React clients/browser with intercepted API fixtures — project selection/tabs/reload, Staff proposal, pending gate, PM review, Daily edit, cancel/confirm delete.');
+    console.log('PASS: real React clients/browser with intercepted API fixtures — shared Main assignment, personal+managed projects without duplicates, self PIC, pending gate, supervisor fallback/permissions, PM review, Daily edit/delete.');
   } finally {
     if (browser) await browser.close();
     if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

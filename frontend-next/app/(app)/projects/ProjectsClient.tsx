@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import {
   Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, ProjectAuthority, ProjectSupervisor,
-  loadAllProjects, createProject, deleteProject,
+  loadAllProjects, mergeProjectDashboardBundles, createProject, deleteProject,
   createMainTask, deleteMainTask,
   createWeeklyTask, deleteWeeklyTask, reviewWeeklyTask,
   createDailyTask, updateDailyTask, deleteDailyTask,
@@ -338,15 +338,35 @@ export default function ProjectsClient() {
       const enabledModules = enabledModulesKey ? enabledModulesKey.split("|") : [];
       const delegatedModules = delegatedModulesKey ? delegatedModulesKey.split("|") : [];
       const moduleAccess: ModulePermission[] = JSON.parse(moduleAccessKey);
-      const personalProjectWorkspace = ["staff", "supervisor"].includes(userRole || "")
+      const operationalUser = ["staff", "supervisor"].includes(userRole || "");
+      const personalProjectWorkspace = operationalUser
         && (!delegatedModules.includes("PROJECTS") || getModuleOverride(moduleAccess, "PROJECTS")?.allow_write === false);
-      const projectBundle = loadDashboardBootstrap(["projects"], {
+      const projectAccess = {
         enabledModules,
         delegatedModules,
         moduleAccess,
         activeRoleCode,
         isSuperAdmin: userRole === "super_admin",
-      }, { fresh: silent, projectWorkspace: personalProjectWorkspace ? undefined : 'management' }).then((response) => response.projects);
+      };
+      const projectBundle = (async () => {
+        if (!operationalUser || personalProjectWorkspace) {
+          return (await loadDashboardBootstrap(["projects"], projectAccess, {
+            fresh: silent, projectWorkspace: personalProjectWorkspace ? undefined : 'management',
+          })).projects;
+        }
+        // A supervisor can also have personal assignments outside supervised
+        // projects. Fetch both existing scopes; per-project authority still
+        // controls management actions, including Weekly approval.
+        const [personal, management] = await Promise.allSettled([
+          loadDashboardBootstrap(["projects"], projectAccess, { fresh: silent }),
+          loadDashboardBootstrap(["projects"], projectAccess, { fresh: silent, projectWorkspace: 'management' }),
+        ]);
+        if (personal.status === 'rejected') throw personal.reason;
+        if (management.status === 'rejected' && management.reason?.response?.status !== 403) throw management.reason;
+        const personalBundle = personal.value.projects;
+        if (!personalBundle) throw new Error('Data task personal tidak tersedia.');
+        return mergeProjectDashboardBundles(management.status === 'fulfilled' ? management.value.projects : undefined, personalBundle);
+      })();
       const projectData = projectBundle.then((bundle) => loadAllProjects(enabledModules, bundle, {
           delegatedModules,
           moduleAccess,

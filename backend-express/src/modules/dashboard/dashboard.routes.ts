@@ -55,8 +55,8 @@ function canReadSection(req: Request, section: DashboardSection): boolean {
   return enabled.has(moduleCode) && Boolean(activeRole && SECTION_ROLES[section].includes(activeRole));
 }
 
-/** Loads project dashboard source records using the same limits as the former browser fan-out. */
-/** Loads project dashboard source records using the same limits as the former browser fan-out. */
+/** Loads scoped project records. Personal WBS rows are complete so independent
+ * preview limits cannot hide an assigned Main Task or disconnect its children. */
 async function loadProjectBundle(req: Request, includeFinance: boolean) {
   const companyId = req.companyId!;
   const tenantId = req.user?.tenant_id;
@@ -349,8 +349,6 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             ORDER BY
               p.planned_end_date ASC NULLS LAST,
               p.id ASC
-
-            LIMIT 100
           ) x
         ), '[]'::jsonb),
 
@@ -388,8 +386,6 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             ORDER BY
               mt.due_date ASC NULLS LAST,
               mt.id ASC
-
-            LIMIT 300
           ) x
         ), '[]'::jsonb),
 
@@ -419,8 +415,6 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
                 SELECT id
                 FROM staff_main_tasks
               )
-
-            LIMIT 500
           ) x
         ), '[]'::jsonb),
 
@@ -457,8 +451,6 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             ORDER BY
               wt.start_date ASC NULLS LAST,
               wt.id ASC
-
-            LIMIT 500
           ) x
         ), '[]'::jsonb),
 
@@ -500,8 +492,6 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             ORDER BY
               dt.planned_date ASC NULLS LAST,
               dt.id ASC
-
-            LIMIT 1000
           ) x
         ), '[]'::jsonb),
 
@@ -740,6 +730,9 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
     users: unknown[];
   };
 
+  // Executive Weekly monitoring must receive the complete company WBS. A
+  // separate preview limit on each level can hide tasks or orphan children.
+  const completeExecutiveWbs = activeRole === RoleCode.DIRECTOR;
   const projectScope = managedProjectIds.length
     ? Prisma.sql`AND id IN (${Prisma.join(managedProjectIds.map((id) => Prisma.sql`${id}::text`))})`
     : Prisma.empty;
@@ -798,7 +791,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             AND company_id = ${companyId}::text
             ${projectScope}
 
-          LIMIT 100
+          ${completeExecutiveWbs ? Prisma.empty : Prisma.sql`LIMIT 100`}
         ) x
       ), '[]'::jsonb),
 
@@ -824,7 +817,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             AND company_id = ${companyId}::text
             ${directProjectScope}
 
-          LIMIT 300
+          ${completeExecutiveWbs ? Prisma.empty : Prisma.sql`LIMIT 300`}
         ) x
       ), '[]'::jsonb),
 
@@ -843,7 +836,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             AND company_id = ${companyId}::text
             ${mainTaskScope}
 
-          LIMIT 500
+          ${completeExecutiveWbs ? Prisma.empty : Prisma.sql`LIMIT 500`}
         ) x
       ), '[]'::jsonb),
 
@@ -868,7 +861,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             AND company_id = ${companyId}::text
             ${mainTaskScope}
 
-          LIMIT 500
+          ${completeExecutiveWbs ? Prisma.empty : Prisma.sql`LIMIT 500`}
         ) x
       ), '[]'::jsonb),
 
@@ -900,7 +893,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             AND company_id = ${companyId}::text
             ${weeklyTaskScope}
 
-          LIMIT 1000
+          ${completeExecutiveWbs ? Prisma.empty : Prisma.sql`LIMIT 1000`}
         ) x
       ), '[]'::jsonb),
 
@@ -1009,7 +1002,7 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
           WHERE ur.tenant_id = ${tenantId}::text
             AND ur.company_id = ${companyId}::text
 
-          LIMIT 200
+          ${completeExecutiveWbs ? Prisma.empty : Prisma.sql`LIMIT 200`}
         ) x
       ), '[]'::jsonb)
 
