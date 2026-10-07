@@ -3,12 +3,12 @@
 import { useState, useEffect, useMemo, useCallback, useDeferredValue } from "react";
 import Link from "next/link";
 import { cn, formatDate, getStatusColor, localDateKey, normalizeDateKey } from "@/lib/utils";
-import { loadAllProjects, Project, DailyTask, DailyTaskStatusValue, DailyTaskUpdatePayload, updateDailyTask, createDailyTask, getApiErrorDetail } from "@/lib/api/project.api";
+import { loadAllProjects, Project, DailyTask, DailyTaskStatusValue, DailyTaskUpdatePayload, updateDailyTask, createDailyTask, deleteDailyTask, getApiErrorDetail } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckCircle2, Search, Check, Layers, RefreshCw,
   CalendarDays, AlertTriangle, ChevronDown, ChevronRight, Pencil, X, Save,
-  Plus, FileText,
+  Plus, FileText, Trash2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
@@ -50,6 +50,9 @@ function QuickEdit({
   onClose: () => void;
 }) {
   const [outputTarget, setOutputTarget] = useState(task.output_target || "");
+  const [title, setTitle] = useState(task.title || task.activity_input || "");
+  const [plannedDate, setPlannedDate] = useState(normalizeDateKey(task.planned_date) || "");
+  const [timeSlot, setTimeSlot] = useState(task.time_slot || "");
   const [output, setOutput] = useState(task.output_result || "");
   const [notes, setNotes] = useState(task.notes || "");
   const [status, setStatus] = useState(task.status || "IN_PROGRESS");
@@ -65,6 +68,7 @@ function QuickEdit({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleSave = async () => {
+    if (!title.trim() || !timeSlot.trim()) { toast.error("Aktivitas dan slot waktu wajib diisi."); return; }
     if (status === "BLOCKED" && !blockReason.trim()) {
       toast.error("Alasan kendala wajib diisi sebelum task ditandai terblokir.");
       return;
@@ -80,6 +84,9 @@ function QuickEdit({
     setSaving(true);
     try {
       await onSave(task.id, {
+        title: title.trim(),
+        time_slot: timeSlot.trim(),
+        ...(plannedDate ? { planned_date: plannedDate } : {}),
         ...(!task.output_target?.trim() ? { output_target: outputTarget.trim() } : {}),
         output_result: output,
         notes,
@@ -97,7 +104,7 @@ function QuickEdit({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl border border-text-tertiary w-full max-w-lg z-10 p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
+      <div role="dialog" aria-modal="true" aria-label="Edit Daily Task" className="relative max-h-[90dvh] overflow-y-auto bg-white rounded-2xl shadow-xl border border-text-tertiary w-full max-w-lg z-10 p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-sm font-bold text-text-primary">Edit Task</h3>
@@ -106,6 +113,11 @@ function QuickEdit({
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-text-secondary"><X size={15} /></button>
         </div>
 
+        <label className="text-xs font-semibold text-text-secondary">Aktivitas Harian<input value={title} onChange={event => setTitle(event.target.value)} className="input mt-1 text-xs" /></label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-xs font-semibold text-text-secondary">Tanggal<input type="date" value={plannedDate} onChange={event => setPlannedDate(event.target.value)} className="input mt-1 text-xs" /></label>
+          <label className="text-xs font-semibold text-text-secondary">Slot Waktu<input value={timeSlot} onChange={event => setTimeSlot(event.target.value)} className="input mt-1 text-xs" /></label>
+        </div>
         {/* Output Hasil */}
         <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5">
           <p className="text-2xs font-bold uppercase tracking-wide text-blue-700">Output Target</p>
@@ -231,6 +243,7 @@ function NewDailyTaskModal({
     const list: { id: string | number; label: string }[] = [];
     (selectedProject.main_tasks || []).forEach(m => {
       (m.weekly_tasks || m.weekly_plans || []).forEach(w => {
+        if (['PENDING_APPROVAL', 'REJECTED'].includes(w.status)) return;
         list.push({
           id: w.id,
           label: `${m.name || m.title || "Main Task"} — W#${w.week_number || 1}${w.target_description ? `: ${w.target_description}` : ""}`,
@@ -432,10 +445,10 @@ function NewDailyTaskModal({
  */
 function TaskRow({
   projectName, projectCode, mainTaskName, weekNumber, task,
-  onToggle, onEdit, isAllowed = true,
+  onToggle, onEdit, onDelete, isAllowed = true,
 }: {
   projectName: string; projectCode: string; mainTaskName: string; weekNumber: number;
-  task: DailyTask; onToggle: () => void; onEdit: () => void; isAllowed?: boolean;
+  task: DailyTask; onToggle: () => void; onEdit: () => void; onDelete: () => void; isAllowed?: boolean;
 }) {
   const isDone = ["COMPLETED","DONE"].includes(task.status || "");
   const isBlocked = task.is_blocked || task.status === "BLOCKED";
@@ -530,6 +543,7 @@ function TaskRow({
       {/* Actions */}
       <td className="py-3 px-4 align-top">
         {isAllowed ? (
+          <div className="flex items-center gap-1">
           <button
             onClick={onEdit}
             className="p-1.5 rounded-lg text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors"
@@ -537,6 +551,8 @@ function TaskRow({
           >
             <Pencil size={13} />
           </button>
+          <button onClick={onDelete} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50" title="Hapus Daily Task"><Trash2 size={13} /></button>
+          </div>
         ) : (
           <span className="readonly-badge" title="Hanya PIC / Owner atau PM yang dapat mengedit">
             Read only
@@ -627,7 +643,7 @@ export default function TasksClient() {
           )
           .map((mainTask) => {
             const assignedWeekly = (mainTask.weekly_tasks || mainTask.weekly_plans || []).filter(
-              (weeklyTask) => String(weeklyTask.assignee_id ?? "") === activeUserId
+              (weeklyTask) => String(weeklyTask.assignee_id ?? "") === activeUserId && !['PENDING_APPROVAL', 'REJECTED'].includes(weeklyTask.status)
             );
             return { ...mainTask, weekly_tasks: assignedWeekly, weekly_plans: assignedWeekly };
           })
@@ -808,6 +824,16 @@ export default function TasksClient() {
     }
   };
 
+  const handleDeleteDaily = async (task: DailyTask) => {
+    if (String(task.owner_id ?? "") !== String(user?.id)) return;
+    if (!confirm(`Hapus Daily Task "${task.title || task.activity_input}"?`)) return;
+    try {
+      await deleteDailyTask(task.id);
+      toast.success("Daily Task dihapus.");
+      await fetchTasks(true);
+    } catch (error) { toast.error(getApiErrorDetail(error, "Gagal menghapus Daily Task.")); }
+  };
+
   /* Counts */
   const todayCount    = allTasks.filter(i => normalizeDateKey(i.task.planned_date) === today).length;
   const overdueCount  = allTasks.filter(i => {
@@ -871,6 +897,7 @@ export default function TasksClient() {
               isAllowed={isAllowed}
               onToggle={() => handleToggle(task)}
               onEdit={() => setEditingTask(task)}
+              onDelete={() => void handleDeleteDaily(task)}
             />
           );
         })}

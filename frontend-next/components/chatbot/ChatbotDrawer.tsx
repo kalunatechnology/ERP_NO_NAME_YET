@@ -22,6 +22,7 @@ import {
   getNativeConversation,
   streamChatCompletion,
   executeMarbotAction,
+  ChatbotRequestError,
 } from "@/services/chatbot.service";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -277,8 +278,19 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
         onError: (error) => {
           if (controller.signal.aborted || abortControllerRef.current !== controller) return;
           setIsStreaming(false);
+          const authorityChanged = error instanceof ChatbotRequestError && error.status === 403 && error.code === 'MARBOT_AUTHORITY_CHANGED';
+          if (error instanceof ChatbotRequestError && error.status === 403) {
+            if (error.code === 'MARBOT_CONVERSATION_UNAVAILABLE' || error.code === 'MARBOT_AUTHORITY_CHANGED') {
+              setCurrentConversationId(null);
+            }
+            if (authorityChanged) {
+              setHistory([]);
+              setAssistantMode('HELPER');
+              setDashboardAvailable(false);
+            }
+          }
           setMessages((prev) =>
-            prev.map((msg) =>
+            prev.filter((msg) => !authorityChanged || msg.id === userMsgId || msg.id === assistantMsgId).map((msg) =>
               msg.id === assistantMsgId
                 ? {
                     ...msg,

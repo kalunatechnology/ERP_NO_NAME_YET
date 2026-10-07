@@ -58,9 +58,9 @@ async function main(): Promise<void> {
     'Terminal finance records remain immutable',
     'Quick login stays isolated from operational data',
     'Production build enforces safety checks',
-    'Active role is the authorization context',
+    'Active role is the authorization fallback',
     'Project task access follows management and ownership',
-    'Sensitive workflow actions require the exact active role',
+    'Workflow role guards respect validated Admin module overrides',
     'Frontend routes and requests share the backend module contract',
   ];
   names.forEach((name) => assert(feature.includes(`Scenario: ${name}`), `Missing feature scenario: ${name}`));
@@ -225,7 +225,18 @@ async function main(): Promise<void> {
     assert(appSource.includes('restrictProjectMutationsByAuthority'), 'Project-aware mutation middleware is not mounted');
     assert(projectAuthorityMiddleware.includes("methods: ['POST']"), 'Staff Daily Task create allow-list is missing');
     assert(projectAuthorityMiddleware.includes("methods: ['PUT', 'PATCH', 'DELETE']"), 'Staff must retain full CRUD for owned Daily Tasks');
-    assert(!projectAuthorityMiddleware.includes("path: /^\\/weekly-tasks\\/?$/, methods: ['POST']"), 'Staff must not create Weekly Tasks without project authority');
+    assert(projectAuthorityMiddleware.includes("path: /^\\/weekly-tasks\\/?$/, methods: ['POST']"), 'Weekly self-submission allow-list is missing');
+    assert(routesSource.includes('ProjectsService.weeklyCreationStatus'), 'Weekly create must enforce scoped self-submission');
+    const submissionDb = {
+      project_member: { findFirst: async () => null, findMany: async () => [{ project_id: 'project-a' }] },
+      project_project: { findFirst: async () => ({ id: 'project-a' }) },
+      project_task_assignment: { findMany: async () => [], findFirst: async ({ where }: any) => where.assignee_id === staff.id ? { id: 'assignment-a' } : null },
+      iam_user_company_membership: { findFirst: async () => ({ id: 'membership-a', tenant_id: 'tenant-a' }) },
+    };
+    assert.equal(await ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: 'project-a' }, 'company-a', staff.id, submissionDb), 'PENDING_APPROVAL');
+    await assert.rejects(() => ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: 'project-a' }, 'company-a', 'staff-b', submissionDb), /diri sendiri/);
+    assert.throws(() => ProjectsService.assertWeeklyTaskActive('PENDING_APPROVAL'), /belum disetujui/);
+    assert.throws(() => ProjectsService.assertWeeklyTaskActive('REJECTED'), /belum disetujui/);
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.dailyTaskAccessWhere'));
     assert(routesSource.includes('accessWhere: async (req) => ProjectsService.taskAssignmentAccessWhere'));
     assert(routesSource.includes('Assignment harus dibuat melalui aksi assign-members'), 'Generic assignment create bypass must remain closed.');
@@ -244,6 +255,12 @@ async function main(): Promise<void> {
       String((await invokeMiddleware(requireActiveRole(RoleCode.DIRECTOR), delegatedStaff, delegatedModule) as Error)?.message),
       /role aktif/i,
     );
+    assert.equal(await invokeMiddleware(requireActiveRole(RoleCode.DIRECTOR), delegatedStaff, {
+      ...delegatedModule, moduleCode: 'FINANCE',
+    }), null);
+    assert.match(String((await invokeMiddleware(requireActiveRole(RoleCode.DIRECTOR), delegatedStaff, {
+      ...delegatedModule, moduleCode: 'FINANCE', allowWrite: false,
+    }) as Error)?.message), /role aktif/i);
     const superAdmin = { id: 'admin', roles: [RoleCode.SUPER_ADMIN], active_role_code: RoleCode.SUPER_ADMIN };
     assert.equal(await invokeMiddleware(enforceSuperAdminReadOnly, superAdmin, undefined, '/core/recent-items/track/'), null);
     assert.equal(await invokeMiddleware(enforceSuperAdminReadOnly, superAdmin, undefined, '/core/sidebar-feed/mark-read/'), null);
@@ -264,8 +281,8 @@ async function main(): Promise<void> {
     assert(crmRoutes.includes("'/opportunities/:id/executive-override', requireActiveRole(RoleCode.DIRECTOR)"));
     assert(requestService.includes('instance.created_by_id !== requesterUserId'));
     assert(
-      projectWbsNode.includes('const canCreateDaily = !isPM && isWeeklyPic;'),
-      'Daily Task create UI must be restricted to the Weekly Task owner',
+      projectWbsNode.includes("const canCreateDaily = isWeeklyPic && !['PENDING_APPROVAL', 'REJECTED'].includes(weekly.status);"),
+      'Daily Task create UI must require Weekly ownership and an approved/active Weekly Task',
     );
     assert(managementReportRoutes.includes("requireActiveRole(RoleCode.OPERATIONAL_MANAGER)"));
     assert(managementReportRoutes.includes("requireActiveRole(RoleCode.DIRECTOR)"));
@@ -279,10 +296,11 @@ async function main(): Promise<void> {
     assert.equal(await invokeMiddleware(requireActiveRole(RoleCode.DIRECTOR), dirUser), null);
     assert.match(String((await invokeMiddleware(requireActiveRole(RoleCode.DIRECTOR), omUser) as Error)?.message), /role aktif/i);
     return {
-      delegated_sensitive_action: 'blocked',
-      request_approvals: 'active-role-gated',
-      executive_override: 'director-only',
-      management_reports: 'active-role-gated',
+      invalid_module_delegation: 'blocked',
+      admin_module_override: 'authoritative',
+      request_approvals: 'role-fallback',
+      executive_override: 'director-fallback',
+      management_reports: 'role-fallback',
       lpj_submitter: 'request-owner-only',
       project_ui: 'aligned-with-backend',
     };
@@ -313,8 +331,8 @@ async function main(): Promise<void> {
       'ROLE-DIRECTOR': ['/dashboard', '/projects', '/finance', '/crm', '/reporting', '/management-reports', '/resources'],
       'ROLE-OM': ['/dashboard', '/projects', '/tasks', '/reporting', '/management-reports'],
       'ROLE-PM': ['/dashboard', '/projects', '/tasks', '/crm', '/reporting'],
-      'ROLE-SUPERVISOR': ['/dashboard', '/tasks', '/reporting'],
-      'ROLE-STAFF': ['/dashboard', '/tasks', '/reporting'],
+      'ROLE-SUPERVISOR': ['/dashboard', '/projects', '/tasks', '/reporting'],
+      'ROLE-STAFF': ['/dashboard', '/projects', '/tasks', '/reporting'],
       'ROLE-FINANCE': ['/dashboard', '/finance', '/reporting'],
       'ROLE-CRM-LEAD': ['/dashboard', '/crm', '/reporting'],
       'ROLE-SALES': ['/dashboard', '/crm', '/reporting'],
@@ -433,6 +451,13 @@ async function main(): Promise<void> {
     assert(financeClient.includes('/project-fundings/${selectedFunding.id}/draw/'), 'Funding draw must use the backend FSM action.');
     assert(financeClient.includes('/billing-documents/${selectedBillForPay.id}/create-payment'), 'AP payment must use the atomic backend command.');
     assert(financeClient.includes('/project-cost-entries/${entry.id}/post-to-wip'), 'WIP posting must use the named backend command.');
+    assert(financeClient.includes('getApiErrorDetail('), 'WIP failures must surface the backend validation detail.');
+    assert(financeClient.includes('Menunggu checker'), 'WIP maker-checker restriction must be clear before the user submits.');
+    assert(financeClient.includes('POSTED_TO_WIP'), 'WIP-posted entries must show their final accounting state.');
+    assert(financeClient.includes('project-cost-entries/wip-readiness'), 'WIP UI must verify server-side posting readiness before submitting.');
+    assert(financeRoutes.includes("'/project-cost-entries/wip-readiness'"), 'Finance API must expose WIP posting readiness.');
+    assert(financeRoutes.includes("reason: 'MAKER_CHECKER_REQUIRED'"), 'WIP readiness must identify maker-checker blocking explicitly.');
+    assert(/return sendError\(\s*res,\s*readiness\.message/.test(financeRoutes), 'Blocked WIP posting must return a deterministic business response.');
     assert(financeClient.includes('/billing-proposals/${proposal.id}/issue-billing-document'), 'Billing issuance must use the named backend command.');
     assert(financeClient.includes('organization_type=DIVISION') && financeClient.includes('division.organization_name'), 'Finance division options must use the Core organization contract.');
     assert(!financeClient.includes('PENDING_MATCH'));
@@ -466,13 +491,14 @@ async function main(): Promise<void> {
     assert(profileModal.includes('api.patch("/api/v1/auth/profile"'));
     assert(projectClient.includes('"executive", "om", "pm", "finance"'), 'Project financial visibility must use the normalized executive role.');
     assert(
-      projectClient.includes('canPerform("project:create", userRole)')
-        && projectClient.includes('canPerform("project:update", userRole)')
+      projectClient.includes('canPerform("project:create", userRole,')
+        && projectClient.includes('canPerform("project:update", userRole,')
         && projectClient.includes('{canCreateProject && (')
         && projectClient.includes('{canUpdateSelectedProject && ('),
       'Staff Project workspace must gate project-level mutations through the canonical role policy.',
     );
-    assert(projectClient.includes('userRole === "staff" && !isActingProjectManager ? [') && projectClient.includes('Task Terkait Saya'), 'Ordinary Staff Project workspace must use its compact assigned-task view.');
+    assert(projectClient.includes('userRole === "staff" && !canManageSelectedProject ? [') && projectClient.includes('Task Terkait Saya'), 'Ordinary Staff Project workspace must use its compact assigned-task view.');
+    assert(projectClient.includes("projectWorkspace: personalProjectWorkspace ? undefined : 'management'"), 'Ordinary Staff must load personal project data without Acting PM authority.');
     assert(projectClient.includes('mainTask.assignments') && projectClient.includes('activeUserId') && projectClient.includes('isActingProjectManager'), 'Staff hierarchy must be assignment scoped while Acting PM receives the full delegated WBS.');
     assert(taxWorkspace.includes('/api/v1/finance/tax-transactions/projection?page_size=200'));
     assert(taxWorkspace.includes('const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [];'), 'Tax workspace must not ship production-looking local transactions.');

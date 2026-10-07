@@ -53,6 +53,27 @@ async function main() {
   assert.equal(done, 1);
   stream = '';
   await assert.rejects(() => exports.streamChatCompletion(options), /tanpa respons/);
+  for (const fixture of [
+    { status: 403, payload: { success: false, error: 'MARBOT_CONVERSATION_UNAVAILABLE', detail: 'Percakapan tidak tersedia untuk sesi aktif.' }, message: /Percakapan tidak tersedia/, code: 'MARBOT_CONVERSATION_UNAVAILABLE' },
+    { status: 403, payload: { error: { message: 'Hak akses dicabut.', code: 'FORBIDDEN' } }, message: /Hak akses dicabut/, code: 'FORBIDDEN' },
+    { status: 401, payload: '', message: /Sesi login berakhir/ },
+    { status: 403, payload: '<html>proxy forbidden</html>', message: /Akses chat ditolak/ },
+    { status: 429, payload: '', message: /Terlalu banyak permintaan/ },
+  ]) {
+    let attempts = 0, receivedError;
+    const oldDone = done, oldChunks = chunks;
+    context.fetch = async () => { attempts++; return new Response(typeof fixture.payload === 'string' ? fixture.payload : JSON.stringify(fixture.payload), { status: fixture.status }); };
+    await assert.rejects(() => exports.streamChatCompletion({ ...options, onError: error => { receivedError = error; } }), error => {
+      assert(error instanceof exports.ChatbotRequestError);
+      assert.equal(error.status, fixture.status);
+      assert.equal(error.code, fixture.code);
+      assert.match(error.message, fixture.message);
+      return true;
+    });
+    assert(receivedError instanceof exports.ChatbotRequestError);
+    assert.equal(attempts, 1, 'A denied request must not be silently retried');
+    assert.equal(done, oldDone); assert.equal(chunks, oldChunks);
+  }
   console.log('Marbot client: server tickets, no client business writes, verified result, permission denial, missing tickets, complete/truncated/empty SSE passed.');
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });

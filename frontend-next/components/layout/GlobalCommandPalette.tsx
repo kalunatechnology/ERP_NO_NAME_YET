@@ -60,6 +60,7 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     pathname: item.path,
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
+    moduleAccess: user?.module_access,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
   }));

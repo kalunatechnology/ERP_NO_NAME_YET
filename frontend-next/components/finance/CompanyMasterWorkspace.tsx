@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api/axios";
 import { useAuth } from "@/contexts/AuthContext";
+import { canPerform } from "@/lib/access/capability-contract";
 import { formatMoney, formatDate, cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
@@ -63,7 +64,7 @@ export function CompanyMasterWorkspace() {
   const [savingCompany, setSavingCompany] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<"financial" | "operational">("financial");
 
-  const canEditFinancial = userRole === "finance";
+  const canEditFinancial = canPerform("finance:operate", userRole, { enabledModules: user?.enabled_modules, moduleAccess: user?.module_access });
   const canEditCompany = ["super_admin", "company_admin", "finance"].includes(userRole);
   const canEditOperational = userRole === "company_admin";
 

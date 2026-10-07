@@ -172,16 +172,41 @@ function backendRoutes() {
   const appFile = path.join(backend, 'src', 'app.ts');
   const app = fs.readFileSync(appFile, 'utf8');
   const mounts = new Map();
-  for (const body of callBodies(app, 'apiV1.use')) {
+  for (const [callee, base] of [['apiV1.use', '/api/v1'], ['app.use', '']]) for (const body of callBodies(app, callee)) {
     const pathMatch = /^\s*['"]([^'"]+)['"]/.exec(body);
     const routerMatches = [...body.matchAll(/\b(\w+Router)\b/g)];
-    const routerName = routerMatches.at(-1)?.[1];
-    if (!pathMatch || !routerName) continue;
-    const prefix = normalizePath(`/api/v1/${pathMatch[1]}`);
-    mounts.set(routerName, [...(mounts.get(routerName) || []), prefix]);
+    if (!pathMatch || !routerMatches.length) continue;
+    const prefix = normalizePath(`${base}/${pathMatch[1]}`);
+    for (const routerName of new Set(routerMatches.map(match => match[1]))) {
+      mounts.set(routerName, [...(mounts.get(routerName) || []), prefix]);
+    }
+  }
+  const routerFiles = filesUnder(path.join(backend, 'src', 'modules')).filter(item => item.endsWith('.routes.ts'));
+  // Resolve child routers mounted with use(path?, childRouter) or dispatched
+  // from a middleware at the parent's path. Iterate until nested mounts settle.
+  const edges = [];
+  for (const file of routerFiles) {
+    const source = fs.readFileSync(file, 'utf8');
+    for (const parent of [...source.matchAll(/export\s+const\s+(\w+Router)\s*=\s*Router\(\)/g)].map(m => m[1])) {
+      for (const body of callBodies(source, `${parent}.use`)) {
+        const prefix = /^\s*['"]([^'"]+)['"]/.exec(body)?.[1] || '';
+        for (const child of [...body.matchAll(/\b(\w+Router)\b/g)].map(m => m[1]).filter(name => name !== parent)) {
+          edges.push({ parent, child, prefix });
+        }
+      }
+    }
+  }
+  for (let pass = 0; pass < routerFiles.length; pass++) {
+    let changed = false;
+    for (const { parent, child, prefix } of edges) for (const base of mounts.get(parent) || []) {
+      const target = normalizePath(`${base}/${prefix}`);
+      const current = mounts.get(child) || [];
+      if (!current.includes(target)) { mounts.set(child, [...current, target]); changed = true; }
+    }
+    if (!changed) break;
   }
   const records = [{ method: 'get', path: '/health', file: appFile, kind: 'custom' }];
-  for (const file of filesUnder(path.join(backend, 'src', 'modules')).filter((item) => item.endsWith('.routes.ts'))) {
+  for (const file of routerFiles) {
     records.push(...extractRouterRoutes(file, mounts));
   }
   return records;
@@ -210,8 +235,11 @@ function frontendCalls() {
       const apiPath = raw.slice(raw.indexOf('/api/'));
       const tail = match[3];
       const method = /method\s*:\s*["'](GET|POST|PUT|PATCH|DELETE)["']/i.exec(tail)?.[1] || 'get';
-      const hasAuthorization = /authorization/i.test(tail);
-      const hasCompany = /x-company-id/i.test(tail);
+      // Follow the local header helper used by MarBot's native fetch calls.
+      const helperName = /(?:headers\s*:\s*|\.\.\.)(\w+)\(\)/.exec(tail)?.[1];
+      const helperBody = helperName ? new RegExp(`function\\s+${helperName}\\([^)]*\\)[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(source)?.[1] || '' : '';
+      const hasAuthorization = /authorization/i.test(tail + helperBody);
+      const hasCompany = /x-company-id/i.test(tail + helperBody);
       records.push({ method, path: normalizePath(apiPath), file, transport: 'fetch', hasAuthorization, hasCompany });
     }
   }
@@ -262,6 +290,7 @@ function main() {
     ],
   };
   console.log(JSON.stringify(result, null, 2));
+  if (findings.some(finding => finding.severity === 'HIGH')) process.exitCode = 1;
 }
 
 if (require.main === module) main();

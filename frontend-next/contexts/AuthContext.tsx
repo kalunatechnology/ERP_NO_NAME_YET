@@ -182,6 +182,7 @@ function profileStateSignature(user: UserProfile | null): string {
     active_role_code: normalizeRoleCode(user.active_role_code || ""),
     enabled_modules: [...(user.enabled_modules || [])].map(String).sort(),
     delegated_modules: [...(user.delegated_modules || [])].map(String).sort(),
+    module_access: [...(user.module_access || [])].sort((left, right) => left.module_code.localeCompare(right.module_code)),
     is_superuser: Boolean(user.is_superuser),
     is_staff: Boolean(user.is_staff),
     is_active: value.is_active ?? true,

@@ -37,11 +37,20 @@ export function proposeAction(message: string, scope: NativeScope): { content: s
   const json = message.indexOf('{');
   if (json < 0 && (createWeekly || createDaily || createMain)) return response(createWeekly
     ? 'Usulan target mingguan memerlukan JSON dengan main_task_id, assignee_id, week_number (1–52), start_date, end_date (YYYY-MM-DD) dan target_description. Assignee harus sudah diassign ke Main Task.'
-    : createDaily ? 'Usulan tugas harian memerlukan JSON dengan weekly_task_id, title, time_slot dan output_target. Weekly Task harus milik Anda.'
+    : createDaily ? 'Sebutkan nama tugas, target mingguan milik Anda, jam, dan hasil yang ditargetkan. Contoh: Buat tugas harian "Perbaiki login" untuk target mingguan "Sprint 1" jam "08:00-09:00" hasil "Login berfungsi". Format JSON dengan weekly_task_id, title, time_slot, output_target juga didukung.'
     : 'Usulan Main Task memerlukan JSON dengan project_id, name dan weight (1–100). Backend memeriksa kewenangan atas proyek.');
+  if (json < 0 && createProject) {
+    // Deterministic grammar: all three values must be stated by the user. Never infer a manager/customer.
+    const parts = message.match(/^\s*(?:buatkan|buat|tambahkan|create)\s+(?:project|proyek)\s+(.+?)\s+untuk\s+(.+?)\s+dengan\s+(?:PM|project manager|manajer proyek)\s+(.+?)\s*$/i);
+    const unquote = (value: string) => value.trim().replace(/^["“]([^"”]+)["”]$/, '$1');
+    if (parts && !parts.slice(1).some(value => /[{}\n\r]/.test(value))) {
+      const parsed = project.safeParse({ project_name: unquote(parts[1]), customer_name: unquote(parts[2]), manager_name: unquote(parts[3]) });
+      if (parsed.success) return response(`Usulan proyek (belum disimpan):\nNama: ${parsed.data.project_name}\nCustomer: ${parsed.data.customer_name}\nPM: ${parsed.data.manager_name}\n\nKonfirmasikan untuk menyimpan. Backend memeriksa hak akses dan membaca ulang hasil.`, { kind: 'project.create', payload: parsed.data });
+    }
+  }
   if (json < 0) return response(createProject
-    ? 'Untuk menyiapkan proyek, kirim: buat proyek {"project_name":"Nama proyek","customer_name":"Nama customer","manager_name":"Nama PM"}. Ketiga nilai wajib diisi sesuai data sebenarnya. Saya akan menampilkan usulan untuk dikonfirmasi sebelum penyimpanan.'
-    : 'Untuk menyiapkan pembaruan, kirim: ubah task {"id":"UUID task","status":"IN_PROGRESS"}. Field yang didukung: status, output_result, block_reason, notes. Penyelesaian wajib memiliki output hasil; kendala wajib memiliki alasan. Backend akan memeriksa ownership dan checklist.' );
+    ? 'Nama proyek, customer, dan PM wajib diisi. Misalnya: Buat proyek Website Toko untuk PT Contoh dengan PM Melika. Saya akan menampilkan usulan untuk dikonfirmasi sebelum penyimpanan. Format JSON juga tetap didukung.'
+    : 'Sebutkan nama task milik Anda dan perubahan, misalnya: Ubah tugas "Perbaiki login" catatan "Validasi selesai", atau Ubah tugas "Perbaiki login" status "IN_PROGRESS". Format JSON dengan id, status, output_result, block_reason, notes tetap didukung. Penyelesaian wajib memiliki output hasil; kendala wajib memiliki alasan. Backend memeriksa ownership dan checklist.' );
   let raw: unknown;
   try { raw = JSON.parse(message.slice(json)); } catch { return response('Input JSON tidak valid. Tidak ada data diubah.'); }
   const parsed = (createProject ? project : createWeekly ? weekly : createDaily ? daily : createMain ? mainTask : update).safeParse(raw);

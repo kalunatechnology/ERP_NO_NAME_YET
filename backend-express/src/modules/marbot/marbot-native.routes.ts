@@ -2,9 +2,9 @@ import { Router, Request } from 'express';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import prisma from '../../config/database';
-import { ConflictError, ForbiddenError, ValidationError } from '../../utils/errors';
+import { AppError, ConflictError, ForbiddenError, ValidationError } from '../../utils/errors';
 import { buildMarbotRuntimeAuthority } from './marbot-access.service';
-import { answerNative, canUseDashboard, followUpQuestion } from './marbot-native.service';
+import { answerNative, canUseDashboard, followUpQuestion, isNativeTaskReadQuestion } from './marbot-native.service';
 import { renderNativeAnswer } from './marbot-provider.service';
 import { env } from '../../config/env';
 import { discoverMarbotSchema } from './marbot-schema.service';
@@ -16,7 +16,9 @@ import type { MarbotAction } from './marbot-action.service';
 import { createMarbotMcpRouter } from './marbot-mcp.routes';
 import { executeResourceRead, executeResourceWrite, planResourceQuestion, resourceCatalog, resourceDefinition } from './marbot-resource.service';
 import { reserveMarbotRequest } from './marbot-rate-limit.service';
-import { marbotOwner as owner, marbotAuthorityKey as authorityKey, visibleConversationTitle } from './marbot-authority.service';
+import { assertNativeMarbotStorageReady } from './marbot-runtime.service';
+import { marbotOwner as owner, marbotAuthorityKey as authorityKey, visibleConversationTitle,
+  marbotAuthorityBaseKey, marbotMessageAuthority, canReadMarbotMessage } from './marbot-authority.service';
 
 export const nativeMarbotRouter = Router();
 // Authentication and company resolution are mounted by the parent router.
@@ -39,7 +41,7 @@ nativeMarbotRouter.post('/actions/:id/execute', async (req, res, next) => {
       id: req.params.id, role: 'assistant', conversation: owner(scope),
     } });
     const metadata = message?.metadata as Record<string, any> | undefined;
-    if (!message || !metadata?.action || metadata.authority !== authorityKey(scope)) throw new ForbiddenError();
+    if (!message || !metadata?.action || !canReadMarbotMessage(metadata, scope)) throw new ForbiddenError();
     const action = metadata.action as MarbotAction;
     const module = action.kind === 'resource.write' ? resourceDefinition(String(action.payload.resource), scope, true).module : 'PROJECTS';
     if (scope.blockedReadModules.includes(module) || scope.blockedWriteModules.includes(module)) throw new ForbiddenError();
@@ -63,13 +65,19 @@ nativeMarbotRouter.post('/actions/:id/execute', async (req, res, next) => {
       const detail = error instanceof Error && /^(API ERP |API resource |Assignment belum|Identitas pembacaan|Pembacaan ulang field)/.test(error.message) ? `${error.message}\n` : '';
       content = `${detail}Operasi belum dapat diverifikasi. API mungkin menolak, mengalami gangguan, atau sudah menyimpan sebagian hasil. Periksa data di modul ${module} sebelum membuat usulan baru.`;
     }
+    // A successful create/assignment can expand project visibility. The result
+    // references the new record, so retain the post-write scope for future revocation checks.
+    const resultScope = await scopeFor(req);
+    const authorityStillValid = canReadMarbotMessage(marbotMessageAuthority(scope), resultScope);
+    const resultAuthority = authorityStillValid ? marbotMessageAuthority(resultScope) : marbotMessageAuthority(scope);
     await prisma.$transaction([
       prisma.marbot_request.update({ where: { nonce: message.id }, data: { outcome: verified ? 'VERIFIED' : 'UNVERIFIED' } }),
       prisma.marbot_message.update({ where: { id: message.id }, data: {
-        content: `${message.content}\n\n${content}`, metadata: { ...metadata, result: content, verified },
+        content: `${message.content}\n\n${content}`, metadata: { ...metadata, ...resultAuthority, result: content, verified },
       } }),
       prisma.marbot_conversation.update({ where: { id: message.conversation_id }, data: { updated_at: new Date() } }),
     ]);
+    if (!authorityStillValid) throw new ForbiddenError('Hak akses berubah selama penyimpanan. Periksa hasil melalui modul yang masih dapat Anda akses.');
     res.status(verified ? 200 : 502).json({ data: { content, verified }, ...(!verified ? { error: { message: content } } : {}) });
   } catch (error) { next(error); }
 });
@@ -85,7 +93,7 @@ nativeMarbotRouter.post('/query', async (req, res, next) => {
     await reserveMarbotRequest({ ...owner(scope), nonce, request_id: req.requestId || nonce, tool_name: 'native.query', outcome: 'STARTED' }, 60);
     auditNonce = nonce;
     const result = await executeResourceRead(req, req.body, scope);
-    if (authorityKey(await scopeFor(req)) !== authorityKey(scope)) throw new ForbiddenError();
+    if (!canReadMarbotMessage(marbotMessageAuthority(scope), await scopeFor(req))) throw new AppError('Hak akses berubah selama pemrosesan. Kirim ulang pertanyaan sesuai sesi aktif.', 403, 'MARBOT_AUTHORITY_CHANGED');
     await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } });
     res.json({ data: result });
   } catch (error) {
@@ -103,7 +111,7 @@ nativeMarbotRouter.get('/status', async (req, res, next) => {
   try {
     const scope = await scopeFor(req);
     // Verify persistence readiness instead of reporting a configured URL as online.
-    await prisma.marbot_conversation.count({ where: owner(scope) });
+    await assertNativeMarbotStorageReady(owner(scope));
     res.json({ data: { online: true, contractMode: 'native', preferredVersion: null, v2Supported: false, managed: false, datasourceSourceKey: 'ERP', datasourceStatus: 'ACTIVE', mcpLiteReady: true, dashboardAvailable: canUseDashboard(scope), aiConfigured: Boolean(env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL) } });
   } catch (error) { next(error); }
 });
@@ -111,12 +119,19 @@ nativeMarbotRouter.get('/status', async (req, res, next) => {
 nativeMarbotRouter.get('/conversations', async (req, res, next) => {
   try {
     const scope = await scopeFor(req);
-    const visible = { role: 'user', metadata: { path: ['authority'], equals: authorityKey(scope) } };
+    const candidate = { OR: [
+      { metadata: { path: ['authority'], equals: authorityKey(scope) } },
+      { metadata: { path: ['authorityBase'], equals: marbotAuthorityBaseKey(scope) } },
+    ] };
     const rows = await prisma.marbot_conversation.findMany({
-      where: { ...owner(scope), messages: { some: visible } }, orderBy: { updated_at: 'desc' }, take: 30,
-      include: { messages: { where: visible, orderBy: { created_at: 'asc' }, take: 1 } },
+      where: { ...owner(scope), messages: { some: candidate } }, orderBy: { updated_at: 'desc' }, take: 30,
+      include: { messages: { where: candidate, orderBy: { created_at: 'desc' }, take: 200 } },
     });
-    res.json({ data: rows.map(({ messages, ...row }) => ({ ...row, title: visibleConversationTitle(messages) })) });
+    const visible = rows.flatMap(({ messages, ...row }) => {
+      const permitted = messages.reverse().filter(message => canReadMarbotMessage(message.metadata, scope));
+      return permitted.length ? [{ ...row, title: visibleConversationTitle(permitted) }] : [];
+    });
+    res.json({ data: visible });
   } catch (error) { next(error); }
 });
 nativeMarbotRouter.get('/conversations/:id', async (req, res, next) => {
@@ -125,7 +140,7 @@ nativeMarbotRouter.get('/conversations/:id', async (req, res, next) => {
     const row = await prisma.marbot_conversation.findFirst({ where: { ...owner(scope), id: req.params.id }, include: { messages: { orderBy: { created_at: 'desc' }, take: 200 } } });
     if (!row) throw new ForbiddenError();
     // A role change or revoked project must not replay earlier privileged results.
-    row.messages = row.messages.reverse().filter(message => (message.metadata as Record<string, unknown>)?.authority === authorityKey(scope));
+    row.messages = row.messages.reverse().filter(message => canReadMarbotMessage(message.metadata, scope));
     row.title = visibleConversationTitle(row.messages);
     res.json({ data: row });
   } catch (error) { next(error); }
@@ -143,14 +158,18 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
     const scope = await scopeFor(req);
     if (input.mode === 'DASHBOARD' && !canUseDashboard(scope)) throw new ForbiddenError();
     let conversation = input.conversationId ? await prisma.marbot_conversation.findFirst({ where: { ...owner(scope), id: input.conversationId } }) : null;
-    if (input.conversationId && !conversation) throw new ForbiddenError();
+    if (input.conversationId && !conversation) throw new AppError('Percakapan tidak tersedia untuk akun dan company aktif. Pesan berikutnya akan membuka chat baru.', 403, 'MARBOT_CONVERSATION_UNAVAILABLE');
     nonce = randomUUID();
     await reserveMarbotRequest({ ...owner(scope), nonce, request_id: req.requestId || nonce, tool_name: 'native.chat', outcome: 'STARTED' }, 20);
     if (!conversation) conversation = await prisma.marbot_conversation.create({ data: { ...owner(scope), title: input.message.slice(0, 80) } });
-    const previous = await prisma.marbot_message.findFirst({ where: { conversation_id: conversation.id, role: 'user', metadata: { path: ['authority'], equals: authorityKey(scope) } }, orderBy: { created_at: 'desc' } });
-    const contextualQuestion = followUpQuestion(input.message, previous?.content);
-    const resourcePlan = await planResourceQuestion(contextualQuestion, scope, controller.signal);
-    const plannedQuestion = !resourcePlan && env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL
+    const previous = await prisma.marbot_message.findFirst({ where: { conversation_id: conversation.id, role: 'user', OR: [
+      { metadata: { path: ['authority'], equals: authorityKey(scope) } },
+      { metadata: { path: ['authorityBase'], equals: marbotAuthorityBaseKey(scope) } },
+    ] }, orderBy: { created_at: 'desc' } });
+    const contextualQuestion = followUpQuestion(input.message, previous && canReadMarbotMessage(previous.metadata, scope) ? previous.content : undefined);
+    const nativeTaskRead = isNativeTaskReadQuestion(contextualQuestion);
+    const resourcePlan = nativeTaskRead ? null : await planResourceQuestion(contextualQuestion, scope, controller.signal);
+    const plannedQuestion = !nativeTaskRead && !resourcePlan && env.MARBOT_AI_API_KEY && env.MARBOT_AI_MODEL
       ? await planNativeQuestion(contextualQuestion, await discoverMarbotSchema(scope, prisma, ['project_project', 'project_main_task', 'project_weekly_task', 'project_daily_task', 'fin_project_cost_entry', 'service_case']), controller.signal)
       : contextualQuestion;
     let resourceAnswer: { content: string; tools: string[]; sources: string[]; action?: MarbotAction } | undefined;
@@ -189,12 +208,12 @@ nativeMarbotRouter.post('/chat/completions', async (req, res, next) => {
       return;
     }
     // Provider latency or concurrent role/module changes must not return an old privileged result.
-    if (authorityKey(await scopeFor(req)) !== authorityKey(scope)) throw new ForbiddenError('Hak akses berubah selama pemrosesan. Kirim ulang pertanyaan sesuai sesi aktif.');
+    if (!canReadMarbotMessage(marbotMessageAuthority(scope), await scopeFor(req))) throw new AppError('Hak akses berubah selama pemrosesan. Kirim ulang pertanyaan sesuai sesi aktif.', 403, 'MARBOT_AUTHORITY_CHANGED');
     const actionId = randomUUID();
     const action = 'action' in answer ? answer.action : undefined;
     await prisma.$transaction([
-      prisma.marbot_message.create({ data: { conversation_id: conversation.id, role: 'user', content: input.message, metadata: { mode: input.mode, authority: authorityKey(scope) } } }),
-      prisma.marbot_message.create({ data: { id: actionId, conversation_id: conversation.id, role: 'assistant', content: rendered.content, metadata: { mode: input.mode, authority: authorityKey(scope), tools: answer.tools, sources: answer.sources, model: rendered.model, ...(action ? { action: JSON.parse(JSON.stringify(action)) } : {}) } } }),
+      prisma.marbot_message.create({ data: { conversation_id: conversation.id, role: 'user', content: input.message, metadata: { mode: input.mode, ...marbotMessageAuthority(scope) } } }),
+      prisma.marbot_message.create({ data: { id: actionId, conversation_id: conversation.id, role: 'assistant', content: rendered.content, metadata: { mode: input.mode, ...marbotMessageAuthority(scope), tools: answer.tools, sources: answer.sources, model: rendered.model, ...(action ? { action: JSON.parse(JSON.stringify(action)) } : {}) } } }),
       ...(action ? [prisma.marbot_request.create({ data: { ...owner(scope), nonce: actionId, request_id: req.requestId || actionId, tool_name: 'native.action', outcome: 'PROPOSED' } })] : []),
       prisma.marbot_conversation.update({ where: { id: conversation.id }, data: { updated_at: new Date() } }),
       prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } }),

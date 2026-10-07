@@ -17,6 +17,7 @@ import {
   EmployeeProvisioningService,
 } from '../master_data/employee-provisioning.service';
 import { ROLE_BUNDLES } from './role-bundle.config';
+import { effectiveModuleOverrides } from '../../utils/module-permissions';
 
 type LoginAccessSnapshot = {
   user_roles: Array<{
@@ -37,7 +38,7 @@ type LoginAccessSnapshot = {
     role_code: string;
     role_name: string;
   }>;
-  company_modules: Array<{ module_code: string }>;
+  company_modules: Array<{ module_code: string; allow_write: boolean }>;
   user_modules: Array<{ module_code: string; allow_read: boolean; allow_write: boolean }>;
   project_delegated: boolean;
 };
@@ -139,7 +140,7 @@ export class AccountsService {
           WHERE ur.user_id = ${user.id}::text AND r.tenant_id = ${user.tenant_id}::text
         ), '[]'::jsonb),
         'company_modules', COALESCE((
-          SELECT jsonb_agg(jsonb_build_object('module_code', cma.module_code))
+          SELECT jsonb_agg(jsonb_build_object('module_code', cma.module_code, 'allow_write', cma.allow_write))
           FROM iam_company_module_access cma JOIN membership m ON m.company_id = cma.company_id AND m.tenant_id = cma.tenant_id
           WHERE cma.enabled = true AND cma.allow_read = true
             AND (cma.effective_from IS NULL OR cma.effective_from <= ${now})
@@ -246,6 +247,7 @@ export class AccountsService {
       active_role_code: activeRole ? toExternalRoleCode(activeRole.role_code) : null,
       enabled_modules: enabledModules,
       delegated_modules: delegatedModules,
+      module_access: effectiveModuleOverrides(companyModules, userModules),
       roles: serializedRoles,
       last_login: user.last_login_at,
       date_joined: user.date_joined,
@@ -364,6 +366,7 @@ export class AccountsService {
       active_role_code: access.activeRoleCode ? toExternalRoleCode(access.activeRoleCode) : null,
       enabled_modules: access.enabledModules,
       delegated_modules: access.delegatedModules,
+      module_access: access.moduleAccess,
       roles: serializedRoles,
       last_login: user.last_login_at,
       date_joined: user.date_joined,

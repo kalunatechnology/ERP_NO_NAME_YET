@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import prisma from '../../config/database';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { AuditService } from './audit.service';
+import { normalizeRequestStatus } from './request-status';
 import { dateKeyInTimeZone, meetingOccurrenceDates, occurrenceDateForDatabase, resolveMeetingOccurrenceDate } from './meeting-occurrence.service';
 
 export interface SaveMeetingMinutesPayload {
@@ -34,13 +35,16 @@ export interface SaveMeetingMinutesPayload {
 // Recurring        → publish closes this occurrence only; series continues
 // ---------------------------------------------------------------------------
 
-// Only true executives may view all meetings regardless of participation.
-// Every other role (PM, OM, Supervisor, Staff, etc.) is restricted to meetings
-// they are directly involved in (organizer, notetaker, or participant).
+// Existing executive permissions for the minutes editor.
+// PM/Director meeting visibility for deletion is checked separately below.
 const EXECUTIVE_ROLES = new Set([
   'SUPER_ADMIN', 'COMPANY_ADMIN', 'DIRECTOR',
   'ROLE-SUPER-ADMIN', 'ROLE-COMPANY-ADMIN', 'ROLE-DIRECTOR',
 ]);
+
+function canDeleteMeetingAsRole(role: string): boolean {
+  return ['PROJECT_MANAGER', 'DIRECTOR'].includes(role.replace(/^ROLE-/, ''));
+}
 
 // ---------------------------------------------------------------------------
 // INTERNAL NOTIFICATION HELPER — notifyUser
@@ -181,9 +185,8 @@ async function notifyMeetingPublished(params: {
 
 export class MeetingRequestService {
   static async list(companyId: string, userId: string, activeRole: string, query: { status?: string; search?: string }) {
-    // Hanya Super Admin yang memiliki hak bypass audit global.
-    // Seluruh peran lain hanya melihat meeting yang melibatkan mereka secara eksplisit (organizer, notetaker, atau peserta).
-    const isGlobalAuditor = activeRole === 'SUPER_ADMIN' || activeRole === 'ROLE-SUPER-ADMIN';
+    // PM/Executive need company meeting visibility to exercise deletion rights.
+    const isGlobalAuditor = canDeleteMeetingAsRole(activeRole) || activeRole === 'SUPER_ADMIN' || activeRole === 'ROLE-SUPER-ADMIN';
     const participantRows = isGlobalAuditor ? [] : await prisma.request_meeting_participant.findMany({
       where: { company_id: companyId, user_id: userId }, select: { meeting_id: true },
     });
@@ -191,7 +194,7 @@ export class MeetingRequestService {
     const meetings = await prisma.request_meeting.findMany({
       where: {
         company_id: companyId,
-        ...(query.status ? { status: query.status } : {}),
+        status: query.status ?? { not: 'CANCELLED' },
         ...(isGlobalAuditor ? {} : { OR: [
           { organizer_user_id: userId }, { notetaker_user_id: userId }, { id: { in: accessibleMeetingIds } },
         ] }),
@@ -200,19 +203,20 @@ export class MeetingRequestService {
     });
     const requestIds = meetings.map((meeting) => meeting.request_id);
     const tickets = await prisma.request_ticket.findMany({ where: { company_id: companyId, id: { in: requestIds } } });
-    const ticketById = new Map(tickets.map((ticket) => [ticket.id, ticket]));
+    const ticketById = new Map(tickets.map((ticket) => [ticket.id, { ...ticket, status: normalizeRequestStatus(ticket.status) }]));
     const search = query.search?.trim().toLowerCase();
-    return meetings.map((meeting) => ({ ...meeting, request: ticketById.get(meeting.request_id) ?? null }))
+    return meetings.filter(meeting => meeting.status !== 'CANCELLED').map((meeting) => ({ ...meeting, request: ticketById.get(meeting.request_id) ?? null }))
       .filter((row) => !search || row.request?.title.toLowerCase().includes(search) || row.request?.request_number.toLowerCase().includes(search));
   }
 
   static async getById(meetingId: string, companyId: string, userId: string, activeRole: string, occurrenceDate?: string) {
     const meeting = await prisma.request_meeting.findFirst({ where: { id: meetingId, company_id: companyId } });
     if (!meeting) throw new NotFoundError('Meeting Request');
+    if (meeting.status === 'CANCELLED') throw new NotFoundError('Meeting Request');
     const participant = await prisma.request_meeting_participant.findFirst({
       where: { meeting_id: meetingId, company_id: companyId, user_id: userId }, select: { id: true },
     });
-    const isGlobalAuditor = activeRole === 'SUPER_ADMIN' || activeRole === 'ROLE-SUPER-ADMIN';
+    const isGlobalAuditor = canDeleteMeetingAsRole(activeRole) || activeRole === 'SUPER_ADMIN' || activeRole === 'ROLE-SUPER-ADMIN';
     if (!isGlobalAuditor && meeting.organizer_user_id !== userId && meeting.notetaker_user_id !== userId && !participant) {
       throw new ForbiddenError('Anda tidak terlibat dalam meeting ini.');
     }
@@ -269,10 +273,11 @@ export class MeetingRequestService {
     const canPublish = canEditMinutes && Boolean(minutes) && minutes?.status !== 'PUBLISHED';
 
     return {
-      ...meeting, request,
+      ...meeting, request: request ? { ...request, status: normalizeRequestStatus(request.status) } : null,
       participants: participants.map((item) => ({ ...item, user: item.user_id ? userById.get(item.user_id) ?? null : null })),
       notetaker: meeting.notetaker_user_id ? userById.get(meeting.notetaker_user_id) ?? null : null,
       permissions: {
+        can_delete: canDeleteMeetingAsRole(activeRole),
         can_edit_minutes: canEditMinutes,
         // can_publish is true only when a saved draft exists and the user has rights to publish.
         // This drives the enabled/disabled state of the Publikasikan button on the frontend.
@@ -283,6 +288,33 @@ export class MeetingRequestService {
       notes,
       minutes: minutes ? { ...minutes, decisions, action_items: actionItems } : null,
     };
+  }
+
+  /** Remove a meeting from active lists while preserving its minutes and task links. */
+  static async deleteMeeting(meetingId: string, companyId: string, userId: string, activeRole: string) {
+    if (!canDeleteMeetingAsRole(activeRole)) {
+      throw new ForbiddenError('Hanya PM atau Executive yang dapat menghapus meeting.');
+    }
+    await prisma.$transaction(async tx => {
+      const meeting = await tx.request_meeting.findFirst({ where: { id: meetingId, company_id: companyId, status: { not: 'CANCELLED' } } });
+      if (!meeting) throw new NotFoundError('Meeting Request');
+      const ticket = await tx.request_ticket.findFirst({ where: { id: meeting.request_id, company_id: companyId, request_type: 'MEETING', cancelled_at: null } });
+      if (!ticket) throw new NotFoundError('Meeting Request');
+      const now = new Date();
+      const removed = await tx.request_meeting.updateMany({
+        where: { id: meetingId, company_id: companyId, status: { not: 'CANCELLED' } }, data: { status: 'CANCELLED' },
+      });
+      if (removed.count !== 1) throw new NotFoundError('Meeting Request');
+      await tx.request_ticket.updateMany({ where: { id: ticket.id, company_id: companyId }, data: { status: 'CANCELLED', cancelled_at: now } });
+      await tx.core_workflow_instance.updateMany({ where: { id: ticket.workflow_instance_id, company_id: companyId },
+        data: { current_state: 'CANCELLED', status: 'CANCELLED', completed_at: now } });
+      await tx.core_audit_event.create({ data: {
+        id: crypto.randomUUID(), tenant_id: ticket.tenant_id, company_id: companyId, user_id: userId,
+        entity_name: 'core_internal_request', entity_id: ticket.id, event_type: 'DELETE_MEETING_REQUEST', occurred_at: now,
+        before_data: { status: ticket.status, meeting_id: meetingId, title: ticket.title },
+        after_data: { status: 'CANCELLED', meeting_id: meetingId, cancelled_at: now.toISOString() },
+      } });
+    });
   }
 
   static async saveMinutes(meetingId: string, payload: SaveMeetingMinutesPayload, companyId: string, userId: string, activeRole: string) {
@@ -445,8 +477,9 @@ export class MeetingRequestService {
       await tx.request_ticket.update({
         where: { id: ticket.id },
         data: {
-          status: 'PENDING_OM',
+          status: 'REGISTERED',
           submitted_at: now,
+          completed_at: now,
         },
       });
 
@@ -460,8 +493,9 @@ export class MeetingRequestService {
       await tx.core_workflow_instance.updateMany({
         where: { id: ticket.workflow_instance_id ?? ticket.id, company_id: companyId },
         data: {
-          status: 'IN_PROGRESS',
-          current_state: 'PENDING_OM',
+          status: 'COMPLETED',
+          completed_at: now,
+          current_state: 'REGISTERED',
         },
       });
     });

@@ -5,7 +5,7 @@ import prisma from '../src/config/database';
 import { ProjectsService } from '../src/modules/projects/projects.service';
 import { buildResourceScope, applyAndValidateWriteScope } from '../src/modules/accounts/resource-scope.service';
 import { reserveMarbotRequest } from '../src/modules/marbot/marbot-rate-limit.service';
-import { marbotAuthorityKey, visibleConversationTitle } from '../src/modules/marbot/marbot-authority.service';
+import { marbotAuthorityKey, visibleConversationTitle, marbotMessageAuthority, canReadMarbotMessage } from '../src/modules/marbot/marbot-authority.service';
 import { requireSignedExternalContract, externalConversationKey, readExternalAnswer } from '../src/modules/marbot/marbot-external-security.service';
 import { allowedMcpTools } from '../src/modules/marbot/marbot-mcp.routes';
 import { signAccessToken, verifyAccessToken } from '../src/utils/jwt';
@@ -60,6 +60,21 @@ async function main() {
   assert.notEqual(key, marbotAuthorityKey({ ...scope, userId: 'pm-b' }));
   assert.notEqual(key, marbotAuthorityKey({ ...scope, permissions: ['USE_MARBOT'] }));
   assert.notEqual(key, marbotAuthorityKey({ ...scope, projectScope: { mode: 'LIST', projectIds: [] } }));
+  const metadata = marbotMessageAuthority(scope);
+  const expanded = { ...scope, projectScope: { mode: 'LIST' as const, projectIds: ['p-a', 'p-new'] } };
+  assert(canReadMarbotMessage(metadata, expanded), 'Project expansion preserves existing history');
+  assert(!canReadMarbotMessage(marbotMessageAuthority(expanded), scope), 'Revoking the new project hides results that reference it');
+  assert(!canReadMarbotMessage(metadata, { ...scope, projectScope: { mode: 'LIST', projectIds: [] } }));
+  for (const revoked of [{ ...expanded, userId: 'pm-b' }, { ...expanded, companyId: 'other' }, { ...expanded, tenantId: 'other' },
+    { ...expanded, roleId: 'new-role' }, { ...expanded, roleCode: RoleCode.STAFF }, { ...expanded, permissions: ['USE_MARBOT'] },
+    { ...expanded, enabledModules: ['MARBOT'] }, { ...expanded, blockedReadModules: ['PROJECTS'] }]) {
+    assert(!canReadMarbotMessage(metadata, revoked), 'Identity, role, module, policy or permission changes cannot replay history');
+  }
+  assert(!canReadMarbotMessage({ ...metadata, authority: 'tampered' }, expanded));
+  assert(!canReadMarbotMessage({ ...metadata, authoritySnapshot: {} }, expanded));
+  assert(canReadMarbotMessage({ authority: key }, scope), 'Legacy metadata remains readable in its exact context');
+  assert(!canReadMarbotMessage({ authority: key }, expanded), 'Legacy metadata never guesses its prior scope');
+  assert(!canReadMarbotMessage(marbotMessageAuthority({ ...scope, projectScope: { mode: 'ALL', projectIds: [] } }), expanded));
   assert.equal(visibleConversationTitle([]), 'Percakapan');
   assert.equal(visibleConversationTitle([{ role: 'assistant', content: 'secret' }]), 'Percakapan');
   assert(allowedMcpTools(scope).has('erp.query'));

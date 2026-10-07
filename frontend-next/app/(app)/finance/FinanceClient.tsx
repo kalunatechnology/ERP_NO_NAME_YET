@@ -21,6 +21,7 @@ import {
 import { cn, formatMoney, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
+import { getApiErrorDetail } from "@/lib/api/project.api";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
@@ -62,6 +63,21 @@ const FINANCE_TABS = [
   { id: "audit_trail", label: "Audit Trail", icon: ShieldCheck },
 ];
 
+function isCostEntryCreator(entry: { created_by_id?: string | number | null }, userId?: string | number) {
+  return Boolean(entry.created_by_id && userId && String(entry.created_by_id) === String(userId));
+}
+
+function isWipPosted(status?: string) {
+  return ["POSTED", "POSTED_TO_WIP"].includes(String(status || "").toUpperCase());
+}
+
+type WipPostingReadiness = {
+  entry_id: string;
+  can_post: boolean;
+  reason: "READY" | "MAKER_CHECKER_REQUIRED" | "INVALID_STATUS";
+  message: string;
+};
+
 interface FinanceBankAccount {
   id: string;
   name: string;
@@ -85,11 +101,15 @@ export default function FinanceClient() {
   const requestAccess = {
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
+    moduleAccess: user?.module_access,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: Boolean(user?.is_superuser),
   };
   const canUseAssets = canRequestApi("/api/v1/assets/assets", requestAccess);
-  const canOperateFinance = canPerform("finance:operate", userRole);
+  const canOperateFinance = canPerform("finance:operate", userRole, {
+    enabledModules: user?.enabled_modules,
+    moduleAccess: user?.module_access,
+  });
   const visibleTabs = FINANCE_TABS.filter((tab) => !tab.endpoint || canUseAssets);
   const requestedTab = searchParams.get("tab");
   const defaultTab = userRole === "executive" ? "executive_report" : "overview";
@@ -149,6 +169,7 @@ export default function FinanceClient() {
 
   /* Data states */
   const [costEntries, setCostEntries] = useState<any[]>([]);
+  const [wipPostingReadiness, setWipPostingReadiness] = useState<Record<string, WipPostingReadiness>>({});
   const [fundings, setFundings] = useState<any[]>([]);
   const [proposals, setProposals] = useState<any[]>([]);
   const [vendorBills, setVendorBills] = useState<any[]>([]);
@@ -193,11 +214,7 @@ export default function FinanceClient() {
     project: "",
     amount: 0,
     description: "",
-    milestone_percentage: 0,
-    tax_scheme: "PROPORTIONAL" as "PROPORTIONAL" | "FULL_UPFRONT" | "FINAL_SETTLEMENT",
-    client_type: "NON_WAPU" as "NON_WAPU" | "WAPU",
-    pph_type: "PPh 23 (2%)",
-    pph_rate: 2.0,
+    tax_scheme: "PROPORTIONAL" as "PROPORTIONAL" | "FINAL_SETTLEMENT",
   });
   const [apForm, setAPForm] = useState({ supplier_id: "", invoice_number: "", amount: 0, due_date: "" });
   const [paymentForm, setPaymentForm] = useState({
@@ -252,8 +269,11 @@ export default function FinanceClient() {
         }
       };
 
-      const [costRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
+      const [costRes, wipReadinessRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
         safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
+        canOperateFinance
+          ? safeGet("/api/v1/finance/project-cost-entries/wip-readiness", "costing")
+          : Promise.resolve({ data: [] }),
         safeGet("/api/v1/finance/project-fundings/?page_size=50", "fundings"),
         safeGet("/api/v1/finance/billing-proposals/?page_size=50", "billing"),
         safeGet("/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50", "ap"),
@@ -272,6 +292,9 @@ export default function FinanceClient() {
       ]);
 
       setCostEntries(normalizeList(costRes.data).rows);
+      setWipPostingReadiness(Object.fromEntries(
+        normalizeList<WipPostingReadiness>(wipReadinessRes.data).rows.map((item) => [item.entry_id, item]),
+      ));
       setFundings(normalizeList(fundRes.data).rows);
       setProposals(normalizeList(propRes.data).rows);
 
@@ -387,6 +410,21 @@ export default function FinanceClient() {
         await api.post(`/api/v1/finance/project-cost-entries/${entry.id}/validate`);
         toast.success("Cost entry berhasil divalidasi.");
       } else if (entry.status === "VALIDATED") {
+        if (isCostEntryCreator(entry, user?.id)) {
+          toast.error("Posting WIP menunggu checker: Anda adalah pembuat cost entry ini. Minta user Finance lain untuk melakukan posting.");
+          return;
+        }
+        const readinessResponse = await api.get(
+          `/api/v1/finance/project-cost-entries/wip-readiness?entry_id=${encodeURIComponent(String(entry.id))}`,
+        );
+        const readiness = normalizeList<WipPostingReadiness>(readinessResponse.data).rows[0];
+        if (!readiness?.can_post) {
+          toast.error(readiness?.message || "Cost entry belum siap diposting ke WIP.");
+          if (readiness) {
+            setWipPostingReadiness((current) => ({ ...current, [readiness.entry_id]: readiness }));
+          }
+          return;
+        }
         if (!costCreditAccountId) {
           toast.error("Pilih akun sumber kredit sebelum posting WIP.");
           return;
@@ -395,8 +433,13 @@ export default function FinanceClient() {
         toast.success("Cost entry berhasil diposting ke WIP dan jurnal.");
       }
       await loadFinanceData(true);
-    } catch {
-      toast.error("Lifecycle cost entry gagal diproses.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(
+        error,
+        entry.status === "VALIDATED"
+          ? "Posting WIP ditolak. Periksa status entry, akun kredit, dan periode fiskal."
+          : "Validasi cost entry gagal diproses.",
+      ));
     }
   };
 
@@ -563,7 +606,7 @@ export default function FinanceClient() {
         </div>
       </div>
 
-      {userRole === "executive" && (
+      {userRole === "executive" && !canOperateFinance && (
         <div className="p-3.5 rounded-2xl bg-[#FAF5FF] border border-[#E9D5FF] text-xs text-[#581C87] flex items-center justify-between flex-wrap gap-2 shadow-2xs">
           <div className="flex items-center gap-2">
             <Crown size={16} aria-hidden="true" />
@@ -739,6 +782,9 @@ export default function FinanceClient() {
               </button>
             )}
           </div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-2xs text-amber-900">
+            Posting ke WIP membuat jurnal akuntansi. Untuk menjaga kontrol Maker–Checker, cost entry yang Anda buat sendiri harus diposting oleh user Finance lain.
+          </div>
           {canOperateFinance && (
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-text-secondary">Akun sumber kredit posting WIP</label>
@@ -763,7 +809,12 @@ export default function FinanceClient() {
                 </tr>
               </thead>
               <tbody>
-                {costEntries.map(c => (
+                {costEntries.map(c => {
+                  const readiness = wipPostingReadiness[String(c.id)];
+                  const waitingForChecker = c.status === "VALIDATED" && (
+                    readiness?.reason === "MAKER_CHECKER_REQUIRED" || isCostEntryCreator(c, user?.id)
+                  );
+                  return (
                 <tr key={c.id}>
                   <td><strong>{c.description || "Pengeluaran"}</strong><br/><span className="text-2xs text-text-secondary">Proyek #{c.project_id || c.project || "—"}</span></td>
                   <td><span className="badge badge-neutral">{c.cost_element || c.category || "OPERATIONAL"}</span></td>
@@ -779,18 +830,26 @@ export default function FinanceClient() {
                   <td className="font-semibold text-red-600">{formatMoney(c.total_cost ?? c.amount ?? c.cost_amount ?? 0)}</td>
                   <td><span className={cn("badge", getStatusColor(c.status || "DRAFT"))}>{c.status || "DRAFT"}</span></td>
                   <td>
-                    {canOperateFinance && ["DRAFT", "VALIDATED"].includes(c.status) ? (
+                    {waitingForChecker ? (
+                      <span
+                        className="text-2xs font-semibold text-amber-700"
+                        title={readiness?.message || "Anda adalah pembuat cost entry ini. Posting WIP harus dilakukan user Finance lain."}
+                      >
+                        Menunggu checker
+                      </span>
+                    ) : canOperateFinance && ["DRAFT", "VALIDATED"].includes(c.status) ? (
                       <button onClick={() => handleCostLifecycle(c)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
                         <Zap size={12} /> {c.status === "DRAFT" ? "Validasi" : "Post ke WIP"}
                       </button>
-                    ) : c.status === "POSTED" ? (
-                      <span className="text-2xs text-brand-deep-green font-bold">✓ Terposting</span>
+                    ) : isWipPosted(c.status) ? (
+                      <span className="text-2xs text-brand-deep-green font-bold">✓ Terposting ke WIP</span>
                     ) : (
                       <span className="text-2xs text-text-secondary italic">{c.status || "—"}</span>
                     )}
                   </td>
                 </tr>
-              ))}
+              );
+              })}
               {!costEntries.length && <tr><td colSpan={6} className="text-center py-6 text-xs text-text-secondary">Belum ada cost entry.</td></tr>}
             </tbody>
           </table>
@@ -983,19 +1042,21 @@ export default function FinanceClient() {
             <table className="w-full data-table min-w-[560px]">
               <thead>
               <tr>
-                <th>Deskripsi Termin</th>
-                <th>Bobot Capaian</th>
-                <th>Nilai Tagihan</th>
-                <th>Status Proposal</th>
-                <th>{canOperateFinance ? "Aksi Penagihan" : "Status Penagihan"}</th>
+                <th>Keterangan Termin</th>
+                <th>Nilai Sebelum PPN</th>
+                <th>PPN</th>
+                <th>Total Tagihan</th>
+                <th>Status</th>
+                <th>{canOperateFinance ? "Aksi" : "Status Penagihan"}</th>
               </tr>
             </thead>
             <tbody>
               {proposals.map(p => (
                 <tr key={p.id}>
                   <td><strong>{p.description || "Termin Invoice"}</strong></td>
-                  <td>{p.milestone_percentage || 50}%</td>
-                  <td className="font-semibold text-brand-deep-green">{formatMoney(p.total_amount ?? p.amount ?? p.subtotal ?? 0)}</td>
+                  <td>{formatMoney(p.subtotal ?? 0)}</td>
+                  <td>{formatMoney(p.tax_amount ?? 0)}</td>
+                  <td className="font-semibold text-brand-deep-green">{formatMoney(p.total_amount ?? p.subtotal ?? 0)}</td>
                   <td><span className={cn("badge", getStatusColor(p.status))}>{p.status}</span></td>
                   <td>
                     {canOperateFinance && ["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
@@ -1010,7 +1071,7 @@ export default function FinanceClient() {
                   </td>
                 </tr>
               ))}
-              {!proposals.length && <tr><td colSpan={5} className="text-center py-6 text-xs text-text-secondary">Belum ada proposal billing.</td></tr>}
+              {!proposals.length && <tr><td colSpan={6} className="text-center py-6 text-xs text-text-secondary">Belum ada proposal billing.</td></tr>}
             </tbody>
           </table>
           </div>
@@ -1844,9 +1905,16 @@ export default function FinanceClient() {
           onSubmit={async (e) => {
             e.preventDefault();
             try {
+              const amount = Number(fundingForm.amount);
+              if (!Number.isFinite(amount) || amount <= 0) {
+                toast.error("Jumlah dana harus lebih dari Rp 0");
+                return;
+              }
+
               await api.post("/api/v1/finance/project-fundings/", {
                 ...fundingForm,
-                requested_amount: fundingForm.amount,
+                amount,
+                requested_amount: amount,
               });
               toast.success("Request dana berhasil diajukan!");
               setIsFundingModalOpen(false);
@@ -1862,9 +1930,16 @@ export default function FinanceClient() {
             <input
               type="number"
               required
-              value={fundingForm.amount}
-              onChange={e => setFundingForm({ ...fundingForm, amount: Number(e.target.value) })}
+              min={1}
+              value={fundingForm.amount === 0 ? "" : fundingForm.amount}
+              onChange={e =>
+                setFundingForm({
+                  ...fundingForm,
+                  amount: e.target.value === "" ? 0 : Number(e.target.value),
+                })
+              }
               className="input"
+              placeholder="Masukkan jumlah dana"
             />
           </div>
           <div>
@@ -1872,7 +1947,7 @@ export default function FinanceClient() {
             <select
               value={fundingForm.purpose}
               onChange={e => setFundingForm({ ...fundingForm, purpose: e.target.value })}
-              className="input mb-2"
+              className="input"
               required
             >
               <option value="">Pilih jenis kebutuhan</option>
@@ -1883,14 +1958,6 @@ export default function FinanceClient() {
               <option value="Perangkat Lunak dan Infrastruktur Digital">Perangkat Lunak dan Infrastruktur Digital</option>
               <option value="Lainnya">Lainnya</option>
             </select>
-            <input
-              type="text"
-              required
-              value={fundingForm.purpose}
-              onChange={e => setFundingForm({ ...fundingForm, purpose: e.target.value })}
-              className="input"
-              placeholder="Detail kebutuhan pendanaan"
-            />
           </div>
           <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-2">
             Ajukan Request Dana
@@ -1898,12 +1965,12 @@ export default function FinanceClient() {
         </form>
       </Modal>
 
-      {/* Modal: Proposal Billing & Tax Scheme */}
+      {/* Modal: Proposal Billing */}
       <Modal
         isOpen={isBillingModalOpen}
         onClose={() => setIsBillingModalOpen(false)}
-        title="Buat Proposal Billing Termin"
-        subtitle="Pengajuan termin invoice penagihan ke klien beserta kalkulasi PPN & PPh Withholding"
+        title="Buat Tagihan Termin"
+        subtitle="Masukkan nilai termin yang akan ditagihkan kepada klien."
         size="md"
       >
         <form
@@ -1911,190 +1978,178 @@ export default function FinanceClient() {
             e.preventDefault();
             try {
               const dpp = Number(billingForm.amount);
-              let ppn = 0;
-              if (billingForm.tax_scheme === "FULL_UPFRONT") {
-                ppn = (dpp * 11) / 100;
-              } else if (billingForm.tax_scheme === "PROPORTIONAL") {
-                ppn = (dpp * 11) / 100;
-              }
-              const selectedProject = financeProjectOptions.find((project) => String(project.id) === String(billingForm.project));
-              if (!selectedProject?.customer_party_id) {
-                toast.error("Project harus memiliki customer party sebelum proposal billing dibuat.");
+
+              if (!Number.isFinite(dpp) || dpp <= 0) {
+                toast.error("Nilai termin harus lebih dari Rp 0.");
                 return;
               }
+
+              if (!billingForm.description.trim()) {
+                toast.error("Keterangan termin wajib diisi.");
+                return;
+              }
+
+              const selectedProject = financeProjectOptions.find(
+                (project) => String(project.id) === String(billingForm.project),
+              );
+
+              if (!selectedProject) {
+                toast.error("Project wajib dipilih.");
+                return;
+              }
+
+              const includePpn = billingForm.tax_scheme === "PROPORTIONAL";
+              const ppn = includePpn ? (dpp * 11) / 100 : 0;
+
               await api.post("/api/v1/finance/billing-proposals/", {
                 project_id: selectedProject.id,
-                customer_id: selectedProject.customer_party_id,
                 tax_scheme: billingForm.tax_scheme,
                 trigger_type: "MANUAL_MILESTONE",
                 description: billingForm.description.trim(),
                 subtotal: dpp,
-                tax_rate: 11,
+                tax_rate: includePpn ? 11 : 0,
                 tax_amount: ppn,
                 total_amount: dpp + ppn,
                 status: "DRAFT",
               });
-              toast.success("Proposal billing dan skema pajak berhasil diajukan.");
+
+              toast.success("Proposal tagihan berhasil dibuat.");
               setIsBillingModalOpen(false);
+              setBillingForm({
+                project: "",
+                amount: 0,
+                description: "",
+                tax_scheme: "PROPORTIONAL",
+              });
               await loadFinanceData(true);
-            } catch {
-              toast.error("Gagal membuat proposal billing");
+            } catch (error) {
+              toast.error(getApiErrorDetail(
+                error,
+                "Gagal membuat proposal tagihan. Periksa project, customer, dan nilai termin.",
+              ));
             }
           }}
-          className="flex flex-col gap-3.5 p-1 text-xs"
+          className="flex flex-col gap-4 p-1 text-xs"
         >
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">Project *</label>
-            <select required value={billingForm.project} onChange={e => setBillingForm({ ...billingForm, project: e.target.value })} className="input text-xs">
+            <label className="text-xs font-bold text-slate-700 block mb-1">
+              Project *
+            </label>
+            <select
+              required
+              value={billingForm.project}
+              onChange={e => setBillingForm({ ...billingForm, project: e.target.value })}
+              className="input text-xs"
+            >
               <option value="">Pilih project</option>
-              {financeProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}
+              {financeProjectOptions.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.project_code} — {project.project_name}
+                </option>
+              ))}
             </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">Nilai Tagihan DPP (Rp) *</label>
-              <input
-                type="number"
-                required
-                min="100000"
-                value={billingForm.amount}
-                onChange={e => setBillingForm({ ...billingForm, amount: Number(e.target.value) })}
-                className="input text-xs font-bold text-slate-800"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">Bobot Persentase (%)</label>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={billingForm.milestone_percentage}
-                onChange={e => setBillingForm({ ...billingForm, milestone_percentage: Number(e.target.value) })}
-                className="input text-xs font-bold text-slate-800"
-              />
-            </div>
+            {billingForm.project && (() => {
+              const project = financeProjectOptions.find(
+                (item) => String(item.id) === String(billingForm.project),
+              );
+              return project?.customer_name ? (
+                <p className="mt-1 text-[11px] text-text-secondary">
+                  Customer: <span className="font-semibold text-slate-700">{project.customer_name}</span>
+                </p>
+              ) : null;
+            })()}
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">Keterangan Termin *</label>
+            <label className="text-xs font-bold text-slate-700 block mb-1">
+              Nilai Termin Sebelum PPN (Rp) *
+            </label>
+            <input
+              type="number"
+              required
+              min={1}
+              value={billingForm.amount === 0 ? "" : billingForm.amount}
+              onChange={e =>
+                setBillingForm({
+                  ...billingForm,
+                  amount: e.target.value === "" ? 0 : Number(e.target.value),
+                })
+              }
+              placeholder="Masukkan nilai termin"
+              className="input text-xs font-bold text-slate-800"
+            />
+            <p className="mt-1 text-[11px] text-text-secondary">
+              Isi nilai pekerjaan/termin yang akan ditagihkan, belum termasuk PPN.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1">
+              Keterangan Termin *
+            </label>
             <input
               type="text"
               required
-              placeholder="Contoh: Uang Muka DP 30% Pengadaan Komponen"
+              placeholder="Contoh: DP 30% pekerjaan tahap awal"
               value={billingForm.description}
               onChange={e => setBillingForm({ ...billingForm, description: e.target.value })}
               className="input text-xs"
             />
           </div>
 
-          {/* Tax Configuration Grid */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">Skema Timing Pajak</label>
-              <select
-                value={billingForm.tax_scheme}
-                onChange={e => setBillingForm({ ...billingForm, tax_scheme: e.target.value as any })}
-                className="input text-xs font-semibold"
-              >
-                <option value="PROPORTIONAL">🔵 Proporsional per Termin</option>
-                <option value="FULL_UPFRONT">🟢 Pajak Penuh di Awal (DP 100% PPN)</option>
-                <option value="FINAL_SETTLEMENT">🟡 Pajak di Akhir / Pelunasan</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">Tipe Pemungut Klien</label>
-              <select
-                value={billingForm.client_type}
-                onChange={e => setBillingForm({ ...billingForm, client_type: e.target.value as any })}
-                className="input text-xs font-semibold"
-              >
-                <option value="NON_WAPU">Non-WAPU (Swasta)</option>
-                <option value="WAPU">WAPU (BUMN / Pemerintah)</option>
-              </select>
-            </div>
-          </div>
-
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">Potongan PPh (Withholding)</label>
+            <label className="text-xs font-bold text-slate-700 block mb-1">
+              PPN pada Tagihan Ini
+            </label>
             <select
-              value={billingForm.pph_rate}
-              onChange={e => {
-                const rate = Number(e.target.value);
-                let label = "PPh 23 (2%)";
-                if (rate === 1.75) label = "PPh Final Konstruksi Kecil (1.75%)";
-                if (rate === 2.65) label = "PPh Final Konstruksi Menengah (2.65%)";
-                if (rate === 4.0) label = "PPh Final Konsultansi (4%)";
-                if (rate === 0) label = "Bebas Potongan";
-                setBillingForm({ ...billingForm, pph_rate: rate, pph_type: label });
-              }}
+              value={billingForm.tax_scheme}
+              onChange={e =>
+                setBillingForm({
+                  ...billingForm,
+                  tax_scheme: e.target.value as "PROPORTIONAL" | "FINAL_SETTLEMENT",
+                })
+              }
               className="input text-xs font-semibold"
             >
-              <option value={2.0}>PPh 23 Jasa Teknik &amp; Konsultansi (2%)</option>
-              <option value={2.65}>PPh Final Pelaksana Konstruksi Menengah/Besar (2.65%)</option>
-              <option value={1.75}>PPh Final Pelaksana Konstruksi Kualifikasi Kecil (1.75%)</option>
-              <option value={4.0}>PPh Final Jasa Konsultansi Konstruksi (4%)</option>
-              <option value={0}>Tanpa Potongan PPh (0%)</option>
+              <option value="PROPORTIONAL">Tambahkan PPN 11% pada termin ini</option>
+              <option value="FINAL_SETTLEMENT">Belum menagihkan PPN pada termin ini</option>
             </select>
           </div>
 
-          {/* Live Cashflow Breakdown Summary */}
           {(() => {
             const dpp = Number(billingForm.amount) || 0;
-            const ppn = (dpp * 11) / 100;
-            const pph = (dpp * billingForm.pph_rate) / 100;
-            const gross = dpp + ppn;
-            const net = billingForm.client_type === "NON_WAPU" ? dpp + ppn - pph : dpp - pph;
+            const ppn = billingForm.tax_scheme === "PROPORTIONAL" ? (dpp * 11) / 100 : 0;
+            const total = dpp + ppn;
 
             return (
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-1.5 text-xs mt-1">
-                <span className="font-bold text-slate-800 text-[11px] uppercase tracking-wider">
-                  Rincian Nilai Tagihan &amp; Estimasi Kas Masuk
-                </span>
-                <div className="grid grid-cols-2 gap-1 text-[11px] pt-1 border-t border-slate-200/80">
-                  <span className="text-slate-500">DPP Termin:</span>
-                  <span className="font-bold text-slate-800 text-right">{formatMoney(dpp)}</span>
-
-                  <span className="text-slate-500">(+) PPN Ditagihkan (11%):</span>
-                  <span className="font-bold text-blue-700 text-right">+{formatMoney(ppn)}</span>
-
-                  <span className="text-slate-700 font-semibold">(=) Total Nilai Invoice:</span>
-                  <span className="font-bold text-slate-900 text-right">{formatMoney(gross)}</span>
-
-                  <span className="text-slate-500">(-) Potongan PPh ({billingForm.pph_rate}%):</span>
-                  <span className="font-bold text-purple-700 text-right">-{formatMoney(pph)}</span>
-
-                  {billingForm.client_type === "WAPU" && (
-                    <>
-                      <span className="text-amber-700">(-) PPN Dipungut Klien (WAPU):</span>
-                      <span className="font-bold text-amber-700 text-right">-{formatMoney(ppn)}</span>
-                    </>
-                  )}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-2">
+                  Ringkasan Tagihan
                 </div>
+                <div className="grid grid-cols-2 gap-y-1.5 text-[11px]">
+                  <span className="text-slate-500">Nilai termin sebelum PPN</span>
+                  <span className="text-right font-semibold text-slate-800">{formatMoney(dpp)}</span>
 
-                <div className="mt-1 p-2 rounded-lg bg-brand-light-green border border-brand-primary-soft flex justify-between items-center">
-                  <span className="font-bold text-brand-deep-green text-[11px]">Estimasi Kas Masuk ke Bank:</span>
-                  <span className="font-black text-brand-deep-green text-xs">{formatMoney(net)}</span>
+                  <span className="text-slate-500">PPN</span>
+                  <span className="text-right font-semibold text-slate-800">{formatMoney(ppn)}</span>
+
+                  <span className="border-t border-slate-200 pt-2 font-bold text-slate-800">Total tagihan</span>
+                  <span className="border-t border-slate-200 pt-2 text-right font-black text-brand-deep-green">
+                    {formatMoney(total)}
+                  </span>
                 </div>
               </div>
             );
           })()}
 
-          <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setIsBillingModalOpen(false)}
-              className="btn-ghost py-1.5 px-3 text-xs cursor-pointer"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              className="btn-primary py-2 px-4 text-xs bg-[#2649B3] hover:bg-[#2649B3] font-bold cursor-pointer"
-            >
-              Buat Proposal Billing
-            </button>
+          <div className="rounded-lg bg-blue-50 px-3 py-2 text-[11px] text-blue-800">
+            PPh dan potongan pembayaran tidak ditentukan di tahap proposal tagihan ini.
+            Pencatatannya dilakukan saat proses pembayaran/penerimaan agar nilai yang tersimpan sesuai bukti transaksi.
           </div>
+
+          <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-1">
+            Simpan Proposal Tagihan
+          </button>
         </form>
       </Modal>
 

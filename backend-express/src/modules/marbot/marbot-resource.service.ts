@@ -7,6 +7,7 @@ import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { env } from '../../config/env';
 import prisma from '../../config/database';
 import { getCrudModelMetadata } from '../../utils/crud-factory';
+import { callMarbotErp } from './marbot-api-transport';
 
 const sensitive = /password|secret|token|credential|private_key|api_key|access_key|authorization|cookie|connection_string/i;
 const projectFinancialModels = new Set(['project_expense', 'project_budget_line', 'project_financial_snapshot', 'project_evm_record']);
@@ -104,13 +105,7 @@ export function validateResourcePlan(raw: unknown, scope: NativeScope): Resource
 
 /** Fixed-origin canonical API transport: runs authentication, module, role, scope and domain hooks. */
 export async function callResourceApi(req: Request, path: string, method = 'GET', payload?: unknown, ticketId?: string) {
-  if (!req.socket.localPort || !req.headers.authorization) throw new ForbiddenError();
-  const response = await fetch(`http://127.0.0.1:${req.socket.localPort}${path}`, {
-    method, redirect: 'error', signal: AbortSignal.timeout(30000),
-    headers: { Authorization: req.headers.authorization, 'X-Company-ID': req.companyId!, 'Content-Type': 'application/json',
-      ...(ticketId ? { 'Idempotency-Key': `marbot-${ticketId}` } : {}) },
-    ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
-  });
+  const response = await callMarbotErp(req, path, method, payload, ticketId);
   if (!response.ok) throw new ValidationError(`API resource gagal/menolak (${response.status}); tidak ada hasil terverifikasi.`);
   return await response.json() as any;
 }

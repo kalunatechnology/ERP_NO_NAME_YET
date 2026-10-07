@@ -9,7 +9,7 @@ const sources = {};
 for (const module of modules) {
   const relative = `src/modules/${module}/${module}.routes.ts`;
   const source = fs.readFileSync(path.join(root, relative), 'utf8');
-  sources[relative] = crypto.createHash('sha256').update(source).digest('hex');
+  sources[relative] = crypto.createHash('sha256').update(source.replace(/\r\n/g, '\n')).digest('hex');
   const tree = ts.createSourceFile(relative, source, ts.ScriptTarget.Latest, true);
   function visit(node) {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'use' &&
@@ -31,11 +31,11 @@ for (const module of modules) {
   }
   visit(tree);
 }
-sources['prisma/schema.prisma'] = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'prisma/schema.prisma'))).digest('hex');
+sources['prisma/schema.prisma'] = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'prisma/schema.prisma'), 'utf8').replace(/\r\n/g, '\n')).digest('hex');
 const target = path.join(root, 'src/modules/marbot/resource-catalog.generated.json');
 const output = JSON.stringify({ sources, resources }, null, 2) + '\n';
 if (process.argv.includes('--check')) {
-  if (!fs.existsSync(target) || fs.readFileSync(target, 'utf8') !== output) throw new Error('Marka resource catalogue stale: run node scripts/generate_marbot_catalog.js');
+  if (!fs.existsSync(target) || fs.readFileSync(target, 'utf8').replace(/\r\n/g, '\n') !== output) throw new Error('Marka resource catalogue stale: run node scripts/generate_marbot_catalog.js');
 } else fs.writeFileSync(target, output);
 console.log(`Marka catalogue: ${resources.length} canonical resources in ${modules.length} modules.`);
 

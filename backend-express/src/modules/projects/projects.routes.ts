@@ -8,6 +8,7 @@
  */
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
+import { hasModuleOverride, hasUserModuleWrite } from '../../utils/module-permissions';
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
@@ -17,6 +18,7 @@ import {
 } from '../master_data/employee-provisioning.service';
 import { invalidateDashboardCache } from '../dashboard/dashboard.routes';
 import { compareTaskOutput } from './output-comparison';
+import { CustomerPartyService } from './customer-party.service';
 
 export const projectsRouter = Router();
 
@@ -547,11 +549,14 @@ const enforceProjectBoundary = async (req: Request, _res: Response, next: NextFu
     const companyId = activeCompanyId(req);
     const activeRole = req.user?.active_role_code;
     const isOperationalUser = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[])
-      .includes(activeRole as RoleCode);
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || isOperationalUser) {
+      .includes(activeRole as RoleCode) && !req.moduleAccess?.delegated;
+    const isAuthorityRead = ['GET', 'HEAD', 'OPTIONS'].includes(req.method)
+      && /\/(authority|supervisor)\/?$/.test(req.path);
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || (isOperationalUser && !isAuthorityRead)) {
       // Personal task visibility is served through the staff projection. Full
       // project-detail endpoints are reserved for an active project-scoped
-      // Acting PM assignment, including on read requests.
+      // Acting PM assignment. Assigned Staff may read authority metadata to
+      // render self-submission controls without receiving management rights.
       await ProjectsService.assertCanManageProject(req.user, req.params.id, companyId);
     } else {
       await ProjectsService.assertCanViewProject(req.user, req.params.id, companyId);
@@ -786,7 +791,7 @@ projectsRouter.post('/projects/:id/funding_requests', async (req: Request, res: 
   try {
     const companyId = activeCompanyId(req);
     const activeRole = req.user?.active_role_code;
-    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode)) {
+    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode) && !hasModuleOverride(req, 'PROJECTS')) {
       throw new ForbiddenError('Pengajuan dana project memerlukan role PM, OM, atau Company Admin.');
     }
     const project = await prisma.project_project.findFirst({ where: { id: req.params.id, company_id: companyId } });
@@ -828,7 +833,7 @@ projectsRouter.post('/projects/:id/update_financials', async (req: Request, res:
   try {
     const companyId = activeCompanyId(req);
     const activeRole = req.user?.active_role_code;
-    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode)) {
+    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode) && !hasModuleOverride(req, 'PROJECTS')) {
       throw new ForbiddenError('Perubahan target finansial memerlukan role PM, OM, atau Company Admin.');
     }
     const { budget_amount, contract_amount, target_margin_percent } = req.body;
@@ -1571,6 +1576,14 @@ projectsRouter.use('/main-tasks', createCrudRouter({
 }));
 
 // Helper to normalize Weekly Tasks
+projectsRouter.post('/weekly-tasks/:id/review', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await ProjectsService.reviewWeeklyTask(req.params.id, req.body.decision, req.user, activeCompanyId(req));
+    invalidateDashboardCache();
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
 projectsRouter.use('/weekly-tasks', createCrudRouter({
   modelName: 'project_weekly_task',
   searchFields: ['target_description'],
@@ -1593,9 +1606,14 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     }
     data.tenant_id = mainTask.tenant_id;
     data.company_id = mainTask.company_id;
-    await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
+    // Personal submissions may omit the PIC; the existing policy still rejects
+    // an explicit different user and keeps PM-created assignments unchanged.
+    if (!data.assignee_id && !await ProjectsService.hasProjectManagementAuthority(req.user, mainTask.project_id, companyId)) {
+      data.assignee_id = req.user!.id;
+    }
     if (!data.assignee_id) throw new ValidationError('Assignee Weekly Task wajib dipilih dari assignment Main Task.');
+    const creationStatus = await ProjectsService.weeklyCreationStatus(req.user, mainTask, companyId, String(data.assignee_id));
     await ProjectsService.assertOperationalCompanyMember(String(data.assignee_id), activeCompanyId(req));
     const assignment = await prisma.project_task_assignment.findFirst({
       where: {
@@ -1615,7 +1633,8 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     data.week_number = schedule.weekNumber;
     // Progress is derived from Daily Tasks; API payloads cannot seed it.
     data.progress = 0;
-    if (!data.status) data.status = 'PLANNED';
+    if (creationStatus === 'PENDING_APPROVAL' || !data.status) data.status = creationStatus;
+    data.created_by_id = req.user!.id;
     // Weekly progress is controlled by Daily Task completion only. Ignoring
     // caller-supplied override flags prevents a hidden manual-progress path.
     data.is_progress_overridden = false;
@@ -1629,6 +1648,9 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     });
     if (!mainTask) throw new ValidationError('Hierarchy Weekly Task tidak valid.');
     await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
+    if (['PENDING_APPROVAL', 'REJECTED'].includes(existing.status) || ['PENDING_APPROVAL', 'REJECTED'].includes(String(data.status))) {
+      throw new ValidationError('Gunakan aksi approval untuk Weekly Task yang menunggu review; Weekly rejected tetap tercatat.');
+    }
     if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
     if (data.target_description !== undefined) {
@@ -1652,6 +1674,7 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
       select: { project_id: true },
     });
     await ProjectsService.assertCanManageProject(req.user, mainTask?.project_id, activeCompanyId(req));
+    if (existing.status === 'REJECTED') throw new ConflictError('Weekly Task yang ditolak tetap disimpan sebagai catatan pengajuan.');
     const dailyTaskCount = await prisma.project_daily_task.count({
       where: { weekly_task_id: existing.id, company_id: activeCompanyId(req) },
     });
@@ -1670,6 +1693,18 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
 }));
 
 // Helper to normalize Daily Tasks
+// Reuse the owner-only domain command for ordinary edits as well. Generic CRUD
+// previously ignored operational fields and skipped output comparison updates.
+projectsRouter.put('/daily-tasks/:id', handleUpdateDailyProgress);
+projectsRouter.patch('/daily-tasks/:id', handleUpdateDailyProgress);
+projectsRouter.delete('/daily-tasks/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ProjectsService.deleteDailyTask(req.params.id, req.user, activeCompanyId(req));
+    invalidateDashboardCache();
+    res.status(204).send();
+  } catch (error) { next(error); }
+});
+
 projectsRouter.use('/daily-tasks', createCrudRouter({
   modelName: 'project_daily_task',
   searchFields: [
@@ -1698,6 +1733,7 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
         })
       : null;
     if (!weeklyTask) throw new ValidationError('Weekly Task tidak valid atau berada di luar company aktif.');
+    ProjectsService.assertWeeklyTaskActive(weeklyTask.status);
     if (!weeklyTask.tenant_id || !weeklyTask.company_id) {
       throw new ValidationError('Weekly Task belum memiliki tenant/company scope yang valid.');
     }
@@ -2273,7 +2309,7 @@ projectsRouter.use('/projects', createCrudRouter({
   accessWhere: async (req) => ProjectsService.projectAccessWhere(req.user, portfolioReadCompanyId(req)),
   beforeCreate: async (req, data) => {
     const role = req.user?.active_role_code;
-    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(role as RoleCode)
+    if ((!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(role as RoleCode) && !hasUserModuleWrite(req.user, 'PROJECTS'))
       || req.user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk membuat project.');
     }
@@ -2287,45 +2323,30 @@ projectsRouter.use('/projects', createCrudRouter({
     if (!data.project_code && data.code) data.project_code = data.code;
     if (!data.project_code) data.project_code = `PRJ-${Date.now().toString().slice(-4)}`;
 
-    // 2. Default required schema fields
-    if (data.customer_name === undefined || data.customer_name === null || data.customer_name === '') {
-      data.customer_name = String(data.client_name ?? '').trim();
-      if (!data.customer_name) throw new ValidationError('Nama customer wajib diisi.');
-    } else {
-      // Auto-register to database master_party if it's a new client (Strict Tenant Scoped)
-      const clientName = String(data.customer_name).trim();
-      const tenantId = req.user?.tenant_id;
-      if (!tenantId) throw new ForbiddenError('Tenant aktif diperlukan.');
-      const companyId = activeCompanyId(req);
-      const existing = await prisma.master_party.findFirst({
-        where: {
-          tenant_id: tenantId,
-          company_id: companyId,
-          OR: [
-            { display_name: { equals: clientName, mode: 'insensitive' } },
-            { legal_name: { equals: clientName, mode: 'insensitive' } },
-          ],
-        },
-      });
+    // 2. Customer master relation.
+    // customer_name remains the human-readable project snapshot, while
+    // customer_party_id is the authoritative Finance/CRM relation.
+    const clientName = String(
+      data.customer_name ?? data.client_name ?? '',
+    ).trim();
 
-      if (!existing && clientName) {
-        const cleanCode = clientName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
-        await prisma.master_party.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenant_id: tenantId,
-            company_id: companyId,
-            created_by_id: req.user?.id,
-            party_code: `CUST-${cleanCode || Date.now().toString().slice(-4)}`,
-            party_type: 'CUSTOMER',
-            legal_name: clientName,
-            display_name: clientName,
-            tax_number: '',
-            status: 'ACTIVE',
-          },
-        });
-      }
+    if (!clientName) {
+      throw new ValidationError('Nama customer wajib diisi.');
     }
+
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new ForbiddenError('Tenant aktif diperlukan.');
+
+    const companyId = activeCompanyId(req);
+    const customerParty = await CustomerPartyService.ensureByName(prisma, {
+      customerName: clientName,
+      companyId,
+      tenantId,
+      userId: req.user?.id ?? null,
+    });
+
+    data.customer_name = clientName;
+    data.customer_party_id = customerParty.id;
     if (data.manager_name === undefined || data.manager_name === null || data.manager_name === '') {
       data.manager_name = data.pm_name || data.project_manager_name || (req.user as any)?.full_name;
       if (!String(data.manager_name ?? '').trim()) throw new ValidationError('Nama Project Manager wajib diisi.');
@@ -2362,9 +2383,38 @@ projectsRouter.use('/projects', createCrudRouter({
     return data;
   },
   beforeUpdate: async (req, data, existing) => {
-    await ProjectsService.assertCanManageProject(req.user, existing.id, activeCompanyId(req));
+    const companyId = activeCompanyId(req);
+    await ProjectsService.assertCanManageProject(req.user, existing.id, companyId);
     if (data.name && !data.project_name) data.project_name = data.name;
     if (data.code && !data.project_code) data.project_code = data.code;
+
+    // Never trust a client-supplied party FK. Resolve it from the customer name
+    // inside the active company so Project and Finance cannot drift apart.
+    if (data.customer_name !== undefined || data.client_name !== undefined) {
+      const clientName = String(
+        data.customer_name ?? data.client_name ?? '',
+      ).trim();
+
+      if (!clientName) {
+        throw new ValidationError('Nama customer wajib diisi.');
+      }
+
+      const tenantId = req.user?.tenant_id ?? existing.tenant_id;
+      const customerParty = await CustomerPartyService.ensureByName(prisma, {
+        customerName: clientName,
+        companyId,
+        tenantId,
+        userId: req.user?.id ?? null,
+      });
+
+      data.customer_name = clientName;
+      data.customer_party_id = customerParty.id;
+    } else {
+      delete data.customer_party_id;
+    }
+
+    delete data.client_name;
+
     if (data.planned_start_date && typeof data.planned_start_date === 'string') {
       data.planned_start_date = new Date(data.planned_start_date);
     }

@@ -18,12 +18,21 @@ import { DocumentFSM } from '../../utils/fsm';
 import { sendSuccess, sendError } from '../../utils/response';
 import { RoleCode } from '../../types/roles';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { CustomerPartyService } from '../projects/customer-party.service';
 
 export const financeRouter = Router();
 
 function activeCompanyId(req: Request): string {
   if (!req.companyId) throw new ForbiddenError('Company aktif wajib dipilih.');
   return req.companyId;
+}
+
+function authenticatedFinanceUserId(req: Request): string {
+  const userId = req.user?.id;
+  if (!userId) {
+    throw new ForbiddenError('Autentikasi user diperlukan untuk transaksi Finance.');
+  }
+  return userId;
 }
 
 /**
@@ -39,6 +48,45 @@ async function financeUserCount(companyId: string) {
   return prisma.iam_user_role.count({
     where: { company_id: companyId, role_id: { in: financeRoles.map((role) => role.id) } },
   });
+}
+
+type WipPostingReadiness = {
+  entry_id: string;
+  can_post: boolean;
+  reason: 'READY' | 'MAKER_CHECKER_REQUIRED' | 'INVALID_STATUS';
+  message: string;
+};
+
+function describeWipPostingReadiness(
+  entry: { id: string; status: string; created_by_id: string | null },
+  userId: string,
+): WipPostingReadiness {
+  if (entry.status !== 'VALIDATED') {
+    return {
+      entry_id: entry.id,
+      can_post: false,
+      reason: 'INVALID_STATUS',
+      message: entry.status === 'POSTED_TO_WIP'
+        ? 'Cost entry ini sudah diposting ke WIP.'
+        : `Cost entry berstatus ${entry.status}; hanya status VALIDATED yang dapat diposting ke WIP.`,
+    };
+  }
+
+  if (entry.created_by_id === userId) {
+    return {
+      entry_id: entry.id,
+      can_post: false,
+      reason: 'MAKER_CHECKER_REQUIRED',
+      message: 'Anda adalah pembuat cost entry ini. Sesuai kontrol Maker–Checker, posting WIP harus dilakukan oleh user Finance lain.',
+    };
+  }
+
+  return {
+    entry_id: entry.id,
+    can_post: true,
+    reason: 'READY',
+    message: 'Cost entry siap diposting ke WIP.',
+  };
 }
 
 /**
@@ -106,8 +154,8 @@ financeRouter.post('/period-closings/:id/execute', requireFinanceRole([RoleCode.
       throw new ForbiddenError('Company dengan dua atau lebih user Finance wajib memisahkan requester, approver, dan executor.');
     }
     const result = record.closing_type === 'YEAR_END'
-      ? await PeriodClosingService.executeYearEndClosing(record.document_id!, req.companyId, req.user?.id ?? 'system')
-      : await PeriodClosingService.closeFiscalPeriod(record.fiscal_period_id!, req.user?.id ?? 'system', req.companyId);
+      ? await PeriodClosingService.executeYearEndClosing(record.document_id!, req.companyId, authenticatedFinanceUserId(req))
+      : await PeriodClosingService.closeFiscalPeriod(record.fiscal_period_id!, authenticatedFinanceUserId(req), req.companyId);
     await prisma.fin_period_closing.update({ where: { id: record.id }, data: {
       status: 'COMPLETED', executed_by: req.user?.id, completed_at: new Date(),
     } });
@@ -649,7 +697,38 @@ financeRouter.post(
   requireFinanceRole([RoleCode.FINANCE]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      sendSuccess(res, await FinanceHardeningService.validateProjectCostEntry(req.params.id, req.user?.id ?? 'system', activeCompanyId(req)));
+      const userId = authenticatedFinanceUserId(req);
+      sendSuccess(
+        res,
+        await FinanceHardeningService.validateProjectCostEntry(
+          req.params.id,
+          userId,
+          activeCompanyId(req),
+        ),
+      );
+    } catch (err) { next(err); }
+  },
+);
+
+financeRouter.get(
+  '/project-cost-entries/wip-readiness',
+  requireFinanceRole([RoleCode.FINANCE]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const companyId = activeCompanyId(req);
+      const userId = req.user?.id;
+      if (!userId) throw new ForbiddenError('Autentikasi diperlukan untuk memeriksa kesiapan posting WIP.');
+      const entryId = typeof req.query.entry_id === 'string' ? req.query.entry_id.trim() : '';
+      const entries = await prisma.fin_project_cost_entry.findMany({
+        where: {
+          company_id: companyId,
+          ...(entryId ? { id: entryId } : { status: { in: ['DRAFT', 'VALIDATED', 'POSTED_TO_WIP'] } }),
+        },
+        select: { id: true, status: true, created_by_id: true },
+        take: entryId ? 1 : 200,
+      });
+      if (entryId && entries.length === 0) throw new NotFoundError('ProjectCostEntry');
+      sendSuccess(res, entries.map((entry) => describeWipPostingReadiness(entry, userId)));
     } catch (err) { next(err); }
   },
 );
@@ -657,15 +736,34 @@ financeRouter.post(
 financeRouter.post(
   '/project-cost-entries/:id/post-to-wip',
   requireFinanceRole([RoleCode.FINANCE]),
-  enforceSoD({
-    getCreatorId: async (req) => (await prisma.fin_project_cost_entry.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { created_by_id: true } }))?.created_by_id ?? null,
-    action: 'post-to-wip',
-  }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      sendSuccess(res, await FinanceHardeningService.postProjectCostEntryToWip(
-        req.params.id, String(req.body.credit_account_id ?? ''), req.user?.id ?? 'system', activeCompanyId(req),
-      ));
+      const userId = authenticatedFinanceUserId(req);
+      const companyId = activeCompanyId(req);
+      const entry = await prisma.fin_project_cost_entry.findFirst({
+        where: { id: req.params.id, company_id: companyId },
+        select: { id: true, status: true, created_by_id: true },
+      });
+      if (!entry) {
+        throw new NotFoundError('ProjectCostEntry');
+      }
+      const readiness = describeWipPostingReadiness(entry, userId);
+      if (!readiness.can_post) {
+        return sendError(
+          res,
+          readiness.message,
+          readiness.reason === 'INVALID_STATUS' ? 409 : 403,
+        );
+      }
+      sendSuccess(
+        res,
+        await FinanceHardeningService.postProjectCostEntryToWip(
+          req.params.id,
+          String(req.body.credit_account_id ?? ''),
+          userId,
+          companyId,
+        ),
+      );
     } catch (err) { next(err); }
   },
 );
@@ -705,7 +803,7 @@ financeRouter.post('/billing-proposals/:id/issue-billing-document', requireFinan
       due_date: parseDate(req.body.due_date),
       currency_id: req.body.currency_id,
       payment_term_id: req.body.payment_term_id,
-    }, req.user?.id ?? 'system', activeCompanyId(req)));
+    }, authenticatedFinanceUserId(req), activeCompanyId(req)));
   } catch (err) { next(err); }
 });
 
@@ -716,7 +814,7 @@ financeRouter.post('/billing-documents/:id/create-payment', requireFinanceRole([
       payment_date: req.body.payment_date ? new Date(req.body.payment_date) : new Date(),
       reference_number: String(req.body.reference_number ?? req.body.reference ?? ''),
       payment_method: req.body.payment_method, description: req.body.description,
-    }, req.user?.id ?? 'system', activeCompanyId(req)), 201);
+    }, authenticatedFinanceUserId(req), activeCompanyId(req)), 201);
   } catch (err) { next(err); }
 });
 
@@ -805,7 +903,7 @@ financeRouter.post('/payments/:id/execute', requireFinanceRole([RoleCode.FINANCE
       throw new ForbiddenError('Eksekutor payment harus berbeda dari pembuat, submitter, dan approver ketika tersedia minimal dua user Finance.');
     }
     sendSuccess(res, await FinanceHardeningService.executePayment(
-      req.params.id, String(req.body.execution_reference ?? ''), req.user?.id ?? 'system', activeCompanyId(req),
+      req.params.id, String(req.body.execution_reference ?? ''), authenticatedFinanceUserId(req), activeCompanyId(req),
     ));
   } catch (err) {
     next(err);
@@ -922,7 +1020,7 @@ financeRouter.post(
       const result = await PeriodClosingService.reopenFiscalYear(
         req.params.id,
         reason,
-        req.user?.id ?? 'system',
+        authenticatedFinanceUserId(req),
         activeCompanyId(req),
       );
       sendSuccess(res, result);
@@ -952,7 +1050,7 @@ financeRouter.post('/projects/:id/capitalize-wip',
         req.params.id,
         Number(amount),
         description ?? '',
-        req.user?.id ?? 'system',
+        authenticatedFinanceUserId(req),
         activeCompanyId(req),
       );
       sendSuccess(res, result);
@@ -1077,7 +1175,57 @@ financeRouter.use('/billing-documents', createCrudRouter({ modelName: 'fin_billi
   rejection_reason: '',
 }) }));
 financeRouter.use('/billing-document-lines', createCrudRouter({ modelName: 'fin_billing_document_line', searchFields: ['description'] }));
-financeRouter.use('/billing-proposals', createCrudRouter({ modelName: 'fin_billing_proposal', searchFields: ['description'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/billing-proposals', createCrudRouter({
+  modelName: 'fin_billing_proposal',
+  searchFields: ['description'],
+  beforeCreate: async (req, data) => {
+    const companyId = activeCompanyId(req);
+    const userId = authenticatedFinanceUserId(req);
+    const projectId = String(data.project_id ?? data.project ?? '').trim();
+
+    if (!projectId) {
+      throw new ValidationError('Project wajib dipilih untuk membuat proposal tagihan.');
+    }
+
+    const { project, party } = await CustomerPartyService.ensureForProject(prisma, {
+      projectId,
+      companyId,
+      userId,
+    });
+
+    const subtotal = Number(data.subtotal ?? 0);
+    const taxRate = Number(data.tax_rate ?? 0);
+    const taxAmount = Number(data.tax_amount ?? 0);
+    const totalAmount = Number(data.total_amount ?? subtotal + taxAmount);
+
+    if (!Number.isFinite(subtotal) || subtotal <= 0) {
+      throw new ValidationError('Nilai termin harus lebih dari 0.');
+    }
+
+    if (!Number.isFinite(taxRate) || taxRate < 0) {
+      throw new ValidationError('Tarif pajak tidak valid.');
+    }
+
+    if (!Number.isFinite(taxAmount) || taxAmount < 0) {
+      throw new ValidationError('Nilai pajak tidak valid.');
+    }
+
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      throw new ValidationError('Total tagihan tidak valid.');
+    }
+
+    data.project_id = project.id;
+    data.customer_id = party.id;
+    data.requested_by_id = userId;
+    data.status = 'DRAFT';
+
+    delete data.project;
+    delete data.customer;
+    delete data.customer_party_id;
+
+    return data;
+  },
+}));
 financeRouter.use('/payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
 financeRouter.use('/customer-receipts', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
 financeRouter.use('/vendor-payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));

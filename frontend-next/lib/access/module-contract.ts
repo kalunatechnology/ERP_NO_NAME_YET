@@ -12,6 +12,16 @@ export const MODULE_CODES = [
 
 export type ModuleCode = typeof MODULE_CODES[number];
 
+export interface ModulePermission {
+  module_code: string;
+  allow_read: boolean;
+  allow_write: boolean;
+}
+
+export function getModuleOverride(permissions: readonly ModulePermission[] | null | undefined, module: string) {
+  return permissions?.find((item) => item.module_code.toUpperCase() === module);
+}
+
 export const ROLE_CODES = {
   superAdmin: "ROLE-SUPER-ADMIN",
   companyAdmin: "ROLE-COMPANY-ADMIN",
@@ -66,9 +76,9 @@ export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   { prefix: "/resources", module: "ANALYTICS", roles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin, ROLE_CODES.director], moduleBypassRoles: [ROLE_CODES.superAdmin, ROLE_CODES.companyAdmin] },
   { prefix: "/management-reports", module: "REPORTING", roles: [ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/reporting", module: "REPORTING", roles: null },
-  // STAFF/SUPERVISOR may open the management workspace only when an active
-  // ACTING_PROJECT_MANAGER assignment contributes a PROJECTS delegation.
-  { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director], allowDelegation: true },
+  // Staff use the assigned-task projection to submit Weekly Tasks. Opening
+  // this page does not grant project management or approval authority.
+  { prefix: "/projects", module: "PROJECTS", roles: [ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.staff, ROLE_CODES.supervisor], allowDelegation: true },
   // Daily Tasks are a baseline company-user workspace. Business roles add
   // capabilities elsewhere and must never remove this personal workspace.
   { prefix: "/tasks", module: "PROJECTS", roles: null, allowDelegation: false },
@@ -99,6 +109,7 @@ export function canAccessRoute(input: {
   pathname: string;
   enabledModules?: readonly string[] | null;
   delegatedModules?: readonly string[] | null;
+  moduleAccess?: readonly ModulePermission[] | null;
   activeRoleCode?: unknown;
   isSuperAdmin?: boolean;
 }): boolean {
@@ -110,6 +121,8 @@ export function canAccessRoute(input: {
 
   const bypassesModule = Boolean(contract.moduleBypassRoles?.includes(activeRole));
   if (!bypassesModule && !hasModuleEntitlement(input.enabledModules, contract.module)) return false;
+  const override = contract.module && getModuleOverride(input.moduleAccess, contract.module);
+  if (override) return override.allow_read;
   if (!contract.roles || contract.roles.includes(activeRole)) return true;
 
   if (contract.allowDelegation === false) return false;
@@ -197,6 +210,7 @@ export function getApiAccessContract(url: string): ApiAccessContract | undefined
 export interface FrontendAccessContext {
   enabledModules?: readonly string[] | null;
   delegatedModules?: readonly string[] | null;
+  moduleAccess?: readonly ModulePermission[] | null;
   activeRoleCode?: unknown;
   isSuperAdmin?: boolean;
 }
@@ -207,6 +221,10 @@ export function canRequestApi(url: string, access: FrontendAccessContext): boole
   const activeRole = normalizeRoleCode(access.activeRoleCode);
   const superAdmin = Boolean(access.isSuperAdmin || activeRole === ROLE_CODES.superAdmin);
   if (!hasModuleEntitlement(access.enabledModules, contract.module, superAdmin)) return false;
+  if (!superAdmin) {
+    const override = getModuleOverride(access.moduleAccess, contract.module);
+    if (override) return override.allow_read;
+  }
   if (superAdmin || !contract.roles || contract.roles.includes(activeRole)) return true;
   return contract.allowDelegation !== false && normalizeModuleCodes(access.delegatedModules).has(contract.module);
 }

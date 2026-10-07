@@ -10,6 +10,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { AccountingError, NotFoundError, ValidationError } from '../../utils/errors';
+import { FinanceDocumentService } from './finance-document.service';
 // NOTE: PeriodClosingService is imported lazily to avoid circular deps
 // It is called via dynamic import below
 
@@ -872,6 +873,39 @@ export class FinanceService {
       const { PeriodClosingService } = await import('./period-closing.service');
       await PeriodClosingService.assertPeriodOpen(new Date(), doc.company_id ?? null);
 
+      const sourceDocument =
+        await FinanceDocumentService.ensure(tx, {
+          tenantId: doc.tenant_id,
+          companyId: doc.company_id,
+          userId: userId ?? null,
+
+          existingDocumentId:
+            doc.document_id,
+
+          documentType:
+            doc.billing_type || 'BILLING_DOCUMENT',
+
+          documentNumber:
+            doc.invoice_number,
+
+          documentDate:
+            doc.invoice_date,
+
+          status: doc.status,
+        });
+
+      if (!doc.document_id) {
+        await tx.fin_billing_document.update({
+          where: {
+            id: doc.id,
+          },
+          data: {
+            document_id:
+              sourceDocument.id,
+          },
+        });
+      }
+
       const subtotal = Number(doc.subtotal ?? 0);
       const taxAmount = Number(doc.tax_amount ?? 0);
       const totalAmount = Number(doc.total_amount ?? subtotal + taxAmount);
@@ -930,7 +964,7 @@ export class FinanceService {
             entry_number: `JE-BILL-${doc.invoice_number}`,
             posting_date: new Date(),
             description: `Pengakuan Piutang & PPN Invoice ${doc.invoice_number}`,
-            source_document_id: doc.id,
+            source_document_id: sourceDocument.id,
             status: 'POSTED',
           },
         });
@@ -985,6 +1019,13 @@ export class FinanceService {
           });
         }
       }
+
+      await FinanceDocumentService.markPosted(
+        tx,
+        sourceDocument.id,
+        userId ?? doc.created_by_id ?? '',
+        new Date(),
+      );
 
       return updated;
     }, FINANCE_TRANSACTION_OPTIONS);
@@ -1069,7 +1110,7 @@ export class FinanceService {
     const cogsAccount = coaMap.get('5100');
 
     if (!wipAccount || !cogsAccount) {
-      throw new AccountingError('Akun WIP (1108) atau COGS (5100) tidak ditemukan. Jalankan setup-standard COA.');
+      throw new AccountingError('Akun WIP (1150) atau COGS (5100) tidak ditemukan. Jalankan setup-standard COA.');
     }
 
     // Hitung saldo aktual WIP dari GL (Hybrid Balance)
@@ -1091,6 +1132,27 @@ export class FinanceService {
       const journal = await this.ensureJournal(companyId ?? null, 'GJ', 'General Journal', 'GENERAL', tx);
       const entryId = crypto.randomUUID();
 
+      const capitalizationReference =
+        `WIP-CAP-${projectId.slice(0, 8)}-${Date.now()}`;
+
+      const sourceDocument =
+        await FinanceDocumentService.ensure(tx, {
+          tenantId: project.tenant_id,
+          companyId: project.company_id,
+          userId,
+
+          documentType:
+            'PROJECT_WIP_CAPITALIZATION',
+
+          documentNumber:
+            capitalizationReference,
+
+          documentDate: new Date(),
+          postingDate: new Date(),
+
+          status: 'POSTED',
+        });
+
       await tx.fin_journal_entry.create({
         data: {
           id:           entryId,
@@ -1098,11 +1160,11 @@ export class FinanceService {
           company_id:   project.company_id,
           created_by_id: userId,
           journal_id:   journal?.id ?? null,
-          entry_number: `WIP-CAP-${projectId.slice(0, 8)}-${Date.now()}`,
+          entry_number: capitalizationReference,
           description:  description || `Kapitalisasi WIP Proyek ${projectId}`,
           status:       'POSTED',
           posting_date: new Date(),
-          source_document_id: projectId,
+          source_document_id: sourceDocument.id,
         },
       });
 
@@ -1121,7 +1183,7 @@ export class FinanceService {
         },
       });
 
-      // Credit WIP 1108 (mengurangi saldo WIP)
+      // Credit WIP 1150 (mengurangi saldo WIP)
       await tx.fin_journal_line.create({
         data: {
           id:               crypto.randomUUID(),

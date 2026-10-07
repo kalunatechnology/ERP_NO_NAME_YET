@@ -60,6 +60,7 @@ export async function authenticate(
     active_role_code: access.activeRoleCode,
     enabled_modules: access.enabledModules,
     delegated_modules: access.delegatedModules,
+    module_access: access.moduleAccess,
   };
   req.tenantId = user.tenant_id;
 
@@ -101,6 +102,7 @@ export async function optionalAuthenticate(
       active_role_code: access.activeRoleCode,
       enabled_modules: access.enabledModules,
       delegated_modules: access.delegatedModules,
+      module_access: access.moduleAccess,
     };
     req.tenantId = user.tenant_id;
   }

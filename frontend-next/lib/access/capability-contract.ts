@@ -8,7 +8,7 @@
  * - Action Capability (what user can do inside): managed by this contract
  */
 
-import { normalizeRoleCode, ROLE_CODES } from "./module-contract";
+import { getModuleOverride, hasModuleEntitlement, ModulePermission, normalizeRoleCode, ROLE_CODES } from "./module-contract";
 
 export type AppCapability =
   | "project:view"
@@ -56,9 +56,18 @@ export function resolveRoleKey(role?: string | null): string {
  */
 export function canPerform(
   capability: AppCapability,
-  activeRoleOrRoleCode?: string | null
+  activeRoleOrRoleCode?: string | null,
+  access?: { enabledModules?: readonly string[] | null; moduleAccess?: readonly ModulePermission[] | null },
 ): boolean {
   const role = resolveRoleKey(activeRoleOrRoleCode);
+  const moduleCode = capability.startsWith("finance:") ? "FINANCE"
+    : capability.startsWith("crm:") ? "CRM"
+    : capability.startsWith("project:") ? "PROJECTS" : null;
+  if (moduleCode && role !== "super_admin") {
+    if (access?.enabledModules && !hasModuleEntitlement(access.enabledModules, moduleCode)) return false;
+    const override = getModuleOverride(access?.moduleAccess, moduleCode);
+    if (override) return override.allow_read && (capability.endsWith(":view") || override.allow_write);
+  }
 
   switch (capability) {
     case "project:view":
@@ -78,7 +87,7 @@ export function canPerform(
       return ["super_admin", "company_admin", "executive", "finance", "om", "pm"].includes(role);
 
     case "finance:operate":
-      // Executive is view-only in Finance (cannot create cost entries, fund requests, approve, post to WIP, billing)
+      // Without an explicit Admin override, Finance operations follow the role.
       return role === "finance";
 
     case "crm:view":

@@ -10,7 +10,7 @@ import { NextFunction, Request, Response, Router } from 'express';
 
 import { RequestService } from './request.service';
 import { ReadThroughCache } from '../../utils/read-through-cache';
-import { ForbiddenError, ValidationError } from '../../utils/errors';
+import { ForbiddenError, ValidationError, NotFoundError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
 import { requireActiveRole } from '../../middlewares/rbac.middleware';
 import { sendSuccess, sendError } from '../../utils/response';
@@ -71,6 +71,16 @@ requestRouter.use((req, res, next) => {
   next();
 });
 
+// Existing pending requests become active automatically in their own company.
+requestRouter.use(async (req, _res, next) => {
+  try {
+    if (await RequestService.activatePendingRequests(activeCompanyId(req))) {
+      invalidateRequestFeedCache(); requestFeedCache.clear();
+    }
+    next();
+  } catch (error) { next(error); }
+});
+
 function activeCompanyId(req: Request): string {
   if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses request.');
   return req.companyId;
@@ -102,6 +112,24 @@ requestRouter.post('/meetings', async (req, res, next) => {
   try {
     const result = await RequestService.createRequest({ ...req.body, request_type: 'MEETING' }, activeUserId(req), activeCompanyId(req), req.user?.tenant_id);
     sendSuccess(res, result, 201);
+  } catch (error) { next(error); }
+});
+
+requestRouter.delete('/meetings/:meetingId', requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req, res, next) => {
+  try {
+    await MeetingRequestService.deleteMeeting(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req));
+    res.status(204).send();
+  } catch (error) { next(error); }
+});
+
+// The dashboard request card uses the ticket ID rather than the meeting ID.
+requestRouter.delete('/:id', requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const meeting = await prisma.request_meeting.findFirst({ where: { request_id: req.params.id, company_id: companyId, status: { not: 'CANCELLED' } } });
+    if (!meeting) throw new NotFoundError('Meeting Request');
+    await MeetingRequestService.deleteMeeting(meeting.id, companyId, activeUserId(req), activeRoleCode(req));
+    res.status(204).send();
   } catch (error) { next(error); }
 });
 
@@ -377,7 +405,7 @@ requestRouter.get('/team-members', async (req: Request, res: Response, next: Nex
   } catch (err) { next(err); }
 });
 
-// Level 1: OM Decision (APPROVE, RE_CHECK, or REJECT)
+// Compatibility endpoint: initial OM approval has been disabled.
 requestRouter.post('/:id/validate-om', requireActiveRole(RoleCode.OPERATIONAL_MANAGER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;
@@ -399,7 +427,7 @@ requestRouter.post('/:id/validate-om', requireActiveRole(RoleCode.OPERATIONAL_MA
   } catch (err) { next(err); }
 });
 
-// Level 2: Executive/PM Approval (APPROVE or REJECT)
+// Compatibility endpoint: initial Executive/PM approval has been disabled.
 requestRouter.post('/:id/approve-exec', requireActiveRole(RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { decision, remarks } = req.body;

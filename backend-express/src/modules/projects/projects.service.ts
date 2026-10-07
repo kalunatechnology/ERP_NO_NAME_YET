@@ -11,6 +11,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { RoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
 import { compareTaskOutput } from './output-comparison';
+import { getUserModuleOverride, hasUserModuleWrite } from '../../utils/module-permissions';
 
 export const PROJECT_MANAGEMENT_ROLES = [
   'PROJECT_MANAGER',
@@ -90,6 +91,13 @@ export class ProjectsService {
 
   static async managedProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
     if (!user?.id || !companyId) return [];
+    if (hasUserModuleWrite(user, 'PROJECTS') && !user.roles?.includes(RoleCode.SUPER_ADMIN)) {
+      const scope = await this.projectAccessWhere(user, companyId, db);
+      const projects = await db.project_project.findMany({
+        where: { company_id: companyId, AND: [scope] }, select: { id: true },
+      });
+      return projects.map((project: { id: string }) => project.id);
+    }
     const activeRole = this.activeRole(user);
     if (
       this.isCompanyAdmin(user) ||
@@ -128,6 +136,14 @@ export class ProjectsService {
   static async assertCanManageProject(user: any, projectId: string | null | undefined, companyId: string, db: any = prisma): Promise<void> {
     if (!projectId || !companyId || !user?.id || user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan pengelolaan pada project ini.');
+    }
+    const override = getUserModuleOverride(user, 'PROJECTS');
+    if (override && !hasUserModuleWrite(user, 'PROJECTS')) {
+      throw new ForbiddenError('Akses pengelolaan modul PROJECTS dinonaktifkan oleh Admin.');
+    }
+    if (hasUserModuleWrite(user, 'PROJECTS')) {
+      await this.assertCanViewProject(user, projectId, companyId, db);
+      return;
     }
     const activeRole = this.activeRole(user);
     if (
@@ -170,6 +186,66 @@ export class ProjectsService {
     }
   }
 
+  static async weeklyCreationStatus(user: any, mainTask: { id: string; project_id: string }, companyId: string, assigneeId: string, db: any = prisma): Promise<string> {
+    if (await this.hasProjectManagementAuthority(user, mainTask.project_id, companyId, db)) return 'PLANNED';
+    if (!user?.id || user.roles?.includes(RoleCode.SUPER_ADMIN) || this.activeRole(user) === RoleCode.DIRECTOR) {
+      throw new ForbiddenError('User ini tidak dapat mengajukan Weekly Task.');
+    }
+    await this.assertActiveCompanyMember(user.id, companyId, db);
+    await this.assertCanViewProject(user, mainTask.project_id, companyId, db);
+    const assignment = await db.project_task_assignment.findFirst({
+      where: { main_task_id: mainTask.id, company_id: companyId, assignee_id: user.id },
+      select: { id: true },
+    });
+    if (!assignment || assigneeId !== user.id) {
+      throw new ForbiddenError('Weekly Task hanya dapat diajukan untuk diri sendiri pada Main Task yang ditugaskan kepada Anda.');
+    }
+    return 'PENDING_APPROVAL';
+  }
+
+  static assertWeeklyTaskActive(status: string) {
+    if (['PENDING_APPROVAL', 'REJECTED'].includes(status)) {
+      throw new ValidationError('Weekly Task belum disetujui; belum dapat digunakan untuk Daily Task.');
+    }
+  }
+
+  static async reviewWeeklyTask(id: string, decision: string, user: any, companyId: string) {
+    if (!['APPROVE', 'REJECT'].includes(decision)) throw new ValidationError('Keputusan approval Weekly Task tidak valid.');
+    return prisma.$transaction(async (tx) => {
+      const weekly = await tx.project_weekly_task.findFirst({ where: { id, company_id: companyId, tenant_id: user?.tenant_id } });
+      if (!weekly) throw new NotFoundError('WeeklyTask');
+      const main = await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } });
+      if (!main) throw new ValidationError('Hierarchy Weekly Task tidak valid.');
+      await this.assertCanManageProject(user, main.project_id, companyId, tx);
+      const status = decision === 'APPROVE' ? 'PLANNED' : 'REJECTED';
+      const changed = await tx.project_weekly_task.updateMany({
+        where: { id, company_id: companyId, status: 'PENDING_APPROVAL' },
+        data: { status, updated_at: new Date() },
+      });
+      if (changed.count !== 1) throw new ConflictError('Weekly Task tidak lagi menunggu approval.');
+      await this.logActivity({ projectId: main.project_id, tenantId: weekly.tenant_id, companyId,
+        actorId: user.id, taskLevel: 'WEEKLY', taskId: id, taskTitle: weekly.target_description,
+        action: decision === 'APPROVE' ? 'WEEKLY_APPROVED' : 'WEEKLY_REJECTED',
+        fieldName: 'status', oldValue: 'PENDING_APPROVAL', newValue: status }, tx);
+      await this.recalculateTaskTree({ weeklyTaskId: id, companyId }, tx);
+      return tx.project_weekly_task.findFirst({ where: { id, company_id: companyId } });
+    }, PROJECT_TRANSACTION_OPTIONS);
+  }
+
+  static async deleteDailyTask(id: string, user: any, companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      const { task, projectId } = await this.assertCanOperateDailyTask(id, user, companyId, tx);
+      await tx.project_control_item.deleteMany({ where: { daily_task_id: id, company_id: companyId } });
+      await tx.project_task_transfer_request.deleteMany({ where: { daily_task_id: id, company_id: companyId } });
+      // Preserve meeting action items while removing their link to the deleted task.
+      await tx.request_meeting_action_item.updateMany({ where: { daily_task_id: id, company_id: companyId }, data: { daily_task_id: null } });
+      await tx.project_daily_task.delete({ where: { id } });
+      await this.logActivity({ projectId, tenantId: task.tenant_id, companyId, actorId: user.id,
+        taskLevel: 'DAILY', taskId: id, taskTitle: task.title, action: 'DAILY_DELETED' }, tx);
+      await this.recalculateTaskTree({ weeklyTaskId: task.weekly_task_id, companyId }, tx);
+    }, PROJECT_TRANSACTION_OPTIONS);
+  }
+
   static async assertCanAssignProjectMembers(user: any, projectId: string, companyId: string, db: any = prisma): Promise<void> {
     await this.assertCanManageProject(user, projectId, companyId, db);
   }
@@ -179,7 +255,7 @@ export class ProjectsService {
     if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
       return { created_by_id: user.id, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
     }
-    if (!this.hasBaseStaffAccess(user)) return { id: { in: [] } };
+    if (!this.hasBaseStaffAccess(user) && !hasUserModuleWrite(user, 'PROJECTS')) return { id: { in: [] } };
 
     const [memberships, assignments] = await Promise.all([
       db.project_member.findMany({
@@ -203,7 +279,10 @@ export class ProjectsService {
       if (membership.project_id) projectIds.add(membership.project_id);
     });
     assignedMainTasks.forEach((task: { project_id: string }) => projectIds.add(task.project_id));
-    return { id: { in: [...projectIds] } };
+    const assignedScope = { id: { in: [...projectIds] } };
+    return hasUserModuleWrite(user, 'PROJECTS')
+      ? { OR: [assignedScope, { created_by_id: user.id }] }
+      : assignedScope;
   }
 
   static async assertCanViewProject(user: any, projectId: string, companyId: string, db: any = prisma): Promise<void> {
@@ -766,7 +845,8 @@ export class ProjectsService {
     if (!project) throw new NotFoundError('Project');
     const allowed = this.isCompanyAdmin(user)
       || this.activeRole(user) === RoleCode.OPERATIONAL_MANAGER
-      || this.activeRole(user) === RoleCode.PROJECT_MANAGER;
+      || this.activeRole(user) === RoleCode.PROJECT_MANAGER
+      || hasUserModuleWrite(user, 'PROJECTS');
     if (!allowed) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk menunjuk atau mencabut Project Supervisor.');
     }
@@ -974,7 +1054,9 @@ export class ProjectsService {
     }
 
     const isPm = isCreatorPm;
-    const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && (isAdmin || isOm || isPm || isActing);
+    const moduleWrite = hasUserModuleWrite(user, 'PROJECTS');
+    const allowsManagement = !getUserModuleOverride(user, 'PROJECTS') || moduleWrite;
+    const canManage = !user?.roles?.includes(RoleCode.SUPER_ADMIN) && allowsManagement && (isAdmin || isOm || isPm || isActing || moduleWrite);
     const canViewFinancials = isActing || ([
       RoleCode.SUPER_ADMIN,
       RoleCode.COMPANY_ADMIN,
@@ -983,7 +1065,7 @@ export class ProjectsService {
       RoleCode.PROJECT_MANAGER,
       RoleCode.FINANCE,
     ] as RoleCode[]).includes(activeRole as RoleCode);
-    const canDelegate = canManage && (isAdmin || isOm || isPm);
+    const canDelegate = canManage && (isAdmin || isOm || isPm || moduleWrite);
     const effectiveRole = isActing
       ? ACTING_PROJECT_MANAGER_ROLE
       : isPm
@@ -1009,8 +1091,8 @@ export class ProjectsService {
       can_manage_milestones: canManage,
       can_view_financials: canViewFinancials,
       can_delegate_supervisor: canDelegate,
-      can_create_project: isAdmin || isOm || isPm,
-      can_delete_project: isAdmin || isOm || isPm,
+      can_create_project: allowsManagement && (isAdmin || isOm || isPm || moduleWrite),
+      can_delete_project: allowsManagement && (isAdmin || isOm || isPm || moduleWrite),
     };
   }
 
@@ -1120,7 +1202,7 @@ export class ProjectsService {
         companyId ??= wt?.company_id ?? undefined;
         if (wt) {
           mainId = wt.main_task_id ?? undefined;
-          if (!wt.is_progress_overridden) {
+          if (!wt.is_progress_overridden && !['PENDING_APPROVAL', 'REJECTED'].includes(wt.status)) {
             const dailyTasks = await tx.project_daily_task.findMany({
               where: { weekly_task_id: weeklyId, ...(companyId ? { company_id: companyId } : {}) },
               select: { progress: true, is_blocked: true, status: true },
@@ -1168,7 +1250,7 @@ export class ProjectsService {
           projId = mt.project_id ?? undefined;
           if (!mt.is_progress_overridden) {
             const weeklyTasks = await tx.project_weekly_task.findMany({
-              where: { main_task_id: mainId, ...(companyId ? { company_id: companyId } : {}) },
+              where: { main_task_id: mainId, status: { notIn: ['PENDING_APPROVAL', 'REJECTED'] }, ...(companyId ? { company_id: companyId } : {}) },
             });
             if (weeklyTasks.length > 0) {
               const avg =
@@ -1640,10 +1722,22 @@ export class ProjectsService {
       }
       const outputComparison = compareTaskOutput(outputTarget, outputResult);
 
+      if (data.title !== undefined && !String(data.title).trim()) throw new ValidationError('Aktivitas harian wajib diisi.');
+      if (data.time_slot !== undefined && !String(data.time_slot).trim()) throw new ValidationError('Slot waktu aktivitas wajib diisi.');
+      let plannedDate = task.planned_date;
+      if (data.planned_date !== undefined) {
+        const value = String(data.planned_date);
+        const date = new Date(value);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+          throw new ValidationError('Tanggal Daily Task tidak valid.');
+        }
+        plannedDate = date;
+      }
       const baseUpdateData = {
         title: data.title ?? data.activity_input ?? task.title,
         description: data.description !== undefined ? data.description : task.description,
         time_slot: data.time_slot !== undefined ? data.time_slot : task.time_slot,
+        planned_date: plannedDate,
         output_result: outputResult,
         notes: data.notes !== undefined ? data.notes : task.notes,
         progress,

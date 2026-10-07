@@ -69,6 +69,7 @@ interface ProjectWbsNodeProps {
   canManageWbs: boolean;
   canAssignTeam: boolean;
   canManageWeeklyTasks: boolean;
+  onReviewWeeklyTask: (id: string | number, decision: "APPROVE" | "REJECT") => Promise<void>;
   currentUserId: string;
   userRole: string;
   onAssignClick: (main: any) => void;
@@ -92,6 +93,7 @@ export function ProjectWbsNode({
   canManageWbs,
   canAssignTeam,
   canManageWeeklyTasks,
+  onReviewWeeklyTask,
   currentUserId,
   userRole,
   onAssignClick,
@@ -116,7 +118,7 @@ export function ProjectWbsNode({
     completedDailies += dailies.filter((d: any) => ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase())).length;
   });
 
-  const canCreateWeekly = canManageWeeklyTasks;
+  const canCreateWeekly = canManageWeeklyTasks || (userRole !== "super_admin" && userRole !== "executive" && (main.assignments || []).some((a: any) => String(a.assignee_id || a.assignee || "") === String(currentUserId)));
 
   return (
     <div className="card rounded-2xl border border-text-tertiary overflow-hidden shadow-xs bg-white transition-all duration-200 hover:border-gray-300">
@@ -207,7 +209,7 @@ export function ProjectWbsNode({
               onClick={() => onCreateWeeklyClick(main)}
               className="btn-outline py-1 px-2.5 text-2xs gap-1 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green"
             >
-              <Plus size={12} /> + Target Mingguan
+              <Plus size={12} /> {canManageWeeklyTasks ? "+ Target Mingguan" : "Ajukan Target Mingguan"}
             </button>
           )}
 
@@ -243,8 +245,7 @@ export function ProjectWbsNode({
                 const dailyTasks = weekly.daily_tasks || [];
                 const isWeeklyExpanded = !collapsedWeeklyTasks[String(weekly.id)];
                 const isWeeklyPic = String(weekly.assignee_id || weekly.assignee || "") === String(currentUserId);
-                const isPM = userRole === "pm";
-                const canCreateDaily = !isPM && isWeeklyPic;
+                const canCreateDaily = isWeeklyPic && !['PENDING_APPROVAL', 'REJECTED'].includes(weekly.status);
 
                 return (
                   <div key={weekly.id} className="rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200">
@@ -282,8 +283,13 @@ export function ProjectWbsNode({
 
                       <div className="flex items-center gap-2">
                         <span className="badge badge-success text-2xs font-bold">
-                          {weekly.status} ({weekly.progress}%)
+                          {weekly.status === 'PENDING_APPROVAL' ? 'Menunggu Approval' : weekly.status === 'REJECTED' ? 'Ditolak' : weekly.status} ({weekly.progress}%)
                         </span>
+
+                        {canManageWeeklyTasks && weekly.status === 'PENDING_APPROVAL' && <>
+                          <button type="button" onClick={() => void onReviewWeeklyTask(weekly.id, "APPROVE")} className="btn-outline py-0.5 px-2.5 text-2xs">Approve</button>
+                          <button type="button" onClick={() => void onReviewWeeklyTask(weekly.id, "REJECT")} className="btn-outline py-0.5 px-2.5 text-2xs text-red-600">Reject</button>
+                        </>}
 
                         {canCreateDaily && (
                           <button
@@ -294,7 +300,7 @@ export function ProjectWbsNode({
                           </button>
                         )}
 
-                        {canManageWeeklyTasks && (
+                        {canManageWeeklyTasks && weekly.status !== 'REJECTED' && (
                           <button
                             onClick={() => onDeleteWeeklyTask(weekly.id, weekly.week_number)}
                             className="p-1 rounded text-text-secondary hover:text-red-600"

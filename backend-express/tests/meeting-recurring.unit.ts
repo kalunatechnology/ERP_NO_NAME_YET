@@ -14,6 +14,9 @@ async function main() {
   assert.deepEqual(meetingOccurrenceDates({ ...schedule, recurrence_days: [0, 6] }), ['2026-10-03', '2026-10-04']);
   assert.deepEqual(meetingOccurrenceDates({ ...schedule, recurrence_type: 'NON_RECURRING' }), ['2026-09-28']);
   assert.throws(() => resolveMeetingOccurrenceDate(schedule, '2026-10-03'), /bukan occurrence/);
+  assert.throws(() => resolveMeetingOccurrenceDate(schedule, '2026-10-05'), /bukan occurrence/, 'An ended series must not accept a later weekday');
+  assert.deepEqual(meetingOccurrenceDates({ ...schedule, start_at: new Date('2020-01-05T17:00:00Z'), recurrence_end_at: new Date('2020-01-10T16:59:00Z') }),
+    ['2020-01-06', '2020-01-07', '2020-01-08', '2020-01-09', '2020-01-10'], 'Past series must stay bounded independently of the current date');
   assert.throws(() => meetingOccurrenceDates({ ...schedule, timezone: 'Invalid/Timezone' }), /Timezone/);
 
   const meeting: any = {
@@ -138,6 +141,14 @@ async function main() {
     assert.equal(oneTime.notes[0].status, 'COMPLETED');
     assert.equal(meetingUpdateCount, 6, 'one-time publish completes its meeting after the draft save');
     assert.equal(ticketUpdateCount, 1, 'one-time publish completes its request ticket');
+    // A directly assigned notulis must retain rights without a redundant
+    // participant row; responsibility comes from the meeting relationship.
+    notes.splice(0);
+    patch(prisma.request_meeting_participant, 'findFirst', async () => null);
+    const assignedOnly = await MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-09-28', summary: 'Assigned notulis' }, 'company', 'notetaker', 'ROLE-STAFF');
+    assert.equal(assignedOnly.minutes?.prepared_by_id, 'notetaker');
+    const assignedEdit = await MeetingRequestService.saveMinutes('meeting', { occurrence_date: '2026-09-28', summary: 'Assigned edit' }, 'company', 'notetaker', 'ROLE-STAFF');
+    assert.equal(assignedEdit.minutes?.id, assignedOnly.minutes?.id); assert.equal(assignedEdit.minutes?.summary, 'Assigned edit');
     console.log('Recurring meeting passed: weekday defaults, explicit weekend config, lazy notes, create/view/edit, refresh idempotency, date isolation, completion and permission checks.');
   } finally {
     patches.reverse().forEach((restore) => restore());

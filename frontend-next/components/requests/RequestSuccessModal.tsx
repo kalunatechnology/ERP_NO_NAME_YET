@@ -29,7 +29,7 @@ interface RequestSuccessModalProps {
 export function RequestSuccessModal({ isOpen, onClose, requestData }: RequestSuccessModalProps) {
   if (!isOpen) return null;
   const type = String(requestData?.request_type || "").toUpperCase();
-  const successTitle = type.includes("MEETING") ? "Meeting Request Sent" : type.includes("LEAVE") ? "Leave Request Sent" : type.includes("FUND") ? "Funding Request Sent" : "Request Sent";
+  const successTitle = type.includes("MEETING") ? "Meeting Created" : type.includes("LEAVE") ? "Leave Request Created" : type.includes("FUND") ? "Funding Request Created" : "Request Created";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -44,7 +44,7 @@ export function RequestSuccessModal({ isOpen, onClose, requestData }: RequestSuc
           {successTitle}
         </h2>
         <p className="text-xs text-[#4F5050] font-medium leading-relaxed max-w-[260px] mb-6">
-          Your request has been submitted for validation
+          Your request has been created automatically
         </p>
 
         {/* Request Pill Summary */}
@@ -55,7 +55,7 @@ export function RequestSuccessModal({ isOpen, onClose, requestData }: RequestSuc
               <span className="font-mono text-[#090909]">{requestData.request_number}</span>
             </div>
             <p className="text-xs font-bold text-[#090909] truncate">{requestData.title}</p>
-            <p className="text-3xs text-[#4F5050] mt-1">Status: <span className="font-bold text-[#294BB2]">Waiting OM Validation</span></p>
+            <p className="text-3xs text-[#4F5050] mt-1">Status: <span className="font-bold text-[#294BB2]">{type.includes("MEETING") ? "Scheduled" : "Registered"}</span></p>
           </div>
         )}
 

@@ -2,6 +2,20 @@ import { randomUUID } from 'crypto';
 import prisma from '../../config/database';
 import { buildMarbotRuntimeAuthority, mapRoleForChatbot } from './marbot-access.service';
 import { MarbotRuntimeAuthority, MarbotRuntimeContextV2, MarbotTenantConfig } from './marbot.types';
+import { AppError } from '../../utils/errors';
+
+/** A readable conversation table alone does not prove chat/action storage exists. */
+export async function assertNativeMarbotStorageReady(boundary: { tenant_id: string; company_id?: string; user_id?: string }, db: any = prisma): Promise<void> {
+  try {
+    await Promise.all([
+      db.marbot_conversation.count({ where: boundary }),
+      db.marbot_message.count({ where: { conversation: boundary } }),
+      db.marbot_request.count({ where: boundary }),
+    ]);
+  } catch {
+    throw new AppError('Koneksi atau penyimpanan Marka Plus belum siap. Hubungi Admin jika masalah berlanjut.', 503, 'MARBOT_DATABASE_UNAVAILABLE');
+  }
+}
 
 const MODULE_PERMISSIONS: Record<string, ReadonlySet<string>> = {
   GENERAL: new Set(['USE_MARBOT', 'READ_GENERAL']),

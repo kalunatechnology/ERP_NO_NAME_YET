@@ -38,7 +38,6 @@ interface RequestReviewModalProps {
 export function RequestReviewModal({ isOpen, onClose, request, onActionComplete }: RequestReviewModalProps) {
   const { userRole } = useAuth();
   const [remarks, setRemarks] = useState("");
-  const [showRecheckInput, setShowRecheckInput] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [bankId, setBankId] = useState("");
@@ -72,7 +71,6 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
   useEffect(() => {
     if (!isOpen || !requestId) return;
     setRemarks("");
-    setShowRecheckInput(false);
     setError("");
     setShowLPJForm(false);
     setLpjRealization("");
@@ -126,74 +124,29 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
   // for super_admin is CORRECT — they will not get 403.
   const isSuperAdmin = userRole === "super_admin";
 
-  // validate-om & verify-lpj-om: requireActiveRole(OPERATIONAL_MANAGER)
+  // verify-lpj-om: requireActiveRole(OPERATIONAL_MANAGER)
   const isOMRole = isSuperAdmin || userRole === "om";
 
-  // approve-exec: requireActiveRole(PROJECT_MANAGER, DIRECTOR)
-  const isExecRole = isSuperAdmin || userRole === "pm" || userRole === "executive";
+  // Meeting deletion: PROJECT_MANAGER or DIRECTOR.
+  const isExecRole = userRole === "pm" || userRole === "executive";
 
   // disburse & disbursement-accounts: requireActiveRole(FINANCE)
   const isFinanceRole = isSuperAdmin || userRole === "finance";
 
   // Stage gating: which action section to show
-  const isOMStage = (request.status === "PENDING_OM" || request.status === "RE_CHECKING") && isOMRole;
-  const isExecStage = request.status === "PENDING_EXEC" && isExecRole;
+  const canDeleteMeeting = request.request_type === "MEETING" && isExecRole;
   const isDisbursedOrRegistered = request.status === "REGISTERED" || request.status === "DISBURSED" || request.status === "LPJ_REVISION";
   const isOMLPJStage = request.status === "PENDING_LPJ_VERIFICATION" && isOMRole;
 
-  /**
-   * handleOMAction coordinates the UI behavior represented by this function.
-   *
-   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
-   * @returns The rendered React node, callback result, or Promise declared by the implementation.
-   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
-   */
-  const handleOMAction = async (decision: "APPROVE" | "RE_CHECK" | "REJECT") => {
-    if (decision !== "APPROVE" && !remarks.trim()) {
-      setError(decision === "REJECT" ? "Alasan penolakan wajib diisi untuk pemohon." : "Catatan perbaikan (alasan Re-checking) wajib diisi untuk pemohon.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
+  const handleDeleteMeeting = async () => {
+    if (!window.confirm('Hapus meeting ini dari daftar?')) return;
+    setLoading(true); setError('');
     try {
-      await api.post(`/api/v1/requests/${request.id}/validate-om`, {
-        decision,
-        remarks,
-      });
-
-      onActionComplete();
-      onClose();
+      await api.delete(`/api/v1/requests/${request.id}`);
+      onActionComplete(); onClose();
     } catch (err: unknown) {
-      setError(extractApiError(err, "Gagal memvalidasi permohonan"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
-   * handleExecAction coordinates the UI behavior represented by this function.
-   *
-   * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
-   * @returns The rendered React node, callback result, or Promise declared by the implementation.
-   * Integration/side effects: calls the referenced HTTP adapter and maps success/failure into component state.
-   */
-  const handleExecAction = async (decision: "APPROVE" | "REJECT") => {
-    setLoading(true);
-    setError("");
-    try {
-      await api.post(`/api/v1/requests/${request.id}/approve-exec`, {
-        decision,
-        remarks,
-      });
-
-      onActionComplete();
-      onClose();
-    } catch (err: unknown) {
-      setError(extractApiError(err, "Gagal memproses persetujuan"));
-    } finally {
-      setLoading(false);
-    }
+      setError(extractApiError(err, 'Gagal menghapus meeting'));
+    } finally { setLoading(false); }
   };
 
   /**
@@ -540,10 +493,10 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
           )}
 
           {/* Re-checking Notes Input */}
-          {(showRecheckInput || isExecStage || isOMLPJStage) && (
+          {isOMLPJStage && (
             <div className="space-y-1.5 animate-in fade-in duration-150">
               <label className="text-2xs font-bold text-[#4F5050] uppercase tracking-wider block">
-                {isOMLPJStage ? "Catatan Verifikasi LPJ oleh OM:" : isOMStage ? "Catatan keputusan OM untuk pemohon:" : "Catatan Persetujuan / Penolakan:"}
+                Catatan Verifikasi LPJ oleh OM:
               </label>
               <textarea
                 value={remarks}
@@ -569,73 +522,11 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
           </button>
 
           <div className="flex items-center gap-2">
-            {/* Stage 1: OM Controls */}
-            {isOMStage && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!showRecheckInput) { setShowRecheckInput(true); setError(""); return; }
-                    handleOMAction("REJECT");
-                  }}
-                  disabled={loading}
-                  className="px-4 py-2.5 rounded-[14px] bg-red-50 border border-red-200 text-red-700 text-xs font-bold hover:bg-red-100 transition-colors disabled:opacity-50"
-                >
-                  Tolak Permohonan
-                </button>
-                {!showRecheckInput ? (
-                  <button
-                    type="button"
-                    onClick={() => { setShowRecheckInput(true); setError(""); }}
-                    disabled={loading}
-                    className="px-4 py-2.5 rounded-[14px] bg-orange-50 border border-orange-200 text-orange-800 text-xs font-bold hover:bg-orange-100 transition-colors disabled:opacity-50"
-                  >
-                    Minta pemeriksaan ulang
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleOMAction("RE_CHECK")}
-                    disabled={loading}
-                    className="px-4 py-2.5 rounded-[14px] bg-orange-600 hover:bg-orange-700 text-white text-xs font-extrabold shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    {loading ? <Loader2 size={13} className="animate-spin" /> : null}
-                    {loading ? "Menyimpan..." : "Kirim Re-checking"}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleOMAction("APPROVE")}
-                  disabled={loading}
-                  className="px-5 py-2.5 rounded-[14px] bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {loading ? <Loader2 size={13} className="animate-spin" /> : null}
-                  <span>✓ Validasi &amp; Teruskan ke PM</span>
-                </button>
-              </>
-            )}
-
-            {/* Stage 2: Executive/PM Controls */}
-            {isExecStage && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleExecAction("REJECT")}
-                  disabled={loading}
-                  className="px-4 py-2.5 rounded-[14px] bg-red-50 border border-red-200 text-red-700 text-xs font-bold hover:bg-red-100 transition-colors disabled:opacity-50"
-                >
-                  ✕ Tolak
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleExecAction("APPROVE")}
-                  disabled={loading}
-                  className="px-5 py-2.5 rounded-[14px] bg-[#2649B3] text-white text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {loading ? <Loader2 size={13} className="animate-spin" /> : null}
-                  <span>🎉 Setujui (Register Ticket)</span>
-                </button>
-              </>
+            {canDeleteMeeting && (
+              <button type="button" onClick={handleDeleteMeeting} disabled={loading}
+                className="px-4 py-2.5 rounded-[14px] bg-red-50 border border-red-200 text-red-700 text-xs font-bold hover:bg-red-100 disabled:opacity-50">
+                Hapus Meeting
+              </button>
             )}
 
             {/* Stage 3: Finance Disburse */}

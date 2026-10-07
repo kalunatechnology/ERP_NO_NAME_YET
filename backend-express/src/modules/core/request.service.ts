@@ -14,6 +14,7 @@ import { RoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
 import { postRequestDisbursement } from '../finance/request-disbursement.service';
 import { DEFAULT_RECURRING_DAYS, meetingOccurrenceDates, normalizeRecurringDays } from './meeting-occurrence.service';
+import { normalizeRequestStatus } from './request-status';
 
 export interface TaggedUser {
   id: string;
@@ -227,7 +228,7 @@ static async createRequest(
 
   const initialStatus = is_draft
     ? 'DRAFT'
-    : 'PENDING_OM';
+    : 'REGISTERED';
 
   /**
    * Workflow instance tetap menjadi status backplane.
@@ -246,7 +247,8 @@ static async createRequest(
 
       status: is_draft
         ? 'DRAFT'
-        : 'IN_PROGRESS',
+        : 'COMPLETED',
+      completed_at: is_draft ? null : new Date(),
 
       started_at: new Date(),
     } });
@@ -267,6 +269,7 @@ static async createRequest(
       priority,
       status: initialStatus,
       submitted_at: is_draft ? null : new Date(),
+      completed_at: is_draft ? null : new Date(),
     } });
 
     if (request_type === 'MEETING' && meetingStart && meetingEnd) {
@@ -501,7 +504,7 @@ static async createRequest(
 }
 
   // ---------------------------------------------------------------------------
-  // 2. LEVEL 1: VALIDATION THROUGH OM
+  // 2. LEGACY OM ENDPOINT (DISABLED)
   // ---------------------------------------------------------------------------
 
 /**
@@ -518,208 +521,34 @@ static async createRequest(
     omUserId:  string;
     companyId: string;
   }) {
-    const { requestId, decision, remarks = '', omUserId, companyId } = params;
-
-    const instance = await prisma.core_workflow_instance.findFirst({ where: { id: requestId, company_id: companyId } });
-    if (!instance) throw new NotFoundError('Request');
-
-    if (instance.current_state !== 'PENDING_OM' && instance.current_state !== 'RE_CHECKING') {
-      throw new ValidationError(`Request tidak dalam status validasi OM (Status saat ini: ${instance.current_state}).`);
-    }
-
-    const nextState = decision === 'APPROVE' ? 'PENDING_EXEC' : decision === 'REJECT' ? 'REJECTED' : 'RE_CHECKING';
-
-    await prisma.$transaction(async (tx) => {
-      await tx.core_workflow_instance.update({
-        where: { id: requestId },
-        data:  { current_state: nextState },
-      });
-
-      await tx.request_ticket.updateMany({
-        where: { id: requestId, company_id: companyId },
-        data: { status: nextState },
-      });
-
-      await tx.core_workflow_approval.create({
-        data: {
-          id:                   crypto.randomUUID(),
-          tenant_id:            instance.tenant_id,
-          company_id:           companyId,
-          created_by_id:        omUserId,
-          workflow_instance_id: requestId,
-          approver_user_id:     omUserId,
-          approval_level:       'OM',
-          decision:             decision === 'APPROVE' ? 'APPROVED' : decision === 'REJECT' ? 'REJECTED' : 'RE_CHECK',
-          remarks:              remarks,
-          decided_at:           new Date(),
-        },
-      });
-    });
-
-    await AuditService.logDeltaEvent({
-      entity:      'core_internal_request',
-      entityId:    requestId,
-      action:      `OM_${decision}`,
-      before:      { status: instance.current_state },
-      after:       { status: nextState, om_remarks: remarks, om_user_id: omUserId },
-      userId:      omUserId,
-      companyId,
-      description: `OM ${decision === 'APPROVE' ? 'memvalidasi & meneruskan ke PM' : decision === 'REJECT' ? 'menolak permohonan' : 'meminta Re-checking'}: ${remarks}`,
-    });
-
-    // Notifikasi strict per-user (Requirement §7)
-    if (decision === 'APPROVE') {
-      const execRolesForNotif = await prisma.iam_role.findMany({
-        where: { role_code: { in: ['DIRECTOR', 'PROJECT_MANAGER', 'COMPANY_ADMIN'] as any } },
-        select: { id: true },
-      }).catch(() => []);
-      const execUserRoles = execRolesForNotif.length ? await prisma.iam_user_role.findMany({
-        where: { role_id: { in: execRolesForNotif.map((r) => r.id) }, company_id: companyId },
-        select: { user_id: true },
-        take: 5,
-      }).catch(() => []) : [];
-      for (const execUR of execUserRoles) {
-        await this.createNotification({
-          title:              `Persetujuan Eksekutif Diperlukan`,
-          message:            `Permohonan #${requestId.slice(0, 8)} telah divalidasi OM dan menunggu approval Anda.`,
-          action_url:         `/dashboard?tab=requests&id=${requestId}`,
-          notification_type:  'EXECUTIVE_APPROVAL',
-          priority:           'HIGH',
-          recipient_user_id:  execUR.user_id ?? undefined,
-          company_id:         companyId,
-        });
-      }
-    } else if (decision === 'RE_CHECK') {
-      if (instance.created_by_id) {
-        await this.createNotification({
-          title:              `Permohonan Membutuhkan Perbaikan`,
-          message:            `OM meminta perbaikan: "${remarks}". Silakan perbarui dan kirim ulang.`,
-          action_url:         `/dashboard?tab=requests&id=${requestId}`,
-          notification_type:  'REVISION_REQUESTED',
-          priority:           'MEDIUM',
-          recipient_user_id:  instance.created_by_id,
-          company_id:         companyId,
-        });
-      }
-    } else {
-      await this.createNotification({
-        title:              'Permohonan Ditolak Operations Manager',
-        message:            `Permohonan #${requestId.slice(0, 8)} ditolak OM: "${remarks}".`,
-        action_url:         `/dashboard?tab=requests&id=${requestId}`,
-        notification_type:  'REQUEST_REJECTED',
-        priority:           'HIGH',
-        recipient_user_id:  instance.created_by_id ?? undefined,
-        company_id:         companyId,
-      });
-    }
-
-    return {
-      id:            requestId,
-      status:        nextState,
-      decision,
-      remarks,
-      validated_by:  omUserId,
-      validated_at:  new Date(),
-    };
+    throw new ValidationError('Request otomatis dibuat tanpa persetujuan OM maupun PM/Direktur.');
   }
 
-  // ---------------------------------------------------------------------------
-  // 3. LEVEL 2: EXECUTIVE / PM APPROVAL
-  // ---------------------------------------------------------------------------
-
-/**
- * approveByExecutive implements this operation using the typed arguments declared in its signature.
- *
- * @param input - Parameters declared by the function/method.
- * @returns The synchronous result or Promise produced below.
- * Database/side effects: uses `core_workflow_instance`; transaction scope is exactly the coded scope.
- */
+  /** Compatibility endpoint: request creation no longer needs executive approval. */
   static async approveByExecutive(params: {
-    requestId:  string;
-    decision:   'APPROVE' | 'REJECT';
-    remarks?:   string;
-    execUserId: string;
-    companyId:  string;
+    requestId: string; decision: 'APPROVE' | 'REJECT'; remarks?: string;
+    execUserId: string; companyId: string;
   }) {
-    const { requestId, decision, remarks = '', execUserId, companyId } = params;
+    throw new ValidationError('Request otomatis dibuat tanpa persetujuan OM maupun PM/Direktur.');
+  }
 
-    const instance = await prisma.core_workflow_instance.findFirst({ where: { id: requestId, company_id: companyId } });
-    if (!instance) throw new NotFoundError('Request');
-
-    if (instance.current_state !== 'PENDING_EXEC') {
-      throw new ValidationError(`Request belum divalidasi oleh OM (Status saat ini: ${instance.current_state}).`);
-    }
-
-    const nextState = decision === 'APPROVE' ? 'REGISTERED' : 'REJECTED';
-
-    await prisma.$transaction(async (tx) => {
-      await tx.core_workflow_instance.update({
-        where: { id: requestId },
-        data: {
-          current_state: nextState,
-          status:        decision === 'APPROVE' ? 'COMPLETED' : 'REJECTED',
-          completed_at:  decision === 'APPROVE' ? new Date() : null,
-        },
+  /** Activate existing pending requests in the active company using existing status fields. */
+  static async activatePendingRequests(companyId: string) {
+    const pendingStates = ['PENDING_OM', 'PENDING_EXEC', 'RE_CHECKING'];
+    const now = new Date();
+    return prisma.$transaction(async tx => {
+      const workflows = await tx.core_workflow_instance.updateMany({
+        where: { company_id: companyId, workflow_code: { in: ['INTERNAL_MEETING', 'INTERNAL_LEAVE', 'INTERNAL_OTHER', 'INTERNAL_FUND_REQUEST'] },
+          current_state: { in: pendingStates } },
+        data: { current_state: 'REGISTERED', status: 'COMPLETED', completed_at: now },
       });
-
-      await tx.request_ticket.updateMany({
-        where: { id: requestId, company_id: companyId },
-        data: {
-          status: nextState,
-          completed_at: decision === 'APPROVE' ? new Date() : null,
-        },
+      const tickets = await tx.request_ticket.updateMany({
+        where: { company_id: companyId, request_type: { in: ['MEETING', 'LEAVE', 'OTHER', 'FUND_REQUEST'] },
+          status: { in: pendingStates }, cancelled_at: null },
+        data: { status: 'REGISTERED', completed_at: now },
       });
-
-      await tx.core_workflow_approval.create({
-        data: {
-          id:                   crypto.randomUUID(),
-          tenant_id:            instance.tenant_id,
-          company_id:           companyId,
-          created_by_id:        execUserId,
-          workflow_instance_id: requestId,
-          approver_user_id:     execUserId,
-          approval_level:       'EXECUTIVE_PM',
-          decision:             decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
-          remarks:              remarks,
-          decided_at:           new Date(),
-        },
-      });
+      return workflows.count + tickets.count;
     });
-
-    await AuditService.logDeltaEvent({
-      entity:      'core_internal_request',
-      entityId:    requestId,
-      action:      `EXEC_${decision}`,
-      before:      { status: 'PENDING_EXEC' },
-      after:       { status: nextState, exec_remarks: remarks, exec_user_id: execUserId },
-      userId:      execUserId,
-      companyId,
-      description: `Executive/PM ${decision === 'APPROVE' ? 'menyetujui resmi (TICKET REGISTERED)' : 'menolak'}: ${remarks}`,
-    });
-
-    // Notifikasi hasil akhir — hanya ke requester spesifik (Requirement §7)
-    if (instance.created_by_id) {
-      await this.createNotification({
-        title:              decision === 'APPROVE' ? `Permohonan Anda Disetujui` : `Permohonan Anda Ditolak`,
-        message:            decision === 'APPROVE'
-          ? `Permohonan telah disetujui penuh oleh Executive. Tiket resmi terdaftar.`
-          : `Permohonan ditolak oleh Executive: ${remarks}`,
-        action_url:         `/dashboard?tab=requests&id=${requestId}`,
-        notification_type:  'FINAL_STATUS',
-        priority:           decision === 'APPROVE' ? 'MEDIUM' : 'HIGH',
-        recipient_user_id:  instance.created_by_id,
-        company_id:         companyId,
-      });
-    }
-
-    return {
-      id:            requestId,
-      status:        nextState,
-      decision,
-      remarks,
-      approved_by:   execUserId,
-      approved_at:   new Date(),
-    };
   }
 
   // ---------------------------------------------------------------------------
@@ -1396,6 +1225,12 @@ static async getRequests(params: {
           AND ae.event_type =
             'CREATE_REQUEST'
 
+          AND NOT EXISTS (
+            SELECT 1 FROM request_ticket removed
+            WHERE removed.id = ae.entity_id AND removed.company_id = ae.company_id
+              AND removed.cancelled_at IS NOT NULL
+          )
+
           ${companyClause}
 
           ${requestTypeClause}
@@ -1477,31 +1312,23 @@ static async getRequests(params: {
             -- Executive sees everything
             ${isExecutiveRole}::boolean = true
 
-            -- OM: milik sendiri + di-assign ke sendiri + yang perlu review mereka
+            -- OM: milik sendiri + di-assign ke sendiri; validasi awal OM dihapus
             OR (
               ${isOMRole}::boolean = true
               AND (
                 rs.user_id = ${requesterUserId ?? null}::text
                 OR rs.assignee_user_id = ${requesterUserId ?? null}::text
-                OR EXISTS (
-                  SELECT 1 FROM core_workflow_instance wi_chk
-                  WHERE wi_chk.id = rs.entity_id
-                  AND wi_chk.current_state IN ('PENDING_OM', 'RE_CHECKING')
-                )
               )
             )
 
-            -- PM: milik sendiri + di-assign ke sendiri + pending exec approval
+            -- PM: milik sendiri + di-assign ke sendiri + meeting yang dapat dihapus
             OR (
               ${isPMRole}::boolean = true
               AND (
                 rs.user_id = ${requesterUserId ?? null}::text
                 OR rs.assignee_user_id = ${requesterUserId ?? null}::text
-                OR EXISTS (
-                  SELECT 1 FROM core_workflow_instance wi_chk
-                  WHERE wi_chk.id = rs.entity_id
-                  AND wi_chk.current_state = 'PENDING_EXEC'
-                )
+                OR rs.after_data ->> 'request_type' = 'MEETING'
+
               )
             )
 
@@ -1705,10 +1532,10 @@ static async getRequests(params: {
         attachment_url:
           payload.attachment_url,
 
-        status:
+        status: normalizeRequestStatus(
           log.current_state ||
           payload.status ||
-          'PENDING_OM',
+          'REGISTERED'),
 
         created_by_id:
           payload.created_by_id ||
@@ -1767,7 +1594,7 @@ static async getRequests(params: {
     filtered =
       filtered.filter(
         (request) =>
-          request.status === status,
+          request.status === normalizeRequestStatus(status),
       );
   }
 

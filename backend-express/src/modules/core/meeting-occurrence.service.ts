@@ -49,9 +49,8 @@ export function meetingOccurrenceDates(meeting: MeetingSchedule): string[] {
   let endKey: string;
   if (meeting.recurrence_end_at) {
     const rawEndKey = dateKeyInTimeZone(meeting.recurrence_end_at, meeting.timezone);
-    // Menyesuaikan dengan tanggal hari ini: jika meeting recurring masih berjalan atau hari ini melewati recurrence_end_at,
-    // perluas jangkauan hingga hari ini agar notulensi tanggal hari ini selalu tersedia.
-    endKey = rawEndKey < todayKey ? todayKey : rawEndKey;
+    // An explicit end date closes the series, regardless of today's date.
+    endKey = rawEndKey;
   } else {
     // Jika tidak ada recurrence_end_at, defaultkan hingga hari ini atau 30 hari ke depan
     const startDate = dateFromKey(startKey);

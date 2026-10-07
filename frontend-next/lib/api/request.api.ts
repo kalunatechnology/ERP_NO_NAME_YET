@@ -20,7 +20,7 @@ export interface MeetingDetail extends MeetingRequestSummary {
   organizer_user_id: string;
   notetaker_user_id?: string | null;
   notetaker?: { id: string; full_name: string; email: string } | null;
-  permissions?: { can_edit_minutes: boolean; can_publish: boolean };
+  permissions?: { can_edit_minutes: boolean; can_publish: boolean; can_delete?: boolean };
   selected_occurrence_date: string;
   notes: Array<{ occurrence_date: string; minutes_id: string | null; status: "NOT_CREATED" | "DRAFT" | "COMPLETED"; is_today?: boolean }>;
   participants: Array<{ id: string; user_id?: string | null; participant_role: string; invitation_status: string; attendance_status: string; user?: { id: string; full_name: string; email: string } | null }>;
@@ -81,6 +81,7 @@ export const requestApi = {
   listMeetings: async () => (await api.get<MeetingRequestSummary[]>("/api/v1/requests/meetings")).data,
   getMeeting: async (id: string, occurrenceDate?: string) => (await api.get<MeetingDetail>(`/api/v1/requests/meetings/${id}`, { params: occurrenceDate ? { date: occurrenceDate } : undefined })).data,
   createMeeting: async (input: CreateMeetingInput) => (await api.post("/api/v1/requests/meetings", input)).data,
+  deleteMeeting: async (id: string) => { await api.delete(`/api/v1/requests/meetings/${id}`); },
   saveMinutes: async (id: string, input: SaveMinutesInput) => (await api.put<MeetingDetail>(`/api/v1/requests/meetings/${id}/minutes`, input)).data,
   publishMinutes: async (id: string, occurrenceDate: string) => (await api.post<MeetingDetail>(`/api/v1/requests/meetings/${id}/minutes/publish`, { occurrence_date: occurrenceDate })).data,
   submitDraftMeeting: async (meetingId: string) => {

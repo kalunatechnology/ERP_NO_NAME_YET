@@ -6,6 +6,7 @@
  */
 
 import api from "./axios";
+import type { ModulePermission } from "../access/module-contract";
 
 export interface LoginPayload {
   access: string;
@@ -25,6 +26,7 @@ export interface UserProfile {
   active_role_code?: string | null;
   enabled_modules?: string[];
   delegated_modules?: string[];
+  module_access?: ModulePermission[];
   roles?: { role?: string; role_code?: string; role_name?: string; company_id?: string | number | null }[];
 }
 
@@ -100,6 +102,7 @@ export async function getMyProfile(): Promise<UserProfile> {
         active_role_code: raw.active_role_code || raw.user.active_role_code || null,
         enabled_modules: raw.enabled_modules || raw.user.enabled_modules || [],
         delegated_modules: raw.delegated_modules || raw.user.delegated_modules || [],
+        module_access: raw.module_access || raw.user.module_access || [],
       }
     : raw;
 

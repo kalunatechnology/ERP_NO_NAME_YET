@@ -4,23 +4,47 @@ import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { MarbotRuntimeAuthority } from './marbot.types';
 import { helperAnswer, systemKnowledgeAnswer } from './marbot-knowledge';
 import { proposeAction } from './marbot-action.service';
+import { proposeNamedTaskAction } from './marbot-named-action.service';
 
 export type NativeScope = MarbotRuntimeAuthority & { tenantId: string; companyId: string; userId: string; blockedReadModules?: string[]; blockedWriteModules?: string[] };
 export const dashboardRoles: RoleCode[] = [RoleCode.DIRECTOR, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER];
 export type AssistantMode = 'HELPER' | 'DASHBOARD';
+const WEEKLY_TASK_ENTITY = /\b(?:weekly\s+(?:tasks?|target)|(?:tugas|target)\s+mingguan|mingguan\s+(?:task|tugas))\b/i;
+export function isWeeklyTaskQuestion(message: string) { return WEEKLY_TASK_ENTITY.test(message); }
 export function canUseDashboard(scope: MarbotRuntimeAuthority) {
   return dashboardRoles.includes(scope.roleCode) && !(scope as NativeScope).blockedReadModules?.includes('PROJECTS') && scope.permissions.some(p => ['READ_PROJECT', 'READ_TASK'].includes(p));
 }
 export function detectTools(message: string): string[] {
   const tools: string[] = [];
-  const taskRequest = /tugas|task|tim|team|pekerjaan|kerjakan|overdue|terlambat/i.test(message);
+  const weeklyTaskRequest = isWeeklyTaskQuestion(message);
+  const taskRequest = weeklyTaskRequest || /tugas|task|tim|team|pekerjaan|kerjakan|overdue|terlambat/i.test(message);
   const financeRequest = /biaya|expense|keuangan|pengeluaran|anggaran/i.test(message);
   if (/proyek|project|portfolio|portofolio|progress|progres/i.test(message) && (!taskRequest && !financeRequest || /(?:proyek|project)\s+dan\s+(?:task|tugas|biaya|KPI|tiket)/i.test(message))) tools.push('projects');
   if (taskRequest || /minggu|week/i.test(message) && !financeRequest && !/kpi|target|tiket|ticket/i.test(message)) tools.push('tasks');
   if (/biaya|expense|keuangan|pengeluaran|anggaran/i.test(message)) tools.push('finance');
   if (/tiket|ticket|support|aduan/i.test(message)) tools.push('tickets');
-  if (/kpi|target/i.test(message)) tools.push('kpi');
+  if (/kpi/i.test(message) || /target/i.test(message) && !weeklyTaskRequest) tools.push('kpi');
   return tools;
+}
+
+// Keep supported task reads deterministic: a provider must not add a date or
+// drop an explicit owner from these questions. Structured resource requests and
+// write/procedure requests continue through their existing handlers.
+export function isNativeTaskReadQuestion(message: string) {
+  return (/\b(task|tasks|tugas)\b/i.test(message) || isWeeklyTaskQuestion(message))
+    && detectTools(message).join(',') === 'tasks'
+    && !/\b(buatkan|buat|membuat|mengajukan|ajukan|hapus|menghapus|ubah|mengubah|setujui|approve|delete|update|tambahkan)\b/i.test(message)
+    && !/\b(cara|panduan|dimana|di mana|how to|fitur|modul|workflow|alur|fungsi|sistem|schema|skema|resource|permission|role|peran)\b/i.test(message)
+    && !/[{}]/.test(message);
+}
+
+export function taskDateIntent(message: string, now = new Date()) {
+  const unquoted = message.replace(/["“][^"”]*["”]/g, '').replace(new RegExp(WEEKLY_TASK_ENTITY.source, 'gi'), '');
+  const exclusion = /\b(?:bukan|selain|kecuali|di luar|not|except)\s+(?:hari ini|today)\b/gi;
+  const excludeToday = exclusion.test(unquoted);
+  const periodText = unquoted.replace(exclusion, '');
+  const hasPeriod = /hari ini|today|kemarin|yesterday|besok|tomorrow|minggu|week|bulan|month|\b20\d{2}-\d{2}(?:-\d{2})?\b/i.test(periodText);
+  return { excludeToday, hasPeriod, period: queryPeriod(periodText, now) };
 }
 
 // Business periods follow Asia/Jakarta, independent of the server timezone.
@@ -65,30 +89,48 @@ const number = (value: unknown) => Number(value || 0).toLocaleString('id-ID');
 export function followUpQuestion(message: string, previous?: string): string {
   if (!previous || !/^(dan|kalau|bagaimana dengan|lalu|yang)\b/i.test(message)) return message;
   // Reuse only the topic; dates are parsed from the new question, never stale results.
-  if (detectTools(message).length) return message;
-  const topics = detectTools(previous).map(t => ({ projects: 'proyek', tasks: 'tugas', finance: 'biaya', tickets: 'tiket', kpi: 'KPI' }[t]));
+  const currentTools = detectTools(message);
+  if (currentTools.length) {
+    const personalTaskFollowUp = currentTools.join(',') === 'tasks' && detectTools(previous).includes('tasks')
+      && /\b(saya|my|mine)\b/i.test(previous.replace(/["“][^"”]*["”]/g, ''))
+      && !/\b(saya|my|mine|tim|team|kami|kita|semua|seluruh|all|milik|punya|owner|assignee|penanggung|PIC|proyek|project)\b/i.test(message.replace(/["“][^"”]*["”]/g, ''));
+    return personalTaskFollowUp ? `${message} saya` : message;
+  }
+  const topics = detectTools(previous).map(t => ({ projects: 'proyek', tasks: isWeeklyTaskQuestion(previous) ? 'weekly task' : 'tugas', finance: 'biaya', tickets: 'tiket', kpi: 'KPI' }[t]));
+  const owner = topics.some(topic => topic === 'tugas' || topic === 'weekly task') && /\b(saya|my|mine)\b/i.test(previous.replace(/["“][^"”]*["”]/g, '')) ? 'saya' : '';
   const project = previous.match(/(?:proyek|project)\s+["“]([^"”]+)["”]/i)?.[0] || '';
-  return `${message} ${topics.join(' ')} ${project}`.trim();
+  return `${message} ${topics.join(' ')} ${owner} ${project}`.trim();
 }
 
 export async function answerNative(message: string, mode: AssistantMode, scope: NativeScope, db = prisma) {
   if (mode === 'DASHBOARD' && !canUseDashboard(scope)) throw new ForbiddenError('Dashboard Assistant hanya tersedia untuk pimpinan dengan akses data proyek.');
+  const namedProposal = await proposeNamedTaskAction(message, scope, db);
+  if (namedProposal) return namedProposal;
   const proposal = proposeAction(message, scope);
   if (proposal) return proposal;
   if (/\b(fitur|modul|workflow|alur|fungsi|sistem)\b/i.test(message) && !/berapa|jumlah|total|tampilkan/i.test(message)) {
-    return { content: systemKnowledgeAnswer(message, scope.enabledModules), tools: ['help.procedure'], sources: ['ERP:code-knowledge:2026-10-01'] };
+    return { content: systemKnowledgeAnswer(message, scope.enabledModules), tools: ['help.procedure'], sources: ['ERP:code-knowledge:2026-10-07'] };
   }
   if (/\b(role|peran|permission|hak akses|izin akses)\b/i.test(message)) {
     return { content: `Peran aktif: ${scope.roleCode}.\nModul aktif: ${scope.enabledModules.join(', ')}.\nPermission efektif untuk asisten: ${scope.permissions.join(', ')}.\nCakupan proyek: ${scope.projectScope.mode === 'ALL' ? 'seluruh proyek company aktif' : `${scope.projectScope.projectIds.length} proyek yang diizinkan`}.\nHak operasi tetap divalidasi backend pada setiap permintaan.`, tools: ['access.context'], sources: ['ERP:authority'] };
   }
-  if (/\b(cara|bagaimana|panduan|dimana|di mana|how)\b/i.test(message) && !/progres|progress|kinerja|kpi|target/i.test(message)) {
-    return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['Panduan ERP 2026-09-30'] };
+  if (/\b(cara|bagaimana|panduan|dimana|di mana|how)\b/i.test(message) && !isNativeTaskReadQuestion(message) && (!/progres|progress|kinerja|kpi|target/i.test(message) || isWeeklyTaskQuestion(message))) {
+    return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
   }
   if (/^\s*(buatkan|buat|hapus|ubah|setujui|approve|delete|update|tambahkan)\b/i.test(message) && !/ringkasan|laporan|summary/i.test(message)) {
     return { content: `Operasi tersebut belum dapat dipetakan ke input yang valid. Saya dapat menyiapkan usulan Project, Main/Weekly/Daily Task, assignment, dan pembaruan task dengan field serta identitas yang jelas. Perubahan memerlukan konfirmasi dan verifikasi backend. Sebutkan record dan perubahan yang diminta.`, tools: [], sources: [] };
   }
   const tools = detectTools(message);
-  if (!tools.length) return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['Panduan ERP 2026-09-30'] };
+  if (!tools.length) return { content: helperAnswer(message), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+  const unquotedTaskIntent = message.replace(/["“][^"”]*["”]/g, '');
+  if (isWeeklyTaskQuestion(unquotedTaskIntent) && /daily\s+tasks?|(?:tugas|task)\s+harian/i.test(unquotedTaskIntent) && isNativeTaskReadQuestion(message)) {
+    return { content: 'Weekly Task dan Daily Task adalah record berbeda. Tanyakan jumlah atau daftar masing-masing secara terpisah agar hasil tidak mencampurkan kedua jenis task. Tidak ada query dijalankan.', tools: [], sources: [] };
+  }
+  const requestsPeriod = /hari ini|today|kemarin|yesterday|besok|tomorrow|minggu|week|bulan|month|tahun|year|kuartal|quarter|\b20\d{2}-\d{2}(?:-\d{2})?\b/i.test(message);
+  if (tools.includes('projects') && requestsPeriod) return {
+    content: 'Periode proyek perlu diperjelas: apakah berdasarkan tanggal dibuat, jadwal pelaksanaan, atau status historis? Ringkasan proyek saat ini membaca status terkini dan belum menyediakan snapshot status masa lalu. Untuk aktivitas pada periode tertentu, tanyakan tugas atau biaya proyek; untuk status saat ini, tanyakan "Berapa proyek yang sedang berjalan?". Tidak ada query proyek dijalankan.',
+    tools: [], sources: [],
+  };
   if (/tahun|year|kuartal|quarter/i.test(message)) return { content: 'Rentang tahunan/kuartalan belum didukung pada query ini. Sebutkan tanggal YYYY-MM-DD, bulan YYYY-MM, hari ini, minggu ini/lalu/depan, atau bulan ini/lalu/depan. Tidak ada query dijalankan.', tools: [], sources: [] };
   if ((message.match(/\b20\d{2}-\d{2}(?:-\d{2})?\b/g) || []).length > 1) return { content: 'Query rentang beberapa tanggal belum didukung. Sebutkan satu tanggal, satu bulan, atau periode mingguan. Tidak ada query dijalankan.', tools: [], sources: [] };
   if (/\b(?:task|tugas) ini\b/i.test(message) && !/(?:task|tugas)\s+["“]/i.test(message)) return { content: 'Task yang dimaksud belum teridentifikasi. Tulis nama lengkap dalam tanda kutip, misalnya tugas "Nama task". Tidak ada data task diasumsikan.', tools: [], sources: [] };
@@ -132,11 +174,13 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
   }
   const projectFilter = projectIds ? { project_id: { in: projectIds } } : {};
   const now = new Date();
-  const period = queryPeriod(message, now);
+  const taskDates = taskDateIntent(message, now);
+  const period = tools.some(tool => tool === 'finance' || tool === 'kpi') ? queryPeriod(message, now) : taskDates.period;
   const explicitStatus = message.match(/status\s+["“]([A-Z_]+)["”]/i)?.[1]?.toUpperCase();
-  if (explicitStatus && !['DRAFT', 'VERIFIED', 'RESERVED', 'STARTED', 'ACTIVE', 'NOT_STARTED', 'IN_PROGRESS', 'ON_PROGRESS', 'COMPLETED', 'DONE', 'BLOCKED', 'CLOSED', 'RESOLVED', 'OPEN'].includes(explicitStatus)) return { content: 'Status tersebut belum didukung pada query ini. Sebutkan status aktual yang valid. Tidak ada query dijalankan.', tools: [], sources: [] };
+  if (explicitStatus && !['DRAFT', 'PLANNED', 'PENDING_APPROVAL', 'REJECTED', 'VERIFIED', 'RESERVED', 'STARTED', 'ACTIVE', 'NOT_STARTED', 'IN_PROGRESS', 'ON_PROGRESS', 'COMPLETED', 'DONE', 'BLOCKED', 'CLOSED', 'RESOLVED', 'OPEN'].includes(explicitStatus)) return { content: 'Status tersebut belum didukung pada query ini. Sebutkan status aktual yang valid. Tidak ada query dijalankan.', tools: [], sources: [] };
   const results: string[] = [];
   const used: string[] = [];
+  const periodDomains: string[] = [];
   for (const tool of tools) {
     try {
       if (tool === 'projects') {
@@ -157,8 +201,32 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
         results.push(`Proyek dalam akses Anda${status ? ` dengan status ${status.join('/')}` : ''}: ${count}. Menampilkan maksimal 20.\n${rows.map(r => `- ${safe(r.project_name)}: ${safe(r.status)}, progres ${number(r.progress_percent)}%.${r.planned_end_date && r.planned_end_date < now && Number(r.progress_percent) < 100 ? ' Melewati rencana selesai; periksa blocker dan jadwal.' : ''}`).join('\n')}`);
       } else if (tool === 'tasks') {
         requireTool(scope, 'PROJECTS', ['READ_TASK']);
-        const self = !canUseDashboard(scope);
-        const weekly = /minggu|week/i.test(message);
+        const self = !canUseDashboard(scope) || /\b(saya|my|mine)\b/i.test(message.replace(/["“][^"”]*["”]/g, ''));
+        if (isWeeklyTaskQuestion(message)) {
+          const status = explicitStatus || (/menunggu(?: approval| persetujuan)?|pending/i.test(message) ? 'PENDING_APPROVAL'
+            : /ditolak|rejected/i.test(message) ? 'REJECTED' : /selesai|completed/i.test(message) ? 'COMPLETED'
+            : /berjalan|in[ _-]?progress/i.test(message) ? 'IN_PROGRESS' : /planned|direncanakan/i.test(message) ? 'PLANNED' : undefined);
+          const taskName = message.match(/(?:weekly\s+(?:task|target)|(?:tugas|target)\s+mingguan)\s+["“]([^"”]+)["”]/i)?.[1];
+          const today = queryPeriod('hari ini', now);
+          const rows = await db.$queryRaw<Array<{ target_description: string; status: string; progress: Prisma.Decimal; start_date: Date | null; end_date: Date | null; total: bigint }>>(Prisma.sql`
+            SELECT w.target_description, w.status, w.progress, w.start_date, w.end_date, count(*) OVER () AS total
+            FROM project_weekly_task w
+            JOIN project_main_task m ON m.id = w.main_task_id AND m.tenant_id = w.tenant_id AND m.company_id = w.company_id
+            WHERE w.tenant_id = ${scope.tenantId} AND w.company_id = ${scope.companyId}
+              ${projectIds ? (projectIds.length ? Prisma.sql`AND m.project_id IN (${Prisma.join(projectIds)})` : Prisma.sql`AND FALSE`) : Prisma.empty}
+              ${team ? (team.userIds.length ? Prisma.sql`AND w.assignee_id IN (${Prisma.join(team.userIds)})` : Prisma.sql`AND FALSE`) : self ? Prisma.sql`AND w.assignee_id = ${scope.userId}` : Prisma.empty}
+              ${taskDates.hasPeriod ? Prisma.sql`AND w.start_date < ${taskDates.period.end} AND w.end_date >= ${taskDates.period.start}` : Prisma.empty}
+              ${taskDates.excludeToday ? Prisma.sql`AND (w.start_date IS NULL OR w.end_date IS NULL OR w.end_date < ${today.start} OR w.start_date >= ${today.end})` : Prisma.empty}
+              ${status ? Prisma.sql`AND w.status = ${status}` : Prisma.empty}
+              ${taskName ? Prisma.sql`AND lower(w.target_description) = lower(${taskName})` : Prisma.empty}
+            ORDER BY w.start_date ASC NULLS LAST, w.id ASC LIMIT 20
+          `);
+          const label = (value: string) => value === 'PENDING_APPROVAL' ? 'Menunggu Approval (PENDING_APPROVAL)' : value === 'REJECTED' ? 'Ditolak (REJECTED)' : safe(value);
+          results.push(rows.length ? `Weekly Task${self ? ' saya' : team ? ` tim ${safe(team.name)}` : ' dalam akses Anda'}: ${rows[0].total.toString()}. Menampilkan maksimal 20.\n${rows.map(row => `- ${safe(row.target_description)} — ${label(row.status)} (${number(row.progress)}%).`).join('\n')}\nWeekly pending/rejected belum dapat digunakan untuk Daily Task.` : 'Belum ada Weekly Task yang sesuai dalam cakupan akses Anda.');
+          used.push(tool);
+          continue;
+        }
+        const weekly = taskDates.hasPeriod && /minggu|week/i.test(message);
         const overdueOnly = /terlambat|overdue|carry[ -]?over/i.test(message);
         const statuses = explicitStatus ? [explicitStatus] : /in[ _-]?progress|berjalan|sedang dikerjakan/i.test(message) ? ['IN_PROGRESS', 'ON_PROGRESS']
           : /belum mulai|not[ _-]?started/i.test(message) ? ['NOT_STARTED']
@@ -187,8 +255,8 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
             WHERE d.tenant_id = ${scope.tenantId} AND d.company_id = ${scope.companyId}
               ${projectIds ? (projectIds.length ? Prisma.sql`AND m.project_id IN (${Prisma.join(projectIds)})` : Prisma.sql`AND FALSE`) : Prisma.empty}
               ${team ? (team.userIds.length ? Prisma.sql`AND d.owner_id IN (${Prisma.join(team.userIds)})` : Prisma.sql`AND FALSE`) : self ? Prisma.sql`AND d.owner_id = ${scope.userId}` : Prisma.empty}
-              ${weekly ? Prisma.sql`AND d.planned_date >= ${period.start} AND d.planned_date < ${period.end}` : Prisma.empty}
-              ${/bulan|month|hari ini|today|kemarin|yesterday|besok|tomorrow|\b20\d{2}-\d{2}\b/i.test(message) && !weekly ? Prisma.sql`AND d.planned_date >= ${period.start} AND d.planned_date < ${period.end}` : Prisma.empty}
+              ${taskDates.hasPeriod ? Prisma.sql`AND d.planned_date >= ${taskDates.period.start} AND d.planned_date < ${taskDates.period.end}` : Prisma.empty}
+              ${taskDates.excludeToday ? Prisma.sql`AND (d.planned_date IS NULL OR d.planned_date < ${todayStart} OR d.planned_date >= ${new Date(todayStart.getTime() + 86400000)})` : Prisma.empty}
               ${statuses ? Prisma.sql`AND d.status IN (${Prisma.join(statuses)})` : Prisma.empty}
               ${taskName ? Prisma.sql`AND lower(d.title) = lower(${taskName})` : Prisma.empty}
               ${overdueOnly ? Prisma.sql`AND d.planned_date < ${todayStart} AND d.status NOT IN ('COMPLETED', 'DONE')` : Prisma.empty}
@@ -205,6 +273,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
           : `${overdueOnly ? 'Tidak ada task harian terlambat' : 'Belum ada task harian'} dalam cakupan akses Anda${weekly ? ' pada minggu tersebut' : ''}.`);
       } else if (tool === 'finance') {
         requireTool(scope, 'FINANCE', ['READ_PROJECT_FINANCE', 'READ_COMPANY_FINANCE', 'READ_FINANCE_SUMMARY']);
+        periodDomains.push('finance');
         // Match ProjectsService.getFinancialSummary, which is the source used by the ERP
         // financial-summary screen. DRAFT/REJECTED entries must never inflate actual cost.
         const recognizedStatuses = ['VALIDATED', 'APPROVED', 'POSTED_TO_WIP'];
@@ -226,6 +295,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
         const [total, urgent] = await Promise.all([db.service_case.count({ where }), db.service_case.count({ where: { ...where, priority: 'URGENT' } })]);
         results.push(`Tiket support ${explicitStatus ? `berstatus ${explicitStatus}` : closed ? 'selesai/ditutup' : 'terbuka'}: ${total}. Prioritas URGENT: ${urgent}.${urgent && !closed ? ' Saran: tinjau tiket urgent terlebih dahulu.' : ''}`);
       } else if (tool === 'kpi') {
+        periodDomains.push('kpi');
         // Company KPI includes HR/finance: restrict each definition to an authorized domain.
         if (!canUseDashboard(scope)) throw new ForbiddenError();
         const allowed = [];
@@ -243,5 +313,8 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
     }
   }
   const date = (d: Date) => d.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' });
-  return { content: `${results.join('\n\n')}\n\nPeriode filter waktu (untuk query yang meminta periode dan biaya/KPI): ${date(period.start)}–${date(new Date(period.end.getTime() - 1))}.\nSumber: data ERP sesuai akses Anda • ${now.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB.`, tools: used, sources: used.map(t => `ERP:${t}`) };
+  const filteredDomains = periodDomains.filter(domain => used.includes(domain));
+  const periodLabel = filteredDomains.length ? `Periode filter waktu (${filteredDomains.join(', ')}): ${date(period.start)}–${date(new Date(period.end.getTime() - 1))}.\n` : '';
+  const taskPeriodLabel = used.includes('tasks') ? `${taskDates.hasPeriod ? `Periode filter waktu (tasks): ${date(taskDates.period.start)}–${date(new Date(taskDates.period.end.getTime() - 1))}.` : 'Periode tugas: seluruh tanggal, termasuk tugas tanpa tanggal.'}${taskDates.excludeToday ? ' Tugas bertanggal hari ini dikecualikan (Asia/Jakarta).' : ''}\n` : '';
+  return { content: `${results.join('\n\n')}\n\n${periodLabel}${taskPeriodLabel}Sumber: data ERP sesuai akses Anda • ${now.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB.`, tools: used, sources: used.map(t => `ERP:${t}`) };
 }

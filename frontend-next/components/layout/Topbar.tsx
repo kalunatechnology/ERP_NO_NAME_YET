@@ -57,6 +57,7 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
     pathname: "/reporting",
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
+    moduleAccess: user?.module_access,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
   });
