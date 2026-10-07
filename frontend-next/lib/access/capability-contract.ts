@@ -60,12 +60,12 @@ export function canPerform(
   access?: { enabledModules?: readonly string[] | null; moduleAccess?: readonly ModulePermission[] | null },
 ): boolean {
   const role = resolveRoleKey(activeRoleOrRoleCode);
-  const module = capability.startsWith("finance:") ? "FINANCE"
+  const moduleCode = capability.startsWith("finance:") ? "FINANCE"
     : capability.startsWith("crm:") ? "CRM"
     : capability.startsWith("project:") ? "PROJECTS" : null;
-  if (module && role !== "super_admin") {
-    if (access?.enabledModules && !hasModuleEntitlement(access.enabledModules, module)) return false;
-    const override = getModuleOverride(access?.moduleAccess, module);
+  if (moduleCode && role !== "super_admin") {
+    if (access?.enabledModules && !hasModuleEntitlement(access.enabledModules, moduleCode)) return false;
+    const override = getModuleOverride(access?.moduleAccess, moduleCode);
     if (override) return override.allow_read && (capability.endsWith(":view") || override.allow_write);
   }
 
