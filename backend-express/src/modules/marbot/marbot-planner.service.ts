@@ -1,21 +1,24 @@
 import { z } from 'zod';
 import { env } from '../../config/env';
+import { isExplicitWriteRequest, isProcedureQuestion, procedureOperation } from './marbot-intent';
 
 const entity = z.string().trim().min(1).max(160).optional();
-const planSchema = z.discriminatedUnion('type', [
+export const nativePlanSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('read'), domains: z.array(z.enum(['projects', 'tasks', 'finance', 'tickets', 'kpi'])).min(1).max(5),
     projectName: entity, taskTitle: entity, teamName: entity,
     status: z.enum(['DRAFT', 'VERIFIED', 'RESERVED', 'STARTED', 'ACTIVE', 'NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED']).optional(),
     period: z.enum(['today', 'yesterday', 'tomorrow', 'this_week', 'last_week', 'next_week', 'this_month', 'last_month', 'next_month']).optional(),
     date: z.string().regex(/^20\d{2}-(0[1-9]|1[0-2])(?:-\d{2})?$/).optional(), overdue: z.boolean().optional(), groupByStatus: z.boolean().optional(), owner: z.boolean().optional(),
+    personal: z.boolean().optional(), taskLevel: z.enum(['weekly', 'daily']).optional(),
   }).strict(),
   z.object({ type: z.literal('action'), kind: z.enum(['project.create', 'task.create', 'weekly.create', 'daily.create', 'task.update']), payload: z.record(z.union([z.string(), z.number(), z.boolean()])) }).strict(),
   z.object({ type: z.literal('unsupported') }).strict(),
 ]);
 
 /** Normalize a model plan into the existing, permission-checked executor; never accept SQL or facts. */
-export function validateNativePlan(raw: unknown, request: string): string | null {
-  const parsed = planSchema.safeParse(raw);
+export function validateNativePlan(raw: unknown, request: string, semanticRead = false): string | null {
+  if (isProcedureQuestion(request) && !(semanticRead && !procedureOperation(request))) return null;
+  const parsed = nativePlanSchema.safeParse(raw);
   if (!parsed.success || parsed.data.type === 'unsupported') return null;
   const plan = parsed.data;
   const contains = (value: string) => {
@@ -24,7 +27,7 @@ export function validateNativePlan(raw: unknown, request: string): string | null
   };
   if (plan.type === 'action') {
     // Do not turn a question or instructions in quoted content into a write.
-    if (!/\b(buat|buatkan|tambahkan|create|ubah|update|perbarui)\b/i.test(request)) return null;
+    if (!isExplicitWriteRequest(request)) return null;
     if (!Object.entries(plan.payload).every(([key, value]) => key === 'status' || contains(String(value)))) return null;
     const prefixes = { 'project.create': 'buat proyek', 'task.create': 'buat task', 'weekly.create': 'buat target mingguan', 'daily.create': 'buat tugas harian', 'task.update': 'ubah task' };
     return `${prefixes[plan.kind]} ${JSON.stringify(plan.payload)}`;
@@ -33,7 +36,8 @@ export function validateNativePlan(raw: unknown, request: string): string | null
   const domains = { projects: 'proyek', tasks: 'tugas', finance: 'biaya', tickets: 'tiket', kpi: 'KPI' };
   const periods = { today: 'hari ini', yesterday: 'kemarin', tomorrow: 'besok', this_week: 'minggu ini', last_week: 'minggu lalu', next_week: 'minggu depan', this_month: 'bulan ini', last_month: 'bulan lalu', next_month: 'bulan depan' };
   return [
-    plan.domains.map(d => domains[d]).join(' dan '),
+    plan.domains.map(d => d === 'tasks' && plan.taskLevel === 'weekly' ? 'weekly task' : domains[d]).join(' dan '),
+    plan.personal ? 'saya' : '',
     plan.projectName ? `proyek "${plan.projectName}"` : '',
     plan.taskTitle ? `tugas "${plan.taskTitle}"` : '',
     plan.teamName ? `tim "${plan.teamName}"` : '',
@@ -44,7 +48,7 @@ export function validateNativePlan(raw: unknown, request: string): string | null
 }
 
 export async function planNativeQuestion(request: string, metadata: unknown, signal: AbortSignal) {
-  if (!env.MARBOT_AI_API_KEY || !env.MARBOT_AI_MODEL || request.includes('{') || /\b20\d{2}-\d{2}|\b(schema|skema|foreign key|primary key|role|permission|hak akses|fitur|workflow|panduan|cara|tahun|year|kuartal|quarter)\b/i.test(request)) return request;
+  if (isProcedureQuestion(request) || !env.MARBOT_AI_API_KEY || !env.MARBOT_AI_MODEL || request.includes('{') || /\b20\d{2}-\d{2}|\b(schema|skema|foreign key|primary key|role|permission|hak akses|fitur|workflow|panduan|cara|tahun|year|kuartal|quarter)\b/i.test(request)) return request;
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),

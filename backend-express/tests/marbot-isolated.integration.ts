@@ -32,8 +32,16 @@ async function main() {
   const app = createApp();
   app.locals.databaseReady = true;
   const originalFetch = globalThis.fetch;
+  const savedAiKey = env.MARBOT_AI_API_KEY, savedAiModel = env.MARBOT_AI_MODEL;
+  let semanticFixture: unknown;
+  const semantic = async <T>(plan: unknown, run: () => Promise<T>) => {
+    semanticFixture = plan; env.MARBOT_AI_API_KEY = 'fixture-only'; env.MARBOT_AI_MODEL = 'fixture-model';
+    try { return await run(); }
+    finally { semanticFixture = undefined; env.MARBOT_AI_API_KEY = savedAiKey; env.MARBOT_AI_MODEL = savedAiModel; }
+  };
   globalThis.fetch = (...args: Parameters<typeof fetch>) => {
     const url = new URL(typeof args[0] === 'string' ? args[0] : args[0] instanceof URL ? args[0].href : args[0].url);
+    if (url.hostname === 'openrouter.ai' && semanticFixture) return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(semanticFixture) } }] }), { status: 200 }));
     assert(url.pathname.startsWith('/api/v1/marbot/'), 'Canonical ERP calls must work inside the app without loopback HTTP');
     return originalFetch(...args);
   };
@@ -74,8 +82,12 @@ async function main() {
     const mcpMutation = await (await mcp('tools/call', { name: 'erp.query', arguments: { resource: 'implementation.work-items', operation: 'create', payload: { title: 'forbidden' } } })).json() as any;
     assert.equal(mcpMutation.result.isError, true, 'read-only MCP query tool must reject writes');
     const name = `Marka isolated ${randomUUID()}`;
-    const proposal = await chat(`buat proyek ${JSON.stringify({ project_name: name, customer_name: 'Isolated customer', manager_name: user.full_name })}`);
+    const projectPayload = { project_name: name, customer_name: 'Isolated customer', manager_name: user.full_name };
+    const proposal = await semantic({ route: 'native', plan: { type: 'action', kind: 'project.create', payload: projectPayload }, confidence: 0.99 },
+      () => chat(`buat proyek ${JSON.stringify(projectPayload)}`));
     assert(proposal.done.action?.ticketId);
+    const assistant = await prisma.marbot_message.findUniqueOrThrow({ where: { id: proposal.done.action.ticketId } });
+    assert.equal((assistant.metadata as any).understanding.source, 'llm');
     assert.equal(await prisma.project_project.count({ where: { project_name: name } }), 0, 'proposal cannot mutate');
     assert.equal((await request(`/actions/${proposal.done.action.ticketId}/execute`, { confirmed: false })).status, 400);
     const execute = () => request(`/actions/${proposal.done.action.ticketId}/execute`, { confirmed: true });
@@ -106,6 +118,13 @@ async function main() {
     const weeklyResult = await request(`/actions/${weeklyProposal.done.action.ticketId}/execute`, { confirmed: true });
     assert.equal(weeklyResult.status, 200, await weeklyResult.text());
     const weekly = await prisma.project_weekly_task.findFirstOrThrow({ where: { main_task_id: main.id } });
+    const semanticCount = await semantic({ route: 'resource', plan: { resource: 'procurement.purchase-orders', operation: 'count' }, confidence: 0.98 },
+      () => chat('jumlah pesanan pembelian yang tercatat ada berapa?'));
+    assert.match(semanticCount.text, new RegExp(`${await prisma.proc_purchase_order.count({ where: { tenant_id: tenantId, company_id: companyId } })} record`));
+    const semanticGuide = await semantic({ route: 'guide', topic: 'meeting', operation: 'delete', confidence: 0.98 },
+      () => chat('agenda tadi udah tidak diperlukan, langkah nyingkirinnya gimana?'));
+    assert.match(semanticGuide.text, /Hapus Meeting/);
+    assert.equal(semanticGuide.done.action, undefined);
     const query = await request('/query', { resource: 'procurement.purchase-orders', operation: 'count', filters: { status: 'NON_EXISTENT' } });
     assert.equal(query.status, 200, await query.clone().text());
     assert.equal((await query.json() as any).data.count, 0);
@@ -120,6 +139,10 @@ async function main() {
     const dailyResult = await request(`/actions/${dailyProposal.done.action.ticketId}/execute`, { confirmed: true });
     assert.equal(dailyResult.status, 200, await dailyResult.text());
     const daily = await prisma.project_daily_task.findFirstOrThrow({ where: { weekly_task_id: weekly.id } });
+    const semanticTask = await semantic({ route: 'native', plan: { type: 'read', domains: ['tasks'], personal: true, taskTitle: dailyTitle }, confidence: 0.98 },
+      () => chat(`pekerjaan saya "${dailyTitle}" sekarang seperti apa?`));
+    assert(semanticTask.text.includes(dailyTitle));
+    assert.equal(semanticTask.done.action, undefined);
     const update = await chat(`ubah task ${JSON.stringify({ id: daily.id, notes: 'Catatan uji terverifikasi', output_result: 'Output uji lokal' })}`);
     const updateResult = await request(`/actions/${update.done.action.ticketId}/execute`, { confirmed: true });
     assert.equal(updateResult.status, 200, await updateResult.text());
@@ -164,6 +187,7 @@ async function main() {
     } finally { await prisma.project_project.update({ where: { id: project.id }, data: { created_by_id: user.id } }); }
     console.log('Isolated PostgreSQL E2E passed: MCP handshake/tools, real auth/scope, aggregates, cross-module create/update, project hierarchy, assignment, readback, concurrent replay, persisted verification and permission revocation.');
   } finally {
+    env.MARBOT_AI_API_KEY = savedAiKey; env.MARBOT_AI_MODEL = savedAiModel;
     globalThis.fetch = originalFetch;
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));
