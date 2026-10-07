@@ -9,6 +9,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ForbiddenError, UnauthorizedError } from '../utils/errors';
 import { isSuperAdmin, RoleCode } from '../types/roles';
+import { hasModuleOverride } from '../utils/module-permissions';
 
 /**
  * RBAC Middleware — Role-Based Access Control.
@@ -49,9 +50,8 @@ export function requireRole(...allowedRoles: string[]) {
 }
 
 /**
- * Require an active role without accepting a module-level access delegation.
- * Use this for approval, disbursement, override, and other duties whose actor
- * identity is part of the business control itself.
+ * Active role is the fallback. A validated Admin module override has priority;
+ * business checks such as ownership and Maker–Checker run separately.
  */
 export function requireActiveRole(...allowedRoles: string[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
@@ -59,7 +59,7 @@ export function requireActiveRole(...allowedRoles: string[]) {
     if (isSuperAdmin(req.user.roles)) return next();
 
     const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
-    if (!allowedRoles.includes(activeRole)) {
+    if (!allowedRoles.includes(activeRole) && !hasModuleOverride(req)) {
       return next(new ForbiddenError(
         `Aksi ini membutuhkan role aktif: ${allowedRoles.join(', ')}. ` +
         `Role aktif Anda: ${activeRole || 'tidak terdeteksi'}.`,
@@ -78,10 +78,8 @@ export interface ActiveRoleMutationPolicy {
 /**
  * Restricts mutations according to the caller's currently selected role.
  *
- * Read requests always pass. A restricted role may execute only explicitly
- * allow-listed workflow actions, which keeps Executive preview access
- * read-only while preserving Q7 governance actions such as approval, reversal,
- * and period-closing execution.
+ * Read requests and validated Admin write overrides pass. Without an override,
+ * a restricted role may execute only explicitly allow-listed workflow actions.
  *
  * Security note: this middleware uses active_role_code rather than the union of
  * all assigned roles. Switching role therefore changes the active permission
@@ -92,6 +90,7 @@ export function restrictActiveRoleMutations(policy: ActiveRoleMutationPolicy) {
     if (!req.user) return next(new UnauthorizedError());
     if (isSuperAdmin(req.user.roles)) return next();
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) return next();
+    if (hasModuleOverride(req)) return next();
 
     const activeRole = req.user.active_role_code ?? req.user.roles[0] ?? '';
     if (!policy.restrictedRoles.includes(activeRole)) return next();

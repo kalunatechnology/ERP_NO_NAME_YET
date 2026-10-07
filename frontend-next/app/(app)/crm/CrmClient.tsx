@@ -1506,7 +1506,10 @@ function TabEngagement({ data }: { data: CRMData }) {
  */
 export default function CrmClient() {
   const { user, userRole, isLoading: authLoading } = useAuth();
-  const canOperateCrm = canPerform("crm:operate", userRole);
+  const canOperateCrm = canPerform("crm:operate", userRole, {
+    enabledModules: user?.enabled_modules,
+    moduleAccess: user?.module_access,
+  });
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState("dashboard");

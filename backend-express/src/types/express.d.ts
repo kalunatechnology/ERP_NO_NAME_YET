@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import { ModulePermission } from '../utils/module-permissions';
 
 export interface AuthenticatedUser {
   id: string;
@@ -15,6 +16,7 @@ export interface AuthenticatedUser {
   enabled_modules: string[];
   /** Module codes granted directly to this user by its Company Admin. */
   delegated_modules?: string[];
+  module_access?: ModulePermission[];
 }
 
 // Augment Express Request type globally

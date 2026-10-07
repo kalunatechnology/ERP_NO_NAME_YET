@@ -10,6 +10,7 @@ import prisma from '../../config/database';
 import { Prisma, type iam_role, type iam_user, type iam_user_company_membership, type iam_user_role } from '@prisma/client';
 import { ForbiddenError } from '../../utils/errors';
 import { isSuperAdmin, parseRoleCode, RoleCode } from '../../types/roles';
+import { effectiveModuleOverrides, ModulePermission } from '../../utils/module-permissions';
 
 export interface UserAccessContext {
   roles: RoleCode[];
@@ -20,13 +21,14 @@ export interface UserAccessContext {
   isSuperAdmin: boolean;
   enabledModules: string[];
   delegatedModules: string[];
+  moduleAccess: ModulePermission[];
 }
 
 export interface KnownAccessRows {
   assignments?: iam_user_role[];
   membership?: iam_user_company_membership | null;
   roleRecords?: iam_role[];
-  moduleAccess?: Array<{ module_code: string }>;
+  moduleAccess?: Array<{ module_code: string; allow_write?: boolean }>;
   userModuleAccess?: Array<{ module_code: string; allow_read: boolean; allow_write: boolean }>;
   projectDelegated?: boolean;
 }
@@ -35,7 +37,7 @@ type AccessSnapshot = {
   assignments: iam_user_role[];
   membership: iam_user_company_membership | null;
   roles: Array<iam_role & { role_code: string }>;
-  company_modules: Array<{ module_code: string }>;
+  company_modules: Array<{ module_code: string; allow_write: boolean }>;
   user_modules: Array<{ module_code: string; allow_read: boolean; allow_write: boolean }>;
   project_delegated: boolean;
 };
@@ -59,7 +61,7 @@ export async function loadAuthenticationSnapshot(userId: string): Promise<Authen
       'assignments', COALESCE((SELECT jsonb_agg(to_jsonb(ur)) FROM iam_user_role ur WHERE ur.user_id=u.id), '[]'::jsonb),
       'membership', (SELECT to_jsonb(m) FROM membership m),
       'roles', COALESCE((SELECT jsonb_agg(to_jsonb(r)) FROM iam_role r JOIN iam_user_role ur ON ur.role_id=r.id WHERE ur.user_id=u.id AND r.tenant_id IS NOT DISTINCT FROM u.tenant_id), '[]'::jsonb),
-      'company_modules', COALESCE((SELECT jsonb_agg(jsonb_build_object('module_code',cma.module_code)) FROM iam_company_module_access cma JOIN membership m ON m.company_id=cma.company_id AND m.tenant_id=cma.tenant_id WHERE cma.enabled=true AND cma.allow_read=true AND (cma.effective_from IS NULL OR cma.effective_from<=${now}) AND (cma.effective_until IS NULL OR cma.effective_until>=${now})), '[]'::jsonb),
+      'company_modules', COALESCE((SELECT jsonb_agg(jsonb_build_object('module_code',cma.module_code,'allow_write',cma.allow_write)) FROM iam_company_module_access cma JOIN membership m ON m.company_id=cma.company_id AND m.tenant_id=cma.tenant_id WHERE cma.enabled=true AND cma.allow_read=true AND (cma.effective_from IS NULL OR cma.effective_from<=${now}) AND (cma.effective_until IS NULL OR cma.effective_until>=${now})), '[]'::jsonb),
       'user_modules', COALESCE((SELECT jsonb_agg(jsonb_build_object('module_code',uma.module_code,'allow_read',uma.allow_read,'allow_write',uma.allow_write)) FROM iam_user_module_access uma JOIN membership m ON m.company_id=uma.company_id AND m.tenant_id=uma.tenant_id WHERE uma.user_id=u.id), '[]'::jsonb),
       'project_delegated', EXISTS (
         SELECT 1 FROM project_member pm JOIN membership m ON m.company_id=pm.company_id AND m.tenant_id=pm.tenant_id
@@ -143,7 +145,7 @@ export async function loadUserAccessContext(
             WHERE ur.user_id = ${userId}::text AND r.tenant_id IS NOT DISTINCT FROM ${user.tenant_id}::text
           ), '[]'::jsonb),
           'company_modules', COALESCE((
-            SELECT jsonb_agg(jsonb_build_object('module_code', cma.module_code))
+            SELECT jsonb_agg(jsonb_build_object('module_code', cma.module_code, 'allow_write', cma.allow_write))
             FROM iam_company_module_access cma JOIN membership m ON m.company_id = cma.company_id AND m.tenant_id = cma.tenant_id
             WHERE cma.enabled = true AND cma.allow_read = true
               AND (cma.effective_from IS NULL OR cma.effective_from <= ${now})
@@ -237,7 +239,7 @@ export async function loadUserAccessContext(
               { OR: [{ effective_until: null }, { effective_until: { gte: now } }] },
             ],
           },
-          select: { module_code: true },
+          select: { module_code: true, allow_write: true },
         }),
         // A missing record deliberately preserves inheritance from company access.
         prisma.iam_user_module_access.findMany({
@@ -276,5 +278,6 @@ export async function loadUserAccessContext(
     isSuperAdmin: superAdmin,
     enabledModules,
     delegatedModules: [...delegatedModules],
+    moduleAccess: effectiveModuleOverrides(moduleAccess, userModuleAccess),
   };
 }

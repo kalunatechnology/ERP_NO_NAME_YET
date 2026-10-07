@@ -55,7 +55,7 @@ async function main() {
   assert.doesNotMatch(currentProjects.content, /Periode filter waktu/);
   calls.length = 0;
   const namedCalls: any[] = [];
-  const namedDb: any = { $queryRaw: async (query: any) => { namedCalls.push(query); return [{ id: '11111111-1111-4111-8111-111111111111' }]; } };
+  const namedDb: any = { $queryRaw: async (query: any) => { namedCalls.push(query); return [{ id: '11111111-1111-4111-8111-111111111111', status: 'PLANNED' }]; } };
   const namedUpdate = await answerNative('Ubah tugas "Login" catatan "Validasi selesai"', 'HELPER', staff, namedDb);
   assert.equal(namedUpdate.action?.payload.notes, 'Validasi selesai');
   assert(namedCalls[0].values.includes(staff.userId) && namedCalls[0].values.includes(staff.companyId) && namedCalls[0].values.includes('project-a'));

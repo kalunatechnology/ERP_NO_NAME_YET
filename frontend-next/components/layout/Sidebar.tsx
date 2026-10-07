@@ -58,12 +58,14 @@ export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarPro
   const navItems = getNavigationEntries({
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
+    moduleAccess: user?.module_access,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
   }).map((entry) => ({ ...entry, icon: NAV_ICONS[entry.href] ?? FileText }));
   const recentAccess = {
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
+    moduleAccess: user?.module_access,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
   };

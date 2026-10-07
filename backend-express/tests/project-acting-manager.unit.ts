@@ -207,10 +207,11 @@ async function main() {
     ...ordinaryStaffFrontendAccess,
     delegatedModules: ['PROJECTS'],
   };
-  assert.equal(canAccessRoute({ pathname: '/projects', ...ordinaryStaffFrontendAccess }), false);
+  assert.equal(canAccessRoute({ pathname: '/projects', ...ordinaryStaffFrontendAccess }), true);
   assert.equal(canAccessRoute({ pathname: '/tasks', ...ordinaryStaffFrontendAccess }), true);
   assert.equal(canAccessRoute({ pathname: '/projects', ...supervisorFrontendAccess }), true);
-  assert.equal(getNavigationEntries(ordinaryStaffFrontendAccess).some((entry) => entry.href === '/projects'), false);
+  assert.equal(getNavigationEntries(ordinaryStaffFrontendAccess).some((entry) => entry.href === '/projects'), true);
+  assert.equal(canAccessRoute({ pathname: '/projects', ...ordinaryStaffFrontendAccess, enabledModules: [] }), false);
   assert.equal(getNavigationEntries(supervisorFrontendAccess).some((entry) => entry.href === '/projects'), true);
 
   console.log(JSON.stringify({
@@ -224,6 +225,7 @@ async function main() {
     progress_rollup_reuses_transaction: true,
     supervisor_auto_project_delegation: true,
     supervisor_project_navigation_only: true,
+    staff_self_submission_navigation: true,
   }, null, 2));
 }
 

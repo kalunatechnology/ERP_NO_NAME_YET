@@ -8,6 +8,7 @@
  */
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
+import { hasModuleOverride, hasUserModuleWrite } from '../../utils/module-permissions';
 import { ProjectsService } from './projects.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
@@ -548,11 +549,14 @@ const enforceProjectBoundary = async (req: Request, _res: Response, next: NextFu
     const companyId = activeCompanyId(req);
     const activeRole = req.user?.active_role_code;
     const isOperationalUser = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[])
-      .includes(activeRole as RoleCode);
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || isOperationalUser) {
+      .includes(activeRole as RoleCode) && !req.moduleAccess?.delegated;
+    const isAuthorityRead = ['GET', 'HEAD', 'OPTIONS'].includes(req.method)
+      && /\/(authority|supervisor)\/?$/.test(req.path);
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || (isOperationalUser && !isAuthorityRead)) {
       // Personal task visibility is served through the staff projection. Full
       // project-detail endpoints are reserved for an active project-scoped
-      // Acting PM assignment, including on read requests.
+      // Acting PM assignment. Assigned Staff may read authority metadata to
+      // render self-submission controls without receiving management rights.
       await ProjectsService.assertCanManageProject(req.user, req.params.id, companyId);
     } else {
       await ProjectsService.assertCanViewProject(req.user, req.params.id, companyId);
@@ -787,7 +791,7 @@ projectsRouter.post('/projects/:id/funding_requests', async (req: Request, res: 
   try {
     const companyId = activeCompanyId(req);
     const activeRole = req.user?.active_role_code;
-    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode)) {
+    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode) && !hasModuleOverride(req, 'PROJECTS')) {
       throw new ForbiddenError('Pengajuan dana project memerlukan role PM, OM, atau Company Admin.');
     }
     const project = await prisma.project_project.findFirst({ where: { id: req.params.id, company_id: companyId } });
@@ -829,7 +833,7 @@ projectsRouter.post('/projects/:id/update_financials', async (req: Request, res:
   try {
     const companyId = activeCompanyId(req);
     const activeRole = req.user?.active_role_code;
-    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode)) {
+    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(activeRole as RoleCode) && !hasModuleOverride(req, 'PROJECTS')) {
       throw new ForbiddenError('Perubahan target finansial memerlukan role PM, OM, atau Company Admin.');
     }
     const { budget_amount, contract_amount, target_margin_percent } = req.body;
@@ -2296,7 +2300,7 @@ projectsRouter.use('/projects', createCrudRouter({
   accessWhere: async (req) => ProjectsService.projectAccessWhere(req.user, portfolioReadCompanyId(req)),
   beforeCreate: async (req, data) => {
     const role = req.user?.active_role_code;
-    if (!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(role as RoleCode)
+    if ((!([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as RoleCode[]).includes(role as RoleCode) && !hasUserModuleWrite(req.user, 'PROJECTS'))
       || req.user?.roles?.includes(RoleCode.SUPER_ADMIN)) {
       throw new ForbiddenError('Anda tidak memiliki kewenangan untuk membuat project.');
     }

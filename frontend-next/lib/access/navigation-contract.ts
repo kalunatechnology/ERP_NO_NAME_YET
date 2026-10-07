@@ -1,4 +1,5 @@
 import { canAccessRoute, FrontendAccessContext, normalizeModuleCodes, normalizeRoleCode, ROLE_CODES } from "./module-contract";
+import { canPerform } from "./capability-contract";
 
 export interface NavigationEntry {
   href: string;
@@ -80,6 +81,9 @@ const ROLE_NAVIGATION: Record<string, readonly NavigationEntry[]> = {
 };
 
 const DELEGATED_NAVIGATION: Partial<Record<string, readonly NavigationEntry[]>> = {
+  FINANCE: [{ href: "/finance", label: "Finance" }],
+  CRM: [{ href: "/crm", label: "CRM & Sales" }],
+  PROJECTS: [{ href: "/projects", label: "Projects" }],
   REPORTING: [{ href: "/reporting", label: "Reports" }],
   ANALYTICS: [{ href: "/resources", label: "Data Explorer" }],
 };
@@ -92,5 +96,13 @@ export function getNavigationEntries(access: FrontendAccessContext): NavigationE
     .flatMap((module) => DELEGATED_NAVIGATION[module] ?? []);
   const unique = [...base, ...delegated]
     .filter((entry, index, entries) => entries.findIndex((item) => item.href === entry.href) === index);
-  return unique.filter((entry) => canAccessRoute({ pathname: entry.href, ...access }));
+  return unique.filter((entry) => canAccessRoute({ pathname: entry.href, ...access })).map((entry) => {
+    if (role === ROLE_CODES.director && entry.href === "/finance" && canPerform("finance:operate", role, access)) {
+      return { ...entry, label: "Finance" };
+    }
+    if (role === ROLE_CODES.director && entry.href === "/crm" && canPerform("crm:operate", role, access)) {
+      return { ...entry, label: "CRM & Sales" };
+    }
+    return entry;
+  });
 }

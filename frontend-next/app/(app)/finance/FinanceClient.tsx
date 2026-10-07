@@ -101,11 +101,15 @@ export default function FinanceClient() {
   const requestAccess = {
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
+    moduleAccess: user?.module_access,
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: Boolean(user?.is_superuser),
   };
   const canUseAssets = canRequestApi("/api/v1/assets/assets", requestAccess);
-  const canOperateFinance = canPerform("finance:operate", userRole);
+  const canOperateFinance = canPerform("finance:operate", userRole, {
+    enabledModules: user?.enabled_modules,
+    moduleAccess: user?.module_access,
+  });
   const visibleTabs = FINANCE_TABS.filter((tab) => !tab.endpoint || canUseAssets);
   const requestedTab = searchParams.get("tab");
   const defaultTab = userRole === "executive" ? "executive_report" : "overview";
@@ -602,7 +606,7 @@ export default function FinanceClient() {
         </div>
       </div>
 
-      {userRole === "executive" && (
+      {userRole === "executive" && !canOperateFinance && (
         <div className="p-3.5 rounded-2xl bg-[#FAF5FF] border border-[#E9D5FF] text-xs text-[#581C87] flex items-center justify-between flex-wrap gap-2 shadow-2xs">
           <div className="flex items-center gap-2">
             <Crown size={16} aria-hidden="true" />

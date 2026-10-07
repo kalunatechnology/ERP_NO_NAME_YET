@@ -3,6 +3,7 @@ import prisma from '../../config/database';
 import { RoleCode } from '../../types/roles';
 import { ForbiddenError, NotFoundError, UnauthorizedError } from '../../utils/errors';
 import { ProjectsService } from './projects.service';
+import { hasModuleOverride } from '../../utils/module-permissions';
 
 const SELF_SERVICE_MUTATIONS: Array<{ path: RegExp; methods?: string[] }> = [
   // The canonical create hook validates self-submission and forces pending status.
@@ -81,6 +82,7 @@ export async function restrictProjectMutationsByAuthority(req: Request, _res: Re
     if (!req.user) return next(new UnauthorizedError());
     const method = req.method.toUpperCase();
     if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return next();
+    if (hasModuleOverride(req, 'PROJECTS')) return next();
     const role = req.user.active_role_code ?? req.user.roles?.[0] ?? '';
     if (!([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[]).includes(role as RoleCode)) return next();
 

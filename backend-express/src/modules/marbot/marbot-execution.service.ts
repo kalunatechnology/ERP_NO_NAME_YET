@@ -45,11 +45,13 @@ export async function executeCanonicalAction(req: Request, action: MarbotAction,
   if (!actual.id || actual.id !== record.id) throw new Error('Identitas pembacaan ulang tidak cocok.');
   const fields = action.kind === 'project.create' ? ['project_name', 'customer_name', 'manager_name']
     : action.kind === 'task.create' ? ['project_id', 'name', 'weight']
-    : action.kind === 'weekly.create' ? ['main_task_id', 'assignee_id', 'target_description']
+    : action.kind === 'weekly.create' ? ['main_task_id', 'assignee_id', 'target_description', 'week_number', 'start_date', 'end_date']
     : action.kind === 'daily.create' ? ['weekly_task_id', 'title', 'output_target', 'time_slot']
     : ['output_result', 'notes', 'block_reason'];
   for (const field of fields) {
-    if (action.payload[field] !== undefined && String(actual[field]) !== String(action.payload[field])) {
+    const actualValue = action.kind === 'weekly.create' && ['start_date', 'end_date'].includes(field)
+      && typeof actual[field] === 'string' ? actual[field].slice(0, 10) : actual[field];
+    if (action.payload[field] !== undefined && String(actualValue) !== String(action.payload[field])) {
       throw new Error(`Pembacaan ulang field ${field} belum cocok. Periksa hasil di ERP sebelum mengulang.`);
     }
   }

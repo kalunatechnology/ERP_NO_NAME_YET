@@ -9,7 +9,7 @@ async function main() {
   const fixtureFile = path.join(fixtureDir, 'page.tsx');
   assert(!fs.existsSync(fixtureDir), 'Never overwrite a real route');
   fs.mkdirSync(fixtureDir);
-  fs.writeFileSync(fixtureFile, '"use client";\nimport { Suspense } from "react";\nimport dynamic from "next/dynamic";\nimport { useSearchParams } from "next/navigation";\nconst ProjectsClient = dynamic(() => import("@/app/(app)/projects/ProjectsClient"), { ssr: false });\nconst TasksClient = dynamic(() => import("@/app/(app)/tasks/TasksClient"), { ssr: false });\nfunction Surface(){ return useSearchParams().get("surface") === "tasks" ? <TasksClient/> : <ProjectsClient/>; }\nexport default function Fixture(){return <Suspense><Surface/></Suspense>;}');
+  fs.writeFileSync(fixtureFile, '"use client";\nimport { Suspense } from "react";\nimport dynamic from "next/dynamic";\nimport { useSearchParams } from "next/navigation";\nconst Sidebar = dynamic(() => import("@/components/layout/Sidebar").then(module => module.Sidebar), { ssr: false });\nconst ProjectsClient = dynamic(() => import("@/app/(app)/projects/ProjectsClient"), { ssr: false });\nconst TasksClient = dynamic(() => import("@/app/(app)/tasks/TasksClient"), { ssr: false });\nfunction Surface(){ return useSearchParams().get("surface") === "tasks" ? <TasksClient/> : <div className="flex"><Sidebar/><div className="min-w-0 flex-1"><ProjectsClient/></div></div>; }\nexport default function Fixture(){return <Suspense><Surface/></Suspense>;}');
   let app, server, browser;
   try {
     const { chromium } = require(path.join(process.env.MARBOT_TEST_RUNTIME_PACKAGES, 'playwright'));
@@ -38,7 +38,11 @@ async function main() {
       const request = route.request(), url = new URL(request.url()), endpoint = url.pathname;
       const json = data => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
       if (endpoint.includes('/auth/me')) return json(profile());
-      if (endpoint.includes('/dashboard/bootstrap')) { bootstraps++; return json({ data: { projects: bundle() } }); }
+      if (endpoint.includes('/dashboard/bootstrap')) {
+        bootstraps++;
+        if (role === 'ROLE-STAFF') assert.equal(url.searchParams.has('project_workspace'), false, 'Ordinary Staff must request personal project data');
+        return json({ data: { projects: bundle() } });
+      }
       if (endpoint.endsWith('/authority')) return json({ project_id: endpoint.split('/').at(-2), can_manage_project: role === 'ROLE-PM', can_manage_wbs: role === 'ROLE-PM', can_manage_weekly_tasks: role === 'ROLE-PM', can_assign_team: false, can_view_financials: role === 'ROLE-PM' });
       if (endpoint.endsWith('/supervisor')) return json(null);
       if (/\/weekly-tasks\/?$/.test(endpoint) && request.method() === 'POST') {
@@ -77,6 +81,7 @@ async function main() {
     role = 'ROLE-STAFF';
     await page.evaluate(user => localStorage.setItem('erp.user', JSON.stringify(user)), profile());
     await page.reload({ waitUntil: 'networkidle' });
+    await page.locator('nav a[href="/projects"]').waitFor();
     await page.getByRole('button', { name: 'Ajukan Target Mingguan' }).click();
     const modal = page.getByRole('dialog');
     await modal.locator('textarea').fill('Staff proposed weekly');

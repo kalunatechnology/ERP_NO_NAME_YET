@@ -42,6 +42,7 @@ import { ProjectTimelineGantt } from "@/components/ui/ProjectTimelineGantt";
 import { ProjectMilestoneCard } from "@/components/ui/ProjectMilestoneCard";
 import { getCategoryStyle } from "@/lib/ui/semantic-styles";
 import { canPerform } from "@/lib/access/capability-contract";
+import { getModuleOverride, type ModulePermission } from "@/lib/access/module-contract";
 import { ProjectWbsTree } from "@/components/projects/ProjectWbsTree";
 import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
 
@@ -272,15 +273,17 @@ export default function ProjectsClient() {
   /* Project Manager & Executive Role Guard */
   // Mutation controls follow the active backend role; identity names and emails are never authorization signals.
   const isActingProjectManager = Boolean(selectedAuthority?.is_acting_project_manager);
+  const projectModuleOverride = getModuleOverride(user?.module_access, "PROJECTS");
+  const allowsProjectManagement = !projectModuleOverride || (projectModuleOverride.allow_read && projectModuleOverride.allow_write);
   const isPM = useMemo(
-    () => userRole === "pm" || userRole === "om" || isActingProjectManager,
-    [isActingProjectManager, userRole],
+    () => allowsProjectManagement && (userRole === "pm" || userRole === "om" || isActingProjectManager || Boolean(selectedAuthority?.can_manage_project)),
+    [allowsProjectManagement, isActingProjectManager, userRole, selectedAuthority?.can_manage_project],
   );
   const isExecutive = useMemo(() => userRole === "executive", [userRole]);
-  const canCreateProject = useMemo(() => canPerform("project:create", userRole), [userRole]);
-  const canUpdateProject = useMemo(() => canPerform("project:update", userRole), [userRole]);
-  const canManageSelectedProject = Boolean(selectedAuthority?.can_manage_project);
-  const canUpdateSelectedProject = canUpdateProject || isActingProjectManager;
+  const canCreateProject = useMemo(() => canPerform("project:create", userRole, { enabledModules: user?.enabled_modules, moduleAccess: user?.module_access }), [userRole, user?.enabled_modules, user?.module_access]);
+  const canUpdateProject = useMemo(() => canPerform("project:update", userRole, { enabledModules: user?.enabled_modules, moduleAccess: user?.module_access }), [userRole, user?.enabled_modules, user?.module_access]);
+  const canManageSelectedProject = allowsProjectManagement && Boolean(selectedAuthority?.can_manage_project);
+  const canUpdateSelectedProject = allowsProjectManagement && (canUpdateProject || isActingProjectManager);
   // Financial data (biaya, dana, billing) hanya terlihat untuk role tertentu.
   // Array literal di bawah digunakan sebagai second-layer guard di frontend
   // agar konsisten meski selectedAuthority belum dimuat.
@@ -294,6 +297,7 @@ export default function ProjectsClient() {
   // changes, preventing a focus event from remounting the full-page loader.
   const enabledModulesKey = [...(user?.enabled_modules || [])].map(String).sort().join("|");
   const delegatedModulesKey = [...(user?.delegated_modules || [])].map(String).sort().join("|");
+  const moduleAccessKey = JSON.stringify([...(user?.module_access || [])].sort((a, b) => a.module_code.localeCompare(b.module_code)));
   const activeRoleCode = user?.active_role_code || "";
 
   // Stable ref to the current selectedId so fetchProjects can read it without being in its deps
@@ -333,14 +337,19 @@ export default function ProjectsClient() {
     try {
       const enabledModules = enabledModulesKey ? enabledModulesKey.split("|") : [];
       const delegatedModules = delegatedModulesKey ? delegatedModulesKey.split("|") : [];
+      const moduleAccess: ModulePermission[] = JSON.parse(moduleAccessKey);
+      const personalProjectWorkspace = ["staff", "supervisor"].includes(userRole || "")
+        && (!delegatedModules.includes("PROJECTS") || getModuleOverride(moduleAccess, "PROJECTS")?.allow_write === false);
       const projectBundle = loadDashboardBootstrap(["projects"], {
         enabledModules,
         delegatedModules,
+        moduleAccess,
         activeRoleCode,
         isSuperAdmin: userRole === "super_admin",
-      }, { fresh: silent, projectWorkspace: 'management' }).then((response) => response.projects);
+      }, { fresh: silent, projectWorkspace: personalProjectWorkspace ? undefined : 'management' }).then((response) => response.projects);
       const projectData = projectBundle.then((bundle) => loadAllProjects(enabledModules, bundle, {
           delegatedModules,
+          moduleAccess,
           activeRoleCode,
           isSuperAdmin: userRole === "super_admin",
         }));
@@ -410,7 +419,7 @@ export default function ProjectsClient() {
       }
     }
     // selectedId intentionally excluded: read via ref to avoid re-creating this callback on selection change
-  }, [activeRoleCode, delegatedModulesKey, enabledModulesKey, userRole]);
+  }, [activeRoleCode, delegatedModulesKey, enabledModulesKey, moduleAccessKey, userRole]);
 
 /**
  * openAssignModal coordinates the UI behavior represented by this function.
@@ -474,13 +483,14 @@ export default function ProjectsClient() {
       activeRoleCode,
       delegatedModulesKey,
       enabledModulesKey,
+      moduleAccessKey,
       company || "",
       userRole,
     ].join("::");
     if (automaticFetchKeyRef.current === automaticFetchKey) return;
     automaticFetchKeyRef.current = automaticFetchKey;
     fetchProjects();
-  }, [activeRoleCode, company, delegatedModulesKey, enabledModulesKey, fetchProjects, userRole]);
+  }, [activeRoleCode, company, delegatedModulesKey, enabledModulesKey, moduleAccessKey, fetchProjects, userRole]);
 
   useEffect(() => {
     const projectId = selectedProjectId;
@@ -514,7 +524,7 @@ export default function ProjectsClient() {
           setAuthorityResolvedProjectId(projectId);
         }
       });
-  }, [selectedProjectId]);
+  }, [selectedProjectId, activeRoleCode, moduleAccessKey]);
 
   const handleAssignSupervisor = async () => {
     if (!selectedId || !supervisorCandidateId || !selectedAuthority?.can_delegate_supervisor) return;
@@ -1276,7 +1286,7 @@ export default function ProjectsClient() {
             </button>
           )}
 
-          {isExecutive && (
+          {isExecutive && !canUpdateProject && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-[#2649B3] border border-blue-200 text-2xs font-bold tracking-tight shadow-2xs">
               Executive Overseer · View Only
             </span>
@@ -1576,7 +1586,7 @@ export default function ProjectsClient() {
 
       {/* ── Navigation Tabs ── */}
       <div className="flex items-center gap-2 border-b border-text-tertiary overflow-x-auto no-scrollbar pb-1">
-        {(userRole === "staff" && !isActingProjectManager ? [
+        {(userRole === "staff" && !canManageSelectedProject ? [
           { key: "TREE", label: "Task Terkait Saya", icon: Layers, count: mainTasks.length },
         ] : [
           { key: "TREE", label: "Hierarki Task (Full WBS Plan)", icon: Layers, count: mainTasks.length },
@@ -1614,9 +1624,9 @@ export default function ProjectsClient() {
           key={String(selectedProject?.id ?? "")}
           mainTasks={mainTasks}
           isPM={isPM}
-          canManageWbs={Boolean(selectedAuthority?.can_manage_wbs)}
-          canAssignTeam={Boolean(selectedAuthority?.can_assign_team)}
-          canManageWeeklyTasks={Boolean(selectedAuthority?.can_manage_weekly_tasks)}
+          canManageWbs={allowsProjectManagement && Boolean(selectedAuthority?.can_manage_wbs)}
+          canAssignTeam={allowsProjectManagement && Boolean(selectedAuthority?.can_assign_team)}
+          canManageWeeklyTasks={allowsProjectManagement && Boolean(selectedAuthority?.can_manage_weekly_tasks)}
           onReviewWeeklyTask={async (weeklyId, decision) => {
             try {
               await reviewWeeklyTask(weeklyId, decision);
