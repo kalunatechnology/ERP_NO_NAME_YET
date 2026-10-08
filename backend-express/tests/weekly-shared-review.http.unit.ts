@@ -138,9 +138,9 @@ async function main() {
     const ownedPmAuthority = await (await get('/projects/project-a/authority', 'pm')).json() as any;
     assert.equal(ownedPmAuthority.can_review_weekly_tasks, true);
     // General module delegation does not make an ordinary employee a PM/SPV.
-    users.staff.delegated_modules = ['PROJECTS'];
+    users.staff.module_access = [{ module_code: 'PROJECTS', allow_read: true, allow_write: true }];
     assert.equal((await review('approve', 'APPROVE', 'staff')).status, 403);
-    users.staff.delegated_modules = [];
+    users.staff.module_access = [];
     assert.equal((await review('approve', 'INVALID')).status, 400);
     const approved = await review('approve', 'APPROVE'); assert.equal(approved.status, 200, await approved.clone().text());
     assert.equal((await approved.json() as any).status, 'PLANNED');
