@@ -317,7 +317,7 @@ async function loadAllAccessibleRows<T extends { id: string | number }>(endpoint
     }
   }
 
-  return [...byId.values()];
+  return Array.from(byId.values());
 }
 
 async function loadAllAccessibleProjectRows(): Promise<Project[]> {
