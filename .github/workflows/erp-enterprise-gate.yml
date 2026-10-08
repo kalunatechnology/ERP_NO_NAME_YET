@@ -31,6 +31,12 @@ jobs:
       - run: npm run test:marbot-workflow
       - run: npm run test:marbot-capabilities
       - run: npm run build
+      - name: Verify customer receipt input and lifecycle
+        run: |
+          npx ts-node --files tests/customer-receipt.http.unit.ts
+          npx ts-node --files tests/customer-receipt.workflow.http.unit.ts
+      - name: Verify project supervisor weekly approval and notifications
+        run: npx ts-node --files tests/weekly-shared-review.http.unit.ts
       - run: npm run test:production-seed
       - run: npm run test:migration-convergence
       - run: npm run test:marbot-signature
