@@ -57,7 +57,13 @@ async function main() {
   db.project_project.findFirst = async ({ where }: any) => {
     assert.equal(where.company_id, companyId);
     const id = where.id ?? where.AND?.[0]?.id;
-    if (where.AND) assert(where.AND[1].id.in.includes(project.id));
+    if (where.AND) {
+      const access = where.AND[1];
+      assert(
+        access.OR?.some((part: any) => part.id?.in?.includes(project.id) || part.created_by_id === staffId),
+        'Staff project visibility must include assigned projects and the user's own projects',
+      );
+    }
     return id === project.id ? project : null;
   };
   db.iam_user_company_membership.findFirst = async () => ({ id: 'membership-a', tenant_id: tenantId });
@@ -96,6 +102,16 @@ async function main() {
     db.project_task_assignment.findMany = async () => [];
     db.project_weekly_task.findMany = async () => [{ id: 'weekly-a', main_task_id: 'main-a', assignee_id: staffId }];
     await ProjectsService.assertCanViewProject(staff, project.id, companyId, db);
+    // Project creators retain read visibility even without an active assignment.
+    // This does not grant management permission: role checks remain independent.
+    db.project_weekly_task.findMany = async () => [];
+    const creatorAsStaff = { ...staff, id: project.created_by_id };
+    const creatorScope = await ProjectsService.projectAccessWhere(creatorAsStaff, companyId, db);
+    assert(
+      (creatorScope.OR as any[]).some(part => part.created_by_id === project.created_by_id),
+      'Project creator should remain visible after a role switch',
+    );
+    assert.equal(creatorScope.tenant_id, tenantId);
     console.log('PASS: Ordinary Staff see Project navigation, load assigned data, read authority and submit Pending Weekly without PM rights.');
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error: Error | undefined) => error ? reject(error) : resolve()));
