@@ -218,11 +218,13 @@ function NewDailyTaskModal({
   isOpen,
   onClose,
   projects,
+  currentUserId,
   onSuccess,
 }: {
   isOpen: boolean;
   onClose: () => void;
   projects: Project[];
+  currentUserId: string;
   onSuccess: () => Promise<void>;
 }) {
   const [projectId, setProjectId] = useState<string>("");
@@ -243,6 +245,7 @@ function NewDailyTaskModal({
     const list: { id: string | number; label: string }[] = [];
     (selectedProject.main_tasks || []).forEach(m => {
       (m.weekly_tasks || m.weekly_plans || []).forEach(w => {
+        if (String(w.assignee_id ?? "") !== currentUserId) return;
         if (['PENDING_APPROVAL', 'REJECTED'].includes(w.status)) return;
         list.push({
           id: w.id,
@@ -251,7 +254,7 @@ function NewDailyTaskModal({
       });
     });
     return list;
-  }, [selectedProject]);
+  }, [selectedProject, currentUserId]);
 
   useEffect(() => {
     const selectedStillAvailable = weeklyOptions.some(option => String(option.id) === String(weeklyTaskId));
@@ -347,12 +350,17 @@ function NewDailyTaskModal({
               className="w-full border border-text-tertiary rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white disabled:bg-gray-50 disabled:text-text-secondary"
             >
               <option value="">
-                {!projectId ? "Pilih proyek terlebih dahulu" : weeklyOptions.length === 0 ? "Belum ada WBS mingguan di proyek ini" : "— Pilih Target Mingguan —"}
+                {!projectId ? "Pilih proyek terlebih dahulu" : weeklyOptions.length === 0 ? "Belum ada Weekly Target milik Anda yang disetujui" : "— Pilih Target Mingguan —"}
               </option>
               {weeklyOptions.map(w => (
                 <option key={w.id} value={w.id}>{w.label}</option>
               ))}
             </select>
+            {projectId && weeklyOptions.length === 0 && (
+              <p className="mt-1 text-2xs text-amber-700">
+                Proyek tersedia, tetapi Anda belum memiliki Weekly Target yang disetujui di proyek ini. Ajukan atau tunggu persetujuan Target Mingguan sebelum membuat Daily Task.
+              </p>
+            )}
           </div>
 
           <div>
@@ -1122,7 +1130,8 @@ export default function TasksClient() {
       {canCreateDailyTask && <NewDailyTaskModal
         isOpen={isNewTaskOpen}
         onClose={() => setIsNewTaskOpen(false)}
-        projects={creatableProjects}
+        projects={projects}
+        currentUserId={String(user?.id ?? "")}
         onSuccess={async () => {
           await fetchTasks(true);
         }}
