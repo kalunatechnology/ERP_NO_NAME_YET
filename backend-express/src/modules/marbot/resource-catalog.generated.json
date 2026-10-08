@@ -1309,24 +1309,6 @@
       "source": "src/modules/finance/finance.routes.ts"
     },
     {
-      "key": "finance.payment-lines",
-      "module": "FINANCE",
-      "path": "/api/v1/finance/payment-lines/",
-      "model": "fin_payment_allocation",
-      "readOnly": false,
-      "searchFields": [],
-      "source": "src/modules/finance/finance.routes.ts"
-    },
-    {
-      "key": "finance.payment-allocations",
-      "module": "FINANCE",
-      "path": "/api/v1/finance/payment-allocations/",
-      "model": "fin_payment_allocation",
-      "readOnly": false,
-      "searchFields": [],
-      "source": "src/modules/finance/finance.routes.ts"
-    },
-    {
       "key": "finance.bank-accounts",
       "module": "FINANCE",
       "path": "/api/v1/finance/bank-accounts/",
