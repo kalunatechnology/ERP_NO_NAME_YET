@@ -129,6 +129,18 @@ async function main() {
     assert.equal((await review('outside', 'APPROVE')).status, 403);
     assert.equal((await review('foreign', 'APPROVE')).status, 404);
     assert.equal((await review('own', 'APPROVE')).status, 403);
+    // A PM is the supervisor of projects they created, even when every
+    // Weekly Task is assigned to somebody else and no PM assignment exists.
+    const ownedPmWorkspace = await (await get('/weekly-tasks/review-workspace', 'pm')).json() as any;
+    assert.deepEqual(ownedPmWorkspace.projects.map((row: any) => row.id), ['project-a']);
+    assert(ownedPmWorkspace.weeklyTasks.some((row: any) => row.assignee_id === 'staff'));
+    assert(ownedPmWorkspace.weeklyTasks.every((row: any) => row.assignee_id !== 'pm'));
+    const ownedPmAuthority = await (await get('/projects/project-a/authority', 'pm')).json() as any;
+    assert.equal(ownedPmAuthority.can_review_weekly_tasks, true);
+    // General module delegation does not make an ordinary employee a PM/SPV.
+    users.staff.delegated_modules = ['PROJECTS'];
+    assert.equal((await review('approve', 'APPROVE', 'staff')).status, 403);
+    users.staff.delegated_modules = [];
     assert.equal((await review('approve', 'INVALID')).status, 400);
     const approved = await review('approve', 'APPROVE'); assert.equal(approved.status, 200, await approved.clone().text());
     assert.equal((await approved.json() as any).status, 'PLANNED');
