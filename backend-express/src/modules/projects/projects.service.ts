@@ -206,35 +206,60 @@ export class ProjectsService {
     return 'PENDING_APPROVAL';
   }
 
-  /** Supervisor review is limited to projects where the active SPV is assigned. */
+  /**
+   * Weekly approval is a project supervisory entitlement, NOT Weekly ownership.
+   * A PM reviews every project created by them, regardless of the assignee on
+   * the Weekly Target. Assigned PMs and project-scoped SPVs are also supported.
+   * Ordinary Staff must never gain approval simply by owning a Weekly Task or
+   * receiving a broad PROJECTS module write grant.
+   */
   static async weeklyReviewProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
     if (!user?.id || !companyId || user.roles?.includes(RoleCode.SUPER_ADMIN)) return [];
-    if (this.activeRole(user) === RoleCode.DIRECTOR) return [];
+    const role = this.activeRole(user);
+    if (role === RoleCode.DIRECTOR) return [];
     const scope = { company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
-    const [managed, namedManagers, managerMemberships] = await Promise.all([
-      this.managedProjectIds(user, companyId, db),
-      db.project_project.findMany({ where: { ...scope, project_manager_id: user.id }, select: { id: true } }),
-      db.project_member.findMany({ where: { ...scope, user_id: user.id, status: 'ACTIVE', project_role: 'PROJECT_MANAGER' }, select: { project_id: true } }),
+    const managerRole = role === RoleCode.PROJECT_MANAGER;
+    const supervisorRole = role === RoleCode.SUPERVISOR;
+    const managerialRole = role === RoleCode.OPERATIONAL_MANAGER || role === RoleCode.COMPANY_ADMIN;
+    const operationalRole = supervisorRole || role === RoleCode.STAFF;
+    if (!managerRole && !managerialRole && !operationalRole) return [];
+
+    const [managed, owned, namedManagers, managerMemberships, actingMemberships] = await Promise.all([
+      managerialRole ? this.managedProjectIds(user, companyId, db) : Promise.resolve([] as string[]),
+      managerRole ? db.project_project.findMany({ where: { ...scope, created_by_id: user.id }, select: { id: true } }) : Promise.resolve([] as any[]),
+      managerRole ? db.project_project.findMany({ where: { ...scope, project_manager_id: user.id }, select: { id: true } }) : Promise.resolve([] as any[]),
+      managerRole ? db.project_member.findMany({ where: { ...scope, user_id: user.id, status: 'ACTIVE', project_role: 'PROJECT_MANAGER' }, select: { project_id: true } }) : Promise.resolve([] as any[]),
+      operationalRole ? db.project_member.findMany({ where: { ...scope, user_id: user.id, status: 'ACTIVE', project_role: ACTING_PROJECT_MANAGER_ROLE }, select: { project_id: true } }) : Promise.resolve([] as any[]),
     ]);
-    const reviewers = [...managed, ...namedManagers.map((row: any) => row.id), ...managerMemberships.map((row: any) => row.project_id)];
-    if (this.activeRole(user) !== RoleCode.SUPERVISOR) return [...new Set<string>(reviewers.filter(Boolean))];
-    const [memberships, assignments] = await Promise.all([
-      db.project_member.findMany({ where: { ...scope, user_id: user.id, status: 'ACTIVE' }, select: { project_id: true } }),
-      db.project_task_assignment.findMany({ where: { ...scope, assignee_id: user.id }, select: { main_task_id: true } }),
-    ]);
-    const assignedMains = assignments.length ? await db.project_main_task.findMany({
-      where: { ...scope, id: { in: assignments.map((row: any) => row.main_task_id) } }, select: { project_id: true },
-    }) : [];
-    return [...new Set<string>([...reviewers, ...memberships.map((row: any) => row.project_id),
-      ...assignedMains.map((row: any) => row.project_id)].filter(Boolean))];
+    const reviewedIds = [
+      ...managed,
+      ...owned.map((row: any) => row.id),
+      ...namedManagers.map((row: any) => row.id),
+      ...managerMemberships.map((row: any) => row.project_id),
+      ...actingMemberships.map((row: any) => row.project_id),
+    ];
+
+    // Supervisor review follows actual project participation. Merely being
+    // named as a Weekly assignee does not make a PM or Staff a reviewer.
+    if (supervisorRole) {
+      const [memberships, assignments] = await Promise.all([
+        db.project_member.findMany({ where: { ...scope, user_id: user.id, status: 'ACTIVE' }, select: { project_id: true } }),
+        db.project_task_assignment.findMany({ where: { ...scope, assignee_id: user.id }, select: { main_task_id: true } }),
+      ]);
+      const assignedMains = assignments.length ? await db.project_main_task.findMany({
+        where: { ...scope, id: { in: assignments.map((row: any) => row.main_task_id) } }, select: { project_id: true },
+      }) : [];
+      reviewedIds.push(...memberships.map((row: any) => row.project_id), ...assignedMains.map((row: any) => row.project_id));
+    }
+
+    return [...new Set<string>(reviewedIds.filter(Boolean))];
   }
 
   static async assertCanReviewWeeklyProject(user: any, projectId: string, companyId: string, db: any = prisma) {
-    if (await this.hasProjectManagementAuthority(user, projectId, companyId, db)) return;
     const override = getUserModuleOverride(user, 'PROJECTS');
     if (override && !hasUserModuleWrite(user, 'PROJECTS')) throw new ForbiddenError('Akses approval modul PROJECTS dinonaktifkan oleh Admin.');
     if ((await this.weeklyReviewProjectIds(user, companyId, db)).includes(projectId)) return;
-    throw new ForbiddenError('Approval target mingguan hanya dapat dilakukan oleh PM atau SPV yang ditugaskan pada proyek ini.');
+    throw new ForbiddenError('Approval target mingguan hanya dapat dilakukan oleh PM pemilik proyek, PM terdaftar, atau SPV yang ditugaskan.');
   }
 
   /** Shared operational projection for PM/SPV; never includes project finances. */
@@ -1168,7 +1193,7 @@ export class ProjectsService {
       can_manage_wbs: canManage,
       can_assign_team: canManage,
       can_manage_weekly_tasks: canManage,
-      can_review_weekly_tasks: canManage || (allowsManagement && (await this.weeklyReviewProjectIds(user, companyId, db)).includes(projectId)),
+      can_review_weekly_tasks: allowsManagement && (await this.weeklyReviewProjectIds(user, companyId, db)).includes(projectId),
       can_direct_reassign: canManage,
       can_review_task_transfer: canManage,
       can_override_progress: canManage,
