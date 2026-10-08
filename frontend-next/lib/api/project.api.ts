@@ -287,6 +287,40 @@ export function mergeProjectDashboardBundles(
   return merged;
 }
 
+/**
+ * Retrieve every project authorized by the backend. A single page only contains
+ * the first 100 projects; modal selectors must not silently drop later pages.
+ * Do not widen permissions client-side: each page uses the authenticated
+ * company-scoped /projects/projects endpoint.
+ */
+async function loadAllAccessibleProjectRows(): Promise<Project[]> {
+  const endpoint = "/api/v1/projects/projects/?page_size=100";
+  const first = await api.get(endpoint);
+  const firstPage = normalizeList<Project>(first.data);
+  const byId = new Map<string, Project>(
+    firstPage.rows.map(project => [String(project.id), project]),
+  );
+
+  const totalPages = Math.ceil(firstPage.count / 100);
+  // Fetch in small batches to limit concurrent queries on shared hosting.
+  for (let startPage = 2; startPage <= totalPages; startPage += 4) {
+    const pageNumbers = Array.from(
+      { length: Math.min(4, totalPages - startPage + 1) },
+      (_, index) => startPage + index,
+    );
+    const pages = await Promise.all(
+      pageNumbers.map(page => api.get(`${endpoint}&page=${page}`)),
+    );
+    for (const response of pages) {
+      for (const project of normalizeList<Project>(response.data).rows) {
+        byId.set(String(project.id), project);
+      }
+    }
+  }
+
+  return [...byId.values()];
+}
+
 export async function loadAllProjects(enabledModules: string[] = [], bundle?: ProjectDashboardBundle, access?: Omit<FrontendAccessContext, "enabledModules">): Promise<Project[]> {
   const canReadFinance = canRequestApi("/api/v1/finance/project-cost-entries/", { ...access, enabledModules });
 /**
@@ -310,7 +344,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
         { data: bundle.proposals }, { data: bundle.fundings }, { data: bundle.users },
       ]
     : await Promise.all([
-        api.get("/api/v1/projects/projects/?page_size=100"),
+        loadAllAccessibleProjectRows().then(rows => ({ data: rows })),
         api.get("/api/v1/projects/main-tasks/?page_size=300"),
         api.get("/api/v1/projects/task-assignments/?page_size=500"),
         api.get("/api/v1/projects/weekly-tasks/?page_size=500"),
