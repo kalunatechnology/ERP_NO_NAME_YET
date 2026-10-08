@@ -7,6 +7,8 @@ import { env } from '../src/config/env';
 import * as auth from '../src/middlewares/auth.middleware';
 import { RoleCode } from '../src/types/roles';
 import { NotificationMaintenanceService, jakartaDayWindow, notificationCutoff } from '../src/modules/core/notification-maintenance.service';
+import { WeeklyNotificationService } from '../src/modules/projects/weekly-notification.service';
+import { ProjectsService } from '../src/modules/projects/projects.service';
 
 async function main() {
   const db = prisma as any;
@@ -226,6 +228,16 @@ async function main() {
     assert.equal(forWeekly('expired-event').length, 0); assert.equal(forWeekly('deleted-target').length, 0);
     assert(forWeekly('status-without-evidence').every(row => row.category === 'WEEKLY_TARGET_CREATED'), 'A status without an audit event cannot fabricate an approval/rejection notice');
     assert.equal((await NotificationMaintenanceService.reconcileWeeklyNotifications(db, { now: afterMidnight, companyId: company })).inserted, 0);
+    // A PM named on a project, but not its creator, may review and must receive notices.
+    users['assigned-pm'] = { ...users.pm, id: 'assigned-pm', full_name: 'Assigned PM' };
+    membershipRows.push({ id: 'member-assigned-pm', user_id: 'assigned-pm', tenant_id: tenant, company_id: company, status: 'ACTIVE' });
+    (projects.find(row => row.id === 'project-b') as any).project_manager_id = 'assigned-pm';
+    assert((await ProjectsService.weeklyReviewProjectIds(users['assigned-pm'], company, db)).includes('project-b'));
+    await ProjectsService.assertCanReviewWeeklyProject(users['assigned-pm'], 'project-b', company, db);
+    await ProjectsService.assertCanViewProject(users['assigned-pm'], 'project-b', company, db);
+    await WeeklyNotificationService.emit(db, weeklies.find(row => row.id === 'outside'), users.staff, 'CREATED');
+    assert(notifications.some(row => row.recipient_id === 'assigned-pm' && row.target_url?.endsWith('weekly=outside')),
+      'Assigned project manager receives submission notice even if not project creator');
     console.log('PASS: weekly notification workflow, rollback, scoped history and 72-hour cleanup; automatic reconciliation recovers pre-midnight events and recent decisions on old targets, preserves timestamps/read state, skips deleted targets and never fabricates status changes or duplicate notifications. Persistence uses fixtures.');
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 }

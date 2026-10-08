@@ -624,9 +624,8 @@ export default function TasksClient() {
   }, [loading]);
 
   /*
-   * The backend allows operational users to create Daily Tasks only below a
-   * Main Task assigned to them. Filter the selectable hierarchy up front so
-   * the UI cannot advertise or submit a mutation that the API must reject.
+   * Approved Weekly ownership controls Daily Task creation. Do not hide
+   * historical Weekly Targets when the parent Main Task assignment is missing.
    */
   const creatableProjects = useMemo(() => {
     if (user?.id == null) return [];
@@ -636,11 +635,6 @@ export default function TasksClient() {
       .map((project) => ({
         ...project,
         main_tasks: (project.main_tasks || [])
-          .filter((mainTask) =>
-            (mainTask.assignments || []).some((assignment) =>
-              String(assignment.assignee_id ?? assignment.assignee ?? "") === activeUserId
-            )
-          )
           .map((mainTask) => {
             const assignedWeekly = (mainTask.weekly_tasks || mainTask.weekly_plans || []).filter(
               (weeklyTask) => String(weeklyTask.assignee_id ?? "") === activeUserId && !['PENDING_APPROVAL', 'REJECTED'].includes(weeklyTask.status)

@@ -726,6 +726,8 @@ export default function ProjectsClient() {
     return tasks.filter((mainTask) =>
       (mainTask.assignments || []).some((assignment) =>
         String(assignment.assignee_id ?? assignment.assignee ?? "") === activeUserId
+      ) || (mainTask.weekly_tasks || mainTask.weekly_plans || []).some((weekly: any) =>
+        String(weekly.assignee_id ?? weekly.assignee ?? "") === activeUserId
       )
     );
   }, [isActingProjectManager, selectedProject?.main_tasks, user?.id, userRole]);

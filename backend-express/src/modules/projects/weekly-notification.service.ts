@@ -10,7 +10,7 @@ export class WeeklyNotificationService {
     const scope = { company_id: weekly.company_id, tenant_id: weekly.tenant_id };
     const main = await tx.project_main_task.findFirst({ where: { ...scope, id: weekly.main_task_id }, select: { project_id: true } });
     if (!main) throw new Error('Hierarchy weekly target tidak tersedia untuk notifikasi.');
-    const project = await tx.project_project.findFirst({ where: { ...scope, id: main.project_id }, select: { id: true, project_name: true, created_by_id: true } });
+    const project = await tx.project_project.findFirst({ where: { ...scope, id: main.project_id }, select: { id: true, project_name: true, created_by_id: true, project_manager_id: true } });
     if (!project) throw new Error('Proyek weekly target tidak tersedia untuk notifikasi.');
     const [members, mains, roles] = await Promise.all([
       tx.project_member.findMany({ where: { ...scope, project_id: project.id, status: 'ACTIVE' }, select: { user_id: true, project_role: true } }),
@@ -22,6 +22,8 @@ export class WeeklyNotificationService {
     const supervisors = relatedIds.length && roles.length ? await tx.iam_user_role.findMany({ where: { ...scope, user_id: { in: relatedIds }, role_id: { in: roles.map(row => row.id) } }, select: { user_id: true } }) : [];
     const recipients = new Set<string>([
       project.created_by_id,
+      project.project_manager_id,
+      ...members.filter(row => row.project_role === 'PROJECT_MANAGER').map(row => row.user_id),
       ...supervisors.map(row => row.user_id),
       ...members.filter(row => row.project_role === 'ACTING_PROJECT_MANAGER').map(row => row.user_id),
       ...(event !== 'CREATED' ? [weekly.created_by_id, weekly.assignee_id] : weekly.status !== 'PENDING_APPROVAL' ? [weekly.assignee_id] : []),

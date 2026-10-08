@@ -1751,20 +1751,19 @@ projectsRouter.use('/daily-tasks', createCrudRouter({
     if (!mainTask) throw new ValidationError('Main Task induk tidak valid.');
 
     // Daily Task is personal execution data, not a management privilege.
-    // Any authenticated company user may create one only when they are both a
-    // Main Task assignee and the owner of the selected Weekly Task. The owner
+    // Any authenticated company user may create one only when they own the
+    // approved Weekly Task. The owner
     // is always forced to the caller below, so elevated roles cannot create a
     // Daily Task on behalf of somebody else.
     if (!req.user?.id || isSuperAdmin(req.user.roles)) {
       throw new ForbiddenError('Daily Task dibuat dan dikelola sendiri oleh user company pemilik Weekly Task.');
     }
-    const assignment = await prisma.project_task_assignment.findFirst({
-      where: { main_task_id: mainTask.id, assignee_id: req.user.id, company_id: companyId },
-      select: { id: true },
-    });
-    if (!assignment || weeklyTask.assignee_id !== req.user.id) {
-      throw new ForbiddenError('Anda hanya dapat membuat Daily Task pada Weekly Task milik Anda dari Main Task yang ditugaskan.');
+    if (weeklyTask.assignee_id !== req.user.id) {
+      throw new ForbiddenError('Anda hanya dapat membuat Daily Task pada Weekly Task milik Anda.');
     }
+    // Ownership of an approved Weekly is sufficient for personal Daily execution;
+    // legacy Main Task assignments may be missing despite a valid Weekly owner.
+    await ProjectsService.assertCanViewProject(req.user, mainTask.project_id, companyId);
     data.owner_id = req.user.id;
     await ProjectsService.assertActiveCompanyMember(String(data.owner_id ?? ''), companyId);
     if (!data.title && data.activity_input) data.title = data.activity_input;

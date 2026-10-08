@@ -75,7 +75,8 @@ export class ProjectsService {
   /** Every company identity inherits personal Staff capabilities even while a
    * functional role such as PM, Finance, or Company Admin is active. */
   private static hasBaseStaffAccess(user: any): boolean {
-    return Boolean(user?.id && user?.roles?.includes(RoleCode.STAFF));
+    return Boolean(user?.id && !user?.roles?.includes(RoleCode.SUPER_ADMIN)
+      && this.activeRole(user) !== RoleCode.DIRECTOR);
   }
 
   private static isCompanyAdmin(user: any): boolean {
@@ -208,8 +209,15 @@ export class ProjectsService {
   /** Supervisor review is limited to projects where the active SPV is assigned. */
   static async weeklyReviewProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
     if (!user?.id || !companyId || user.roles?.includes(RoleCode.SUPER_ADMIN)) return [];
-    if (this.activeRole(user) !== RoleCode.SUPERVISOR) return this.managedProjectIds(user, companyId, db);
+    if (this.activeRole(user) === RoleCode.DIRECTOR) return [];
     const scope = { company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
+    const [managed, namedManagers, managerMemberships] = await Promise.all([
+      this.managedProjectIds(user, companyId, db),
+      db.project_project.findMany({ where: { ...scope, project_manager_id: user.id }, select: { id: true } }),
+      db.project_member.findMany({ where: { ...scope, user_id: user.id, status: 'ACTIVE', project_role: 'PROJECT_MANAGER' }, select: { project_id: true } }),
+    ]);
+    const reviewers = [...managed, ...namedManagers.map((row: any) => row.id), ...managerMemberships.map((row: any) => row.project_id)];
+    if (this.activeRole(user) !== RoleCode.SUPERVISOR) return [...new Set<string>(reviewers.filter(Boolean))];
     const [memberships, assignments] = await Promise.all([
       db.project_member.findMany({ where: { ...scope, user_id: user.id, status: 'ACTIVE' }, select: { project_id: true } }),
       db.project_task_assignment.findMany({ where: { ...scope, assignee_id: user.id }, select: { main_task_id: true } }),
@@ -217,14 +225,15 @@ export class ProjectsService {
     const assignedMains = assignments.length ? await db.project_main_task.findMany({
       where: { ...scope, id: { in: assignments.map((row: any) => row.main_task_id) } }, select: { project_id: true },
     }) : [];
-    return [...new Set<string>([...memberships, ...assignedMains].map(row => row.project_id).filter(Boolean))];
+    return [...new Set<string>([...reviewers, ...memberships.map((row: any) => row.project_id),
+      ...assignedMains.map((row: any) => row.project_id)].filter(Boolean))];
   }
 
   static async assertCanReviewWeeklyProject(user: any, projectId: string, companyId: string, db: any = prisma) {
     if (await this.hasProjectManagementAuthority(user, projectId, companyId, db)) return;
     const override = getUserModuleOverride(user, 'PROJECTS');
     if (override && !hasUserModuleWrite(user, 'PROJECTS')) throw new ForbiddenError('Akses approval modul PROJECTS dinonaktifkan oleh Admin.');
-    if (this.activeRole(user) === RoleCode.SUPERVISOR && (await this.weeklyReviewProjectIds(user, companyId, db)).includes(projectId)) return;
+    if ((await this.weeklyReviewProjectIds(user, companyId, db)).includes(projectId)) return;
     throw new ForbiddenError('Approval target mingguan hanya dapat dilakukan oleh PM atau SPV yang ditugaskan pada proyek ini.');
   }
 
@@ -307,11 +316,18 @@ export class ProjectsService {
   static async projectAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
     if (this.hasPortfolioRead(user) || this.activeRole(user) === RoleCode.FINANCE) return {};
     if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
-      return { created_by_id: user.id, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
+      const memberships = await db.project_member.findMany({
+        where: { company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
+          user_id: user.id, status: 'ACTIVE', project_role: 'PROJECT_MANAGER' },
+        select: { project_id: true },
+      });
+      return { OR: [{ created_by_id: user.id }, { project_manager_id: user.id },
+        { id: { in: memberships.map((row: { project_id: string }) => row.project_id) } }],
+        ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
     }
     if (!this.hasBaseStaffAccess(user) && !hasUserModuleWrite(user, 'PROJECTS')) return { id: { in: [] } };
 
-    const [memberships, assignments] = await Promise.all([
+    const [memberships, assignments, ownWeekly] = await Promise.all([
       db.project_member.findMany({
         where: { company_id: companyId, user_id: user.id, status: 'ACTIVE' },
         select: { project_id: true },
@@ -320,8 +336,12 @@ export class ProjectsService {
         where: { company_id: companyId, assignee_id: user.id },
         select: { main_task_id: true },
       }),
+      db.project_weekly_task.findMany({
+        where: { company_id: companyId, assignee_id: user.id },
+        select: { main_task_id: true },
+      }),
     ]);
-    const mainIds = assignments.map((assignment: { main_task_id: string }) => assignment.main_task_id);
+    const mainIds = [...new Set([...assignments, ...ownWeekly].map((row: { main_task_id: string }) => row.main_task_id))];
     const assignedMainTasks = mainIds.length
       ? await db.project_main_task.findMany({
         where: { company_id: companyId, id: { in: mainIds } },
@@ -581,10 +601,14 @@ export class ProjectsService {
     }
   }
 
-  private static async creatorMainTaskIds(user: any, companyId: string, db: any): Promise<string[]> {
-    const projectIds = await this.managedProjectIds(user, companyId, db);
+  private static async visiblePmMainTaskIds(user: any, companyId: string, db: any): Promise<string[]> {
+    // Reading assigned PM workspaces must not implicitly grant mutation authority.
+    const scope = await this.projectAccessWhere(user, companyId, db);
+    const projects = await db.project_project.findMany({
+      where: { company_id: companyId, AND: [scope] }, select: { id: true },
+    });
     const tasks = await db.project_main_task.findMany({
-      where: { company_id: companyId, project_id: { in: projectIds } }, select: { id: true },
+      where: { company_id: companyId, project_id: { in: projects.map((row: { id: string }) => row.id) } }, select: { id: true },
     });
     return tasks.map((task: { id: string }) => task.id);
   }
@@ -596,7 +620,7 @@ export class ProjectsService {
   ): Promise<Record<string, unknown>> {
     if (this.hasPortfolioRead(user)) return {};
     if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) {
-      const mainIds = await this.creatorMainTaskIds(user, companyId, db);
+      const mainIds = await this.visiblePmMainTaskIds(user, companyId, db);
       const weekly = await db.project_weekly_task.findMany({ where: { company_id: companyId, main_task_id: { in: mainIds } }, select: { id: true } });
       return { weekly_task_id: { in: weekly.map((row: { id: string }) => row.id) } };
     }
@@ -682,7 +706,7 @@ export class ProjectsService {
 
   static async weeklyTaskAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
     if (this.hasPortfolioRead(user)) return {};
-    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { main_task_id: { in: await this.creatorMainTaskIds(user, companyId, db) } };
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { main_task_id: { in: await this.visiblePmMainTaskIds(user, companyId, db) } };
     if (this.hasBaseStaffAccess(user)) {
       const scope =
         await this.operationalTaskReadScope(
@@ -713,7 +737,7 @@ export class ProjectsService {
 
   static async taskAssignmentAccessWhere(user: any, companyId: string, db: any = prisma): Promise<Record<string, unknown>> {
     if (this.hasPortfolioRead(user)) return {};
-    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { main_task_id: { in: await this.creatorMainTaskIds(user, companyId, db) } };
+    if (this.activeRole(user) === RoleCode.PROJECT_MANAGER) return { main_task_id: { in: await this.visiblePmMainTaskIds(user, companyId, db) } };
     if (this.hasBaseStaffAccess(user)) {
       const managedProjectIds = await this.managedProjectIds(user, companyId, db);
       if (!managedProjectIds.length) return { assignee_id: user.id };
@@ -1139,7 +1163,7 @@ export class ProjectsService {
       can_manage_wbs: canManage,
       can_assign_team: canManage,
       can_manage_weekly_tasks: canManage,
-      can_review_weekly_tasks: canManage || (allowsManagement && activeRole === RoleCode.SUPERVISOR && (await this.weeklyReviewProjectIds(user, companyId, db)).includes(projectId)),
+      can_review_weekly_tasks: canManage || (allowsManagement && (await this.weeklyReviewProjectIds(user, companyId, db)).includes(projectId)),
       can_direct_reassign: canManage,
       can_review_task_transfer: canManage,
       can_override_progress: canManage,

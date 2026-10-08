@@ -9,7 +9,8 @@ async function main(): Promise<void> {
   const companyUsers = users.filter((user) => !user.global);
   assert(companyUsers.every((user) => user.roleCodes.includes('ROLE-STAFF')), 'Every company user must explicitly inherit ROLE-STAFF.');
   assert.equal(PRODUCTION_PROJECT_CREATOR, 'arof', 'Production project creator must remain Arof.');
-  assert(users.some((user) => user.username === PRODUCTION_PROJECT_CREATOR && !user.global), 'Production project creator must exist as a company user.');
+  assert(users.some((user) => user.username === PRODUCTION_PROJECT_CREATOR && !user.global), 'Production project creator must exist as a company user.')
+assert(users.some((user) => user.username === PRODUCTION_PROJECT_CREATOR && user.email.toLowerCase() === 'arof@arsalynk.com'), 'Production project creator must use the verified Arof email.');;
   assert.equal(new Set(projects.map((project) => project.code)).size, projects.length, 'Project codes must be unique.');
   assert.equal(projects.length, 7);
 

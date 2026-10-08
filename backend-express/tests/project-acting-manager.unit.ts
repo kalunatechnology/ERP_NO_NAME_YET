@@ -21,7 +21,7 @@ function fakeDb(options: { actingActive?: boolean; originalPmId?: string } = {})
   return {
     project_member: {
       findMany: async ({ where }: any) => {
-        if (where.company_id !== COMPANY_A || where.user_id !== STAFF_ID || !actingActive) return [];
+        if (where.company_id !== COMPANY_A || where.user_id !== STAFF_ID || !actingActive || where.project_role === 'PROJECT_MANAGER') return [];
         return [{ project_id: PROJECT_A }];
       },
       findFirst: async ({ where }: any) => {
@@ -33,19 +33,25 @@ function fakeDb(options: { actingActive?: boolean; originalPmId?: string } = {})
       findMany: async ({ where }: any) => {
         if (where.company_id !== COMPANY_A) return [];
         if (where.created_by_id && where.created_by_id !== originalPmId) return [];
+        if (where.project_manager_id && where.project_manager_id !== originalPmId) return [];
         return [{ id: PROJECT_A }];
       },
       findFirst: async ({ where }: any) => {
         const id = where.id ?? where.AND?.[0]?.id;
         const createdById = where.created_by_id
           ?? where.AND?.find((condition: any) => condition?.created_by_id)?.created_by_id;
+        const scopedOr = where.AND?.find((condition: any) => condition?.OR)?.OR;
         if (where.company_id !== COMPANY_A || id !== PROJECT_A) return null;
         if (createdById && createdById !== originalPmId) return null;
+        if (scopedOr && !scopedOr.some((condition: any) =>
+          condition.created_by_id === originalPmId || condition.project_manager_id === originalPmId ||
+          condition.id?.in?.includes(PROJECT_A))) return null;
         return { id: PROJECT_A, project_manager_id: originalPmId, created_by_id: originalPmId };
       },
     },
     project_task_assignment: { findMany: async () => [] },
     project_main_task: { findMany: async () => [] },
+    project_weekly_task: { findMany: async () => [] },
   } as any;
 }
 
@@ -88,6 +94,7 @@ async function main() {
     },
     project_task_assignment: { findMany: async () => [] },
     project_main_task: { findMany: async () => [] },
+    project_weekly_task: { findMany: async () => [] },
   } as any;
   const ordinaryAuthority = await ProjectsService.getProjectAuthority(staff, PROJECT_A, COMPANY_A, ordinaryMemberDb);
   assert.equal(ordinaryAuthority.can_manage_project, false);
@@ -112,7 +119,7 @@ async function main() {
   ));
 
   assert.deepEqual(await ProjectsService.managedProjectIds(otherCompanyPm, COMPANY_A, db), []);
-  assert.deepEqual(await ProjectsService.projectAccessWhere(otherCompanyPm, COMPANY_A, db), { created_by_id: 'pm-other', tenant_id: 'tenant-a' });
+  assert.deepEqual(await ProjectsService.projectAccessWhere(otherCompanyPm, COMPANY_A, db), { OR: [{ created_by_id: 'pm-other' }, { project_manager_id: 'pm-other' }, { id: { in: [] } }], tenant_id: 'tenant-a' });
   await assert.rejects(() => ProjectsService.assertCanViewProject(otherCompanyPm, PROJECT_A, COMPANY_A, db));
   await assert.rejects(() => ProjectsService.assertCanManageProject(otherCompanyPm, PROJECT_A, COMPANY_A, db));
 
