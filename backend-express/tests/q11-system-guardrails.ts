@@ -236,6 +236,12 @@ async function main(): Promise<void> {
       iam_user_company_membership: { findFirst: async () => ({ id: 'membership-a', tenant_id: 'tenant-a' }) },
     };
     assert.equal(await ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: 'project-a' }, 'company-a', staff.id, submissionDb), 'PENDING_APPROVAL');
+    const staffWithModuleWrite = { ...staff, module_access: [{ module_code: 'PROJECTS', allow_read: true, allow_write: true }] };
+    assert.equal(
+      await ProjectsService.weeklyCreationStatus(staffWithModuleWrite, { id: 'main-a', project_id: 'project-a' }, 'company-a', staff.id, submissionDb),
+      'PENDING_APPROVAL',
+      'A Staff module write override must not bypass PM approval',
+    );
     await assert.rejects(() => ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: 'project-a' }, 'company-a', 'staff-b', submissionDb), /diri sendiri/);
     assert.throws(() => ProjectsService.assertWeeklyTaskActive('PENDING_APPROVAL'), /belum disetujui/);
     assert.throws(() => ProjectsService.assertWeeklyTaskActive('REJECTED'), /belum disetujui/);
