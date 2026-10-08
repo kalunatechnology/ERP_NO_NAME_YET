@@ -26,7 +26,13 @@ jobs:
       - run: npx prisma generate
       - run: npx prisma validate
       - run: npm run typecheck
-      - run: node scripts/generate_marbot_catalog.js --check
+      - name: Verify generated MarBot catalog matches routes and schema
+        run: |
+          if ! node scripts/generate_marbot_catalog.js --check; then
+            node scripts/generate_marbot_catalog.js
+            git diff -- src/modules/marbot/resource-catalog.generated.json
+            exit 1
+          fi
       - run: npm run test:marbot-native
       - run: npm run test:marbot-workflow
       - run: npm run test:marbot-capabilities
