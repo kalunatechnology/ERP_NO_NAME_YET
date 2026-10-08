@@ -443,6 +443,22 @@ async function main(): Promise<void> {
     assert(!projectClient.includes('/api/v1/finance/project-fundings/?project_id='), 'Project workspace must not probe Finance before its PROJECTS funding endpoint.');
     assert(tasksClient.includes('normalizeDateKey(i.task.planned_date) === today'), 'Daily Tasks must compare normalized calendar dates.');
     assert(tasksClient.includes('const creatableProjects = useMemo') && tasksClient.includes('weeklyTask.assignee_id') && tasksClient.includes("'PENDING_APPROVAL', 'REJECTED'"), 'Daily Task create scope must follow owned approved Weekly Tasks.');
+    assert(
+      /<NewDailyTaskModal[\s\S]*?projects=\{projects\}[\s\S]*?currentUserId=/.test(tasksClient),
+      'Daily Task project dropdown must receive all accessible projects, not just projects containing owned Weekly Targets.',
+    );
+    assert(
+      tasksClient.includes('String(w.assignee_id ?? "") !== currentUserId') &&
+      tasksClient.includes('Anda belum memiliki Weekly Target yang disetujui') === false &&
+      tasksClient.includes('belum memiliki Weekly Target yang disetujui di proyek ini'),
+      'Weekly Target choices must remain personal and explain unavailable target scope.',
+    );
+    assert(
+      projectApi.includes('async function loadAllAccessibleProjectRows()') &&
+      projectApi.includes('startPage <= totalPages') &&
+      projectApi.includes('loadAllAccessibleProjectRows().then(rows'),
+      'Project read model must paginate every accessible project instead of showing the first page only.',
+    );
     assert(tasksClient.includes('{canCreateDailyTask && <button'), 'Daily Task create action must be hidden when no valid backend scope exists.');
     assert(tasksClient.includes('{canOpenReporting && <Link'), 'Daily Tasks must not advertise an unauthorized Reporting route.');
     assert(tasksClient.includes('Task Submission') && tasksClient.includes('pendingSubmissionCount'), 'Daily Task submission must be an explicit user-journey section.');
