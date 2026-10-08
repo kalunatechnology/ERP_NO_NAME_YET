@@ -381,7 +381,11 @@ export default function ProjectsClient() {
         if (!personalBundle) throw new Error('Data task personal tidak tersedia.');
         return mergeProjectDashboardBundles(management.status === 'fulfilled' ? management.value.projects : undefined, personalBundle);
       })().then(async bundle => {
-        if (normalizeRoleCode(activeRoleCode) !== 'ROLE-SUPERVISOR') return bundle;
+        // PM reviews every Weekly submission on projects they created/manage;
+        // review scope must not depend on whether the PM is its assignee.
+        // Supervisors retain their existing project-scoped review workspace.
+        const reviewerRole = normalizeRoleCode(activeRoleCode);
+        if (!['ROLE-SUPERVISOR', 'ROLE-PM'].includes(reviewerRole)) return bundle;
         const response = await api.get('/api/v1/projects/weekly-tasks/review-workspace');
         const merged = mergeProjectDashboardBundles(bundle, response.data);
         // Review records own the current decision and creator metadata even
