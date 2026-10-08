@@ -1,13 +1,13 @@
 import type { Request } from 'express';
 import prisma from '../../config/database';
-import { answerNative, followUpQuestion, isNativeTaskReadQuestion, type AssistantMode, type NativeScope } from './marbot-native.service';
+import { answerNative, detectTools, followUpQuestion, isNativeTaskReadQuestion, type AssistantMode, type NativeScope } from './marbot-native.service';
 import type { MarbotAction } from './marbot-action.service';
 import { helperAnswer, systemKnowledgeAnswer } from './marbot-knowledge';
 import { validateNativePlan } from './marbot-planner.service';
 import { executeResourceRead, planResourceQuestion, type ResourcePlan } from './marbot-resource.service';
 import { discoverMarbotSchema } from './marbot-schema.service';
 import { understandMarbotQuestion } from './marbot-understanding.service';
-import { isIntentCorrection, isProcedureQuestion } from './marbot-intent';
+import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion } from './marbot-intent';
 
 export type MarbotAnswer = { content: string; tools: string[]; sources: string[]; action?: MarbotAction };
 export type MarbotDecision = { answer: MarbotAnswer; understanding: { source: 'llm' | 'local' | 'explicit';
@@ -77,5 +77,9 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
   if (/\b(schema|skema|foreign key|primary key|relasi tabel|kolom database)\b/i.test(message)) return { understanding, answer: {
     content: `Metadata database aktual sesuai permission tool Anda:\n\n\`\`\`json\n${JSON.stringify(await discoverMarbotSchema(scope, db), null, 2)}\n\`\`\`\n\nMetadata tidak memberikan akses query atau mutasi tambahan.`,
     tools: ['schema.discovery'], sources: ['ERP:database-metadata'] } };
+  if (isDataReadQuestion(fallbackQuestion) && !detectTools(fallbackQuestion).length) return {
+    understanding: { ...understanding, route: 'clarify' },
+    answer: { content: 'Permintaan data ini belum dapat dipetakan ke tool baca yang sesuai. Sebutkan jenis record dan filter yang diperlukan, misalnya proyek, periode, atau status. Data aktual belum diambil.', tools: ['intent.clarification'], sources: [] },
+  };
   return { understanding, answer: await answerNative(fallbackQuestion, mode, scope, db) };
 }

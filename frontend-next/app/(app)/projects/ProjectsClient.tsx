@@ -42,7 +42,7 @@ import { ProjectTimelineGantt } from "@/components/ui/ProjectTimelineGantt";
 import { ProjectMilestoneCard } from "@/components/ui/ProjectMilestoneCard";
 import { getCategoryStyle } from "@/lib/ui/semantic-styles";
 import { canPerform } from "@/lib/access/capability-contract";
-import { getModuleOverride, type ModulePermission } from "@/lib/access/module-contract";
+import { getModuleOverride, normalizeRoleCode, type ModulePermission } from "@/lib/access/module-contract";
 import { ProjectWbsTree } from "@/components/projects/ProjectWbsTree";
 import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
 
@@ -93,6 +93,7 @@ export default function ProjectsClient() {
   const pathname = usePathname();
   const requestedProjectId = searchParams.get("project");
   const requestedProjectTab = searchParams.get("tab");
+  const requestedWeeklyId = searchParams.get("weekly");
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(requestedProjectId);
   const [activeTab, setActiveTab] = useState(requestedProjectTab || "TREE");
@@ -334,6 +335,7 @@ export default function ProjectsClient() {
     const params = new URLSearchParams(searchParams.toString());
     params.set("project", String(id));
     params.set("tab", tab);
+    params.delete("weekly");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -363,22 +365,31 @@ export default function ProjectsClient() {
       const projectBundle = (async () => {
         if (!operationalUser || personalProjectWorkspace) {
           return (await loadDashboardBootstrap(["projects"], projectAccess, {
-            fresh: silent, projectWorkspace: personalProjectWorkspace ? undefined : 'management',
+            fresh: silent || Boolean(requestedWeeklyId), projectWorkspace: personalProjectWorkspace ? undefined : 'management',
           })).projects;
         }
         // A supervisor can also have personal assignments outside supervised
         // projects. Fetch both existing scopes; per-project authority still
         // controls management actions, including Weekly approval.
         const [personal, management] = await Promise.allSettled([
-          loadDashboardBootstrap(["projects"], projectAccess, { fresh: silent }),
-          loadDashboardBootstrap(["projects"], projectAccess, { fresh: silent, projectWorkspace: 'management' }),
+          loadDashboardBootstrap(["projects"], projectAccess, { fresh: silent || Boolean(requestedWeeklyId) }),
+          loadDashboardBootstrap(["projects"], projectAccess, { fresh: silent || Boolean(requestedWeeklyId), projectWorkspace: 'management' }),
         ]);
         if (personal.status === 'rejected') throw personal.reason;
         if (management.status === 'rejected' && management.reason?.response?.status !== 403) throw management.reason;
         const personalBundle = personal.value.projects;
         if (!personalBundle) throw new Error('Data task personal tidak tersedia.');
         return mergeProjectDashboardBundles(management.status === 'fulfilled' ? management.value.projects : undefined, personalBundle);
-      })();
+      })().then(async bundle => {
+        if (normalizeRoleCode(activeRoleCode) !== 'ROLE-SUPERVISOR') return bundle;
+        const response = await api.get('/api/v1/projects/weekly-tasks/review-workspace');
+        const merged = mergeProjectDashboardBundles(bundle, response.data);
+        // Review records own the current decision and creator metadata even
+        // when a cached personal projection contains the same weekly ID.
+        const reviewRows = new Map<string, any>(response.data.weeklyTasks.map((weekly: any) => [String(weekly.id), weekly]));
+        merged.weeklyTasks = merged.weeklyTasks.map(weekly => reviewRows.get(String(weekly.id)) ?? weekly);
+        return merged;
+      });
       const projectData = projectBundle.then((bundle) => loadAllProjects(enabledModules, bundle, {
           delegatedModules,
           moduleAccess,
@@ -451,7 +462,7 @@ export default function ProjectsClient() {
       }
     }
     // selectedId intentionally excluded: read via ref to avoid re-creating this callback on selection change
-  }, [activeRoleCode, delegatedModulesKey, enabledModulesKey, moduleAccessKey, userRole]);
+  }, [activeRoleCode, delegatedModulesKey, enabledModulesKey, moduleAccessKey, requestedWeeklyId, userRole]);
 
 /**
  * openAssignModal coordinates the UI behavior represented by this function.
@@ -518,11 +529,12 @@ export default function ProjectsClient() {
       moduleAccessKey,
       company || "",
       userRole,
+      requestedWeeklyId ? `${requestedProjectId}:${requestedWeeklyId}` : "",
     ].join("::");
     if (automaticFetchKeyRef.current === automaticFetchKey) return;
     automaticFetchKeyRef.current = automaticFetchKey;
     fetchProjects();
-  }, [activeRoleCode, company, delegatedModulesKey, enabledModulesKey, moduleAccessKey, fetchProjects, userRole]);
+  }, [activeRoleCode, company, delegatedModulesKey, enabledModulesKey, moduleAccessKey, fetchProjects, requestedProjectId, requestedWeeklyId, userRole]);
 
   useEffect(() => {
     const projectId = selectedProjectId;
@@ -950,7 +962,7 @@ export default function ProjectsClient() {
             : main,
         ),
       })));
-      toast.success(createdWeekly?.status === 'PENDING_APPROVAL' ? "Target mingguan diajukan dan menunggu approval PM." : `Target minggu #${weeklyForm.week_number} berhasil dibuat.`);
+      toast.success(createdWeekly?.status === 'PENDING_APPROVAL' ? "Target mingguan diajukan dan menunggu approval PM / SPV." : `Target minggu #${weeklyForm.week_number} berhasil dibuat.`);
       setWeeklyForm({ week_number: "1", target_description: "", start_date: "", end_date: "", assignee_id: "" });
       setWeeklyErrors({});
       setIsCreateWeeklyOpen(false);
@@ -1373,7 +1385,7 @@ export default function ProjectsClient() {
         </div>
       </div>
 
-      {selectedProject && allowsProjectManagement && selectedAuthority?.can_manage_weekly_tasks && (
+      {selectedProject && allowsProjectManagement && (selectedAuthority?.can_review_weekly_tasks ?? selectedAuthority?.can_manage_weekly_tasks) && (
         <section aria-labelledby="weekly-approval-title" className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
@@ -1685,10 +1697,12 @@ export default function ProjectsClient() {
         <ProjectWbsTree
           key={`${selectedProject?.id ?? ""}:${weeklyReviewRequest}`}
           mainTasks={mainTasks}
+          focusWeeklyId={requestedWeeklyId}
           isPM={isPM}
           canManageWbs={allowsProjectManagement && Boolean(selectedAuthority?.can_manage_wbs)}
           canAssignTeam={allowsProjectManagement && Boolean(selectedAuthority?.can_assign_team)}
           canManageWeeklyTasks={allowsProjectManagement && Boolean(selectedAuthority?.can_manage_weekly_tasks)}
+          canReviewWeeklyTasks={allowsProjectManagement && Boolean(selectedAuthority?.can_review_weekly_tasks ?? selectedAuthority?.can_manage_weekly_tasks)}
           onReviewWeeklyTask={async (weeklyId, decision) => {
             try {
               await reviewWeeklyTask(weeklyId, decision);

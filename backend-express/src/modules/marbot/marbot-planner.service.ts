@@ -6,7 +6,7 @@ const entity = z.string().trim().min(1).max(160).optional();
 export const nativePlanSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('read'), domains: z.array(z.enum(['projects', 'tasks', 'finance', 'tickets', 'kpi'])).min(1).max(5),
     projectName: entity, taskTitle: entity, teamName: entity,
-    status: z.enum(['DRAFT', 'VERIFIED', 'RESERVED', 'STARTED', 'ACTIVE', 'NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED']).optional(),
+    status: z.enum(['DRAFT', 'PLANNED', 'PENDING_APPROVAL', 'REJECTED', 'VERIFIED', 'RESERVED', 'STARTED', 'ACTIVE', 'NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED']).optional(),
     period: z.enum(['today', 'yesterday', 'tomorrow', 'this_week', 'last_week', 'next_week', 'this_month', 'last_month', 'next_month']).optional(),
     date: z.string().regex(/^20\d{2}-(0[1-9]|1[0-2])(?:-\d{2})?$/).optional(), overdue: z.boolean().optional(), groupByStatus: z.boolean().optional(), owner: z.boolean().optional(),
     personal: z.boolean().optional(), taskLevel: z.enum(['weekly', 'daily']).optional(),

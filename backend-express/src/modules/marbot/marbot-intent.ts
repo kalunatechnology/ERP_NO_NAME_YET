@@ -60,9 +60,17 @@ export function procedureTopic(message: string) {
   return topics.find(topic => topic.pattern.test(text));
 }
 
+/** Clear requests for records/counts are distinct from instructions for using a feature. */
+export function isDataReadQuestion(message: string) {
+  const text = intentText(message).trim();
+  if (/\b(?:cara|caranya|panduan|tutorial|how to|how do|how can)\b/.test(text)) return false;
+  return /^(?:(?:tolong|mohon|please)\s+)?(?:tampilkan|lihat|carikan|cari|daftar|list|show|berapa|jumlah|total|hitung|count|ringkasan|rekap|ada\s+berapa)\b/.test(text);
+}
+
 /** Asking whether/how an action is possible never authorizes that action. */
 export function isProcedureQuestion(message: string) {
   const text = intentText(message);
+  if (isDataReadQuestion(message)) return false;
   if (/\b(?:cara|caranya|panduan|tutorial|dimana|di mana|how to|how do|how can)\b/.test(text)) return true;
   if (/\b(?:bagaimana|gimana|gmn)\b/.test(text) && (procedureOperation(text) || procedureTopic(text))) return true;
   if (!procedureOperation(text)) return false;
@@ -78,4 +86,10 @@ export function isIntentCorrection(message: string) {
  * instructions are not commands; polite explicit commands remain supported. */
 export function isExplicitWriteRequest(message: string) {
   return !isProcedureQuestion(message) && /^\s*(?:(?:tolong|mohon|please)\s+|saya\s+(?:ingin|mau)\s+)?(?:buat(?:kan)?|membuat|bikin|create|tambah(?:kan)?|menambah(?:kan)?|ubah|mengubah|edit|update|perbarui|memperbarui)\b/.test(intentText(message));
+}
+
+/** MCP read tools reject commands, not action words inside record names or filters. */
+export function isMutationCommand(message: string) {
+  if (isProcedureQuestion(message) || isDataReadQuestion(message)) return false;
+  return /^\s*(?:(?:tolong|mohon|please)\s+|saya\s+(?:ingin|mau)\s+)?(?:buat(?:kan)?|membuat|bikin|create|tambah(?:kan)?|menambah(?:kan)?|ubah|mengubah|edit|update|perbarui|memperbarui|hapus(?:kan)?|menghapus|delete|remove|setujui|approve|acc|tolak|reject|assign|tugaskan|bayar|lunasi|publikasikan|publish|arsipkan|archive|batalkan|cancel)\b/.test(intentText(message));
 }

@@ -5,7 +5,7 @@ import { MarbotRuntimeAuthority } from './marbot.types';
 import { helperAnswer, systemKnowledgeAnswer } from './marbot-knowledge';
 import { proposeAction } from './marbot-action.service';
 import { proposeNamedTaskAction } from './marbot-named-action.service';
-import { isIntentCorrection, isProcedureQuestion, procedureOperation, procedureTopic } from './marbot-intent';
+import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion, procedureOperation, procedureTopic } from './marbot-intent';
 
 export type NativeScope = MarbotRuntimeAuthority & { tenantId: string; companyId: string; userId: string; blockedReadModules?: string[]; blockedWriteModules?: string[] };
 export const dashboardRoles: RoleCode[] = [RoleCode.DIRECTOR, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER];
@@ -34,7 +34,7 @@ export function detectTools(message: string): string[] {
 export function isNativeTaskReadQuestion(message: string) {
   return (/\b(task|tasks|tugas)\b/i.test(message) || isWeeklyTaskQuestion(message))
     && detectTools(message).join(',') === 'tasks'
-    && !procedureOperation(message)
+    && (!procedureOperation(message) || isDataReadQuestion(message))
     && !/\b(cara|caranya|bagaimana(?!\s+dengan)|gimana|gmn|panduan|dimana|di mana|how to|how do|how can|fitur|modul|workflow|alur|fungsi|sistem|schema|skema|resource|permission|role|peran)\b/i.test(message)
     && !/[{}]/.test(message);
 }

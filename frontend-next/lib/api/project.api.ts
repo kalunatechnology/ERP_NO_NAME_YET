@@ -54,6 +54,7 @@ export interface ProjectAuthority {
   can_manage_wbs: boolean;
   can_assign_team: boolean;
   can_manage_weekly_tasks: boolean;
+  can_review_weekly_tasks?: boolean;
   can_direct_reassign: boolean;
   can_review_task_transfer: boolean;
   can_override_progress: boolean;
@@ -104,6 +105,7 @@ export interface MainTask {
 
 export interface WeeklyTask {
   id: string | number;
+  created_by_id?: string | number;
   main_task: string | number;
   project?: string | number;
   week_number: number;
@@ -483,6 +485,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
 
       weeklyByMain[mId].push({
         id: w.id,
+        created_by_id: w.created_by_id,
         main_task: mId,
         project: pid,
         week_number: Number(w.week_number || 1),

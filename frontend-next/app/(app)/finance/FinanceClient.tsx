@@ -174,6 +174,11 @@ export default function FinanceClient() {
   const [proposals, setProposals] = useState<any[]>([]);
   const [vendorBills, setVendorBills] = useState<any[]>([]);
   const [customerReceipts, setCustomerReceipts] = useState<any[]>([]);
+  const [receiptReadiness, setReceiptReadiness] = useState<Record<string, { action: string | null; allowed: boolean; message: string }>>({});
+  const [receiptActionId, setReceiptActionId] = useState<string | null>(null);
+  const [receiptActionError, setReceiptActionError] = useState<Record<string, string>>({});
+  const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
+  const [receiptSummary, setReceiptSummary] = useState<{ posted_amount: number; posted_count: number; pending_count: number; outstanding_amount: number } | null>(null);
   const [payments, setPayments] = useState<any[]>([]);
 
   /* Accounting / GL states */
@@ -310,9 +315,18 @@ export default function FinanceClient() {
       setVendorBills(normalizeList(apRes.data).rows);
       setPayments(normalizeList(paymentRes.data).rows);
       setCustomerReceipts(normalizeList<any>(receiptRes.data).rows.map((receipt) => ({
-        ...receipt,
         ...(typeof receipt.allocation_plan === "object" && receipt.allocation_plan ? receipt.allocation_plan : {}),
+        ...receipt,
       })));
+      const receiptIds = normalizeList<any>(receiptRes.data).rows.map(receipt => receipt.id).join(",");
+      const [readinessResponse, invoicesResponse, receiptSummaryResponse] = await Promise.all([
+        receiptIds ? safeGet(`/api/v1/finance/customer-receipts/workflow-readiness?ids=${encodeURIComponent(receiptIds)}`, "ar") : Promise.resolve({ data: [] }),
+        safeGet("/api/v1/finance/billing-documents/?billing_type=CUSTOMER_INVOICE&status=POSTED&page_size=200", "ar"),
+        safeGet("/api/v1/finance/customer-receipts/summary", "ar"),
+      ]);
+      setReceiptReadiness(Object.fromEntries(normalizeList<any>(readinessResponse.data).rows.map(item => [item.receipt_id, item])));
+      setCustomerInvoices(normalizeList<any>(invoicesResponse.data).rows);
+      setReceiptSummary(receiptSummaryResponse.data);
 
       // Accounting data
       if (tbRes.data?.data) setTrialBalance(tbRes.data.data);
@@ -329,13 +343,21 @@ export default function FinanceClient() {
 
       const stmtList = normalizeList(stmtRes.data).rows;
       if (stmtList.length > 0) setBankStatements(stmtList);
-      setBankAccounts(normalizeList<any>(bankRes.data).rows.map((account) => ({
+      const bankRows = normalizeList<any>(bankRes.data).rows;
+      const bankBalances = await Promise.all(bankRows.map(async account => {
+        if (!account.ledger_account_id) return undefined;
+        try {
+          const response = await api.get(`/api/v1/finance/bank-accounts/${account.id}/balance`);
+          return Number((response.data?.data ?? response.data).balance);
+        } catch { return undefined; }
+      }));
+      setBankAccounts(bankRows.map((account, index) => ({
         id: String(account.id),
         name: account.account_name || account.bank_name || account.account_number,
         number: account.account_number || "",
         bank: account.bank_name || "",
         type: account.account_type || "BANK_ACCOUNT",
-        balance: account.balance == null ? undefined : Number(account.balance),
+        balance: bankBalances[index],
       })));
       const accountRows = normalizeList<any>(accountRes.data).rows;
       setLedgerAccounts(accountRows);
@@ -393,9 +415,10 @@ export default function FinanceClient() {
   const totalBillingRevenue = proposals
     .filter(p => p.status === "APPROVED" || p.status === "PAID")
     .reduce((acc, curr) => acc + Number(curr.total_amount ?? curr.amount ?? curr.subtotal ?? 0), 0);
-  const totalInflowRevenue = customerReceipts.reduce((acc, r) => acc + Number(r.amount || 0), 0);
+  const postedReceipts = customerReceipts.filter(receipt => receipt.status === "POSTED");
+  const totalInflowRevenue = receiptSummary?.posted_amount ?? 0;
 
-  const totalRevenue = totalBillingRevenue > 0 ? totalBillingRevenue : totalInflowRevenue;
+  const totalRevenue = totalBillingRevenue;
   
   const totalFunding = fundings.reduce(
     (acc, curr) => acc + Number(curr.amount ?? curr.funding_amount ?? curr.requested_amount ?? curr.approved_limit ?? curr.total_amount ?? 0),
@@ -480,6 +503,25 @@ export default function FinanceClient() {
     } catch {
       toast.error("Lifecycle pembayaran gagal. Periksa role aktif, pemisahan tugas, dan periode fiskal.");
     }
+  };
+
+  const handleReceiptLifecycle = async (receipt: any) => {
+    const readiness = receiptReadiness[receipt.id];
+    if (!readiness?.allowed || !readiness.action || receiptActionId) return;
+    setReceiptActionId(receipt.id);
+    setReceiptActionError(previous => ({ ...previous, [receipt.id]: "" }));
+    try {
+      const path = readiness.action === "post"
+        ? `/api/v1/finance/customer-receipts/${receipt.id}/post`
+        : `/api/v1/finance/payments/${receipt.id}/${readiness.action}`;
+      await api.post(path, {});
+      await loadFinanceData(true);
+      toast.success(readiness.action === "post" ? "Penerimaan dibukukan; saldo kas / bank dan piutang diperbarui." : readiness.action === "approve" ? "Penerimaan disetujui." : "Penerimaan diajukan untuk persetujuan.");
+    } catch (error) {
+      const message = getApiErrorDetail(error, "Penerimaan gagal diproses. Silakan coba kembali.");
+      setReceiptActionError(previous => ({ ...previous, [receipt.id]: message }));
+      toast.error(message);
+    } finally { setReceiptActionId(null); }
   };
 
 /**
@@ -1108,31 +1150,32 @@ export default function FinanceClient() {
           {/* KPI Summary Uang Masuk */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="card p-4 rounded-2xl border border-brand-primary-soft bg-brand-light-green/50">
-              <span className="text-2xs font-bold text-brand-deep-green uppercase tracking-wider block">Total Penerimaan Tercatat</span>
+              <span className="text-2xs font-bold text-brand-deep-green uppercase tracking-wider block">Total Penerimaan Dibukukan</span>
               <span className="text-2xl font-black text-brand-deep-green mt-1 block">
-                {formatMoney(customerReceipts.reduce((acc, r) => acc + Number(r.amount || 0), 0))}
+                {formatMoney(totalInflowRevenue)}
               </span>
-              <span className="text-2xs text-text-secondary mt-0.5 block">{customerReceipts.length} catatan penerimaan; lihat status setiap transaksi</span>
+              <span className="text-2xs text-text-secondary mt-0.5 block">{receiptSummary?.posted_count ?? 0} transaksi POSTED; {receiptSummary?.pending_count ?? 0} belum dibukukan</span>
             </div>
 
             <div className="card p-4 rounded-2xl border border-amber-200 bg-amber-50/50">
               <span className="text-2xs font-bold text-amber-800 uppercase tracking-wider block">Sisa Piutang Berjalan (Outstanding AR)</span>
               <span className="text-2xl font-black text-amber-700 mt-1 block">
-                {formatMoney(185000000)}
+                {formatMoney(receiptSummary?.outstanding_amount ?? 0)}
               </span>
               <span className="text-2xs text-text-secondary mt-0.5 block">Invoice termin proyek belum lunas</span>
             </div>
 
             <div className="card p-4 rounded-2xl border border-text-tertiary bg-white">
-              <span className="text-2xs font-bold text-text-secondary uppercase tracking-wider block">Rata-Rata Siklus Pelunasan</span>
-              <span className="text-2xl font-black text-text-primary mt-1 block">14 Hari</span>
-              <span className="text-2xs text-text-secondary mt-0.5 block">Kolektibilitas pembayaran lancar (A+)</span>
+              <span className="text-2xs font-bold text-text-secondary uppercase tracking-wider block">Menunggu Diproses</span>
+              <span className="text-2xl font-black text-text-primary mt-1 block">{receiptSummary?.pending_count ?? 0} transaksi</span>
+              <span className="text-2xs text-text-secondary mt-0.5 block">DRAFT → SUBMITTED → APPROVED → POSTED</span>
             </div>
           </div>
 
           {/* Tabel Riwayat Uang Masuk */}
           <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
             <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Riwayat Penerimaan Pembayaran Klien</h4>
+            <p className="text-xs text-text-secondary">Ajukan penerimaan, tunggu persetujuan, lalu posting untuk membukukan uang masuk. Penerimaan tanpa invoice dicatat sebagai uang muka pelanggan.</p>
             <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
               <table className="w-full data-table text-xs text-left min-w-[580px]">
                 <thead>
@@ -1142,6 +1185,7 @@ export default function FinanceClient() {
                     <th className="py-3 px-4 font-bold">Rekening Penerima</th>
                     <th className="py-3 px-4 font-bold">Jumlah Uang Masuk</th>
                     <th className="py-3 px-4 font-bold">Status</th>
+                    <th className="py-3 px-4 font-bold">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1167,6 +1211,16 @@ export default function FinanceClient() {
                         <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
                           {String(rec.status || "DRAFT")}
                         </span>
+                      </td>
+                      <td className="py-3 px-4 max-w-[280px]">
+                        {receiptReadiness[rec.id]?.action && (
+                          <button type="button" disabled={!receiptReadiness[rec.id]?.allowed || receiptActionId !== null}
+                            onClick={() => handleReceiptLifecycle(rec)} className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50">
+                            {receiptActionId === rec.id ? "Memproses…" : ({ submit: "Ajukan", approve: "Setujui", post: "Posting Penerimaan" } as Record<string, string>)[receiptReadiness[rec.id].action!]}
+                          </button>
+                        )}
+                        <p className="text-2xs text-text-secondary mt-1">{receiptReadiness[rec.id]?.message || (rec.status === "POSTED" ? "Sudah dibukukan." : "Memuat kewenangan…")}</p>
+                        {receiptActionError[rec.id] && <p role="alert" className="text-xs text-red-600 mt-1">{receiptActionError[rec.id]}</p>}
                       </td>
                     </tr>
                   ))}
@@ -1236,7 +1290,7 @@ export default function FinanceClient() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {/* Gabungan Mutasi Uang Masuk dan Uang Keluar */}
-                  {customerReceipts.map((rec) => (
+                  {postedReceipts.map((rec) => (
                     <tr key={`in-${rec.id}`} className="hover:bg-brand-light-green/20">
                       <td className="py-3 px-4 font-mono text-2xs">{rec.payment_date}</td>
                       <td className="py-3 px-4">
@@ -1244,7 +1298,7 @@ export default function FinanceClient() {
                           🟢 Uang Masuk (Inflow)
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-semibold text-text-primary">{rec.bank_account.split("—")[0]}</td>
+                      <td className="py-3 px-4 font-semibold text-text-primary">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</td>
                       <td className="py-3 px-4">
                         <span className="text-text-primary block font-medium">{rec.customer_name} — {rec.invoice_ref}</span>
                         <span className="text-2xs text-text-secondary block font-mono">Ref: {rec.reference_number}</span>
@@ -2384,7 +2438,8 @@ export default function FinanceClient() {
                 allocation_plan: {
                   customer_name: receiptForm.customer_name.trim(),
                   project_name: receiptForm.project_name.trim(),
-                  invoice_ref: receiptForm.invoice_ref.trim(),
+                  invoice_id: receiptForm.invoice_ref,
+                  invoice_ref: customerInvoices.find(invoice => invoice.id === receiptForm.invoice_ref)?.invoice_number || "",
                   bank_account: bank?.name,
                   notes: receiptForm.notes.trim(),
                 },
@@ -2442,13 +2497,18 @@ export default function FinanceClient() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Referensi Faktur / Termin</label>
-              <input
-                type="text"
+              <label htmlFor="receipt-invoice" className="text-xs font-bold text-text-primary block mb-1">Referensi Faktur / Termin</label>
+              <select id="receipt-invoice"
                 value={receiptForm.invoice_ref}
                 onChange={e => setReceiptForm({ ...receiptForm, invoice_ref: e.target.value })}
                 className="input text-xs"
-              />
+              >
+                <option value="">Tanpa invoice — Uang muka pelanggan</option>
+                {customerInvoices.filter(invoice => Number(invoice.outstanding_amount ?? Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0)) > 0).map(invoice => (
+                  <option key={invoice.id} value={invoice.id}>{invoice.invoice_number} — Sisa {formatMoney(invoice.outstanding_amount ?? Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0))}</option>
+                ))}
+              </select>
+              <p className="text-2xs text-text-secondary mt-1">Pilih invoice yang sudah dibukukan untuk mengurangi piutang.</p>
             </div>
             <div>
               <label htmlFor="receipt-amount" className="text-xs font-bold text-text-primary block mb-1">Nominal Uang Masuk (Rp) *</label>

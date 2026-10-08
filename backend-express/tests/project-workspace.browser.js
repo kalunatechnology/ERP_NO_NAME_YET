@@ -9,7 +9,7 @@ async function main() {
   const fixtureFile = path.join(fixtureDir, 'page.tsx');
   assert(!fs.existsSync(fixtureDir), 'Never overwrite a real route');
   fs.mkdirSync(fixtureDir);
-  fs.writeFileSync(fixtureFile, '"use client";\nimport { Suspense } from "react";\nimport dynamic from "next/dynamic";\nimport { useSearchParams } from "next/navigation";\nconst Sidebar = dynamic(() => import("@/components/layout/Sidebar").then(module => module.Sidebar), { ssr: false });\nconst ProjectsClient = dynamic(() => import("@/app/(app)/projects/ProjectsClient"), { ssr: false });\nconst TasksClient = dynamic(() => import("@/app/(app)/tasks/TasksClient"), { ssr: false });\nfunction Surface(){ return useSearchParams().get("surface") === "tasks" ? <TasksClient/> : <div className="flex"><div className="hidden lg:flex shrink-0"><Sidebar/></div><div className="min-w-0 flex-1"><ProjectsClient/></div></div>; }\nexport default function Fixture(){return <Suspense><Surface/></Suspense>;}');
+  fs.writeFileSync(fixtureFile, '"use client";\nimport { Suspense } from "react";\nimport dynamic from "next/dynamic";\nimport { useSearchParams } from "next/navigation";\nconst Sidebar = dynamic(() => import("@/components/layout/Sidebar").then(module => module.Sidebar), { ssr: false });\nconst ProjectsClient = dynamic(() => import("@/app/(app)/projects/ProjectsClient"), { ssr: false });\nconst TasksClient = dynamic(() => import("@/app/(app)/tasks/TasksClient"), { ssr: false });\nconst RightPanel = dynamic(() => import("@/components/ui/RightPanel").then(module => module.RightPanel), { ssr: false });\nfunction Surface(){ const surface=useSearchParams().get("surface"); return surface === "alerts" ? <div className="w-80"><RightPanel/></div> : surface === "tasks" ? <TasksClient/> : <div className="flex"><div className="hidden lg:flex shrink-0"><Sidebar/></div><div className="min-w-0 flex-1"><ProjectsClient/></div></div>; }\nexport default function Fixture(){return <Suspense><Surface/></Suspense>;}');
   let app, server, browser;
   try {
     const { chromium } = require(path.join(process.env.MARBOT_TEST_RUNTIME_PACKAGES, 'playwright'));
@@ -32,6 +32,7 @@ async function main() {
     const assignments = [{ id: 'other-first', main_task_id: 'main-b', assignee_id: 'other-user', assignee_name: 'Other User' }, ...['a', 'b', 'c'].map(id => ({ id: `assign-${id}`, main_task_id: `main-${id}`, assignee_id: actorId, assignee_name: 'Fixture User' }))];
     const weeklies = [{ id: 'week-a', main_task_id: 'main-a', assignee_id: actorId, week_number: 1, target_description: 'Approved weekly', start_date: '2026-10-05', end_date: '2026-10-11', status: 'PLANNED', progress: 0 }, { id: 'other-week-c', main_task_id: 'main-c', assignee_id: 'other-user', target_description: 'Other user weekly', status: 'PLANNED', progress: 0 }];
     let dailies = [{ id: 'daily-a', weekly_task_id: 'week-a', owner_id: actorId, title: 'Daily editable', time_slot: '09:00-10:00', planned_date: '2026-10-06', output_target: 'Report', output_result: '', notes: '', status: 'IN_PROGRESS', progress: 0 }];
+    let notificationRows = [];
     const bundle = () => ({ projects, mainTasks, assignments, weeklyTasks: weeklies, dailyTasks: dailies, tasks: [], milestones: [], stages: [], costEntries: [], proposals: [], fundings: [], users: [] });
     const token = `e30.${Buffer.from(JSON.stringify({ exp: 4102444800 })).toString('base64url')}.fixture`;
     await page.context().addCookies([{ name: 'access_token', value: token, url: 'http://127.0.0.1:3012' }]);
@@ -40,6 +41,8 @@ async function main() {
       const request = route.request(), url = new URL(request.url()), endpoint = url.pathname;
       const json = data => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
       if (endpoint.includes('/auth/me')) return json(profile());
+      if (endpoint.includes('/sidebar-feed')) return json({ notifications: notificationRows, contacts: [], activities: [] });
+      if(endpoint.endsWith('/weekly-tasks/review-workspace')) return json(bundle());
       if (endpoint.includes('/dashboard/bootstrap')) {
         bootstraps++;
         if (role === 'ROLE-STAFF') assert.equal(url.searchParams.has('project_workspace'), false, 'Ordinary Staff must request personal project data');
@@ -55,7 +58,7 @@ async function main() {
       if (endpoint.endsWith('/authority')) {
         const projectId = endpoint.split('/').at(-2);
         const manage = role === 'ROLE-PM' || (role === 'ROLE-SUPERVISOR' && supervisorActive && projectId === 'a');
-        return json({ project_id: projectId, is_acting_project_manager: role === 'ROLE-SUPERVISOR' && manage, can_manage_project: manage, can_manage_wbs: manage, can_manage_weekly_tasks: manage, can_assign_team: false, can_view_financials: manage });
+        return json({ project_id: projectId, is_acting_project_manager: role === 'ROLE-SUPERVISOR' && manage, can_manage_project: manage, can_manage_wbs: manage, can_manage_weekly_tasks: manage, can_review_weekly_tasks: manage || role === 'ROLE-SUPERVISOR', can_assign_team: false, can_view_financials: manage });
       }
       if (endpoint.endsWith('/supervisor')) return json(null);
       if (/\/weekly-tasks\/?$/.test(endpoint) && request.method() === 'POST') {
@@ -112,7 +115,7 @@ async function main() {
     assert.equal(await modal.locator('select').inputValue(), actorId);
     assert(await modal.locator('select').isDisabled());
     await modal.getByRole('button', { name: 'Ajukan Target Mingguan' }).click();
-    await page.getByText('Target mingguan diajukan dan menunggu approval PM.', { exact: true }).waitFor();
+    await page.getByText('Target mingguan diajukan dan menunggu approval PM / SPV.', { exact: true }).waitFor();
     assert.equal(submissions, 1);
     await page.getByRole('button', { name: 'Buka Semua' }).click();
     await page.getByRole('button', { name: /^(Daily Task|Tugas Harian)$/ }).first().waitFor();
@@ -188,17 +191,68 @@ async function main() {
     assert.equal(await modal.locator('select').inputValue(), actorId); assert(await modal.locator('select').isDisabled());
     await modal.locator('textarea').fill('Shared Main personal proposal');
     await modal.getByRole('button', { name: 'Ajukan Target Mingguan' }).click();
-    await page.getByText('Target mingguan diajukan dan menunggu approval PM.', { exact: true }).waitFor();
+    await page.getByText('Target mingguan diajukan dan menunggu approval PM / SPV.', { exact: true }).waitFor();
     assert.equal(submissions, 2);
     assert.equal(await page.getByRole('button', { name: 'Tambah Main Task', exact: true }).count(), 0, 'Personal assignment cannot grant project management');
     await page.locator('#project-selector').selectOption('c'); await page.waitForURL(/project=c/);
     await page.getByRole('button', { name: 'Ajukan Target Mingguan' }).waitFor();
-    assert.equal(await page.getByText('Other user weekly', { exact: true }).count(), 0);
+    await page.getByRole('button',{name:'Buka Semua',exact:true}).click();
+    await page.getByText('Other user weekly', { exact: true }).waitFor();
     supervisorActive = false;
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByRole('button', { name: 'Ajukan Target Mingguan' }).waitFor();
     assert.equal(await page.locator('#project-selector option').count(), 3, 'No management scope must not suppress personal assignment data');
+    weeklies.push({id:'ordinary-spv-review',main_task_id:'main-c',assignee_id:'other-user',created_by_id:'other-user',week_number:3,target_description:'Shared approval without Acting PM',status:'PENDING_APPROVAL',progress:0});
+    await page.getByTitle('Segarkan data proyek').click();
+    await page.getByRole('heading',{name:'Persetujuan Target Mingguan',exact:true}).waitFor();
+    const sharedApproval=page.locator('div.rounded-xl').filter({has:page.locator('strong').filter({hasText:'Shared approval without Acting PM'})}).first();
+    await sharedApproval.getByRole('button',{name:'Approve (Setujui)',exact:true}).click();
+    await page.getByText('Weekly Task disetujui.',{exact:true}).waitFor();
+    assert.equal(weeklies.find(w=>w.id==='ordinary-spv-review').status,'PLANNED');
+    assert.equal(await page.getByRole('button',{name:'Tambah Main Task',exact:true}).count(),0,'Review must not grant WBS management');
+    weeklies.push({id:'own-spv-review',main_task_id:'main-c',assignee_id:actorId,created_by_id:actorId,week_number:5,target_description:'SPV own submission',status:'PENDING_APPROVAL',progress:0});
+    await page.getByTitle('Segarkan data proyek').click();
+    const ownProposal=page.locator('div.rounded-xl').filter({has:page.locator('strong').filter({hasText:'SPV own submission'})}).first();
+    assert(await ownProposal.getByRole('button',{name:'Approve (Setujui)',exact:true}).isDisabled());
+    assert(await ownProposal.getByRole('button',{name:'Reject (Tolak)',exact:true}).isDisabled());
+    await ownProposal.getByText('Pengajuan Anda sendiri perlu keputusan PM / SPV lain.',{exact:true}).waitFor();
+    await page.screenshot({path:path.join(artifacts,'ordinary-spv-shared-approval.png'),fullPage:true});
     role = 'ROLE-PM'; await page.evaluate(user => localStorage.setItem('erp.user', JSON.stringify(user)), profile());
+    await page.reload({waitUntil:'networkidle'});
+    await page.getByRole('button',{name:'Buka Semua',exact:true}).click();
+    await page.getByText('Shared approval without Acting PM',{exact:true}).waitFor();
+    assert.match(await sharedApproval.innerText(),/PLANNED/,'PM must see SPV decision on the same weekly');
+    weeklies.push({id:'pm-shared-rejection',main_task_id:'main-c',assignee_id:'other-user',created_by_id:'other-user',week_number:4,target_description:'Shared PM rejection',status:'PENDING_APPROVAL',progress:0});
+    await page.getByTitle('Segarkan data proyek').click();
+    const sharedRejection=page.locator('div.rounded-xl').filter({has:page.locator('strong').filter({hasText:'Shared PM rejection'})}).first();
+    await sharedRejection.getByRole('button',{name:'Reject (Tolak)',exact:true}).click();
+    await page.getByText('Weekly Task ditolak.',{exact:true}).waitFor();
+    role='ROLE-SUPERVISOR';await page.evaluate(user=>localStorage.setItem('erp.user',JSON.stringify(user)),profile());
+    await page.reload({waitUntil:'networkidle'});
+    await page.getByRole('button',{name:'Buka Semua',exact:true}).click();
+    await page.getByText('Shared PM rejection',{exact:true}).waitFor();
+    assert.match(await sharedRejection.innerText(),/Ditolak/,'SPV must see PM rejection');
+    assert.equal(await sharedRejection.getByRole('button',{name:/^(Daily Task|Tugas Harian)$/}).count(),0);
+    notificationRows = [
+      { id: 'notice-created', category: 'WEEKLY_TARGET_CREATED', title: 'Pengajuan weekly target baru', weekly: 'own-spv-review' },
+      { id: 'notice-approved', category: 'WEEKLY_TARGET_APPROVED', title: 'Weekly target disetujui', weekly: 'ordinary-spv-review' },
+      { id: 'notice-rejected', category: 'WEEKLY_TARGET_REJECTED', title: 'Weekly target ditolak', weekly: 'pm-shared-rejection' },
+    ].map(row => ({ ...row, target_url: `/projects?project=c&tab=TREE&weekly=${row.weekly}`, description: 'Fixture weekly event', created_at: new Date().toISOString(), is_read: false }));
+    for (const notice of notificationRows) {
+      await page.goto(`${origin}?surface=alerts`, { waitUntil: 'networkidle' });
+      const alert = page.getByRole('button', { name: new RegExp(notice.title) });
+      await alert.getByText('Target Mingguan', { exact: true }).waitFor();
+      await alert.click();
+      await page.waitForURL(`http://127.0.0.1:3012${notice.target_url}`);
+      await page.waitForFunction(id => document.activeElement?.id === `weekly-target-${id}`, notice.weekly);
+      const target = page.locator(`#weekly-target-${notice.weekly}`);
+      assert.equal(await page.locator('#project-selector').inputValue(), 'c');
+      assert.match(await target.getAttribute('class'), /ring-2/, 'The exact linked weekly must be highlighted');
+      assert(await target.getByTitle('Tutup target mingguan', { exact: true }).isVisible(), 'The linked weekly branch must open without Expand All');
+      if (notice.category === 'WEEKLY_TARGET_REJECTED') assert.match(await target.innerText(), /Ditolak/);
+      if (notice.category === 'WEEKLY_TARGET_APPROVED') await target.screenshot({ path: path.join(artifacts, 'notification-weekly-target.png') });
+    }
+    role='ROLE-PM';await page.evaluate(user=>localStorage.setItem('erp.user',JSON.stringify(user)),profile());
     await page.goto(`${origin}?surface=tasks`, { waitUntil: 'networkidle' });
     await page.getByRole('button', { name: /^Semua \(/ }).click();
     await page.setViewportSize({ width: 390, height: 844 });
@@ -215,7 +269,7 @@ async function main() {
     page.once('dialog', dialog => dialog.accept()); await page.getByTitle(/^Hapus (Daily Task|Tugas Harian)$/).click();
     await page.getByText(/^(Daily Task|Tugas Harian) dihapus\.$/).waitFor(); assert.equal(deletes, 1);
     assert.deepEqual(errors, []);
-    console.log('PASS: real React clients/browser with intercepted API fixtures — shared Main assignment, personal+managed projects without duplicates, self PIC, pending gate, supervisor fallback/permissions, PM review, Daily edit/delete.');
+    console.log('PASS: React browser fixtures — actual notification clicks open /projects and focus/expand/highlight the exact pending/approved/rejected weekly; PM/SPV shared approval, management/delete permissions, self PIC and Daily gates remain intact.');
   } finally {
     if (browser) await browser.close();
     if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

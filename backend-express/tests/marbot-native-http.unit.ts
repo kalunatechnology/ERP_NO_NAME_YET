@@ -42,6 +42,12 @@ async function main() {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => { (req as any).user = { id: 'user-a', tenant_id: 'tenant-a' }; req.companyId = 'company-a'; next(); });
+  let mcpCanonicalReads=0;
+  app.get('/api/v1/implementation/work-items/', (req,res) => {
+    assert.equal(req.headers.authorization,'Bearer mcp-fixture'); assert.equal(req.headers['x-company-id'],'company-a');
+    if(req.query.title) assert.equal(req.query.title,'Buat laporan');
+    mcpCanonicalReads++; res.json({count:req.query.title?1:7,results:[]});
+  });
   app.use(nativeMarbotRouter);
   app.use(errorHandler);
   const server = app.listen(0, '127.0.0.1');
@@ -205,9 +211,31 @@ async function main() {
     assert.equal((await mcp('tools/call', { name: 'erp.query', arguments: { resource: 'projects.projects', operation: 'list' } })).status, 403);
     // A forged role in arguments cannot enable a hidden tool.
     assert.equal((await mcp('tools/call', { name: 'erp.readQuestion', arguments: { question: 'biaya', role: 'DIRECTOR' } })).status, 403);
+    const mcpKey=env.MARBOT_AI_API_KEY,mcpModel=env.MARBOT_AI_MODEL,mcpFetch=global.fetch;
+    try {
+      (authority as any).buildMarbotRuntimeAuthority=async()=>({...scope,roleCode:RoleCode.PROJECT_MANAGER,enabledModules:['MARBOT','PROJECTS','IMPLEMENTATION'],permissions:['USE_MARBOT','READ_PROJECT','READ_TASK']});
+      env.MARBOT_AI_API_KEY='fixture-key';env.MARBOT_AI_MODEL='fixture-model';
+      global.fetch=async(url,options)=>{
+        if(!String(url).startsWith('https://openrouter.ai/')) return mcpFetch(url,options);
+        const prompt=JSON.parse(String(options?.body));const question=JSON.parse(prompt.messages.at(-1).content).request;
+        return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({route:'resource',plan:{resource:'implementation.work-items',operation:'count',filters:question.includes('Buat laporan')?{title:'Buat laporan'}:{}},confidence:0.99})}}]}),{status:200});
+      };
+      const mcpQuestion=async(question:string)=>{
+        const response=await mcpFetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream',Authorization:'Bearer mcp-fixture'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'erp.readQuestion',arguments:{question}}})});
+        assert.equal(response.status,200);return response.json() as any;
+      };
+      const read=await mcpQuestion('jumlah pekerjaan implementasi yang tercatat ada berapa?');
+      assert.equal(read.result.isError,false);const answer=JSON.parse(read.result.content[0].text);assert.match(answer.content,/7 record/);assert(answer.sources.length);assert.equal(mcpCanonicalReads,1);
+      const quoted=await mcpQuestion('berapa implementation.work-items dengan judul "Buat laporan"?');
+      assert.equal(quoted.result.isError,false,'An action word in a record title must not trigger the mutation guard');
+      assert.match(JSON.parse(quoted.result.content[0].text).content,/1 record/);
+      for(const question of ['tolong buatkan proyek A','hapus meeting','approve weekly target']){
+        const before:number=mcpCanonicalReads;const mutation=await mcpQuestion(question);assert.equal(mutation.result.isError,true);assert.match(mutation.result.content[0].text,/Tool baca/);assert.equal(mcpCanonicalReads,before);
+      }
+    } finally {env.MARBOT_AI_API_KEY=mcpKey;env.MARBOT_AI_MODEL=mcpModel;global.fetch=mcpFetch;(authority as any).buildMarbotRuntimeAuthority=async()=>scope;}
     requestCount = 20;
     assert.equal((await send({ message: 'hi' })).status, 429);
-    console.log('Native MarBot HTTP: SSE, persistence, authority, input validation, ownership and rate limit passed.');
+    console.log('Native MarBot HTTP: SSE, persistence, authority, ownership, rate limit, MCP semantic retrieval, literal filters, quoted action names and read-only mutation guard passed.');
   } finally {
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));

@@ -34,6 +34,8 @@ export interface CrudOptions {
   /** Adds domain row visibility on top of the standard tenant/company scope. */
   accessWhere?: (req: Request) => Promise<Record<string, unknown>> | Record<string, unknown>;
   afterCreate?: (req: Request, record: any) => Promise<void> | void;
+  /** Domain effects that must commit atomically with single and bulk creates. */
+  afterCreateInTransaction?: (req: Request, record: any, tx: Prisma.TransactionClient) => Promise<void>;
   afterUpdate?: (req: Request, record: any, before: any) => Promise<void> | void;
   afterDelete?: (req: Request, record: any) => Promise<void> | void;
   transform?: (record: any) => any;
@@ -433,6 +435,9 @@ export function assertRecordMutable(modelName: string, existing: any): void {
     throw new ConflictError('Record operasional selesai bersifat immutable; diperlukan reversal atau koreksi resmi.');
   }
   if (!modelName.startsWith('fin_')) return;
+  if (modelName === 'fin_payment' && ['SUBMITTED', 'APPROVED'].includes(existing?.status)) {
+    throw new ConflictError('Payment yang sudah diajukan atau disetujui tidak dapat diubah atau dihapus melalui generic CRUD.');
+  }
   const terminal = new Set(['POSTED', 'PAID', 'CLOSED', 'LOCKED', 'EXECUTED', 'REVERSED']);
   const terminalState = [existing?.status, existing?.payment_status, existing?.approval_status]
     .map((value) => String(value ?? '').toUpperCase())
@@ -645,6 +650,7 @@ export function createCrudRouter(options: CrudOptions): Router {
           payload = await applyAndValidateWriteScope(req, modelNameStr, validFields, payload);
           payload = cleanData(payload, validFields);
           const rec = await tx[options.modelName].create({ data: payload });
+          if (options.afterCreateInTransaction) await options.afterCreateInTransaction(req, rec, tx);
           results.push(format(rec));
         }
         return results;
@@ -902,7 +908,13 @@ export function createCrudRouter(options: CrudOptions): Router {
         data = cleanedData;
       }
 
-      const record = await delegate.create({ data });
+      const record = options.afterCreateInTransaction
+        ? await prisma.$transaction(async tx => {
+            const created = await (tx as any)[options.modelName].create({ data });
+            await options.afterCreateInTransaction!(req, created, tx);
+            return created;
+          }, { maxWait: 5_000, timeout: 30_000 })
+        : await delegate.create({ data });
 
       if (options.afterCreate) {
         await options.afterCreate(req, record);

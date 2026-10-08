@@ -69,6 +69,8 @@ interface ProjectWbsNodeProps {
   canManageWbs: boolean;
   canAssignTeam: boolean;
   canManageWeeklyTasks: boolean;
+  canReviewWeeklyTasks: boolean;
+  focusWeeklyId?: string | null;
   onReviewWeeklyTask: (id: string | number, decision: "APPROVE" | "REJECT") => Promise<void>;
   currentUserId: string;
   userRole: string;
@@ -93,6 +95,8 @@ export function ProjectWbsNode({
   canManageWbs,
   canAssignTeam,
   canManageWeeklyTasks,
+  canReviewWeeklyTasks,
+  focusWeeklyId,
   onReviewWeeklyTask,
   currentUserId,
   userRole,
@@ -266,7 +270,7 @@ export function ProjectWbsNode({
                 const isReviewing = reviewingWeeklyId === String(weekly.id);
 
                 return (
-                  <div key={weekly.id} className="rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200">
+                  <div key={weekly.id} id={`weekly-target-${weekly.id}`} tabIndex={-1} className={cn("scroll-mt-24 rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200 focus:outline-none", String(weekly.id) === focusWeeklyId && "ring-2 ring-[#294BB2] ring-offset-2")}>
                     {/* Level 2 Header: Weekly Target */}
                     <div className="p-2.5 sm:p-3 bg-indigo-50/60 border-b border-indigo-100 flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -327,17 +331,18 @@ export function ProjectWbsNode({
                       </div>
                     </div>
 
-                    {isPendingApproval && canManageWeeklyTasks && (
+                    {isPendingApproval && canReviewWeeklyTasks && (
                       <div className="flex flex-col gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-sm font-bold text-amber-900">Pengajuan menunggu keputusan PM / SPV</p>
                           <p className="mt-1 text-xs leading-5 text-amber-800">Setujui target ini agar PIC dapat membuat Daily Task.</p>
+                          {String(weekly.created_by_id ?? '') === String(currentUserId) && <p className="mt-1 text-xs text-amber-800">Pengajuan Anda sendiri perlu keputusan PM / SPV lain.</p>}
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
-                          <button type="button" disabled={reviewingWeeklyId !== null} onClick={() => void handleReviewWeekly(weekly.id, "APPROVE")} className="btn-primary min-h-10 gap-1.5 px-4 py-2 text-xs disabled:opacity-60">
+                          <button type="button" disabled={reviewingWeeklyId !== null || String(weekly.created_by_id ?? '') === String(currentUserId)} onClick={() => void handleReviewWeekly(weekly.id, "APPROVE")} className="btn-primary min-h-10 gap-1.5 px-4 py-2 text-xs disabled:opacity-60">
                             <Check size={15} /> {isReviewing ? "Memproses..." : "Approve (Setujui)"}
                           </button>
-                          <button type="button" disabled={reviewingWeeklyId !== null} onClick={() => void handleReviewWeekly(weekly.id, "REJECT")} className="btn-outline min-h-10 px-4 py-2 text-xs text-red-600 disabled:opacity-60">Reject (Tolak)</button>
+                          <button type="button" disabled={reviewingWeeklyId !== null || String(weekly.created_by_id ?? '') === String(currentUserId)} onClick={() => void handleReviewWeekly(weekly.id, "REJECT")} className="btn-outline min-h-10 px-4 py-2 text-xs text-red-600 disabled:opacity-60">Reject (Tolak)</button>
                         </div>
                       </div>
                     )}

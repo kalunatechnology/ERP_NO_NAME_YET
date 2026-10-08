@@ -3,8 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { env } from '../../config/env';
 import prisma from '../../config/database';
-import { AppError, ForbiddenError } from '../../utils/errors';
-import { answerNative, type NativeScope } from './marbot-native.service';
+import { AppError, ForbiddenError, ValidationError } from '../../utils/errors';
+import { type NativeScope } from './marbot-native.service';
+import { answerMarbotQuestion } from './marbot-orchestrator.service';
+import { isMutationCommand } from './marbot-intent';
 import { discoverMarbotSchema, readableTables } from './marbot-schema.service';
 import { executeResourceRead, resourceCatalog } from './marbot-resource.service';
 import { reserveMarbotRequest } from './marbot-rate-limit.service';
@@ -83,8 +85,10 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
           result = await discoverMarbotSchema(scope, prisma, schema.tables);
         } else if (call.data.name === 'erp.readQuestion') {
           const { question } = z.object({ question: z.string().trim().min(1).max(2000) }).strict().parse(args);
-          if (/\b(buat|buatkan|create|ubah|update|perbarui|hapus|delete|assign|tugaskan|tambahkan)\b/i.test(question)) throw new Error('Read tool cannot propose mutations');
-          result = await answerNative(question, 'HELPER', scope);
+          if (isMutationCommand(question)) throw new ValidationError('Tool baca hanya mengambil data atau panduan. Perubahan data memerlukan usulan dan konfirmasi melalui chat.');
+          const decision = await answerMarbotQuestion(req, question, 'HELPER', scope, AbortSignal.timeout(30000));
+          if (decision.answer.action) throw new ValidationError('Tool baca tidak dapat menyiapkan atau menjalankan perubahan data.');
+          result = decision.answer;
         } else result = await executeResourceRead(req, args, scope);
         if (marbotAuthorityKey(await scopeFor(req)) !== marbotAuthorityKey(scope)) throw new ForbiddenError('Hak akses berubah selama pemrosesan tool.');
         await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } });
