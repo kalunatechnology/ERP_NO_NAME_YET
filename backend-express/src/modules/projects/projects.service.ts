@@ -12,6 +12,7 @@ import { RoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
 import { compareTaskOutput } from './output-comparison';
 import { getUserModuleOverride, hasUserModuleWrite } from '../../utils/module-permissions';
+import { WeeklyNotificationService } from './weekly-notification.service';
 
 export const PROJECT_MANAGEMENT_ROLES = [
   'PROJECT_MANAGER',
@@ -51,6 +52,7 @@ export interface ProjectAuthority {
   can_manage_wbs: boolean;
   can_assign_team: boolean;
   can_manage_weekly_tasks: boolean;
+  can_review_weekly_tasks: boolean;
   can_direct_reassign: boolean;
   can_review_task_transfer: boolean;
   can_override_progress: boolean;
@@ -203,6 +205,52 @@ export class ProjectsService {
     return 'PENDING_APPROVAL';
   }
 
+  /** Supervisor review is limited to projects where the active SPV is assigned. */
+  static async weeklyReviewProjectIds(user: any, companyId: string, db: any = prisma): Promise<string[]> {
+    if (!user?.id || !companyId || user.roles?.includes(RoleCode.SUPER_ADMIN)) return [];
+    if (this.activeRole(user) !== RoleCode.SUPERVISOR) return this.managedProjectIds(user, companyId, db);
+    const scope = { company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
+    const [memberships, assignments] = await Promise.all([
+      db.project_member.findMany({ where: { ...scope, user_id: user.id, status: 'ACTIVE' }, select: { project_id: true } }),
+      db.project_task_assignment.findMany({ where: { ...scope, assignee_id: user.id }, select: { main_task_id: true } }),
+    ]);
+    const assignedMains = assignments.length ? await db.project_main_task.findMany({
+      where: { ...scope, id: { in: assignments.map((row: any) => row.main_task_id) } }, select: { project_id: true },
+    }) : [];
+    return [...new Set<string>([...memberships, ...assignedMains].map(row => row.project_id).filter(Boolean))];
+  }
+
+  static async assertCanReviewWeeklyProject(user: any, projectId: string, companyId: string, db: any = prisma) {
+    if (await this.hasProjectManagementAuthority(user, projectId, companyId, db)) return;
+    const override = getUserModuleOverride(user, 'PROJECTS');
+    if (override && !hasUserModuleWrite(user, 'PROJECTS')) throw new ForbiddenError('Akses approval modul PROJECTS dinonaktifkan oleh Admin.');
+    if (this.activeRole(user) === RoleCode.SUPERVISOR && (await this.weeklyReviewProjectIds(user, companyId, db)).includes(projectId)) return;
+    throw new ForbiddenError('Approval target mingguan hanya dapat dilakukan oleh PM atau SPV yang ditugaskan pada proyek ini.');
+  }
+
+  /** Shared operational projection for PM/SPV; never includes project finances. */
+  static async weeklyReviewWorkspace(user: any, companyId: string, db: any = prisma) {
+    const projectIds = await this.weeklyReviewProjectIds(user, companyId, db);
+    const scope = { company_id: companyId, ...(user?.tenant_id ? { tenant_id: user.tenant_id } : {}) };
+    const projects = projectIds.length ? await db.project_project.findMany({ where: { ...scope, id: { in: projectIds } }, select: {
+      id: true, project_code: true, project_name: true, status: true, progress_percent: true, planned_start_date: true, planned_end_date: true,
+    } }) : [];
+    const mainTasks = projects.length ? await db.project_main_task.findMany({ where: { ...scope, project_id: { in: projects.map((row: any) => row.id) } }, select: {
+      id: true, project_id: true, name: true, description: true, weight: true, priority: true, status: true, progress: true,
+    } }) : [];
+    const mainIds = mainTasks.map((row: any) => row.id);
+    const [weeklyTasks, assignments] = mainIds.length ? await Promise.all([
+      db.project_weekly_task.findMany({ where: { ...scope, main_task_id: { in: mainIds } }, orderBy: [{ week_number: 'asc' }, { created_at: 'asc' }] }),
+      db.project_task_assignment.findMany({ where: { ...scope, main_task_id: { in: mainIds } } }),
+    ]) : [[], []];
+    const userIds = [...new Set([...weeklyTasks.map((row: any) => row.assignee_id), ...assignments.map((row: any) => row.assignee_id)].filter(Boolean))];
+    const users = userIds.length ? await db.iam_user.findMany({ where: { id: { in: userIds }, ...(user?.tenant_id ? { tenant_id: user.tenant_id } : {}) }, select: { id: true, full_name: true } }) : [];
+    const dailyTasks = weeklyTasks.length ? await db.project_daily_task.findMany({ where: {
+      ...scope, weekly_task_id: { in: weeklyTasks.map((row: any) => row.id) },
+    } }) : [];
+    return { projects, mainTasks, weeklyTasks, assignments, users, dailyTasks, tasks: [], milestones: [], stages: [], costEntries: [], proposals: [], fundings: [] };
+  }
+
   static assertWeeklyTaskActive(status: string) {
     if (['PENDING_APPROVAL', 'REJECTED'].includes(status)) {
       throw new ValidationError('Weekly Task belum disetujui; belum dapat digunakan untuk Daily Task.');
@@ -216,7 +264,8 @@ export class ProjectsService {
       if (!weekly) throw new NotFoundError('WeeklyTask');
       const main = await tx.project_main_task.findFirst({ where: { id: weekly.main_task_id, company_id: companyId } });
       if (!main) throw new ValidationError('Hierarchy Weekly Task tidak valid.');
-      await this.assertCanManageProject(user, main.project_id, companyId, tx);
+      await this.assertCanReviewWeeklyProject(user, main.project_id, companyId, tx);
+      if (weekly.created_by_id === user.id) throw new ForbiddenError('Pengajuan Anda sendiri harus disetujui atau ditolak oleh PM / SPV lain.');
       const status = decision === 'APPROVE' ? 'PLANNED' : 'REJECTED';
       const changed = await tx.project_weekly_task.updateMany({
         where: { id, company_id: companyId, status: 'PENDING_APPROVAL' },
@@ -228,8 +277,13 @@ export class ProjectsService {
         action: decision === 'APPROVE' ? 'WEEKLY_APPROVED' : 'WEEKLY_REJECTED',
         fieldName: 'status', oldValue: 'PENDING_APPROVAL', newValue: status }, tx);
       await this.recalculateTaskTree({ weeklyTaskId: id, companyId }, tx);
+      await this.notifyWeeklyTarget(tx, weekly, user, decision === 'APPROVE' ? 'APPROVED' : 'REJECTED');
       return tx.project_weekly_task.findFirst({ where: { id, company_id: companyId } });
     }, PROJECT_TRANSACTION_OPTIONS);
+  }
+
+  static async notifyWeeklyTarget(tx: Prisma.TransactionClient, weekly: any, user: any, event: 'CREATED' | 'APPROVED' | 'REJECTED') {
+    await WeeklyNotificationService.emit(tx, weekly, user, event);
   }
 
   static async deleteDailyTask(id: string, user: any, companyId: string) {
@@ -1085,6 +1139,7 @@ export class ProjectsService {
       can_manage_wbs: canManage,
       can_assign_team: canManage,
       can_manage_weekly_tasks: canManage,
+      can_review_weekly_tasks: canManage || (allowsManagement && activeRole === RoleCode.SUPERVISOR && (await this.weeklyReviewProjectIds(user, companyId, db)).includes(projectId)),
       can_direct_reassign: canManage,
       can_review_task_transfer: canManage,
       can_override_progress: canManage,

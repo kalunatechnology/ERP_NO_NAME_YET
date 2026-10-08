@@ -97,7 +97,11 @@ export async function restrictProjectMutationsByAuthority(req: Request, _res: Re
     if (!projectId) {
       throw new ForbiddenError('Mutation ini tidak termasuk kewenangan operasional Project Supervisor.');
     }
-    await ProjectsService.assertCanManageProject(req.user, projectId, req.companyId);
+    if (/^\/weekly-tasks\/[^/]+\/review$/.test(path) && method === 'POST') {
+      await ProjectsService.assertCanReviewWeeklyProject(req.user, projectId, req.companyId);
+    } else {
+      await ProjectsService.assertCanManageProject(req.user, projectId, req.companyId);
+    }
     return next();
   } catch (error) {
     return next(error);

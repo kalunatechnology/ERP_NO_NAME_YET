@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Layers, Plus, ChevronsDown, ChevronsUp, Search } from "lucide-react";
 import { ProjectWbsNode } from "./ProjectWbsNode";
 
 interface ProjectWbsTreeProps {
   mainTasks: any[];
+  focusWeeklyId?: string | null;
   isPM: boolean;
   canManageWbs: boolean;
   canAssignTeam: boolean;
   canManageWeeklyTasks: boolean;
+  canReviewWeeklyTasks: boolean;
   onReviewWeeklyTask: (id: string | number, decision: "APPROVE" | "REJECT") => Promise<void>;
   currentUserId: string;
   userRole: string;
@@ -28,10 +30,12 @@ interface ProjectWbsTreeProps {
 
 export function ProjectWbsTree({
   mainTasks,
+  focusWeeklyId,
   isPM,
   canManageWbs,
   canAssignTeam,
   canManageWeeklyTasks,
+  canReviewWeeklyTasks,
   onReviewWeeklyTask,
   currentUserId,
   userRole,
@@ -48,6 +52,7 @@ export function ProjectWbsTree({
   onDeleteDailyTask,
 }: ProjectWbsTreeProps) {
   const [search, setSearch] = useState("");
+  const lastFocusedTarget = useRef("");
   const pendingMainIds = useMemo(() => new Set(mainTasks
     .filter((main) => (main.weekly_tasks || main.weekly_plans || []).some((weekly: any) => weekly.status === "PENDING_APPROVAL"))
     .map((main) => String(main.id))), [mainTasks]);
@@ -77,19 +82,40 @@ export function ProjectWbsTree({
     setDefaultAllExpanded(Boolean(query));
   }, [query]);
 
+  useEffect(() => {
+    if (!focusWeeklyId) { lastFocusedTarget.current = ""; return; }
+    const main = mainTasks.find(task => (task.weekly_tasks || task.weekly_plans || []).some((weekly: any) => String(weekly.id) === focusWeeklyId));
+    if (!main) return;
+    const key = `${main.id}:${focusWeeklyId}`;
+    if (lastFocusedTarget.current === key) return;
+    if (query) { setSearch(""); return; }
+    setCollapsedMain(previous => ({ ...previous, [String(main.id)]: false }));
+    setCollapsedWeekly(previous => ({ ...previous, [focusWeeklyId]: false }));
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        const target = document.getElementById(`weekly-target-${focusWeeklyId}`);
+        if (!target) return;
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        target.focus({ preventScroll: true });
+        lastFocusedTarget.current = key;
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusWeeklyId, mainTasks, query]);
+
   const isMainExpanded = useCallback((id: string) => {
     if (collapsedMain[id] !== undefined) {
       return !collapsedMain[id];
     }
-    return defaultAllExpanded || (canManageWeeklyTasks && pendingMainIds.has(id));
-  }, [collapsedMain, defaultAllExpanded, canManageWeeklyTasks, pendingMainIds]);
+    return defaultAllExpanded || (canReviewWeeklyTasks && pendingMainIds.has(id));
+  }, [collapsedMain, defaultAllExpanded, canReviewWeeklyTasks, pendingMainIds]);
 
   const handleToggleMain = useCallback((id: string) => {
     setCollapsedMain((prev) => {
-      const current = prev[id] !== undefined ? prev[id] : !(defaultAllExpanded || (canManageWeeklyTasks && pendingMainIds.has(id)));
+      const current = prev[id] !== undefined ? prev[id] : !(defaultAllExpanded || (canReviewWeeklyTasks && pendingMainIds.has(id)));
       return { ...prev, [id]: !current };
     });
-  }, [defaultAllExpanded, canManageWeeklyTasks, pendingMainIds]);
+  }, [defaultAllExpanded, canReviewWeeklyTasks, pendingMainIds]);
 
   const handleToggleWeekly = useCallback((id: string) => {
     setCollapsedWeekly((prev) => ({
@@ -134,7 +160,7 @@ export function ProjectWbsTree({
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div id="project-weekly-approval" tabIndex={-1} className="flex min-w-0 scroll-mt-24 flex-col gap-4 focus:outline-none">
       <div className="rounded-2xl border border-text-tertiary bg-white p-4 shadow-sm">
         <label htmlFor="wbs-search" className="block text-sm font-bold text-text-primary">Cari dalam struktur pekerjaan</label>
         <p className="mt-1 mb-3 text-xs text-text-secondary">Cari tugas, target, divisi, atau anggota dalam paket kerja lengkap.</p>
@@ -153,7 +179,7 @@ export function ProjectWbsTree({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap ml-auto">
-          {canManageWeeklyTasks && pendingWeeklyCount > 0 && (
+          {canReviewWeeklyTasks && pendingWeeklyCount > 0 && (
             <button type="button" onClick={handleOpenPending} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100">
               {pendingWeeklyCount} Target Menunggu Approval
             </button>
@@ -224,6 +250,7 @@ export function ProjectWbsTree({
             <ProjectWbsNode
               key={main.id}
               main={main}
+              focusWeeklyId={focusWeeklyId}
               isExpanded={isMainExpanded(String(main.id))}
               onToggleExpand={() => handleToggleMain(String(main.id))}
               collapsedWeeklyTasks={collapsedWeekly}
@@ -232,6 +259,7 @@ export function ProjectWbsTree({
               canManageWbs={canManageWbs}
               canAssignTeam={canAssignTeam}
               canManageWeeklyTasks={canManageWeeklyTasks}
+              canReviewWeeklyTasks={canReviewWeeklyTasks}
               onReviewWeeklyTask={async (id, decision) => {
                 // Keep the reviewed branch open when its last pending target becomes active.
                 setCollapsedMain((previous) => ({ ...previous, [String(main.id)]: false }));

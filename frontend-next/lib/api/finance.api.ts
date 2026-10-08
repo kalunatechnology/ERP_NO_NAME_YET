@@ -230,14 +230,12 @@ const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function fetchRealMonthlyStackedData(): Promise<RealMonthlyStackedResponse> {
-  const [billsRes, proposalsRes, receiptsRes, costsRes] = await Promise.all([
-    api.get("/api/v1/finance/billing-documents/?page_size=200"),
+  const [proposalsRes, receiptsRes, costsRes] = await Promise.all([
     api.get("/api/v1/finance/billing-proposals/?page_size=200"),
     api.get("/api/v1/finance/customer-receipts/?page_size=200"),
     api.get("/api/v1/finance/project-cost-entries/?page_size=200"),
   ]);
 
-    const bills = normalizeList<any>(billsRes.data).rows;
     const proposals = normalizeList<any>(proposalsRes.data).rows;
     const receipts = normalizeList<any>(receiptsRes.data).rows;
     const costs = normalizeList<any>(costsRes.data).rows;
@@ -247,17 +245,10 @@ export async function fetchRealMonthlyStackedData(): Promise<RealMonthlyStackedR
     const monthlyTop = new Array(12).fill(0);
 
     // 1. Process Actual Realized Inflow & Payments
-    receipts.forEach((r: any) => {
+    receipts.filter((r: any) => r.status === "POSTED").forEach((r: any) => {
       const dt = new Date(r.payment_date || r.created_at || Date.now());
       const m = dt.getMonth();
       const amtJt = Number(r.amount || 0) / 1_000_000;
-      if (m >= 0 && m < 12) monthlyBottom[m] += amtJt;
-    });
-
-    bills.filter((b: any) => b.status === "PAID" || b.status === "POSTED").forEach((b: any) => {
-      const dt = new Date(b.issue_date || b.created_at || Date.now());
-      const m = dt.getMonth();
-      const amtJt = Number(b.amount || b.total_amount || 0) / 1_000_000;
       if (m >= 0 && m < 12) monthlyBottom[m] += amtJt;
     });
 

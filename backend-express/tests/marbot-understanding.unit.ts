@@ -5,6 +5,8 @@ import prisma from '../src/config/database';
 import { validateUnderstanding, understandMarbotQuestion } from '../src/modules/marbot/marbot-understanding.service';
 import { answerMarbotQuestion } from '../src/modules/marbot/marbot-orchestrator.service';
 import type { NativeScope } from '../src/modules/marbot/marbot-native.service';
+import { isNativeTaskReadQuestion } from '../src/modules/marbot/marbot-native.service';
+import { isDataReadQuestion, isMutationCommand, isProcedureQuestion } from '../src/modules/marbot/marbot-intent';
 
 const scope: NativeScope = { tenantId: 'tenant-fixture', companyId: 'company-fixture', userId: 'user-fixture', roleId: 'role-fixture', roleCode: RoleCode.PROJECT_MANAGER,
   enabledModules: ['MARBOT', 'PROJECTS', 'REQUESTS', 'IMPLEMENTATION'], permissions: ['USE_MARBOT', 'READ_TASK', 'READ_PROJECT'], projectScope: { mode: 'LIST', projectIds: ['project-fixture'] } };
@@ -74,6 +76,21 @@ async function main() {
     assert.match(result.answer.content, /Hapus Meeting/);
     assert.equal(JSON.parse(lastPrompt.messages.at(-1).content).previousQuestion, 'bagaimana membuat meeting?');
     assert.equal(canonicalCalls + businessReads, 0, 'Retrieval is not a live business read');
+
+    const approvalQuestion = 'bagaimana saya melakukan acc pada weekly target dari staf';
+    modelOutput = { route: 'native', plan: { type: 'read', domains: ['tasks'], personal: true, taskLevel: 'weekly' }, confidence: 0.99 };
+    result = await answerMarbotQuestion(req, approvalQuestion, 'HELPER', scope, signal(), undefined, noDb);
+    assert.deepEqual(result.answer.tools, ['help.procedure'], 'A wrong model read must fall back to the requested approval guide');
+    assert.match(result.answer.content, /Tinjau Pengajuan[\s\S]*Approve \(Setujui\)/);
+    assert.equal(result.answer.action, undefined);
+    result = await answerMarbotQuestion(req, 'kamu tidak paham pertanyaan saya ya', 'HELPER', scope, signal(), approvalQuestion, noDb);
+    assert.equal(result.understanding.status, 'recovered');
+    assert.match(result.answer.content, /Persetujuan Target Mingguan/);
+    mode = 'throw';
+    result = await answerMarbotQuestion(req, approvalQuestion, 'HELPER', scope, signal(), undefined, noDb);
+    assert.deepEqual(result.answer.tools, ['help.procedure']);
+    assert.equal(canonicalCalls + businessReads, 0);
+    mode = 'ok';
 
     // Model selection retrieves real data from the chosen existing tool.
     modelOutput = { route: 'resource', plan: { resource: 'implementation.work-items', operation: 'count', filters: {} }, confidence: 0.97 };
@@ -148,6 +165,29 @@ async function main() {
     assert.equal(result.understanding.status, 'unconfigured');
     assert.match(result.answer.content, /Hapus Meeting/);
     assert.equal(canonicalCalls, 2, 'Only the two explicit read fixtures call ERP; all actions remain proposals');
+    let weeklySql: any;
+    const weeklyDb = { $queryRaw: async (sql: any) => {
+      weeklySql = sql;
+      return [{ target_description: 'Target perlu ditinjau',status:'PENDING_APPROVAL',progress:0,total:3n }];
+    } } as any;
+    for (const question of ['tampilkan weekly target yang menunggu approval?', 'berapa jumlah target mingguan menunggu persetujuan?', 'tolong daftar weekly task saya menunggu approval']) {
+      assert(isDataReadQuestion(question)); assert(!isProcedureQuestion(question)); assert(isNativeTaskReadQuestion(question));
+      assert.equal(validateUnderstanding(route('weekly','approve'),question,scope),null,'A data request must not become an approval guide');
+      assert.equal(validateUnderstanding({route:'knowledge',modules:['PROJECTS'],confidence:1},question,scope),null);
+      const answer = await answerMarbotQuestion(req,question,'HELPER',scope,signal(),undefined,weeklyDb);
+      assert.deepEqual(answer.answer.tools,['tasks']); assert.match(answer.answer.content,/Target perlu ditinjau/);
+      assert(weeklySql.values.includes('PENDING_APPROVAL')); assert(weeklySql.values.includes(scope.companyId)); assert(weeklySql.values.includes('project-fixture'));
+      if(question.includes('saya')) assert(weeklySql.values.includes(scope.userId));
+      assert.equal(answer.answer.action,undefined);
+    }
+    assert(isProcedureQuestion('bagaimana cara melihat daftar weekly target?'));
+    assert(isProcedureQuestion('bagaimana melakukan approval weekly target?'));
+    assert(!isMutationCommand('tampilkan daily task "Buat laporan dan hapus draft"'));
+    assert(!isMutationCommand('cara menghapus meeting?'));
+    assert(isMutationCommand('tolong hapus meeting'));
+    assert(isMutationCommand('buat proyek A untuk B'));
+    result=await answerMarbotQuestion(req,'jumlah data yang belum dikenali?','HELPER',scope,signal(),undefined,noDb);
+    assert.deepEqual(result.answer.tools,['intent.clarification']); assert.deepEqual(result.answer.sources,[]); assert.match(result.answer.content,/Data aktual belum diambil/);
     console.log(`Semantic orchestration passed: ${modelCalls} model fixtures, exact reference retrieval, paraphrases/context, canonical/native reads, ownership/dates, proposals, low confidence, invalid plans, permission filtering and provider fallbacks. No business writes.`);
   } finally { env.MARBOT_AI_API_KEY = savedKey; env.MARBOT_AI_MODEL = savedModel; global.fetch = savedFetch; }
 }

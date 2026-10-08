@@ -786,6 +786,9 @@ export class FinanceHardeningService {
           throw new NotFoundError('Payment');
         }
 
+        if (payment.payment_type !== 'OUTGOING') {
+          throw new ValidationError('Execute hanya untuk pembayaran vendor OUTGOING. Gunakan posting penerimaan untuk CUSTOMER_RECEIPT.');
+        }
         if (
           payment.status === 'POSTED' &&
           payment.journal_entry_id

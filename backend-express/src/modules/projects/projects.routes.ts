@@ -1576,6 +1576,11 @@ projectsRouter.use('/main-tasks', createCrudRouter({
 }));
 
 // Helper to normalize Weekly Tasks
+projectsRouter.get('/weekly-tasks/review-workspace', async (req, res, next) => {
+  try { res.json(await ProjectsService.weeklyReviewWorkspace(req.user, activeCompanyId(req))); }
+  catch (error) { next(error); }
+});
+
 projectsRouter.post('/weekly-tasks/:id/review', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await ProjectsService.reviewWeeklyTask(req.params.id, req.body.decision, req.user, activeCompanyId(req));
@@ -1683,8 +1688,9 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
       );
     }
   },
-  afterCreate: async (req, rec) => {
-    await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id, companyId: activeCompanyId(req) });
+  afterCreateInTransaction: async (req, rec, tx) => {
+    await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id, companyId: activeCompanyId(req) }, tx);
+    await ProjectsService.notifyWeeklyTarget(tx, rec, req.user, 'CREATED');
   },
   afterUpdate: async (req, rec) => {
     await ProjectsService.recalculateTaskTree({ weeklyTaskId: rec.id, companyId: activeCompanyId(req) });

@@ -628,6 +628,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
         if (n.category === "ACCESS_REQUEST") category = "Otorisasi WBS";
         else if (n.category === "STATUS_UPDATE") category = "Pembaruan Proyek";
         else if (n.category === "DOCUMENT") category = "Dokumen Keuangan";
+        else if (String(n.category).startsWith("WEEKLY_TARGET_")) category = "Target Mingguan";
         else if (n.category) category = n.category;
 
         alerts.push({

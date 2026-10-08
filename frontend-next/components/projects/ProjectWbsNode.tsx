@@ -69,6 +69,8 @@ interface ProjectWbsNodeProps {
   canManageWbs: boolean;
   canAssignTeam: boolean;
   canManageWeeklyTasks: boolean;
+  canReviewWeeklyTasks: boolean;
+  focusWeeklyId?: string | null;
   onReviewWeeklyTask: (id: string | number, decision: "APPROVE" | "REJECT") => Promise<void>;
   currentUserId: string;
   userRole: string;
@@ -93,6 +95,8 @@ export function ProjectWbsNode({
   canManageWbs,
   canAssignTeam,
   canManageWeeklyTasks,
+  canReviewWeeklyTasks,
+  focusWeeklyId,
   onReviewWeeklyTask,
   currentUserId,
   userRole,
@@ -266,7 +270,7 @@ export function ProjectWbsNode({
                 const isReviewing = reviewingWeeklyId === String(weekly.id);
 
                 return (
-                  <div key={weekly.id} className="rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200">
+                  <div key={weekly.id} id={`weekly-target-${weekly.id}`} tabIndex={-1} className={cn("scroll-mt-24 rounded-xl border border-indigo-100 overflow-hidden bg-white shadow-xs transition-all duration-200 focus:outline-none", String(weekly.id) === focusWeeklyId && "ring-2 ring-[#294BB2] ring-offset-2")}>
                     {/* Level 2 Header: Weekly Target */}
                     <div className="p-2.5 sm:p-3 bg-indigo-50/60 border-b border-indigo-100 flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -304,13 +308,6 @@ export function ProjectWbsNode({
                           {isPendingApproval ? 'Menunggu Approval' : isRejected ? 'Ditolak' : weekly.status} ({weekly.progress ?? 0}%)
                         </span>
 
-                        {canManageWeeklyTasks && isPendingApproval && <>
-                          <button type="button" disabled={reviewingWeeklyId !== null} onClick={() => void handleReviewWeekly(weekly.id, "APPROVE")} className="btn-primary py-0.5 px-2.5 text-2xs gap-1 disabled:opacity-60">
-                            <Check size={12} /> {isReviewing ? "Memproses..." : "Approve"}
-                          </button>
-                          <button type="button" disabled={reviewingWeeklyId !== null} onClick={() => void handleReviewWeekly(weekly.id, "REJECT")} className="btn-outline py-0.5 px-2.5 text-2xs text-red-600 disabled:opacity-60">Reject</button>
-                        </>}
-
                         {canCreateDaily && (
                           <button
                             onClick={() => onCreateDailyClick(weekly)}
@@ -325,14 +322,30 @@ export function ProjectWbsNode({
                             type="button"
                             disabled={isReviewing}
                             onClick={() => onDeleteWeeklyTask(weekly.id, weekly.week_number)}
-                            className="p-1 rounded text-text-secondary hover:text-red-600"
-                            title="Hapus Target Mingguan (PM / OM)"
+                            className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-text-secondary hover:bg-red-50 hover:text-red-600"
+                            title="Hapus Target Mingguan"
                           >
-                            <Trash2 size={12} />
+                            <Trash2 size={14} /> Hapus
                           </button>
                         )}
                       </div>
                     </div>
+
+                    {isPendingApproval && canReviewWeeklyTasks && (
+                      <div className="flex flex-col gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-bold text-amber-900">Pengajuan menunggu keputusan PM / SPV</p>
+                          <p className="mt-1 text-xs leading-5 text-amber-800">Setujui target ini agar PIC dapat membuat Daily Task.</p>
+                          {String(weekly.created_by_id ?? '') === String(currentUserId) && <p className="mt-1 text-xs text-amber-800">Pengajuan Anda sendiri perlu keputusan PM / SPV lain.</p>}
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button type="button" disabled={reviewingWeeklyId !== null || String(weekly.created_by_id ?? '') === String(currentUserId)} onClick={() => void handleReviewWeekly(weekly.id, "APPROVE")} className="btn-primary min-h-10 gap-1.5 px-4 py-2 text-xs disabled:opacity-60">
+                            <Check size={15} /> {isReviewing ? "Memproses..." : "Approve (Setujui)"}
+                          </button>
+                          <button type="button" disabled={reviewingWeeklyId !== null || String(weekly.created_by_id ?? '') === String(currentUserId)} onClick={() => void handleReviewWeekly(weekly.id, "REJECT")} className="btn-outline min-h-10 px-4 py-2 text-xs text-red-600 disabled:opacity-60">Reject (Tolak)</button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Level 3: Daily Tasks Table */}
                     <div
@@ -346,7 +359,7 @@ export function ProjectWbsNode({
                           {dailyTasks.length === 0 ? (
                             <div className="p-4 rounded-xl bg-gray-50 border border-dashed border-gray-200 text-center text-xs text-text-secondary">
                               {isPendingApproval
-                                ? "Target mingguan menunggu approval PM. Setelah disetujui, PIC dapat membuat Daily Task dari target ini."
+                                ? "Setelah persetujuan PM/SPV, PIC dapat membuat Daily Task dari target ini."
                                 : isRejected
                                   ? "Target mingguan ditolak. Daily Task belum dapat dibuat dari target ini."
                                   : <>Belum ada aktivitas harian pada target ini. {canCreateDaily ? "Klik + Daily Task untuk mencatat sesi kerja." : ""}</>}

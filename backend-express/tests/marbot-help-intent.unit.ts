@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
 import { helperAnswer } from '../src/modules/marbot/marbot-knowledge';
 import { answerNative, followUpQuestion, NativeScope } from '../src/modules/marbot/marbot-native.service';
-import { isProcedureQuestion, procedureTopic } from '../src/modules/marbot/marbot-intent';
+import { isProcedureQuestion, procedureOperation, procedureTopic } from '../src/modules/marbot/marbot-intent';
+import { isNativeTaskReadQuestion } from '../src/modules/marbot/marbot-native.service';
 import { proposeAction } from '../src/modules/marbot/marbot-action.service';
 import { proposeNamedTaskAction } from '../src/modules/marbot/marbot-named-action.service';
 import { planNativeQuestion, validateNativePlan } from '../src/modules/marbot/marbot-planner.service';
@@ -71,6 +72,21 @@ async function main() {
   assert.match(followUp.content, /Hapus Meeting/);
   assert.equal(followUpQuestion('kalau daily task dihapus?', 'bagaimana membuat meeting?'), 'kalau daily task dihapus?');
   const savedKey = env.MARBOT_AI_API_KEY, savedModel = env.MARBOT_AI_MODEL, originalFetch = global.fetch;
+  const approvalQuestion = 'bagaimana saya melakukan acc pada weekly target dari staf';
+  for (const prompt of [approvalQuestion, 'gimana acc target mingguan staf?', 'bagaimana SPV menerima ajuan mingguan ini?', 'cara menolak weekly target staf', 'bagaimana melakukan approval weekly task?']) {
+    assert(isProcedureQuestion(prompt), prompt);
+    assert.equal(isNativeTaskReadQuestion(prompt), false, prompt);
+    assert.equal(procedureOperation(prompt), 'approve', prompt);
+    const guide = await answerNative(prompt, 'HELPER', { ...staff, roleCode: RoleCode.PROJECT_MANAGER }, noBusinessAccess as any);
+    assert.match(guide.content, /Persetujuan Target Mingguan[\s\S]*Tinjau Pengajuan[\s\S]*Approve \(Setujui\)[\s\S]*Reject \(Tolak\)/);
+    assert.match(guide.content, /SPV[\s\S]*Project Supervisor/);
+    assert.doesNotMatch(guide.content, /Weekly Task saya|Menampilkan maksimal|Periode tugas/);
+    assert.equal(guide.action, undefined);
+    assert.deepEqual(guide.tools, ['help.procedure']);
+    scenarios++;
+  }
+  assert.equal(followUpQuestion('kamu tidak paham pertanyaan saya ya', approvalQuestion), approvalQuestion);
+  assert.equal(followUpQuestion('bukan itu, saya mau hapus daily task', approvalQuestion), 'bukan itu, saya mau hapus daily task');
   let providerCalls = 0;
   try {
     env.MARBOT_AI_API_KEY = 'fixture'; env.MARBOT_AI_MODEL = 'fixture';

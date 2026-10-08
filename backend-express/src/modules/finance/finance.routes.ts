@@ -17,8 +17,11 @@ import { enforceSoD, requireFinanceRole, requireSuperadmin } from '../../middlew
 import { DocumentFSM } from '../../utils/fsm';
 import { sendSuccess, sendError } from '../../utils/response';
 import { RoleCode } from '../../types/roles';
-import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { CustomerPartyService } from '../projects/customer-party.service';
+import { validateCustomerReceipt } from './customer-receipt.validation';
+import { CustomerReceiptService } from './customer-receipt.service';
+import { hasModuleOverride } from '../../utils/module-permissions';
 
 export const financeRouter = Router();
 
@@ -842,8 +845,10 @@ financeRouter.post('/payments/:id/submit', requireFinanceRole([RoleCode.FINANCE]
 
     const fsm = new DocumentFSM('PAYMENT');
     const { nextState } = fsm.apply(payment.status as any, 'submit');
-
-    const updated = await prisma.fin_payment.update({ where: { id: req.params.id }, data: { status: nextState, submitted_by_id: req.user?.id, submitted_at: new Date() } });
+    if (payment.payment_type === 'CUSTOMER_RECEIPT') validateCustomerReceipt({ ...payment, payment_date: payment.payment_date?.toISOString().slice(0, 10) });
+    const result = await prisma.fin_payment.updateMany({ where: { id: payment.id, company_id: activeCompanyId(req), status: payment.status }, data: { status: nextState, submitted_by_id: req.user?.id, submitted_at: new Date() } });
+    if (!result.count) throw new ConflictError('Status payment berubah. Muat ulang sebelum mengajukan.');
+    const updated = await prisma.fin_payment.findFirst({ where: { id: payment.id, company_id: activeCompanyId(req) } });
     sendSuccess(res, updated);
   } catch (err) {
     next(err);
@@ -875,7 +880,9 @@ financeRouter.post(
       const fsm = new DocumentFSM('PAYMENT');
       const { nextState } = fsm.apply(payment.status as any, 'approve');
 
-      const updated = await prisma.fin_payment.update({ where: { id: req.params.id }, data: { status: nextState, approved_by_id: req.user?.id, approved_at: new Date() } });
+      const result = await prisma.fin_payment.updateMany({ where: { id: payment.id, company_id: activeCompanyId(req), status: payment.status }, data: { status: nextState, approved_by_id: req.user?.id, approved_at: new Date() } });
+      if (!result.count) throw new ConflictError('Status payment berubah. Muat ulang sebelum menyetujui.');
+      const updated = await prisma.fin_payment.findFirst({ where: { id: payment.id, company_id: activeCompanyId(req) } });
       sendSuccess(res, updated);
     } catch (err) {
       next(err);
@@ -891,6 +898,64 @@ financeRouter.post(
  * Data/side effects: Uses Prisma model(s) `fin_payment` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
+financeRouter.get('/customer-receipts/summary', async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const [posted, pendingCount, invoices] = await Promise.all([
+      prisma.fin_payment.aggregate({ where: { company_id: companyId, payment_type: 'CUSTOMER_RECEIPT', status: 'POSTED' }, _sum: { amount: true }, _count: { id: true } }),
+      prisma.fin_payment.count({ where: { company_id: companyId, payment_type: 'CUSTOMER_RECEIPT', status: { in: ['DRAFT', 'SUBMITTED', 'APPROVED'] } } }),
+      prisma.fin_billing_document.aggregate({ where: { company_id: companyId, billing_type: 'CUSTOMER_INVOICE', status: 'POSTED' }, _sum: { outstanding_amount: true } }),
+    ]);
+    sendSuccess(res, { posted_amount: Number(posted._sum.amount ?? 0), posted_count: posted._count.id, pending_count: pendingCount, outstanding_amount: Number(invoices._sum.outstanding_amount ?? 0) });
+  } catch (error) { next(error); }
+});
+
+financeRouter.get('/customer-receipts/workflow-readiness', async (req, res, next) => {
+  try {
+    const userId = authenticatedFinanceUserId(req);
+    const companyId = activeCompanyId(req);
+    const role = req.user?.active_role_code ?? req.user?.roles?.[0];
+    const delegatedWrite = hasModuleOverride(req, 'FINANCE') && Boolean(req.moduleAccess?.allowWrite);
+    const operates = role === RoleCode.FINANCE || delegatedWrite;
+    const approves = operates || role === RoleCode.DIRECTOR;
+    const ids = String(req.query.ids ?? '').split(',').filter(Boolean).slice(0, 100);
+    const [rows, count] = await Promise.all([
+      prisma.fin_payment.findMany({ where: { company_id: companyId, payment_type: 'CUSTOMER_RECEIPT', id: { in: ids } } }),
+      financeUserCount(companyId),
+    ]);
+    sendSuccess(res, rows.map(payment => {
+      const action = payment.status === 'DRAFT' ? 'submit' : payment.status === 'SUBMITTED' ? 'approve' : payment.status === 'APPROVED' ? 'post' : null;
+      let message = payment.status === 'POSTED' ? 'Sudah dibukukan.' : 'Status ini tidak dapat diproses.';
+      let allowed = false;
+      if (action) {
+        allowed = action === 'approve' ? approves : operates;
+        message = allowed ? 'Siap diproses.' : 'Role aktif Anda tidak berwenang melakukan tahap ini.';
+        if (action === 'approve' && payment.created_by_id === userId) {
+          allowed = false; message = 'Persetujuan harus dilakukan oleh Finance lain atau pejabat berwenang yang bukan pembuat transaksi.';
+        }
+        if (action === 'post' && count >= 2 && [payment.created_by_id, payment.submitted_by_id, payment.approved_by_id].includes(userId)) {
+          allowed = false; message = 'Posting harus dilakukan oleh Finance lain yang bukan pembuat, pengaju, atau penyetuju transaksi.';
+        }
+      }
+      return { receipt_id: payment.id, action, allowed, message };
+    }));
+  } catch (error) { next(error); }
+});
+
+financeRouter.post('/customer-receipts/:id/post', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = authenticatedFinanceUserId(req);
+    const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: companyId, payment_type: 'CUSTOMER_RECEIPT' } });
+    if (!payment) throw new NotFoundError('Penerimaan pelanggan');
+    const count = await financeUserCount(companyId);
+    if (count >= 2 && [payment.created_by_id, payment.submitted_by_id, payment.approved_by_id].includes(userId)) {
+      throw new ForbiddenError('Posting penerimaan harus dilakukan oleh Finance lain yang bukan pembuat, pengaju, atau penyetuju transaksi.');
+    }
+    sendSuccess(res, await CustomerReceiptService.post(payment.id, userId, companyId));
+  } catch (error) { next(error); }
+});
+
 financeRouter.post('/payments/:id/execute', requireFinanceRole([RoleCode.FINANCE]), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const payment = await prisma.fin_payment.findFirst({
@@ -1227,10 +1292,37 @@ financeRouter.use('/billing-proposals', createCrudRouter({
   },
 }));
 financeRouter.use('/payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
-financeRouter.use('/customer-receipts', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/customer-receipts', createCrudRouter({
+  modelName: 'fin_payment',
+  searchFields: ['reference_number'],
+  accessWhere: () => ({ payment_type: 'CUSTOMER_RECEIPT' }),
+  beforeCreate: async (req, data) => {
+    const receipt = validateCustomerReceipt(data);
+    const bank = await prisma.fin_bank_account.findFirst({
+      where: { id: receipt.bank_account_id, company_id: activeCompanyId(req), tenant_id: req.user?.tenant_id, status: 'ACTIVE' },
+      select: { id: true, account_name: true, bank_name: true, account_number: true },
+    });
+    if (!bank) throw new ValidationError('Rekening penerima tidak tersedia atau tidak aktif pada company ini.', {
+      bank_account: 'Pilih rekening kas / bank yang aktif pada company Anda.',
+    });
+    return { ...receipt, allocation_plan: { ...receipt.allocation_plan, bank_account: bank.account_name || bank.bank_name || bank.account_number } };
+  },
+}));
 financeRouter.use('/vendor-payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
-financeRouter.use('/payment-lines', createCrudRouter({ modelName: 'fin_payment_allocation' }));
-financeRouter.use('/payment-allocations', createCrudRouter({ modelName: 'fin_payment_allocation' }));
+async function assertAllocationDraft(req: Request, data: any, existing?: any) {
+  for (const id of new Set([existing?.payment_id, data?.payment_id].filter(Boolean))) {
+    const payment = await prisma.fin_payment.findFirst({ where: { id, company_id: activeCompanyId(req) } });
+    if (!payment) throw new ValidationError('Payment alokasi tidak ditemukan pada company ini.');
+    if (payment.status !== 'DRAFT') throw new ConflictError('Alokasi payment yang sudah diajukan tidak dapat diubah atau dihapus.');
+  }
+  return data;
+}
+const allocationCrud = () => createCrudRouter({
+  modelName: 'fin_payment_allocation', beforeCreate: assertAllocationDraft, beforeUpdate: assertAllocationDraft,
+  beforeDelete: async (req, existing) => { await assertAllocationDraft(req, {}, existing); },
+});
+financeRouter.use('/payment-lines', allocationCrud());
+financeRouter.use('/payment-allocations', allocationCrud());
 financeRouter.use('/bank-accounts', createCrudRouter({ modelName: 'fin_bank_account', searchFields: ['account_number', 'bank_name'] }));
 financeRouter.use('/bank-statements', createCrudRouter({ modelName: 'fin_bank_statement' }));
 financeRouter.use('/bank-statement-lines', createCrudRouter({ modelName: 'fin_bank_statement_line' }));

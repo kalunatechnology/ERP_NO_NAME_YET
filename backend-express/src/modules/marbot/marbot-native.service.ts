@@ -5,12 +5,12 @@ import { MarbotRuntimeAuthority } from './marbot.types';
 import { helperAnswer, systemKnowledgeAnswer } from './marbot-knowledge';
 import { proposeAction } from './marbot-action.service';
 import { proposeNamedTaskAction } from './marbot-named-action.service';
-import { isProcedureQuestion, procedureOperation, procedureTopic } from './marbot-intent';
+import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion, procedureOperation, procedureTopic } from './marbot-intent';
 
 export type NativeScope = MarbotRuntimeAuthority & { tenantId: string; companyId: string; userId: string; blockedReadModules?: string[]; blockedWriteModules?: string[] };
 export const dashboardRoles: RoleCode[] = [RoleCode.DIRECTOR, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER];
 export type AssistantMode = 'HELPER' | 'DASHBOARD';
-const WEEKLY_TASK_ENTITY = /\b(?:weekly\s+(?:tasks?|target)|(?:tugas|target)\s+mingguan|mingguan\s+(?:task|tugas))\b/i;
+const WEEKLY_TASK_ENTITY = /\b(?:weekly\s+(?:tasks?|targets?)|(?:tugas|target)\s+mingguan|(?:pengajuan|ajuan)\s+(?:(?:target|tugas|task)\s+)?mingguan|mingguan\s+(?:task|tugas))\b/i;
 export function isWeeklyTaskQuestion(message: string) { return WEEKLY_TASK_ENTITY.test(message); }
 export function canUseDashboard(scope: MarbotRuntimeAuthority) {
   return dashboardRoles.includes(scope.roleCode) && !(scope as NativeScope).blockedReadModules?.includes('PROJECTS') && scope.permissions.some(p => ['READ_PROJECT', 'READ_TASK'].includes(p));
@@ -34,8 +34,8 @@ export function detectTools(message: string): string[] {
 export function isNativeTaskReadQuestion(message: string) {
   return (/\b(task|tasks|tugas)\b/i.test(message) || isWeeklyTaskQuestion(message))
     && detectTools(message).join(',') === 'tasks'
-    && !procedureOperation(message)
-    && !/\b(cara|panduan|dimana|di mana|how to|fitur|modul|workflow|alur|fungsi|sistem|schema|skema|resource|permission|role|peran)\b/i.test(message)
+    && (!procedureOperation(message) || isDataReadQuestion(message))
+    && !/\b(cara|caranya|bagaimana(?!\s+dengan)|gimana|gmn|panduan|dimana|di mana|how to|how do|how can|fitur|modul|workflow|alur|fungsi|sistem|schema|skema|resource|permission|role|peran)\b/i.test(message)
     && !/[{}]/.test(message);
 }
 
@@ -88,6 +88,8 @@ const safe = (value: unknown) => String(value ?? '').replace(/[\r\n\[\]<>`*_]/g,
 const number = (value: unknown) => Number(value || 0).toLocaleString('id-ID');
 
 export function followUpQuestion(message: string, previous?: string): string {
+  if (previous && isIntentCorrection(message) && !procedureTopic(message) && !procedureOperation(message)
+      && isProcedureQuestion(previous) && procedureTopic(previous)) return previous;
   if (!previous || !/^(dan|kalau|bagaimana dengan|lalu|yang)\b/i.test(message)) return message;
   const previousTopic = procedureTopic(previous);
   if (previousTopic && isProcedureQuestion(previous) && !procedureTopic(message) && !detectTools(message).length) {
@@ -109,7 +111,7 @@ export function followUpQuestion(message: string, previous?: string): string {
 
 export async function answerNative(message: string, mode: AssistantMode, scope: NativeScope, db = prisma) {
   if (mode === 'DASHBOARD' && !canUseDashboard(scope)) throw new ForbiddenError('Dashboard Assistant hanya tersedia untuk pimpinan dengan akses data proyek.');
-  if (isProcedureQuestion(message) && !isNativeTaskReadQuestion(message)
+  if ((isProcedureQuestion(message) || (procedureTopic(message)?.id === 'weekly' && procedureOperation(message) === 'approve')) && !isNativeTaskReadQuestion(message)
       && (procedureOperation(message) || !/\b(fitur|modul|workflow|alur|fungsi|sistem|role|peran|permission|hak akses|izin akses)\b/i.test(message))) {
     return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge:2026-10-07'] };
   }

@@ -9,7 +9,7 @@ const operationPatterns = {
   cancel: /\b(?:batal(?:kan)?|membatalkan|dibatalkan|cancel)\b/,
   edit: /\b(?:edit|mengedit|diedit|ubah|mengubah|diubah|update|perbarui|memperbarui|koreksi)\b/,
   publish: /\b(?:publikasikan|mempublikasikan|publikasi|publish|terbitkan|menerbitkan)\b/,
-  approve: /\b(?:approve|approval|setujui|menyetujui|persetujuan|tolak|reject)\b/,
+  approve: /\b(?:acc|mengacc|approve|approval|setujui|menyetujui|persetujuan|terima|menerima|tolak|menolak|reject)\b/,
   submit: /\b(?:submit|kirim|mengirim|ajukan|mengajukan)\b/,
   stop: /\b(?:stop|hentikan|menghentikan|berhenti)\b/,
   start: /\b(?:start|mulai|memulai)\b/,
@@ -39,7 +39,7 @@ export function procedureOperation(message: string): ProcedureOperation | undefi
 const topics = [
   { id: 'minutes', name: 'notulensi', pattern: /\b(?:notulen(?:si)?|notulis|minutes|notes?|catatan rapat)\b/ },
   { id: 'meeting', name: 'meeting', pattern: /\b(?:meetings?|rapat)\b/ },
-  { id: 'weekly', name: 'weekly task', pattern: /\b(?:weekly\s+(?:tasks?|target)|(?:tugas|task|target)\s+mingguan|mingguan\s+(?:task|tugas))\b/ },
+  { id: 'weekly', name: 'weekly task', pattern: /\b(?:weekly\s+(?:tasks?|targets?)|(?:tugas|task|target)\s+mingguan|(?:pengajuan|ajuan)\s+(?:(?:target|tugas|task)\s+)?mingguan|mingguan\s+(?:task|tugas))\b/ },
   { id: 'daily', name: 'daily task', pattern: /\b(?:daily\s+tasks?|(?:tugas|task)\s+harian)\b/ },
   { id: 'timesheet', name: 'timesheet', pattern: /\b(?:timesheet|timer|lembur|jam kerja)\b/ },
   { id: 'reports', name: 'laporan kerja', pattern: /\b(?:laporan|reports?)\b/ },
@@ -52,7 +52,7 @@ export function procedureTopic(message: string) {
   const text = intentText(message);
   // Prefer the explicit object of the action: "hapus meeting yang ada
   // notulensinya" must not become "hapus notulensi".
-  const target = requestedActionText(message).match(/\b(?:hapus(?:kan)?|menghapus|delete|remove|batal(?:kan)?|membatalkan|cancel|edit|mengedit|ubah|mengubah|update|buat(?:kan)?|membuat|create|tambah(?:kan)?|isi|mengisi|publikasikan|publish|setujui|approve|kirim|ajukan|restore|pulihkan|transfer|pindahkan|arsipkan|archive)\s+(?:(?:saya|sebuah|satu|data|semua|seluruh|a|an|the|my)\s+){0,3}(.+)/)?.[1];
+  const target = requestedActionText(message).match(/\b(?:hapus(?:kan)?|menghapus|delete|remove|batal(?:kan)?|membatalkan|cancel|edit|mengedit|ubah|mengubah|update|buat(?:kan)?|membuat|create|tambah(?:kan)?|isi|mengisi|publikasikan|publish|setujui|acc|mengacc|approve|terima|menerima|tolak|menolak|reject|kirim|ajukan|restore|pulihkan|transfer|pindahkan|arsipkan|archive)\s+(?:(?:saya|sebuah|satu|data|semua|seluruh|a|an|the|my|pada)\s+){0,3}(.+)/)?.[1];
   if (target) {
     const direct = topics.find(topic => new RegExp(`^(?:${topic.pattern.source.replace(/^\\b|\\b$/g, '')})\\b`).test(target));
     return direct;
@@ -60,9 +60,17 @@ export function procedureTopic(message: string) {
   return topics.find(topic => topic.pattern.test(text));
 }
 
+/** Clear requests for records/counts are distinct from instructions for using a feature. */
+export function isDataReadQuestion(message: string) {
+  const text = intentText(message).trim();
+  if (/\b(?:cara|caranya|panduan|tutorial|how to|how do|how can)\b/.test(text)) return false;
+  return /^(?:(?:tolong|mohon|please)\s+)?(?:tampilkan|lihat|carikan|cari|daftar|list|show|berapa|jumlah|total|hitung|count|ringkasan|rekap|ada\s+berapa)\b/.test(text);
+}
+
 /** Asking whether/how an action is possible never authorizes that action. */
 export function isProcedureQuestion(message: string) {
   const text = intentText(message);
+  if (isDataReadQuestion(message)) return false;
   if (/\b(?:cara|caranya|panduan|tutorial|dimana|di mana|how to|how do|how can)\b/.test(text)) return true;
   if (/\b(?:bagaimana|gimana|gmn)\b/.test(text) && (procedureOperation(text) || procedureTopic(text))) return true;
   if (!procedureOperation(text)) return false;
@@ -70,8 +78,18 @@ export function isProcedureQuestion(message: string) {
     || /\?\s*$/.test(text);
 }
 
+export function isIntentCorrection(message: string) {
+  return /\b(?:(?:tidak|belum|nggak|gak|ga)\s+(?:paham|mengerti|memahami)|bukan itu|salah paham|jawaban(?:mu|nya)?\s+(?:salah|keliru))\b/.test(intentText(message));
+}
+
 /** A secondary write guard after semantic interpretation. Questions/quoted
  * instructions are not commands; polite explicit commands remain supported. */
 export function isExplicitWriteRequest(message: string) {
   return !isProcedureQuestion(message) && /^\s*(?:(?:tolong|mohon|please)\s+|saya\s+(?:ingin|mau)\s+)?(?:buat(?:kan)?|membuat|bikin|create|tambah(?:kan)?|menambah(?:kan)?|ubah|mengubah|edit|update|perbarui|memperbarui)\b/.test(intentText(message));
+}
+
+/** MCP read tools reject commands, not action words inside record names or filters. */
+export function isMutationCommand(message: string) {
+  if (isProcedureQuestion(message) || isDataReadQuestion(message)) return false;
+  return /^\s*(?:(?:tolong|mohon|please)\s+|saya\s+(?:ingin|mau)\s+)?(?:buat(?:kan)?|membuat|bikin|create|tambah(?:kan)?|menambah(?:kan)?|ubah|mengubah|edit|update|perbarui|memperbarui|hapus(?:kan)?|menghapus|delete|remove|setujui|approve|acc|tolak|reject|assign|tugaskan|bayar|lunasi|publikasikan|publish|arsipkan|archive|batalkan|cancel)\b/.test(intentText(message));
 }
