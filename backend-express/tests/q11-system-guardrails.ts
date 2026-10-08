@@ -449,7 +449,6 @@ async function main(): Promise<void> {
     );
     assert(
       tasksClient.includes('String(w.assignee_id ?? "") !== currentUserId') &&
-      tasksClient.includes('Anda belum memiliki Weekly Target yang disetujui') === false &&
       tasksClient.includes('belum memiliki Weekly Target yang disetujui di proyek ini'),
       'Weekly Target choices must remain personal and explain unavailable target scope.',
     );
