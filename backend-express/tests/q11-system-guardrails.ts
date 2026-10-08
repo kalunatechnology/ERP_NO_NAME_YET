@@ -231,6 +231,8 @@ async function main(): Promise<void> {
       project_member: { findFirst: async () => null, findMany: async () => [{ project_id: 'project-a' }] },
       project_project: { findFirst: async () => ({ id: 'project-a' }) },
       project_task_assignment: { findMany: async () => [], findFirst: async ({ where }: any) => where.assignee_id === staff.id ? { id: 'assignment-a' } : null },
+      project_weekly_task: { findMany: async () => [] },
+      project_main_task: { findMany: async () => [] },
       iam_user_company_membership: { findFirst: async () => ({ id: 'membership-a', tenant_id: 'tenant-a' }) },
     };
     assert.equal(await ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: 'project-a' }, 'company-a', staff.id, submissionDb), 'PENDING_APPROVAL');
