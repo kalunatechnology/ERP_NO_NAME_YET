@@ -48,6 +48,11 @@ export function ProjectWbsTree({
   onDeleteDailyTask,
 }: ProjectWbsTreeProps) {
   const [search, setSearch] = useState("");
+  const pendingMainIds = useMemo(() => new Set(mainTasks
+    .filter((main) => (main.weekly_tasks || main.weekly_plans || []).some((weekly: any) => weekly.status === "PENDING_APPROVAL"))
+    .map((main) => String(main.id))), [mainTasks]);
+  const pendingWeeklyCount = useMemo(() => mainTasks.reduce((count, main) => count
+    + (main.weekly_tasks || main.weekly_plans || []).filter((weekly: any) => weekly.status === "PENDING_APPROVAL").length, 0), [mainTasks]);
   const query = search.trim().toLocaleLowerCase("id-ID");
   // Keep complete matching branches so progress and parent-child context remain intact.
   const visibleMainTasks = useMemo(() => mainTasks.filter((main) => {
@@ -59,13 +64,12 @@ export function ProjectWbsTree({
         ...(weekly.daily_tasks || []).flatMap((daily: any) => [daily.title, daily.activity_input, daily.description, daily.output_target, daily.owner_name])])];
     return values.some((value) => String(value ?? "").toLocaleLowerCase("id-ID").includes(query));
   }), [mainTasks, query]);
-  // By default, Main Tasks are collapsed (true means collapsed) to prevent page from looking full/overwhelming
+  // Main Tasks stay collapsed by default, except branches awaiting PM approval.
   const [collapsedMain, setCollapsedMain] = useState<Record<string, boolean>>({});
   const [collapsedWeekly, setCollapsedWeekly] = useState<Record<string, boolean>>({});
 
   // Helper: check if a specific main task is expanded.
-  // Note: if not explicitly toggled, by default main tasks are COLLAPSED (false)
-  // unless user clicked "Expand All".
+  // Explicit toggles take precedence over the approval and Expand All defaults.
   const [defaultAllExpanded, setDefaultAllExpanded] = useState<boolean>(false);
   useEffect(() => {
     setCollapsedMain({});
@@ -77,15 +81,15 @@ export function ProjectWbsTree({
     if (collapsedMain[id] !== undefined) {
       return !collapsedMain[id];
     }
-    return defaultAllExpanded;
-  }, [collapsedMain, defaultAllExpanded]);
+    return defaultAllExpanded || (canManageWeeklyTasks && pendingMainIds.has(id));
+  }, [collapsedMain, defaultAllExpanded, canManageWeeklyTasks, pendingMainIds]);
 
   const handleToggleMain = useCallback((id: string) => {
     setCollapsedMain((prev) => {
-      const current = prev[id] !== undefined ? prev[id] : !defaultAllExpanded;
+      const current = prev[id] !== undefined ? prev[id] : !(defaultAllExpanded || (canManageWeeklyTasks && pendingMainIds.has(id)));
       return { ...prev, [id]: !current };
     });
-  }, [defaultAllExpanded]);
+  }, [defaultAllExpanded, canManageWeeklyTasks, pendingMainIds]);
 
   const handleToggleWeekly = useCallback((id: string) => {
     setCollapsedWeekly((prev) => ({
@@ -121,6 +125,14 @@ export function ProjectWbsTree({
     setCollapsedMain(newCollapsedMain);
   }, [mainTasks]);
 
+  const handleOpenPending = () => {
+    setSearch("");
+    setCollapsedMain((previous) => ({ ...previous, ...Object.fromEntries(Array.from(pendingMainIds).map((id) => [id, false])) }));
+    setCollapsedWeekly((previous) => ({ ...previous, ...Object.fromEntries(mainTasks.flatMap((main) =>
+      (main.weekly_tasks || main.weekly_plans || []).filter((weekly: any) => weekly.status === "PENDING_APPROVAL")
+        .map((weekly: any) => [String(weekly.id), false]))) }));
+  };
+
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="rounded-2xl border border-text-tertiary bg-white p-4 shadow-sm">
@@ -141,6 +153,11 @@ export function ProjectWbsTree({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap ml-auto">
+          {canManageWeeklyTasks && pendingWeeklyCount > 0 && (
+            <button type="button" onClick={handleOpenPending} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100">
+              {pendingWeeklyCount} Target Menunggu Approval
+            </button>
+          )}
           {mainTasks.length > 0 && (
             <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-xl border border-gray-200 text-2xs">
               <button
@@ -215,7 +232,11 @@ export function ProjectWbsTree({
               canManageWbs={canManageWbs}
               canAssignTeam={canAssignTeam}
               canManageWeeklyTasks={canManageWeeklyTasks}
-              onReviewWeeklyTask={onReviewWeeklyTask}
+              onReviewWeeklyTask={async (id, decision) => {
+                // Keep the reviewed branch open when its last pending target becomes active.
+                setCollapsedMain((previous) => ({ ...previous, [String(main.id)]: false }));
+                await onReviewWeeklyTask(id, decision);
+              }}
               currentUserId={currentUserId}
               userRole={userRole}
               onAssignClick={onAssignClick}
