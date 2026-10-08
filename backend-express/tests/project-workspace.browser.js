@@ -21,7 +21,7 @@ async function main() {
     browser = await chromium.launch({ headless: true, channel: 'msedge' });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    let role = 'ROLE-PM', bootstraps = 0, edits = 0, deletes = 0, submissions = 0, reviews = 0, supervisorActive = true;
+    let role = 'ROLE-PM', bootstraps = 0, edits = 0, deletes = 0, weeklyDeletes = 0, submissions = 0, reviews = 0, supervisorActive = true;
     const company = '10000000-0000-0000-0000-000000000099';
     const actorId = '20000000-0000-0000-0000-000000000099';
     const profile = () => ({ id: actorId, email: 'fixture@qa.invalid', full_name: 'Fixture User', company_id: company, active_role_code: role, enabled_modules: ['PROJECTS'], delegated_modules: role === 'ROLE-SUPERVISOR' ? ['PROJECTS'] : [], roles: [{ role_code: 'ROLE-STAFF', company_id: company }, { role_code: role, company_id: company }] });
@@ -63,6 +63,11 @@ async function main() {
         weeklies.push(row); return json(row);
       }
       if (endpoint.endsWith('/review')) { reviews++; const row = weeklies.find(w => w.id === endpoint.split('/').at(-2)); row.status = request.postDataJSON().decision === 'APPROVE' ? 'PLANNED' : 'REJECTED'; return json(row); }
+      if (/\/weekly-tasks\/[^/]+\/?$/.test(endpoint) && request.method() === 'DELETE') {
+        weeklyDeletes++; const id = endpoint.replace(/\/$/, '').split('/').at(-1);
+        weeklies.splice(weeklies.findIndex(w => w.id === id), 1);
+        return json({ success: true, message: 'Data berhasil dihapus.' });
+      }
       if (endpoint.endsWith('/update-progress')) { edits++; const body = request.postDataJSON(); assert(!('owner_id' in body)); assert(!('weekly_task_id' in body)); dailies[0] = { ...dailies[0], ...body }; return json(dailies[0]); }
       if (/\/daily-tasks\/[^/]+\/?$/.test(endpoint) && request.method() === 'DELETE') { deletes++; dailies = []; return route.fulfill({ status: 204 }); }
       for (const [suffix, rows] of [['projects', projects], ['main-tasks', mainTasks], ['task-assignments', assignments], ['weekly-tasks', weeklies], ['daily-tasks', dailies]]) {
@@ -112,9 +117,37 @@ async function main() {
     assert.equal(await page.getByRole('button', { name: /^(Daily Task|Tugas Harian)$/ }).count(), 1, 'Pending Weekly has no Daily create action');
     assert.equal(await page.getByRole('button', { name: 'Approve', exact: true }).count(), 0);
     role = 'ROLE-PM'; await page.evaluate(user => localStorage.setItem('erp.user', JSON.stringify(user)), profile());
-    await page.reload({ waitUntil: 'networkidle' }); await page.getByRole('button', { name: 'Buka Semua' }).click();
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'Approve', exact: true }).waitFor({ state: 'visible' });
+    await page.getByRole('button', { name: '1 Target Menunggu Approval', exact: true }).waitFor();
+    const proposal = page.locator('div.rounded-xl').filter({ has: page.locator('strong').filter({ hasText: 'Staff proposed weekly' }) }).first();
+    assert(await proposal.getByTitle('Hapus Target Mingguan (PM / OM)').isVisible(), 'Pending target retains delete');
+    assert.equal(await proposal.getByRole('button', { name: /^(Daily Task|Tugas Harian)$/ }).count(), 0);
+    await page.getByRole('button', { name: 'Tutup Semua', exact: true }).click();
+    await page.getByTitle('Buka paket kerja', { exact: true }).waitFor();
+    await page.getByRole('button', { name: '1 Target Menunggu Approval', exact: true }).click();
+    assert(await page.getByRole('button', { name: 'Approve', exact: true }).isVisible());
     await page.getByRole('button', { name: 'Approve', exact: true }).click();
     await page.getByText('Weekly Task disetujui.', { exact: true }).waitFor(); assert.equal(reviews, 1);
+    await proposal.getByRole('button', { name: /^(Daily Task|Tugas Harian)$/ }).waitFor({ state: 'visible' });
+    assert(await proposal.getByTitle('Hapus Target Mingguan (PM / OM)').isVisible(), 'Approved target retains delete');
+    assert.equal(await page.getByRole('button', { name: '1 Target Menunggu Approval', exact: true }).count(), 0);
+    await proposal.getByRole('button', { name: /^(Daily Task|Tugas Harian)$/ }).click();
+    await page.getByRole('dialog').waitFor();
+    await page.keyboard.press('Escape');
+
+    weeklies.push({ id: 'reject-proposal', main_task_id: 'main-a', assignee_id: actorId, week_number: 2, target_description: 'Proposal to reject', status: 'PENDING_APPROVAL', progress: 0 });
+    await page.getByTitle('Segarkan data proyek').click();
+    const rejectedProposal = page.locator('div.rounded-xl').filter({ has: page.locator('strong').filter({ hasText: 'Proposal to reject' }) }).first();
+    await rejectedProposal.getByRole('button', { name: 'Reject', exact: true }).click();
+    await page.getByText('Weekly Task ditolak.', { exact: true }).waitFor();
+    assert.equal(await rejectedProposal.getByRole('button', { name: /^(Daily Task|Tugas Harian)$/ }).count(), 0);
+    assert(await rejectedProposal.getByTitle('Hapus Target Mingguan (PM / OM)').isVisible(), 'Rejected target retains delete');
+    page.once('dialog', dialog => dialog.accept());
+    await rejectedProposal.getByTitle('Hapus Target Mingguan (PM / OM)').click();
+    await page.getByText('Weekly Task dihapus', { exact: true }).waitFor();
+    await page.getByText('Proposal to reject', { exact: true }).waitFor({ state: 'detached' });
+    assert.equal(weeklyDeletes, 1);
     role = 'ROLE-SUPERVISOR'; await page.evaluate(user => localStorage.setItem('erp.user', JSON.stringify(user)), profile());
     await page.reload({ waitUntil: 'networkidle' });
     assert.equal(await page.locator('#project-selector option').count(), 3, 'Supervisor must receive personal projects as well as managed projects, deduplicated');

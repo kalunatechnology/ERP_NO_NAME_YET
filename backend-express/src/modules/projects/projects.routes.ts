@@ -1649,7 +1649,7 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     if (!mainTask) throw new ValidationError('Hierarchy Weekly Task tidak valid.');
     await ProjectsService.assertCanManageProject(req.user, mainTask.project_id, activeCompanyId(req));
     if (['PENDING_APPROVAL', 'REJECTED'].includes(existing.status) || ['PENDING_APPROVAL', 'REJECTED'].includes(String(data.status))) {
-      throw new ValidationError('Gunakan aksi approval untuk Weekly Task yang menunggu review; Weekly rejected tetap tercatat.');
+      throw new ValidationError('Gunakan aksi approval untuk Weekly Task yang menunggu review; target yang ditolak tidak dapat diedit.');
     }
     if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
     if (data.assignee && !data.assignee_id) data.assignee_id = data.assignee;
@@ -1674,7 +1674,6 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
       select: { project_id: true },
     });
     await ProjectsService.assertCanManageProject(req.user, mainTask?.project_id, activeCompanyId(req));
-    if (existing.status === 'REJECTED') throw new ConflictError('Weekly Task yang ditolak tetap disimpan sebagai catatan pengajuan.');
     const dailyTaskCount = await prisma.project_daily_task.count({
       where: { weekly_task_id: existing.id, company_id: activeCompanyId(req) },
     });

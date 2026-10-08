@@ -82,14 +82,21 @@ async function main() {
     ok(await call(staff, `/weekly-tasks/${weekly.id}/`, 'PATCH', { target_description: 'Unauthorized edit' }), 403);
     ok(await call(pm, `/weekly-tasks/${weekly.id}/`, 'PATCH', { target_description: 'PM controlled target' }), 200);
 
+    ok(await call(staff, `/weekly-tasks/${personal.id}/`, 'DELETE'), 403);
+    ok(await call(otherPm, `/weekly-tasks/${personal.id}/`, 'DELETE'), 404);
+    ok(await call(pm, `/weekly-tasks/${personal.id}/`, 'DELETE'), 200);
+    assert.equal(await prisma.project_weekly_task.findUnique({ where: { id: personal.id } }), null, 'PM can delete a pending proposal');
+
     const daily = ok(await call(staff, '/daily-tasks/', 'POST', dailyBody(weekly.id)), 201);
+    ok(await call(pm, `/weekly-tasks/${weekly.id}/`, 'DELETE'), 409);
     const rejected = ok(await call(staff, '/weekly-tasks/', 'POST', weeklyBody(main.id, staff.id)), 201);
     assert.equal(Number((await prisma.project_main_task.findUniqueOrThrow({ where: { id: main.id } })).progress), 100, 'Pending proposal cannot dilute approved progress');
     assert.equal(ok(await call(pm, `/weekly-tasks/${rejected.id}/review`, 'POST', { decision: 'REJECT' }), 200).status, 'REJECTED');
     ok(await call(staff, '/daily-tasks/', 'POST', dailyBody(rejected.id)), 400);
     await ProjectsService.recalculateTaskTree({ weeklyTaskId: rejected.id, companyId });
     assert.equal((await prisma.project_weekly_task.findUniqueOrThrow({ where: { id: rejected.id } })).status, 'REJECTED');
-    ok(await call(pm, `/weekly-tasks/${rejected.id}/`, 'DELETE'), 409);
+    ok(await call(pm, `/weekly-tasks/${rejected.id}/`, 'DELETE'), 200);
+    assert.equal(await prisma.project_weekly_task.findUnique({ where: { id: rejected.id } }), null, 'PM can delete a rejected proposal without Daily Tasks');
 
     for (const actor of [finance, supervisor]) {
       const proposal = ok(await call(actor, '/weekly-tasks/', 'POST', weeklyBody(main.id, actor.id)), 201);
