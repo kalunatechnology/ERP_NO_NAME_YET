@@ -196,7 +196,7 @@ async function main(): Promise<void> {
       weekly_task_id: { in: ['weekly-a'] },
     });
     assert.deepEqual(await ProjectsService.projectAccessWhere(pm, 'company-a', pmDb), {
-      created_by_id: 'pm-a',
+      OR: [{ created_by_id: 'pm-a' }, { project_manager_id: 'pm-a' }, { id: { in: ['project-a'] } }],
     });
     assert.deepEqual(await ProjectsService.taskAssignmentAccessWhere(pm, 'company-a', pmDb), {
       main_task_id: { in: ['main-a'] },
