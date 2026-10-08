@@ -442,7 +442,7 @@ async function main(): Promise<void> {
     assert(reportingClient.includes('Laporan Aktivitas dan Kehadiran Saya'));
     assert(!projectClient.includes('/api/v1/finance/project-fundings/?project_id='), 'Project workspace must not probe Finance before its PROJECTS funding endpoint.');
     assert(tasksClient.includes('normalizeDateKey(i.task.planned_date) === today'), 'Daily Tasks must compare normalized calendar dates.');
-    assert(tasksClient.includes('const creatableProjects = useMemo') && tasksClient.includes('mainTask.assignments'), 'Daily Task create scope must follow Main Task assignment.');
+    assert(tasksClient.includes('const creatableProjects = useMemo') && tasksClient.includes('weeklyTask.assignee_id') && tasksClient.includes("'PENDING_APPROVAL', 'REJECTED'"), 'Daily Task create scope must follow owned approved Weekly Tasks.');
     assert(tasksClient.includes('{canCreateDailyTask && <button'), 'Daily Task create action must be hidden when no valid backend scope exists.');
     assert(tasksClient.includes('{canOpenReporting && <Link'), 'Daily Tasks must not advertise an unauthorized Reporting route.');
     assert(tasksClient.includes('Task Submission') && tasksClient.includes('pendingSubmissionCount'), 'Daily Task submission must be an explicit user-journey section.');
