@@ -51,6 +51,7 @@ async function main() {
   db.project_member.findMany = async () => [];
   db.project_member.findFirst = async () => null;
   db.project_task_assignment.findMany = async () => [{ main_task_id: 'main-a' }];
+  db.project_weekly_task.findMany = async () => [];
   db.project_task_assignment.findFirst = async ({ where }: any) => where.main_task_id === 'main-a' && where.assignee_id === staffId ? { id: 'assignment-a' } : null;
   db.project_main_task.findMany = async () => [{ project_id: project.id }];
   db.project_project.findFirst = async ({ where }: any) => {
@@ -91,6 +92,10 @@ async function main() {
     assert.equal(await ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: project.id }, companyId, staffId, db), 'PENDING_APPROVAL');
     await assert.rejects(() => ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: project.id }, companyId, 'someone-else', db), /diri sendiri/);
     assert.throws(() => ProjectsService.assertWeeklyTaskActive('PENDING_APPROVAL'), /belum disetujui/);
+    // An owned Weekly remains a valid read path when its Main Task assignment is missing.
+    db.project_task_assignment.findMany = async () => [];
+    db.project_weekly_task.findMany = async () => [{ id: 'weekly-a', main_task_id: 'main-a', assignee_id: staffId }];
+    await ProjectsService.assertCanViewProject(staff, project.id, companyId, db);
     console.log('PASS: Ordinary Staff see Project navigation, load assigned data, read authority and submit Pending Weekly without PM rights.');
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error: Error | undefined) => error ? reject(error) : resolve()));
