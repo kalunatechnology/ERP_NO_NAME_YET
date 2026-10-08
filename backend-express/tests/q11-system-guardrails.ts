@@ -454,9 +454,12 @@ async function main(): Promise<void> {
     );
     assert(
       projectApi.includes('async function loadAllAccessibleProjectRows()') &&
+      projectApi.includes('async function loadAllAccessibleRows<') &&
       projectApi.includes('startPage <= totalPages') &&
-      projectApi.includes('loadAllAccessibleProjectRows().then(rows'),
-      'Project read model must paginate every accessible project instead of showing the first page only.',
+      projectApi.includes('loadAllAccessibleProjectRows().then(rows') &&
+      projectApi.includes('loadAllAccessibleRows<any>("/api/v1/projects/main-tasks/?page_size=300")') &&
+      projectApi.includes('loadAllAccessibleRows<any>("/api/v1/projects/weekly-tasks/?page_size=500")'),
+      'Daily Task must receive complete authorized project, Main Task and Weekly catalogs across API pages.',
     );
     assert(tasksClient.includes('{canCreateDailyTask && <button'), 'Daily Task create action must be hidden when no valid backend scope exists.');
     assert(tasksClient.includes('{canOpenReporting && <Link'), 'Daily Tasks must not advertise an unauthorized Reporting route.');
