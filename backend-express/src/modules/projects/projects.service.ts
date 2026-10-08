@@ -190,8 +190,17 @@ export class ProjectsService {
   }
 
   static async weeklyCreationStatus(user: any, mainTask: { id: string; project_id: string }, companyId: string, assigneeId: string, db: any = prisma): Promise<string> {
-    if (await this.hasProjectManagementAuthority(user, mainTask.project_id, companyId, db)) return 'PLANNED';
-    if (!user?.id || user.roles?.includes(RoleCode.SUPER_ADMIN) || this.activeRole(user) === RoleCode.DIRECTOR) {
+    const role = this.activeRole(user);
+    const managerRole = ([RoleCode.PROJECT_MANAGER, RoleCode.OPERATIONAL_MANAGER, RoleCode.COMPANY_ADMIN] as string[]).includes(role);
+    // A PROJECTS module write override grants API capabilities, NOT supervisory
+    // identity. Staff and ordinary supervisors must still submit for PM review.
+    const actingManager = this.isOperationalAssignee(user) && Boolean(await db.project_member.findFirst({
+      where: { company_id: companyId, project_id: mainTask.project_id, user_id: user?.id,
+        status: 'ACTIVE', project_role: ACTING_PROJECT_MANAGER_ROLE },
+      select: { id: true },
+    }));
+    if ((managerRole || actingManager) && await this.hasProjectManagementAuthority(user, mainTask.project_id, companyId, db)) return 'PLANNED';
+    if (!user?.id || user.roles?.includes(RoleCode.SUPER_ADMIN) || role === RoleCode.DIRECTOR) {
       throw new ForbiddenError('User ini tidak dapat mengajukan Weekly Task.');
     }
     await this.assertActiveCompanyMember(user.id, companyId, db);
