@@ -7,7 +7,7 @@ import { validateNativePlan } from './marbot-planner.service';
 import { executeResourceRead, planResourceQuestion, type ResourcePlan } from './marbot-resource.service';
 import { discoverMarbotSchema } from './marbot-schema.service';
 import { understandMarbotQuestion } from './marbot-understanding.service';
-import { isProcedureQuestion } from './marbot-intent';
+import { isIntentCorrection, isProcedureQuestion } from './marbot-intent';
 
 export type MarbotAnswer = { content: string; tools: string[]; sources: string[]; action?: MarbotAction };
 export type MarbotDecision = { answer: MarbotAnswer; understanding: { source: 'llm' | 'local' | 'explicit';
@@ -38,6 +38,10 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
   signal: AbortSignal, previousQuestion?: string, db = prisma): Promise<MarbotDecision> {
   const explicit = /^\s*(?:data|resource)\s+\{/.test(message);
   const fallbackQuestion = followUpQuestion(message, previousQuestion);
+  if (isIntentCorrection(message) && fallbackQuestion !== message) return {
+    understanding: { source: 'local', route: 'guide', status: 'recovered' },
+    answer: await answerNative(fallbackQuestion, mode, scope, db),
+  };
   const result = explicit ? null : await understandMarbotQuestion(message, scope, signal, previousQuestion);
   if (result?.status === 'ready') {
     const intent = result.intent;

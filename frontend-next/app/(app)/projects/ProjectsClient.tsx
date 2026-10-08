@@ -96,6 +96,16 @@ export default function ProjectsClient() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(requestedProjectId);
   const [activeTab, setActiveTab] = useState(requestedProjectTab || "TREE");
+  const [weeklyReviewRequest, setWeeklyReviewRequest] = useState(0);
+  useEffect(() => {
+    if (!weeklyReviewRequest) return;
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById("project-weekly-approval");
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [weeklyReviewRequest]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
@@ -215,6 +225,8 @@ export default function ProjectsClient() {
   const [transfers, setTransfers] = useState<TaskTransfer[]>([]);
 
   const selectedProject = projects.find(p => String(p.id) === String(selectedId)) || null;
+  const pendingWeeklyCount = useMemo(() => (selectedProject?.main_tasks || []).reduce((count, main) => count
+    + (main.weekly_tasks || main.weekly_plans || []).filter((weekly) => weekly.status === "PENDING_APPROVAL").length, 0), [selectedProject?.main_tasks]);
   const completedChecklistCount = checklistItems.filter((item) => ['DONE', 'COMPLETED', 'CHECKED', 'APPROVED'].includes(String(item.status).toUpperCase())).length;
   const checklistProgress = checklistItems.length > 0 ? Math.round((completedChecklistCount / checklistItems.length) * 100) : 0;
 
@@ -1361,6 +1373,36 @@ export default function ProjectsClient() {
         </div>
       </div>
 
+      {selectedProject && allowsProjectManagement && selectedAuthority?.can_manage_weekly_tasks && (
+        <section aria-labelledby="weekly-approval-title" className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <ShieldCheck size={24} className="mt-0.5 shrink-0 text-[#294BB2]" />
+              <div className="min-w-0">
+                <h2 id="weekly-approval-title" className="text-base font-bold text-text-primary">Persetujuan Target Mingguan</h2>
+                {pendingWeeklyCount > 0 ? (
+                  <>
+                    <p className="mt-1 text-sm font-semibold text-[#294BB2]">{pendingWeeklyCount} pengajuan menunggu keputusan Anda.</p>
+                    <p className="mt-1 text-xs leading-5 text-text-secondary">Periksa target dan PIC, lalu setujui atau tolak. Setelah disetujui, PIC dapat membuat Daily Task.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm font-semibold text-text-primary">Belum ada pengajuan menunggu persetujuan.</p>
+                    <p className="mt-1 text-xs leading-5 text-text-secondary">Pengajuan staf pada proyek ini akan tampil setelah dikirim. PM atau SPV proyek dapat memberikan keputusan.</p>
+                  </>
+                )}
+              </div>
+            </div>
+            <button type="button" onClick={() => {
+              navigateProject(selectedProject.id, "TREE");
+              setWeeklyReviewRequest((request) => request + 1);
+            }} className="btn-primary shrink-0 gap-2 px-4 py-2 text-sm">
+              <ShieldCheck size={16} /> {pendingWeeklyCount > 0 ? "Tinjau Pengajuan" : "Lihat Target Mingguan"}
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* ── Project Hero Banner & Financial KPIs ── */}
       {selectedProject && (userRole !== "staff" || canManageSelectedProject) && (
         <div className="card bg-brand-deep-green text-white p-6 rounded-2xl relative overflow-hidden shadow-card-lg border-0">
@@ -1641,7 +1683,7 @@ export default function ProjectsClient() {
          ══════════════════════════════════════════════════════════════ */}
       {activeTab === "TREE" && (
         <ProjectWbsTree
-          key={String(selectedProject?.id ?? "")}
+          key={`${selectedProject?.id ?? ""}:${weeklyReviewRequest}`}
           mainTasks={mainTasks}
           isPM={isPM}
           canManageWbs={allowsProjectManagement && Boolean(selectedAuthority?.can_manage_wbs)}
@@ -2911,11 +2953,12 @@ export default function ProjectsClient() {
             </div>
           </div>
           <div>
-            <label className="text-xs font-bold text-text-secondary block mb-1">Total Anggaran (Rp)</label>
+            <label htmlFor="new-project-budget" className="text-xs font-bold text-text-secondary block mb-1">Total Anggaran (Rp)</label>
             <input
+              id="new-project-budget"
               type="number"
               min="0"
-              placeholder="0"
+              placeholder="Masukkan total anggaran"
               value={newProjForm.budget_amount}
               onChange={e => setNewProjForm({ ...newProjForm, budget_amount: e.target.value })}
               className="input text-xs"

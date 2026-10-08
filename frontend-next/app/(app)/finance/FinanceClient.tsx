@@ -208,8 +208,8 @@ export default function FinanceClient() {
   const [selectedBillForMatch, setSelectedBillForMatch] = useState<any>(null);
   const [selectedBillForPay, setSelectedBillForPay] = useState<any>(null);
 
-  const [costForm, setCostForm] = useState({ project: "", category: "MATERIAL", division_id: "", amount: 0, description: "" });
-  const [fundingForm, setFundingForm] = useState({ project: "", amount: 0, purpose: "", source: "KAS_PERUSAHAAN" });
+  const [costForm, setCostForm] = useState({ project: "", category: "MATERIAL", division_id: "", amount: "", description: "" });
+  const [fundingForm, setFundingForm] = useState({ amount: "", need_type: "", purpose: "" });
   const [billingForm, setBillingForm] = useState({
     project: "",
     amount: 0,
@@ -228,13 +228,22 @@ export default function FinanceClient() {
     customer_name: "",
     project_name: "",
     invoice_ref: "",
-    amount: 0,
+    amount: "",
     bank_account: "",
     payment_date: localDateKey(),
     payment_method: "BANK_TRANSFER",
     reference_number: "",
     notes: "",
   });
+  const [receiptErrors, setReceiptErrors] = useState<Record<string, string>>({});
+  const [receiptSaving, setReceiptSaving] = useState(false);
+  const updateReceiptField = (field: keyof typeof receiptForm, value: string) => {
+    setReceiptForm(current => ({ ...current, [field]: value }));
+    setReceiptErrors(current => ({ ...current, [field]: "" }));
+  };
+  const receiptError = (field: string) => receiptErrors[field]
+    ? <p id={`receipt-${field}-error`} role="alert" className="mt-1 text-xs text-red-600">{receiptErrors[field]}</p>
+    : null;
 
 /**
  * loadFinanceData coordinates the UI behavior represented by this function.
@@ -1089,7 +1098,7 @@ export default function FinanceClient() {
               <p className="text-xs text-text-secondary">Penerimaan pembayaran dari klien / termin proyek ke rekening bank perusahaan.</p>
             </div>
             <button
-              onClick={() => setIsReceiptModalOpen(true)}
+              onClick={() => { setReceiptErrors({}); setIsReceiptModalOpen(true); }}
               className="btn-primary py-2 px-3.5 text-xs gap-1.5 bg-brand-green hover:bg-brand-deep-green shadow-sm"
             >
               <Plus size={14} /> Catat Uang Masuk (Customer Payment)
@@ -1099,11 +1108,11 @@ export default function FinanceClient() {
           {/* KPI Summary Uang Masuk */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="card p-4 rounded-2xl border border-brand-primary-soft bg-brand-light-green/50">
-              <span className="text-2xs font-bold text-brand-deep-green uppercase tracking-wider block">Total Uang Masuk Diterima (Inflow)</span>
+              <span className="text-2xs font-bold text-brand-deep-green uppercase tracking-wider block">Total Penerimaan Tercatat</span>
               <span className="text-2xl font-black text-brand-deep-green mt-1 block">
                 {formatMoney(customerReceipts.reduce((acc, r) => acc + Number(r.amount || 0), 0))}
               </span>
-              <span className="text-2xs text-text-secondary mt-0.5 block">{customerReceipts.length} transaksi penerimaan tervalidasi</span>
+              <span className="text-2xs text-text-secondary mt-0.5 block">{customerReceipts.length} catatan penerimaan; lihat status setiap transaksi</span>
             </div>
 
             <div className="card p-4 rounded-2xl border border-amber-200 bg-amber-50/50">
@@ -1139,7 +1148,7 @@ export default function FinanceClient() {
                   {customerReceipts.map((rec) => (
                     <tr key={rec.id} className="hover:bg-brand-light-green/30">
                       <td className="py-3 px-4">
-                        <strong className="text-text-primary block font-mono text-2xs">{rec.receipt_number}</strong>
+                        <strong className="text-text-primary block font-mono text-2xs">{rec.receipt_number || rec.reference_number}</strong>
                         <span className="text-2xs text-text-secondary font-mono block">{rec.payment_date}</span>
                       </td>
                       <td className="py-3 px-4">
@@ -1148,7 +1157,7 @@ export default function FinanceClient() {
                         <span className="text-2xs text-brand-deep-green block mt-0.5">{rec.invoice_ref}</span>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="font-semibold text-text-primary block">{rec.bank_account.split("—")[0]}</span>
+                        <span className="font-semibold text-text-primary block">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</span>
                         <span className="text-2xs text-text-secondary font-mono block">Ref: {rec.reference_number}</span>
                       </td>
                       <td className="py-3 px-4 font-bold text-brand-deep-green text-sm">
@@ -1156,7 +1165,7 @@ export default function FinanceClient() {
                       </td>
                       <td className="py-3 px-4">
                         <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
-                          ✓ DITERIMA & POSTED
+                          {String(rec.status || "DRAFT")}
                         </span>
                       </td>
                     </tr>
@@ -1804,7 +1813,8 @@ export default function FinanceClient() {
           onSubmit={async (e) => {
             e.preventDefault();
             try {
-              if (!costForm.project || costForm.amount <= 0 || !costForm.description.trim()) {
+              const amount = Number(costForm.amount);
+              if (!costForm.project || !Number.isFinite(amount) || amount <= 0 || !costForm.description.trim()) {
                 toast.error("Project, jumlah biaya, dan deskripsi wajib diisi.");
                 return;
               }
@@ -1817,13 +1827,13 @@ export default function FinanceClient() {
                 cost_element: costForm.category,
                 transaction_date: localDateKey(),
                 quantity: 1,
-                unit_cost: costForm.amount,
-                total_cost: costForm.amount,
+                unit_cost: amount,
+                total_cost: amount,
                 status: "DRAFT",
               });
               toast.success("Biaya berhasil dicatat!");
               setIsCostModalOpen(false);
-              setCostForm({ project: "", category: "MATERIAL", division_id: "", amount: 0, description: "" });
+              setCostForm({ project: "", category: "MATERIAL", division_id: "", amount: "", description: "" });
               await loadFinanceData(true);
             } catch {
               toast.error("Gagal mencatat biaya");
@@ -1868,18 +1878,21 @@ export default function FinanceClient() {
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-text-primary block mb-1">Jumlah Biaya (Rp) *</label>
+            <label htmlFor="cost-amount" className="text-xs font-semibold text-text-primary block mb-1">Jumlah Biaya (Rp) *</label>
             <input
+              id="cost-amount"
               type="number"
               required
+              min={1}
               value={costForm.amount}
-              onChange={e => setCostForm({ ...costForm, amount: Number(e.target.value) })}
+              onChange={e => setCostForm({ ...costForm, amount: e.target.value })}
               className="input"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-text-primary block mb-1">Deskripsi Pengeluaran</label>
+            <label htmlFor="cost-description" className="text-xs font-semibold text-text-primary block mb-1">Deskripsi Pengeluaran *</label>
             <input
+              id="cost-description"
               type="text"
               required
               placeholder="Contoh: Pengambilan sensor Schneider 12 unit"
@@ -1910,14 +1923,18 @@ export default function FinanceClient() {
                 toast.error("Jumlah dana harus lebih dari Rp 0");
                 return;
               }
-
+              if (!fundingForm.need_type || !fundingForm.purpose.trim()) {
+                toast.error("Jenis kebutuhan dan detail / keterangan wajib diisi.");
+                return;
+              }
               await api.post("/api/v1/finance/project-fundings/", {
-                ...fundingForm,
-                amount,
+                funding_type: "INTERNAL",
+                purpose: `${fundingForm.need_type}\n${fundingForm.purpose.trim()}`,
                 requested_amount: amount,
               });
               toast.success("Request dana berhasil diajukan!");
               setIsFundingModalOpen(false);
+              setFundingForm({ amount: "", need_type: "", purpose: "" });
               await loadFinanceData(true);
             } catch {
               toast.error("Gagal mengajukan funding");
@@ -1926,16 +1943,17 @@ export default function FinanceClient() {
           className="flex flex-col gap-4"
         >
           <div>
-            <label className="text-xs font-semibold text-text-primary block mb-1">Jumlah Dana (Rp) *</label>
+            <label htmlFor="funding-amount" className="text-xs font-semibold text-text-primary block mb-1">Jumlah Dana (Rp) *</label>
             <input
+              id="funding-amount"
               type="number"
               required
               min={1}
-              value={fundingForm.amount === 0 ? "" : fundingForm.amount}
+              value={fundingForm.amount}
               onChange={e =>
                 setFundingForm({
                   ...fundingForm,
-                  amount: e.target.value === "" ? 0 : Number(e.target.value),
+                  amount: e.target.value,
                 })
               }
               className="input"
@@ -1943,10 +1961,11 @@ export default function FinanceClient() {
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-text-primary block mb-1">Keperluan</label>
+            <label htmlFor="funding-type" className="text-xs font-semibold text-text-primary block mb-1">Jenis Kebutuhan *</label>
             <select
-              value={fundingForm.purpose}
-              onChange={e => setFundingForm({ ...fundingForm, purpose: e.target.value })}
+              id="funding-type"
+              value={fundingForm.need_type}
+              onChange={e => setFundingForm({ ...fundingForm, need_type: e.target.value })}
               className="input"
               required
             >
@@ -1958,6 +1977,14 @@ export default function FinanceClient() {
               <option value="Perangkat Lunak dan Infrastruktur Digital">Perangkat Lunak dan Infrastruktur Digital</option>
               <option value="Lainnya">Lainnya</option>
             </select>
+          </div>
+          <div>
+            <label htmlFor="funding-detail" className="text-xs font-semibold text-text-primary block mb-1">
+              {fundingForm.need_type === "Lainnya" ? "Keterangan Kebutuhan Lainnya *" : "Detail / Keterangan Kebutuhan *"}
+            </label>
+            <textarea id="funding-detail" required rows={3} value={fundingForm.purpose}
+              onChange={e => setFundingForm({ ...fundingForm, purpose: e.target.value })}
+              placeholder="Tuliskan detail kebutuhan yang diajukan" className="input" />
           </div>
           <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-2">
             Ajukan Request Dana
@@ -2320,66 +2347,96 @@ export default function FinanceClient() {
       {/* Modal: Catat Uang Masuk / Pembayaran Klien (Customer Payment Receipt) */}
       <Modal
         isOpen={isReceiptModalOpen}
-        onClose={() => setIsReceiptModalOpen(false)}
+        onClose={() => { if (!receiptSaving) { setIsReceiptModalOpen(false); setReceiptErrors({}); } }}
         title="💵 Catat Penerimaan Uang Masuk (Customer Inflow)"
         subtitle="Penerimaan pembayaran pelunasan termin invoice penagihan klien"
         size="md"
       >
         <form
+          noValidate
           onSubmit={async (e) => {
             e.preventDefault();
+            if (receiptSaving) return;
+            const errors: Record<string, string> = {};
+            const amount = Number(receiptForm.amount);
+            const bank = bankAccounts.find(account => account.id === receiptForm.bank_account);
+            if (!receiptForm.customer_name.trim()) errors.customer_name = "Nama klien / perusahaan wajib diisi.";
+            if (!receiptForm.project_name.trim()) errors.project_name = "Nama proyek terkait wajib diisi.";
+            if (!receiptForm.amount || !Number.isFinite(amount) || amount < 1000) errors.amount = "Nominal uang masuk wajib diisi, minimal Rp 1.000.";
+            if (!bank) errors.bank_account = bankAccounts.length ? "Pilih rekening kas / bank penerima dana." : "Belum ada rekening kas / bank. Tambahkan rekening penerima di menu Kas & Bank terlebih dahulu.";
+            if (!receiptForm.payment_date) errors.payment_date = "Tanggal terima dana wajib diisi.";
+            if (!receiptForm.reference_number.trim()) errors.reference_number = "No. bukti transfer / resi bank klien wajib diisi.";
+            setReceiptErrors(errors);
+            if (Object.keys(errors).length) {
+              toast.error("Lengkapi data penerimaan yang ditandai di bawah.");
+              document.getElementById(`receipt-${Object.keys(errors)[0]}`)?.focus();
+              return;
+            }
+            setReceiptSaving(true);
             try {
               await api.post("/api/v1/finance/customer-receipts/", {
                 payment_type: "CUSTOMER_RECEIPT",
+                bank_account_id: receiptForm.bank_account,
                 payment_date: receiptForm.payment_date,
-                amount: Number(receiptForm.amount),
+                amount,
                 payment_method: receiptForm.payment_method,
-                reference_number: receiptForm.reference_number,
-                status: "RECEIVED",
+                reference_number: receiptForm.reference_number.trim(),
                 allocation_plan: {
-                  customer_name: receiptForm.customer_name,
-                  project_name: receiptForm.project_name,
-                  invoice_ref: receiptForm.invoice_ref,
-                  bank_account: receiptForm.bank_account,
-                  notes: receiptForm.notes,
+                  customer_name: receiptForm.customer_name.trim(),
+                  project_name: receiptForm.project_name.trim(),
+                  invoice_ref: receiptForm.invoice_ref.trim(),
+                  bank_account: bank?.name,
+                  notes: receiptForm.notes.trim(),
                 },
-                execution_reference: "",
-                execution_note: receiptForm.notes,
-                failure_reason: "",
               });
-              await loadFinanceData(true);
-              toast.success(`Penerimaan ${formatMoney(receiptForm.amount)} berhasil dicatat.`);
+              toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan sebagai Draft.`);
               setIsReceiptModalOpen(false);
-            } catch {
-              toast.error("Gagal mencatat penerimaan pelanggan");
+              setReceiptForm({ customer_name: "", project_name: "", invoice_ref: "", amount: "", bank_account: "", payment_date: localDateKey(), payment_method: "BANK_TRANSFER", reference_number: "", notes: "" });
+              await loadFinanceData(true);
+            } catch (error) {
+              const fieldErrors = (error as { response?: { data?: { errors?: Record<string, unknown> } } })?.response?.data?.errors;
+              if (fieldErrors && typeof fieldErrors === "object") {
+                setReceiptErrors(Object.fromEntries(Object.entries(fieldErrors).filter(([, value]) => typeof value === "string")) as Record<string, string>);
+              }
+              toast.error(getApiErrorDetail(error, "Penerimaan belum tersimpan. Silakan coba kembali."));
+            } finally {
+              setReceiptSaving(false);
             }
           }}
           className="flex flex-col gap-3.5 p-1"
         >
           <div className="p-3 rounded-xl bg-brand-light-green border border-brand-primary-soft text-xs text-brand-deep-green">
-            <strong>Alur Uang Masuk Perusahaan:</strong> Dana yang diterima akan menambah saldo kas/bank perusahaan dan mengurangi piutang invoice klien terkait.
+            <strong>Pencatatan penerimaan:</strong> Data disimpan sebagai Draft untuk diperiksa. Pembukuan kas/bank dan pelunasan invoice mengikuti proses posting.
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Nama Klien / Perusahaan *</label>
+              <label htmlFor="receipt-customer_name" className="text-xs font-bold text-text-primary block mb-1">Nama Klien / Perusahaan *</label>
               <input
+                id="receipt-customer_name"
+                aria-invalid={!!receiptErrors.customer_name}
+                aria-describedby={receiptErrors.customer_name ? "receipt-customer_name-error" : undefined}
                 type="text"
                 required
                 value={receiptForm.customer_name}
-                onChange={e => setReceiptForm({ ...receiptForm, customer_name: e.target.value })}
+                onChange={e => updateReceiptField("customer_name", e.target.value)}
                 className="input text-xs"
               />
+              {receiptError("customer_name")}
             </div>
             <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Nama Proyek Terkait *</label>
+              <label htmlFor="receipt-project_name" className="text-xs font-bold text-text-primary block mb-1">Nama Proyek Terkait *</label>
               <input
+                id="receipt-project_name"
+                aria-invalid={!!receiptErrors.project_name}
+                aria-describedby={receiptErrors.project_name ? "receipt-project_name-error" : undefined}
                 type="text"
                 required
                 value={receiptForm.project_name}
-                onChange={e => setReceiptForm({ ...receiptForm, project_name: e.target.value })}
+                onChange={e => updateReceiptField("project_name", e.target.value)}
                 className="input text-xs"
               />
+              {receiptError("project_name")}
             </div>
           </div>
 
@@ -2394,67 +2451,89 @@ export default function FinanceClient() {
               />
             </div>
             <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Nominal Uang Masuk (Rp) *</label>
+              <label htmlFor="receipt-amount" className="text-xs font-bold text-text-primary block mb-1">Nominal Uang Masuk (Rp) *</label>
               <input
+                id="receipt-amount"
+                aria-invalid={!!receiptErrors.amount}
+                aria-describedby={receiptErrors.amount ? "receipt-amount-error" : undefined}
                 type="number"
                 required
                 min="1000"
                 value={receiptForm.amount}
-                onChange={e => setReceiptForm({ ...receiptForm, amount: Number(e.target.value) })}
+                onChange={e => updateReceiptField("amount", e.target.value)}
                 className="input text-xs font-bold text-brand-deep-green"
               />
+              {receiptError("amount")}
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-bold text-text-primary block mb-1">Rekening Kas / Bank Penerima Dana *</label>
+            <label htmlFor="receipt-bank_account" className="text-xs font-bold text-text-primary block mb-1">Rekening Kas / Bank Penerima Dana *</label>
             <select
+              id="receipt-bank_account"
+              required
+              aria-invalid={!!receiptErrors.bank_account}
+              aria-describedby={receiptErrors.bank_account ? "receipt-bank_account-error" : undefined}
               value={receiptForm.bank_account}
-              onChange={e => setReceiptForm({ ...receiptForm, bank_account: e.target.value })}
+              onChange={e => updateReceiptField("bank_account", e.target.value)}
               className="input text-xs font-semibold"
             >
+              <option value="">Pilih rekening penerima</option>
               {bankAccounts.map(b => (
-                <option key={b.id} value={b.name}>
+                <option key={b.id} value={b.id}>
                   {b.name} (Saldo: {formatMoney(b.balance)})
                 </option>
               ))}
             </select>
+            {receiptError("bank_account")}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Metode Penerimaan</label>
+              <label htmlFor="receipt-payment_method" className="text-xs font-bold text-text-primary block mb-1">Metode Penerimaan</label>
               <select
+                id="receipt-payment_method"
+                aria-invalid={!!receiptErrors.payment_method}
+                aria-describedby={receiptErrors.payment_method ? "receipt-payment_method-error" : undefined}
                 value={receiptForm.payment_method}
-                onChange={e => setReceiptForm({ ...receiptForm, payment_method: e.target.value })}
+                onChange={e => updateReceiptField("payment_method", e.target.value)}
                 className="input text-xs"
               >
                 <option value="BANK_TRANSFER">Transfer Bank / RTGS</option>
                 <option value="GIRO_CEK">Bilyet Giro / Cek Masuk</option>
                 <option value="CASH">Kas Tunai Kasir</option>
               </select>
+              {receiptError("payment_method")}
             </div>
             <div>
-              <label className="text-xs font-bold text-text-primary block mb-1">Tanggal Terima Dana *</label>
+              <label htmlFor="receipt-payment_date" className="text-xs font-bold text-text-primary block mb-1">Tanggal Terima Dana *</label>
               <input
+                id="receipt-payment_date"
+                aria-invalid={!!receiptErrors.payment_date}
+                aria-describedby={receiptErrors.payment_date ? "receipt-payment_date-error" : undefined}
                 type="date"
                 required
                 value={receiptForm.payment_date}
-                onChange={e => setReceiptForm({ ...receiptForm, payment_date: e.target.value })}
+                onChange={e => updateReceiptField("payment_date", e.target.value)}
                 className="input text-xs"
               />
+              {receiptError("payment_date")}
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-bold text-text-primary block mb-1">No. Bukti Transfer / Resi Bank Klien *</label>
+            <label htmlFor="receipt-reference_number" className="text-xs font-bold text-text-primary block mb-1">No. Bukti Transfer / Resi Bank Klien *</label>
             <input
+              id="receipt-reference_number"
+              aria-invalid={!!receiptErrors.reference_number}
+              aria-describedby={receiptErrors.reference_number ? "receipt-reference_number-error" : undefined}
               type="text"
               required
               value={receiptForm.reference_number}
-              onChange={e => setReceiptForm({ ...receiptForm, reference_number: e.target.value })}
+              onChange={e => updateReceiptField("reference_number", e.target.value)}
               className="input text-xs font-mono"
             />
+            {receiptError("reference_number")}
           </div>
 
           <div>
@@ -2468,11 +2547,11 @@ export default function FinanceClient() {
           </div>
 
           <div className="flex justify-end gap-2 mt-2">
-            <button type="button" onClick={() => setIsReceiptModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">
+            <button type="button" disabled={receiptSaving} onClick={() => setIsReceiptModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">
               Batal
             </button>
-            <button type="submit" className="btn-primary py-2 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold">
-              Konfirmasi & Masukkan ke Kas/Bank
+            <button type="submit" disabled={receiptSaving} className="btn-primary py-2 px-4 text-xs bg-brand-green hover:bg-brand-deep-green font-bold disabled:opacity-50">
+              {receiptSaving ? "Menyimpan..." : "Konfirmasi & Simpan Penerimaan"}
             </button>
           </div>
         </form>
@@ -2656,7 +2735,7 @@ function TabFundingProyek({
                 return (
                   <tr key={f.id} className="hover:bg-brand-light-green/20">
                     <td className="py-3 px-4 font-semibold text-text-primary">
-                      <div>{f.description || f.purpose || f.title || "Pengajuan Dana Operasional"}</div>
+                      <div className="whitespace-pre-line">{f.description || f.purpose || f.title || "Pengajuan Dana Operasional"}</div>
                       {f.project_name && (
                         <span className="text-2xs text-text-secondary font-normal block mt-0.5">
                           Proyek: {f.project_name}
@@ -2776,7 +2855,7 @@ function TabFundingProyek({
             <div className="p-3 rounded-xl bg-gray-50 border text-xs flex justify-between items-center">
               <div>
                 <span className="text-2xs text-text-secondary block">Proyek: {selectedFunding.project_name || "Proyek"}</span>
-                <span className="font-semibold text-text-primary block mt-0.5">{selectedFunding.description || selectedFunding.purpose || "Operasional Lapangan"}</span>
+                <span className="font-semibold text-text-primary block mt-0.5 whitespace-pre-line">{selectedFunding.description || selectedFunding.purpose || "Operasional Lapangan"}</span>
               </div>
               <div className="text-right">
                 <span className="text-2xs text-text-secondary block">Nominal Pencairan</span>

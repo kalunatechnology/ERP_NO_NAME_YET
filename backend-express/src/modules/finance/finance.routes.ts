@@ -19,6 +19,7 @@ import { sendSuccess, sendError } from '../../utils/response';
 import { RoleCode } from '../../types/roles';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { CustomerPartyService } from '../projects/customer-party.service';
+import { validateCustomerReceipt } from './customer-receipt.validation';
 
 export const financeRouter = Router();
 
@@ -1227,7 +1228,22 @@ financeRouter.use('/billing-proposals', createCrudRouter({
   },
 }));
 financeRouter.use('/payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
-financeRouter.use('/customer-receipts', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/customer-receipts', createCrudRouter({
+  modelName: 'fin_payment',
+  searchFields: ['reference_number'],
+  accessWhere: () => ({ payment_type: 'CUSTOMER_RECEIPT' }),
+  beforeCreate: async (req, data) => {
+    const receipt = validateCustomerReceipt(data);
+    const bank = await prisma.fin_bank_account.findFirst({
+      where: { id: receipt.bank_account_id, company_id: activeCompanyId(req), tenant_id: req.user?.tenant_id, status: 'ACTIVE' },
+      select: { id: true, account_name: true, bank_name: true, account_number: true },
+    });
+    if (!bank) throw new ValidationError('Rekening penerima tidak tersedia atau tidak aktif pada company ini.', {
+      bank_account: 'Pilih rekening kas / bank yang aktif pada company Anda.',
+    });
+    return { ...receipt, allocation_plan: { ...receipt.allocation_plan, bank_account: bank.account_name || bank.bank_name || bank.account_number } };
+  },
+}));
 financeRouter.use('/vendor-payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
 financeRouter.use('/payment-lines', createCrudRouter({ modelName: 'fin_payment_allocation' }));
 financeRouter.use('/payment-allocations', createCrudRouter({ modelName: 'fin_payment_allocation' }));

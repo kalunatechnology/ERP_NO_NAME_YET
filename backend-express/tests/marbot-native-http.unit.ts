@@ -110,6 +110,17 @@ async function main() {
       assert.deepEqual(stored.at(-1).metadata.understanding, { source: 'llm', route: 'guide', status: 'ready', confidence: 0.98, model: 'fixture-model' });
       assert.deepEqual(stored.at(-1).metadata.sources, ['ERP:procedure:meeting:delete:2026-10-07']);
       assert.equal(helpProviderCalls, 6);
+      helpPlan = { route: 'native', plan: { type: 'read', domains: ['tasks'], personal: true, taskLevel: 'weekly' }, confidence: 0.99 };
+      for (const roleCode of [RoleCode.PROJECT_MANAGER, RoleCode.SUPERVISOR]) {
+        (authority as any).buildMarbotRuntimeAuthority = async () => ({ ...scope, roleCode, enabledModules: ['MARBOT', 'PROJECTS'], permissions: ['USE_MARBOT', 'READ_TASK'] });
+        const approvalGuide = await send({ message: 'bagaimana saya melakukan acc pada weekly target dari staf' });
+        assert.equal(approvalGuide.status, 200);
+        const approvalEvents = await approvalGuide.text();
+        assert.match(approvalEvents, /Persetujuan Target Mingguan[\s\S]*Tinjau Pengajuan[\s\S]*Approve \(Setujui\)/);
+        assert.doesNotMatch(approvalEvents, /Weekly Task saya|Menampilkan maksimal|"action":/);
+        assert.deepEqual(stored.at(-1).metadata.tools, ['help.procedure']);
+        assert.equal(stored.at(-1).metadata.action, undefined);
+      }
     } finally {
       (resource as any).planResourceQuestion = helpResourcePlanner; (planner as any).planNativeQuestion = helpNativePlanner;
       env.MARBOT_AI_API_KEY = helpKey; env.MARBOT_AI_MODEL = helpModel; global.fetch = helpFetch;

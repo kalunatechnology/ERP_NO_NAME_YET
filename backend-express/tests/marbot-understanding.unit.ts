@@ -75,6 +75,21 @@ async function main() {
     assert.equal(JSON.parse(lastPrompt.messages.at(-1).content).previousQuestion, 'bagaimana membuat meeting?');
     assert.equal(canonicalCalls + businessReads, 0, 'Retrieval is not a live business read');
 
+    const approvalQuestion = 'bagaimana saya melakukan acc pada weekly target dari staf';
+    modelOutput = { route: 'native', plan: { type: 'read', domains: ['tasks'], personal: true, taskLevel: 'weekly' }, confidence: 0.99 };
+    result = await answerMarbotQuestion(req, approvalQuestion, 'HELPER', scope, signal(), undefined, noDb);
+    assert.deepEqual(result.answer.tools, ['help.procedure'], 'A wrong model read must fall back to the requested approval guide');
+    assert.match(result.answer.content, /Tinjau Pengajuan[\s\S]*Approve \(Setujui\)/);
+    assert.equal(result.answer.action, undefined);
+    result = await answerMarbotQuestion(req, 'kamu tidak paham pertanyaan saya ya', 'HELPER', scope, signal(), approvalQuestion, noDb);
+    assert.equal(result.understanding.status, 'recovered');
+    assert.match(result.answer.content, /Persetujuan Target Mingguan/);
+    mode = 'throw';
+    result = await answerMarbotQuestion(req, approvalQuestion, 'HELPER', scope, signal(), undefined, noDb);
+    assert.deepEqual(result.answer.tools, ['help.procedure']);
+    assert.equal(canonicalCalls + businessReads, 0);
+    mode = 'ok';
+
     // Model selection retrieves real data from the chosen existing tool.
     modelOutput = { route: 'resource', plan: { resource: 'implementation.work-items', operation: 'count', filters: {} }, confidence: 0.97 };
     result = await answerMarbotQuestion(req, 'jumlah pekerjaan implementasi yang tercatat ada berapa?', 'HELPER', scope, signal(), undefined, noDb);

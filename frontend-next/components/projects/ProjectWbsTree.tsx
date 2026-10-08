@@ -134,7 +134,7 @@ export function ProjectWbsTree({
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div id="project-weekly-approval" tabIndex={-1} className="flex min-w-0 scroll-mt-24 flex-col gap-4 focus:outline-none">
       <div className="rounded-2xl border border-text-tertiary bg-white p-4 shadow-sm">
         <label htmlFor="wbs-search" className="block text-sm font-bold text-text-primary">Cari dalam struktur pekerjaan</label>
         <p className="mt-1 mb-3 text-xs text-text-secondary">Cari tugas, target, divisi, atau anggota dalam paket kerja lengkap.</p>
