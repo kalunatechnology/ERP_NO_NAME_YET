@@ -288,21 +288,17 @@ export function mergeProjectDashboardBundles(
 }
 
 /**
- * Retrieve every project authorized by the backend. A single page only contains
- * the first 100 projects; modal selectors must not silently drop later pages.
- * Do not widen permissions client-side: each page uses the authenticated
- * company-scoped /projects/projects endpoint.
+ * Read the entire authorized WBS catalog without silently truncating it to
+ * the first page. Every request retains backend tenant/company/role filtering.
+ * The server may cap the requested page_size, so use its actual first page size.
  */
-async function loadAllAccessibleProjectRows(): Promise<Project[]> {
-  const endpoint = "/api/v1/projects/projects/?page_size=100";
+async function loadAllAccessibleRows<T extends { id: string | number }>(endpoint: string): Promise<T[]> {
   const first = await api.get(endpoint);
-  const firstPage = normalizeList<Project>(first.data);
-  const byId = new Map<string, Project>(
-    firstPage.rows.map(project => [String(project.id), project]),
+  const firstPage = normalizeList<T>(first.data);
+  const byId = new Map<string, T>(
+    firstPage.rows.map(row => [String(row.id), row]),
   );
 
-  // The server can cap page_size below 100; derive the effective page size
-  // from the first response so later page offsets remain correct.
   const effectivePageSize = Math.max(1, firstPage.rows.length);
   const totalPages = Math.ceil(firstPage.count / effectivePageSize);
   // Fetch in small batches to limit concurrent queries on shared hosting.
@@ -315,13 +311,17 @@ async function loadAllAccessibleProjectRows(): Promise<Project[]> {
       pageNumbers.map(page => api.get(`${endpoint}&page=${page}`)),
     );
     for (const response of pages) {
-      for (const project of normalizeList<Project>(response.data).rows) {
-        byId.set(String(project.id), project);
+      for (const row of normalizeList<T>(response.data).rows) {
+        byId.set(String(row.id), row);
       }
     }
   }
 
   return [...byId.values()];
+}
+
+async function loadAllAccessibleProjectRows(): Promise<Project[]> {
+  return loadAllAccessibleRows<Project>("/api/v1/projects/projects/?page_size=100");
 }
 
 export async function loadAllProjects(enabledModules: string[] = [], bundle?: ProjectDashboardBundle, access?: Omit<FrontendAccessContext, "enabledModules">): Promise<Project[]> {
@@ -348,9 +348,9 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
       ]
     : await Promise.all([
         loadAllAccessibleProjectRows().then(rows => ({ data: rows })),
-        api.get("/api/v1/projects/main-tasks/?page_size=300"),
+        loadAllAccessibleRows<any>("/api/v1/projects/main-tasks/?page_size=300").then(rows => ({ data: rows })),
         api.get("/api/v1/projects/task-assignments/?page_size=500"),
-        api.get("/api/v1/projects/weekly-tasks/?page_size=500"),
+        loadAllAccessibleRows<any>("/api/v1/projects/weekly-tasks/?page_size=500").then(rows => ({ data: rows })),
         api.get("/api/v1/projects/daily-tasks/?page_size=1000"),
         api.get("/api/v1/projects/tasks/?page_size=500"),
         api.get("/api/v1/projects/milestones/?page_size=300"),
