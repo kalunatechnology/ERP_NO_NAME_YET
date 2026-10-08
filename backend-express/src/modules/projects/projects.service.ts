@@ -354,9 +354,14 @@ export class ProjectsService {
     });
     assignedMainTasks.forEach((task: { project_id: string }) => projectIds.add(task.project_id));
     const assignedScope = { id: { in: [...projectIds] } };
-    return hasUserModuleWrite(user, 'PROJECTS')
-      ? { OR: [assignedScope, { created_by_id: user.id }] }
-      : assignedScope;
+    // Project ownership is a read entitlement independent of the user's
+    // current functional role or module write permission. A creator who
+    // switches to Staff/other roles must not lose their own projects from
+    // task selectors; mutation authority remains separately enforced.
+    return {
+      OR: [assignedScope, { created_by_id: user.id }],
+      ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
+    };
   }
 
   static async assertCanViewProject(user: any, projectId: string, companyId: string, db: any = prisma): Promise<void> {
