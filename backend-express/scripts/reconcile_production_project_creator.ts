@@ -48,20 +48,25 @@ async function main(): Promise<void> {
     throw new Error(`${PROJECT_CREATOR_EMAIL} is not an active member of ${COMPANY_CODE}.`);
   }
 
+  // Nullable legacy creators must also be reconciled. SQL inequality by
+  // itself excludes NULL rows, leaving projects invisible to their PM.
+  const wrongCreatorScope = {
+    tenant_id: company.tenant_id,
+    company_id: company.id,
+    OR: [
+      { created_by_id: null },
+      { created_by_id: { not: creator.id } },
+    ],
+  };
+
   const before = await prisma.project_project.count({
-    where: {
-      tenant_id: company.tenant_id,
-      company_id: company.id,
-      created_by_id: { not: creator.id },
-    },
+    where: wrongCreatorScope,
   });
 
+  // Update the creator field only; preserve manager, team assignments,
+  // project members, Weekly/Daily tasks, and migration/seed history.
   const result = await prisma.project_project.updateMany({
-    where: {
-      tenant_id: company.tenant_id,
-      company_id: company.id,
-      created_by_id: { not: creator.id },
-    },
+    where: wrongCreatorScope,
     data: { created_by_id: creator.id },
   });
 
@@ -69,11 +74,7 @@ async function main(): Promise<void> {
     where: { tenant_id: company.tenant_id, company_id: company.id },
   });
   const remaining = await prisma.project_project.count({
-    where: {
-      tenant_id: company.tenant_id,
-      company_id: company.id,
-      created_by_id: { not: creator.id },
-    },
+    where: wrongCreatorScope,
   });
 
   if (remaining !== 0) {
