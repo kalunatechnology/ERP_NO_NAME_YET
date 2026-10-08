@@ -573,6 +573,22 @@ export interface RealAlertItem {
   href?: string;
 }
 
+function appNotificationAlert(n: any, index: number): RealAlertItem {
+  let category = "Notifikasi Sistem";
+  if (n.category === "ACCESS_REQUEST") category = "Otorisasi WBS";
+  else if (n.category === "STATUS_UPDATE") category = "Pembaruan Proyek";
+  else if (n.category === "DOCUMENT") category = "Dokumen Keuangan";
+  else if (String(n.category).startsWith("WEEKLY_TARGET_")) category = "Target Mingguan";
+  else if (n.category) category = n.category;
+  return { id: n.id, category, time: n.created_at ? timeAgo(n.created_at) : "Baru saja", title: n.title || "Notifikasi Baru",
+    snippet: n.description || n.title, isHighlighted: index === 0 && !n.is_read, categoryColor: index === 0 ? "#294BB2" : "#9CA3AF", href: n.target_url || "/projects" };
+}
+
+export async function fetchAppNotifications(cursor?: string): Promise<{ results: RealAlertItem[]; nextCursor: string | null }> {
+  const response = await api.get('/api/v1/core/app-notifications', { params: cursor ? { cursor } : undefined });
+  return { results: response.data.results.map((row: any, index: number) => ({ ...appNotificationAlert(row, index), isHighlighted: !row.is_read })), nextCursor: response.data.next_cursor };
+}
+
 export interface RealInventoryCheckData {
   itemName: string;
   warehouseCode: string;
@@ -623,25 +639,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
 
     // 1. Prioritize real database app notifications
     if (Array.isArray(notifs) && notifs.length > 0) {
-      notifs.slice(0, 4).forEach((n: any, idx: number) => {
-        let category = "Notifikasi Sistem";
-        if (n.category === "ACCESS_REQUEST") category = "Otorisasi WBS";
-        else if (n.category === "STATUS_UPDATE") category = "Pembaruan Proyek";
-        else if (n.category === "DOCUMENT") category = "Dokumen Keuangan";
-        else if (String(n.category).startsWith("WEEKLY_TARGET_")) category = "Target Mingguan";
-        else if (n.category) category = n.category;
-
-        alerts.push({
-          id: n.id || `notif-${idx}`,
-          category,
-          time: n.created_at ? timeAgo(n.created_at) : "Baru saja",
-          title: n.title || "Notifikasi Baru",
-          snippet: n.description || n.title,
-          isHighlighted: idx === 0 && !n.is_read,
-          categoryColor: idx === 0 ? "#294BB2" : "#9CA3AF",
-          href: n.target_url || "/projects",
-        });
-      });
+      notifs.slice(0, 4).forEach((n: any, idx: number) => alerts.push(appNotificationAlert(n, idx)));
     }
 
     // 2. Add real active project alerts if needed

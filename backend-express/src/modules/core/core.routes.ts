@@ -30,6 +30,14 @@ const requireFinanceOrAdminForCompanyWrite = (req: Request, _res: Response, next
 export const coreRouter = Router();
 export const feedShortcutRouter = Router();
 
+coreRouter.get('/app-notifications', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const cursor = req.query.cursor;
+    if (cursor !== undefined && (typeof cursor !== 'string' || !cursor || cursor.length > 128)) throw new ValidationError('Cursor notifikasi tidak valid.');
+    res.json(await CoreService.getAppNotifications(req.user!.id, req.companyId ?? null, cursor as string | undefined));
+  } catch (error) { next(error); }
+});
+
 // Sidebar Feed endpoints
 /**
  * GET route handler: `/sidebar-feed`.

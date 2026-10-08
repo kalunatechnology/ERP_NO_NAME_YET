@@ -6,6 +6,7 @@ import prisma from '../src/config/database';
 import { env } from '../src/config/env';
 import * as auth from '../src/middlewares/auth.middleware';
 import { RoleCode } from '../src/types/roles';
+import { NotificationMaintenanceService, jakartaDayWindow, notificationCutoff } from '../src/modules/core/notification-maintenance.service';
 
 async function main() {
   const db = prisma as any;
@@ -33,10 +34,26 @@ async function main() {
     if (key === 'OR') return value.some((condition: any) => matches(row, condition));
     if (value && typeof value === 'object' && 'in' in value) return value.in.includes(row[key]);
     if (value && typeof value === 'object' && 'notIn' in value) return !value.notIn.includes(row[key]);
+    if (value instanceof Date) return new Date(row[key]).getTime() === value.getTime();
+    if (value && typeof value === 'object' && ['gt', 'gte', 'lt', 'lte'].some(op => op in value)) {
+      const comparable = (item: any) => key === 'created_at' ? new Date(item).getTime() : item;
+      const actual = comparable(row[key]);
+      return Object.entries(value).every(([op, expected]) => op === 'gt' ? actual > comparable(expected) : op === 'gte' ? actual >= comparable(expected) : op === 'lt' ? actual < comparable(expected) : actual <= comparable(expected));
+    }
     return value === undefined || row[key] === value;
   });
   const project = (row: any, select: any) => row && select ? Object.fromEntries(Object.keys(select).filter(key => select[key]).map(key => [key, row[key]])) : row;
-  const read = (rows: any[]) => ({ where, select }: any) => rows.filter(row => matches(row, where)).map(row => project(row, select));
+  const read = (rows: any[]) => ({ where, select, orderBy, take }: any) => {
+    const sorted = rows.filter(row => matches(row, where));
+    if (orderBy) sorted.sort((a, b) => {
+      for (const item of Array.isArray(orderBy) ? orderBy : [orderBy]) for (const [key, direction] of Object.entries(item)) {
+        const av = key === 'created_at' ? new Date(a[key]).getTime() : a[key], bv = key === 'created_at' ? new Date(b[key]).getTime() : b[key];
+        if (av !== bv) return (av < bv ? -1 : 1) * (direction === 'desc' ? -1 : 1);
+      }
+      return 0;
+    });
+    return sorted.slice(0, take ?? sorted.length).map(row => project(row, select));
+  };
   for (const [name, rows] of [['project_project', projects], ['project_main_task', mains], ['project_weekly_task', weeklies], ['project_task_assignment', assignments]] as const) {
     db[name].findMany = async (input: any) => read(rows)(input);
     db[name].findFirst = async (input: any) => read(rows)(input)[0] ?? null;
@@ -47,6 +64,7 @@ async function main() {
   db.project_member.findFirst = async () => null; // SPV has no Acting PM grant.
   db.project_daily_task.findMany = async () => [];
   db.iam_user.findMany = async (input: any) => read(Object.values(users))(input);
+  db.iam_user.findFirst = async (input: any) => read(Object.values(users))(input)[0] ?? null;
   const roleRows = [RoleCode.SUPERVISOR, RoleCode.STAFF, RoleCode.PROJECT_MANAGER].map(role => ({ id: `role-${role}`, tenant_id: tenant, company_id: null, role_code: role }));
   const userRoles = Object.values(users).flatMap(user => [...new Set(user.roles)].map(role => ({ user_id: user.id, company_id: company, tenant_id: tenant, role_id: `role-${role}` })));
   db.iam_role.findMany = async (input: any) => read(roleRows)(input);
@@ -68,12 +86,17 @@ async function main() {
   db.core_app_notification.createMany = async ({ data, skipDuplicates }: any) => {
     assert.equal(skipDuplicates, true);
     if (notificationFailure) throw new Error('Fixture notification failure');
-    for (const row of data) if (!notifications.some(existing => existing.id === row.id)) notifications.push(row);
-    return { count: data.length };
+    let count = 0;
+    for (const row of data) if (!notifications.some(existing => existing.id === row.id)) { notifications.push(row); count++; }
+    return { count };
   };
   db.core_app_notification.findMany = async (input: any) => read(notifications)(input);
+  db.core_app_notification.findFirst = async (input: any) => read(notifications)(input)[0] ?? null;
+  db.core_app_notification.count = async (input: any) => read(notifications)(input).length;
+  db.core_app_notification.deleteMany = async ({ where }: any) => { const removed = notifications.filter(row => matches(row, where)); for (const row of removed) notifications.splice(notifications.indexOf(row), 1); return { count: removed.length }; };
   db.core_activity_feed.findMany = async () => [];
   db.project_task_activity_log.create = async ({ data }: any) => { logs.push(data); return data; };
+  db.project_task_activity_log.findMany = async (input: any) => read(logs)(input);
   db.$transaction = async (callback: any) => {
     const arrays = [projects, mains, weeklies, logs, notifications];
     const snapshots = arrays.map(rows => JSON.parse(JSON.stringify(rows)));
@@ -149,7 +172,61 @@ async function main() {
       assert.deepEqual(feed.notifications.map((row: any) => row.id).sort(), notifications.filter(row => row.recipient_id === actor).map(row => row.id).sort());
       assert(feed.notifications.every((row: any) => row.target_url.includes('&weekly=') && row.company_id === company));
     }
-    console.log('PASS: shared PM/SPV approval, targeted creation/approval/rejection notifications and exact weekly links, no duplicate/conflicting delivery, single/bulk transactional notifications and fixture rollback, no unrelated project/company access or self approval. Persistence uses fixtures.');
+    const now = new Date();
+    assert.equal(jakartaDayWindow(new Date('2026-10-08T00:30:00+07:00')).start.toISOString(), '2026-10-07T17:00:00.000Z');
+    assert.throws(() => jakartaDayWindow(now, '2026-02-30'));
+    assert.throws(() => jakartaDayWindow(now, '2000-01-01'));
+    notifications[0].is_read = true;
+    const preserved = JSON.stringify(notifications[0]);
+    const missing = notifications.find(row => row.category === 'WEEKLY_TARGET_REJECTED' && row.recipient_id === 'spv');
+    notifications.splice(notifications.indexOf(missing), 1);
+    const sizeBefore = notifications.length;
+    const preview = await NotificationMaintenanceService.backfillWeeklyDay(db, { now, companyId: company, dryRun: true });
+    assert(preview.inserted >= 1); assert.equal(notifications.length, sizeBefore, 'Dry run never writes');
+    const backfill = await NotificationMaintenanceService.backfillWeeklyDay(db, { now, companyId: company });
+    assert.equal(backfill.inserted, preview.inserted); assert.equal(JSON.stringify(notifications.find(row => row.id === JSON.parse(preserved).id)), preserved, 'Backfill preserves existing read state and timestamps');
+    assert.equal((await NotificationMaintenanceService.backfillWeeklyDay(db, { now, companyId: company })).inserted, 0, 'Repeated backfill does not duplicate events');
+    const recovered = notifications.find(row => row.id === missing.id)!;
+    assert.equal(new Date(recovered.created_at).getTime(), new Date(logs.find(row => row.action === 'WEEKLY_REJECTED').created_at).getTime(), 'Historical notifications retain the real event timestamp');
+    const weeklySnapshot = JSON.stringify(weeklies), logSnapshot = JSON.stringify(logs);
+    const cutoff = notificationCutoff(now);
+    for (const [id, timestamp, recipient, scopeCompany] of [['expired-read', new Date(cutoff.getTime() - 1), 'pm', company], ['expired-unread', cutoff, 'pm', company], ['retained', new Date(now.getTime() - 3600000), 'pm', company], ['other-company-old', cutoff, 'outsider', 'company-b']] as const) {
+      notifications.push({ id, company_id: scopeCompany, recipient_id: recipient, created_at: timestamp, is_read: id === 'expired-read', target_url: '/projects', title: id });
+    }
+    assert.equal(await NotificationMaintenanceService.cleanup(db, now, company, true), 2);
+    assert(notifications.some(row => row.id === 'expired-read'));
+    assert.equal(await NotificationMaintenanceService.cleanup(db, now, company), 2);
+    assert(notifications.some(row => row.id === 'retained')); assert(notifications.some(row => row.id === 'other-company-old'));
+    assert.equal(await NotificationMaintenanceService.cleanup(db, now), 1);
+    assert.equal(JSON.stringify(weeklies), weeklySnapshot); assert.equal(JSON.stringify(logs), logSnapshot, 'Cleanup only deletes notifications');
+    for (let index = 0; index < 60; index++) notifications.push({ id: `page-${String(index).padStart(3, '0')}`, company_id: company, recipient_id: 'pm', created_at: now, target_url: '/projects', title: 'History notice' });
+    const history = (cursor?: string, actor = 'pm') => fetch(base.replace('/projects', '/core/app-notifications') + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''), { headers: { 'x-actor': actor } });
+    const firstResponse = await history(); assert.equal(firstResponse.status, 200, await firstResponse.clone().text());
+    const first = await firstResponse.json() as any; assert.equal(first.results.length, 50); assert(first.next_cursor);
+    const secondResponse = await history(first.next_cursor); assert.equal(secondResponse.status, 200, await secondResponse.clone().text());
+    const second = await secondResponse.json() as any; assert.equal(second.next_cursor, null);
+    const ids = [...first.results, ...second.results].map((row: any) => row.id);
+    assert.equal(new Set(ids).size, ids.length); assert.equal(ids.length, notifications.filter(row => row.recipient_id === 'pm').length);
+    assert.equal((await history(first.next_cursor, 'spv')).status, 400, 'Another recipient cannot reuse a cursor');
+    assert(first.results.every((row: any) => row.recipient_id === 'pm' && row.company_id === company));
+    const afterMidnight = new Date('2026-10-09T00:30:00+07:00');
+    const beforeMidnight = new Date('2026-10-08T23:30:00+07:00');
+    weeklies.push({ ...weeklies[0], id: 'missed-before-midnight', created_by_id: 'spv', assignee_id: 'spv', created_at: beforeMidnight, status: 'PLANNED' });
+    weeklies.push({ ...weeklies[0], id: 'old-reviewed-recently', created_at: new Date('2026-09-01T00:00:00+07:00'), status: 'PLANNED' });
+    weeklies.push({ ...weeklies[0], id: 'expired-event', created_at: new Date('2026-09-01T00:00:00+07:00') });
+    weeklies.push({ ...weeklies[0], id: 'status-without-evidence', created_at: beforeMidnight, status: 'REJECTED' });
+    for (const id of ['missed-before-midnight', 'old-reviewed-recently', 'deleted-target']) logs.push({ tenant_id: tenant, company_id: company, task_id: id, task_level: 'WEEKLY', actor_id: 'pm', action: 'WEEKLY_APPROVED', task_title: `Historic approval ${id}`, created_at: new Date('2026-10-08T23:50:00+07:00') });
+    const syncPreview = await NotificationMaintenanceService.reconcileWeeklyNotifications(db, { now: afterMidnight, companyId: company, dryRun: true });
+    const sync = await NotificationMaintenanceService.reconcileWeeklyNotifications(db, { now: afterMidnight, companyId: company });
+    assert.equal(sync.inserted, syncPreview.inserted); assert(sync.skipped >= 1);
+    const forWeekly = (id: string) => notifications.filter(row => row.target_url?.endsWith(`weekly=${id}`));
+    assert.deepEqual(forWeekly('missed-before-midnight').map(row => row.category).sort(), ['WEEKLY_TARGET_APPROVED', 'WEEKLY_TARGET_CREATED']);
+    assert.equal(new Date(forWeekly('missed-before-midnight').find(row => row.category === 'WEEKLY_TARGET_CREATED').created_at).getTime(), beforeMidnight.getTime());
+    assert(forWeekly('old-reviewed-recently').length > 0); assert(forWeekly('old-reviewed-recently').every(row => row.category === 'WEEKLY_TARGET_APPROVED'), 'A recent decision on an old target is recovered without reviving its expired creation');
+    assert.equal(forWeekly('expired-event').length, 0); assert.equal(forWeekly('deleted-target').length, 0);
+    assert(forWeekly('status-without-evidence').every(row => row.category === 'WEEKLY_TARGET_CREATED'), 'A status without an audit event cannot fabricate an approval/rejection notice');
+    assert.equal((await NotificationMaintenanceService.reconcileWeeklyNotifications(db, { now: afterMidnight, companyId: company })).inserted, 0);
+    console.log('PASS: weekly notification workflow, rollback, scoped history and 72-hour cleanup; automatic reconciliation recovers pre-midnight events and recent decisions on old targets, preserves timestamps/read state, skips deleted targets and never fabricates status changes or duplicate notifications. Persistence uses fixtures.');
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -10,6 +10,7 @@ import prisma from '../../config/database';
 import { ValidationError } from '../../utils/errors';
 import { toExternalRoleCode } from '../../types/roles';
 import { RoleCode } from '@prisma/client';
+import { notificationCutoff } from './notification-maintenance.service';
 
 // Defaults are installed once when a company first activates Marbot. Existing
 // explicit role grants (including denials) are never overwritten.
@@ -32,6 +33,20 @@ const MARBOT_PERMISSIONS: Record<string, { module: string; resource: string }> =
 };
 
 export class CoreService {
+  static async getAppNotifications(userId: string, companyId: string | null, cursor?: string) {
+    const scope = { recipient_id: userId, company_id: companyId, created_at: { gt: notificationCutoff() } };
+    let boundary;
+    if (cursor) {
+      boundary = await prisma.core_app_notification.findFirst({ where: { ...scope, id: cursor }, select: { id: true, created_at: true } });
+      if (!boundary) throw new ValidationError('Halaman notifikasi sudah kedaluwarsa. Segarkan daftar notifikasi.');
+    }
+    const rows = await prisma.core_app_notification.findMany({
+      where: { ...scope, ...(boundary ? { AND: [{ OR: [{ created_at: { lt: boundary.created_at } }, { created_at: boundary.created_at, id: { lt: boundary.id } }] }] } : {}) },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }], take: 51,
+    });
+    const results = rows.slice(0, 50);
+    return { results, next_cursor: rows.length > 50 ? results[results.length - 1].id : null, retention_days: 3 };
+  }
 /**
  * getSidebarFeed implements a named method within this file's domain service boundary.
  *
@@ -47,9 +62,10 @@ export class CoreService {
       prisma.core_app_notification.findMany({
         where: {
           recipient_id: userId,
+          created_at: { gt: notificationCutoff() },
           ...(companyId ? { company_id: companyId } : { company_id: null }),
         },
-        orderBy: { created_at: 'desc' },
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
         take: 10,
       }),
       companyId ? prisma.iam_user_company_membership.findMany({
