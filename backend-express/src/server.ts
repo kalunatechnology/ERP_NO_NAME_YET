@@ -9,6 +9,7 @@
 import { createApp } from './app';
 import { env } from './config/env';
 import prisma from './config/database';
+import { startNotificationMaintenance } from './modules/core/notification-maintenance.service';
 
 /**
  * main implements a named function within this file's application infrastructure boundary.
@@ -65,6 +66,7 @@ function main() {
   const app = createApp();
   app.locals.databaseReady = false;
   let stopping = false;
+  let stopNotificationMaintenance = () => {};
 
   // Hostinger requires a process to call listen() within a few seconds. Do
   // not block HTTP startup on a remote database handshake: Prisma reconnects
@@ -74,7 +76,9 @@ function main() {
     console.log(`📡 API Base URL: http://localhost:${env.PORT}/api/v1/`);
     console.log(`🩺 Health Check: http://localhost:${env.PORT}/health`);
   });
-  void connectDatabaseInBackground(app, () => stopping);
+  void connectDatabaseInBackground(app, () => stopping).then(() => {
+    if (!stopping && app.locals.databaseReady) stopNotificationMaintenance = startNotificationMaintenance(prisma, () => !stopping && app.locals.databaseReady);
+  });
 
   // Graceful shutdown
 /**
@@ -87,6 +91,7 @@ function main() {
  */
   const shutdown = async (signal: string) => {
     stopping = true;
+    stopNotificationMaintenance();
     console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
     server.close(async () => {
       await prisma.$disconnect();

@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Check, Copy, Mail, PanelRightClose, RefreshCw, Users, X } from "lucide-react";
-import { DynamicContact, RealAlertItem, fetchDynamicRightPanelData, fetchRealAlertsList } from "@/lib/api/feed.api";
+import { DynamicContact, RealAlertItem, fetchAppNotifications, fetchDynamicRightPanelData, fetchRealAlertsList } from "@/lib/api/feed.api";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import { useAuth } from "@/contexts/AuthContext";
 import { Modal } from "@/components/ui/Modal";
@@ -19,7 +19,7 @@ interface RightPanelProps {
 /** Compact right panel based on the Frame 397 real-time alert layout. */
 export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: RightPanelProps) {
   const router = useRouter();
-  const { user, userRole } = useAuth();
+  const { user, userRole, company } = useAuth();
   const [alerts, setAlerts] = useState<RealAlertItem[]>([]);
   const [contacts, setContacts] = useState<DynamicContact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +28,30 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
   const [selectedContact, setSelectedContact] = useState<DynamicContact | null>(null);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationHistory, setNotificationHistory] = useState<RealAlertItem[]>([]);
+  const [nextNotificationCursor, setNextNotificationCursor] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyRequest = useRef(0);
+  const invalidateHistory = useCallback(() => { historyRequest.current++; }, []);
+  const closeNotifications = useCallback(() => { historyRequest.current++; setShowNotifications(false); setHistoryLoading(false); }, []);
+  useEffect(() => {
+    closeNotifications(); setNotificationHistory([]); setNextNotificationCursor(null);
+    return invalidateHistory;
+  }, [company, user?.id, user?.active_role_code, closeNotifications, invalidateHistory]);
+
+  const loadNotificationHistory = async (cursor?: string) => {
+    const version = ++historyRequest.current;
+    setHistoryLoading(true); setHistoryError(null);
+    try {
+      const page = await fetchAppNotifications(cursor);
+      if (version !== historyRequest.current) return;
+      setNotificationHistory(previous => cursor ? Array.from(new Map([...previous, ...page.results].map(row => [row.id, row])).values()) : page.results);
+      setNextNotificationCursor(page.nextCursor);
+    } catch { if (version === historyRequest.current) setHistoryError("Notifikasi belum dapat dimuat. Coba kembali atau segarkan daftar."); }
+    finally { if (version === historyRequest.current) setHistoryLoading(false); }
+  };
 
   const checkCanAccess = useCallback((href?: string): boolean => {
     if (!href) return true;
@@ -79,6 +103,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
 
   const openAlert = (item: RealAlertItem) => {
     if (!item.href || !checkCanAccess(item.href)) return;
+    closeNotifications();
     router.push(item.href);
     if (isMobile) onClose?.();
   };
@@ -208,6 +233,10 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
               ))}
             </div>
           </div>
+          <button type="button" onClick={() => { setNotificationHistory([]); setNextNotificationCursor(null); setShowNotifications(true); void loadNotificationHistory(); }} className="mt-3 w-full rounded-lg border border-[#D9E5FF] px-3 py-2 text-xs font-bold text-[#294BB2] hover:bg-[#EAF6FF]">
+            Lihat semua notifikasi
+          </button>
+          <p className="mt-2 text-center text-[10px] text-[#6B7280]">Notifikasi tersimpan selama 3 hari.</p>
         </section>
 
         <section className="mt-14" aria-labelledby="right-panel-contacts-title">
@@ -250,6 +279,20 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
         </button>
       </aside>
 
+      <Modal isOpen={showNotifications} onClose={closeNotifications} title="Semua Notifikasi" subtitle="Riwayat 3 hari terakhir. Klik notifikasi untuk membuka pengajuan terkait." size="lg">
+        <div className="flex flex-col gap-3 p-4">
+          <button type="button" disabled={historyLoading} onClick={() => void loadNotificationHistory()} className="self-end text-xs font-semibold text-[#294BB2] disabled:opacity-50">Segarkan notifikasi</button>
+          {historyError && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="alert">{historyError}<button type="button" className="ml-2 underline" onClick={() => void loadNotificationHistory(nextNotificationCursor ?? undefined)}>Coba lagi</button></div>}
+          {!historyLoading && !historyError && notificationHistory.length === 0 && <p className="py-6 text-center text-sm text-[#6B7280]">Belum ada notifikasi dalam 3 hari terakhir.</p>}
+          {notificationHistory.map(item => <button key={item.id} type="button" onClick={() => openAlert(item)} className={cn("rounded-xl border p-4 text-left transition-colors hover:border-[#294BB2]", item.isHighlighted ? "border-[#D9E5FF] bg-[#F3F7FF]" : "border-[#E5E7EB] bg-white")}>
+            <span className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#6B7280]"><span className="font-semibold text-[#294BB2]">{item.category}</span><span>{item.time}</span></span>
+            <strong className="mt-2 block break-words text-sm text-[#111827]">{item.title}</strong>
+            <span className="mt-1 block whitespace-pre-wrap break-words text-sm leading-relaxed text-[#4F5050]">{item.snippet}</span>
+          </button>)}
+          {historyLoading && <p role="status" className="py-3 text-center text-sm text-[#6B7280]">Memuat notifikasi…</p>}
+          {nextNotificationCursor && <button type="button" disabled={historyLoading} onClick={() => void loadNotificationHistory(nextNotificationCursor)} className="rounded-lg bg-[#EAF6FF] px-4 py-2 text-sm font-semibold text-[#294BB2] disabled:opacity-50">Muat notifikasi berikutnya</button>}
+        </div>
+      </Modal>
       {selectedContact && (
         <Modal isOpen onClose={() => setSelectedContact(null)} title="Detail Anggota Tim" size="sm">
           <div className="flex flex-col items-center gap-4 p-4 text-center">

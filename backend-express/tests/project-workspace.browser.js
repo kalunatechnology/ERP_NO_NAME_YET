@@ -41,6 +41,7 @@ async function main() {
       const request = route.request(), url = new URL(request.url()), endpoint = url.pathname;
       const json = data => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
       if (endpoint.includes('/auth/me')) return json(profile());
+      if (endpoint.endsWith('/app-notifications')) return json({ results: url.searchParams.has('cursor') ? notificationRows.slice(3) : notificationRows.slice(0, 3), next_cursor: url.searchParams.has('cursor') ? null : 'notice-rejected', retention_days: 3 });
       if (endpoint.includes('/sidebar-feed')) return json({ notifications: notificationRows, contacts: [], activities: [] });
       if(endpoint.endsWith('/weekly-tasks/review-workspace')) return json(bundle());
       if (endpoint.includes('/dashboard/bootstrap')) {
@@ -237,8 +238,25 @@ async function main() {
       { id: 'notice-created', category: 'WEEKLY_TARGET_CREATED', title: 'Pengajuan weekly target baru', weekly: 'own-spv-review' },
       { id: 'notice-approved', category: 'WEEKLY_TARGET_APPROVED', title: 'Weekly target disetujui', weekly: 'ordinary-spv-review' },
       { id: 'notice-rejected', category: 'WEEKLY_TARGET_REJECTED', title: 'Weekly target ditolak', weekly: 'pm-shared-rejection' },
+      { id: 'notice-earlier', category: 'WEEKLY_TARGET_CREATED', title: 'Pengajuan weekly target sebelumnya', weekly: 'other-week-c' },
     ].map(row => ({ ...row, target_url: `/projects?project=c&tab=TREE&weekly=${row.weekly}`, description: 'Fixture weekly event', created_at: new Date().toISOString(), is_read: false }));
-    for (const notice of notificationRows) {
+    await page.goto(`${origin}?surface=alerts`, { waitUntil: 'networkidle' });
+    assert.equal(await page.getByText('Pengajuan weekly target sebelumnya', { exact: true }).count(), 0, 'Sidebar shows only the newest three');
+    await page.getByRole('button', { name: 'Lihat semua notifikasi', exact: true }).click();
+    const historyDialog = page.getByRole('dialog');
+    await historyDialog.getByRole('button', { name: 'Muat notifikasi berikutnya', exact: true }).click();
+    await historyDialog.getByText('Pengajuan weekly target sebelumnya', { exact: true }).waitFor();
+    assert.equal(await historyDialog.getByText('Fixture weekly event', { exact: true }).count(), 4, 'Earlier notifications remain accessible through pagination');
+    await page.setViewportSize({ width: 390, height: 844 });
+    const historyBounds = await historyDialog.boundingBox();
+    assert(historyBounds.width <= 390 && historyBounds.height <= 844);
+    await historyDialog.screenshot({ path: path.join(artifacts, 'notification-history-mobile.png') });
+    await historyDialog.getByRole('button', { name: /Pengajuan weekly target sebelumnya/ }).click();
+    await page.waitForURL(/\/projects\?project=c&tab=TREE&weekly=other-week-c/);
+    await page.waitForFunction(() => document.activeElement?.id === 'weekly-target-other-week-c');
+    assert.equal(await page.getByRole('dialog').count(), 0, 'History closes when navigating to a target');
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    for (const notice of notificationRows.slice(0, 3)) {
       await page.goto(`${origin}?surface=alerts`, { waitUntil: 'networkidle' });
       const alert = page.getByRole('button', { name: new RegExp(notice.title) });
       await alert.getByText('Target Mingguan', { exact: true }).waitFor();
@@ -269,7 +287,7 @@ async function main() {
     page.once('dialog', dialog => dialog.accept()); await page.getByTitle(/^Hapus (Daily Task|Tugas Harian)$/).click();
     await page.getByText(/^(Daily Task|Tugas Harian) dihapus\.$/).waitFor(); assert.equal(deletes, 1);
     assert.deepEqual(errors, []);
-    console.log('PASS: React browser fixtures — actual notification clicks open /projects and focus/expand/highlight the exact pending/approved/rejected weekly; PM/SPV shared approval, management/delete permissions, self PIC and Daily gates remain intact.');
+    console.log('PASS: React browser fixtures — earlier notifications remain accessible through paginated history on mobile; history and sidebar clicks open/focus exact weekly; PM/SPV approval and Daily permissions remain intact.');
   } finally {
     if (browser) await browser.close();
     if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
