@@ -12,7 +12,7 @@
     "src/modules/analytics/analytics.routes.ts": "1c2580393407411276cd5c8b31619d10212c77b11259dcf4d5dab463cacbbc19",
     "src/modules/implementation/implementation.routes.ts": "5a6ad3c2ca86f7b256d0032aee036cf05b00a33f1ababf2d303d43657d901d9c",
     "src/modules/finance/finance.routes.ts": "87b735a593cdd9290b589042837002d25e9778174add5232e092bbec5a21dda9",
-    "src/modules/projects/projects.routes.ts": "e3eb929462ede5b4cfbc731bd0d3565b4040447c95439775069190e32588c771",
+    "src/modules/projects/projects.routes.ts": "4df1ebb99825709c32771775407ecede62331965d0ceec1b8bb2f21c56ab4092",
     "src/modules/master_data/master_data.routes.ts": "d6a09a8ed26dd06e4f382eb7f20ac30dbd276bcf1de2de58cf4b99b02bd89080",
     "src/modules/reporting/reporting.routes.ts": "d9b05602e3213b809226a0913c3f0e2b22a88f37fc19001e65812bffb1dc81bc",
     "prisma/schema.prisma": "4fd101401afee51c120025d73c4ed6fef0a39667c023ad50c5fa8787d1ba7afc"

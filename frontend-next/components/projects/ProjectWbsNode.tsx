@@ -262,7 +262,7 @@ export function ProjectWbsNode({
                 const isWeeklyPic = String(weekly.assignee_id || weekly.assignee || "") === String(currentUserId);
                 const isPendingApproval = weekly.status === "PENDING_APPROVAL";
                 const isRejected = weekly.status === "REJECTED";
-                const canCreateDaily = isWeeklyPic && !isPendingApproval && !isRejected;
+                const canCreateDaily = isWeeklyPic && !['PENDING_APPROVAL', 'REJECTED'].includes(weekly.status);
                 const isReviewing = reviewingWeeklyId === String(weekly.id);
 
                 return (
