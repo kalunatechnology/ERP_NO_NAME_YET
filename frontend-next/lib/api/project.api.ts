@@ -301,7 +301,10 @@ async function loadAllAccessibleProjectRows(): Promise<Project[]> {
     firstPage.rows.map(project => [String(project.id), project]),
   );
 
-  const totalPages = Math.ceil(firstPage.count / 100);
+  // The server can cap page_size below 100; derive the effective page size
+  // from the first response so later page offsets remain correct.
+  const effectivePageSize = Math.max(1, firstPage.rows.length);
+  const totalPages = Math.ceil(firstPage.count / effectivePageSize);
   // Fetch in small batches to limit concurrent queries on shared hosting.
   for (let startPage = 2; startPage <= totalPages; startPage += 4) {
     const pageNumbers = Array.from(
