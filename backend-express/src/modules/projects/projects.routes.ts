@@ -20,6 +20,7 @@ import { invalidateDashboardCache } from '../dashboard/dashboard.routes';
 import { compareTaskOutput } from './output-comparison';
 import { CustomerPartyService } from './customer-party.service';
 import { weeklyPlanningPatch } from './weekly-planning';
+import { weeklyPeriodCalendar, weeklyPeriodWhere } from './weekly-period';
 
 export const projectsRouter = Router();
 
@@ -1577,6 +1578,11 @@ projectsRouter.use('/main-tasks', createCrudRouter({
 }));
 
 // Helper to normalize Weekly Tasks
+projectsRouter.get('/weekly-tasks/periods', (req, res, next) => {
+  try { res.json(weeklyPeriodCalendar(req.query.month, req.query.today)); }
+  catch (error) { next(error); }
+});
+
 projectsRouter.get('/weekly-tasks/review-workspace', async (req, res, next) => {
   try { res.json(await ProjectsService.weeklyReviewWorkspace(req.user, activeCompanyId(req))); }
   catch (error) { next(error); }
@@ -1593,7 +1599,12 @@ projectsRouter.post('/weekly-tasks/:id/review', async (req: Request, res: Respon
 projectsRouter.use('/weekly-tasks', createCrudRouter({
   modelName: 'project_weekly_task',
   searchFields: ['target_description'],
-  accessWhere: async (req) => ProjectsService.weeklyTaskAccessWhere(req.user, activeCompanyId(req)),
+  accessWhere: async (req) => {
+    const access = await ProjectsService.weeklyTaskAccessWhere(req.user, activeCompanyId(req));
+    const period = req.method === 'GET' && req.path === '/'
+      ? weeklyPeriodWhere(req.query.period_month, req.query.period_week) : {};
+    return Object.keys(period).length ? { AND: [access, period] } : access;
+  },
   beforeCreate: async (req, data) => {
     if (data.main_task && !data.main_task_id) data.main_task_id = data.main_task;
     if (req.body.main_task && !data.main_task_id) data.main_task_id = req.body.main_task;

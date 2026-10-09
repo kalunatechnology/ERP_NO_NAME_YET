@@ -838,6 +838,26 @@ export async function updateWeeklyTask(id: string | number, payload: {
   return data;
 }
 
+export interface WeeklyWorkPeriod {
+  id: string;
+  month: string;
+  week: number;
+  start: string;
+  end: string;
+}
+
+export interface WeeklyPeriodCalendar {
+  month: string;
+  current: WeeklyWorkPeriod;
+  periods: WeeklyWorkPeriod[];
+}
+
+/** The backend owns month/week numbering so calendar filters cannot diverge. */
+export async function getWeeklyPeriodCalendar(today: string, month?: string): Promise<WeeklyPeriodCalendar> {
+  const { data } = await api.get<WeeklyPeriodCalendar>("/api/v1/projects/weekly-tasks/periods", { params: { today, month } });
+  return data;
+}
+
 export async function loadWeeklyManagementProjects(): Promise<Project[]> {
   const { data } = await api.get<ProjectDashboardBundle>("/api/v1/projects/weekly-tasks/review-workspace");
   return loadAllProjects(["PROJECTS"], data);

@@ -53,7 +53,12 @@ async function main() {
   db.project_task_assignment.findMany = async () => [{ main_task_id: 'main-a' }];
   db.project_weekly_task.findMany = async () => [];
   db.project_task_assignment.findFirst = async ({ where }: any) => where.main_task_id === 'main-a' && where.assignee_id === staffId ? { id: 'assignment-a' } : null;
-  db.project_main_task.findMany = async () => [{ project_id: project.id }];
+  db.project_main_task.findMany = async () => [{ id: 'main-a', project_id: project.id }];
+  db.project_project.findMany = async ({ where }: any) => {
+    assert.equal(where.company_id, companyId);
+    assert.equal(where.tenant_id, tenantId);
+    return [{ id: project.id }];
+  };
   db.project_project.findFirst = async ({ where }: any) => {
     assert.equal(where.company_id, companyId);
     const id = where.id ?? where.AND?.[0]?.id;
@@ -111,6 +116,24 @@ async function main() {
     assert.equal(team.status, 200);
     assert.deepEqual((await team.json() as any).projects, [], 'Staff review workspace cannot expose team projects');
     assert.equal((await fetch(base + '/projects/weekly-tasks/review-workspace', { headers: { 'X-Company-ID': 'company-b' } })).status, 403, 'Cross-company reads are rejected');
+    const calendarResponse = await get('/projects/weekly-tasks/periods?today=2026-10-01');
+    assert.equal(calendarResponse.status, 200);
+    const calendar = await calendarResponse.json() as any;
+    assert.equal(calendar.month, '2026-09');
+    assert.deepEqual(calendar.current, { id: '2026-09:W4', month: '2026-09', week: 4, start: '2026-09-28', end: '2026-10-02' });
+    assert.equal((await get('/projects/weekly-tasks/periods?month=2026-13&today=2026-10-01')).status, 400);
+    assert.equal((await get('/projects/weekly-tasks/periods?today=2026-02-30')).status, 400);
+    let periodWhere: any;
+    db.project_weekly_task.count = async () => 0;
+    db.project_weekly_task.findMany = async ({ where }: any) => { periodWhere = where; return []; };
+    const filteredResponse = await get('/projects/weekly-tasks/?period_month=2026-09&period_week=4');
+    assert.equal(filteredResponse.status, 200, await filteredResponse.clone().text());
+    const serializedWhere = JSON.stringify(periodWhere);
+    assert(serializedWhere.includes('2026-09-28T00:00:00.000Z'));
+    assert(serializedWhere.includes('2026-10-03T00:00:00.000Z'));
+    assert(serializedWhere.includes(companyId) && serializedWhere.includes(tenantId) && serializedWhere.includes(staffId), 'Period filters must intersect existing tenant/company/owner authorization');
+    assert(!serializedWhere.includes('"week_number"'), 'Calendar week cannot be compared to the project-relative sequence');
+    assert.equal((await get('/projects/weekly-tasks/?period_month=2026-10&period_week=5')).status, 400);
     // An owned Weekly remains a valid read path when its Main Task assignment is missing.
     db.project_task_assignment.findMany = async () => [];
     db.project_weekly_task.findMany = async () => [{ id: 'weekly-a', main_task_id: 'main-a', assignee_id: staffId }];

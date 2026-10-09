@@ -1,4 +1,4 @@
-import type { Project, ProjectAuthority } from "../api/project.api";
+import type { Project, ProjectAuthority, WeeklyWorkPeriod } from "../api/project.api";
 import { normalizeDateKey } from "../calendar-date";
 import { weeklyTargetRecords, type WeeklyTargetRecord } from "../weekly-dashboard";
 
@@ -70,7 +70,7 @@ export function weeklyGroup(record: WeeklyTargetRecord, today: string): WeeklyGr
 }
 
 export function filterWeeklyTargets(records: WeeklyTargetRecord[], filters: {
-  query: string; projectId: string; period: string; group: string; today: string;
+  query: string; projectId: string; period: Pick<WeeklyWorkPeriod, "start" | "end"> | null; group: string; today: string;
 }): WeeklyTargetRecord[] {
   const query = filters.query.trim().toLocaleLowerCase("id-ID");
   return records.filter(record => {
@@ -79,7 +79,7 @@ export function filterWeeklyTargets(records: WeeklyTargetRecord[], filters: {
     if (filters.period) {
       const start = normalizeDateKey(record.startDate);
       const end = normalizeDateKey(record.endDate);
-      if (!start || !end || start > filters.period || end < filters.period) return false;
+      if (!start || !end || start > filters.period.end || end < filters.period.start) return false;
     }
     return !query || [record.projectName, record.projectCode, record.mainTaskName, record.code,
       record.weeklyTask.target_description, record.weeklyTask.target_output,

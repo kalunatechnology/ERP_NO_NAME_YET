@@ -2,6 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+require('ts-node/register/transpile-only');
+const { weeklyPeriodCalendar } = require('../src/modules/projects/weekly-period');
 
 async function main() {
   const frontend = path.resolve(__dirname, '../../frontend-next');
@@ -34,16 +36,29 @@ async function main() {
       { id: 'pending-a', created_by_id: 'other-user', main_task_id: 'main-a', assignee_id: actor, week_number: 2, target_description: 'Ajukan rancangan laporan stok', start_date: '2026-10-05', end_date: '2099-10-11', status: 'PENDING_APPROVAL', progress: 0 },
       { id: 'rejected-a', main_task_id: 'main-a', assignee_id: actor, week_number: 3, target_description: 'Revisi perencanaan opname', start_date: '2026-10-05', end_date: '2099-10-11', status: 'REJECTED', progress: 0 },
       { id: 'other', main_task_id: 'main-a', assignee_id: 'other-user', week_number: 1, target_description: 'TARGET RAHASIA REKAN', start_date: '2026-10-05', end_date: '2099-10-11', status: 'IN_PROGRESS', progress: 10 },
+      { id: 'cross-month', main_task_id: 'main-a', assignee_id: actor, week_number: 42, target_description: 'Target lintas September Oktober', start_date: '2026-09-28', end_date: '2026-10-02', status: 'PLANNED', progress: 0 },
     ];
     const daily = [{ id: 'daily-a', weekly_task_id: 'ready-a', owner_id: actor, title: 'Validasi kebutuhan gudang', status: 'IN_PROGRESS', progress: 0, planned_date: '2026-10-09', output_target: 'Dokumen kebutuhan gudang' }];
-    let failCreate = true, submitted = 0, lastPayload, edits = 0, reviews = 0, deletes = 0;
+    let failCreate = true, failCalendar = false, submitted = 0, lastPayload, edits = 0, reviews = 0, deletes = 0;
     const token = `e30.${Buffer.from(JSON.stringify({ exp: 4102444800 })).toString('base64url')}.fixture`;
     await page.context().addCookies([{ name: 'access_token', value: token, url: 'http://127.0.0.1:3014' }]);
-    await page.addInitScript(({ token, company, user }) => { localStorage.setItem('erp.access', token); localStorage.setItem('erp.company', company); localStorage.setItem('erp.user', JSON.stringify(user)); }, { token, company, user });
+    await page.addInitScript(({ token, company, user }) => {
+      localStorage.setItem('erp.access', token); localStorage.setItem('erp.company', company); localStorage.setItem('erp.user', JSON.stringify(user));
+      const NativeDate = Date;
+      const fixedDate = `${localStorage.getItem('qa.today') || '2026-10-09'}T05:00:00Z`;
+      window.Date = class extends NativeDate {
+        constructor(...args) { super(...(args.length ? args : [fixedDate])); }
+        static now() { return new NativeDate(fixedDate).getTime(); }
+      };
+    }, { token, company, user });
     await page.route('**/api/v1/**', async route => {
       const request = route.request(), url = new URL(request.url()), endpoint = url.pathname;
       const json = data => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
       if (endpoint.includes('/auth/me')) return json({ ...user, active_role_code: activeRole });
+      if (endpoint.endsWith('/weekly-tasks/periods')) {
+        if (failCalendar) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Kalender sementara tidak tersedia.' }) });
+        return json(weeklyPeriodCalendar(url.searchParams.get('month') ?? undefined, url.searchParams.get('today') ?? undefined));
+      }
       if (endpoint.endsWith('/authority')) { const id = endpoint.split('/').at(-2); const manage = activeRole === 'ROLE-PM' && id === 'a'; return json({ project_id: id, can_manage_weekly_tasks: manage, can_review_weekly_tasks: manage, can_manage_project: manage }); }
       if (endpoint.endsWith('/weekly-tasks/review-workspace')) return json({ projects: activeRole === 'ROLE-PM' ? projects.filter(project => project.id === 'a') : [], mainTasks: mains.filter(main => main.project_id === 'a'), weeklyTasks: weekly.filter(row => row.main_task_id !== 'main-b'), assignments: assignments.filter(row => row.main_task_id === 'main-a'), dailyTasks: daily, users: [{ id: actor, full_name: user.full_name }, { id: 'other-user', full_name: 'Rekan tim' }], tasks: [], milestones: [], stages: [], costEntries: [], proposals: [], fundings: [] });
       if (endpoint.endsWith('/review')) { reviews++; const row = weekly.find(row => row.id === endpoint.split('/').at(-2)); assert.equal(row.created_by_id === actor, false); row.status = request.postDataJSON().decision === 'APPROVE' ? 'PLANNED' : 'REJECTED'; return json(row); }
@@ -73,6 +88,11 @@ async function main() {
     await page.goto('http://127.0.0.1:3014/weekly-management-fixture', { waitUntil: 'networkidle' });
     await page.getByRole('tab', { name: 'Task Management' }).click();
     await page.getByRole('button', { name: 'Buat Weekly Target', exact: true }).waitFor();
+    await page.getByLabel('Weekly dalam bulan').selectOption('1');
+    assert.equal(await page.getByLabel('Bulan Weekly Target').inputValue(), '2026-10');
+    assert.equal(await page.getByLabel('Weekly dalam bulan').locator('option').count(), 4);
+    assert.match(await page.getByLabel('Rentang Weekly terpilih').textContent(), /5 Okt 2026.*9 Okt 2026/);
+    assert.equal(await page.getByText('Target lintas September Oktober', { exact: false }).count(), 0);
     assert.equal(await page.getByText('TARGET RAHASIA REKAN').count(), 0);
     await page.getByRole('button', { name: 'Board', exact: true }).click();
     await page.getByRole('button', { name: 'Daftar', exact: true }).click();
@@ -84,8 +104,19 @@ async function main() {
     await page.getByRole('button', { name: /^W#.*Ajukan rancangan laporan stok/ }).waitFor();
     assert.equal(await page.getByRole('button', { name: /^W#.*Selesaikan integrasi data master/ }).count(), 0);
     await page.getByRole('button', { name: 'Reset filter' }).click();
-    await page.getByLabel('Aktif pada tanggal').fill('2026-09-28');
-    await page.getByText('Tidak ada target yang sesuai filter', { exact: true }).waitFor();
+    await page.getByLabel('Bulan Weekly Target').fill('2026-09');
+    await page.getByRole('button', { name: /^W#.*Target lintas September Oktober/ }).waitFor({ state: 'hidden' });
+    await page.getByLabel('Weekly dalam bulan').selectOption('4');
+    await page.getByRole('button', { name: /^W#42.*Target lintas September Oktober/ }).waitFor();
+    assert.match(await page.getByLabel('Rentang Weekly terpilih').textContent(), /28 Sep 2026.*2 Okt 2026/);
+    assert.equal(await page.getByRole('button', { name: /^W#.*Rancang alur penerimaan barang/ }).count(), 0);
+    await page.getByLabel('Bulan Weekly Target').fill('2026-08');
+    await page.getByLabel('Weekly dalam bulan').selectOption('5');
+    assert.match(await page.getByLabel('Rentang Weekly terpilih').textContent(), /31 Agu 2026.*4 Sep 2026/);
+    await page.getByLabel('Bulan Weekly Target').fill('2026-10');
+    await page.getByLabel('Weekly dalam bulan').selectOption('1');
+    assert.equal(await page.getByLabel('Weekly dalam bulan').locator('option').count(), 4, 'Week 5 must reset when changing to a four-week month');
+    assert.equal(await page.getByText('Target lintas September Oktober', { exact: false }).count(), 0);
     await page.getByRole('button', { name: 'Reset filter' }).click();
 
     await page.getByRole('button', { name: 'Buat Weekly Target', exact: true }).click();
@@ -190,8 +221,28 @@ async function main() {
     await page.getByRole('button', { name: 'Board', exact: true }).click();
     assert(await page.getByLabel('Status Validasi kebutuhan gudang').isDisabled(), 'Read-only Daily board disables transitions');
     assert.equal(await page.locator('[data-daily-card="daily-a"]').getAttribute('draggable'), 'false');
+    await page.evaluate(() => localStorage.setItem('qa.today', '2026-10-01'));
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('tab', { name: 'Task Management' }).click();
+    await page.getByRole('button', { name: /^W#42.*Target lintas September Oktober/ }).waitFor();
+    assert.equal(await page.getByLabel('Bulan Weekly Target').inputValue(), '2026-09', 'Early October defaults to September workweek identity');
+    assert.equal(await page.getByLabel('Weekly dalam bulan').inputValue(), '4');
+    await page.evaluate(() => localStorage.setItem('qa.today', '2027-01-01'));
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('tab', { name: 'Task Management' }).click();
+    await page.getByLabel('Weekly dalam bulan').selectOption('4');
+    assert.equal(await page.getByLabel('Bulan Weekly Target').inputValue(), '2026-12');
+    assert.match(await page.getByLabel('Rentang Weekly terpilih').textContent(), /28 Des 2026.*1 Jan 2027/);
+    failCalendar = true;
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('tab', { name: 'Task Management' }).click();
+    await page.getByRole('alert').filter({ hasText: 'Kalender sementara tidak tersedia.' }).waitFor();
+    assert.equal(await page.getByText('Tidak ada target yang sesuai filter', { exact: true }).count(), 0, 'Calendar failure must not look like an empty result');
+    failCalendar = false;
+    await page.getByRole('button', { name: 'Coba muat periode' }).click();
+    await page.getByLabel('Weekly dalam bulan').selectOption('4');
     assert.deepEqual(errors, []);
-    console.log('PASS: Weekly management browser — personal/team scope, Staff/PM capabilities, approval/edit/delete, guarded Daily board, filters/sorts, creation failure/retry and desktop/mobile layout.');
+    console.log('PASS: Weekly management browser — monthly workweek filtering, cross-month/year defaults, error recovery, project-based creation, existing Staff/PM workflows and desktop/mobile layout.');
     console.log(`Screenshots: ${artifacts}`);
   } finally {
     if (browser) await browser.close();
