@@ -631,7 +631,7 @@ export default function FinanceClient() {
           <p className="page-description">Pembukuan, pengendalian biaya, penagihan, dan rekonsiliasi perusahaan</p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="workspace-actions flex items-center gap-2 flex-wrap">
           {canOperateFinance ? (
             <>
               <button onClick={() => setIsCostModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
@@ -651,36 +651,37 @@ export default function FinanceClient() {
           )}
           <button
             onClick={() => loadFinanceData(true)}
-            className={cn("btn-ghost py-1.5 px-3 text-xs gap-1.5", refreshing && "animate-spin")}
+            className="btn-ghost py-1.5 px-3 text-xs gap-1.5"
+            aria-label="Segarkan data Finance"
             disabled={refreshing}
           >
-            <RefreshCw size={14} />
+            <RefreshCw size={14} className={cn(refreshing && "animate-spin")} />
           </button>
         </div>
       </div>
 
       {userRole === "executive" && !canOperateFinance && (
-        <div className="p-3.5 rounded-2xl bg-[#FAF5FF] border border-[#E9D5FF] text-xs text-[#581C87] flex items-center justify-between flex-wrap gap-2 shadow-2xs">
-          <div className="flex items-center gap-2">
-            <Crown size={16} aria-hidden="true" />
+        <div className="p-3.5 rounded-2xl bg-[#FAF5FF] border border-[#E9D5FF] text-xs text-[#581C87] flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between shadow-2xs">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            <Crown size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
             <span>
               <b>Executive Viewport Active:</b> Anda memiliki akses penuh membaca seluruh metrik keuangan, arus kas, dan audit trail satu lembar.
             </span>
           </div>
-          <span className="text-2xs font-extrabold px-2.5 py-0.5 rounded-full bg-[#F3E8FF] text-[#6B21A8]">
+          <span className="shrink-0 text-2xs font-extrabold px-2.5 py-0.5 rounded-full bg-[#F3E8FF] text-[#6B21A8]">
             READ ONLY / PREVIEW
           </span>
         </div>
       )}
 
-      <div className="flex min-w-0 items-start gap-5">
+      <div className="flex min-w-0 flex-col items-start gap-4 xl:flex-row">
         <FinanceModuleSidebar items={visibleTabs} activeId={activeTab} onSelect={selectFinanceTab} />
-        <div className="min-w-0 flex-1">
+        <div className="workspace-container min-w-0 w-full flex-1">
 
       {/* ── TAB 1: OVERVIEW ────────────────────── */}
       {activeTab === "overview" && (
         <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="workspace-kpis grid gap-3">
             <div className="kpi-card">
               <span className="text-xs text-text-secondary">Total Revenue (Billing)</span>
               <span className="text-2xl font-bold text-brand-deep-green">{formatMoney(totalRevenue)}</span>
@@ -1253,7 +1254,7 @@ export default function FinanceClient() {
           </div>
 
           {/* 4 Kartu Rekening Bank */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="workspace-kpis grid gap-3">
             {bankAccounts.map((b) => (
               <div key={b.id} className="card p-4 rounded-[14px] border border-text-tertiary bg-white flex flex-col justify-between min-h-[120px] shadow-xs">
                 <div>
@@ -1726,7 +1727,7 @@ export default function FinanceClient() {
             </div>
 
             {/* Ringkasan Saldo Real-Time */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="workspace-kpis grid gap-3">
               {bankAccounts.map((b) => (
                 <div key={b.id} className="card p-4 rounded-[14px] border border-text-tertiary bg-white flex flex-col justify-between shadow-xs">
                   <div className="flex items-center justify-between text-2xs font-bold text-text-secondary uppercase">
@@ -1821,7 +1822,7 @@ export default function FinanceClient() {
 
       {/* ── TAB: EXECUTIVE AUDIT REPORT ───────────── */}
       {activeTab === "executive_report" && (
-        <div className="card rounded-2xl p-6">
+        <div className="card rounded-2xl p-3 sm:p-5 lg:p-6">
           <ExecutiveAuditReportWorkspace />
         </div>
       )}

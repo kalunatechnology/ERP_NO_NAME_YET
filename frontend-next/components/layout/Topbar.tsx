@@ -284,8 +284,8 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
         >
           <Search size={14} className="text-[#4F5050] flex-shrink-0" aria-hidden="true" />
           <span className="hidden xl:inline whitespace-nowrap text-xs text-[#4F5050]">Cari data, proyek, menu…</span>
-          <span className="hidden md:inline xl:hidden whitespace-nowrap text-xs text-[#4F5050]">Cari…</span>
-          <kbd className="hidden md:inline-flex px-1.5 py-0.5 text-[9px] text-[#4F5050] bg-white rounded-md border border-[#E2E8F0] font-mono shadow-2xs ml-0.5">
+          <span className="hidden lg:inline xl:hidden whitespace-nowrap text-xs text-[#4F5050]">Cari…</span>
+          <kbd className="hidden xl:inline-flex px-1.5 py-0.5 text-[9px] text-[#4F5050] bg-white rounded-md border border-[#E2E8F0] font-mono shadow-2xs ml-0.5">
             Ctrl+K
           </kbd>
         </button>

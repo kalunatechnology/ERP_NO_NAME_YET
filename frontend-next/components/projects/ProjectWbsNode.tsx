@@ -114,6 +114,17 @@ export function ProjectWbsNode({
   const weeklyPlans = main.weekly_tasks || main.weekly_plans || [];
   const pendingWeeklyCount = weeklyPlans.filter((weekly: any) => weekly.status === "PENDING_APPROVAL").length;
   const [reviewingWeeklyId, setReviewingWeeklyId] = useState<string | null>(null);
+  const [removingAssignmentId, setRemovingAssignmentId] = useState<string | null>(null);
+
+  const handleRemoveAssignment = async (assignmentId: string | number) => {
+    if (removingAssignmentId !== null) return;
+    setRemovingAssignmentId(String(assignmentId));
+    try {
+      await onRemoveAssignment(main, assignmentId);
+    } finally {
+      setRemovingAssignmentId(null);
+    }
+  };
 
   const handleReviewWeekly = async (id: string | number, decision: "APPROVE" | "REJECT") => {
     if (reviewingWeeklyId !== null) return;
@@ -194,15 +205,18 @@ export function ProjectWbsNode({
               <div className="flex items-center gap-1.5 flex-wrap mt-2">
                 <span className="text-3xs font-bold text-text-secondary uppercase">Tim ditugaskan:</span>
                 {main.assignments.map((a: any) => (
-                  <span key={a.id} className="badge bg-indigo-50 text-indigo-800 border border-indigo-200 text-2xs flex items-center gap-1 font-semibold">
-                    <span>{a.assignee_name || a.user_name}</span>
+                  <span key={a.id} className="inline-flex max-w-full items-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 py-1 pl-2.5 pr-1 text-2xs font-semibold text-indigo-800">
+                    <span className="min-w-0 break-words">{a.assignee_name || a.user_name}</span>
                     {canAssignTeam && (
                       <button
-                        onClick={() => onRemoveAssignment(main, a.id)}
-                        className="hover:text-red-600 font-bold ml-1 text-xs"
+                        type="button"
+                        onClick={event => { event.stopPropagation(); void handleRemoveAssignment(a.id); }}
+                        disabled={removingAssignmentId !== null}
+                        className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base font-bold hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
+                        aria-label={`Hapus penugasan ${a.assignee_name || a.user_name || "anggota"}`}
                         title="Hapus penugasan (Wewenang PM)"
                       >
-                        &times;
+                        {removingAssignmentId === String(a.id) ? <RefreshCw size={13} className="animate-spin" /> : <span aria-hidden="true">&times;</span>}
                       </button>
                     )}
                   </span>

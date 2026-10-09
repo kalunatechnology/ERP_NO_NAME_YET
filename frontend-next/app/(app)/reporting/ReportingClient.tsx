@@ -81,13 +81,13 @@ function MetricCard({ label, value, sub, valueColor, icon: Icon, iconBg, iconCol
   valueColor?: string; icon: React.ElementType; iconBg: string; iconColor: string;
 }) {
   return (
-    <div className="card rounded-xl p-4 flex items-center gap-3">
+    <div className="card min-w-0 rounded-xl p-4 flex items-start gap-3">
       <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: iconBg }}>
         <Icon size={20} style={{ color: iconColor }} />
       </div>
       <div className="min-w-0">
         <div className="text-xs text-text-secondary">{label}</div>
-        <div className="text-xl font-bold" style={{ color: valueColor || "inherit" }}>{value}</div>
+        <div className="break-words text-xl font-bold leading-tight" style={{ color: valueColor || "inherit" }}>{value}</div>
         {sub && <div className="text-xs text-text-secondary">{sub}</div>}
       </div>
     </div>
@@ -196,7 +196,7 @@ function TabProjectPnL({ data }: { data: ReturnType<typeof createDefaultData> })
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="workspace-kpis grid gap-3">
         <MetricCard label="Nilai Kontrak (Revenue)" value={formatMoney(revenue)} sub="Target Pendapatan" icon={DollarSign} iconBg="#EAF6FF" iconColor="#294BB2" />
         <MetricCard label="Total Biaya Aktual" value={formatMoney(totalCost)} sub="Cost of Goods Sold (HPP)" icon={TrendingUp} iconBg="#FEF2F2" iconColor="#DC2626" valueColor="#DC2626" />
         <MetricCard
@@ -284,7 +284,7 @@ function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) 
   return (
     <div className="flex flex-col gap-5">
       {/* Portfolio KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="workspace-kpis grid gap-3">
         <MetricCard label="Total Portofolio Kontrak" value={formatMoney(totalRevenue)} sub={`${data.projects.length} Proyek Terdaftar`} icon={DollarSign} iconBg="#EAF6FF" iconColor="#294BB2" />
         <MetricCard label="Total Pengeluaran Riil" value={formatMoney(totalActualCost)} sub="Seluruh Proyek Aktif" icon={TrendingUp} iconBg="#FEF2F2" iconColor="#DC2626" valueColor="#DC2626" />
         <MetricCard label="Total Laba Kotor" value={formatMoney(totalGrossProfit)} sub={`Rata-rata Margin ${avgMargin.toFixed(1)}%`} icon={ArrowUpRight} iconBg="#EAF6FF" iconColor="#294BB2" valueColor="#294BB2" />
@@ -649,7 +649,7 @@ export default function ReportingClient() {
   const canExportLoadedReport = hasLoadedData && !loading && !refreshing;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="workspace-container flex min-w-0 flex-col gap-5">
       {/* ── Header ─────────────────────────── */}
       <div className="card rounded-2xl p-5 flex items-center justify-between flex-wrap gap-4 border border-text-tertiary bg-white">
         <div>
@@ -657,7 +657,7 @@ export default function ReportingClient() {
           <h1 className="text-xl font-bold text-text-primary">{isPersonalReport ? "Laporan Aktivitas dan Kehadiran Saya" : "Pelaporan Finansial"}</h1>
           <p className="text-xs text-text-secondary mt-0.5">{isPersonalReport ? "Ringkasan aktivitas tugas dan kehadiran yang tercatat atas nama Anda." : "Visibilitas real-time: Revenue, Biaya Aktual (Labor/Material), Gross Margin, dan General Ledger."}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="workspace-actions flex w-full flex-wrap items-center gap-2">
           {userRole === "om" && (
             <button
               onClick={() => router.push("/management-reports?action=create")}
@@ -696,13 +696,13 @@ export default function ReportingClient() {
       </div>}
 
       {/* ── Tabs ───────────────────────────── */}
-      <div className="flex gap-1.5 p-1.5 bg-bg-lighter rounded-xl border border-text-tertiary/50">
+      <div className="flex max-w-full gap-1.5 overflow-x-auto p-1.5 bg-bg-lighter rounded-xl border border-text-tertiary/50">
         {allowedTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
             className={cn(
-              "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all",
+              "flex shrink-0 items-center gap-1.5 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-semibold transition-all",
               activeTab === id
                 ? "bg-white text-brand-deep-green shadow-sm border border-text-tertiary/30"
                 : "text-text-secondary hover:text-text-primary hover:bg-white/60"

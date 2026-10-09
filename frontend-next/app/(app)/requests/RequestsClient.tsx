@@ -223,9 +223,9 @@ export default function RequestsClient(){
       {/* ── Unified Toolbar (Tabs, Type, Status & Search) ── */}
       <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-[#D9D9D9] shadow-xs flex flex-col gap-3">
         {/* Top Row: Module Tabs & Search Input */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Main Module Tabs Switcher */}
-          <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-xs font-bold">
+          <div className="flex max-w-full flex-wrap items-center gap-1 p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-xs font-bold">
             <button
               onClick={() => setActiveTab('meeting')}
               className={cn(
@@ -266,7 +266,7 @@ export default function RequestsClient(){
           </div>
 
           {/* Search Box - Absolute icon in left-3.5 with generous pl-10 ensures ZERO overlap */}
-          <div className="relative min-w-[220px] flex-1 sm:w-72 sm:flex-initial">
+          <div className="relative min-w-0 w-full sm:w-72">
             <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400">
               <Search size={15} />
             </div>
@@ -291,11 +291,11 @@ export default function RequestsClient(){
 
         {/* Bottom Row: Segmented Filters for Meeting */}
         {activeTab === 'meeting' && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pt-2 border-t border-[#F0F0F0]">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#F0F0F0]">
             {/* Type Filter */}
             <div className="flex items-center gap-2">
               <span className="text-3xs font-bold text-[#4F5050] uppercase tracking-wider hidden sm:inline">Tipe:</span>
-              <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
+              <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
                 {(['ALL', 'RECURRING', 'NON_RECURRING'] as const).map(t => (
                   <button
                     key={t}
@@ -314,7 +314,7 @@ export default function RequestsClient(){
             {/* Status Filter as Segmented Control */}
             <div className="flex items-center gap-2 overflow-x-auto pb-0.5 sm:pb-0">
               <span className="text-3xs font-bold text-[#4F5050] uppercase tracking-wider hidden sm:inline">Status:</span>
-              <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
+              <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
                 {(['ALL', 'SCHEDULED', 'DRAFT', 'COMPLETED'] as const).map(status => {
                   const count = status === 'ALL' ? meetingCounts.all : status === 'DRAFT' ? meetingCounts.draft : status === 'SCHEDULED' ? meetingCounts.scheduled : meetingCounts.completed;
                   const label = status === 'ALL' ? 'Semua' : status === 'DRAFT' ? 'Draft' : status === 'SCHEDULED' ? 'Terjadwal' : 'Selesai';
@@ -347,10 +347,10 @@ export default function RequestsClient(){
 
         {/* Bottom Row: Segmented Filters for Request (Leave / Other) */}
         {activeTab === 'request' && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pt-2 border-t border-[#F0F0F0]">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#F0F0F0]">
             <div className="flex items-center gap-2">
               <span className="text-3xs font-bold text-[#4F5050] uppercase tracking-wider hidden sm:inline">Kategori:</span>
-              <div className="flex items-center p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
+              <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#F4F6FB] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
                 {(['ALL', 'LEAVE', 'OTHER'] as const).map(t => {
                   const count = t === 'ALL' ? nonMeetingCounts.all : t === 'LEAVE' ? nonMeetingCounts.leave : nonMeetingCounts.other;
                   const label = t === 'ALL' ? 'Semua Permohonan' : t === 'LEAVE' ? 'Cuti / Izin' : 'Other Request';
@@ -387,7 +387,7 @@ export default function RequestsClient(){
 
       {/* ── Meeting Tab Content ── */}
       {activeTab === 'meeting' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-3.5">
           {loading && [1, 2, 3, 4, 5, 6].map(item => (
             <div key={item} className="h-44 rounded-[20px] bg-white border border-[#D9D9D9] animate-pulse p-4.5" />
           ))}
@@ -407,11 +407,11 @@ export default function RequestsClient(){
               <div
                 key={row.id}
                 onClick={() => void openMeeting(row.id)}
-                className="group relative flex flex-col justify-between p-4.5 rounded-[20px] bg-white border border-[#D9D9D9] hover:border-[#2649B3]/60 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-150 cursor-pointer shadow-2xs gap-3"
+                className="group relative min-w-0 flex flex-col justify-between p-4.5 rounded-[20px] bg-white border border-[#D9D9D9] hover:border-[#2649B3]/60 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-150 cursor-pointer shadow-2xs gap-3"
               >
                 <div className="space-y-2.5">
                   {/* Card Top: Icon Box + Identifier + Status Badge */}
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className={cn(
                         "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border",
@@ -434,15 +434,16 @@ export default function RequestsClient(){
                       </div>
                     </div>
 
-                    {/* Status Badge */}
-                    <div className="shrink-0">
-                      {canDeleteMeeting&&<button type="button" disabled={busy} onClick={event=>{event.stopPropagation();void deleteMeeting(row.id);}} aria-label={`Hapus meeting ${row.request?.title??""}`} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 size={13}/>Hapus</button>}
+                  </div>
+
+                    {/* Status has its own row, separate from card actions. */}
+                    <div className="flex flex-wrap items-center gap-2">
                   {isDraft ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 text-3xs font-extrabold uppercase">
                           <Clock3 size={11} /> DRAFT
                         </span>
                       ) : isCompleted ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-emerald-300 bg-emerald-800 text-emerald-800 text-3xs font-extrabold uppercase">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-800 text-3xs font-extrabold uppercase">
                           <CheckCircle2 size={11} /> SELESAI
                         </span>
                       ) : (
@@ -451,7 +452,6 @@ export default function RequestsClient(){
                         </span>
                       )}
                     </div>
-                  </div>
 
                   {/* Title & Description */}
                   <div>
@@ -481,12 +481,14 @@ export default function RequestsClient(){
                 </div>
 
                 {/* Footer: Date & Detail/Publish Action */}
-                <div className="border-t border-[#F0F0F0] pt-2.5 flex items-center justify-between gap-2 text-2xs">
-                  <div className="flex items-center gap-1.5 text-[#4F5050] font-medium">
-                    <Clock3 size={13} className="text-[#2649B3]" />
+                <div className="border-t border-[#F0F0F0] pt-2.5 flex flex-wrap items-center justify-between gap-2 text-2xs">
+                  <div className="flex min-w-0 items-center gap-1.5 text-[#4F5050] font-medium">
+                    <Clock3 size={13} className="shrink-0 text-[#2649B3]" />
                     <span>{displayDate(row.start_at)}</span>
                   </div>
 
+                  <div className="flex flex-wrap items-center gap-2">
+                  {canDeleteMeeting && <button type="button" disabled={busy} onClick={event => { event.stopPropagation(); void deleteMeeting(row.id); }} aria-label={`Hapus meeting ${row.request?.title ?? ""}`} className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-2xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 size={13} />Hapus</button>}
                   {isDraft ? (
                     <button
                       type="button"
@@ -501,10 +503,11 @@ export default function RequestsClient(){
                       <span>Publikasikan</span>
                     </button>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-2xs font-bold text-[#2649B3] group-hover:translate-x-0.5 transition-transform">
+                    <button type="button" onClick={event => { event.stopPropagation(); void openMeeting(row.id); }} className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg px-2 text-2xs font-bold text-[#2649B3] hover:bg-[#EAF6FF] transition-colors">
                       Detail <ArrowRight size={12} />
-                    </span>
+                    </button>
                   )}
+                  </div>
                 </div>
               </div>
             );

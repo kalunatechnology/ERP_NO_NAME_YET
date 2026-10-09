@@ -34,6 +34,44 @@
 
 /* ── Components ──────────────────────────────────── */
 @layer components {
+  /* Use the available workspace width after both sidebars, not viewport width. */
+  .workspace-container {
+    container: workspace / inline-size;
+  }
+  .workspace-kpis,
+  .workspace-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace-kpis > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .workspace-actions > button,
+  .workspace-actions > select {
+    min-height: 40px;
+    flex-shrink: 0;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+  .workspace-actions svg {
+    flex-shrink: 0;
+  }
+  @container workspace (min-width: 440px) {
+    .workspace-kpis {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @container workspace (min-width: 640px) {
+    .workspace-columns {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @container workspace (min-width: 880px) {
+    .workspace-kpis {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
   /* Sidebar nav item */
   .nav-item {
     @apply flex items-center gap-2.5 px-2.5 py-2.5 rounded-md w-full

@@ -33,7 +33,7 @@ export function AppShell({ children }: AppShellProps) {
   const { user, company, userRole, isLoading, isAuthenticated } = useAuth();
   const pathname = usePathname();
 
-  // Right panel state (desktop only ≥ lg)
+  // Dock only when there is room for both navigation and the workspace.
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   // Mobile left sidebar state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -54,6 +54,25 @@ export function AppShell({ children }: AppShellProps) {
     setMobileRightPanelOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1536px)");
+    const closeDrawer = () => setMobileRightPanelOpen(false);
+    media.addEventListener("change", closeDrawer);
+    return () => media.removeEventListener("change", closeDrawer);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileSidebarOpen && !mobileRightPanelOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileSidebarOpen(false);
+        setMobileRightPanelOpen(false);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileSidebarOpen, mobileRightPanelOpen]);
+
   /* Prevent body scroll when either mobile menu/drawer is open */
   useEffect(() => {
     document.body.style.overflow = (mobileSidebarOpen || mobileRightPanelOpen) ? "hidden" : "";
@@ -61,7 +80,7 @@ export function AppShell({ children }: AppShellProps) {
   }, [mobileSidebarOpen, mobileRightPanelOpen]);
 
   const toggleRightPanel = useCallback(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+    if (typeof window !== "undefined" && window.innerWidth < 1536) {
       setMobileRightPanelOpen(prev => !prev);
     } else {
       const next = !rightPanelOpen;
@@ -72,7 +91,6 @@ export function AppShell({ children }: AppShellProps) {
 
   const openMobileSidebar   = useCallback(() => setMobileSidebarOpen(true),  []);
   const closeMobileSidebar  = useCallback(() => setMobileSidebarOpen(false), []);
-  const openMobileRight     = useCallback(() => setMobileRightPanelOpen(true), []);
   const closeMobileRight    = useCallback(() => setMobileRightPanelOpen(false), []);
 
   /* ── Access control ──────────────────────────────────── */
@@ -109,7 +127,7 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className="flex flex-row h-screen w-screen overflow-hidden bg-bg-lighter">
+    <div className="flex h-dvh w-full overflow-hidden bg-bg-lighter">
 
       {/* ── Desktop Sidebar (hidden below lg) ── */}
       <div className="hidden lg:flex flex-shrink-0">
@@ -139,9 +157,9 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       )}
 
-      {/* ── Mobile Right Sidebar / Notifications Drawer (shown below lg) ── */}
+      {/* Notifications drawer below the desktop docking breakpoint. */}
       {mobileRightPanelOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
+        <div className="2xl:hidden fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Notifikasi dan kontak tim">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
@@ -156,7 +174,7 @@ export function AppShell({ children }: AppShellProps) {
       )}
 
       {/* ── Main Application Column ── */}
-      <div className="flex flex-col flex-1 min-w-0 h-screen overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Topbar */}
         <Topbar
           onMenuToggle={openMobileSidebar}
@@ -165,7 +183,7 @@ export function AppShell({ children }: AppShellProps) {
         />
 
         {/* Workspace + Right Sidebar Row */}
-        <div className="flex flex-row flex-1 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           {/* Main Scrollable Canvas */}
           <main
             className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden relative"
@@ -187,9 +205,9 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           </main>
 
-          {/* ── Right Panel (visible on lg and xl) ── */}
+          {/* Docked notifications on wide desktop screens. */}
           <div
-            className="hidden lg:flex flex-shrink-0 flex-col border-l border-text-tertiary bg-bg-light transition-all duration-200 overflow-hidden relative h-full"
+            className="hidden 2xl:flex flex-shrink-0 flex-col border-l border-text-tertiary bg-bg-light transition-[width] duration-200 overflow-hidden relative h-full"
             style={{ width: rightPanelOpen ? "260px" : "36px" }}
           >
             {rightPanelOpen ? (

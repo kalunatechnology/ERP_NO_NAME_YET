@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,20 @@ const groups = [
 export function FinanceModuleSidebar({ items, activeId, onSelect }: FinanceModuleSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const media = window.matchMedia("(min-width: 1280px)");
+    const closeMenu = () => setMobileOpen(false);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    media.addEventListener("change", closeMenu);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      media.removeEventListener("change", closeMenu);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobileOpen]);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
     Object.fromEntries(groups.map((group) => [group.id, true]))
   );
@@ -98,14 +112,14 @@ export function FinanceModuleSidebar({ items, activeId, onSelect }: FinanceModul
 
   return (
     <>
-      <div className="mb-3 flex items-center justify-between rounded-xl border border-[#D9D9D9] bg-white p-2 md:hidden">
+      <div className="flex w-full items-center justify-between rounded-xl border border-[#D9D9D9] bg-white p-2 xl:hidden">
         <div className="flex items-center gap-2 text-xs font-bold text-[#2649B3]">
           <Menu size={16} /> Menu Finance
         </div>
         <button type="button" onClick={() => setMobileOpen(true)} className="rounded-lg bg-[#EAF6FF] px-3 py-1.5 text-xs font-bold text-[#2649B3]">Buka Menu</button>
       </div>
 
-      <aside className={cn("sticky top-3 hidden max-h-[calc(100vh-100px)] shrink-0 flex-col rounded-2xl border border-[#D9D9D9] bg-white py-3 shadow-2xs transition-[width] duration-200 md:flex", collapsed ? "w-[64px]" : "w-[224px]")}>
+      <aside className={cn("sticky top-3 hidden max-h-[calc(100dvh-100px)] shrink-0 flex-col rounded-2xl border border-[#D9D9D9] bg-white py-3 shadow-2xs transition-[width] duration-200 xl:flex", collapsed ? "w-[64px]" : "w-[200px]")}>
         <div className={cn("mb-2 flex items-center border-b border-[#EFEFEF] px-3 pb-3", collapsed ? "justify-center" : "justify-between")}>
           {!collapsed && <div><div className="text-xs font-extrabold text-[#090909]">Finance</div><div className="text-[9px] text-[#6B7280]">Menu Modul</div></div>}
           <button type="button" onClick={() => setCollapsed((current) => !current)} className="rounded-lg p-1.5 text-[#4F5050] hover:bg-[#EAF6FF] hover:text-[#2649B3]" aria-label={collapsed ? "Perluas sidebar Finance" : "Ciutkan sidebar Finance"} title={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}>
@@ -116,9 +130,9 @@ export function FinanceModuleSidebar({ items, activeId, onSelect }: FinanceModul
       </aside>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-[70] flex md:hidden">
+        <div className="fixed inset-0 z-[70] flex xl:hidden" role="dialog" aria-modal="true" aria-label="Menu Finance">
           <button type="button" className="absolute inset-0 bg-black/40 backdrop-blur-xs" onClick={() => setMobileOpen(false)} aria-label="Tutup menu Finance" />
-          <aside className="relative z-10 flex h-full w-[280px] flex-col bg-white py-4 shadow-2xl">
+          <aside className="relative z-10 flex h-full w-[min(280px,100vw)] flex-col bg-white py-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between border-b border-[#EFEFEF] px-4 pb-3">
               <div><div className="text-sm font-extrabold text-[#090909]">Finance</div><div className="text-[10px] text-[#6B7280]">Menu Modul</div></div>
               <button type="button" onClick={() => setMobileOpen(false)} className="rounded-lg p-2 text-[#4F5050] hover:bg-[#EAF6FF]" aria-label="Tutup menu Finance"><X size={18} /></button>

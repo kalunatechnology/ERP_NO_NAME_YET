@@ -122,8 +122,8 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
     <>
       <aside
         className={cn(
-          "flex h-full w-full select-none flex-col overflow-y-auto bg-[#FDFDFD] px-8 pb-6 pt-9",
-          isMobile && "w-screen max-w-[320px] shadow-2xl"
+          "flex h-full min-w-0 w-full select-none flex-col overflow-y-auto overscroll-contain bg-[#FDFDFD] px-4 pb-6 pt-5",
+          isMobile && "w-[min(360px,100vw)] shadow-2xl"
         )}
         role="complementary"
         aria-label="Alert dan kontak real-time"
@@ -135,7 +135,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                 <Bell size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                 <h2
                   id="right-panel-alert-title"
-                  className="truncate text-sm font-extrabold uppercase tracking-[0.02em]"
+                  className="text-sm font-extrabold uppercase tracking-[0.02em]"
                 >
                   Alert
                 </h2>
@@ -239,7 +239,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
           <p className="mt-2 text-center text-[10px] text-[#6B7280]">Notifikasi tersimpan selama 3 hari.</p>
         </section>
 
-        <section className="mt-14" aria-labelledby="right-panel-contacts-title">
+        <section className="mt-8" aria-labelledby="right-panel-contacts-title">
           <div className="flex items-center justify-between border-b border-[#EFEFEF] pb-2">
             <h2 id="right-panel-contacts-title" className="text-sm font-extrabold uppercase tracking-[0.02em] text-[#294BB2]">Contacts</h2>
             <Users size={15} className="text-[#294BB2]" aria-hidden="true" />
