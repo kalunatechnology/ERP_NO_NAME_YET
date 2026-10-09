@@ -447,7 +447,9 @@ async function main(): Promise<void> {
     assert(reportingClient.includes('canRequestApi(\'/api/v1/finance/project-cost-entries/\''));
     assert(reportingClient.includes('Laporan Aktivitas dan Kehadiran Saya'));
     assert(!projectClient.includes('/api/v1/finance/project-fundings/?project_id='), 'Project workspace must not probe Finance before its PROJECTS funding endpoint.');
-    assert(tasksClient.includes('normalizeDateKey(i.task.planned_date) === today'), 'Daily Tasks must compare normalized calendar dates.');
+    const personalWorkspaceSource = await readFile(`${__dirname}/../../frontend-next/lib/tasks/personal-workspace.ts`, 'utf8');
+    const calendarDateSource = await readFile(`${__dirname}/../../frontend-next/lib/calendar-date.ts`, 'utf8');
+    assert(tasksClient.includes('personalDailyTaskSummary(allTasks, today)') && personalWorkspaceSource.includes('normalizeDateKey(task.planned_date) === today'), 'Daily Tasks must compare normalized calendar dates through the shared summary.');
     assert(tasksClient.includes('const creatableProjects = useMemo') && tasksClient.includes('weeklyTask.assignee_id') && tasksClient.includes("'PENDING_APPROVAL', 'REJECTED'"), 'Daily Task create scope must follow owned approved Weekly Tasks.');
     assert(
       /<NewDailyTaskModal[\s\S]*?projects=\{projects\}[\s\S]*?currentUserId=/.test(tasksClient),
@@ -467,12 +469,12 @@ async function main(): Promise<void> {
       projectApi.includes('loadAllAccessibleRows<any>("/api/v1/projects/weekly-tasks/?page_size=500")'),
       'Daily Task must receive complete authorized project, Main Task and Weekly catalogs across API pages.',
     );
-    assert(tasksClient.includes('{canCreateDailyTask && <button'), 'Daily Task create action must be hidden when no valid backend scope exists.');
+    assert(tasksClient.includes('workspaceTab === "daily" && canCreateDailyTask && <button'), 'Daily Task create action must be hidden outside the Daily tab and when no valid backend scope exists.');
     assert(tasksClient.includes('{canOpenReporting && <Link'), 'Daily Tasks must not advertise an unauthorized Reporting route.');
     assert(tasksClient.includes('Task Submission') && tasksClient.includes('pendingSubmissionCount'), 'Daily Task submission must be an explicit user-journey section.');
     assert(tasksClient.includes('getApiErrorDetail(error'), 'Daily Task failures must surface the backend validation detail.');
     assert(!tasksClient.includes('new Date().toISOString().split("T")[0]'), 'Daily Tasks must not derive local today from UTC.');
-    assert(utilsSource.includes('export function localDateKey') && utilsSource.includes('export function normalizeDateKey'), 'Frontend calendar helpers are missing.');
+    assert(utilsSource.includes('export { localDateKey, normalizeDateKey }') && calendarDateSource.includes('export function localDateKey') && calendarDateSource.includes('export function normalizeDateKey'), 'Frontend calendar helpers are missing.');
     assert(financeClient.includes('endpoint: "/api/v1/assets/assets"'), 'Finance Assets tab must be entitlement-aware.');
     assert(financeClient.includes('/project-fundings/${selectedFunding.id}/draw/'), 'Funding draw must use the backend FSM action.');
     assert(financeClient.includes('/billing-documents/${selectedBillForPay.id}/create-payment'), 'AP payment must use the atomic backend command.');

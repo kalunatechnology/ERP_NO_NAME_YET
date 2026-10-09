@@ -349,9 +349,9 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
     : await Promise.all([
         loadAllAccessibleProjectRows().then(rows => ({ data: rows })),
         loadAllAccessibleRows<any>("/api/v1/projects/main-tasks/?page_size=300").then(rows => ({ data: rows })),
-        api.get("/api/v1/projects/task-assignments/?page_size=500"),
+        loadAllAccessibleRows<any>("/api/v1/projects/task-assignments/?page_size=500").then(rows => ({ data: rows })),
         loadAllAccessibleRows<any>("/api/v1/projects/weekly-tasks/?page_size=500").then(rows => ({ data: rows })),
-        api.get("/api/v1/projects/daily-tasks/?page_size=1000"),
+        loadAllAccessibleRows<any>("/api/v1/projects/daily-tasks/?page_size=1000").then(rows => ({ data: rows })),
         api.get("/api/v1/projects/tasks/?page_size=500"),
         api.get("/api/v1/projects/milestones/?page_size=300"),
         api.get("/api/v1/projects/readiness-checks/?page_size=200"),
@@ -826,6 +826,21 @@ export async function deleteWeeklyTask(id: string | number) {
 export async function reviewWeeklyTask(id: string | number, decision: "APPROVE" | "REJECT") {
   const { data } = await api.post(`/api/v1/projects/weekly-tasks/${id}/review`, { decision });
   return data;
+}
+
+export async function updateWeeklyTask(id: string | number, payload: {
+  target_description: string; week_number: number; start_date: string; end_date: string;
+}) {
+  const { data } = await api.patch(`/api/v1/projects/weekly-tasks/${id}/`, {
+    target_description: payload.target_description.trim(), week_number: payload.week_number,
+    start_date: normalizeDateKey(payload.start_date), end_date: normalizeDateKey(payload.end_date),
+  });
+  return data;
+}
+
+export async function loadWeeklyManagementProjects(): Promise<Project[]> {
+  const { data } = await api.get<ProjectDashboardBundle>("/api/v1/projects/weekly-tasks/review-workspace");
+  return loadAllProjects(["PROJECTS"], data);
 }
 
 /* ── Level 3: Daily Task CRUD ────────────────────── */

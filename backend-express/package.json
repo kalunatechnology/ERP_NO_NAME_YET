@@ -28,6 +28,8 @@
     "test:q11": "ts-node --files tests/q11-system-guardrails.ts",
     "test:module-permissions": "ts-node --files tests/module-permissions.http.unit.ts",
     "test:weekly-staff-access": "ts-node --files tests/weekly-staff-access.http.unit.ts",
+    "test:personal-daily-summary": "ts-node --files tests/personal-daily-summary.unit.ts",
+    "test:weekly-management": "ts-node --files tests/weekly-management.unit.ts",
     "test:pagination": "ts-node --files tests/pagination.unit.ts",
     "test:marbot-signature": "ts-node --files tests/marbot-signature.unit.ts",
     "test:marbot-native": "ts-node --files tests/marbot-native.unit.ts && ts-node --files tests/marbot-native-http.unit.ts && ts-node --files tests/marbot-help-intent.unit.ts && ts-node --files tests/marbot-understanding.unit.ts",

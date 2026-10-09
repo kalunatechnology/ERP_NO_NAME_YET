@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useDeferredValue } from "react";
+import { useState, useEffect, useMemo, useCallback, useDeferredValue, useRef } from "react";
 import Link from "next/link";
 import { cn, formatDate, getStatusColor, localDateKey, normalizeDateKey } from "@/lib/utils";
 import { loadAllProjects, Project, DailyTask, DailyTaskStatusValue, DailyTaskUpdatePayload, updateDailyTask, createDailyTask, deleteDailyTask, getApiErrorDetail } from "@/lib/api/project.api";
@@ -8,15 +8,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckCircle2, Search, Check, Layers, RefreshCw,
   CalendarDays, AlertTriangle, ChevronDown, ChevronRight, Pencil, X, Save,
-  Plus, FileText, Trash2,
+  Plus, FileText, Trash2, Target, CheckSquare, Columns3,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
-import { canAccessRoute } from "@/lib/access/module-contract";
+import { canAccessRoute, getModuleOverride } from "@/lib/access/module-contract";
 import { StaffTimesheetForm } from "@/components/staff/StaffTimesheetForm";
 import { StaffTimesheetTable } from "@/components/staff/StaffTimesheetTable";
 import { StaffOvertimeSummary } from "@/components/staff/StaffOvertimeSummary";
 import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
+import { personalDailyTaskRecords, personalDailyTaskSummary } from "@/lib/tasks/personal-workspace";
+import { WeeklyTaskManagement } from "@/components/tasks/WeeklyTaskManagement";
+import { DailyTaskBoard } from "@/components/tasks/DailyTaskBoard";
 
 /* ── Status helpers ─────────────────────────────── */
 /**
@@ -220,15 +223,19 @@ function NewDailyTaskModal({
   projects,
   currentUserId,
   onSuccess,
+  initialProjectId = "",
+  initialWeeklyTaskId = "",
 }: {
   isOpen: boolean;
   onClose: () => void;
   projects: Project[];
   currentUserId: string;
   onSuccess: () => Promise<void>;
+  initialProjectId?: string;
+  initialWeeklyTaskId?: string;
 }) {
-  const [projectId, setProjectId] = useState<string>("");
-  const [weeklyTaskId, setWeeklyTaskId] = useState<string>("");
+  const [projectId, setProjectId] = useState<string>(initialProjectId);
+  const [weeklyTaskId, setWeeklyTaskId] = useState<string>(initialWeeklyTaskId);
   const [title, setTitle] = useState("");
   const [plannedDate, setPlannedDate] = useState(localDateKey());
   const [timeSlot, setTimeSlot] = useState("09.00 - 12.00");
@@ -310,7 +317,7 @@ function NewDailyTaskModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl border border-text-tertiary w-full max-w-lg z-10 p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
+      <div role="dialog" aria-modal="true" aria-label="Buat Tugas Harian Baru" className="relative max-h-[90dvh] overflow-y-auto bg-white rounded-2xl shadow-xl border border-text-tertiary w-full max-w-lg z-10 p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
         <div className="flex items-start justify-between border-b border-gray-100 pb-3">
           <div>
             <h3 className="text-base font-bold text-brand-deep-green">Buat Tugas Harian Baru</h3>
@@ -562,7 +569,7 @@ function TaskRow({
           <button onClick={onDelete} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50" title="Hapus Daily Task"><Trash2 size={13} /></button>
           </div>
         ) : (
-          <span className="readonly-badge" title="Hanya PIC / Owner atau PM yang dapat mengedit">
+          <span className="readonly-badge" title="Perubahan memerlukan akses tulis dan kepemilikan task">
             Read only
           </span>
         )}
@@ -582,17 +589,27 @@ function TaskRow({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function TasksClient() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, company } = useAuth();
+  const projectAccess = getModuleOverride(user?.module_access, "PROJECTS");
+  const canOperateTasks = Boolean(user) && !["super_admin", "executive"].includes(userRole)
+    && canAccessRoute({ pathname: "/tasks", enabledModules: user?.enabled_modules,
+      delegatedModules: user?.delegated_modules, activeRoleCode: user?.active_role_code })
+    && (!projectAccess || (projectAccess.allow_read && projectAccess.allow_write));
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [workspaceTab, setWorkspaceTab] = useState<"weekly" | "daily">("daily");
+  const [dailyWeeklyId, setDailyWeeklyId] = useState("");
+  const [dailyCreationContext, setDailyCreationContext] = useState({ projectId: "", weeklyId: "" });
   const [activeFilter, setActiveFilter] = useState("TODAY");
   const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<"list" | "grouped">("grouped");
+  const [viewMode, setViewMode] = useState<"list" | "grouped" | "board">("grouped");
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [timesheetRefreshKey, setTimesheetRefreshKey] = useState(0);
+  const fetchRevision = useRef(0);
 
   /* Track recently opened Tasks */
   useEffect(() => {
@@ -605,6 +622,7 @@ export default function TasksClient() {
   }, []);
 
   const fetchTasks = useCallback(async (silent = false) => {
+    const revision = ++fetchRevision.current;
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
@@ -613,16 +631,35 @@ export default function TasksClient() {
         activeRoleCode: user?.active_role_code,
         isSuperAdmin: userRole === "super_admin",
       });
+      if (revision !== fetchRevision.current) return;
       setProjects(projs);
-    } catch {
+      setLoadError("");
+    } catch (error) {
+      if (revision !== fetchRevision.current) return;
+      setLoadError(getApiErrorDetail(error, "Gagal memuat data task. Gunakan Refresh untuk mencoba kembali."));
       toast.error("Gagal memuat data task");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (revision === fetchRevision.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
+  }, [company, user?.id, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
-  useEffect(() => { fetchTasks(); }, [fetchTasks]);
+  useEffect(() => {
+    void fetchTasks();
+    return () => { fetchRevision.current += 1; };
+  }, [fetchTasks]);
+
+  useEffect(() => {
+    setDailyWeeklyId("");
+    setDailyCreationContext({ projectId: "", weeklyId: "" });
+    setIsNewTaskOpen(false);
+  }, [company, user?.id]);
+
+  useEffect(() => {
+    if (window.location.hash === "#task-management") setWorkspaceTab("weekly");
+  }, []);
 
   useEffect(() => {
     if (window.location.hash !== "#task-submission") return;
@@ -654,7 +691,7 @@ export default function TasksClient() {
       .filter((project) => (project.main_tasks || []).length > 0);
   }, [projects, user?.id]);
 
-  const canCreateDailyTask = creatableProjects.length > 0;
+  const canCreateDailyTask = canOperateTasks && creatableProjects.length > 0;
   const canOpenReporting = canAccessRoute({
     pathname: "/reporting",
     enabledModules: user?.enabled_modules,
@@ -664,36 +701,7 @@ export default function TasksClient() {
   });
 
   /* Flatten all daily tasks */
-  const allTasks = useMemo(() => {
-    const list: {
-      projectId: string | number;
-      projectName: string;
-      projectCode: string;
-      mainTaskName: string;
-      weekNumber: number;
-      task: DailyTask;
-    }[] = [];
-
-    projects.forEach(p => {
-      (p.main_tasks || []).forEach(m => {
-        (m.weekly_tasks || m.weekly_plans || []).forEach(w => {
-          (w.daily_tasks || []).forEach(d => {
-            if (user?.id != null && String(d.owner_id ?? "") !== String(user.id)) return;
-            list.push({
-              projectId: p.id,
-              projectName: p.project_name || p.name || `Proyek ${p.id}`,
-              projectCode: p.project_code || p.code || "PRJ",
-              mainTaskName: m.name || m.title || "Main Task",
-              weekNumber: w.week_number || 1,
-              task: d,
-            });
-          });
-        });
-      });
-    });
-
-    return list;
-  }, [projects, user?.id]);
+  const allTasks = useMemo(() => personalDailyTaskRecords(projects, user?.id), [projects, user?.id]);
 
   const today = localDateKey();
   const deferredSearch = useDeferredValue(search);
@@ -701,6 +709,7 @@ export default function TasksClient() {
   const filteredTasks = useMemo(() => {
     const q = deferredSearch.toLowerCase().trim();
     return allTasks.filter(item => {
+      if (dailyWeeklyId && String(item.task.weekly_task ?? item.task.weekly_plan_id ?? "") !== dailyWeeklyId) return false;
       const searchableValues = [
         item.task.title,
         item.task.activity_input,
@@ -733,7 +742,7 @@ export default function TasksClient() {
       }
       return true; // ALL
     });
-  }, [allTasks, activeFilter, deferredSearch, today]);
+  }, [allTasks, activeFilter, deferredSearch, today, dailyWeeklyId]);
 
   /* Date-grouped view */
   const groupedByDate = useMemo(() => {
@@ -837,13 +846,7 @@ export default function TasksClient() {
   };
 
   /* Counts */
-  const todayCount    = allTasks.filter(i => normalizeDateKey(i.task.planned_date) === today).length;
-  const overdueCount  = allTasks.filter(i => {
-    const taskDate = normalizeDateKey(i.task.planned_date);
-    return Boolean(taskDate && taskDate < today && !["COMPLETED","DONE"].includes(i.task.status || ""));
-  }).length;
-  const doneToday     = allTasks.filter(i => normalizeDateKey(i.task.planned_date) === today && ["COMPLETED","DONE"].includes(i.task.status || "")).length;
-  const activeCount   = allTasks.filter(i => ["ON_PROGRESS","IN_PROGRESS","PENDING"].includes(i.task.status || "")).length;
+  const { todayCount, overdueCount, doneToday, activeCount } = personalDailyTaskSummary(allTasks, today);
   const pendingSubmissionCount = allTasks.filter(({ task }) =>
     !["COMPLETED", "DONE"].includes(task.status || "") || !String(task.output_result || "").trim()
   ).length;
@@ -887,7 +890,7 @@ export default function TasksClient() {
       <tbody>
         {items.map(({ projectName, projectCode, mainTaskName, weekNumber, task }) => {
           const isOwner = String(task.owner_id || (task as any).owner || "") === String(user?.id);
-          const isAllowed = isOwner;
+          const isAllowed = canOperateTasks && isOwner;
           return (
             <TaskRow
               key={task.id}
@@ -916,7 +919,7 @@ export default function TasksClient() {
             <Layers size={20} className="text-brand-green" /> Tasks & Personal Workspace
           </h1>
           <p className="text-xs text-text-secondary mt-0.5">
-            Task harian Anda dan task proyek yang dapat Anda akses sebagai anggota tim.
+            Rencanakan target mingguan dan kelola task harian milik Anda di perusahaan aktif.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -928,8 +931,8 @@ export default function TasksClient() {
             <FileText size={13} />
             <span>Laporan Berkala</span>
           </Link>}
-          {canCreateDailyTask && <button
-            onClick={() => setIsNewTaskOpen(true)}
+          {workspaceTab === "daily" && canCreateDailyTask && <button
+            onClick={() => { setDailyCreationContext({ projectId: "", weeklyId: "" }); setIsNewTaskOpen(true); }}
             className="btn-primary text-xs gap-1.5 flex-shrink-0 font-semibold"
           >
             <Plus size={14} />
@@ -942,6 +945,33 @@ export default function TasksClient() {
         </div>
       </div>
 
+      <div role="tablist" aria-label="Workspace task" className="flex gap-5 border-b border-gray-200">
+        {([{ id: "weekly", label: "Task Management", icon: Target }, { id: "daily", label: "Daily Task", icon: CheckSquare }] as const).map(({ id, label, icon: Icon }) => <button
+          key={id} id={`workspace-tab-${id}`} role="tab" type="button" aria-selected={workspaceTab === id} aria-controls={`workspace-panel-${id}`} tabIndex={workspaceTab === id ? 0 : -1}
+          onClick={() => setWorkspaceTab(id)}
+          onKeyDown={event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? "weekly" : event.key === "End" ? "daily" : workspaceTab === "weekly" ? "daily" : "weekly"; setWorkspaceTab(next); document.getElementById(`workspace-tab-${next}`)?.focus(); } }}
+          className={cn("flex items-center gap-2 border-b-[3px] px-1 pb-3 pt-1 text-sm font-semibold transition-colors", workspaceTab === id ? "border-brand-green text-brand-deep-green" : "border-transparent text-text-secondary hover:text-brand-green")}
+        ><Icon size={17} />{label}</button>)}
+      </div>
+
+      {workspaceTab === "weekly" ? <div id="workspace-panel-weekly" role="tabpanel" aria-labelledby="workspace-tab-weekly" className="min-w-0"><WeeklyTaskManagement
+        key={`${company}:${user?.id}:${user?.active_role_code}`}
+        contextKey={`${company}:${user?.id}:${user?.active_role_code}`}
+        onRefresh={() => fetchTasks(true)}
+        projects={projects} userId={user?.id} userName={user?.full_name || "Saya"} canSubmit={canOperateTasks} loading={loading} loadError={loadError}
+        onCreated={(projectId, weekly) => {
+          setProjects(current => current.map(project => String(project.id) !== projectId ? project : { ...project, main_tasks: (project.main_tasks || []).map(main => {
+            if (String(main.id) !== String(weekly.main_task)) return main;
+            const weeklies = [...(main.weekly_tasks || main.weekly_plans || []).filter(item => String(item.id) !== String(weekly.id)), weekly];
+            return { ...main, weekly_tasks: weeklies, weekly_plans: weeklies };
+          }) }));
+          void fetchTasks(true);
+        }}
+        onOpenDaily={weeklyId => { setDailyWeeklyId(weeklyId); setActiveFilter("ALL"); setSearch(""); setWorkspaceTab("daily"); }}
+        onCreateDaily={record => { setDailyCreationContext({ projectId: record.projectId, weeklyId: record.id }); setIsNewTaskOpen(true); }}
+      /></div> : <div id="workspace-panel-daily" role="tabpanel" aria-labelledby="workspace-tab-daily" className="flex min-w-0 flex-col gap-5">
+      {loadError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-800">{loadError}</div>}
+      {dailyWeeklyId && <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-brand-deep-green"><span>Menampilkan Daily Task Anda pada Weekly Target yang dipilih.</span><button type="button" onClick={() => setDailyWeeklyId("")} className="font-semibold hover:underline">Tampilkan semua target</button></div>}
       {/* ── KPI Summary Strip ──────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="card rounded-xl p-3 text-center">
@@ -1024,6 +1054,7 @@ export default function TasksClient() {
 
         {/* View Mode toggle: Segmented Control [ Semua ] [ Grouped ] [ List ] */}
         <div className="segmented-control">
+          <button type="button" onClick={() => { setViewMode("board"); setActiveFilter("ALL"); }} aria-pressed={viewMode === "board"} className={cn("segmented-control-item flex items-center gap-1.5", viewMode === "board" && "segmented-control-item-active")}><Columns3 size={13} />Board</button>
           <button
             type="button"
             onClick={() => setActiveFilter("ALL")}
@@ -1072,6 +1103,8 @@ export default function TasksClient() {
             </button>
           )}
         </div>
+      ) : viewMode === "board" ? (
+        <DailyTaskBoard records={filteredTasks} canWrite={canOperateTasks} onEdit={task => setEditingTask(task)} onTransition={(task, status) => setEditingTask({ ...task, status })} />
       ) : viewMode === "grouped" ? (
         /* ── Grouped by Date ── */
         <div className="flex flex-col gap-3">
@@ -1117,8 +1150,10 @@ export default function TasksClient() {
         </div>
       )}
 
+      </div>}
+
       {/* ── Quick Edit Modal ─────────────── */}
-      {editingTask && (
+      {editingTask && canOperateTasks && (
         <QuickEdit
           task={editingTask}
           onSave={handleSaveEdit}
@@ -1128,10 +1163,13 @@ export default function TasksClient() {
 
       {/* ── New Daily Task Modal ─────────── */}
       {canCreateDailyTask && <NewDailyTaskModal
+        key={`${isNewTaskOpen}:${dailyCreationContext.projectId}:${dailyCreationContext.weeklyId}`}
         isOpen={isNewTaskOpen}
         onClose={() => setIsNewTaskOpen(false)}
         projects={projects}
         currentUserId={String(user?.id ?? "")}
+        initialProjectId={dailyCreationContext.projectId}
+        initialWeeklyTaskId={dailyCreationContext.weeklyId}
         onSuccess={async () => {
           await fetchTasks(true);
         }}

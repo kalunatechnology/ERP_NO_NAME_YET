@@ -61,7 +61,7 @@ async function main() {
       const access = where.AND[1];
       assert(
         access.OR?.some((part: any) => part.id?.in?.includes(project.id) || part.created_by_id === staffId),
-        'Staff project visibility must include assigned projects and the user's own projects',
+        "Staff project visibility must include assigned projects and the user's own projects",
       );
     }
     return id === project.id ? project : null;
@@ -98,6 +98,19 @@ async function main() {
     assert.equal(await ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: project.id }, companyId, staffId, db), 'PENDING_APPROVAL');
     await assert.rejects(() => ProjectsService.weeklyCreationStatus(staff, { id: 'main-a', project_id: project.id }, companyId, 'someone-else', db), /diri sendiri/);
     assert.throws(() => ProjectsService.assertWeeklyTaskActive('PENDING_APPROVAL'), /belum disetujui/);
+    db.project_weekly_task.findFirst = async () => ({ id: 'weekly-a', main_task_id: 'main-a', company_id: companyId, tenant_id: tenantId, assignee_id: staffId, created_by_id: staffId, status: 'PENDING_APPROVAL' });
+    db.project_main_task.findFirst = async () => ({ id: 'main-a', project_id: project.id, company_id: companyId, tenant_id: tenantId });
+    for (const [path, method, body] of [
+      ['/projects/weekly-tasks/weekly-a', 'PATCH', { status: 'PLANNED', created_by_id: 'someone-else' }],
+      ['/projects/weekly-tasks/weekly-a', 'DELETE', undefined],
+      ['/projects/weekly-tasks/weekly-a/review', 'POST', { decision: 'APPROVE' }],
+    ] as const) {
+      assert.equal((await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() }, ...(body ? { body: JSON.stringify(body) } : {}) })).status, 403, 'Ordinary Staff cannot mutate Weekly planning or approval by direct API calls');
+    }
+    const team = await get('/projects/weekly-tasks/review-workspace');
+    assert.equal(team.status, 200);
+    assert.deepEqual((await team.json() as any).projects, [], 'Staff review workspace cannot expose team projects');
+    assert.equal((await fetch(base + '/projects/weekly-tasks/review-workspace', { headers: { 'X-Company-ID': 'company-b' } })).status, 403, 'Cross-company reads are rejected');
     // An owned Weekly remains a valid read path when its Main Task assignment is missing.
     db.project_task_assignment.findMany = async () => [];
     db.project_weekly_task.findMany = async () => [{ id: 'weekly-a', main_task_id: 'main-a', assignee_id: staffId }];

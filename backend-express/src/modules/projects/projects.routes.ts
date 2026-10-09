@@ -19,6 +19,7 @@ import {
 import { invalidateDashboardCache } from '../dashboard/dashboard.routes';
 import { compareTaskOutput } from './output-comparison';
 import { CustomerPartyService } from './customer-party.service';
+import { weeklyPlanningPatch } from './weekly-planning';
 
 export const projectsRouter = Router();
 
@@ -1638,7 +1639,7 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     data.week_number = schedule.weekNumber;
     // Progress is derived from Daily Tasks; API payloads cannot seed it.
     data.progress = 0;
-    if (creationStatus === 'PENDING_APPROVAL' || !data.status) data.status = creationStatus;
+    data.status = creationStatus;
     data.created_by_id = req.user!.id;
     // Weekly progress is controlled by Daily Task completion only. Ignoring
     // caller-supplied override flags prevents a hidden manual-progress path.
@@ -1671,7 +1672,7 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     delete data.progress;
     delete data.is_progress_overridden;
     delete data.override_reason;
-    return data;
+    return weeklyPlanningPatch(data);
   },
   beforeDelete: async (req, existing) => {
     const mainTask = await prisma.project_main_task.findFirst({

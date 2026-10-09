@@ -22,6 +22,7 @@ import { loadCRMData, CRMData, CRMDashboard as CRMDashType } from "@/lib/api/crm
 import { loadDashboardBootstrap, StaffOvertimeSummary as StaffOvertimeSummaryData } from "@/lib/api/dashboard.api";
 import api from "@/lib/api/axios";
 import { formatMoney, formatDate, getStatusColor, cn, localDateKey, normalizeDateKey } from "@/lib/utils";
+import { personalDailyTaskRecords, personalDailyTaskSummary } from "@/lib/tasks/personal-workspace";
 
 import { ProjectDistributionGauge } from "@/components/ui/ProjectDistributionGauge";
 import { CompletionRateCard, RateItem } from "@/components/ui/CompletionRateCard";
@@ -202,7 +203,7 @@ function LoadingDashboard() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function PMDashboard({ projects, loading }: { projects: Project[]; loading: boolean }) {
+function PMDashboard({ projects, loading, userId }: { projects: Project[]; loading: boolean; userId?: string | number }) {
   const today = localDateKey();
 
   if (loading) return <LoadingDashboard />;
@@ -218,18 +219,9 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
     ? Math.round(projects.reduce((acc, p) => acc + (p.progress_percentage || p.progress || 0), 0) / total)
     : 0;
 
-  // All daily tasks across projects (flattened)
-  const allDailyTasks = projects.flatMap(p =>
-    (p.main_tasks || []).flatMap(mt =>
-      (mt.weekly_tasks || mt.weekly_plans || []).flatMap(wt => wt.daily_tasks || [])
-    )
+  const { todayCount, doneToday, overdueTasks } = personalDailyTaskSummary(
+    personalDailyTaskRecords(projects, userId), today,
   );
-  const todayTasks = allDailyTasks.filter(d => normalizeDateKey(d.planned_date) === today);
-  const overdueTasks = allDailyTasks.filter(d => {
-    const pd = d.planned_date;
-    return pd && pd < today && !["COMPLETED", "DONE"].includes((d.status || "").toUpperCase());
-  });
-  const completedToday = todayTasks.filter(d => ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase())).length;
 
   const timelineTasks = buildMainTaskTimeline(projects);
 
@@ -316,14 +308,15 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
             </Link>
           </div>
 
+          <p className="text-xs text-[#4F5050]">Task milik Anda di perusahaan aktif, sesuai halaman Tugas Harian.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="p-3.5 rounded-xl bg-[#FAFAFA] border border-gray-100 text-center flex flex-col justify-center">
-              <span className="text-2xl font-bold text-[#090909]">{todayTasks.length}</span>
+              <span className="text-2xl font-bold text-[#090909]">{todayCount}</span>
               <span className="text-xs text-[#4F5050] mt-1 font-medium">Total Task Hari Ini</span>
             </div>
             <div className="p-3.5 rounded-xl bg-[#EAF6FF]/50 border border-[#9FD6FF] text-center flex flex-col justify-center">
-              <span className="text-2xl font-bold text-[#2649B3]">{completedToday}</span>
-              <span className="text-xs text-[#2649B3] mt-1 font-semibold">Selesai</span>
+              <span className="text-2xl font-bold text-[#2649B3]">{doneToday}</span>
+              <span className="text-xs text-[#2649B3] mt-1 font-semibold">Selesai Hari Ini</span>
             </div>
             <div className={cn(
               "p-3.5 rounded-xl text-center flex flex-col justify-center border col-span-2 sm:col-span-1",
@@ -371,8 +364,8 @@ function PMDashboard({ projects, loading }: { projects: Project[]; loading: bool
                 </div>
               ))}
             </div>
-            <Link href="/projects" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-red-700 hover:text-red-900">
-              Lihat semua & kelola transfer <ArrowRight size={11} />
+            <Link href="/tasks" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-red-700 hover:text-red-900">
+              Lihat task harian Anda <ArrowRight size={11} />
             </Link>
           </div>
         </section>
@@ -1397,7 +1390,7 @@ export default function DashboardClient() {
         </div>
       )}
       {(userRole === "pm" || userRole === "om") && (
-        <PMDashboard projects={projects} loading={loading} />
+        <PMDashboard projects={projects} loading={loading} userId={user?.id} />
       )}
       {userRole === "finance" && (
         <FinanceDashboard finData={finData} loading={loading} />
