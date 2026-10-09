@@ -43,6 +43,12 @@ jobs:
           npx ts-node --files tests/customer-receipt.workflow.http.unit.ts
       - name: Verify project supervisor weekly approval and notifications
         run: npx ts-node --files tests/weekly-shared-review.http.unit.ts
+      - name: Verify Weekly calendar, task management, personal counts and Staff API scope
+        run: |
+          npm run test:weekly-period
+          npm run test:weekly-management
+          npm run test:personal-daily-summary
+          npm run test:weekly-staff-access
       - name: Verify notification retention scheduler and safe cleanup
         run: npx ts-node --files tests/notification-maintenance.unit.ts
       - run: npm run test:production-seed
