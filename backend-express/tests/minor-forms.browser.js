@@ -26,8 +26,10 @@ async function main() {
     fs.mkdirSync(artifacts, { recursive: true });
     let role = 'ROLE-FINANCE';
     const actorId = '20000000-0000-0000-0000-000000000099';
+    const checkerId = '20000000-0000-0000-0000-000000000098';
+    let activeActor = actorId;
     const company = '10000000-0000-0000-0000-000000000099';
-    const profile = () => ({ id: actorId, email: 'forms@qa.invalid', full_name: 'Forms QA', company_id: company, active_role_code: role, enabled_modules: ['PROJECTS','FINANCE'], delegated_modules: role === 'ROLE-SUPERVISOR' ? ['PROJECTS'] : [], roles: [{role_code: role, company_id: company}] });
+    const profile = () => ({ id: activeActor, email: 'forms@qa.invalid', full_name: 'Forms QA', company_id: company, active_role_code: role, enabled_modules: ['PROJECTS','FINANCE'], delegated_modules: role === 'ROLE-SUPERVISOR' ? ['PROJECTS'] : [], roles: [{role_code: role, company_id: company}] });
     const projects = [{ id: 'a', project_name: 'Project A', project_code: 'A', customer_name: 'QA', manager_name: 'Forms QA', status: 'IN_PROGRESS', progress: 0 }];
     const mainTasks = [{ id: 'main-a', project_id: 'a', title: 'Main A', name: 'Main A', weight: 100, status: 'PLANNED' }];
     const assignments = [{ id:'assign-a', main_task_id:'main-a', assignee_id:actorId, assignee_name:'Forms QA' }];
@@ -35,7 +37,7 @@ async function main() {
     const dailyTasks = [], fundings = [], costs = [], mainBodies = [], projectBodies = [];
     const receipts=[];
     const invoices=[{id:'invoice-a',invoice_number:'INV-QA',billing_type:'CUSTOMER_INVOICE',status:'POSTED',total_amount:1000000,paid_amount:0,outstanding_amount:1000000}];
-    let receiptApproveAllowed=false, receiptPostFailure=false;
+    let receiptPostFailure=false;
     let receiptPosts=0, receiptFailure=false, banksAvailable=true;
     const bundle = () => ({ projects, mainTasks, assignments, weeklyTasks, dailyTasks, tasks:[], milestones:[], stages:[], costEntries:[], proposals:[], fundings:[], users:[] });
     const token = `e30.${Buffer.from(JSON.stringify({exp:4102444800})).toString('base64url')}.fixture`;
@@ -53,12 +55,14 @@ async function main() {
       if(endpoint.endsWith('/bank-accounts/bank-a/balance')) return json({balance:receipts.filter(row=>row.status==='POSTED').reduce((sum,row)=>sum+row.amount,0)});
       if(endpoint.endsWith('/customer-receipts/summary')) return json({posted_amount:receipts.filter(row=>row.status==='POSTED').reduce((sum,row)=>sum+row.amount,0),posted_count:receipts.filter(row=>row.status==='POSTED').length,pending_count:receipts.filter(row=>['DRAFT','SUBMITTED','APPROVED'].includes(row.status)).length,outstanding_amount:invoices.reduce((sum,row)=>sum+row.outstanding_amount,0)});
       if(endpoint.replace(/\/$/,'')==='/api/v1/finance/billing-documents') return json({results:new URL(req.url()).searchParams.get('billing_type')==='CUSTOMER_INVOICE'?invoices:[]});
-      if(endpoint.endsWith('/customer-receipts/workflow-readiness')) return json(receipts.map(row=>({receipt_id:row.id,action:{DRAFT:'submit',SUBMITTED:'approve',APPROVED:'post'}[row.status]||null,allowed:row.status!=='SUBMITTED'||receiptApproveAllowed,message:row.status==='SUBMITTED'&&!receiptApproveAllowed?'Persetujuan harus dilakukan oleh Finance lain atau pejabat berwenang yang bukan pembuat transaksi.':row.status==='POSTED'?'Sudah dibukukan.':'Siap diproses.'})));
-      if(req.method()==='POST'&&/\/(payments\/receipt-a\/(submit|approve)|customer-receipts\/receipt-a\/post)$/.test(endpoint)) {
+      if(endpoint.endsWith('/customer-receipts/workflow-readiness')) return json(receipts.map(row=>({receipt_id:row.id,action:{DRAFT:'submit',SUBMITTED:'approve-and-post',APPROVED:'post'}[row.status]||null,allowed:row.status==='DRAFT'?row.created_by_id===activeActor:row.created_by_id!==activeActor,message:['SUBMITTED','APPROVED'].includes(row.status)&&row.created_by_id===activeActor?'Menunggu Finance kedua untuk Setujui & Posting. Pembuat tidak dapat memproses penerimaan sendiri.':row.status==='POSTED'?'Sudah dibukukan.':'Siap diproses.'})));
+      if(req.method()==='POST'&&/\/(payments\/receipt-a\/(submit|approve)|customer-receipts\/receipt-a\/(post|approve-and-post))$/.test(endpoint)) {
         const action=endpoint.split('/').pop();
-        if(action==='post'&&receiptPostFailure) return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({detail:'Periode fiskal berstatus CLOSED dan tidak dapat menerima posting.'})});
-        const row=receipts[0]; row.status={submit:'SUBMITTED',approve:'APPROVED',post:'POSTED'}[action];
-        if(action==='post') {invoices[0].paid_amount+=row.amount;invoices[0].outstanding_amount-=row.amount;}
+        if(['post','approve-and-post'].includes(action)&&receiptPostFailure) return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({detail:'Periode fiskal berstatus CLOSED dan tidak dapat menerima posting.'})});
+        const row=receipts[0]; row.status={submit:'SUBMITTED',approve:'APPROVED',post:'POSTED','approve-and-post':'POSTED'}[action];
+        if(action==='submit') row.submitted_by_id=activeActor;
+        if(action==='approve-and-post') row.approved_by_id=activeActor;
+        if(['post','approve-and-post'].includes(action)) {row.executed_by_id=activeActor;invoices[0].paid_amount+=row.amount;invoices[0].outstanding_amount-=row.amount;}
         return json(row);
       }
       if (endpoint.replace(/\/$/,'') === '/api/v1/finance/customer-receipts') {
@@ -67,7 +71,7 @@ async function main() {
           for(const field of ['status','execution_reference','execution_note','failure_reason']) assert(!(field in body),'Receipt must not write lifecycle fields');
           assert.equal(body.bank_account_id,'bank-a'); assert.equal(body.payment_type,'CUSTOMER_RECEIPT');
           if(receiptFailure) return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({detail:'Rekening penerima tidak tersedia atau tidak aktif pada company ini.',errors:{bank_account:'Pilih rekening kas / bank yang aktif pada company Anda.'}})});
-          const row={...body,id:'receipt-a',status:'DRAFT'}; receipts.push(row); return json(row);
+          const row={...body,id:'receipt-a',status:'DRAFT',created_by_id:activeActor}; receipts.push(row); return json(row);
         }
         return json({results:receipts});
       }
@@ -161,22 +165,25 @@ async function main() {
     assert.match(await inflowCard.innerText(),/Rp\s*0/);
     await page.getByRole('button',{name:'Ajukan',exact:true}).click();
     await page.getByRole('cell',{name:'SUBMITTED',exact:true}).waitFor();
-    assert.equal(await page.getByRole('button',{name:'Setujui',exact:true}).isDisabled(),true);
-    await page.getByText('Persetujuan harus dilakukan oleh Finance lain atau pejabat berwenang yang bukan pembuat transaksi.',{exact:true}).waitFor();
-    receiptApproveAllowed=true;
+    assert.equal(await page.getByRole('button',{name:'Setujui & Posting',exact:true}).isDisabled(),true);
+    await page.getByText('Menunggu Finance kedua untuk Setujui & Posting. Pembuat tidak dapat memproses penerimaan sendiri.',{exact:true}).waitFor();
+    activeActor=checkerId;
+    await page.evaluate(user=>localStorage.setItem('erp.user',JSON.stringify(user)),profile());
     await page.reload({waitUntil:'networkidle'});
-    await page.getByRole('button',{name:'Setujui',exact:true}).click();
-    await page.getByRole('cell',{name:'APPROVED',exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Setujui & Posting',exact:true}).isEnabled(),true);
     assert.match(await inflowCard.innerText(),/Rp\s*0/);
     await page.goto(`${origin}?surface=finance&tab=cashbank`,{waitUntil:'networkidle'});
     assert.equal(await page.getByRole('row').filter({hasText:'PT QA — INV-QA'}).count(),0,'Unposted receipt must not appear in cash movements');
     await page.goto(`${origin}?surface=finance&tab=ar`,{waitUntil:'networkidle'});
     receiptPostFailure=true;
-    await page.getByRole('button',{name:'Posting Penerimaan',exact:true}).click();
+    await page.getByRole('button',{name:'Setujui & Posting',exact:true}).click();
     await page.getByRole('alert').filter({hasText:'Periode fiskal berstatus CLOSED'}).waitFor();
-    assert.equal(receipts[0].status,'APPROVED'); receiptPostFailure=false;
-    await page.getByRole('button',{name:'Posting Penerimaan',exact:true}).click();
+    assert.equal(receipts[0].status,'SUBMITTED'); receiptPostFailure=false;
+    await page.getByRole('button',{name:'Setujui & Posting',exact:true}).click();
     await page.getByRole('cell',{name:'POSTED',exact:true}).waitFor();
+    await page.getByText('Periode fiskal berstatus CLOSED dan tidak dapat menerima posting.',{exact:true}).waitFor({state:'detached'});
+    assert.equal(receipts[0].approved_by_id,checkerId); assert.equal(receipts[0].executed_by_id,checkerId);
+    assert.equal(new Set([receipts[0].created_by_id,receipts[0].submitted_by_id,receipts[0].approved_by_id,receipts[0].executed_by_id]).size,2);
     assert.match(await inflowCard.innerText(),/250/);assert.match(await page.getByText('Sisa Piutang Berjalan (Outstanding AR)',{exact:true}).locator('..').innerText(),/750/);
     await page.screenshot({path:path.join(artifacts,'receipt-posted-workflow.png'),fullPage:true});
     await page.goto(`${origin}?surface=finance&tab=cashbank`,{waitUntil:'networkidle'});
@@ -190,7 +197,7 @@ async function main() {
     await dialog.getByRole('button',{name:'Konfirmasi & Simpan Penerimaan',exact:true}).click();
     await dialog.getByText('Belum ada rekening kas / bank. Tambahkan rekening penerima di menu Kas & Bank terlebih dahulu.',{exact:true}).waitFor(); assert.equal(receiptPosts,2);
     await page.keyboard.press('Escape');
-    role='ROLE-PM';
+    role='ROLE-PM'; activeActor=actorId;
     await page.goto(`${origin}?project=a&tab=TREE`,{waitUntil:'networkidle'});
     await page.getByRole('button',{name:'Proyek Baru',exact:true}).click();dialog=page.getByRole('dialog');
     await clearZero(dialog.getByLabel('Total Anggaran (Rp)',{exact:true}));
@@ -200,7 +207,7 @@ async function main() {
     await dialog.getByPlaceholder('Pilih dari database atau ketik klien baru...').fill('Customer QA');
     await dialog.getByRole('button',{name:/Simpan/}).click();await dialog.waitFor({state:'hidden'});assert.equal(projectBodies[0].budget_amount,1500000);
     assert.deepEqual(errors,[]);
-    console.log('PASS: Funding/cost/project budget regressions, receipt required warnings/save, complete receipt workflow buttons with disabled approval reason and recoverable posting error, invoice selection, POSTED-only KPI/cash movements and updated AR/bank balance. Browser APIs use fixture data.');
+    console.log('PASS: receipt UI uses exactly two Finance users and one Setujui & Posting action with recoverable errors, required warnings, POSTED-only KPI and cash/AR updates; Funding/cost/project budget regressions remain intact. Browser APIs use fixtures.');
   } finally {
     if(browser) await browser.close();
     if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

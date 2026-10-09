@@ -845,7 +845,10 @@ financeRouter.post('/payments/:id/submit', requireFinanceRole([RoleCode.FINANCE]
 
     const fsm = new DocumentFSM('PAYMENT');
     const { nextState } = fsm.apply(payment.status as any, 'submit');
-    if (payment.payment_type === 'CUSTOMER_RECEIPT') validateCustomerReceipt({ ...payment, payment_date: payment.payment_date?.toISOString().slice(0, 10) });
+    if (payment.payment_type === 'CUSTOMER_RECEIPT') {
+      if (payment.created_by_id !== authenticatedFinanceUserId(req)) throw new ForbiddenError('Penerimaan harus diajukan oleh Finance pembuat. Finance kedua bertugas Setujui & Posting.');
+      validateCustomerReceipt({ ...payment, payment_date: payment.payment_date?.toISOString().slice(0, 10) });
+    }
     const result = await prisma.fin_payment.updateMany({ where: { id: payment.id, company_id: activeCompanyId(req), status: payment.status }, data: { status: nextState, submitted_by_id: req.user?.id, submitted_at: new Date() } });
     if (!result.count) throw new ConflictError('Status payment berubah. Muat ulang sebelum mengajukan.');
     const updated = await prisma.fin_payment.findFirst({ where: { id: payment.id, company_id: activeCompanyId(req) } });
@@ -876,6 +879,8 @@ financeRouter.post(
     try {
       const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
       if (!payment) return sendError(res, 'Payment tidak ditemukan.', 404);
+
+      if (payment.payment_type === 'CUSTOMER_RECEIPT') CustomerReceiptService.assertReviewer(payment, authenticatedFinanceUserId(req));
 
       const fsm = new DocumentFSM('PAYMENT');
       const { nextState } = fsm.apply(payment.status as any, 'approve');
@@ -919,26 +924,29 @@ financeRouter.get('/customer-receipts/workflow-readiness', async (req, res, next
     const operates = role === RoleCode.FINANCE || delegatedWrite;
     const approves = operates || role === RoleCode.DIRECTOR;
     const ids = String(req.query.ids ?? '').split(',').filter(Boolean).slice(0, 100);
-    const [rows, count] = await Promise.all([
-      prisma.fin_payment.findMany({ where: { company_id: companyId, payment_type: 'CUSTOMER_RECEIPT', id: { in: ids } } }),
-      financeUserCount(companyId),
-    ]);
+    const rows = await prisma.fin_payment.findMany({ where: { company_id: companyId, payment_type: 'CUSTOMER_RECEIPT', id: { in: ids } } });
     sendSuccess(res, rows.map(payment => {
-      const action = payment.status === 'DRAFT' ? 'submit' : payment.status === 'SUBMITTED' ? 'approve' : payment.status === 'APPROVED' ? 'post' : null;
+      const action = payment.status === 'DRAFT' ? 'submit' : payment.status === 'SUBMITTED' ? operates ? 'approve-and-post' : role === RoleCode.DIRECTOR ? 'approve' : 'approve-and-post' : payment.status === 'APPROVED' ? 'post' : null;
       let message = payment.status === 'POSTED' ? 'Sudah dibukukan.' : 'Status ini tidak dapat diproses.';
       let allowed = false;
       if (action) {
         allowed = action === 'approve' ? approves : operates;
-        message = allowed ? 'Siap diproses.' : 'Role aktif Anda tidak berwenang melakukan tahap ini.';
-        if (action === 'approve' && payment.created_by_id === userId) {
-          allowed = false; message = 'Persetujuan harus dilakukan oleh Finance lain atau pejabat berwenang yang bukan pembuat transaksi.';
+        message = allowed ? action === 'submit' ? 'Finance pertama mengajukan; Finance kedua menyetujui dan membukukan.' : 'Finance kedua dapat menyetujui dan memposting; tidak perlu Finance ketiga.' : 'Role aktif Anda tidak berwenang melakukan tahap ini.';
+        if (action === 'submit' && payment.created_by_id !== userId) {
+          allowed = false; message = 'Pengajuan dilakukan oleh Finance pembuat penerimaan.';
         }
-        if (action === 'post' && count >= 2 && [payment.created_by_id, payment.submitted_by_id, payment.approved_by_id].includes(userId)) {
-          allowed = false; message = 'Posting harus dilakukan oleh Finance lain yang bukan pembuat, pengaju, atau penyetuju transaksi.';
+        if (action !== 'submit' && (payment.created_by_id || payment.submitted_by_id) === userId) {
+          allowed = false; message = 'Menunggu Finance kedua untuk Setujui & Posting. Pembuat tidak dapat memproses penerimaan sendiri.';
         }
       }
       return { receipt_id: payment.id, action, allowed, message };
     }));
+  } catch (error) { next(error); }
+});
+
+financeRouter.post('/customer-receipts/:id/approve-and-post', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try {
+    sendSuccess(res, await CustomerReceiptService.approveAndPost(req.params.id, authenticatedFinanceUserId(req), activeCompanyId(req)));
   } catch (error) { next(error); }
 });
 
@@ -948,10 +956,7 @@ financeRouter.post('/customer-receipts/:id/post', requireFinanceRole([RoleCode.F
     const userId = authenticatedFinanceUserId(req);
     const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: companyId, payment_type: 'CUSTOMER_RECEIPT' } });
     if (!payment) throw new NotFoundError('Penerimaan pelanggan');
-    const count = await financeUserCount(companyId);
-    if (count >= 2 && [payment.created_by_id, payment.submitted_by_id, payment.approved_by_id].includes(userId)) {
-      throw new ForbiddenError('Posting penerimaan harus dilakukan oleh Finance lain yang bukan pembuat, pengaju, atau penyetuju transaksi.');
-    }
+    CustomerReceiptService.assertReviewer(payment, userId);
     sendSuccess(res, await CustomerReceiptService.post(payment.id, userId, companyId));
   } catch (error) { next(error); }
 });

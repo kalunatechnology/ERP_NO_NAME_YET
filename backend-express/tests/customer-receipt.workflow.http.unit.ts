@@ -71,31 +71,56 @@ async function main() {
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${(server.address() as any).port}/finance`;
-  const request = (path: string, method = 'POST', actor = 'poster', role = 'ROLE-FINANCE', body = {}, company = 'company-a') => fetch(`${base}${path}`, { method, headers: { 'Content-Type': 'application/json', 'x-actor': actor, 'x-role': role, 'x-company': company }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+  const request = (path: string, method = 'POST', actor = 'checker', role = 'ROLE-FINANCE', body = {}, company = 'company-a') => fetch(`${base}${path}`, { method, headers: { 'Content-Type': 'application/json', 'x-actor': actor, 'x-role': role, 'x-company': company }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
   const post = () => request('/customer-receipts/receipt-a/post');
   const ready = async (actor: string, role = 'ROLE-FINANCE') => (await (await request('/customer-receipts/workflow-readiness?ids=receipt-a', 'GET', actor, role)).json() as any)[0];
   try {
     assert.equal((await post()).status, 409, 'Draft cannot skip workflow');
+    assert.equal((await request('/customer-receipts/receipt-a/approve-and-post')).status, 409);
     assert.equal((await ready('maker')).action, 'submit');
+    assert.equal((await ready('checker')).allowed, false);
+    assert.equal((await request('/payments/receipt-a/submit', 'POST', 'checker')).status, 403);
     assert.equal((await request('/payments/receipt-a/submit', 'POST', 'maker')).status, 200);
     assert.equal(state.payment.status, 'SUBMITTED');
     assert.equal((await ready('maker')).allowed, false);
     assert.equal((await request('/payments/receipt-a/approve', 'POST', 'maker')).status, 403);
-    assert.equal((await ready('director', 'ROLE-DIRECTOR')).allowed, true);
-    assert.equal((await request('/payments/receipt-a/approve', 'POST', 'director', 'ROLE-DIRECTOR')).status, 200);
-    assert.equal(state.payment.status, 'APPROVED');
+    assert.equal((await ready('checker')).action, 'approve-and-post');
+    assert.equal((await ready('checker')).allowed, true);
+    assert.equal((await request('/customer-receipts/receipt-a/approve-and-post', 'POST', 'maker')).status, 403);
     assert.equal((await ready('maker')).allowed, false);
     assert.equal((await request('/customer-receipts/receipt-a/post', 'POST', 'maker')).status, 403);
     assert.equal((await request('/customer-receipts/receipt-a/post', 'POST', 'director', 'ROLE-DIRECTOR')).status, 403);
-    const response = await post(); assert.equal(response.status, 200, await response.clone().text());
+    assert.equal((await request('/customer-receipts/receipt-a/approve-and-post', 'POST', 'director', 'ROLE-DIRECTOR')).status, 403);
+    const response = await request('/customer-receipts/receipt-a/approve-and-post'); assert.equal(response.status, 200, await response.clone().text());
     assert.equal(state.payment.status, 'POSTED'); assert.equal(state.entries.length, 1); assert.equal(state.lines.length, 2);
+    assert.equal(state.payment.approved_by_id, 'checker'); assert.equal(state.payment.executed_by_id, 'checker');
+    assert.equal(new Set([state.payment.created_by_id, state.payment.submitted_by_id, state.payment.approved_by_id, state.payment.executed_by_id]).size, 2, 'Exactly two Finance actors complete the workflow');
     assert.equal(state.lines[0].account_id, 'ledger-bank'); assert.equal(Number(state.lines[0].debit_base), 1000000); assert.equal(Number(state.lines[0].credit_base), 0);
     assert.equal(state.lines[1].account_id, 'coa-1130'); assert.equal(Number(state.lines[1].credit_base), 1000000); assert.equal(Number(state.lines[1].debit_base), 0);
     assert.equal(Number(state.bill.paid_amount), 1000000); assert.equal(Number(state.bill.outstanding_amount), 500000); assert.equal(state.bill.payment_status, 'PARTIALLY_PAID');
     assert.equal(state.documents[0].status, 'POSTED'); assert.equal(state.payment.payment_date.toISOString().slice(0, 10), '2026-10-08');
     assert.equal((await FinanceService.getBankAccountBalance('bank-a', 'company-a')).balance, 1000000);
     assert.equal((await post()).status, 200); assert.equal(state.entries.length, 1); assert.equal(state.allocations.length, 1); assert.equal(Number(state.bill.paid_amount), 1000000);
+    assert.equal((await request('/customer-receipts/receipt-a/approve-and-post')).status, 200); assert.equal(state.entries.length, 1); assert.equal(state.allocations.length, 1);
+    assert.equal((await request('/customer-receipts/receipt-a/approve-and-post', 'POST', 'maker')).status, 403);
     for (const status of ['SUBMITTED', 'APPROVED', 'POSTED']) assert.throws(() => assertRecordMutable('fin_payment', { status }));
+    for (const failure of ['closed', 'posting-write']) {
+      state = initial(); state.payment.status = 'SUBMITTED'; state.payment.submitted_by_id = 'maker';
+      if (failure === 'closed') state.periodStatus = 'CLOSED'; else state.failBill = true;
+      const rejected = await request('/customer-receipts/receipt-a/approve-and-post'); assert(rejected.status >= 400);
+      assert.equal(state.payment.status, 'SUBMITTED'); assert.equal(state.payment.approved_by_id, undefined);
+      assert.equal(state.entries.length, 0); assert.equal(state.lines.length, 0); assert.equal(state.allocations.length, 0); assert.equal(state.documents.length, 0);
+    }
+    state = initial(); state.payment.status = 'SUBMITTED'; state.payment.submitted_by_id = 'maker';
+    assert.equal((await request('/payments/receipt-a/approve')).status, 200);
+    assert.equal((await ready('checker')).allowed, true, 'The same Finance checker can post an already-approved receipt');
+    assert.equal((await post()).status, 200); assert.equal(state.payment.executed_by_id, state.payment.approved_by_id);
+    state = initial(); state.payment.status = 'SUBMITTED'; state.payment.submitted_by_id = 'checker';
+    assert.equal((await request('/customer-receipts/receipt-a/approve-and-post')).status, 200, 'Legacy receipts submitted by a non-maker still do not require a third Finance');
+    state = initial(); state.payment.status = 'SUBMITTED'; state.payment.submitted_by_id = 'maker';
+    assert.equal((await ready('director', 'ROLE-DIRECTOR')).allowed, true);
+    assert.equal((await request('/payments/receipt-a/approve', 'POST', 'director', 'ROLE-DIRECTOR')).status, 200);
+    assert.equal((await post()).status, 200, 'Existing Director approval remains compatible');
     for (const scenario of ['advance', 'full', 'closed', 'overpay', 'missing-bank', 'wrong-invoice', 'foreign-currency', 'failure', 'outgoing']) {
       state = initial(); state.payment.status = 'APPROVED';
       if (scenario === 'advance') state.payment.allocation_plan = { customer_name: 'PT QA', project_name: 'QA' };
@@ -120,7 +145,7 @@ async function main() {
     assert.equal((await request('/payments/receipt-a/execute', 'POST', 'poster', 'ROLE-FINANCE', { execution_reference: 'REF-1' })).status, 400);
     assert.equal(state.entries.length, 0);
     assert.equal((await request('/customer-receipts/receipt-a/post', 'POST', 'poster', 'ROLE-FINANCE', {}, 'other-company')).status, 404);
-    console.log('PASS: receipt HTTP workflow DRAFT → SUBMITTED → APPROVED → POSTED; permissions/SoD; incoming journal, ledger balance, AR partial/full, advances; retry idempotence; invalid/foreign/closed/overpaid receipts and fixture rollback; outgoing execute isolation. Persistence is mocked, not a live DB integration test.');
+    console.log('PASS: exactly two Finance actors complete receipt submission and atomic approval/posting; self processing is denied, legacy approvals remain compatible, failed posting rolls back approval, retry is idempotent, and bank/AR accounting and scope remain intact. Persistence uses fixtures.');
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
