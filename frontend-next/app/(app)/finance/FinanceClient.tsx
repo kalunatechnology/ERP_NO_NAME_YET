@@ -510,17 +510,19 @@ export default function FinanceClient() {
     if (!readiness?.allowed || !readiness.action || receiptActionId) return;
     setReceiptActionId(receipt.id);
     setReceiptActionError(previous => ({ ...previous, [receipt.id]: "" }));
+    const toastId = `receipt-action-${receipt.id}`;
+    toast.dismiss(toastId);
     try {
-      const path = readiness.action === "post"
-        ? `/api/v1/finance/customer-receipts/${receipt.id}/post`
+      const path = ["post", "approve-and-post"].includes(readiness.action)
+        ? `/api/v1/finance/customer-receipts/${receipt.id}/${readiness.action}`
         : `/api/v1/finance/payments/${receipt.id}/${readiness.action}`;
       await api.post(path, {});
       await loadFinanceData(true);
-      toast.success(readiness.action === "post" ? "Penerimaan dibukukan; saldo kas / bank dan piutang diperbarui." : readiness.action === "approve" ? "Penerimaan disetujui." : "Penerimaan diajukan untuk persetujuan.");
+      toast.success(["post", "approve-and-post"].includes(readiness.action) ? "Penerimaan dibukukan; saldo kas / bank dan piutang diperbarui." : readiness.action === "approve" ? "Penerimaan disetujui." : "Penerimaan diajukan untuk persetujuan.", { id: toastId });
     } catch (error) {
       const message = getApiErrorDetail(error, "Penerimaan gagal diproses. Silakan coba kembali.");
       setReceiptActionError(previous => ({ ...previous, [receipt.id]: message }));
-      toast.error(message);
+      toast.error(message, { id: toastId });
     } finally { setReceiptActionId(null); }
   };
 
@@ -1168,14 +1170,14 @@ export default function FinanceClient() {
             <div className="card p-4 rounded-2xl border border-text-tertiary bg-white">
               <span className="text-2xs font-bold text-text-secondary uppercase tracking-wider block">Menunggu Diproses</span>
               <span className="text-2xl font-black text-text-primary mt-1 block">{receiptSummary?.pending_count ?? 0} transaksi</span>
-              <span className="text-2xs text-text-secondary mt-0.5 block">DRAFT → SUBMITTED → APPROVED → POSTED</span>
+              <span className="text-2xs text-text-secondary mt-0.5 block">Finance 1 mengajukan → Finance 2 menyetujui &amp; memposting</span>
             </div>
           </div>
 
           {/* Tabel Riwayat Uang Masuk */}
           <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
             <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Riwayat Penerimaan Pembayaran Klien</h4>
-            <p className="text-xs text-text-secondary">Ajukan penerimaan, tunggu persetujuan, lalu posting untuk membukukan uang masuk. Penerimaan tanpa invoice dicatat sebagai uang muka pelanggan.</p>
+            <p className="text-xs text-text-secondary">Finance pertama mencatat dan mengajukan penerimaan. Finance kedua klik Setujui &amp; Posting untuk membukukan uang masuk. Penerimaan tanpa invoice dicatat sebagai uang muka pelanggan.</p>
             <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
               <table className="w-full data-table text-xs text-left min-w-[580px]">
                 <thead>
@@ -1216,7 +1218,7 @@ export default function FinanceClient() {
                         {receiptReadiness[rec.id]?.action && (
                           <button type="button" disabled={!receiptReadiness[rec.id]?.allowed || receiptActionId !== null}
                             onClick={() => handleReceiptLifecycle(rec)} className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50">
-                            {receiptActionId === rec.id ? "Memproses…" : ({ submit: "Ajukan", approve: "Setujui", post: "Posting Penerimaan" } as Record<string, string>)[receiptReadiness[rec.id].action!]}
+                            {receiptActionId === rec.id ? "Memproses…" : ({ submit: "Ajukan", "approve-and-post": "Setujui & Posting", approve: "Setujui", post: "Posting Penerimaan" } as Record<string, string>)[receiptReadiness[rec.id].action!]}
                           </button>
                         )}
                         <p className="text-2xs text-text-secondary mt-1">{receiptReadiness[rec.id]?.message || (rec.status === "POSTED" ? "Sudah dibukukan." : "Memuat kewenangan…")}</p>

@@ -2,18 +2,49 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import prisma from '../../config/database';
-import { AccountingError, ConflictError, NotFoundError, ValidationError } from '../../utils/errors';
+import { AccountingError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { FinanceService } from './finance.service';
 import { FinanceDocumentService } from './finance-document.service';
 import { PeriodClosingService } from './period-closing.service';
 
 export class CustomerReceiptService {
+  static assertReviewer(payment: { created_by_id?: string | null; submitted_by_id?: string | null }, userId: string) {
+    if (!userId) throw new ValidationError('User penerimaan tidak valid.');
+    const makerId = payment.created_by_id || payment.submitted_by_id;
+    if (makerId === userId) {
+      throw new ForbiddenError('Finance pembuat tidak dapat menyetujui atau memposting penerimaan sendiri. Gunakan Finance kedua untuk Setujui & Posting.');
+    }
+  }
+
+  /** Finance A creates/submits; Finance B approves and posts in one transaction. */
+  static async approveAndPost(paymentId: string, userId: string, companyId: string) {
+    return prisma.$transaction(async tx => {
+      const payment = await tx.fin_payment.findFirst({ where: { id: paymentId, company_id: companyId, payment_type: 'CUSTOMER_RECEIPT' } });
+      if (!payment) throw new NotFoundError('Penerimaan pelanggan');
+      this.assertReviewer(payment, userId);
+      if (payment.status === 'SUBMITTED') {
+        const approved = await tx.fin_payment.updateMany({
+          where: { id: payment.id, company_id: companyId, status: 'SUBMITTED' },
+          data: { status: 'APPROVED', approved_by_id: userId, approved_at: new Date() },
+        });
+        if (approved.count !== 1) throw new ConflictError('Status penerimaan berubah. Muat ulang sebelum Setujui & Posting.');
+      } else if (!['APPROVED', 'POSTED'].includes(payment.status)) {
+        throw new ConflictError('Penerimaan harus diajukan sebelum Setujui & Posting.');
+      }
+      return this.postInTransaction(tx, paymentId, userId, companyId);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 30000 });
+  }
+
   /** All accounting effects and the terminal state commit together, once. */
   static async post(paymentId: string, userId: string, companyId: string) {
     if (!userId) throw new ValidationError('User posting tidak valid.');
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(tx => this.postInTransaction(tx, paymentId, userId, companyId), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 30000 });
+  }
+
+  private static async postInTransaction(tx: Prisma.TransactionClient, paymentId: string, userId: string, companyId: string) {
       const payment = await tx.fin_payment.findFirst({ where: { id: paymentId, company_id: companyId } });
       if (!payment || payment.payment_type !== 'CUSTOMER_RECEIPT') throw new NotFoundError('Penerimaan pelanggan');
+      this.assertReviewer(payment, userId);
       if (payment.status === 'POSTED' && payment.journal_entry_id) return payment;
       if (payment.status !== 'APPROVED') throw new ConflictError('Hanya penerimaan APPROVED yang dapat diposting.');
       const amount = new Decimal(payment.amount ?? 0);
@@ -105,6 +136,5 @@ export class CustomerReceiptService {
         status: 'POSTED', document_id: document.id, journal_entry_id: journalEntryId, party_id: partyId,
         executed_by_id: userId, executed_at: new Date(), execution_reference: payment.reference_number,
       } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 30000 });
   }
 }
