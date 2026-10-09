@@ -120,7 +120,7 @@ async function main() {
     assert.equal(calendarResponse.status, 200);
     const calendar = await calendarResponse.json() as any;
     assert.equal(calendar.month, '2026-09');
-    assert.deepEqual(calendar.current, { id: '2026-09:W4', month: '2026-09', week: 4, start: '2026-09-28', end: '2026-10-02' });
+    assert.deepEqual(calendar.current, { id: '2026-09:W4', month: '2026-09', week: 4, start: '2026-09-28', end: '2026-10-02', filter_start: '2026-09-25T15:00:00+07:00', filter_end: '2026-09-29T15:00:00+07:00' });
     assert.equal((await get('/projects/weekly-tasks/periods?month=2026-13&today=2026-10-01')).status, 400);
     assert.equal((await get('/projects/weekly-tasks/periods?today=2026-02-30')).status, 400);
     let periodWhere: any;
@@ -129,8 +129,12 @@ async function main() {
     const filteredResponse = await get('/projects/weekly-tasks/?period_month=2026-09&period_week=4');
     assert.equal(filteredResponse.status, 200, await filteredResponse.clone().text());
     const serializedWhere = JSON.stringify(periodWhere);
+    assert(serializedWhere.includes('2026-09-25T08:00:00.000Z'));
+    assert(serializedWhere.includes('2026-09-29T08:00:00.000Z'));
+    assert(serializedWhere.includes('"created_at"'));
     assert(serializedWhere.includes('2026-09-28T00:00:00.000Z'));
     assert(serializedWhere.includes('2026-10-03T00:00:00.000Z'));
+    assert(serializedWhere.includes('"OR"'));
     assert(serializedWhere.includes(companyId) && serializedWhere.includes(tenantId) && serializedWhere.includes(staffId), 'Period filters must intersect existing tenant/company/owner authorization');
     assert(!serializedWhere.includes('"week_number"'), 'Calendar week cannot be compared to the project-relative sequence');
     assert.equal((await get('/projects/weekly-tasks/?period_month=2026-10&period_week=5')).status, 400);

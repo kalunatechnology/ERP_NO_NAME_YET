@@ -37,6 +37,9 @@ async function main() {
       { id: 'rejected-a', main_task_id: 'main-a', assignee_id: actor, week_number: 3, target_description: 'Revisi perencanaan opname', start_date: '2026-10-05', end_date: '2099-10-11', status: 'REJECTED', progress: 0 },
       { id: 'other', main_task_id: 'main-a', assignee_id: 'other-user', week_number: 1, target_description: 'TARGET RAHASIA REKAN', start_date: '2026-10-05', end_date: '2099-10-11', status: 'IN_PROGRESS', progress: 10 },
       { id: 'cross-month', main_task_id: 'main-a', assignee_id: actor, week_number: 42, target_description: 'Target lintas September Oktober', start_date: '2026-09-28', end_date: '2026-10-02', status: 'PLANNED', progress: 0 },
+      { id: 'friday-created', main_task_id: 'main-b', assignee_id: actor, week_number: 3, target_description: 'Target Jumat tepat pukul tiga', created_at: '2026-10-02T15:00:00+07:00', start_date: '2026-12-01', end_date: '2026-12-04', status: 'PLANNED', progress: 0 },
+      { id: 'before-friday', main_task_id: 'main-b', assignee_id: actor, week_number: 4, target_description: 'Target sebelum batas Jumat', created_at: '2026-10-02T14:59:59.999+07:00', start_date: '2026-12-01', end_date: '2026-12-04', status: 'PLANNED', progress: 0 },
+      { id: 'after-period', main_task_id: 'main-b', assignee_id: actor, week_number: 5, target_description: 'Target setelah batas periode', created_at: '2026-10-06T15:00:00+07:00', start_date: '2026-12-01', end_date: '2026-12-04', status: 'PLANNED', progress: 0 },
     ];
     const daily = [{ id: 'daily-a', weekly_task_id: 'ready-a', owner_id: actor, title: 'Validasi kebutuhan gudang', status: 'IN_PROGRESS', progress: 0, planned_date: '2026-10-09', output_target: 'Dokumen kebutuhan gudang' }];
     let failCreate = true, failCalendar = false, submitted = 0, lastPayload, edits = 0, reviews = 0, deletes = 0;
@@ -70,7 +73,7 @@ async function main() {
         assert.equal(lastPayload.main_task, 'main-b');
         assert.equal(lastPayload.status, undefined); assert.equal(lastPayload.progress, undefined);
         if (failCreate) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ detail: 'Assignment sudah berubah. Silakan periksa kembali.' }) });
-        const created = { ...lastPayload, id: 'new-weekly', created_by_id: actor, main_task_id: lastPayload.main_task, assignee_id: lastPayload.assignee, status: 'PENDING_APPROVAL', progress: 0 };
+        const created = { ...lastPayload, id: 'new-weekly', created_at: '2026-10-09T05:00:00Z', created_by_id: actor, main_task_id: lastPayload.main_task, assignee_id: lastPayload.assignee, status: 'PENDING_APPROVAL', progress: 0 };
         weekly.push(created); return json(created);
       }
       if (endpoint.includes('/projects/projects')) return json({ results: projects, count: projects.length });
@@ -92,6 +95,12 @@ async function main() {
     assert.equal(await page.getByLabel('Bulan Weekly Target').inputValue(), '2026-10');
     assert.equal(await page.getByLabel('Weekly dalam bulan').locator('option').count(), 4);
     assert.match(await page.getByLabel('Rentang Weekly terpilih').textContent(), /5 Okt 2026.*9 Okt 2026/);
+    assert.match(await page.getByLabel('Rentang Weekly terpilih').textContent(), /2 Okt 2026.*15.00 WIB/);
+    assert.match(await page.getByLabel('Rentang Weekly terpilih').textContent(), /6 Okt 2026.*15.00 WIB/);
+    await page.getByRole('button', { name: /^W#.*Target Jumat tepat pukul tiga/ }).waitFor();
+    assert.equal(await page.getByText('Target sebelum batas Jumat', { exact: false }).count(), 0);
+    assert.equal(await page.getByText('Target setelah batas periode', { exact: false }).count(), 0);
+    await page.getByRole('button', { name: /^W#.*Rancang alur penerimaan barang/ }).waitFor();
     assert.equal(await page.getByText('Target lintas September Oktober', { exact: false }).count(), 0);
     assert.equal(await page.getByText('TARGET RAHASIA REKAN').count(), 0);
     await page.getByRole('button', { name: 'Board', exact: true }).click();
@@ -119,6 +128,13 @@ async function main() {
     assert.equal(await page.getByText('Target lintas September Oktober', { exact: false }).count(), 0);
     await page.getByRole('button', { name: 'Reset filter' }).click();
 
+    // Selecting a future filter must not change the original creation form defaults.
+    await page.getByLabel('Weekly dalam bulan').selectOption('2');
+    await page.getByRole('button', { name: 'Buat Weekly Target', exact: true }).click();
+    assert.equal(await page.getByRole('dialog').getByLabel('Tanggal mulai Weekly Target').inputValue(), '2026-10-05');
+    assert.equal(await page.getByRole('dialog').getByLabel('Tanggal selesai Weekly Target').inputValue(), '2026-10-11');
+    await page.getByRole('dialog').getByRole('button', { name: 'Tutup', exact: true }).click();
+    await page.getByLabel('Weekly dalam bulan').selectOption('1');
     await page.getByRole('button', { name: 'Buat Weekly Target', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Tutup', exact: true }).focus();
@@ -242,7 +258,7 @@ async function main() {
     await page.getByRole('button', { name: 'Coba muat periode' }).click();
     await page.getByLabel('Weekly dalam bulan').selectOption('4');
     assert.deepEqual(errors, []);
-    console.log('PASS: Weekly management browser — monthly workweek filtering, cross-month/year defaults, error recovery, project-based creation, existing Staff/PM workflows and desktop/mobile layout.');
+    console.log('PASS: Weekly management browser — preserved schedule filtering, both creation boundaries shifted three days to 15:00 WIB, unchanged creation defaults, Staff/PM workflows and desktop/mobile layout.');
     console.log(`Screenshots: ${artifacts}`);
   } finally {
     if (browser) await browser.close();

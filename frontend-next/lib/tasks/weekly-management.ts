@@ -70,16 +70,23 @@ export function weeklyGroup(record: WeeklyTargetRecord, today: string): WeeklyGr
 }
 
 export function filterWeeklyTargets(records: WeeklyTargetRecord[], filters: {
-  query: string; projectId: string; period: Pick<WeeklyWorkPeriod, "start" | "end"> | null; group: string; today: string;
+  query: string; projectId: string; period: Pick<WeeklyWorkPeriod, "start" | "end"> & Partial<Pick<WeeklyWorkPeriod, "filter_start" | "filter_end">> | null; group: string; today: string;
 }): WeeklyTargetRecord[] {
   const query = filters.query.trim().toLocaleLowerCase("id-ID");
   return records.filter(record => {
     if (filters.projectId && record.projectId !== filters.projectId) return false;
     if (filters.group && weeklyGroup(record, filters.today) !== filters.group) return false;
     if (filters.period) {
-      const start = normalizeDateKey(record.startDate);
-      const end = normalizeDateKey(record.endDate);
-      if (!start || !end || start > filters.period.end || end < filters.period.start) return false;
+      const scheduleStart = normalizeDateKey(record.startDate);
+      const scheduleEnd = normalizeDateKey(record.endDate);
+      const overlapsSchedule = Boolean(scheduleStart && scheduleEnd
+        && scheduleStart <= filters.period.end && scheduleEnd >= filters.period.start);
+      const createdAt = record.weeklyTask.created_at ? new Date(record.weeklyTask.created_at).getTime() : NaN;
+      const start = filters.period.filter_start ? new Date(filters.period.filter_start).getTime() : NaN;
+      const end = filters.period.filter_end ? new Date(filters.period.filter_end).getTime() : NaN;
+      const createdInPeriod = Number.isFinite(createdAt) && Number.isFinite(start) && Number.isFinite(end)
+        && createdAt >= start && createdAt < end;
+      if (!overlapsSchedule && !createdInPeriod) return false;
     }
     return !query || [record.projectName, record.projectCode, record.mainTaskName, record.code,
       record.weeklyTask.target_description, record.weeklyTask.target_output,

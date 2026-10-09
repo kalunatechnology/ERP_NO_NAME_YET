@@ -106,6 +106,7 @@ export interface MainTask {
 export interface WeeklyTask {
   id: string | number;
   created_by_id?: string | number;
+  created_at?: string;
   main_task: string | number;
   project?: string | number;
   week_number: number;
@@ -523,6 +524,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
       weeklyByMain[mId].push({
         id: w.id,
         created_by_id: w.created_by_id,
+        created_at: w.created_at,
         main_task: mId,
         project: pid,
         week_number: Number(w.week_number || 1),
@@ -844,6 +846,8 @@ export interface WeeklyWorkPeriod {
   week: number;
   start: string;
   end: string;
+  filter_start: string;
+  filter_end: string;
 }
 
 export interface WeeklyPeriodCalendar {
