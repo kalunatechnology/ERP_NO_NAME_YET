@@ -1,5 +1,4 @@
 import type { Project, ProjectAuthority, WeeklyWorkPeriod } from "../api/project.api";
-import { normalizeDateKey } from "../calendar-date";
 import { weeklyTargetRecords, type WeeklyTargetRecord } from "../weekly-dashboard";
 
 export const WEEKLY_GROUPS = [
@@ -77,16 +76,12 @@ export function filterWeeklyTargets(records: WeeklyTargetRecord[], filters: {
     if (filters.projectId && record.projectId !== filters.projectId) return false;
     if (filters.group && weeklyGroup(record, filters.today) !== filters.group) return false;
     if (filters.period) {
-      const scheduleStart = normalizeDateKey(record.startDate);
-      const scheduleEnd = normalizeDateKey(record.endDate);
-      const overlapsSchedule = Boolean(scheduleStart && scheduleEnd
-        && scheduleStart <= filters.period.end && scheduleEnd >= filters.period.start);
       const createdAt = record.weeklyTask.created_at ? new Date(record.weeklyTask.created_at).getTime() : NaN;
       const start = filters.period.filter_start ? new Date(filters.period.filter_start).getTime() : NaN;
       const end = filters.period.filter_end ? new Date(filters.period.filter_end).getTime() : NaN;
       const createdInPeriod = Number.isFinite(createdAt) && Number.isFinite(start) && Number.isFinite(end)
         && createdAt >= start && createdAt < end;
-      if (!overlapsSchedule && !createdInPeriod) return false;
+      if (!createdInPeriod) return false;
     }
     return !query || [record.projectName, record.projectCode, record.mainTaskName, record.code,
       record.weeklyTask.target_description, record.weeklyTask.target_output,
