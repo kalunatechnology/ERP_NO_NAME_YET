@@ -32,12 +32,11 @@ export function weeklyWorkPeriods(month: string): WeeklyWorkPeriod[] {
     friday.setUTCDate(friday.getUTCDate() + 4);
     const week = periods.length + 1;
     const filterStart = new Date(monday);
-    filterStart.setUTCDate(filterStart.getUTCDate() - 3);
     const filterEnd = new Date(friday);
-    filterEnd.setUTCDate(filterEnd.getUTCDate() - 3);
+    filterEnd.setUTCDate(filterEnd.getUTCDate() + 1);
     periods.push({ id: `${month}:W${week}`, month, week, start: dateKey(monday), end: dateKey(friday),
-      filter_start: `${dateKey(filterStart)}T15:00:00+07:00`,
-      filter_end: `${dateKey(filterEnd)}T15:00:00+07:00` });
+      filter_start: `${dateKey(filterStart)}T00:00:00+07:00`,
+      filter_end: `${dateKey(filterEnd)}T00:00:00+07:00` });
     monday.setUTCDate(monday.getUTCDate() + 7);
   }
   return periods;
@@ -72,7 +71,7 @@ function jakartaToday(): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
-/** Preserve schedule overlap; shift both creation-filter boundaries back three days to 15:00 WIB. */
+/** Filter Weekly targets by creation timestamp only; schedule dates and completion dates do not affect calendar membership. */
 export function weeklyPeriodWhere(month: unknown, week: unknown): Record<string, unknown> {
   if (month === undefined && week === undefined) return {};
   if (typeof month !== 'string') throw new ValidationError('Bulan filter Weekly wajib diisi.');
@@ -80,15 +79,5 @@ export function weeklyPeriodWhere(month: unknown, week: unknown): Record<string,
   const period = week === undefined ? null : selectedWeeklyWorkPeriod(month, week);
   const start = period?.filter_start ?? periods[0].filter_start;
   const end = period?.filter_end ?? periods[periods.length - 1].filter_end;
-  const scheduleStart = period?.start ?? periods[0].start;
-  const scheduleEnd = period?.end ?? periods[periods.length - 1].end;
-  return {
-    OR: [
-      {
-        start_date: { lt: new Date(new Date(`${scheduleEnd}T00:00:00.000Z`).getTime() + 86400000) },
-        end_date: { gte: new Date(`${scheduleStart}T00:00:00.000Z`) },
-      },
-      { created_at: { gte: new Date(start), lt: new Date(end) } },
-    ],
-  };
+  return { created_at: { gte: new Date(start), lt: new Date(end) } };
 }
