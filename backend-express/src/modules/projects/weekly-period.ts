@@ -32,12 +32,11 @@ export function weeklyWorkPeriods(month: string): WeeklyWorkPeriod[] {
     friday.setUTCDate(friday.getUTCDate() + 4);
     const week = periods.length + 1;
     const filterStart = new Date(monday);
-    filterStart.setUTCDate(filterStart.getUTCDate() - 3);
     const filterEnd = new Date(friday);
-    filterEnd.setUTCDate(filterEnd.getUTCDate() - 3);
+    filterEnd.setUTCDate(filterEnd.getUTCDate() + 1);
     periods.push({ id: `${month}:W${week}`, month, week, start: dateKey(monday), end: dateKey(friday),
-      filter_start: `${dateKey(filterStart)}T15:00:00+07:00`,
-      filter_end: `${dateKey(filterEnd)}T15:00:00+07:00` });
+      filter_start: `${dateKey(filterStart)}T00:00:00+07:00`,
+      filter_end: `${dateKey(filterEnd)}T00:00:00+07:00` });
     monday.setUTCDate(monday.getUTCDate() + 7);
   }
   return periods;
