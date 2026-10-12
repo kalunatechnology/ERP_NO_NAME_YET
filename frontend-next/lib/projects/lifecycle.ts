@@ -46,26 +46,17 @@ const LEGACY_LIFECYCLE_ALIASES: Record<string, ProjectLifecycleStage> = {
   REJECTED: "LOST",
 };
 
-/** Resolve lifecycle independently from the operational project.status field. */
-export function normalizeProjectLifecycleStage(
-  lifecycleStatus?: unknown,
-  legacyStatus?: unknown,
-): ProjectLifecycleStage {
+/** Resolve lifecycle exclusively from lifecycle_status, never project.status. */
+export function normalizeProjectLifecycleStage(lifecycleStatus?: unknown): ProjectLifecycleStage {
   const lifecycle = String(lifecycleStatus ?? "").trim().toUpperCase();
   if (PROJECT_LIFECYCLE_STAGES.includes(lifecycle as ProjectLifecycleStage)) {
     return lifecycle as ProjectLifecycleStage;
   }
-  if (LEGACY_LIFECYCLE_ALIASES[lifecycle]) return LEGACY_LIFECYCLE_ALIASES[lifecycle];
-
-  const legacy = String(legacyStatus ?? "").trim().toUpperCase();
-  if (PROJECT_LIFECYCLE_STAGES.includes(legacy as ProjectLifecycleStage)) {
-    return legacy as ProjectLifecycleStage;
-  }
-  return LEGACY_LIFECYCLE_ALIASES[legacy] ?? "INCOMING";
+  return LEGACY_LIFECYCLE_ALIASES[lifecycle] ?? "INCOMING";
 }
 
-export function getProjectLifecycleLabel(lifecycleStatus?: unknown, legacyStatus?: unknown): string {
-  return PROJECT_LIFECYCLE_LABELS[normalizeProjectLifecycleStage(lifecycleStatus, legacyStatus)];
+export function getProjectLifecycleLabel(lifecycleStatus?: unknown): string {
+  return PROJECT_LIFECYCLE_LABELS[normalizeProjectLifecycleStage(lifecycleStatus)];
 }
 
 export function getNextProjectLifecycleStage(stage: ProjectLifecycleStage): ProjectLifecycleStage | null {

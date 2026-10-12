@@ -150,15 +150,15 @@ export default function ProjectsClient() {
   }, [projects, projectSearch]);
   const pipelineCounts = useMemo(() => ({
     all: searchedProjects.length,
-    running: searchedProjects.filter((project) => normalizeProjectLifecycleStage(project.lifecycle_status, project.status) === "ACTIVE").length,
+    running: searchedProjects.filter((project) => normalizeProjectLifecycleStage(project.lifecycle_status) === "ACTIVE").length,
     prePitching: searchedProjects.filter((project) => {
-      const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+      const stage = normalizeProjectLifecycleStage(project.lifecycle_status);
       return stage === "INCOMING" || stage === "DISCOVERY";
     }).length,
-    pitching: searchedProjects.filter((project) => normalizeProjectLifecycleStage(project.lifecycle_status, project.status) === "PITCHING").length,
+    pitching: searchedProjects.filter((project) => normalizeProjectLifecycleStage(project.lifecycle_status) === "PITCHING").length,
   }), [searchedProjects]);
   const filteredProjects = useMemo(() => searchedProjects.filter((project) => {
-    const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+    const stage = normalizeProjectLifecycleStage(project.lifecycle_status);
     if (projectPipelineView === "PRE_PITCHING") return stage === "INCOMING" || stage === "DISCOVERY";
     if (projectPipelineView === "PITCHING") return stage === "PITCHING";
     if (projectPipelineView === "RUNNING") return stage === "ACTIVE";
@@ -1327,7 +1327,7 @@ export default function ProjectsClient() {
     );
   }
 
-  const currentLifecycleStage = normalizeProjectLifecycleStage(selectedProject?.lifecycle_status, selectedProject?.status);
+  const currentLifecycleStage = normalizeProjectLifecycleStage(selectedProject?.lifecycle_status);
   const currentStepIdx = LIFECYCLE_FLOW_STAGES.indexOf(currentLifecycleStage as Exclude<ProjectLifecycleStage, "LOST">);
   const lifecycleTargets = allowedLifecycleTargets(currentLifecycleStage);
   const roleCanAdvanceLifecycle = allowsProjectManagement && canAdvanceLifecycleForRole(currentLifecycleStage, user?.active_role_code || userRole);

@@ -604,7 +604,7 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
       // The commercial lifecycle and operational execution state have distinct
       // meanings. Never overwrite status: downstream timesheet/inventory logic
       // still relies on it to decide whether field work is allowed.
-      lifecycle_status: normalizeProjectLifecycleStage(p.lifecycle_status, p.status),
+      lifecycle_status: normalizeProjectLifecycleStage(p.lifecycle_status),
       // Never trust an orphaned project percentage: without Main Tasks the
       // project has no measurable execution progress and therefore remains 0%.
       progress: derivedProjectProgress,
@@ -655,6 +655,8 @@ export async function createProject(payload: {
 }) {
   const { data } = await api.post("/api/v1/projects/projects/", {
     ...payload,
+    status: "PLANNED",
+    lifecycle_status: "INCOMING",
     project_name: payload.name,
     project_code: payload.code,
     customer_name: payload.customer_name || undefined,

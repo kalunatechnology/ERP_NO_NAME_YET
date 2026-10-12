@@ -542,7 +542,7 @@ export async function fetchDynamicRightPanelData(access: FrontendAccessContext =
     activities.push({
       id: `act-prj-${p.id}`,
       label: `Proyek: ${getProjectLabel(p)}`,
-      sublabel: `Lifecycle: ${getProjectLifecycleLabel(p.lifecycle_status, p.status)} · ${p.progress || p.progress_percent || 0}%`,
+      sublabel: `Lifecycle: ${getProjectLifecycleLabel(p.lifecycle_status)} · ${p.progress || p.progress_percent || 0}%`,
       time: timeAgo(p.created_at),
       color: "#294BB2",
       category: "pm",
@@ -655,7 +655,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
           category: "Status Proyek",
           time: "Aktif",
           title: `${p.project_name || p.name}${clientText}`,
-          snippet: `Progres berjalan ${p.progress_percent || 0}% · Lifecycle: ${getProjectLifecycleLabel(p.lifecycle_status, p.status)}`,
+          snippet: `Progres berjalan ${p.progress_percent || 0}% · Lifecycle: ${getProjectLifecycleLabel(p.lifecycle_status)}`,
           isHighlighted: alerts.length === 0,
           categoryColor: "#294BB2",
           href: `/projects`,

@@ -181,7 +181,12 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
         project_name: `Project for Order #${order.id.slice(0, 6)}`,
         budget_amount: order.total_amount ?? 0,
         status: 'PLANNED',
-        lifecycle_status: 'DRAFT',
+        // A confirmed Sales Order has passed commercial verification, but
+        // operational execution still waits for the explicit ACTIVE transition.
+        lifecycle_status: 'VERIFIED',
+        stage_entered_at: new Date(),
+        verified_at: new Date(),
+        verified_by: req.user?.id ?? null,
         health_status: 'GOOD',
         source_type: 'SALES_ORDER',
       },

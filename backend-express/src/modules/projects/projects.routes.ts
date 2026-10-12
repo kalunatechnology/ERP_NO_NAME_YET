@@ -2391,12 +2391,18 @@ projectsRouter.use('/projects', createCrudRouter({
     if (data.description === undefined || data.description === null) {
       data.description = '';
     }
-    if (!data.status) {
-      data.status = 'IN_PROGRESS';
-    }
-    if (!data.lifecycle_status) {
-      data.lifecycle_status = 'ACTIVE';
-    }
+    // Every newly-created project starts in the business intake pipeline.
+    // Operational work remains unavailable until the lifecycle explicitly
+    // reaches ACTIVE through the stage transition service.
+    data.status = 'PLANNED';
+    data.lifecycle_status = 'INCOMING';
+    data.stage_entered_at = new Date();
+    data.cancellation_reason = null;
+    data.verified_at = null;
+    data.verified_by = null;
+    data.started_at = null;
+    data.closed_at = null;
+    data.closed_by = null;
     if (!data.health_status) {
       data.health_status = 'ON_TRACK';
     }

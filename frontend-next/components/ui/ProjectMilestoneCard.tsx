@@ -60,7 +60,7 @@ export function ProjectMilestoneCard({
 
   const activeId = controlledSelectedId !== undefined ? controlledSelectedId : internalSelectedId;
   const filteredProjects = React.useMemo(() => projects.filter((project) => {
-    const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+    const stage = normalizeProjectLifecycleStage(project.lifecycle_status);
     if (pipelineView === "PRE_PITCHING") return stage === "INCOMING" || stage === "DISCOVERY";
     if (pipelineView === "PITCHING") return stage === "PITCHING";
     if (pipelineView === "RUNNING") return stage === "ACTIVE";
@@ -95,7 +95,7 @@ export function ProjectMilestoneCard({
     setPipelineView(view);
     setProjectPage(1);
     const nextProjects = projects.filter((project) => {
-      const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+      const stage = normalizeProjectLifecycleStage(project.lifecycle_status);
       if (view === "PRE_PITCHING") return stage === "INCOMING" || stage === "DISCOVERY";
       if (view === "PITCHING") return stage === "PITCHING";
       if (view === "RUNNING") return stage === "ACTIVE";
@@ -137,7 +137,7 @@ export function ProjectMilestoneCard({
             const count = view.key === "ALL"
               ? projects.length
               : projects.filter((project) => {
-                const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+                const stage = normalizeProjectLifecycleStage(project.lifecycle_status);
                 return view.key === "PRE_PITCHING"
                   ? stage === "INCOMING" || stage === "DISCOVERY"
                   : view.key === "PITCHING" ? stage === "PITCHING" : stage === "ACTIVE";
@@ -181,7 +181,7 @@ export function ProjectMilestoneCard({
                       <span className="text-[10px] font-mono text-neutral-400">{prj.code}</span>
                     )}
                     <span className="mt-1 w-fit rounded-full bg-[#EAF6FF] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#2649B3]">
-                      {getProjectLifecycleLabel(prj.lifecycle_status, prj.status)}
+                      {getProjectLifecycleLabel(prj.lifecycle_status)}
                     </span>
                   </div>
                   <ChevronRight
