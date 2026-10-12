@@ -45,6 +45,13 @@ import { canPerform } from "@/lib/access/capability-contract";
 import { getModuleOverride, normalizeRoleCode, type ModulePermission } from "@/lib/access/module-contract";
 import { ProjectWbsTree } from "@/components/projects/ProjectWbsTree";
 import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
+import {
+  PROJECT_LIFECYCLE_LABELS,
+  PROJECT_LIFECYCLE_STAGES,
+  getNextProjectLifecycleStage,
+  normalizeProjectLifecycleStage,
+  type ProjectLifecycleStage,
+} from "@/lib/projects/lifecycle";
 
 /**
  * formatRupiah coordinates the UI behavior represented by this function.
@@ -60,13 +67,38 @@ function formatRupiah(val?: number): string {
   return `Rp ${val.toLocaleString("id-ID")}`;
 }
 
-const LIFECYCLE_STEPS = [
-  { key: "DRAFT", label: "STEP 1", title: "DRAFT / INTAKE", desc: "Terima PO/Deal" },
-  { key: "VERIFIED", label: "STEP 2", title: "VERIFIED", desc: "Kelayakan Order" },
-  { key: "RESERVED", label: "STEP 3", title: "RESERVED", desc: "Alokasi Material" },
-  { key: "STARTED", label: "STEP 4", title: "ACTIVE / STARTED", desc: "Eksekusi & QA" },
-  { key: "CLOSED", label: "STEP 5", title: "CLOSED", desc: "Serah Terima" },
-];
+const LIFECYCLE_FLOW_STAGES = PROJECT_LIFECYCLE_STAGES.filter((stage) => stage !== "LOST");
+const LIFECYCLE_DESCRIPTIONS: Partial<Record<ProjectLifecycleStage, string>> = {
+  INCOMING: "Prospek / proyek masuk",
+  DISCOVERY: "Kebutuhan & kelayakan awal",
+  PITCHING: "Penawaran dan pitching",
+  NEGOTIATION: "Negosiasi komersial",
+  VERIFIED: "Deal / kontrak terverifikasi",
+  RESERVED: "Sumber daya dialokasikan",
+  ACTIVE: "Eksekusi dan QA",
+  CLOSED: "Serah terima selesai",
+};
+
+function allowedLifecycleTargets(stage: ProjectLifecycleStage): ProjectLifecycleStage[] {
+  if (stage === "CLOSED" || stage === "LOST") return [];
+  const next = getNextProjectLifecycleStage(stage);
+  return [...(next ? [next] : []), "LOST"];
+}
+
+function canAdvanceLifecycleForRole(stage: ProjectLifecycleStage, roleValue?: string | null): boolean {
+  const rawRole = String(roleValue ?? "").trim().toUpperCase().replace(/^ROLE-/, "").replace(/[-_]/g, "");
+  const role = rawRole === "EXECUTIVE" ? "DIRECTOR" : rawRole;
+  const adminOrDirector = ["SUPERADMIN", "COMPANYADMIN", "DIRECTOR"].includes(role);
+  const salesRoles = ["SALES", "CRMLEAD", "PROJECTMANAGER", "PM"];
+  const deliveryRoles = ["OPERATIONALMANAGER", "PROJECTMANAGER", "PM", "DIRECTOR"];
+  if (["INCOMING", "DISCOVERY", "PITCHING", "NEGOTIATION"].includes(stage)) {
+    return adminOrDirector || salesRoles.includes(role);
+  }
+  if (["VERIFIED", "RESERVED", "ACTIVE"].includes(stage)) {
+    return adminOrDirector || deliveryRoles.includes(role);
+  }
+  return false;
+}
 
 /**
  * Renders a stable semantic color for a business category.
@@ -110,11 +142,28 @@ export default function ProjectsClient() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
-  const filteredProjects = useMemo(() => {
+  const [projectPipelineView, setProjectPipelineView] = useState<"ALL" | "PRE_PITCHING" | "PITCHING" | "RUNNING">("ALL");
+  const searchedProjects = useMemo(() => {
     const query = projectSearch.trim().toLocaleLowerCase("id-ID");
     return projects.filter((project) => !query || [project.name, project.project_name, project.code, project.project_code, project.project_manager_name, project.pm_name]
       .some((value) => value?.toLocaleLowerCase("id-ID").includes(query)));
   }, [projects, projectSearch]);
+  const pipelineCounts = useMemo(() => ({
+    all: searchedProjects.length,
+    running: searchedProjects.filter((project) => normalizeProjectLifecycleStage(project.lifecycle_status, project.status) === "ACTIVE").length,
+    prePitching: searchedProjects.filter((project) => {
+      const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+      return stage === "INCOMING" || stage === "DISCOVERY";
+    }).length,
+    pitching: searchedProjects.filter((project) => normalizeProjectLifecycleStage(project.lifecycle_status, project.status) === "PITCHING").length,
+  }), [searchedProjects]);
+  const filteredProjects = useMemo(() => searchedProjects.filter((project) => {
+    const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+    if (projectPipelineView === "PRE_PITCHING") return stage === "INCOMING" || stage === "DISCOVERY";
+    if (projectPipelineView === "PITCHING") return stage === "PITCHING";
+    if (projectPipelineView === "RUNNING") return stage === "ACTIVE";
+    return true;
+  }), [projectPipelineView, searchedProjects]);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [supervisorSaving, setSupervisorSaving] = useState(false);
   const [weeklySaving, setWeeklySaving] = useState(false);
@@ -165,12 +214,9 @@ export default function ProjectsClient() {
 
   /* Health & Lifecycle States */
   const [healthData, setHealthData] = useState<any>(null);
-  const [gateChecklist, setGateChecklist] = useState({
-    scope_verified: true,
-    budget_allocated: true,
-    resources_reserved: true,
-    qa_checklist_passed: false,
-  });
+  const [lifecycleTargetStage, setLifecycleTargetStage] = useState<ProjectLifecycleStage | "">("");
+  const [lifecycleReason, setLifecycleReason] = useState("");
+  const [lifecyclePoNumber, setLifecyclePoNumber] = useState("");
 
   /* Form states */
   const [newProjForm, setNewProjForm] = useState({
@@ -1248,20 +1294,23 @@ export default function ProjectsClient() {
  */
   const handleAdvanceLifecycle = async () => {
     if (!selectedProject) return;
-    const stages = ["DRAFT", "VERIFIED", "RESERVED", "STARTED", "COMPLETED"];
-    const currentIdx = stages.indexOf(selectedProject.status || "DRAFT");
-    const nextStage = stages[currentIdx + 1] || stages[stages.length - 1];
+    if (!lifecycleTargetStage) return;
 
     try {
       await api.post(`/api/v1/projects/projects/${selectedProject.id}/advance-stage/`, {
-        target_status: nextStage,
+        stage: lifecycleTargetStage,
+        reason: lifecycleTargetStage === "LOST" ? lifecycleReason.trim() : undefined,
+        po_contract_number: lifecycleTargetStage === "VERIFIED" ? lifecyclePoNumber.trim() : undefined,
       });
 
-      toast.success(`Lifecycle proyek dimajukan ke ${nextStage}.`);
+      toast.success(`Lifecycle proyek diperbarui ke ${PROJECT_LIFECYCLE_LABELS[lifecycleTargetStage]}.`);
       setIsLifecycleModalOpen(false);
+      setLifecycleTargetStage("");
+      setLifecycleReason("");
+      setLifecyclePoNumber("");
       await fetchProjects(true);
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || "Gagal memajukan lifecycle proyek.");
+      toast.error(e?.response?.data?.detail || e?.response?.data?.message || "Gagal memperbarui lifecycle proyek.");
     }
   };
 
@@ -1278,7 +1327,10 @@ export default function ProjectsClient() {
     );
   }
 
-  const currentStepIdx = LIFECYCLE_STEPS.findIndex(s => s.key === selectedProject?.status);
+  const currentLifecycleStage = normalizeProjectLifecycleStage(selectedProject?.lifecycle_status, selectedProject?.status);
+  const currentStepIdx = LIFECYCLE_FLOW_STAGES.indexOf(currentLifecycleStage as Exclude<ProjectLifecycleStage, "LOST">);
+  const lifecycleTargets = allowedLifecycleTargets(currentLifecycleStage);
+  const roleCanAdvanceLifecycle = allowsProjectManagement && canAdvanceLifecycleForRole(currentLifecycleStage, user?.active_role_code || userRole);
 
   return (
     <div className="flex min-w-0 flex-col gap-6 w-full max-w-full">
@@ -1298,7 +1350,7 @@ export default function ProjectsClient() {
               <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
               <input id="project-search" type="search" value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Cari nama proyek, kode, atau PM…" className="w-full rounded-xl border border-text-tertiary bg-gray-50 py-2.5 pl-9 pr-3 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-green/40" />
             </div>
-            <p role="status" className="mt-1.5 text-2xs text-text-secondary">{filteredProjects.length} dari {projects.length} proyek tersedia{projectSearch.trim() && " · Pencarian tidak mengubah proyek aktif"}</p>
+            <p role="status" className="mt-1.5 text-2xs text-text-secondary">{filteredProjects.length} proyek pada tampilan ini dari {projects.length} total{projectSearch.trim() && " · Pencarian tidak mengubah proyek yang sedang dibuka"}</p>
           </div>
           <div className="min-w-0">
           <label htmlFor="project-selector" className="sr-only">Pilih Proyek</label>
@@ -1324,6 +1376,34 @@ export default function ProjectsClient() {
           </select>
           <p className="mt-1.5 text-2xs text-text-secondary">Proyek aktif · Aksi sesuai kewenangan Anda</p>
           </div>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-text-tertiary pt-3">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter pipeline proyek">
+            {([
+              { key: "ALL", label: "Semua Proyek", count: pipelineCounts.all },
+              { key: "PRE_PITCHING", label: "Belum Pitching", count: pipelineCounts.prePitching },
+              { key: "PITCHING", label: "Sedang Pitching", count: pipelineCounts.pitching },
+              { key: "RUNNING", label: "Proyek Running", count: pipelineCounts.running },
+            ] as const).map((view) => (
+              <button
+                key={view.key}
+                type="button"
+                aria-pressed={projectPipelineView === view.key}
+                onClick={() => setProjectPipelineView(view.key)}
+                className={cn(
+                  "inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors",
+                  projectPipelineView === view.key
+                    ? "border-brand-green bg-brand-light-green text-brand-deep-green"
+                    : "border-text-tertiary bg-white text-text-secondary hover:bg-gray-50 hover:text-text-primary"
+                )}
+              >
+                {view.label}
+                <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-2xs">{view.count}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-2xs text-text-secondary">Belum Pitching mencakup Incoming dan Discovery. Sedang Pitching hanya mencakup tahap Pitching. Proyek Running mencakup lifecycle ACTIVE; status operasional seperti ON_HOLD tetap ditampilkan terpisah. Filter ini memakai record proyek yang sama.</p>
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-text-tertiary pt-3 [&>button]:min-h-9 [&>button]:max-w-full [&>button]:whitespace-normal [&>button]:text-left [&>button>svg]:shrink-0">
@@ -1431,7 +1511,10 @@ export default function ProjectsClient() {
                   {selectedProject.project_code}
                 </span>
                 <span className="text-2xs font-bold px-2 py-0.5 rounded bg-brand-light-green text-brand-deep-green">
-                  {selectedProject.status}
+                  Lifecycle: {PROJECT_LIFECYCLE_LABELS[currentLifecycleStage]}
+                </span>
+                <span className="text-2xs font-bold px-2 py-0.5 rounded bg-white/15 text-white">
+                  Operasional: {selectedProject.status || "-"}
                 </span>
                 <CategoryLabel label={(selectedProject as any).source_type} />
                 <span className="text-2xs text-white/80 flex items-center gap-1">
@@ -1601,15 +1684,21 @@ export default function ProjectsClient() {
       )}
 
       {/* ── Lifecycle Stage Flow ── */}
-      {(userRole !== "staff" || canManageSelectedProject) && <div className="card p-4 rounded-2xl flex flex-col gap-3">
+      {selectedProject && <div className="card p-4 rounded-2xl flex flex-col gap-3">
         <div className="flex justify-between items-center flex-wrap gap-2">
           <div>
             <h3 className="text-xs font-bold text-text-primary">Project Lifecycle Stage Flow</h3>
-            <p className="text-2xs text-text-secondary">Alur transisi gate operasional dan verifikasi mutu.</p>
+            <p className="text-2xs text-text-secondary">Tahap bisnis proyek dari incoming, discovery, pitching, hingga penutupan.</p>
           </div>
-          {selectedAuthority?.can_delegate_supervisor && (
+          {lifecycleTargets.length > 0 && roleCanAdvanceLifecycle && (
             <button
-              onClick={() => setIsLifecycleModalOpen(true)}
+              onClick={() => {
+                const nextStage = getNextProjectLifecycleStage(currentLifecycleStage);
+                setLifecycleTargetStage(nextStage || "");
+                setLifecycleReason("");
+                setLifecyclePoNumber("");
+                setIsLifecycleModalOpen(true);
+              }}
               className="btn-primary py-1.5 px-3 text-xs gap-1.5 bg-brand-deep-green"
             >
               <Zap size={14} /> Majukan Stage Lifecycle
@@ -1618,12 +1707,12 @@ export default function ProjectsClient() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mt-1">
-          {LIFECYCLE_STEPS.map((step, idx) => {
+          {LIFECYCLE_FLOW_STAGES.map((stage, idx) => {
             const isPassed = currentStepIdx > idx;
             const isCurrent = currentStepIdx === idx;
             return (
               <div
-                key={step.key}
+                key={stage}
                 className={cn(
                   "p-3 rounded-xl border transition-all flex flex-col justify-between min-h-[72px]",
                   isCurrent ? "bg-brand-light-green/80 border-brand-green shadow-sm" :
@@ -1632,13 +1721,20 @@ export default function ProjectsClient() {
                 )}
               >
                 <div>
-                  <span className="text-3xs font-extrabold uppercase tracking-wider block opacity-75">{step.label}</span>
-                  <span className="text-xs font-bold block mt-0.5">{step.title}</span>
+                  <span className="text-3xs font-extrabold uppercase tracking-wider block opacity-75">STEP {idx + 1}</span>
+                  <span className="text-xs font-bold block mt-0.5">{PROJECT_LIFECYCLE_LABELS[stage]}</span>
                 </div>
-                <span className="text-2xs opacity-75 mt-1 block truncate">{step.desc}</span>
+                <span className="text-2xs opacity-75 mt-1 block truncate">{LIFECYCLE_DESCRIPTIONS[stage]}</span>
               </div>
             );
           })}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2 text-2xs text-text-secondary">
+          <span>Tahap lifecycle saat ini: <strong className="text-text-primary">{PROJECT_LIFECYCLE_LABELS[currentLifecycleStage]}</strong></span>
+          <span className={cn("rounded-full px-2.5 py-1 font-semibold", String(selectedProject.status || "").toUpperCase() === "ON_HOLD" ? "bg-amber-50 text-amber-800" : "bg-gray-100 text-gray-700")}>
+            Status operasional: {selectedProject.status || "-"}
+          </span>
+          {currentLifecycleStage === "LOST" && <span className="rounded-full bg-red-50 px-2.5 py-1 font-semibold text-red-700">Proyek Lost</span>}
         </div>
       </div>}
 
@@ -1659,6 +1755,7 @@ export default function ProjectsClient() {
             id: String(p.id),
             name: p.project_name || (p as any).name || `Proyek #${p.id}`,
             code: p.project_code || (p as any).code,
+            lifecycle_status: p.lifecycle_status,
             status: p.status,
           }))}
         />}
@@ -3055,62 +3152,63 @@ export default function ProjectsClient() {
       <Modal
         isOpen={isLifecycleModalOpen}
         onClose={() => setIsLifecycleModalOpen(false)}
-        title="Stage Gate Review & Verifikasi Lifecycle"
-        subtitle={`Memajukan dari [${selectedProject?.status}] ke Tahap Berikutnya`}
+        title="Perbarui Lifecycle Proyek"
+        subtitle={`Tahap saat ini: ${PROJECT_LIFECYCLE_LABELS[currentLifecycleStage]}`}
         size="md"
       >
         <div className="flex flex-col gap-3">
-          <p className="text-xs text-text-secondary">
-            Konfirmasi kriteria kesiapan mutu (Gate Checklist) sebelum meloloskan proyek ke tahap operasional berikutnya:
-          </p>
+          <label className="text-xs font-bold text-text-primary" htmlFor="lifecycle-target-stage">Tahap tujuan</label>
+          <select
+            id="lifecycle-target-stage"
+            className="input text-xs"
+            value={lifecycleTargetStage}
+            onChange={(event) => setLifecycleTargetStage(event.target.value as ProjectLifecycleStage | "")}
+          >
+            <option value="" disabled>Pilih tahap tujuan</option>
+            {lifecycleTargets.map((stage) => <option key={stage} value={stage}>{PROJECT_LIFECYCLE_LABELS[stage]}</option>)}
+          </select>
 
-          <div className="flex flex-col gap-2 p-3 bg-gray-50 rounded-xl">
-            <label className="flex items-center gap-2.5 text-xs text-text-primary cursor-pointer">
+          {lifecycleTargetStage === "VERIFIED" && (
+            <div>
+              <label className="text-xs font-bold text-text-primary block mb-1" htmlFor="lifecycle-po-number">Nomor PO / kontrak</label>
               <input
-                type="checkbox"
-                checked={gateChecklist.scope_verified}
-                onChange={e => setGateChecklist({ ...gateChecklist, scope_verified: e.target.checked })}
-                className="w-4 h-4 rounded text-brand-green focus:ring-0"
+                id="lifecycle-po-number"
+                className="input text-xs"
+                value={lifecyclePoNumber}
+                onChange={(event) => setLifecyclePoNumber(event.target.value)}
+                placeholder="Isi jika Sales Order belum tercatat"
               />
-              <span>1. Ruang lingkup WBS & Deliverable tervalidasi</span>
-            </label>
-            <label className="flex items-center gap-2.5 text-xs text-text-primary cursor-pointer">
-              <input
-                type="checkbox"
-                checked={gateChecklist.budget_allocated}
-                onChange={e => setGateChecklist({ ...gateChecklist, budget_allocated: e.target.checked })}
-                className="w-4 h-4 rounded text-brand-green focus:ring-0"
+              <p className="mt-1 text-2xs text-text-secondary">Nomor PO/kontrak wajib jika proyek belum memiliki Sales Order.</p>
+            </div>
+          )}
+
+          {lifecycleTargetStage === "LOST" && (
+            <div>
+              <label className="text-xs font-bold text-text-primary block mb-1" htmlFor="lifecycle-lost-reason">Alasan Lost *</label>
+              <textarea
+                id="lifecycle-lost-reason"
+                className="input min-h-20 text-xs"
+                value={lifecycleReason}
+                onChange={(event) => setLifecycleReason(event.target.value)}
+                placeholder="Jelaskan alasan proyek tidak dilanjutkan"
               />
-              <span>2. Alokasi anggaran (Budget Line) disetujui Finance</span>
-            </label>
-            <label className="flex items-center gap-2.5 text-xs text-text-primary cursor-pointer">
-              <input
-                type="checkbox"
-                checked={gateChecklist.resources_reserved}
-                onChange={e => setGateChecklist({ ...gateChecklist, resources_reserved: e.target.checked })}
-                className="w-4 h-4 rounded text-brand-green focus:ring-0"
-              />
-              <span>3. Personel tim pelaksana telah di-assign</span>
-            </label>
-            <label className="flex items-center gap-2.5 text-xs text-text-primary cursor-pointer">
-              <input
-                type="checkbox"
-                checked={gateChecklist.qa_checklist_passed}
-                onChange={e => setGateChecklist({ ...gateChecklist, qa_checklist_passed: e.target.checked })}
-                className="w-4 h-4 rounded text-brand-green focus:ring-0"
-              />
-              <span>4. Checklist QA & Kontrol Mutu Terpenuhi</span>
-            </label>
-          </div>
+            </div>
+          )}
+
+          {lifecycleTargetStage === "ACTIVE" && String(selectedProject?.status || "").toUpperCase() === "ON_HOLD" && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              Status operasional ON_HOLD akan tetap dijeda setelah lifecycle berubah. Lakukan tindakan resume operasional secara terpisah.
+            </p>
+          )}
 
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => setIsLifecycleModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
             <button
               onClick={handleAdvanceLifecycle}
-              disabled={!gateChecklist.scope_verified || !gateChecklist.budget_allocated}
+              disabled={!lifecycleTargetStage || (lifecycleTargetStage === "LOST" && !lifecycleReason.trim()) || (lifecycleTargetStage === "VERIFIED" && !lifecyclePoNumber.trim() && !(selectedProject as any)?.sales_order_id)}
               className="btn-primary py-1.5 px-4 text-xs disabled:opacity-50"
             >
-              Loloskan Stage Gate
+              Simpan Perubahan Lifecycle
             </button>
           </div>
         </div>

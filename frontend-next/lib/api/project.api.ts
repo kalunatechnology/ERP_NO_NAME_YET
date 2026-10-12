@@ -10,6 +10,7 @@ import { canRequestApi, FrontendAccessContext } from "@/lib/access/module-contra
 import { normalizeList } from "./auth.api";
 import { normalizeDateKey } from "@/lib/utils";
 import { weeklyProgress } from "../weekly-dashboard";
+import { normalizeProjectLifecycleStage, type ProjectLifecycleStage } from "@/lib/projects/lifecycle";
 
 export interface Project {
   id: string | number;
@@ -17,7 +18,10 @@ export interface Project {
   project_name?: string;
   code?: string;
   project_code?: string;
-  lifecycle_status?: string;
+  lifecycle_status?: ProjectLifecycleStage | string;
+  cancellation_reason?: string | null;
+  stage_entered_at?: string | null;
+  /** Operational execution state. Keep separate from lifecycle_status. */
   status?: string;
   progress_percentage?: number;
   progress?: number;
@@ -597,7 +601,10 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
       ...p,
       project_name: p.name || p.project_name || `Proyek ${p.id}`,
       project_code: p.code || p.project_code || `PRJ-${String(p.id).slice(0, 6)}`,
-      status: p.lifecycle_status || p.status || "DRAFT",
+      // The commercial lifecycle and operational execution state have distinct
+      // meanings. Never overwrite status: downstream timesheet/inventory logic
+      // still relies on it to decide whether field work is allowed.
+      lifecycle_status: normalizeProjectLifecycleStage(p.lifecycle_status, p.status),
       // Never trust an orphaned project percentage: without Main Tasks the
       // project has no measurable execution progress and therefore remains 0%.
       progress: derivedProjectProgress,

@@ -230,6 +230,7 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
     id: p.id,
     name: p.project_name || p.name || `Proyek #${p.id}`,
     code: p.project_code || p.code,
+    lifecycle_status: p.lifecycle_status,
     status: p.status,
   }));
 
@@ -624,6 +625,7 @@ function ExecutiveDashboard({ projects, finData, loading }: {
     id: p.id,
     name: p.project_name || p.name || `Proyek #${p.id}`,
     code: p.project_code || p.code,
+    lifecycle_status: p.lifecycle_status,
     status: p.status,
   }));
 

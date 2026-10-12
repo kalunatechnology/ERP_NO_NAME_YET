@@ -10,11 +10,13 @@
 import React from "react";
 import { ChevronLeft, ChevronRight, Milestone as MilestoneIcon, FolderKanban } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getProjectLifecycleLabel, normalizeProjectLifecycleStage } from "@/lib/projects/lifecycle";
 
 export interface ProjectSummary {
   id: string | number;
   name: string;
   code?: string;
+  lifecycle_status?: string;
   status?: string;
 }
 
@@ -52,20 +54,28 @@ export function ProjectMilestoneCard({
   const [internalSelectedId, setInternalSelectedId] = React.useState<string | number>(
     controlledSelectedId || projects[0]?.id || ""
   );
+  const [pipelineView, setPipelineView] = React.useState<"ALL" | "PRE_PITCHING" | "PITCHING" | "RUNNING">("ALL");
   const [projectPageSize, setProjectPageSize] = React.useState(5);
   const [projectPage, setProjectPage] = React.useState(1);
 
   const activeId = controlledSelectedId !== undefined ? controlledSelectedId : internalSelectedId;
-  const projectPageCount = Math.max(1, Math.ceil(projects.length / projectPageSize));
-  const visibleProjects = projects.slice((projectPage - 1) * projectPageSize, projectPage * projectPageSize);
+  const filteredProjects = React.useMemo(() => projects.filter((project) => {
+    const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+    if (pipelineView === "PRE_PITCHING") return stage === "INCOMING" || stage === "DISCOVERY";
+    if (pipelineView === "PITCHING") return stage === "PITCHING";
+    if (pipelineView === "RUNNING") return stage === "ACTIVE";
+    return true;
+  }), [pipelineView, projects]);
+  const projectPageCount = Math.max(1, Math.ceil(filteredProjects.length / projectPageSize));
+  const visibleProjects = filteredProjects.slice((projectPage - 1) * projectPageSize, projectPage * projectPageSize);
 
   React.useEffect(() => {
-    const selectedIndex = projects.findIndex((project) => String(project.id) === String(activeId));
+    const selectedIndex = filteredProjects.findIndex((project) => String(project.id) === String(activeId));
     if (selectedIndex >= 0) setProjectPage(Math.floor(selectedIndex / projectPageSize) + 1);
     else setProjectPage((current) => Math.min(current, projectPageCount));
-  }, [activeId, projectPageCount, projectPageSize, projects]);
+  }, [activeId, filteredProjects, projectPageCount, projectPageSize]);
 
-  const currentMilestones: MilestoneItem[] = Array.isArray(milestones)
+  const currentMilestones: MilestoneItem[] = filteredProjects.length === 0 ? [] : Array.isArray(milestones)
     ? milestones
     : milestones[String(activeId)] || milestones[Number(activeId)] || [];
 
@@ -79,6 +89,21 @@ export function ProjectMilestoneCard({
   const handleSelect = (id: string | number) => {
     setInternalSelectedId(id);
     onSelectProject?.(id);
+  };
+
+  const changePipelineView = (view: "ALL" | "PRE_PITCHING" | "PITCHING" | "RUNNING") => {
+    setPipelineView(view);
+    setProjectPage(1);
+    const nextProjects = projects.filter((project) => {
+      const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+      if (view === "PRE_PITCHING") return stage === "INCOMING" || stage === "DISCOVERY";
+      if (view === "PITCHING") return stage === "PITCHING";
+      if (view === "RUNNING") return stage === "ACTIVE";
+      return true;
+    });
+    if (nextProjects.length && !nextProjects.some((project) => String(project.id) === String(activeId))) {
+      handleSelect(nextProjects[0].id);
+    }
   };
 
   const activeCount = currentMilestones.filter(
@@ -102,9 +127,40 @@ export function ProjectMilestoneCard({
           <FolderKanban size={17} className="text-[#294BB2]" />
           <h4 className="text-sm sm:text-base font-bold text-[#090909]">Daftar Proyek</h4>
         </div>
+        <div className="grid grid-cols-1 gap-1.5" role="group" aria-label="Filter pipeline proyek">
+          {([
+            { key: "PRE_PITCHING", label: "Belum Pitching" },
+            { key: "PITCHING", label: "Sedang Pitching" },
+            { key: "RUNNING", label: "Proyek Running" },
+            { key: "ALL", label: "Semua Proyek" },
+          ] as const).map((view) => {
+            const count = view.key === "ALL"
+              ? projects.length
+              : projects.filter((project) => {
+                const stage = normalizeProjectLifecycleStage(project.lifecycle_status, project.status);
+                return view.key === "PRE_PITCHING"
+                  ? stage === "INCOMING" || stage === "DISCOVERY"
+                  : view.key === "PITCHING" ? stage === "PITCHING" : stage === "ACTIVE";
+              }).length;
+            return (
+              <button
+                key={view.key}
+                type="button"
+                aria-pressed={pipelineView === view.key}
+                onClick={() => changePipelineView(view.key)}
+                className={cn(
+                  "flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-2xs font-semibold transition-colors",
+                  pipelineView === view.key ? "bg-white text-[#2649B3] shadow-xs" : "text-[#4F5050] hover:bg-white/70"
+                )}
+              >
+                <span>{view.label}</span><span>{count}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="flex flex-col gap-1 overflow-y-auto max-h-[220px] md:max-h-[280px] pr-1 no-scrollbar">
-          {projects.length === 0 ? (
-            <div className="p-3 text-center text-xs text-gray-500">Belum ada proyek terdaftar.</div>
+          {filteredProjects.length === 0 ? (
+            <div className="p-3 text-center text-xs text-gray-500">Tidak ada proyek pada filter lifecycle ini.</div>
           ) : (
             visibleProjects.map((prj) => {
               const isSelected = String(activeId) === String(prj.id);
@@ -124,6 +180,9 @@ export function ProjectMilestoneCard({
                     {prj.code && (
                       <span className="text-[10px] font-mono text-neutral-400">{prj.code}</span>
                     )}
+                    <span className="mt-1 w-fit rounded-full bg-[#EAF6FF] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#2649B3]">
+                      {getProjectLifecycleLabel(prj.lifecycle_status, prj.status)}
+                    </span>
                   </div>
                   <ChevronRight
                     size={14}

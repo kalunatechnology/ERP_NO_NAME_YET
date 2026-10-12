@@ -2189,7 +2189,9 @@ model project_project {
   target_margin_percent Decimal?
   progress_percent      Decimal?
   status                String
-  lifecycle_status      String
+  lifecycle_status      String    @default("INCOMING")
+  cancellation_reason   String?
+  stage_entered_at      DateTime  @default(now()) @db.Timestamp(3)
   health_status         String
   source_type           String
   verified_at           DateTime?
