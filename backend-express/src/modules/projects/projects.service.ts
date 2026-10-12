@@ -1857,9 +1857,6 @@ export class ProjectsService {
       if (nextStage === 'LOST' && !normalizedReason) {
         throw new ValidationError('Alasan pembatalan wajib diisi untuk tahap LOST.');
       }
-      if (nextStage === 'VERIFIED' && !normalizedPoContractNumber && !project.sales_order_id) {
-        throw new ValidationError('Nomor PO/kontrak atau Sales Order wajib tersedia sebelum proyek diverifikasi.');
-      }
       if (nextStage === 'CLOSED' && Number(project.progress_percent ?? 0) < 100) {
         throw new ValidationError('Progres proyek harus 100% sebelum lifecycle ditutup.');
       }

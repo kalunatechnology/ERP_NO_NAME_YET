@@ -3170,15 +3170,19 @@ export default function ProjectsClient() {
 
           {lifecycleTargetStage === "VERIFIED" && (
             <div>
-              <label className="text-xs font-bold text-text-primary block mb-1" htmlFor="lifecycle-po-number">Nomor PO / kontrak</label>
+              <label className="text-xs font-bold text-text-primary block mb-1" htmlFor="lifecycle-po-number">
+                Nomor PO / kontrak <span className="font-normal text-text-secondary">(opsional)</span>
+              </label>
               <input
                 id="lifecycle-po-number"
                 className="input text-xs"
                 value={lifecyclePoNumber}
                 onChange={(event) => setLifecyclePoNumber(event.target.value)}
-                placeholder="Isi jika Sales Order belum tercatat"
+                placeholder="Isi jika tersedia"
               />
-              <p className="mt-1 text-2xs text-text-secondary">Nomor PO/kontrak wajib jika proyek belum memiliki Sales Order.</p>
+              <p className="mt-1 text-2xs text-text-secondary">
+                Proyek internal dapat dibiarkan kosong. Isi nomor PO/kontrak jika tersedia untuk catatan audit.
+              </p>
             </div>
           )}
 
@@ -3205,7 +3209,7 @@ export default function ProjectsClient() {
             <button onClick={() => setIsLifecycleModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
             <button
               onClick={handleAdvanceLifecycle}
-              disabled={!lifecycleTargetStage || (lifecycleTargetStage === "LOST" && !lifecycleReason.trim()) || (lifecycleTargetStage === "VERIFIED" && !lifecyclePoNumber.trim() && !(selectedProject as any)?.sales_order_id)}
+              disabled={!lifecycleTargetStage || (lifecycleTargetStage === "LOST" && !lifecycleReason.trim())}
               className="btn-primary py-1.5 px-4 text-xs disabled:opacity-50"
             >
               Simpan Perubahan Lifecycle
