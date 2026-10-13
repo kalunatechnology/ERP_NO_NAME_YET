@@ -61,6 +61,10 @@ const envSchema = z.object({
   ERP_BASE_URL: z.string().optional(),
   CHATBOT_ERP_READONLY_DATABASE_URL: z.string().optional(),
   MARBOT_ENCRYPTION_KEY: z.string().optional(),
+  // Base64-encoded 32-byte AES-256 key used to encrypt integration signing
+  // secrets at rest. Required only when provisioning or rotating integrations.
+  CRM_INTEGRATION_ENCRYPTION_KEY: z.string().optional(),
+  CRM_INTEGRATION_WORKER_SECRET: z.string().optional(),
   CHATBOT_CONTRACT_MODE: z.enum(['legacy', 'v2']).default('v2'),
   MARBOT_RUNTIME: z.enum(['native', 'external']).default('native'),
   MARBOT_AI_API_KEY: z.string().optional(),

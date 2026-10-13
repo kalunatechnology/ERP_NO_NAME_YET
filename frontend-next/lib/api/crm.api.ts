@@ -40,6 +40,43 @@ export interface CRMDashboard {
   [key: string]: any;
 }
 
+export interface CRMInboxConversation {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  channel_account_id: string | null;
+  assigned_user_id: string | null;
+  inquiry_id: string | null;
+  inquiry?: { id: string; inquiry_number: string; status: string } | null;
+  assigned_user?: { id: string; full_name: string } | null;
+  external_identities?: Array<{ id: string; type: string; masked_value: string; channel_verification_status: string; customer_match_status: string; party_id: string | null }>;
+  updated_at: string;
+  external_thread?: { external_thread_id: string; link_method: string } | null;
+  latest_message?: { message_text: string; direction: string; received_at?: string | null; sent_at?: string | null } | null;
+  messages?: Array<{ id: string; message_text: string; direction: string; received_at?: string | null; sent_at?: string | null }>;
+}
+
+export async function loadCRMInbox(pageSize = 50): Promise<CRMInboxConversation[]> {
+  const { data } = await api.get(`/api/v1/crm/inbox/?page_size=${Math.min(Math.max(pageSize, 1), 100)}`);
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
+export async function createInquiryFromConversation(id: string) {
+  const { data } = await api.post(`/api/v1/crm/conversations/${id}/create-inquiry/`, {});
+  return data;
+}
+
+export async function assignConversationToMe(id: string, userId: string) {
+  const { data } = await api.post(`/api/v1/crm/conversations/${id}/assign/`, { assigned_user_id: userId });
+  return data;
+}
+
+export async function confirmCRMIdentityCustomer(identityId: string, partyId: string) {
+  const { data } = await api.post(`/api/v1/crm/external-identities/${identityId}/confirm-customer/`, { party_id: partyId });
+  return data;
+}
+
 /* ── Endpoints map ───────────────────────────────── */
 // frontend-next/lib/api/crm.api.ts
 

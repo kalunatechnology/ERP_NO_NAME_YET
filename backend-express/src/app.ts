@@ -31,6 +31,8 @@ import { coreRouter, feedShortcutRouter } from './modules/core/core.routes';
 import { requestRouter } from './modules/core/request.routes';
 import { masterDataRouter } from './modules/master_data/master_data.routes';
 import { crmRouter } from './modules/crm/crm.routes';
+import { crmIntegrationAdminRouter, crmIntegrationWebhookRouter } from './modules/crm/crm-integration.routes';
+import { crmIntegrationWorkerRouter } from './modules/crm/crm-integration-worker.routes';
 import { salesRouter } from './modules/sales/sales.routes';
 import { projectsRouter } from './modules/projects/projects.routes';
 import { timesheetTimerRouter } from './modules/projects/timesheet-timer.routes';
@@ -115,7 +117,16 @@ export function createApp(): Express {
     }),
   );
   app.use(compression());
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req, _res, buffer) => {
+      // HMAC must be calculated against the original bytes, before JSON parsing
+      // or serialization changes whitespace, key order, or Unicode encoding.
+      if (req.url?.startsWith('/api/v1/integrations/webhooks/')) {
+        (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+      }
+    },
+  }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use((req: Request, res: Response, next) => {
     req.requestId = String(req.header('X-Request-ID') || crypto.randomUUID()).slice(0, 128);
@@ -163,11 +174,15 @@ export function createApp(): Express {
   // The chatbot has no ERP JWT. Its internal tools use request-bound HMAC;
   // the browser chat proxy uses the ordinary ERP JWT and company membership.
   app.use('/internal/marbot', marbotInternalRouter);
+  app.use('/internal/crm-integration-worker', crmIntegrationWorkerRouter);
   app.use('/api/v1/marbot', marbotUserRouter);
   const apiV1 = express.Router();
 
   // Public authentication endpoints are explicitly allow-listed.
   apiV1.use('/auth', publicAuthRouter);
+  // Signed system-to-system endpoint. It authenticates each request with the
+  // integration registry and does not accept ERP JWT/company headers.
+  apiV1.use('/integrations/webhooks', crmIntegrationWebhookRouter);
 
   // Every remaining API endpoint requires an authenticated, active user.
   apiV1.use(authenticate);

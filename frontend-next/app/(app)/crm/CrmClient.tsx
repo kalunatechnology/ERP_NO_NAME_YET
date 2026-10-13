@@ -15,6 +15,7 @@ import {
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
   Calculator, ShieldCheck, Award, BarChart3, MessageSquare, FileCheck,
   ChevronRight, AlertCircle, Star, UserPlus,
+  Inbox, MessageCircle,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
@@ -28,6 +29,9 @@ import {
   submitQuotationApproval, approveQuotation, sendQuotation, acceptQuotation, rejectQuotation, convertQuotationToOrder,
   createSupportTicket, checkTicketWarrantyStatus, deleteSupportTicket,
   updateCustomerCreditLimit, calculateCreditSnapshot,
+  loadCRMInbox, createInquiryFromConversation, assignConversationToMe,
+  confirmCRMIdentityCustomer,
+  type CRMInboxConversation,
 } from "@/lib/api/crm.api";
 import api from "@/lib/api/axios";
 import { feedApi } from "@/lib/api/feed.api";
@@ -38,6 +42,7 @@ import { canPerform } from "@/lib/access/capability-contract";
 /* ── Tabs Configuration ──────────────────────────── */
 const CRM_TABS = [
   { id: "dashboard",   label: "Dashboard",            icon: BarChart3     },
+  { id: "inbox",       label: "Customer Inbox",       icon: Inbox         },
   { id: "deals",       label: "Deals & Credit",       icon: TrendingUp    },
   { id: "estimate",    label: "Estimating & Quoting", icon: Calculator, module: "SALES" },
   { id: "tickets",     label: "Support & Garansi",    icon: PhoneCall, module: "SERVICE" },
@@ -1494,6 +1499,113 @@ function TabEngagement({ data }: { data: CRMData }) {
   );
 }
 
+function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefresh }: { userId?: string; readOnly: boolean; canMatchIdentity: boolean; parties: any[]; onRefresh: () => void }) {
+  const [rows, setRows] = useState<CRMInboxConversation[]>([]);
+  const [loadingInbox, setLoadingInbox] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [partyChoice, setPartyChoice] = useState<Record<string, string>>({});
+  const refreshInbox = useCallback(async () => {
+    setLoadingInbox(true);
+    try {
+      setRows(await loadCRMInbox());
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Inbox customer tidak dapat dimuat.");
+    } finally {
+      setLoadingInbox(false);
+    }
+  }, []);
+
+  useEffect(() => { void refreshInbox(); }, [refreshInbox]);
+
+  const assignToMe = async (row: CRMInboxConversation) => {
+    if (!userId) return;
+    setBusyId(row.id);
+    try {
+      await assignConversationToMe(row.id, userId);
+      toast.success("Conversation ditugaskan kepada Anda.");
+      await refreshInbox();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Penugasan tidak berhasil.");
+    } finally { setBusyId(null); }
+  };
+
+  const makeInquiry = async (row: CRMInboxConversation) => {
+    setBusyId(row.id);
+    try {
+      const result = await createInquiryFromConversation(row.id);
+      toast.success(result?.created === false ? "Inquiry sudah pernah dibuat." : "Inquiry dibuat dari conversation.");
+      await refreshInbox();
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Inquiry tidak dapat dibuat.");
+    } finally { setBusyId(null); }
+  };
+
+  const matchIdentity = async (identityId: string) => {
+    const partyId = partyChoice[identityId];
+    if (!partyId) return toast.error("Pilih customer yang sudah Anda verifikasi.");
+    setBusyId(identityId);
+    try {
+      await confirmCRMIdentityCustomer(identityId, partyId);
+      toast.success("Identitas ditautkan setelah konfirmasi.");
+      await refreshInbox();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Pencocokan customer tidak berhasil.");
+    } finally { setBusyId(null); }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="card rounded-xl p-4 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold">Customer Inbox</h3>
+          <p className="text-xs text-text-secondary mt-1">Pesan masuk tersimpan dari Arsalynk. Identitas channel belum otomatis dianggap sebagai customer terverifikasi.</p>
+        </div>
+        <button className="btn-ghost text-xs" onClick={() => void refreshInbox()} disabled={loadingInbox}><RefreshCw size={13} className={cn("mr-1", loadingInbox && "animate-spin")} />Refresh</button>
+      </div>
+      {loadingInbox ? <div className="card rounded-xl p-5 text-xs text-text-secondary">Memuat conversation…</div> : rows.length === 0 ? (
+        <div className="card rounded-xl p-5"><EmptyState msg="Belum ada conversation masuk. Setelah integration source mengirim event, conversation akan muncul di sini." /></div>
+      ) : rows.map((row) => (
+        <article key={row.id} className="card rounded-xl p-4 flex flex-col gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2"><MessageCircle size={15} className="text-brand-deep-green" /><h4 className="text-sm font-semibold truncate">{row.subject || "Conversation customer"}</h4><StatusBadge status={row.status} /></div>
+              <p className="text-[11px] text-text-secondary mt-1">{row.external_thread?.external_thread_id ? `Thread ${row.external_thread.external_thread_id}` : `Conversation ${row.id.slice(0, 8)}`} · Customer belum dicocokkan</p>
+            </div>
+            <div className="flex gap-2">
+              {!readOnly && row.assigned_user_id !== userId && <button className="btn-ghost text-xs" disabled={busyId === row.id || !userId} onClick={() => void assignToMe(row)}><UserPlus size={13} className="mr-1" />{row.assigned_user_id ? "Tugaskan ke saya" : "Ambil"}</button>}
+              {!readOnly && !row.inquiry_id && <button className="btn-primary text-xs" disabled={busyId === row.id} onClick={() => void makeInquiry(row)}><Plus size={13} className="mr-1" />Jadikan Inquiry</button>}
+              {row.inquiry && <span className="px-2 py-1 text-[11px] rounded-lg bg-emerald-50 text-emerald-800">Inquiry {row.inquiry.inquiry_number}</span>}
+            </div>
+          </div>
+          <div className="rounded-lg bg-bg-lighter p-3 flex flex-col gap-2 max-h-72 overflow-y-auto">
+            {(row.messages ?? []).length ? row.messages!.map((message) => (
+              <div key={message.id} className={cn("max-w-[88%] rounded-lg px-3 py-2 text-xs", message.direction === "INBOUND" ? "self-start bg-white border border-text-tertiary/40" : "self-end bg-emerald-50")}>{message.message_text}</div>
+            )) : <p className="text-xs text-text-secondary">{row.latest_message?.message_text || "Belum ada pesan yang tersimpan."}</p>}
+          </div>
+          {(row.external_identities ?? []).map((identity) => (
+            <div key={identity.id} className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="text-text-secondary">{identity.type} {identity.masked_value} · channel {identity.channel_verification_status} · customer {identity.customer_match_status}</span>
+              {identity.customer_match_status === "CONFIRMED" && identity.party_id ? (
+                <span className="text-emerald-800">{parties.find((party) => String(party.id) === String(identity.party_id))?.display_name || parties.find((party) => String(party.id) === String(identity.party_id))?.legal_name || "Customer terverifikasi"}</span>
+              ) : canMatchIdentity && identity.channel_verification_status === "VERIFIED" ? (
+                <>
+                  <select className="input-field py-1 text-[11px]" value={partyChoice[identity.id] || ""} onChange={(event) => setPartyChoice((current) => ({ ...current, [identity.id]: event.target.value }))}>
+                    <option value="">Pilih customer untuk verifikasi</option>
+                    {parties.filter((party) => party.status === "ACTIVE").map((party) => <option key={party.id} value={party.id}>{party.display_name || party.legal_name || party.party_name}</option>)}
+                  </select>
+                  <button className="btn-ghost text-[11px]" disabled={busyId === identity.id} onClick={() => void matchIdentity(identity.id)}>Konfirmasi relasi</button>
+                </>
+              ) : null}
+            </div>
+          ))}
+          <div className="text-[11px] text-text-secondary">{row.assigned_user?.full_name ? `PIC: ${row.assigned_user.full_name}` : row.assigned_user_id ? "PIC sudah ditentukan" : "Belum ada PIC"} · {row.priority || "NORMAL"}</div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════
    MAIN CRM CLIENT
 ══════════════════════════════════════════════════ */
@@ -1711,6 +1823,7 @@ export default function CrmClient() {
       ) : (
         <>
           {activeTab === "dashboard"  && <TabDashboard data={data} dash={crmDash} />}
+          {activeTab === "inbox"      && <TabCustomerInbox userId={user?.id == null ? undefined : String(user.id)} readOnly={!canOperateCrm} canMatchIdentity={["ROLE-CRM-LEAD", "CRM_LEAD", "ROLE-SALES", "SALES"].includes(String(user?.active_role_code ?? "").toUpperCase())} parties={data.parties} onRefresh={() => loadData(true)} />}
           {activeTab === "deals"      && (
             <TabDeals 
               data={data} 
