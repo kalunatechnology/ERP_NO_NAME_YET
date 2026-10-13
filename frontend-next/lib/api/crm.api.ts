@@ -46,6 +46,8 @@ export interface CRMInboxConversation {
   status: string;
   priority: string;
   channel_account_id: string | null;
+  business_unit_code?: string | null;
+  business_unit_name?: string | null;
   assigned_user_id: string | null;
   inquiry_id: string | null;
   inquiry?: { id: string; inquiry_number: string; status: string } | null;
@@ -64,6 +66,11 @@ export async function loadCRMInbox(pageSize = 50): Promise<CRMInboxConversation[
 
 export async function createInquiryFromConversation(id: string) {
   const { data } = await api.post(`/api/v1/crm/conversations/${id}/create-inquiry/`, {});
+  return data;
+}
+
+export async function setConversationDecision(id: string, decision: "IGNORE" | "REOPEN") {
+  const { data } = await api.post(`/api/v1/crm/conversations/${id}/decision/`, { decision });
   return data;
 }
 

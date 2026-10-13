@@ -29,7 +29,7 @@ import {
   submitQuotationApproval, approveQuotation, sendQuotation, acceptQuotation, rejectQuotation, convertQuotationToOrder,
   createSupportTicket, checkTicketWarrantyStatus, deleteSupportTicket,
   updateCustomerCreditLimit, calculateCreditSnapshot,
-  loadCRMInbox, createInquiryFromConversation, assignConversationToMe,
+  loadCRMInbox, createInquiryFromConversation, assignConversationToMe, setConversationDecision,
   confirmCRMIdentityCustomer,
   type CRMInboxConversation,
 } from "@/lib/api/crm.api";
@@ -1541,6 +1541,17 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
     } finally { setBusyId(null); }
   };
 
+  const decideConversation = async (row: CRMInboxConversation, decision: "IGNORE" | "REOPEN") => {
+    setBusyId(row.id);
+    try {
+      await setConversationDecision(row.id, decision);
+      toast.success(decision === "IGNORE" ? "Conversation ditandai untuk diabaikan." : "Conversation dibuka kembali.");
+      await refreshInbox();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Status conversation tidak berhasil diperbarui.");
+    } finally { setBusyId(null); }
+  };
+
   const matchIdentity = async (identityId: string) => {
     const partyId = partyChoice[identityId];
     if (!partyId) return toast.error("Pilih customer yang sudah Anda verifikasi.");
@@ -1558,23 +1569,25 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
     <div className="flex flex-col gap-3">
       <div className="card rounded-xl p-4 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold">Customer Inbox</h3>
-          <p className="text-xs text-text-secondary mt-1">Pesan masuk tersimpan dari Arsalynk. Identitas channel belum otomatis dianggap sebagai customer terverifikasi.</p>
+          <h3 className="text-sm font-bold">Inbox CRM</h3>
+          <p className="text-xs text-text-secondary mt-1">Pesan dari pipeline internal, dikelompokkan dan diarahkan berdasarkan konfigurasi unit bisnis Marka.</p>
         </div>
         <button className="btn-ghost text-xs" onClick={() => void refreshInbox()} disabled={loadingInbox}><RefreshCw size={13} className={cn("mr-1", loadingInbox && "animate-spin")} />Refresh</button>
       </div>
       {loadingInbox ? <div className="card rounded-xl p-5 text-xs text-text-secondary">Memuat conversation…</div> : rows.length === 0 ? (
-        <div className="card rounded-xl p-5"><EmptyState msg="Belum ada conversation masuk. Setelah integration source mengirim event, conversation akan muncul di sini." /></div>
+        <div className="card rounded-xl p-5"><EmptyState msg="Belum ada conversation masuk. Conversation akan muncul setelah sumber integrasi internal mengirim event." /></div>
       ) : rows.map((row) => (
         <article key={row.id} className="card rounded-xl p-4 flex flex-col gap-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="flex items-center gap-2"><MessageCircle size={15} className="text-brand-deep-green" /><h4 className="text-sm font-semibold truncate">{row.subject || "Conversation customer"}</h4><StatusBadge status={row.status} /></div>
-              <p className="text-[11px] text-text-secondary mt-1">{row.external_thread?.external_thread_id ? `Thread ${row.external_thread.external_thread_id}` : `Conversation ${row.id.slice(0, 8)}`} · Customer belum dicocokkan</p>
+              <div className="flex items-center gap-2"><MessageCircle size={15} className="text-brand-deep-green" /><h4 className="text-sm font-semibold truncate">{row.subject || "Percakapan masuk"}</h4><StatusBadge status={row.status} /></div>
+              <p className="text-[11px] text-text-secondary mt-1">{row.business_unit_name || row.business_unit_code ? `Unit ${row.business_unit_name || row.business_unit_code} · ` : ""}{row.external_thread?.external_thread_id ? `Thread ${row.external_thread.external_thread_id}` : `Conversation ${row.id.slice(0, 8)}`}{row.inquiry_id ? " · Sudah dieskalasi menjadi Inquiry" : ""}</p>
             </div>
             <div className="flex gap-2">
               {!readOnly && row.assigned_user_id !== userId && <button className="btn-ghost text-xs" disabled={busyId === row.id || !userId} onClick={() => void assignToMe(row)}><UserPlus size={13} className="mr-1" />{row.assigned_user_id ? "Tugaskan ke saya" : "Ambil"}</button>}
               {!readOnly && !row.inquiry_id && <button className="btn-primary text-xs" disabled={busyId === row.id} onClick={() => void makeInquiry(row)}><Plus size={13} className="mr-1" />Jadikan Inquiry</button>}
+              {!readOnly && !row.inquiry_id && row.status !== "IGNORED" && <button className="btn-ghost text-xs" disabled={busyId === row.id} onClick={() => void decideConversation(row, "IGNORE")}>Abaikan</button>}
+              {!readOnly && row.status === "IGNORED" && <button className="btn-ghost text-xs" disabled={busyId === row.id} onClick={() => void decideConversation(row, "REOPEN")}>Pulihkan</button>}
               {row.inquiry && <span className="px-2 py-1 text-[11px] rounded-lg bg-emerald-50 text-emerald-800">Inquiry {row.inquiry.inquiry_number}</span>}
             </div>
           </div>
@@ -1585,7 +1598,7 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
           </div>
           {(row.external_identities ?? []).map((identity) => (
             <div key={identity.id} className="flex flex-wrap items-center gap-2 text-[11px]">
-              <span className="text-text-secondary">{identity.type} {identity.masked_value} · channel {identity.channel_verification_status} · customer {identity.customer_match_status}</span>
+              <span className="text-text-secondary">Identitas {identity.type} {identity.masked_value} · verifikasi sumber {identity.channel_verification_status} · customer {identity.customer_match_status}</span>
               {identity.customer_match_status === "CONFIRMED" && identity.party_id ? (
                 <span className="text-emerald-800">{parties.find((party) => String(party.id) === String(identity.party_id))?.display_name || parties.find((party) => String(party.id) === String(identity.party_id))?.legal_name || "Customer terverifikasi"}</span>
               ) : canMatchIdentity && identity.channel_verification_status === "VERIFIED" ? (

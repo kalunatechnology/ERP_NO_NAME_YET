@@ -1358,8 +1358,8 @@ model crm_opportunity {
   @@map("crm_opportunity")
 }
 
-// Authenticated external systems use a global registry ID; tenant/company
-// scope is resolved from this row and is never accepted from the webhook body.
+// Trusted upstream integrations use a global registry ID; tenant/company and
+// optional business-unit routing are resolved here, never from webhook data.
 model core_integration_source {
   id                        String    @id @default(uuid())
   source_code               String    @map("source_code")
@@ -1367,6 +1367,9 @@ model core_integration_source {
   company_id                String    @map("company_id")
   channel_type              String    @map("channel_type")
   channel_account_id         String?   @map("channel_account_id")
+  business_unit_code        String?   @map("business_unit_code")
+  business_unit_name        String?   @map("business_unit_name")
+  default_assigned_user_id String?   @map("default_assigned_user_id")
   secret_encrypted          String    @map("secret_encrypted")
   key_id                    String    @map("key_id")
   previous_secret_encrypted String?   @map("previous_secret_encrypted")
@@ -1671,6 +1674,8 @@ model crm_conversation {
   updated_at               DateTime? @updatedAt
   id                       String    @id @default(uuid())
   channel_account_id       String?   @map("channel_account_id")
+  business_unit_code      String?   @map("business_unit_code")
+  business_unit_name      String?   @map("business_unit_name")
   customer_party_id        String?   @map("customer_party_id")
   contact_id               String?   @map("contact_id")
   opportunity_id           String?   @map("opportunity_id")
@@ -1685,6 +1690,7 @@ model crm_conversation {
   status                   String
 
   @@index([tenant_id, company_id])
+  @@index([company_id, business_unit_code], map: "crm_conversation_company_id_business_unit_code_idx")
   @@map("crm_conversation")
 }
 

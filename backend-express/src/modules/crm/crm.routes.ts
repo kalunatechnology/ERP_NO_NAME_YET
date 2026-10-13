@@ -11,7 +11,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { CRMService } from './crm.service';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { requireActiveRole } from '../../middlewares/rbac.middleware';
 import { RoleCode } from '../../types/roles';
 
@@ -423,6 +423,29 @@ crmRouter.post('/conversations/:id/assign', async (req: Request, res: Response, 
   } catch (error) { next(error); }
 });
 
+crmRouter.post('/conversations/:id/decision', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const company = activeCompanyId(req);
+    const decision = String(req.body.decision ?? '').trim().toUpperCase();
+    if (!['IGNORE', 'REOPEN'].includes(decision)) throw new ValidationError('decision harus IGNORE atau REOPEN.');
+    await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM crm_conversation WHERE id = ${req.params.id} AND company_id = ${company} FOR UPDATE
+      `;
+      if (!locked.length) throw new NotFoundError('Conversation');
+      const conversation = await tx.crm_conversation.findFirst({ where: { id: req.params.id, company_id: company } });
+      if (!conversation) throw new NotFoundError('Conversation');
+      if (decision === 'IGNORE' && conversation.inquiry_id) throw new ConflictError('Conversation yang sudah dieskalasi menjadi Inquiry tidak dapat diabaikan.');
+      if (decision === 'REOPEN' && conversation.status !== 'IGNORED') throw new ConflictError('Hanya conversation berstatus IGNORED yang dapat dipulihkan.');
+      await tx.crm_conversation.update({
+        where: { id: conversation.id },
+        data: { status: decision === 'IGNORE' ? 'IGNORED' : 'OPEN', closed_at: decision === 'IGNORE' ? new Date() : null },
+      });
+    }, { maxWait: 5_000, timeout: 15_000 });
+    res.json({ id: req.params.id, status: decision === 'IGNORE' ? 'IGNORED' : 'OPEN' });
+  } catch (error) { next(error); }
+});
+
 crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const company = activeCompanyId(req);
@@ -436,9 +459,6 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
         const inquiry = await tx.crm_customer_inquiry.findFirst({ where: { id: conversation.inquiry_id, company_id: company } });
         if (inquiry) return { inquiry, created: false };
       }
-      const channel = conversation.channel_account_id
-        ? await tx.crm_channel_account.findFirst({ where: { id: conversation.channel_account_id, company_id: company } })
-        : null;
       const messages = await tx.crm_message.findMany({
         where: { conversation_id: conversation.id, company_id: company },
         orderBy: [{ received_at: 'desc' }, { sent_at: 'desc' }],
@@ -456,7 +476,7 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
           contact_id: null,
           owner_user_id: conversation.assigned_user_id ?? req.user?.id,
           inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
-          source_channel: `ARSALYNK_${String(channel?.channel_type ?? 'INBOUND').toUpperCase()}`,
+          source_channel: 'INTERNAL_PIPELINE',
           subject: conversation.subject || 'Inquiry dari Customer Inbox',
           description: description || `Dibuat dari conversation ${conversation.id}.`,
           customer_name: conversation.subject || 'Belum teridentifikasi',
@@ -466,7 +486,7 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
           updated_at: now,
         },
       });
-      await tx.crm_conversation.update({ where: { id: conversation.id }, data: { inquiry_id: inquiry.id } });
+      await tx.crm_conversation.update({ where: { id: conversation.id }, data: { inquiry_id: inquiry.id, status: 'ESCALATED', closed_at: null } });
       return { inquiry, created: true };
     }, { maxWait: 5_000, timeout: 20_000, isolationLevel: 'Serializable' });
     res.status(result.created ? 201 : 200).json(result);

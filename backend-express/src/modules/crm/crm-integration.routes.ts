@@ -56,18 +56,19 @@ crmIntegrationAdminRouter.post('/:id/events/:eventId/retry', requireCompanyConte
 crmIntegrationAdminRouter.post('/', requireCompanyContextForWrite, async (req, res, next) => {
   try {
     if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
-    const channelType = String(req.body.channel_type ?? '').toUpperCase();
-    if (!['WHATSAPP', 'WEBSITE', 'EMAIL', 'OTHER'].includes(channelType)) throw new ValidationError('channel_type tidak valid.');
     if (req.body.allowed_event_types !== undefined && (!Array.isArray(req.body.allowed_event_types) || req.body.allowed_event_types.some((event: unknown) => typeof event !== 'string'))) {
       throw new ValidationError('allowed_event_types harus berupa array string.');
     }
-    if (req.body.account_name !== undefined && typeof req.body.account_name !== 'string') throw new ValidationError('account_name harus berupa teks.');
-    if (req.body.external_account_id !== undefined && typeof req.body.external_account_id !== 'string') throw new ValidationError('external_account_id harus berupa teks.');
+    for (const field of ['account_name', 'external_account_id', 'business_unit_code', 'business_unit_name', 'default_assigned_user_id']) {
+      if (req.body[field] !== undefined && typeof req.body[field] !== 'string') throw new ValidationError(`${field} harus berupa teks.`);
+    }
     const result = await CRMIntegrationService.createSource({
       source_code: String(req.body.source_code ?? ''),
-      channel_type: channelType as 'WHATSAPP' | 'WEBSITE' | 'EMAIL' | 'OTHER',
       account_name: req.body.account_name,
       external_account_id: req.body.external_account_id,
+      business_unit_code: req.body.business_unit_code,
+      business_unit_name: req.body.business_unit_name,
+      default_assigned_user_id: req.body.default_assigned_user_id,
       allowed_event_types: req.body.allowed_event_types,
     }, req.tenantId, companyId(req), req.user.id);
     res.status(201).json(result);
@@ -131,22 +132,19 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
     const threadId = typeof data.thread_id === 'string' ? data.thread_id.trim() : '';
     const messageId = typeof data.message_id === 'string' ? data.message_id.trim() : '';
     const text = typeof data.message?.text === 'string' ? data.message.text : '';
-    const identityValue = typeof data.sender?.value === 'string' ? data.sender.value : '';
-    if (!threadId || threadId.length > 300 || !messageId || messageId.length > 300 || !text.trim() || text.length > 100_000 || !identityValue || !data.sender || typeof data.sender !== 'object' || Array.isArray(data.sender) || !data.message || typeof data.message !== 'object' || Array.isArray(data.message)) {
+    const sender = data.sender;
+    if (!threadId || threadId.length > 300 || !messageId || messageId.length > 300 || !text.trim() || text.length > 100_000 || (sender !== undefined && (!sender || typeof sender !== 'object' || Array.isArray(sender))) || !data.message || typeof data.message !== 'object' || Array.isArray(data.message)) {
       return res.status(400).json({ error: 'INVALID_MESSAGE_EVENT' });
     }
-    try { normalizeExternalIdentity(String(data.sender?.type ?? ''), identityValue); }
-    catch { return res.status(400).json({ error: 'INVALID_SENDER_IDENTITY' }); }
-    const verification = data.sender?.channel_verification;
-    if (verification?.status && !['VERIFIED', 'UNVERIFIED'].includes(String(verification.status))) return res.status(400).json({ error: 'INVALID_CHANNEL_VERIFICATION' });
-    if (verification?.status === 'VERIFIED') {
-      const method = String(verification.method ?? '');
-      const allowedMethod = signatureConfig.source.channel_type === 'WHATSAPP'
-        ? method === 'WHATSAPP_PROVIDER_INBOUND'
-        : signatureConfig.source.channel_type === 'WEBSITE'
-          ? method === 'WEBSITE_AUTHENTICATED_SESSION'
-          : false;
-      if (!allowedMethod) return res.status(400).json({ error: 'UNSUPPORTED_CHANNEL_VERIFICATION_METHOD' });
+    if (sender !== undefined) {
+      const identityValue = typeof sender.value === 'string' ? sender.value : '';
+      try { normalizeExternalIdentity(String(sender.type ?? ''), identityValue); }
+      catch { return res.status(400).json({ error: 'INVALID_SENDER_IDENTITY' }); }
+    }
+    const verification = sender?.identity_verification ?? sender?.channel_verification;
+    if (verification?.status && !['VERIFIED', 'UNVERIFIED'].includes(String(verification.status))) return res.status(400).json({ error: 'INVALID_IDENTITY_VERIFICATION' });
+    if (verification?.status === 'VERIFIED' && (typeof verification.method !== 'string' || !verification.method.trim() || verification.method.length > 100)) {
+      return res.status(400).json({ error: 'INVALID_IDENTITY_VERIFICATION_METHOD' });
     }
     if (String(data.message?.type ?? '').toUpperCase() !== 'TEXT') {
       return res.status(422).json({ error: 'UNSUPPORTED_MESSAGE_TYPE' });

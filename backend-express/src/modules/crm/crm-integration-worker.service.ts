@@ -57,8 +57,10 @@ async function processMessageEvent(event: ClaimedEvent) {
   const externalMessageId = typeof data?.message_id === 'string' ? data.message_id.trim() : '';
   const messageText = typeof data?.message?.text === 'string' ? data.message.text : '';
   const senderName = typeof data?.sender?.display_name === 'string' ? data.sender.display_name.trim() : '';
-  const identity = normalizeExternalIdentity(String(data?.sender?.type ?? ''), String(data?.sender?.value ?? ''));
-  const verification = data?.sender?.channel_verification;
+  const identity = data?.sender?.value
+    ? normalizeExternalIdentity(String(data.sender.type ?? ''), String(data.sender.value))
+    : null;
+  const verification = data?.sender?.identity_verification ?? data?.sender?.channel_verification;
   if (!threadId || !externalMessageId || !messageText.trim()) throw new Error('INVALID_MESSAGE_EVENT');
 
   await prisma.$transaction(async (tx) => {
@@ -92,9 +94,11 @@ async function processMessageEvent(event: ClaimedEvent) {
           contact_id: null,
           opportunity_id: null,
           inquiry_id: null,
-          assigned_user_id: null,
+          assigned_user_id: source.default_assigned_user_id,
           external_conversation_id: threadId,
-          subject: senderName || `${source.channel_type} conversation`,
+          business_unit_code: source.business_unit_code,
+          business_unit_name: source.business_unit_name,
+          subject: senderName || `${source.source_code} conversation`,
           opened_at: isoDate(envelope.occurred_at),
           closed_at: null,
           priority: 'NORMAL',
@@ -116,53 +120,54 @@ async function processMessageEvent(event: ClaimedEvent) {
       });
     }
 
-    const identityKey = {
-      integration_source_id_channel_account_id_identity_type_normalized_value: {
-        integration_source_id: source.id,
-        channel_account_id: source.channel_account_id,
-        identity_type: identity.type,
-        normalized_value: identity.value,
-      },
-    };
-    const channelVerified = verification?.status === 'VERIFIED' && (
-      (source.channel_type === 'WHATSAPP' && verification.method === 'WHATSAPP_PROVIDER_INBOUND') ||
-      (source.channel_type === 'WEBSITE' && verification.method === 'WEBSITE_AUTHENTICATED_SESSION')
-    );
-    const externalIdentity = await tx.crm_external_identity.upsert({
-      where: identityKey,
-      create: {
-        id: crypto.randomUUID(),
-        tenant_id: source.tenant_id,
-        company_id: source.company_id,
-        integration_source_id: source.id,
-        channel_account_id: source.channel_account_id,
-        identity_type: identity.type,
-        normalized_value: identity.value,
-        channel_verification_status: channelVerified ? 'VERIFIED' : 'UNVERIFIED',
-        customer_match_status: 'UNMATCHED',
-        verification_method: channelVerified ? String(verification.method) : null,
-        verified_at: channelVerified ? isoDate(envelope.occurred_at) : null,
-        party_id: null,
-        contact_id: null,
-      },
-      update: channelVerified ? {
-        channel_verification_status: 'VERIFIED',
-        verification_method: String(verification.method),
-        verified_at: isoDate(envelope.occurred_at),
-      } : {},
-    });
-    await tx.crm_external_thread_identity.upsert({
-      where: { thread_link_id_external_identity_id: { thread_link_id: link.id, external_identity_id: externalIdentity.id } },
-      create: {
-        id: crypto.randomUUID(),
-        tenant_id: source.tenant_id,
-        company_id: source.company_id,
-        thread_link_id: link.id,
-        external_identity_id: externalIdentity.id,
-        participant_role: 'CUSTOMER',
-      },
-      update: { participant_role: 'CUSTOMER' },
-    });
+    if (identity) {
+      const identityKey = {
+        integration_source_id_channel_account_id_identity_type_normalized_value: {
+          integration_source_id: source.id,
+          channel_account_id: source.channel_account_id!,
+          identity_type: identity.type,
+          normalized_value: identity.value,
+        },
+      };
+      // A source can attest that an identity was verified upstream. This is
+      // deliberately independent of the originating messaging channel.
+      const identityVerified = verification?.status === 'VERIFIED' && typeof verification.method === 'string';
+      const externalIdentity = await tx.crm_external_identity.upsert({
+        where: identityKey,
+        create: {
+          id: crypto.randomUUID(),
+          tenant_id: source.tenant_id,
+          company_id: source.company_id,
+          integration_source_id: source.id,
+          channel_account_id: source.channel_account_id!,
+          identity_type: identity.type,
+          normalized_value: identity.value,
+          channel_verification_status: identityVerified ? 'VERIFIED' : 'UNVERIFIED',
+          customer_match_status: 'UNMATCHED',
+          verification_method: identityVerified ? String(verification.method) : null,
+          verified_at: identityVerified ? isoDate(envelope.occurred_at) : null,
+          party_id: null,
+          contact_id: null,
+        },
+        update: identityVerified ? {
+          channel_verification_status: 'VERIFIED',
+          verification_method: String(verification.method),
+          verified_at: isoDate(envelope.occurred_at),
+        } : {},
+      });
+      await tx.crm_external_thread_identity.upsert({
+        where: { thread_link_id_external_identity_id: { thread_link_id: link.id, external_identity_id: externalIdentity.id } },
+        create: {
+          id: crypto.randomUUID(),
+          tenant_id: source.tenant_id,
+          company_id: source.company_id,
+          thread_link_id: link.id,
+          external_identity_id: externalIdentity.id,
+          participant_role: 'CUSTOMER',
+        },
+        update: { participant_role: 'CUSTOMER' },
+      });
+    }
 
     const messageKey = {
       integration_source_id_channel_account_id_external_message_id: {
@@ -204,9 +209,19 @@ async function processMessageEvent(event: ClaimedEvent) {
       });
     }
 
+    const currentConversation = await tx.crm_conversation.findFirst({
+      where: { id: link.conversation_id, company_id: source.company_id },
+      select: { inquiry_id: true },
+    });
     await tx.crm_conversation.updateMany({
       where: { id: link.conversation_id, company_id: source.company_id },
-      data: { updated_at: new Date(), status: 'OPEN' },
+      data: {
+        updated_at: new Date(),
+        // New inbound activity reopens an ignored thread, while an already
+        // escalated thread stays linked to its Inquiry.
+        status: currentConversation?.inquiry_id ? 'ESCALATED' : 'OPEN',
+        closed_at: null,
+      },
     });
     await tx.crm_integration_event.updateMany({
       where: { id: event.id, lock_token: event.lock_token, status: 'PROCESSING' },

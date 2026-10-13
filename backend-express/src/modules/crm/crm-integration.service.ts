@@ -36,9 +36,11 @@ function decryptSecret(value: string): string {
 
 export interface CreateIntegrationSourceInput {
   source_code: string;
-  channel_type: 'WHATSAPP' | 'WEBSITE' | 'EMAIL' | 'OTHER';
   account_name?: string;
   external_account_id?: string;
+  business_unit_code?: string;
+  business_unit_name?: string;
+  default_assigned_user_id?: string;
   allowed_event_types?: string[];
 }
 
@@ -52,6 +54,28 @@ export class CRMIntegrationService {
     const sourceCode = input.source_code.trim().toUpperCase();
     if (!/^[A-Z0-9][A-Z0-9_-]{1,63}$/.test(sourceCode)) {
       throw new ValidationError('source_code harus 2–64 karakter A–Z, angka, _ atau -.');
+    }
+    const businessUnitCode = input.business_unit_code?.trim().toUpperCase() || null;
+    const businessUnitName = input.business_unit_name?.trim() || null;
+    if (businessUnitCode && !/^[A-Z0-9][A-Z0-9_-]{1,63}$/.test(businessUnitCode)) {
+      throw new ValidationError('business_unit_code harus 2–64 karakter A–Z, angka, _ atau -.');
+    }
+    if (businessUnitName && businessUnitName.length > 120) throw new ValidationError('business_unit_name maksimal 120 karakter.');
+    const defaultAssignedUserId = input.default_assigned_user_id?.trim() || null;
+    if (defaultAssignedUserId) {
+      const user = await prisma.iam_user.findFirst({
+        where: { id: defaultAssignedUserId, tenant_id: tenantId, status: 'ACTIVE', is_active: true },
+        select: { id: true },
+      });
+      const assignments = user ? await prisma.iam_user_role.findMany({
+        where: { user_id: user.id, tenant_id: tenantId, company_id: companyId },
+        select: { role_id: true },
+      }) : [];
+      const roleIds = assignments.flatMap((assignment) => assignment.role_id ? [assignment.role_id] : []);
+      const eligible = roleIds.length ? await prisma.iam_role.count({
+        where: { id: { in: roleIds }, role_code: { in: ['CRM_LEAD', 'SALES'] } },
+      }) : 0;
+      if (!user || !eligible) throw new ValidationError('default_assigned_user_id harus user aktif dengan role CRM Lead atau Sales pada company ini.');
     }
     const allowedEvents = [...new Set((input.allowed_event_types?.length ? input.allowed_event_types : DEFAULT_EVENTS).map((event) => event.trim()))];
     if (!allowedEvents.length || allowedEvents.some((event) => !DEFAULT_EVENTS.includes(event))) {
@@ -68,8 +92,8 @@ export class CRMIntegrationService {
           id: channelAccountId,
           tenant_id: tenantId,
           company_id: companyId,
-          channel_type: input.channel_type,
-          account_name: input.account_name?.trim() || `${sourceCode} inbound`,
+          channel_type: 'INTERNAL_PIPELINE',
+          account_name: input.account_name?.trim() || sourceCode,
           external_account_id: input.external_account_id?.trim() || sourceCode,
           credential_reference: `integration:${sourceId}`,
           active: true,
@@ -81,8 +105,11 @@ export class CRMIntegrationService {
           source_code: sourceCode,
           tenant_id: tenantId,
           company_id: companyId,
-          channel_type: input.channel_type,
+          channel_type: 'INTERNAL_PIPELINE',
           channel_account_id: channel.id,
+          business_unit_code: businessUnitCode,
+          business_unit_name: businessUnitName,
+          default_assigned_user_id: defaultAssignedUserId,
           secret_encrypted: encryptSecret(signingSecret),
           key_id: keyId,
           allowed_event_types: allowedEvents,
@@ -91,7 +118,8 @@ export class CRMIntegrationService {
         },
         select: {
           id: true, source_code: true, tenant_id: true, company_id: true,
-          channel_type: true, channel_account_id: true, key_id: true,
+          channel_type: true, channel_account_id: true, business_unit_code: true,
+          business_unit_name: true, default_assigned_user_id: true, key_id: true,
           allowed_event_types: true, status: true, created_at: true,
         },
       });
@@ -108,7 +136,8 @@ export class CRMIntegrationService {
       orderBy: { created_at: 'desc' },
       select: {
         id: true, source_code: true, tenant_id: true, company_id: true,
-        channel_type: true, channel_account_id: true, key_id: true,
+        channel_type: true, channel_account_id: true, business_unit_code: true,
+        business_unit_name: true, default_assigned_user_id: true, key_id: true,
         previous_key_id: true, previous_valid_until: true,
         allowed_event_types: true, status: true, created_at: true, last_seen_at: true,
       },

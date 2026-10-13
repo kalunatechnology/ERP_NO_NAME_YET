@@ -97,7 +97,7 @@ Mutation pada root bisnis yang dikonfigurasi wajib membawa `Idempotency-Key` 16â
 
 ### External/file/notification flow
 
-Frontend chatbot memanggil service eksternal langsung, termasuk SSE chat, conversation, knowledge ingestion/search, dan multipart upload. Backend Express tidak menjadi proxy untuk transport WhatsApp dan tidak mengirim pesan keluar. CRM inbound dari Arsalynk kini memiliki registry integrasi, HMAC raw-body verification, durable event inbox, worker, external thread/message deduplication, dan Customer Inbox. Provider delivery, email/WhatsApp outbound, dan attachment transport tetap berada di Arsalynk atau belum tersedia.
+Frontend chatbot memanggil service eksternal langsung, termasuk SSE chat, conversation, knowledge ingestion/search, dan multipart upload. Backend Express tidak menjadi proxy untuk transport pihak ketiga dan tidak mengirim pesan keluar. CRM memiliki registry integrasi internal, verifikasi HMAC raw-body, durable event inbox, worker, deduplikasi thread/pesan, routing unit bisnis/default PIC, serta Inbox CRM. Konektivitas transport eksternal tetap dikelola sistem upstream.
 
 ## 3. Complete Repository Structure
 
@@ -872,7 +872,7 @@ IMPLEMENTED: Morgan request log, Prisma log menurut environment, global error lo
 | Chatbot/RAG | `frontend-next/services/chatbot.service.ts` | Browser Bearer caller token; SSE/JSON/multipart | throws Error/callback; no backend circuit breaker |
 | Vercel | backend adapter/config; possible frontend host | build artifact + env | platform behavior; no repo runbook |
 
-Payment gateway, transactional email, WhatsApp outbound, cloud object storage, shared Redis, dan message broker: **NOT FOUND**. Signed inbound CRM webhook from Arsalynk is **IMPLEMENTED IN SOURCE**; production migration, secret provisioning, matching `wa_api` sender release, and end-to-end provider UAT are pending. Cache proses-lokal untuk dashboard BFF dan Request Card **IMPLEMENTED**; cache ini bukan pengganti Redis untuk deployment multi-instance.
+Payment gateway, transactional email, outbound messaging, cloud object storage, shared Redis, dan message broker: **NOT FOUND**. Signed inbound CRM internal-pipeline webhook is **IMPLEMENTED IN SOURCE**; database migrations, secret provisioning, integration source/unit routing configuration, and end-to-end upstream UAT remain rollout work. Cache proses-lokal untuk dashboard BFF dan Request Card **IMPLEMENTED**; cache ini bukan pengganti Redis untuk deployment multi-instance.
 
 ## 18. File-by-File Documentation
 
