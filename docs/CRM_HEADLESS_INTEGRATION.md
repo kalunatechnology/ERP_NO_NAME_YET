@@ -70,6 +70,8 @@ Penerimaan event menggunakan `event_id` sebagai idempotency key, ditambah nonce 
 
 Delivery diproses oleh worker Marka. Respons HTTP 2xx dianggap sukses; kegagalan dicoba ulang dengan jeda bertambah sampai 5 percobaan, lalu status menjadi `DEAD_LETTER`. Admin dapat memeriksa status dan meminta retry melalui endpoint di atas. `quotation.accepted` memanggil alur Deal Won Marka yang sudah ada: pemeriksaan kredit dan pembuatan order/project mengikuti hasil aturan bisnis tersebut.
 
+Worker inbound/outbound dijalankan otomatis oleh proses backend setelah koneksi database siap, dengan polling setiap 2 detik. Endpoint `POST /internal/crm-integration-worker/run` tersedia untuk pemanggilan worker terproteksi, tetapi cron eksternal tidak diperlukan pada deployment satu proses backend. Deployment multi-instance aman menggunakan klaim antrean `FOR UPDATE SKIP LOCKED`.
+
 ## Portal Pelanggan
 
 Admin dapat menerbitkan token scoped untuk satu customer. Nilai rahasia hanya ditampilkan sekali saat dibuat; database hanya menyimpan hash.
@@ -88,6 +90,7 @@ Sertakan `Authorization: Bearer <token>` atau `X-Api-Key: <token>`. Endpoint por
 
 - Aktivitas sales dicatat melalui `/api/v1/crm/activities/` dan terhubung ke opportunity/customer. Antarmuka CRM mendukung telepon, meeting, catatan, dan follow-up terjadwal.
 - Opportunity kalah ditutup lewat `POST /api/v1/crm/opportunities/:id/mark-lost` dengan alasan `PRICE_TOO_HIGH`, `LOST_FEATURES`, `BUDGET_CANCELLED`, `COMPETITOR`, `NO_RESPONSE`, atau `OTHER` (pilihan `OTHER` wajib dijelaskan).
+- Saat staf mengonfirmasi external identity, party ditautkan ke conversation dan inquiry yang telah dibuat. Jika identitas sudah dikonfirmasi sebelum conversation dieskalasi, inquiry baru mewarisi `customer_party_id` conversation.
 - Pemeriksaan garansi menggunakan `POST /api/v1/service/cases/:id/check-warranty`. Marka mencocokkan serial number ke pengiriman company dan kontrak garansi. Untuk status `WARRANTY_ACTIVE`, teknisi dapat dibuatkan Work Order melalui `POST /api/v1/service/cases/:id/work-orders`.
 - Untuk melepas Credit Hold setelah DP lunas, receipt Finance harus dialokasikan ke Proforma Invoice terkait. Setelah receipt terverifikasi dan saldo proforma nol, sistem melanjutkan handoff Deal Won dan membuat Sales Order serta Project Workspace dalam transaksi Finance yang sama.
 - Endpoint `/api/v1/crm/opportunities/:id/customer-360` menyajikan LTV dari nilai Sales Order, proyek aktif, kontrak, pengiriman, piutang terbuka, dan indikator invoice lewat jatuh tempo.

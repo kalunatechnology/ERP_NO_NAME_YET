@@ -526,6 +526,9 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
         const inquiry = await tx.crm_customer_inquiry.findFirst({ where: { id: conversation.inquiry_id, company_id: company } });
         if (inquiry) return { inquiry, created: false };
       }
+      const confirmedCustomer = conversation.customer_party_id
+        ? await tx.master_party.findFirst({ where: { id: conversation.customer_party_id, company_id: company, status: 'ACTIVE' }, select: { id: true, display_name: true, legal_name: true } })
+        : null;
       const messages = await tx.crm_message.findMany({
         where: { conversation_id: conversation.id, company_id: company },
         orderBy: [{ received_at: 'desc' }, { sent_at: 'desc' }],
@@ -539,14 +542,14 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
           tenant_id: conversation.tenant_id ?? req.tenantId,
           company_id: company,
           created_by_id: req.user?.id,
-          customer_party_id: null,
+          customer_party_id: confirmedCustomer?.id ?? null,
           contact_id: null,
           owner_user_id: conversation.assigned_user_id ?? req.user?.id,
           inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
           source_channel: 'INTERNAL_PIPELINE',
           subject: conversation.subject || 'Inquiry dari Customer Inbox',
           description: description || `Dibuat dari conversation ${conversation.id}.`,
-          customer_name: conversation.subject || 'Belum teridentifikasi',
+          customer_name: confirmedCustomer?.display_name || confirmedCustomer?.legal_name || conversation.subject || 'Belum teridentifikasi',
           customer_email: '',
           status: 'NEW',
           created_at: now,
