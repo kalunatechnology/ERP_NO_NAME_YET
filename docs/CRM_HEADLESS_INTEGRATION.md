@@ -55,3 +55,27 @@ Event outbound: `quotation.ready` (saat penawaran dikirim), `quotation.accepted`
 Penerimaan event menggunakan `event_id` sebagai idempotency key, ditambah nonce HMAC yang hanya dapat dipakai sekali. Event diproses dalam transaksi sehingga pengulangan dengan ID dan payload sama tidak membuat inquiry, tiket, atau order ganda.
 
 Delivery diproses oleh worker Marka. Respons HTTP 2xx dianggap sukses; kegagalan dicoba ulang dengan jeda bertambah sampai 5 percobaan, lalu status menjadi `DEAD_LETTER`. Admin dapat memeriksa status dan meminta retry melalui endpoint di atas. `quotation.accepted` memanggil alur Deal Won Marka yang sudah ada: pemeriksaan kredit dan pembuatan order/project mengikuti hasil aturan bisnis tersebut.
+
+## Portal Pelanggan
+
+Admin dapat menerbitkan token scoped untuk satu customer. Nilai rahasia hanya ditampilkan sekali saat dibuat; database hanya menyimpan hash.
+
+| Method dan path | Kegunaan |
+| --- | --- |
+| `POST /api/v1/crm/portal-tokens` | Membuat token untuk `party_id`; scope `quotation:read` dan `ticket:read`; masa aktif maksimal 365 hari |
+| `GET /api/v1/crm/portal-tokens` | Melihat token tanpa nilai rahasianya |
+| `POST /api/v1/crm/portal-tokens/:id/revoke` | Mencabut token |
+| `GET /api/v1/portal/quotations/:id` | Membaca penawaran milik party pemegang token |
+| `GET /api/v1/portal/tickets/:id` | Membaca tiket milik party pemegang token |
+
+Sertakan `Authorization: Bearer <token>` atau `X-Api-Key: <token>`. Endpoint portal membatasi pencarian ke company dan party token, serta hanya mengembalikan field yang aman untuk customer. Tiket harus sudah ditautkan ke customer agar dapat dibaca.
+
+## Operasional CRM dan Service
+
+- Aktivitas sales dicatat melalui `/api/v1/crm/activities/` dan terhubung ke opportunity/customer. Antarmuka CRM mendukung telepon, meeting, catatan, dan follow-up terjadwal.
+- Opportunity kalah ditutup lewat `POST /api/v1/crm/opportunities/:id/mark-lost` dengan alasan `PRICE_TOO_HIGH`, `LOST_FEATURES`, `BUDGET_CANCELLED`, `COMPETITOR`, `NO_RESPONSE`, atau `OTHER` (pilihan `OTHER` wajib dijelaskan).
+- Pemeriksaan garansi menggunakan `POST /api/v1/service/cases/:id/check-warranty`. Marka mencocokkan serial number ke pengiriman company dan kontrak garansi. Untuk status `WARRANTY_ACTIVE`, teknisi dapat dibuatkan Work Order melalui `POST /api/v1/service/cases/:id/work-orders`.
+- Untuk melepas Credit Hold setelah DP lunas, receipt Finance harus dialokasikan ke Proforma Invoice terkait. Setelah receipt terverifikasi dan saldo proforma nol, sistem melanjutkan handoff Deal Won dan membuat Sales Order serta Project Workspace dalam transaksi Finance yang sama.
+- Endpoint `/api/v1/crm/opportunities/:id/customer-360` menyajikan LTV dari nilai Sales Order, proyek aktif, kontrak, pengiriman, piutang terbuka, dan indikator invoice lewat jatuh tempo.
+
+Perubahan database tambahan mencakup token portal, warranty state pada service case, dan service work order. Terapkan migrasi Prisma sebelum menjalankan backend baru.

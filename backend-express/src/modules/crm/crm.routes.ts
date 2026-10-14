@@ -12,11 +12,58 @@ import prisma from '../../config/database';
 import { CRMService } from './crm.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
-import { requireActiveRole } from '../../middlewares/rbac.middleware';
+import { requireActiveRole, requireAdminForWrite } from '../../middlewares/rbac.middleware';
 import { RoleCode } from '../../types/roles';
 import { queueWebhookEvent } from './crm-outbound-webhook.service';
 
 export const crmRouter = Router();
+
+crmRouter.get('/portal-tokens', async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const rows = await prisma.core_portal_access_token.findMany({
+      where: { company_id: companyId }, orderBy: { created_at: 'desc' }, take: 100,
+      select: { id: true, party_id: true, scopes: true, expires_at: true, revoked_at: true, created_at: true, last_used_at: true },
+    });
+    res.json({ rows });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/portal-tokens', requireAdminForWrite, async (req, res, next) => {
+  try {
+    if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    const companyId = activeCompanyId(req);
+    const partyId = String(req.body.party_id ?? '').trim();
+    const party = await prisma.master_party.findFirst({ where: { id: partyId, company_id: companyId, party_type: 'CUSTOMER' }, select: { id: true } });
+    if (!party) throw new ValidationError('party_id harus customer terdaftar pada company aktif.');
+    const allowedScopes = ['quotation:read', 'ticket:read'];
+    const scopes: string[] = Array.isArray(req.body.scopes) ? [...new Set<string>(req.body.scopes.map((scope: unknown) => String(scope)))] : allowedScopes;
+    if (!scopes.length || scopes.some((scope) => !allowedScopes.includes(scope))) throw new ValidationError('scopes hanya boleh quotation:read dan ticket:read.');
+    const days = req.body.expires_in_days === undefined ? 90 : Number(req.body.expires_in_days);
+    if (!Number.isInteger(days) || days < 1 || days > 365) throw new ValidationError('expires_in_days harus 1–365.');
+    const token = `marka_portal_${crypto.randomBytes(32).toString('base64url')}`;
+    const row = await prisma.core_portal_access_token.create({
+      data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: companyId,
+        party_id: party.id, token_hash: crypto.createHash('sha256').update(token).digest('hex'),
+        scopes, expires_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000), created_by_id: req.user.id,
+      },
+      select: { id: true, party_id: true, scopes: true, expires_at: true, created_at: true },
+    });
+    res.status(201).json({ ...row, api_key: token });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/portal-tokens/:id/revoke', requireAdminForWrite, async (req, res, next) => {
+  try {
+    const updated = await prisma.core_portal_access_token.updateMany({
+      where: { id: req.params.id, company_id: activeCompanyId(req), revoked_at: null },
+      data: { revoked_at: new Date() },
+    });
+    if (!updated.count) { res.status(404).json({ error: { message: 'Token portal tidak ditemukan atau sudah dicabut.' } }); return; }
+    res.json({ id: req.params.id, revoked: true });
+  } catch (error) { next(error); }
+});
 
 function activeCompanyId(req: Request): string {
   if (!req.companyId) throw new ForbiddenError('Pilih company sebelum menjalankan operasi CRM.');
@@ -188,11 +235,19 @@ crmRouter.get('/opportunities/:id/customer-360', async (req: Request, res: Respo
       ? await prisma.master_party.findFirst({ where: { id: opp.customer_party_id, company_id: companyId } })
       : null;
 
-    const [quotationsCount, ordersCount, projectsCount] = await Promise.all([
+    const [quotationsCount, ordersCount, orderTotals, projectsCount, activeProjectsCount, contractsCount, deliveriesCount, outstandingDocs, overdueDocs] = await Promise.all([
       customer ? prisma.sales_quotation.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
       customer ? prisma.sales_order.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.sales_order.aggregate({ where: { customer_party_id: customer.id, company_id: companyId }, _sum: { total_amount: true } }) : { _sum: { total_amount: null } },
       customer ? prisma.project_project.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.project_project.count({ where: { customer_party_id: customer.id, company_id: companyId, status: { notIn: ['CLOSED', 'COMPLETED', 'CANCELLED'] } } }) : 0,
+      customer ? prisma.sales_contract.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.sales_delivery.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.fin_billing_document.aggregate({ where: { party_id: customer.id, company_id: companyId, billing_type: 'CUSTOMER_INVOICE', outstanding_amount: { gt: 0 }, status: 'POSTED' }, _sum: { outstanding_amount: true } }) : { _sum: { outstanding_amount: null } },
+      customer ? prisma.fin_billing_document.count({ where: { party_id: customer.id, company_id: companyId, billing_type: 'CUSTOMER_INVOICE', outstanding_amount: { gt: 0 }, status: 'POSTED', due_date: { lt: new Date() } } }) : 0,
     ]);
+
+    const activityCount = customer ? await prisma.crm_activity.count({ where: { party_id: customer.id, company_id: companyId } }) : 0;
 
     res.json({
       customer: {
@@ -202,11 +257,15 @@ crmRouter.get('/opportunities/:id/customer-360', async (req: Request, res: Respo
       },
       quotations: quotationsCount,
       orders: ordersCount,
+      lifetime_value: orderTotals._sum.total_amount?.toString() ?? '0',
       projects: projectsCount,
-      contracts: 0,
-      deliveries: 0,
-      outstanding_ar: '0',
-      feedback_count: 0,
+      active_projects: activeProjectsCount,
+      contracts: contractsCount,
+      deliveries: deliveriesCount,
+      outstanding_ar: outstandingDocs._sum.outstanding_amount?.toString() ?? '0',
+      payment_reputation: overdueDocs > 0 ? 'AT_RISK' : 'GOOD',
+      overdue_invoice_count: overdueDocs,
+      activity_count: activityCount,
     });
   } catch (err) {
     next(err);
@@ -509,6 +568,21 @@ crmRouter.use('/customer-inquiries', createCrudRouter({ modelName: 'crm_customer
 crmRouter.use('/inquiry-requirements', createCrudRouter({ modelName: 'crm_inquiry_requirement', searchFields: ['description'] }));
 crmRouter.use('/cost-estimates', createCrudRouter({ modelName: 'crm_cost_estimate', searchFields: ['estimate_number'] }));
 crmRouter.use('/cost-estimate-lines', createCrudRouter({ modelName: 'crm_cost_estimate_line', searchFields: ['description', 'cost_element'] }));
+crmRouter.post('/opportunities/:id/mark-lost', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const reason = String(req.body.lost_reason ?? '').trim().toUpperCase();
+    const allowed = ['PRICE_TOO_HIGH', 'LOST_FEATURES', 'BUDGET_CANCELLED', 'COMPETITOR', 'NO_RESPONSE', 'OTHER'];
+    if (!allowed.includes(reason)) throw new ValidationError('Pilih alasan deal kalah yang tersedia.');
+    const companyId = activeCompanyId(req);
+    const opportunity = await prisma.crm_opportunity.findFirst({ where: { id: req.params.id, company_id: companyId } });
+    if (!opportunity) throw new NotFoundError('Opportunity');
+    if (['WON', 'CLOSED_WON'].includes(opportunity.status.toUpperCase())) throw new ConflictError('Opportunity yang sudah menang tidak dapat ditandai kalah.');
+    const lostReason = reason === 'OTHER' ? String(req.body.lost_reason_detail ?? '').trim() : reason;
+    if (!lostReason) throw new ValidationError('Jelaskan alasan lain untuk deal kalah.');
+    const updated = await prisma.crm_opportunity.update({ where: { id: opportunity.id }, data: { lost_reason: lostReason, status: 'LOST', pipeline_stage: 'LOST', closed_at: new Date() } });
+    res.json(updated);
+  } catch (error) { next(error); }
+});
 crmRouter.use('/opportunities', createCrudRouter({ modelName: 'crm_opportunity', searchFields: ['opportunity_name', 'pipeline_stage'] }));
 crmRouter.use('/opportunity-products', createCrudRouter({ modelName: 'crm_opportunity_product' }));
 crmRouter.use('/activities', createCrudRouter({ modelName: 'crm_activity', searchFields: ['subject', 'activity_type'] }));

@@ -4,6 +4,8 @@ Dokumen ini memetakan flow operasional **Customer Relationship Management (CRM)*
 
 > **Runtime note — 7 September 2026:** flow ini dijalankan melalui backend Express/Prisma dan frontend Next aktif. Endpoint CRM telah masuk audit route menyeluruh; company scope dan derived-record inheritance telah diperketat. Dashboard CRM menggunakan agregasi server dan maksimal enam opportunity preview. Lihat [Current Implementation Status](docs/CURRENT_IMPLEMENTATION_STATUS.md).
 
+> **Pembaruan implementasi — 14 Oktober 2026:** pemeriksaan garansi kini memverifikasi serial number yang tercatat pada pengiriman company dan kontrak garansi aktif; status tiket ditampilkan di CRM dan work order repair dapat dibuat setelah hasil `WARRANTY_ACTIVE`. Pembuatan replacement delivery dan credit note tetap mengikuti workflow Inventory/Finance tersendiri. Credit Hold otomatis dilepas setelah Proforma Invoice terkait dibayar penuh dan terverifikasi. Nilai Proforma saat ini memakai total quotation; aturan nominal DP khusus belum dikonfigurasi. Integrasi webhook, API token portal, dan kontrak event dicatat di [Headless CRM Integration](docs/CRM_HEADLESS_INTEGRATION.md).
+
 ---
 
 ## 📑 Daftar Isi

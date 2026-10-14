@@ -24,6 +24,7 @@ import {
   loadCRMData, CRMData, CRMDashboard,
   processDealWon, executiveOverrideCredit, qualifyInquiry,
   createOpportunity, deleteOpportunity,
+  createCRMActivity, getOpportunityCustomer360, markOpportunityLost, createServiceWorkOrder,
   createCustomerInquiry, deleteCustomerInquiry,
   createCostEstimate, calculateCostEstimate, createQuotationFromEstimate, deleteCostEstimate,
   submitQuotationApproval, approveQuotation, sendQuotation, acceptQuotation, rejectQuotation, convertQuotationToOrder,
@@ -408,6 +409,9 @@ function TabDeals({
   const [resultModal, setResultModal] = useState<any>(null);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [oppFilter, setOppFilter] = useState<"ACTIVE" | "CANCELLED" | "ALL">("ACTIVE");
+  const [activityOpp, setActivityOpp] = useState<any>(null);
+  const [customer360, setCustomer360] = useState<any>(null);
+  const [activityForm, setActivityForm] = useState({ activity_type: "CALL", subject: "", scheduled_at: "" });
 
   const allOpps = data.opportunities || [];
   const activeOpps = allOpps.filter(o => {
@@ -427,12 +431,12 @@ function TabDeals({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
     const ps = (o.pipeline_stage || "").toUpperCase();
-    return !["CANCELLED", "CANCEL", "BATAL"].includes(st) && !["CANCELLED", "CANCEL", "BATAL"].includes(ps);
+    return !["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(st) && !["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(ps);
   });
   const cancelledOpps = allOpps.filter(o => {
     const st = (o.status || "").toUpperCase();
     const ps = (o.pipeline_stage || "").toUpperCase();
-    return ["CANCELLED", "CANCEL", "BATAL"].includes(st) || ["CANCELLED", "CANCEL", "BATAL"].includes(ps);
+    return ["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(st) || ["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(ps);
   });
   const displayedOpps = oppFilter === "ACTIVE" 
     ? activeOpps 
@@ -495,6 +499,30 @@ function TabDeals({
     catch (e: any) { 
       toast.error(e?.response?.data?.detail || e?.message || "Gagal menghapus opportunity."); 
     }
+  };
+
+  const handleMarkLost = async (id: string | number) => {
+    const reasons = ["PRICE_TOO_HIGH", "LOST_FEATURES", "BUDGET_CANCELLED", "COMPETITOR", "NO_RESPONSE", "OTHER"];
+    const reason = prompt(`Pilih alasan deal kalah:\n${reasons.map((item, index) => `${index + 1}. ${item}`).join("\n")}\nMasukkan nomor pilihan (1–6):`);
+    if (!reason) return;
+    const selected = reasons[Number(reason) - 1];
+    if (!selected) { toast.error("Pilihan alasan tidak valid."); return; }
+    const detail = selected === "OTHER" ? prompt("Jelaskan alasan deal kalah:") || "" : undefined;
+    try { await markOpportunityLost(id, selected, detail); toast.success("Opportunity ditandai kalah."); onRefresh(); }
+    catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal menyimpan alasan kalah."); }
+  };
+
+  const handleActivitySave = async () => {
+    if (!activityOpp || !activityForm.subject.trim()) { toast.error("Isi catatan aktivitas terlebih dahulu."); return; }
+    try {
+      await createCRMActivity({ opportunity_id: activityOpp.id, party_id: activityOpp.customer_party, activity_type: activityForm.activity_type, subject: activityForm.subject.trim(), scheduled_at: activityForm.scheduled_at ? new Date(activityForm.scheduled_at).toISOString() : null });
+      toast.success("Aktivitas tersimpan."); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); onRefresh();
+    } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal menyimpan aktivitas."); }
+  };
+
+  const handleCustomer360 = async (id: string | number) => {
+    try { setCustomer360(await getOpportunityCustomer360(id)); }
+    catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal memuat Customer 360."); }
   };
 
   /**
@@ -658,7 +686,7 @@ function TabDeals({
  */
               const cust = (data.parties||[]).find(p => String(p.id) === String(o.customer_party));
               const isWon = ["WON","CLOSED_WON"].includes((o.status||"").toUpperCase());
-              const isCancelled = ["CANCELLED","CANCEL","BATAL"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL"].includes((o.pipeline_stage||"").toUpperCase());
+              const isCancelled = ["CANCELLED","CANCEL","BATAL","LOST"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL","LOST"].includes((o.pipeline_stage||"").toUpperCase());
 
               return (
                 <div 
@@ -682,6 +710,8 @@ function TabDeals({
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); }} label="Aktivitas" small variant="ghost" />}
+                    {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" />}
                     {!readOnly ? (
                       <>
                         {!isCancelled && (
@@ -690,13 +720,7 @@ function TabDeals({
                         {isWon && !isCancelled && (
                           <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small />
                         )}
-                        <button 
-                          onClick={() => handleDelete(o.id)} 
-                          title={isCancelled ? "Hapus permanen / bersihkan" : "Batalkan opportunity"}
-                          className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {isCancelled ? <button onClick={() => handleDelete(o.id)} title="Hapus permanen" className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={13} /></button> : <ActionBtn onClick={() => handleMarkLost(o.id)} label="Tandai kalah" small variant="ghost" />}
                       </>
                     ) : (
                       <span className="text-2xs text-text-secondary italic">
@@ -860,6 +884,19 @@ function TabDeals({
           </div>
         </Modal>
       )}
+      <Modal isOpen={Boolean(activityOpp)} onClose={() => setActivityOpp(null)} title={`Aktivitas — ${activityOpp?.opportunity_name || "Opportunity"}`} size="sm">
+        <div className="space-y-3">
+          <label className="block text-xs font-medium">Jenis aktivitas<select className="input mt-1 w-full" value={activityForm.activity_type} onChange={e => setActivityForm({ ...activityForm, activity_type: e.target.value })}><option value="CALL">Telepon</option><option value="MEETING">Meeting</option><option value="NOTE">Catatan</option><option value="FOLLOW_UP">Follow-up</option></select></label>
+          <label className="block text-xs font-medium">Catatan<textarea className="input mt-1 w-full min-h-20" value={activityForm.subject} onChange={e => setActivityForm({ ...activityForm, subject: e.target.value })} placeholder="Ringkasan percakapan atau tindak lanjut" /></label>
+          <label className="block text-xs font-medium">Jadwalkan follow-up (opsional)<input className="input mt-1 w-full" type="datetime-local" value={activityForm.scheduled_at} onChange={e => setActivityForm({ ...activityForm, scheduled_at: e.target.value })} /></label>
+          <div className="text-xs text-text-secondary">Riwayat: {(data.activities || []).filter(a => String(a.opportunity_id) === String(activityOpp?.id)).length} aktivitas</div>
+          <div className="max-h-32 overflow-y-auto space-y-1">{(data.activities || []).filter(a => String(a.opportunity_id) === String(activityOpp?.id)).map(a => <div key={a.id} className="border rounded p-2 text-xs"><b>{a.activity_type}</b> · {a.subject}<div className="text-text-secondary">{a.scheduled_at ? formatDate(a.scheduled_at) : "Selesai"}</div></div>)}</div>
+          <button onClick={handleActivitySave} className="btn-primary w-full">Simpan aktivitas</button>
+        </div>
+      </Modal>
+      <Modal isOpen={Boolean(customer360)} onClose={() => setCustomer360(null)} title="Customer 360 View" size="sm">
+        {customer360 && <div className="grid grid-cols-2 gap-3 text-sm"><div className="col-span-2 font-semibold">{customer360.customer?.name || "Pelanggan"}</div><div>LTV<br/><b>{formatMoney(customer360.lifetime_value || 0)}</b></div><div>Proyek berjalan<br/><b>{customer360.active_projects ?? 0}</b></div><div>Total proyek<br/><b>{customer360.projects ?? 0}</b></div><div>Piutang terbuka<br/><b>{formatMoney(customer360.outstanding_ar || 0)}</b></div><div>Pengiriman<br/><b>{customer360.deliveries ?? 0}</b></div><div>Kontrak<br/><b>{customer360.contracts ?? 0}</b></div><div className="col-span-2">Reputasi pembayaran: <b>{customer360.payment_reputation || "—"}</b> · Invoice jatuh tempo: {customer360.overdue_invoice_count ?? 0}</div></div>}
+      </Modal>
     </div>
   );
 }
@@ -1036,7 +1073,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: C
 function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
-  const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", case_type: "WARRANTY_CLAIM", description: "" });
+  const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", case_type: "WARRANTY_CLAIM", description: "", serial_number: "" });
 
   /**
    * Creates a support ticket after enforcing the required subject.
@@ -1083,13 +1120,14 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
                       {cust?.display_name || "Customer"} · Prioritas: <b>{c.priority || "NORMAL"}</b>
                     </div>
                     <StatusBadge status={c.status || "OPEN"} />
+                    {c.warranty_status && <span className={cn("ml-1 px-2 py-0.5 rounded-full text-2xs font-semibold", c.warranty_status === "WARRANTY_ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{c.warranty_status}</span>}
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {!readOnly ? (
                       <>
-                        {!resolved ? (
-                          <ActionBtn onClick={async () => { await checkTicketWarrantyStatus(c.id); toast.success("Status diperbarui."); onRefresh(); }} label="Periksa status" small variant="ghost" />
-                        ) : (
+                        {!resolved && <ActionBtn onClick={async () => { try { const result = await checkTicketWarrantyStatus(c.id); toast.success(`Garansi: ${result.warranty_status}`); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Pemeriksaan garansi gagal."); } }} label="Periksa garansi" small variant="ghost" />}
+                        {c.warranty_status === "WARRANTY_ACTIVE" && !resolved && <ActionBtn onClick={async () => { try { await createServiceWorkOrder(c.id); toast.success("Work Order teknisi dibuat."); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal membuat Work Order."); } }} label="Buat Work Order" small />}
+                        {resolved && (
                           <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">RESOLVED</span>
                         )}
                         <button onClick={async () => { if(!confirm("Hapus tiket?")) return; await deleteSupportTicket(c.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
@@ -1131,6 +1169,10 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Subject *</label>
             <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} placeholder="Judul tiket..." />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Nomor seri produk (untuk pemeriksaan garansi)</label>
+            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.serial_number} onChange={e => setForm(f => ({...f, serial_number: e.target.value}))} placeholder="Nomor seri pada label produk" />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -1767,7 +1809,7 @@ export default function CrmClient() {
   };
 
   const data: CRMData = crmData || {
-    inquiries:[], requirements:[], opportunities:[], stages:[], estimates:[], estimateLines:[],
+    inquiries:[], requirements:[], opportunities:[], activities:[], stages:[], estimates:[], estimateLines:[],
     quotations:[], approvals:[], deliveries:[], contracts:[], orders:[], conversations:[],
     feedback:[], credit:[], cases:[], resolutions:[], products:[], parties:[],
   };

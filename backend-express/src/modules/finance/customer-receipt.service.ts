@@ -6,6 +6,7 @@ import { AccountingError, ConflictError, ForbiddenError, NotFoundError, Validati
 import { FinanceService } from './finance.service';
 import { FinanceDocumentService } from './finance-document.service';
 import { PeriodClosingService } from './period-closing.service';
+import { CRMService } from '../crm/crm.service';
 
 export class CustomerReceiptService {
   static assertReviewer(payment: { created_by_id?: string | null; submitted_by_id?: string | null }, userId: string) {
@@ -75,12 +76,18 @@ export class CustomerReceiptService {
         targets.set(allocation.billing_document_id, (targets.get(allocation.billing_document_id) ?? new Decimal(0)).plus(allocated));
       }
       let createAllocation = false;
-      if (!allocations.length && (plan.invoice_id || String(plan.invoice_ref ?? '').trim())) {
+      if (!allocations.length && (plan.invoice_id || String(plan.invoice_ref ?? '').trim() || plan.proforma_id)) {
+        if (plan.proforma_id && (plan.invoice_id || String(plan.invoice_ref ?? '').trim())) throw new ValidationError('Satu penerimaan hanya boleh dialokasikan ke invoice atau proforma, bukan keduanya.');
         const matches = await tx.fin_billing_document.findMany({ where: {
-          ...scope, billing_type: 'CUSTOMER_INVOICE',
-          ...(plan.invoice_id ? { id: String(plan.invoice_id) } : { invoice_number: String(plan.invoice_ref).trim() }),
+          ...scope,
+          ...(plan.proforma_id ? { id: String(plan.proforma_id), billing_type: 'PROFORMA_INVOICE' } : { billing_type: 'CUSTOMER_INVOICE', ...(plan.invoice_id ? { id: String(plan.invoice_id) } : { invoice_number: String(plan.invoice_ref).trim() }) }),
         }, take: 2 });
-        if (matches.length !== 1) throw new ValidationError('Invoice penerimaan tidak ditemukan atau ambigu pada company ini. Pilih invoice pelanggan yang valid.');
+        if (matches.length !== 1) throw new ValidationError('Dokumen penerimaan tidak ditemukan atau ambigu pada company ini.');
+        if (plan.proforma_id) {
+          const linkedHandoff = await tx.crm_deal_handoff.findFirst({ where: { proforma_invoice_id: matches[0].id, company_id: companyId }, select: { id: true } });
+          if (!linkedHandoff) throw new ValidationError('Proforma belum terhubung ke Deal Won yang menunggu pembayaran DP.');
+          if (matches[0].status !== 'DRAFT' || matches[0].payment_status === 'PAID') throw new ConflictError('Proforma tidak lagi menerima pembayaran DP.');
+        }
         targets.set(matches[0].id, amount);
         createAllocation = true;
       }
@@ -90,8 +97,10 @@ export class CustomerReceiptService {
       let partyId = payment.party_id;
       const bills: Array<{ bill: any; allocated: Decimal; paid: Decimal; outstanding: Decimal }> = [];
       for (const [id, allocated] of targets) {
-        const bill = await tx.fin_billing_document.findFirst({ where: { ...scope, id, billing_type: 'CUSTOMER_INVOICE', status: 'POSTED' } });
-        if (!bill) throw new ValidationError('Penerimaan hanya dapat melunasi invoice pelanggan yang sudah POSTED pada company ini.');
+        const bill = await tx.fin_billing_document.findFirst({ where: { ...scope, id } });
+        if (!bill || (bill.billing_type === 'CUSTOMER_INVOICE' ? bill.status !== 'POSTED' : bill.billing_type !== 'PROFORMA_INVOICE' || bill.status !== 'DRAFT')) {
+          throw new ValidationError('Penerimaan hanya dapat melunasi invoice POSTED atau proforma DP Deal Won yang masih aktif.');
+        }
         if (bill.currency_id && bill.currency_id !== baseCurrency) throw new ValidationError('Invoice harus menggunakan mata uang dasar perusahaan.');
         if (partyId && bill.party_id !== partyId) throw new ValidationError('Klien pada invoice berbeda dari penerimaan.');
         partyId = bill.party_id;
@@ -100,9 +109,12 @@ export class CustomerReceiptService {
         if (outstanding.lt(0)) throw new ConflictError('Nominal penerimaan melebihi sisa piutang invoice.');
         bills.push({ bill, allocated, paid, outstanding });
       }
+      const proformaCount = bills.filter(({ bill }) => bill.billing_type === 'PROFORMA_INVOICE').length;
+      if (proformaCount && proformaCount !== bills.length) throw new ValidationError('Jangan mencampur alokasi invoice piutang dengan proforma DP dalam satu penerimaan.');
       const coa = await FinanceService.ensureStandardCOA(companyId, tx);
-      const creditAccount = coa.get(targets.size ? '1130' : '2140');
-      if (!creditAccount || creditAccount.status !== 'ACTIVE' || creditAccount.account_type !== (targets.size ? 'ASSET' : 'LIABILITY') || creditAccount.normal_balance !== (targets.size ? 'DEBIT' : 'CREDIT')) {
+      const useReceivable = targets.size > 0 && proformaCount === 0;
+      const creditAccount = coa.get(useReceivable ? '1130' : '2140');
+      if (!creditAccount || creditAccount.status !== 'ACTIVE' || creditAccount.account_type !== (useReceivable ? 'ASSET' : 'LIABILITY') || creditAccount.normal_balance !== (useReceivable ? 'DEBIT' : 'CREDIT')) {
         throw new AccountingError('Akun Piutang Usaha / Uang Muka Pelanggan tidak aktif atau tipe akunnya tidak sesuai.');
       }
       if (creditAccount.id === bankLedger.id) throw new AccountingError('Ledger rekening penerima harus berbeda dari akun piutang / uang muka pelanggan.');
@@ -130,6 +142,11 @@ export class CustomerReceiptService {
         await tx.fin_billing_document.update({ where: { id: bill.id }, data: {
           paid_amount: paid, outstanding_amount: outstanding, payment_status: outstanding.isZero() ? 'PAID' : 'PARTIALLY_PAID',
         } });
+      }
+      for (const { bill, outstanding } of bills) {
+        if (bill.billing_type !== 'PROFORMA_INVOICE' || !outstanding.isZero()) continue;
+        const handoff = await tx.crm_deal_handoff.findFirst({ where: { proforma_invoice_id: bill.id, company_id: companyId }, select: { opportunity_id: true } });
+        if (handoff) await CRMService.processDealWon(handoff.opportunity_id, { id: userId }, companyId, tx);
       }
       await FinanceDocumentService.markPosted(tx, document.id, userId, postingDate);
       return tx.fin_payment.update({ where: { id: payment.id }, data: {

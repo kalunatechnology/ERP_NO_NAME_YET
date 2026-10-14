@@ -446,8 +446,14 @@ export class CRMService {
       if (!opportunity) throw new NotFoundError('Opportunity');
 
       const previousHandoff = await tx.crm_deal_handoff.findUnique({ where: { opportunity_id: opportunity.id } });
+      let depositSettled = false;
       if (previousHandoff) {
-        return {
+        const proforma = previousHandoff.proforma_invoice_id ? await tx.fin_billing_document.findFirst({
+          where: { id: previousHandoff.proforma_invoice_id, company_id: opportunity.company_id ?? explicitCompanyId, billing_type: 'PROFORMA_INVOICE' },
+          select: { payment_status: true, outstanding_amount: true },
+        }) : null;
+        depositSettled = Boolean(proforma && proforma.payment_status === 'PAID' && Number(proforma.outstanding_amount ?? 0) <= 0);
+        if (!depositSettled) return {
           opportunity_id: opportunity.id,
           opportunity_name: opportunity.opportunity_name,
           stage: 'WON',
@@ -489,10 +495,11 @@ export class CRMService {
 
       const snapshot = await this.calculateCreditSnapshot(customerPartyId, companyId, tx);
       const dealAmount = Number(acceptedQuotation.total_amount ?? opportunity.expected_amount ?? 0);
-      const isSafe =
+      const isSafe = depositSettled || (
         snapshot.credit_status !== 'HOLD' &&
         Number(snapshot.available_credit) >= dealAmount &&
-        Number(snapshot.overdue_amount) <= 0;
+        Number(snapshot.overdue_amount) <= 0
+      );
 
       let createdOrder: any = null;
       let createdProject: any = null;
@@ -598,20 +605,18 @@ export class CRMService {
         }
       }
 
-      await tx.crm_deal_handoff.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenant_id: opportunity.tenant_id,
-          company_id: companyId,
-          opportunity_id: opportunity.id,
-          decision: isSafe ? 'SEND_TO_PROJECT_MANAGEMENT' : 'SEND_BILL_TO_CLIENT_MANUALLY',
-          credit_snapshot_id: snapshot.id,
-          sales_order_id: createdOrder?.id ?? null,
-          project_id: createdProject?.id ?? null,
-          proforma_invoice_id: proformaBilling?.id ?? null,
-          created_by_id: user?.id,
-        },
-      });
+      const handoffData = {
+        decision: isSafe ? 'SEND_TO_PROJECT_MANAGEMENT' : 'SEND_BILL_TO_CLIENT_MANUALLY',
+        credit_snapshot_id: snapshot.id,
+        sales_order_id: createdOrder?.id ?? null,
+        project_id: createdProject?.id ?? null,
+        proforma_invoice_id: isSafe ? null : proformaBilling?.id ?? previousHandoff?.proforma_invoice_id ?? null,
+      };
+      if (previousHandoff) await tx.crm_deal_handoff.update({ where: { id: previousHandoff.id }, data: handoffData });
+      else await tx.crm_deal_handoff.create({ data: {
+        id: crypto.randomUUID(), tenant_id: opportunity.tenant_id, company_id: companyId,
+        opportunity_id: opportunity.id, ...handoffData, created_by_id: user?.id,
+      } });
 
       await queueWebhookEvent(tx, companyId, 'deal.won', {
         opportunity_id: opportunity.id,

@@ -33,6 +33,7 @@ import { masterDataRouter } from './modules/master_data/master_data.routes';
 import { crmRouter } from './modules/crm/crm.routes';
 import { crmIntegrationAdminRouter, crmIntegrationWebhookRouter } from './modules/crm/crm-integration.routes';
 import { crmIntegrationWorkerRouter } from './modules/crm/crm-integration-worker.routes';
+import { crmPortalRouter } from './modules/crm/crm-portal.routes';
 import { salesRouter } from './modules/sales/sales.routes';
 import { projectsRouter } from './modules/projects/projects.routes';
 import { timesheetTimerRouter } from './modules/projects/timesheet-timer.routes';
@@ -180,6 +181,8 @@ export function createApp(): Express {
 
   // Public authentication endpoints are explicitly allow-listed.
   apiV1.use('/auth', publicAuthRouter);
+  // Customer portal uses a party-scoped opaque API key, never an employee JWT.
+  apiV1.use('/portal', crmPortalRouter);
   // Signed system-to-system endpoint. It authenticates each request with the
   // integration registry and does not accept ERP JWT/company headers.
   apiV1.use('/integrations/webhooks', crmIntegrationWebhookRouter);

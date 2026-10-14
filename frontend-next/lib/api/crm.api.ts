@@ -14,6 +14,7 @@ export interface CRMData {
   inquiries: any[];
   requirements: any[];
   opportunities: any[];
+  activities: any[];
   stages: any[];
   estimates: any[];
   estimateLines: any[];
@@ -91,6 +92,7 @@ const CRM_SOURCES: Record<keyof CRMData, string> = {
   inquiries:    "/api/v1/crm/customer-inquiries/?page_size=100",
   requirements: "/api/v1/crm/inquiry-requirements/?page_size=200",
   opportunities:"/api/v1/crm/opportunities/?page_size=100",
+  activities:   "/api/v1/crm/activities/?page_size=200",
   stages:       "/api/v1/crm/pipeline-stages/?page_size=100",
   estimates:    "/api/v1/crm/cost-estimates/?page_size=100",
   estimateLines:"/api/v1/crm/cost-estimate-lines/?page_size=200",
@@ -202,6 +204,21 @@ export async function createOpportunity(payload: {
     pipeline_stage: payload.pipeline_stage || "OPEN",
     status: "OPEN",
   });
+  return data;
+}
+
+export async function createCRMActivity(payload: { opportunity_id: string | number; party_id?: string | number | null; activity_type: string; subject: string; scheduled_at?: string | null }) {
+  const { data } = await api.post('/api/v1/crm/activities/', { ...payload, status: payload.scheduled_at ? 'PLANNED' : 'COMPLETED', completed_at: payload.scheduled_at ? null : new Date().toISOString() });
+  return data;
+}
+
+export async function getOpportunityCustomer360(id: string | number) {
+  const { data } = await api.get(`/api/v1/crm/opportunities/${id}/customer-360/`);
+  return data;
+}
+
+export async function markOpportunityLost(id: string | number, lost_reason: string, lost_reason_detail?: string) {
+  const { data } = await api.post(`/api/v1/crm/opportunities/${id}/mark-lost/`, { lost_reason, lost_reason_detail });
   return data;
 }
 
@@ -508,6 +525,7 @@ export async function createSupportTicket(payload: {
   priority?: string;
   case_type?: string;
   description?: string;
+  serial_number?: string;
 }) {
   const { data } = await api.post("/api/v1/service/cases/", {
     subject: payload.subject,
@@ -515,6 +533,7 @@ export async function createSupportTicket(payload: {
     priority: payload.priority || "NORMAL",
     case_type: payload.case_type || "WARRANTY_CLAIM",
     description: payload.description || "",
+    serial_number: payload.serial_number?.trim() || null,
     status: "OPEN",
   });
   return data;
@@ -527,7 +546,12 @@ export async function createSupportTicket(payload: {
  * ticket or rely on the unimplemented legacy `/check-status` action.
  */
 export async function checkTicketWarrantyStatus(id: string | number) {
-  const { data } = await api.get(`/api/v1/service/cases/${id}/`);
+  const { data } = await api.post(`/api/v1/service/cases/${id}/check-warranty/`, {});
+  return data;
+}
+
+export async function createServiceWorkOrder(id: string | number, assigned_user_id?: string) {
+  const { data } = await api.post(`/api/v1/service/cases/${id}/work-orders/`, { assigned_user_id });
   return data;
 }
 
