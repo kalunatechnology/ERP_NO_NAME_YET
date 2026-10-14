@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { env } from '../../config/env';
-import { ValidationError } from '../../utils/errors';
+import { AppError, ValidationError } from '../../utils/errors';
 
 const SUPPORTED_INBOUND_EVENTS = ['message.received', 'inquiry.submitted', 'ticket.created', 'quotation.decision', 'quotation.accepted'];
 const DEFAULT_EVENTS = ['message.received'];
@@ -10,9 +10,21 @@ const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 
 function encryptionKey(): Buffer {
   const encoded = env.CRM_INTEGRATION_ENCRYPTION_KEY;
-  if (!encoded) throw new Error('CRM_INTEGRATION_ENCRYPTION_KEY is required to manage webhook secrets.');
+  if (!encoded) {
+    throw new AppError(
+      'CRM belum siap membuat koneksi: administrator server harus mengatur CRM_INTEGRATION_ENCRYPTION_KEY.',
+      503,
+      'CRM_INTEGRATION_NOT_CONFIGURED',
+    );
+  }
   const key = Buffer.from(encoded, 'base64');
-  if (key.length !== 32) throw new Error('CRM_INTEGRATION_ENCRYPTION_KEY must be a base64 encoded 32-byte key.');
+  if (key.length !== 32) {
+    throw new AppError(
+      'CRM belum siap membuat koneksi: CRM_INTEGRATION_ENCRYPTION_KEY harus Base64 dari tepat 32 byte acak.',
+      503,
+      'CRM_INTEGRATION_NOT_CONFIGURED',
+    );
+  }
   return key;
 }
 
@@ -52,6 +64,8 @@ export class CRMIntegrationService {
       select: { id: true },
     });
     if (!crmEntitlement) throw new ValidationError('Company harus mengaktifkan modul CRM sebelum membuat integration source.');
+    // Fail before opening a transaction or inserting the channel account.
+    encryptionKey();
     const sourceCode = input.source_code.trim().toUpperCase();
     if (!/^[A-Z0-9][A-Z0-9_-]{1,63}$/.test(sourceCode)) {
       throw new ValidationError('source_code harus 2–64 karakter A–Z, angka, _ atau -.');

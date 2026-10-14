@@ -11,7 +11,7 @@ Status: Marka accepts normalized inbound message events from trusted internal in
 
 ## Provision an integration
 
-Set `CRM_INTEGRATION_ENCRYPTION_KEY` on the Marka backend to a base64-encoded random 32-byte key. Keep it in the host secret manager; do not commit it. Each company administrator can provision an integration source through authenticated `POST /api/v1/core/integration-sources/` after selecting the active company. The registry determines tenant/company and optional business-unit routing; those values cannot be overridden in the webhook body:
+Set `CRM_INTEGRATION_ENCRYPTION_KEY` on the Marka backend to a base64-encoded random 32-byte key. Generate a value with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`, then save it in the backend host's environment/secret settings and restart or redeploy the backend. Keep the key stable across deployments and instances; replacing it makes existing encrypted integration secrets unreadable. Do not commit it or send it to the landing-page browser. If this variable is missing or malformed, integration provisioning returns `503 CRM_INTEGRATION_NOT_CONFIGURED` and creates no source. Each company administrator can provision an integration source through authenticated `POST /api/v1/core/integration-sources/` after selecting the active company. The registry determines tenant/company and optional business-unit routing; those values cannot be overridden in the webhook body:
 
 ```json
 {
