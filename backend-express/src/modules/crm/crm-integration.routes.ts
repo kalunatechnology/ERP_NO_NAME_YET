@@ -4,11 +4,72 @@ import prisma from '../../config/database';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { requireAdminForWrite, requireCompanyContextForWrite } from '../../middlewares/rbac.middleware';
 import { CRMIntegrationService, makeWebhookSignature, normalizeExternalIdentity, safeSignatureEqual } from './crm-integration.service';
+import { createWebhookSubscription, webhookEventTypes } from './crm-outbound-webhook.service';
 
 export const crmIntegrationAdminRouter = Router();
 export const crmIntegrationWebhookRouter = Router();
 
 crmIntegrationAdminRouter.use(requireAdminForWrite);
+
+crmIntegrationAdminRouter.get('/outbound-subscriptions', async (req, res, next) => {
+  try {
+    const rows = await prisma.core_webhook_subscription.findMany({
+      where: { company_id: companyId(req) }, orderBy: { created_at: 'desc' },
+      select: { id: true, name: true, target_url: true, events: true, status: true, created_at: true },
+    });
+    res.json({ rows, supported_events: webhookEventTypes() });
+  } catch (error) { next(error); }
+});
+
+crmIntegrationAdminRouter.get('/outbound-subscriptions/:id/deliveries', async (req, res, next) => {
+  try {
+    const subscription = await prisma.core_webhook_subscription.findFirst({
+      where: { id: req.params.id, company_id: companyId(req) }, select: { id: true },
+    });
+    if (!subscription) { res.status(404).json({ error: { message: 'Webhook subscription tidak ditemukan.' } }); return; }
+    const rows = await prisma.core_webhook_delivery_log.findMany({
+      where: { subscription_id: subscription.id, company_id: companyId(req) },
+      orderBy: { created_at: 'desc' }, take: 100,
+      select: { id: true, event_id: true, event_type: true, status: true, attempt_count: true, max_attempts: true, next_retry_at: true, http_status: true, last_error: true, created_at: true, delivered_at: true },
+    });
+    res.json({ rows });
+  } catch (error) { next(error); }
+});
+
+crmIntegrationAdminRouter.post('/outbound-subscriptions/:id/deliveries/:deliveryId/retry', requireCompanyContextForWrite, async (req, res, next) => {
+  try {
+    const subscription = await prisma.core_webhook_subscription.findFirst({ where: { id: req.params.id, company_id: companyId(req) }, select: { id: true } });
+    if (!subscription) { res.status(404).json({ error: { message: 'Webhook subscription tidak ditemukan.' } }); return; }
+    const updated = await prisma.core_webhook_delivery_log.updateMany({
+      where: { id: req.params.deliveryId, subscription_id: subscription.id, company_id: companyId(req), status: 'DEAD_LETTER' },
+      data: { status: 'PENDING', attempt_count: 0, next_retry_at: new Date(), locked_by: null, lock_token: null, locked_until: null, http_status: null, last_error: null },
+    });
+    if (!updated.count) { res.status(409).json({ error: { message: 'Delivery tidak tersedia untuk retry.' } }); return; }
+    res.status(202).json({ queued: true, delivery_id: req.params.deliveryId });
+  } catch (error) { next(error); }
+});
+
+crmIntegrationAdminRouter.post('/outbound-subscriptions', requireCompanyContextForWrite, async (req, res, next) => {
+  try {
+    if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    if (!Array.isArray(req.body.events) || req.body.events.some((event: unknown) => typeof event !== 'string')) throw new ValidationError('events harus berupa array string.');
+    if (typeof req.body.name !== 'string' || typeof req.body.target_url !== 'string') throw new ValidationError('name dan target_url wajib berupa teks.');
+    try {
+      const result = await createWebhookSubscription({ tenantId: req.tenantId, companyId: companyId(req), createdById: req.user.id, name: req.body.name, targetUrl: req.body.target_url, events: req.body.events });
+      res.status(201).json(result);
+    } catch (error) { throw new ValidationError(error instanceof Error ? error.message : 'Webhook subscription tidak valid.'); }
+  } catch (error) { next(error); }
+});
+
+crmIntegrationAdminRouter.patch('/outbound-subscriptions/:id/status', requireCompanyContextForWrite, async (req, res, next) => {
+  try {
+    const status = String(req.body.status ?? '').toUpperCase();
+    if (!['ACTIVE', 'SUSPENDED'].includes(status)) throw new ValidationError('status harus ACTIVE atau SUSPENDED.');
+    const updated = await prisma.core_webhook_subscription.updateMany({ where: { id: req.params.id, company_id: companyId(req) }, data: { status } });
+    if (!updated.count) { res.status(404).json({ error: { message: 'Webhook subscription tidak ditemukan.' } }); return; }
+    res.json({ id: req.params.id, status });
+  } catch (error) { next(error); }
+});
 
 function companyId(req: Request) {
   if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengelola integration source.');
@@ -127,8 +188,15 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
     if (!safeSignatureEqual(expected, signature)) return res.status(401).json({ error: 'INVALID_SIGNATURE' });
     if (!signatureConfig.source.allowed_event_types.includes(eventType)) return res.status(400).json({ error: 'EVENT_TYPE_NOT_ALLOWED' });
 
-    if (eventType !== 'message.received') return res.status(422).json({ error: 'EVENT_TYPE_NOT_IMPLEMENTED' });
     const data = envelope.data;
+    if (eventType === 'inquiry.submitted') {
+      if (typeof data.subject !== 'string' || !data.subject.trim() || data.subject.length > 300 || typeof data.customer_name !== 'string' || !data.customer_name.trim() || data.customer_name.length > 200 || typeof data.customer_email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.customer_email) || data.customer_email.length > 320 || (data.description !== undefined && (typeof data.description !== 'string' || data.description.length > 20_000))) return res.status(400).json({ error: 'INVALID_INQUIRY_EVENT' });
+    } else if (eventType === 'ticket.created') {
+      if (typeof data.subject !== 'string' || !data.subject.trim() || data.subject.length > 300 || typeof data.description !== 'string' || !data.description.trim() || data.description.length > 20_000 || (data.serial_number !== undefined && (typeof data.serial_number !== 'string' || !data.serial_number.trim() || data.serial_number.length > 200))) return res.status(400).json({ error: 'INVALID_TICKET_EVENT' });
+    } else if (eventType === 'quotation.decision') {
+      if (typeof data.quotation_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.quotation_id) || !['ACCEPTED', 'REJECTED'].includes(String(data.decision).toUpperCase())) return res.status(400).json({ error: 'INVALID_QUOTATION_DECISION' });
+    } else if (eventType !== 'message.received') return res.status(422).json({ error: 'EVENT_TYPE_NOT_IMPLEMENTED' });
+    if (eventType === 'message.received') {
     const threadId = typeof data.thread_id === 'string' ? data.thread_id.trim() : '';
     const messageId = typeof data.message_id === 'string' ? data.message_id.trim() : '';
     const text = typeof data.message?.text === 'string' ? data.message.text : '';
@@ -148,6 +216,7 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
     }
     if (String(data.message?.type ?? '').toUpperCase() !== 'TEXT') {
       return res.status(422).json({ error: 'UNSUPPORTED_MESSAGE_TYPE' });
+    }
     }
     const payloadHash = crypto.createHash('sha256').update(rawBody).digest('hex');
     const outcome = await CRMIntegrationService.acceptEvent({

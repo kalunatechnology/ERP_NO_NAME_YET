@@ -1423,6 +1423,51 @@ model crm_integration_nonce {
   @@map("crm_integration_nonce")
 }
 
+// Outbound webhooks are queued durably per subscription. Delivery rows are
+// also the retry and delivery audit log, so app transactions never perform I/O.
+model core_webhook_subscription {
+  id               String   @id @default(uuid())
+  tenant_id        String   @map("tenant_id")
+  company_id       String   @map("company_id")
+  name             String
+  target_url       String   @map("target_url")
+  secret_encrypted String   @map("secret_encrypted")
+  events           String[] @default([])
+  status           String   @default("ACTIVE")
+  created_by_id    String?  @map("created_by_id")
+  created_at       DateTime @default(now()) @map("created_at")
+  updated_at       DateTime @updatedAt @map("updated_at")
+
+  @@index([company_id, status])
+  @@map("core_webhook_subscription")
+}
+
+model core_webhook_delivery_log {
+  id              String    @id @default(uuid())
+  subscription_id String    @map("subscription_id")
+  company_id      String    @map("company_id")
+  event_id        String    @map("event_id")
+  event_type      String    @map("event_type")
+  payload         Json
+  status          String    @default("PENDING")
+  attempt_count   Int       @default(0) @map("attempt_count")
+  max_attempts    Int       @default(12) @map("max_attempts")
+  next_retry_at   DateTime  @default(now()) @map("next_retry_at")
+  locked_by       String?   @map("locked_by")
+  lock_token      String?   @map("lock_token")
+  locked_until    DateTime? @map("locked_until")
+  http_status     Int?      @map("http_status")
+  last_error      String?   @map("last_error")
+  created_at      DateTime  @default(now()) @map("created_at")
+  delivered_at    DateTime? @map("delivered_at")
+  updated_at      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([subscription_id, event_id])
+  @@index([status, next_retry_at, locked_until])
+  @@index([company_id, created_at])
+  @@map("core_webhook_delivery_log")
+}
+
 model crm_external_thread {
   id                   String   @id @default(uuid())
   tenant_id            String   @map("tenant_id")

@@ -10,6 +10,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError } from '../../utils/errors';
+import { queueWebhookEvent } from '../crm/crm-outbound-webhook.service';
 
 export const serviceRouter = Router();
 
@@ -25,11 +26,22 @@ export const serviceRouter = Router();
 serviceRouter.post('/cases/:id/resolve', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses service.');
-    const record = await prisma.service_case.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { id: true } });
+    const record = await prisma.service_case.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { id: true, tenant_id: true, company_id: true, subject: true, status: true } });
     if (!record) throw new NotFoundError('ServiceCase');
-    const updated = await prisma.service_case.update({
-      where: { id: record.id },
-      data: { status: 'RESOLVED', resolved_at: new Date() },
+    const updated = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ status: string }>>`SELECT status FROM service_case WHERE id = ${record.id} AND company_id = ${req.companyId} FOR UPDATE`;
+      if (!locked.length) throw new NotFoundError('ServiceCase');
+      if (locked[0].status === 'RESOLVED') return tx.service_case.findUniqueOrThrow({ where: { id: record.id } });
+      const resolvedAt = new Date();
+      const row = await tx.service_case.update({
+        where: { id: record.id },
+        data: { status: 'RESOLVED', resolved_at: resolvedAt },
+      });
+      await queueWebhookEvent(tx, req.companyId!, 'ticket.resolved', {
+        ticket_id: record.id, subject: record.subject, status: row.status,
+        resolved_at: resolvedAt.toISOString(),
+      });
+      return row;
     });
     res.json(updated);
   } catch (err) {

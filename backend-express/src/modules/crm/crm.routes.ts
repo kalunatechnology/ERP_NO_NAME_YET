@@ -14,6 +14,7 @@ import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { requireActiveRole } from '../../middlewares/rbac.middleware';
 import { RoleCode } from '../../types/roles';
+import { queueWebhookEvent } from './crm-outbound-webhook.service';
 
 export const crmRouter = Router();
 
@@ -25,12 +26,13 @@ function activeCompanyId(req: Request): string {
 async function decideExecutiveApproval(req: Request, decision: 'APPROVED' | 'REJECTED') {
   const companyId = activeCompanyId(req);
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM crm_executive_approval WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
     const approval = await tx.crm_executive_approval.findFirst({
       where: { id: req.params.id, company_id: companyId },
-      select: { id: true },
+      select: { id: true, tenant_id: true, company_id: true, quotation_id: true, opportunity_id: true, approval_type: true, decision: true },
     });
     if (!approval) throw new NotFoundError('ExecutiveApproval');
-    return tx.crm_executive_approval.update({
+    const updated = await tx.crm_executive_approval.update({
       where: { id: approval.id },
       data: {
         decision,
@@ -39,6 +41,12 @@ async function decideExecutiveApproval(req: Request, decision: 'APPROVED' | 'REJ
         decided_at: new Date(),
       },
     });
+    if (approval.decision !== decision) await queueWebhookEvent(tx, companyId, 'crm.executive_approval.decided', {
+        approval_id: approval.id, decision, approval_type: approval.approval_type,
+        quotation_id: approval.quotation_id, opportunity_id: approval.opportunity_id,
+        decided_at: updated.decided_at?.toISOString() ?? null,
+      });
+    return updated;
   });
 }
 

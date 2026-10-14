@@ -4,6 +4,7 @@ import prisma from '../../config/database';
 import { env } from '../../config/env';
 import { ValidationError } from '../../utils/errors';
 
+const SUPPORTED_INBOUND_EVENTS = ['message.received', 'inquiry.submitted', 'ticket.created', 'quotation.decision'];
 const DEFAULT_EVENTS = ['message.received'];
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 
@@ -15,7 +16,7 @@ function encryptionKey(): Buffer {
   return key;
 }
 
-function encryptSecret(secret: string): string {
+export function encryptIntegrationSecret(secret: string): string {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, encryptionKey(), iv);
   const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
@@ -23,7 +24,7 @@ function encryptSecret(secret: string): string {
   return [iv, tag, ciphertext].map((part) => part.toString('base64url')).join('.');
 }
 
-function decryptSecret(value: string): string {
+export function decryptIntegrationSecret(value: string): string {
   const [ivPart, tagPart, ciphertextPart] = value.split('.');
   if (!ivPart || !tagPart || !ciphertextPart) throw new Error('Stored integration secret is malformed.');
   const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, encryptionKey(), Buffer.from(ivPart, 'base64url'));
@@ -78,8 +79,8 @@ export class CRMIntegrationService {
       if (!user || !eligible) throw new ValidationError('default_assigned_user_id harus user aktif dengan role CRM Lead atau Sales pada company ini.');
     }
     const allowedEvents = [...new Set((input.allowed_event_types?.length ? input.allowed_event_types : DEFAULT_EVENTS).map((event) => event.trim()))];
-    if (!allowedEvents.length || allowedEvents.some((event) => !DEFAULT_EVENTS.includes(event))) {
-      throw new ValidationError('Saat ini hanya event message.received yang didukung.');
+    if (!allowedEvents.length || allowedEvents.some((event) => !SUPPORTED_INBOUND_EVENTS.includes(event))) {
+      throw new ValidationError(`Event yang didukung: ${SUPPORTED_INBOUND_EVENTS.join(', ')}.`);
     }
     const sourceId = crypto.randomUUID();
     const channelAccountId = crypto.randomUUID();
@@ -110,7 +111,7 @@ export class CRMIntegrationService {
           business_unit_code: businessUnitCode,
           business_unit_name: businessUnitName,
           default_assigned_user_id: defaultAssignedUserId,
-          secret_encrypted: encryptSecret(signingSecret),
+          secret_encrypted: encryptIntegrationSecret(signingSecret),
           key_id: keyId,
           allowed_event_types: allowedEvents,
           status: 'ACTIVE',
@@ -181,7 +182,7 @@ export class CRMIntegrationService {
           previous_secret_encrypted: current.secret_encrypted,
           previous_key_id: current.key_id,
           previous_valid_until: previousValidUntil,
-          secret_encrypted: encryptSecret(signingSecret),
+          secret_encrypted: encryptIntegrationSecret(signingSecret),
           key_id: keyId,
         },
         select: { id: true, source_code: true, key_id: true, previous_key_id: true, previous_valid_until: true },
@@ -194,9 +195,9 @@ export class CRMIntegrationService {
     const source = await prisma.core_integration_source.findUnique({ where: { id: sourceId } });
     if (!source) return null;
     if (source.status !== 'ACTIVE') return { source, inactive: true as const };
-    if (source.key_id === keyId) return { source, secret: decryptSecret(source.secret_encrypted), inactive: false as const };
+    if (source.key_id === keyId) return { source, secret: decryptIntegrationSecret(source.secret_encrypted), inactive: false as const };
     if (source.previous_key_id === keyId && source.previous_valid_until && source.previous_valid_until > new Date() && source.previous_secret_encrypted) {
-      return { source, secret: decryptSecret(source.previous_secret_encrypted), inactive: false as const };
+      return { source, secret: decryptIntegrationSecret(source.previous_secret_encrypted), inactive: false as const };
     }
     return null;
   }

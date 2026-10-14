@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { normalizeExternalIdentity, retryDelayMs } from './crm-integration.service';
+import { processOutboundWebhookBatch, queueWebhookEvent } from './crm-outbound-webhook.service';
 
 type ClaimedEvent = {
   id: string;
@@ -49,9 +50,10 @@ async function claimEvents(workerId: string, limit: number): Promise<ClaimedEven
 
 async function processMessageEvent(event: ClaimedEvent) {
   const envelope = event.payload;
-  if (!envelope || envelope.event_type !== 'message.received' || Number(envelope.schema_version) !== 1) {
+  if (!envelope || Number(envelope.schema_version) !== 1) {
     throw new Error('UNSUPPORTED_EVENT_CONTRACT');
   }
+  if (envelope.event_type !== 'message.received') return processOtherIntegrationEvent(event);
   const data = envelope.data;
   const threadId = typeof data?.thread_id === 'string' ? data.thread_id.trim() : '';
   const externalMessageId = typeof data?.message_id === 'string' ? data.message_id.trim() : '';
@@ -234,6 +236,64 @@ async function processMessageEvent(event: ClaimedEvent) {
   }, { maxWait: 10_000, timeout: 30_000, isolationLevel: 'Serializable' as Prisma.TransactionIsolationLevel });
 }
 
+async function processOtherIntegrationEvent(event: ClaimedEvent) {
+  const envelope = event.payload;
+  const data = envelope?.data;
+  await prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM crm_integration_event
+      WHERE id = ${event.id} AND lock_token = ${event.lock_token} AND status = 'PROCESSING' FOR UPDATE
+    `;
+    if (!locked.length) return;
+    const source = await tx.core_integration_source.findUnique({ where: { id: event.source_id } });
+    if (!source) throw new Error('INTEGRATION_SOURCE_MISSING');
+    if (envelope.event_type === 'inquiry.submitted') {
+      const subject = String(data?.subject ?? '').trim();
+      const customerName = String(data?.customer_name ?? '').trim();
+      const customerEmail = String(data?.customer_email ?? '').trim();
+      if (!subject || !customerName || !customerEmail) throw new Error('INVALID_INQUIRY_EVENT');
+      const now = new Date();
+      await tx.crm_customer_inquiry.create({ data: {
+        id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
+        owner_user_id: source.default_assigned_user_id, inquiry_number: `EXT-${crypto.randomUUID()}`,
+        source_channel: `INTEGRATION:${source.source_code}`, subject,
+        description: String(data?.description ?? ''), customer_name: customerName,
+        customer_email: customerEmail, status: 'NEW', created_at: now, updated_at: now,
+      } });
+    } else if (envelope.event_type === 'ticket.created') {
+      const subject = String(data?.subject ?? '').trim();
+      const description = String(data?.description ?? '').trim();
+      if (!subject || !description) throw new Error('INVALID_TICKET_EVENT');
+      const serial = typeof data?.serial_number === 'string' ? data.serial_number.trim() : '';
+      const serialRow = serial ? await tx.inv_serial_number.findFirst({ where: { serial_number: serial, company_id: source.company_id }, select: { id: true, product_id: true } }) : null;
+      if (serial && !serialRow) throw new Error('SERIAL_NUMBER_NOT_FOUND');
+      const now = new Date();
+      await tx.service_case.create({ data: {
+        id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
+        assigned_user_id: source.default_assigned_user_id, product_id: serialRow?.product_id ?? null,
+        serial_number_id: serialRow?.id ?? null, priority: 'NORMAL', subject, description,
+        status: 'OPEN', created_at: now, updated_at: now,
+      } });
+    } else if (envelope.event_type === 'quotation.decision') {
+      const quotationId = String(data?.quotation_id ?? '').trim();
+      const decision = String(data?.decision ?? '').toUpperCase();
+      if (!quotationId || !['ACCEPTED', 'REJECTED'].includes(decision)) throw new Error('INVALID_QUOTATION_DECISION');
+      const quotation = await tx.sales_quotation.findFirst({ where: { id: quotationId, company_id: source.company_id } });
+      if (!quotation) throw new Error('QUOTATION_NOT_FOUND');
+      if (['CANCELLED', 'EXPIRED'].includes(quotation.status)) throw new Error('QUOTATION_NOT_DECIDABLE');
+      await tx.sales_quotation.update({ where: { id: quotation.id }, data: { status: decision } });
+      if (decision === 'ACCEPTED') await queueWebhookEvent(tx, source.company_id, 'quotation.approved', { quotation_id: quotation.id, decision });
+      else await queueWebhookEvent(tx, source.company_id, 'quotation.rejected', { quotation_id: quotation.id, decision });
+    } else {
+      throw new Error('UNSUPPORTED_EVENT_CONTRACT');
+    }
+    await tx.crm_integration_event.updateMany({
+      where: { id: event.id, lock_token: event.lock_token, status: 'PROCESSING' },
+      data: { status: 'COMPLETED', payload: Prisma.DbNull, locked_by: null, lock_token: null, locked_until: null, last_error: null, processed_at: new Date(), updated_at: new Date() },
+    });
+  }, { maxWait: 10_000, timeout: 30_000, isolationLevel: 'Serializable' as Prisma.TransactionIsolationLevel });
+}
+
 async function failEvent(event: ClaimedEvent, error: unknown) {
   const errorCode = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
   const code = (errorCode || (error instanceof Error ? error.name : 'PROCESSING_ERROR')).slice(0, 200);
@@ -275,7 +335,10 @@ export function startCrmIntegrationWorker(isReady: () => boolean) {
   const timer = setInterval(() => {
     if (!isReady() || active) return;
     active = true;
-    void processCrmIntegrationBatch().catch((error) => {
+    void Promise.all([
+      processCrmIntegrationBatch(),
+      processOutboundWebhookBatch(),
+    ]).catch((error) => {
       console.warn('CRM integration worker batch failed.', error instanceof Error ? error.name : 'unknown');
     }).finally(() => { active = false; });
   }, 2_000);
