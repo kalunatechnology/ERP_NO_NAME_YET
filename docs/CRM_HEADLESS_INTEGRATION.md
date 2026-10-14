@@ -2,6 +2,8 @@
 
 Marka tetap menjadi sumber data utama. Sistem eksternal mengirim event ke API Marka, sedangkan perubahan yang perlu disebarkan ke sistem eksternal dikirim melalui outbound webhook yang memiliki antrean, retry, dan riwayat delivery.
 
+Company Admin mengelola koneksi melalui **Company & Access → Integrasi CRM**. Panel Landing Page mendaftarkan sumber, memilih event yang diizinkan, lalu menampilkan webhook URL, integration ID, key ID, dan signing secret satu kali. Secret harus disimpan di server landing page; jangan pernah ditanam di browser. Panel WhatsApp Cloud mengelola kredensial Meta untuk koneksi langsung.
+
 ## WhatsApp Business Cloud API (inbound awal)
 
 Marka menyediakan halaman **CRM → Koneksi WhatsApp** khusus Company Admin/Super Admin. Administrator menyimpan WABA ID, Phone Number ID, Graph API version, permanent access token, Meta App Secret, dan Verify Token di layar tersebut. Access token, App Secret, dan Verify Token dienkripsi memakai `CRM_INTEGRATION_ENCRYPTION_KEY`; endpoint daftar koneksi hanya mengembalikan status konfigurasi, bukan rahasianya. Tombol **Uji koneksi Meta** memeriksa Phone Number ID melalui Graph API.

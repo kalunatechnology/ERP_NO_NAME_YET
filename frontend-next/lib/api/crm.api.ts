@@ -127,6 +127,40 @@ export async function testCRMWhatsAppConnection(id: string, companyId?: string) 
   return data;
 }
 
+export interface CRMIntegrationSource {
+  id: string;
+  source_code: string;
+  channel_type: string;
+  channel_account_id: string | null;
+  business_unit_code: string | null;
+  business_unit_name: string | null;
+  key_id: string;
+  allowed_event_types: string[];
+  status: string;
+  created_at: string;
+  last_seen_at?: string | null;
+}
+
+export async function loadCRMIntegrationSources(companyId?: string): Promise<CRMIntegrationSource[]> {
+  const { data } = await api.get("/api/v1/core/integration-sources/", companyScopeHeaders(companyId));
+  return Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+}
+
+export async function loadCRMIntegrationAssignees(companyId?: string): Promise<Array<{ id: string; full_name: string; email: string }>> {
+  const { data } = await api.get("/api/v1/core/integration-sources/eligible-assignees/", companyScopeHeaders(companyId));
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
+export async function createCRMIntegrationSource(input: Record<string, unknown>, companyId?: string) {
+  const { data } = await api.post("/api/v1/core/integration-sources/", input, companyScopeHeaders(companyId));
+  return data as CRMIntegrationSource & { signing_secret: string };
+}
+
+export async function setCRMIntegrationSourceStatus(id: string, status: "ACTIVE" | "SUSPENDED" | "REVOKED", companyId?: string) {
+  const { data } = await api.patch(`/api/v1/core/integration-sources/${id}/status/`, { status }, companyScopeHeaders(companyId));
+  return data;
+}
+
 /* ── Endpoints map ───────────────────────────────── */
 // frontend-next/lib/api/crm.api.ts
 

@@ -82,6 +82,29 @@ crmIntegrationAdminRouter.get('/', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+crmIntegrationAdminRouter.get('/eligible-assignees', async (req, res, next) => {
+  try {
+    if (!req.tenantId) throw new ForbiddenError('Tenant context wajib tersedia.');
+    const assignments = await prisma.iam_user_role.findMany({
+      where: { tenant_id: req.tenantId, company_id: companyId(req) },
+      select: { user_id: true, role_id: true },
+    });
+    const roleIds = [...new Set(assignments.flatMap((row) => row.role_id ? [row.role_id] : []))];
+    const eligibleRoles = roleIds.length ? await prisma.iam_role.findMany({
+      where: { id: { in: roleIds }, role_code: { in: ['CRM_LEAD', 'SALES'] } },
+      select: { id: true },
+    }) : [];
+    const eligibleRoleIds = new Set(eligibleRoles.map((role) => role.id));
+    const userIds = [...new Set(assignments.flatMap((row) => row.user_id && row.role_id && eligibleRoleIds.has(row.role_id) ? [row.user_id] : []))];
+    const users = userIds.length ? await prisma.iam_user.findMany({
+      where: { id: { in: userIds }, tenant_id: req.tenantId, status: 'ACTIVE', is_active: true },
+      orderBy: { full_name: 'asc' },
+      select: { id: true, full_name: true, email: true },
+    }) : [];
+    res.json({ rows: users });
+  } catch (error) { next(error); }
+});
+
 crmIntegrationAdminRouter.get('/:id/events', async (req, res, next) => {
   try {
     const source = await prisma.core_integration_source.findFirst({ where: { id: req.params.id, company_id: companyId(req) }, select: { id: true } });

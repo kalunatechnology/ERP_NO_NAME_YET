@@ -394,8 +394,8 @@ export function AccessAdministration() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href={isSuper && selectedCompany ? `/administration/whatsapp?company_id=${encodeURIComponent(selectedCompany)}` : "/administration/whatsapp"} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-4 text-sm font-medium text-[#2649B3] hover:bg-[#FDFDFD]">
-              <Sliders size={15} /> WhatsApp CRM
+            <Link href={isSuper && selectedCompany ? `/administration/crm-integrations?company_id=${encodeURIComponent(selectedCompany)}` : "/administration/crm-integrations"} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#D9D9D9] bg-white px-4 text-sm font-medium text-[#2649B3] hover:bg-[#FDFDFD]">
+              <Sliders size={15} /> Integrasi CRM
             </Link>
             {isSuper && (
               <button
