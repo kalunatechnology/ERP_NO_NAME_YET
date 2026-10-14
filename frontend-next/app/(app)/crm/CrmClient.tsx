@@ -30,7 +30,7 @@ import {
   submitQuotationApproval, approveQuotation, sendQuotation, acceptQuotation, rejectQuotation, convertQuotationToOrder,
   createSupportTicket, checkTicketWarrantyStatus, deleteSupportTicket,
   updateCustomerCreditLimit, calculateCreditSnapshot,
-  loadCRMInbox, createInquiryFromConversation, assignConversationToMe, setConversationDecision,
+  loadCRMInbox, createInquiryFromConversation, replyToCRMConversation, assignConversationToMe, setConversationDecision,
   confirmCRMIdentityCustomer,
   type CRMInboxConversation,
 } from "@/lib/api/crm.api";
@@ -1546,6 +1546,8 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
   const [loadingInbox, setLoadingInbox] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [partyChoice, setPartyChoice] = useState<Record<string, string>>({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyRequestIds, setReplyRequestIds] = useState<Record<string, string>>({});
   const refreshInbox = useCallback(async () => {
     setLoadingInbox(true);
     try {
@@ -1607,6 +1609,21 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
     } finally { setBusyId(null); }
   };
 
+  const sendReply = async (row: CRMInboxConversation) => {
+    const text = (replyDrafts[row.id] || "").trim();
+    if (!text) return toast.error("Tulis balasan terlebih dahulu.");
+    setBusyId(row.id);
+    try {
+      await replyToCRMConversation(row.id, text, replyRequestIds[row.id] || crypto.randomUUID());
+      toast.success("Balasan masuk antrean adapter kanal.");
+      setReplyDrafts((current) => ({ ...current, [row.id]: "" }));
+      setReplyRequestIds((current) => ({ ...current, [row.id]: crypto.randomUUID() }));
+      await refreshInbox();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Balasan tidak dapat dimasukkan ke antrean.");
+    } finally { setBusyId(null); }
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="card rounded-xl p-4 flex items-center justify-between gap-3">
@@ -1638,6 +1655,23 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
               <div key={message.id} className={cn("max-w-[88%] rounded-lg px-3 py-2 text-xs", message.direction === "INBOUND" ? "self-start bg-white border border-text-tertiary/40" : "self-end bg-emerald-50")}>{message.message_text}</div>
             )) : <p className="text-xs text-text-secondary">{row.latest_message?.message_text || "Belum ada pesan yang tersimpan."}</p>}
           </div>
+          {!readOnly && row.external_thread && row.status !== "IGNORED" && (
+            <div className="flex flex-col sm:flex-row gap-2">
+              <textarea
+                className="input-field flex-1 min-h-16 text-xs"
+                maxLength={10000}
+                value={replyDrafts[row.id] || ""}
+                onChange={(event) => {
+                  setReplyDrafts((current) => ({ ...current, [row.id]: event.target.value }));
+                  setReplyRequestIds((current) => current[row.id] ? current : ({ ...current, [row.id]: crypto.randomUUID() }));
+                }}
+                placeholder="Tulis balasan untuk dikirim melalui adapter kanal..."
+              />
+              <button className="btn-primary text-xs self-end" disabled={busyId === row.id || !(replyDrafts[row.id] || "").trim()} onClick={() => void sendReply(row)}>
+                {busyId === row.id ? "Mengirim..." : "Kirim balasan"}
+              </button>
+            </div>
+          )}
           {(row.external_identities ?? []).map((identity) => (
             <div key={identity.id} className="flex flex-wrap items-center gap-2 text-[11px]">
               <span className="text-text-secondary">Identitas {identity.type} {identity.masked_value} · verifikasi sumber {identity.channel_verification_status} · customer {identity.customer_match_status}</span>

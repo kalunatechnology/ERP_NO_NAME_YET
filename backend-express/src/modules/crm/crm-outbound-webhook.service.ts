@@ -4,6 +4,7 @@ import prisma from '../../config/database';
 import { encryptIntegrationSecret, decryptIntegrationSecret, retryDelayMs } from './crm-integration.service';
 
 const OUTBOUND_EVENTS = [
+  'message.reply_requested',
   'quotation.ready', 'quotation.approved', 'quotation.accepted', 'quotation.rejected',
   'ticket.status_updated', 'ticket.resolved', 'deal.won', 'crm.executive_approval.decided',
 ];

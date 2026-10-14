@@ -6,7 +6,7 @@ Status: Marka accepts normalized inbound message events from trusted internal in
 
 - Upstream systems own whatever external connectivity, aggregation, enrichment, and delivery they need. They send normalized events to Marka and do not pass channel-specific integration logic into the CRM domain.
 - Marka owns the durable event queue, company/unit-scoped conversation, configured default assignee, manual queue assignment, interaction history, ignore/escalation decision, Inquiry, Opportunity, quotation, and downstream business records.
-- The signed webhook is an internal ingestion interface. It accepts messages; it does not send replies back to the originating system.
+- The signed webhook is an internal ingestion interface. CRM staff replies are stored in Marka and emitted as `message.reply_requested` through the outbound webhook dispatcher. The external channel adapter remains responsible for sending the reply to WhatsApp or another provider and should subscribe to this outbound event.
 - Sender identity is optional. When the trusted source attests identity verification, the identity is recorded as `VERIFIED`; its relationship to a Marka customer remains `UNMATCHED` until CRM explicitly confirms it.
 
 ## Provision an integration
@@ -97,7 +97,9 @@ Self-hosted Express starts the worker automatically. Serverless deployments do n
 
 Company Admins can inspect safe event metadata at `GET /api/v1/core/integration-sources/:id/events/` and retry a dead-letter event at `POST /api/v1/core/integration-sources/:id/events/:eventId/retry/`. Neither endpoint returns the original payload or secret.
 
-CRM inbox reads `/api/v1/crm/inbox/`. A CRM/Sales user can assign a thread, mark an irrelevant conversation `IGNORED` through `POST /api/v1/crm/conversations/:id/decision/`, reopen it, or explicitly create one Inquiry from it. Creating an Inquiry is the escalation action and changes conversation status to `ESCALATED`; the operation is idempotent and does not populate customer party/contact. CRM Lead or Sales can explicitly match a source-verified identity to an active customer through `POST /api/v1/crm/external-identities/:id/confirm-customer/`; the customer party is company-scoped, and a multi-participant thread is not automatically attached to one party. Customer financial/business history is not joined before that confirmation.
+CRM inbox reads `/api/v1/crm/inbox/`. A CRM/Sales user can assign a thread, mark an irrelevant conversation `IGNORED` through `POST /api/v1/crm/conversations/:id/decision/`, reopen it, or explicitly create one Inquiry from it. Creating an Inquiry is the escalation action and changes conversation status to `ESCALATED`; the operation is idempotent and inherits a customer party already confirmed on the conversation. CRM Lead or Sales can explicitly match a source-verified identity to an active customer through `POST /api/v1/crm/external-identities/:id/confirm-customer/`; the customer party is company-scoped, and a multi-participant thread is not automatically attached to one party. Customer financial/business history is not joined before that confirmation.
+
+For a conversation with an external thread, staff can post a text reply to `POST /api/v1/crm/conversations/:id/reply/` with `message_text` and a stable `client_message_id`. Marka stores an outbound message with `QUEUED` status and atomically queues `message.reply_requested`; the request is rejected unless at least one active outbound subscription handles this event. The envelope includes the source ID, channel account, external thread ID, and text. Configure an outbound webhook subscription for this event and have the adapter send it through the originating channel. A successful webhook delivery means the adapter accepted the request; it does not confirm delivery to the customer. Conversation replies are limited to 10,000 characters and cannot be sent to ignored conversations or threads without an external route.
 
 ## Database and rollout
 

@@ -348,7 +348,7 @@ crmRouter.get('/inbox', async (req: Request, res: Response, next: NextFunction) 
     const [messages, links, inquiries, assignees] = await Promise.all([
       conversationIds.length ? prisma.crm_message.findMany({
         where: { company_id: company, conversation_id: { in: conversationIds } },
-        orderBy: [{ received_at: 'desc' }, { sent_at: 'desc' }],
+        orderBy: [{ received_at: 'desc' }, { sent_at: 'desc' }, { created_at: 'desc' }],
         take: pageSize * 12,
       }) : Promise.resolve([]),
       conversationIds.length ? prisma.crm_external_thread.findMany({
@@ -410,6 +410,59 @@ crmRouter.get('/inbox', async (req: Request, res: Response, next: NextFunction) 
       assigned_user: conversation.assigned_user_id ? assigneeById.get(conversation.assigned_user_id) ?? null : null,
       external_identities: (linkByConversation.get(conversation.id)?.id ? identitiesByThread.get(linkByConversation.get(conversation.id)!.id) : []) ?? [],
     })), page_size: pageSize });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/conversations/:id/reply', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const company = activeCompanyId(req);
+    const text = String(req.body.message_text ?? '').trim();
+    const clientMessageId = String(req.body.client_message_id ?? '').trim();
+    if (!text || text.length > 10_000) throw new ValidationError('Balasan harus berisi 1–10.000 karakter.');
+    if (!/^[A-Za-z0-9._:-]{8,100}$/.test(clientMessageId)) throw new ValidationError('client_message_id wajib unik dan valid.');
+    const userId = req.user?.id;
+    if (!userId) throw new ForbiddenError('User CRM wajib login untuk membalas conversation.');
+
+    const result = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM crm_conversation WHERE id = ${req.params.id} AND company_id = ${company} FOR UPDATE
+      `;
+      if (!locked.length) throw new NotFoundError('Conversation');
+      const conversation = await tx.crm_conversation.findFirst({ where: { id: req.params.id, company_id: company } });
+      if (!conversation) throw new NotFoundError('Conversation');
+      if (conversation.status === 'IGNORED') throw new ConflictError('Pulihkan conversation sebelum mengirim balasan.');
+      const thread = await tx.crm_external_thread.findFirst({
+        where: { conversation_id: conversation.id, company_id: company },
+        select: { id: true, external_thread_id: true, integration_source_id: true, channel_account_id: true },
+      });
+      if (!thread) throw new ValidationError('Conversation ini tidak memiliki thread eksternal untuk menerima balasan.');
+      const source = await tx.core_integration_source.findFirst({
+        where: { id: thread.integration_source_id, company_id: company, status: 'ACTIVE' },
+        select: { id: true, source_code: true },
+      });
+      if (!source) throw new ConflictError('Sumber integrasi conversation sedang tidak aktif.');
+
+      const externalMessageId = `marka-reply:${clientMessageId}`;
+      const existing = await tx.crm_message.findFirst({ where: { conversation_id: conversation.id, external_message_id: externalMessageId } });
+      if (existing) return { message: existing, created: false };
+      const now = new Date();
+      const message = await tx.crm_message.create({ data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company,
+        created_by_id: userId, conversation_id: conversation.id, sender_user_id: userId,
+        external_message_id: externalMessageId, direction: 'OUTBOUND', message_type: 'TEXT',
+        message_text: text, status: 'QUEUED', created_at: now,
+      } });
+      const queuedSubscriptions = await queueWebhookEvent(tx, company, 'message.reply_requested', {
+        conversation_id: conversation.id, message_id: message.id, client_message_id: clientMessageId,
+        integration_source_id: source.id, source_code: source.source_code,
+        channel_account_id: thread.channel_account_id, external_thread_id: thread.external_thread_id,
+        message: { type: 'TEXT', text }, requested_at: now.toISOString(), requested_by: userId,
+      });
+      if (!queuedSubscriptions) throw new ValidationError('Belum ada outbound subscription aktif untuk event message.reply_requested.');
+      await tx.crm_conversation.update({ where: { id: conversation.id }, data: { updated_at: now } });
+      return { message, created: true };
+    }, { maxWait: 5_000, timeout: 20_000, isolationLevel: 'Serializable' });
+    res.status(result.created ? 202 : 200).json(result);
   } catch (error) { next(error); }
 });
 

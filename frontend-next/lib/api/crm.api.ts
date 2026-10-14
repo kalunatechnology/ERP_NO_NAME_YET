@@ -70,6 +70,11 @@ export async function createInquiryFromConversation(id: string) {
   return data;
 }
 
+export async function replyToCRMConversation(id: string, message_text: string, client_message_id: string) {
+  const { data } = await api.post(`/api/v1/crm/conversations/${id}/reply/`, { message_text, client_message_id });
+  return data;
+}
+
 export async function setConversationDecision(id: string, decision: "IGNORE" | "REOPEN") {
   const { data } = await api.post(`/api/v1/crm/conversations/${id}/decision/`, { decision });
   return data;
