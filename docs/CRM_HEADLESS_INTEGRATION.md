@@ -28,10 +28,24 @@ v1\nPOST\n/api/v1/integrations/webhooks/events\n{timestamp}\n{nonce}\n{raw_body}
 
 Envelope selalu memiliki `event_id` unik, `event_type`, `schema_version: 1`, `occurred_at` (ISO 8601) atau `timestamp` (Unix seconds), dan `data`. `company_id` boleh disertakan oleh pengirim, tetapi Marka mengabaikannya dan selalu mengambil company dari Integration Source yang terautentikasi. Event yang tersedia:
 
+Contoh payload inquiry yang direkomendasikan:
+
+```json
+{
+  "event_id": "evt_01J9EXAMPLE",
+  "event_type": "inquiry.submitted",
+  "timestamp": 1728904230,
+  "data": {
+    "customer": { "name": "PT Maju Bersama", "email": "klien@perusahaan.com", "phone": "+628123456789" },
+    "requirements": { "subject": "Kebutuhan pengadaan server", "description": "5 unit server rackmount", "target_budget": 250000000 }
+  }
+}
+```
+
 | Event | Data minimum |
 | --- | --- |
 | `message.received` | `thread_id`, `message_id`, `message.text`, `message.type: "TEXT"` |
-| `inquiry.submitted` | `subject`, `customer_name`, `customer_email`; `description` opsional |
+| `inquiry.submitted` | `customer: { name, email, phone? }`, `requirements: { subject, description?, target_budget? }`. Format lama yang menaruh field customer dan subject di root tetap diterima. |
 | `ticket.created` | `subject`, `description`; `serial_number` opsional dan harus terdaftar pada company |
 | `quotation.decision` | `quotation_id`, `decision: "ACCEPTED"` atau `"REJECTED"` |
 | `quotation.accepted` | `quotation_id`; hanya quotation berstatus `SENT` dan terhubung ke opportunity |
@@ -50,7 +64,7 @@ Semua endpoint admin berikut memakai autentikasi Marka dan konteks company:
 | `GET /api/v1/core/integration-sources/outbound-subscriptions/:id/deliveries` | Melihat 100 delivery terbaru dan status retry |
 | `POST /api/v1/core/integration-sources/outbound-subscriptions/:id/deliveries/:deliveryId/retry` | Memasukkan ulang delivery dead-letter ke antrean |
 
-Event outbound: `quotation.ready` (saat penawaran dikirim), `quotation.accepted`, `quotation.approved`, `quotation.rejected`, `ticket.resolved`, `deal.won`, dan `crm.executive_approval.decided`. Setiap POST membawa envelope event pada body serta header `X-Marka-Event-Id`, `X-Marka-Timestamp`, dan `X-Marka-Signature`. Envelope outbound menyertakan `company_id`, `occurred_at`, dan `timestamp`. Signature adalah `sha256=` diikuti HMAC-SHA256 hex dari teks `v1\nPOST\n{timestamp}\n{raw_body}` menggunakan `signing_secret` subscription.
+Event outbound: `quotation.ready` (saat penawaran dikirim), `quotation.accepted`, `quotation.approved`, `quotation.rejected`, `ticket.status_updated` (saat status tiket berubah melalui aksi resolusi), `ticket.resolved`, `deal.won`, dan `crm.executive_approval.decided`. Setiap POST membawa envelope event pada body serta header `X-Marka-Event-Id`, `X-Marka-Timestamp`, dan `X-Marka-Signature`. Envelope outbound menyertakan `company_id`, `occurred_at`, dan `timestamp`. Signature adalah `sha256=` diikuti HMAC-SHA256 hex dari teks `v1\nPOST\n{timestamp}\n{raw_body}` menggunakan `signing_secret` subscription.
 
 Penerimaan event menggunakan `event_id` sebagai idempotency key, ditambah nonce HMAC yang hanya dapat dipakai sekali. Event diproses dalam transaksi sehingga pengulangan dengan ID dan payload sama tidak membuat inquiry, tiket, atau order ganda.
 

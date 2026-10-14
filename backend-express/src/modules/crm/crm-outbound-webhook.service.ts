@@ -5,7 +5,7 @@ import { encryptIntegrationSecret, decryptIntegrationSecret, retryDelayMs } from
 
 const OUTBOUND_EVENTS = [
   'quotation.ready', 'quotation.approved', 'quotation.accepted', 'quotation.rejected',
-  'ticket.resolved', 'deal.won', 'crm.executive_approval.decided',
+  'ticket.status_updated', 'ticket.resolved', 'deal.won', 'crm.executive_approval.decided',
 ];
 
 function validateTargetUrl(value: string) {

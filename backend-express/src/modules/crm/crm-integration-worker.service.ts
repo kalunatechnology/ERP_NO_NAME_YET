@@ -249,16 +249,22 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
     const source = await tx.core_integration_source.findUnique({ where: { id: event.source_id } });
     if (!source) throw new Error('INTEGRATION_SOURCE_MISSING');
     if (envelope.event_type === 'inquiry.submitted') {
-      const subject = String(data?.subject ?? '').trim();
-      const customerName = String(data?.customer_name ?? '').trim();
-      const customerEmail = String(data?.customer_email ?? '').trim();
+      const customer = data?.customer && typeof data.customer === 'object' && !Array.isArray(data.customer) ? data.customer : data;
+      const requirements = data?.requirements && typeof data.requirements === 'object' && !Array.isArray(data.requirements) ? data.requirements : data;
+      const subject = String(requirements?.subject ?? data?.subject ?? '').trim();
+      const customerName = String(customer?.name ?? data?.customer_name ?? '').trim();
+      const customerEmail = String(customer?.email ?? data?.customer_email ?? '').trim();
       if (!subject || !customerName || !customerEmail) throw new Error('INVALID_INQUIRY_EVENT');
+      const customerPhone = String(customer?.phone ?? data?.customer_phone ?? '').trim();
+      const targetBudget = requirements?.target_budget ?? data?.target_budget;
+      const requestDescription = String(requirements?.description ?? data?.description ?? '').trim();
+      const context = [requestDescription, customerPhone ? `Telepon eksternal: ${customerPhone}` : '', targetBudget !== undefined ? `Anggaran target: ${targetBudget}` : ''].filter(Boolean).join('\n\n');
       const now = new Date();
       await tx.crm_customer_inquiry.create({ data: {
         id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
         owner_user_id: source.default_assigned_user_id, inquiry_number: `EXT-${crypto.randomUUID()}`,
         source_channel: `INTEGRATION:${source.source_code}`, subject,
-        description: String(data?.description ?? ''), customer_name: customerName,
+        description: context, customer_name: customerName,
         customer_email: customerEmail, status: 'NEW', created_at: now, updated_at: now,
       } });
     } else if (envelope.event_type === 'ticket.created') {

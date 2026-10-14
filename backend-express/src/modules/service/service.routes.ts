@@ -142,10 +142,15 @@ serviceRouter.post('/cases/:id/resolve', async (req: Request, res: Response, nex
       const locked = await tx.$queryRaw<Array<{ status: string }>>`SELECT status FROM service_case WHERE id = ${record.id} AND company_id = ${req.companyId} FOR UPDATE`;
       if (!locked.length) throw new NotFoundError('ServiceCase');
       if (locked[0].status === 'RESOLVED') return tx.service_case.findUniqueOrThrow({ where: { id: record.id } });
+      const previousStatus = locked[0].status;
       const resolvedAt = new Date();
       const row = await tx.service_case.update({
         where: { id: record.id },
         data: { status: 'RESOLVED', resolved_at: resolvedAt },
+      });
+      await queueWebhookEvent(tx, req.companyId!, 'ticket.status_updated', {
+        ticket_id: record.id, subject: record.subject, previous_status: previousStatus,
+        status: row.status, updated_at: resolvedAt.toISOString(),
       });
       await queueWebhookEvent(tx, req.companyId!, 'ticket.resolved', {
         ticket_id: record.id, subject: record.subject, status: row.status,

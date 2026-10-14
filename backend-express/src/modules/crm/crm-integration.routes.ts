@@ -192,7 +192,15 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
 
     const data = envelope.data;
     if (eventType === 'inquiry.submitted') {
-      if (typeof data.subject !== 'string' || !data.subject.trim() || data.subject.length > 300 || typeof data.customer_name !== 'string' || !data.customer_name.trim() || data.customer_name.length > 200 || typeof data.customer_email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.customer_email) || data.customer_email.length > 320 || (data.description !== undefined && (typeof data.description !== 'string' || data.description.length > 20_000))) return res.status(400).json({ error: 'INVALID_INQUIRY_EVENT' });
+      const customer = data.customer && typeof data.customer === 'object' && !Array.isArray(data.customer) ? data.customer : data;
+      const requirements = data.requirements && typeof data.requirements === 'object' && !Array.isArray(data.requirements) ? data.requirements : data;
+      const subject = requirements.subject ?? data.subject;
+      const name = customer.name ?? data.customer_name;
+      const email = customer.email ?? data.customer_email;
+      const phone = customer.phone ?? data.customer_phone;
+      const description = requirements.description ?? data.description;
+      const budget = requirements.target_budget ?? data.target_budget;
+      if (typeof subject !== 'string' || !subject.trim() || subject.length > 300 || typeof name !== 'string' || !name.trim() || name.length > 200 || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320 || (phone !== undefined && (typeof phone !== 'string' || phone.length > 40)) || (description !== undefined && (typeof description !== 'string' || description.length > 20_000)) || (budget !== undefined && (!Number.isFinite(Number(budget)) || Number(budget) < 0))) return res.status(400).json({ error: 'INVALID_INQUIRY_EVENT' });
     } else if (eventType === 'ticket.created') {
       if (typeof data.subject !== 'string' || !data.subject.trim() || data.subject.length > 300 || typeof data.description !== 'string' || !data.description.trim() || data.description.length > 20_000 || (data.serial_number !== undefined && (typeof data.serial_number !== 'string' || !data.serial_number.trim() || data.serial_number.length > 200))) return res.status(400).json({ error: 'INVALID_TICKET_EVENT' });
     } else if (eventType === 'quotation.decision' || eventType === 'quotation.accepted') {
