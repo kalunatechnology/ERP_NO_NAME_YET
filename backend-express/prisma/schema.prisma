@@ -1451,7 +1451,7 @@ model core_webhook_delivery_log {
   payload         Json
   status          String    @default("PENDING")
   attempt_count   Int       @default(0) @map("attempt_count")
-  max_attempts    Int       @default(12) @map("max_attempts")
+  max_attempts    Int       @default(5) @map("max_attempts")
   next_retry_at   DateTime  @default(now()) @map("next_retry_at")
   locked_by       String?   @map("locked_by")
   lock_token      String?   @map("lock_token")

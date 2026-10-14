@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS "core_webhook_delivery_log" (
   "payload" JSONB NOT NULL,
   "status" TEXT NOT NULL DEFAULT 'PENDING',
   "attempt_count" INTEGER NOT NULL DEFAULT 0,
-  "max_attempts" INTEGER NOT NULL DEFAULT 12,
+  "max_attempts" INTEGER NOT NULL DEFAULT 5,
   "next_retry_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "locked_by" TEXT,
   "lock_token" TEXT,

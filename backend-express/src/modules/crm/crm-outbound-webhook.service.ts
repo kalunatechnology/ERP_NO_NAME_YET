@@ -4,8 +4,8 @@ import prisma from '../../config/database';
 import { encryptIntegrationSecret, decryptIntegrationSecret, retryDelayMs } from './crm-integration.service';
 
 const OUTBOUND_EVENTS = [
-  'quotation.approved', 'quotation.rejected', 'ticket.resolved',
-  'crm.executive_approval.decided',
+  'quotation.ready', 'quotation.approved', 'quotation.accepted', 'quotation.rejected',
+  'ticket.resolved', 'deal.won', 'crm.executive_approval.decided',
 ];
 
 function validateTargetUrl(value: string) {
@@ -46,11 +46,12 @@ export async function queueWebhookEvent(tx: Prisma.TransactionClient, companyId:
   });
   if (!subscriptions.length) return 0;
   const eventId = crypto.randomUUID();
-  const payload = { event_id: eventId, event_type: eventType, schema_version: 1, occurred_at: new Date().toISOString(), data } as Prisma.InputJsonValue;
+  const occurredAt = new Date();
+  const payload = { event_id: eventId, event_type: eventType, schema_version: 1, occurred_at: occurredAt.toISOString(), timestamp: Math.floor(occurredAt.getTime() / 1000), company_id: companyId, data } as Prisma.InputJsonValue;
   await tx.core_webhook_delivery_log.createMany({
     data: subscriptions.map((subscription) => ({
       id: crypto.randomUUID(), subscription_id: subscription.id, company_id: companyId,
-      event_id: eventId, event_type: eventType, payload, status: 'PENDING', max_attempts: 12,
+      event_id: eventId, event_type: eventType, payload, status: 'PENDING', max_attempts: 5,
       next_retry_at: new Date(),
     })),
     skipDuplicates: true,
@@ -72,6 +73,10 @@ async function claimDeliveries(workerId: string, limit: number) {
       SELECT id FROM core_webhook_delivery_log
       WHERE attempt_count < max_attempts
         AND ((status = 'PENDING' AND next_retry_at <= NOW()) OR (status = 'PROCESSING' AND locked_until < NOW()))
+        AND EXISTS (
+          SELECT 1 FROM core_webhook_subscription subscription
+          WHERE subscription.id = core_webhook_delivery_log.subscription_id AND subscription.status = 'ACTIVE'
+        )
       ORDER BY created_at ASC FOR UPDATE SKIP LOCKED LIMIT ${limit}
     )
     UPDATE core_webhook_delivery_log AS delivery

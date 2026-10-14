@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { normalizeExternalIdentity, retryDelayMs } from './crm-integration.service';
 import { processOutboundWebhookBatch, queueWebhookEvent } from './crm-outbound-webhook.service';
+import { CRMService } from './crm.service';
 
 type ClaimedEvent = {
   id: string;
@@ -274,16 +275,19 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
         serial_number_id: serialRow?.id ?? null, priority: 'NORMAL', subject, description,
         status: 'OPEN', created_at: now, updated_at: now,
       } });
-    } else if (envelope.event_type === 'quotation.decision') {
+    } else if (envelope.event_type === 'quotation.decision' || envelope.event_type === 'quotation.accepted') {
       const quotationId = String(data?.quotation_id ?? '').trim();
-      const decision = String(data?.decision ?? '').toUpperCase();
+      const decision = envelope.event_type === 'quotation.accepted' ? 'ACCEPTED' : String(data?.decision ?? '').toUpperCase();
       if (!quotationId || !['ACCEPTED', 'REJECTED'].includes(decision)) throw new Error('INVALID_QUOTATION_DECISION');
       const quotation = await tx.sales_quotation.findFirst({ where: { id: quotationId, company_id: source.company_id } });
       if (!quotation) throw new Error('QUOTATION_NOT_FOUND');
-      if (['CANCELLED', 'EXPIRED'].includes(quotation.status)) throw new Error('QUOTATION_NOT_DECIDABLE');
+      if (quotation.status !== 'SENT') throw new Error('QUOTATION_NOT_DECIDABLE');
       await tx.sales_quotation.update({ where: { id: quotation.id }, data: { status: decision } });
-      if (decision === 'ACCEPTED') await queueWebhookEvent(tx, source.company_id, 'quotation.approved', { quotation_id: quotation.id, decision });
-      else await queueWebhookEvent(tx, source.company_id, 'quotation.rejected', { quotation_id: quotation.id, decision });
+      if (decision === 'ACCEPTED') {
+        if (!quotation.opportunity_id) throw new Error('QUOTATION_OPPORTUNITY_MISSING');
+        await CRMService.processDealWon(quotation.opportunity_id, { id: source.default_assigned_user_id }, source.company_id, tx);
+        await queueWebhookEvent(tx, source.company_id, 'quotation.accepted', { quotation_id: quotation.id, opportunity_id: quotation.opportunity_id });
+      } else await queueWebhookEvent(tx, source.company_id, 'quotation.rejected', { quotation_id: quotation.id, decision });
     } else {
       throw new Error('UNSUPPORTED_EVENT_CONTRACT');
     }

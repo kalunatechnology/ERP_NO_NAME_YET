@@ -176,7 +176,9 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
     if (!eventId || eventId.length > 200 || !eventType || eventType.length > 100 || schemaVersion !== 1 || !envelope?.data || typeof envelope.data !== 'object' || Array.isArray(envelope.data)) {
       return res.status(400).json({ error: 'INVALID_EVENT_ENVELOPE' });
     }
-    if (typeof envelope.occurred_at !== 'string' || Number.isNaN(new Date(envelope.occurred_at).getTime())) {
+    const validOccurredAt = typeof envelope.occurred_at === 'string' && !Number.isNaN(new Date(envelope.occurred_at).getTime());
+    const validTimestamp = Number.isInteger(envelope.timestamp) && Number(envelope.timestamp) > 0 && Number(envelope.timestamp) <= 253402300799;
+    if (!validOccurredAt && !validTimestamp) {
       return res.status(400).json({ error: 'INVALID_OCCURRED_AT' });
     }
     const signatureConfig = await CRMIntegrationService.findForSignature(sourceId, keyId);
@@ -193,8 +195,9 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
       if (typeof data.subject !== 'string' || !data.subject.trim() || data.subject.length > 300 || typeof data.customer_name !== 'string' || !data.customer_name.trim() || data.customer_name.length > 200 || typeof data.customer_email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.customer_email) || data.customer_email.length > 320 || (data.description !== undefined && (typeof data.description !== 'string' || data.description.length > 20_000))) return res.status(400).json({ error: 'INVALID_INQUIRY_EVENT' });
     } else if (eventType === 'ticket.created') {
       if (typeof data.subject !== 'string' || !data.subject.trim() || data.subject.length > 300 || typeof data.description !== 'string' || !data.description.trim() || data.description.length > 20_000 || (data.serial_number !== undefined && (typeof data.serial_number !== 'string' || !data.serial_number.trim() || data.serial_number.length > 200))) return res.status(400).json({ error: 'INVALID_TICKET_EVENT' });
-    } else if (eventType === 'quotation.decision') {
-      if (typeof data.quotation_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.quotation_id) || !['ACCEPTED', 'REJECTED'].includes(String(data.decision).toUpperCase())) return res.status(400).json({ error: 'INVALID_QUOTATION_DECISION' });
+    } else if (eventType === 'quotation.decision' || eventType === 'quotation.accepted') {
+      const decision = eventType === 'quotation.accepted' ? 'ACCEPTED' : String(data.decision).toUpperCase();
+      if (typeof data.quotation_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.quotation_id) || !['ACCEPTED', 'REJECTED'].includes(decision)) return res.status(400).json({ error: 'INVALID_QUOTATION_DECISION' });
     } else if (eventType !== 'message.received') return res.status(422).json({ error: 'EVENT_TYPE_NOT_IMPLEMENTED' });
     if (eventType === 'message.received') {
     const threadId = typeof data.thread_id === 'string' ? data.thread_id.trim() : '';
@@ -219,6 +222,10 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
     }
     }
     const payloadHash = crypto.createHash('sha256').update(rawBody).digest('hex');
+    const normalizedEnvelope = validOccurredAt ? envelope : {
+      ...envelope,
+      occurred_at: new Date(Number(envelope.timestamp) * 1000).toISOString(),
+    };
     const outcome = await CRMIntegrationService.acceptEvent({
       source: signatureConfig.source,
       nonce,
@@ -226,7 +233,7 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
       eventType,
       schemaVersion,
       payloadHash,
-      payload: envelope,
+      payload: normalizedEnvelope,
     });
     if (outcome.status === 'INACTIVE') return res.status(403).json({ error: 'INTEGRATION_SUSPENDED' });
     if (outcome.status === 'REPLAY') return res.status(401).json({ error: 'NONCE_REPLAY' });

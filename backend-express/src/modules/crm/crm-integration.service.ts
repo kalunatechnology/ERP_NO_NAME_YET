@@ -4,7 +4,7 @@ import prisma from '../../config/database';
 import { env } from '../../config/env';
 import { ValidationError } from '../../utils/errors';
 
-const SUPPORTED_INBOUND_EVENTS = ['message.received', 'inquiry.submitted', 'ticket.created', 'quotation.decision'];
+const SUPPORTED_INBOUND_EVENTS = ['message.received', 'inquiry.submitted', 'ticket.created', 'quotation.decision', 'quotation.accepted'];
 const DEFAULT_EVENTS = ['message.received'];
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 

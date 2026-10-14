@@ -10,6 +10,7 @@ import prisma from '../../config/database';
 import { NotFoundError, ValidationError } from '../../utils/errors';
 import { RoleCode } from '../../types/roles';
 import type { Prisma } from '@prisma/client';
+import { queueWebhookEvent } from './crm-outbound-webhook.service';
 
 const CRM_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
 
@@ -432,8 +433,8 @@ export class CRMService {
  * Data/side effects: No database operation is implied unless explicitly present in the implementation.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async processDealWon(opportunityId: string, user: any, explicitCompanyId?: string | null) {
-    return prisma.$transaction(async (tx) => {
+  static async processDealWon(opportunityId: string, user: any, explicitCompanyId?: string | null, db: Prisma.TransactionClient | typeof prisma = prisma) {
+    const execute = async (tx: Prisma.TransactionClient) => {
       await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM crm_opportunity
         WHERE id = ${opportunityId} AND company_id = ${explicitCompanyId ?? null}
@@ -612,6 +613,16 @@ export class CRMService {
         },
       });
 
+      await queueWebhookEvent(tx, companyId, 'deal.won', {
+        opportunity_id: opportunity.id,
+        decision: isSafe ? 'SEND_TO_PROJECT_MANAGEMENT' : 'SEND_BILL_TO_CLIENT_MANUALLY',
+        handoff: {
+          sales_order_id: createdOrder?.id ?? null,
+          project_id: createdProject?.id ?? null,
+          proforma_invoice_id: proformaBilling?.id ?? null,
+        },
+      });
+
       return {
         opportunity_id: opportunity.id,
         opportunity_name: opportunity.opportunity_name,
@@ -637,7 +648,8 @@ export class CRMService {
             : 'Batas kredit terlampaui. Minta Executive Override.',
         },
       };
-    }, CRM_TRANSACTION_OPTIONS);
+    };
+    return db === prisma ? prisma.$transaction(execute, CRM_TRANSACTION_OPTIONS) : execute(db as Prisma.TransactionClient);
   }
 
 /**
