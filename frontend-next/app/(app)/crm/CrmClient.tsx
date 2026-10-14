@@ -32,6 +32,8 @@ import {
   updateCustomerCreditLimit, calculateCreditSnapshot,
   loadCRMInbox, createInquiryFromConversation, replyToCRMConversation, assignConversationToMe, setConversationDecision,
   confirmCRMIdentityCustomer,
+  loadCRMWhatsAppConnections, createCRMWhatsAppConnection, updateCRMWhatsAppConnection, testCRMWhatsAppConnection,
+  type CRMWhatsAppConnection,
   type CRMInboxConversation,
 } from "@/lib/api/crm.api";
 import api from "@/lib/api/axios";

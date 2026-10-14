@@ -34,6 +34,7 @@ import { crmRouter } from './modules/crm/crm.routes';
 import { crmIntegrationAdminRouter, crmIntegrationWebhookRouter } from './modules/crm/crm-integration.routes';
 import { crmIntegrationWorkerRouter } from './modules/crm/crm-integration-worker.routes';
 import { crmPortalRouter } from './modules/crm/crm-portal.routes';
+import { crmWhatsAppWebhookRouter } from './modules/crm/crm-whatsapp.routes';
 import { salesRouter } from './modules/sales/sales.routes';
 import { projectsRouter } from './modules/projects/projects.routes';
 import { timesheetTimerRouter } from './modules/projects/timesheet-timer.routes';
@@ -123,7 +124,7 @@ export function createApp(): Express {
     verify: (req, _res, buffer) => {
       // HMAC must be calculated against the original bytes, before JSON parsing
       // or serialization changes whitespace, key order, or Unicode encoding.
-      if (req.url?.startsWith('/api/v1/integrations/webhooks/')) {
+      if (req.url?.startsWith('/api/v1/integrations/webhooks/') || req.url?.startsWith('/api/v1/integrations/whatsapp/')) {
         (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
       }
     },
@@ -186,6 +187,8 @@ export function createApp(): Express {
   // Signed system-to-system endpoint. It authenticates each request with the
   // integration registry and does not accept ERP JWT/company headers.
   apiV1.use('/integrations/webhooks', crmIntegrationWebhookRouter);
+  // Meta Cloud API callbacks have their own provider signature verification.
+  apiV1.use('/integrations/whatsapp', crmWhatsAppWebhookRouter);
 
   // Every remaining API endpoint requires an authenticated, active user.
   apiV1.use(authenticate);

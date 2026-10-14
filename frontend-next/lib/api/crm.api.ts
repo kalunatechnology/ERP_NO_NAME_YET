@@ -90,6 +90,43 @@ export async function confirmCRMIdentityCustomer(identityId: string, partyId: st
   return data;
 }
 
+export interface CRMWhatsAppConnection {
+  id: string;
+  source_id: string;
+  waba_id: string;
+  phone_number_id: string;
+  display_phone_number: string | null;
+  api_version: string;
+  status: "ACTIVE" | "SUSPENDED";
+  callback_path: string;
+  last_verified_at: string | null;
+  last_webhook_at: string | null;
+}
+
+function companyScopeHeaders(companyId?: string) {
+  return companyId ? { headers: { "X-Company-ID": companyId } } : undefined;
+}
+
+export async function loadCRMWhatsAppConnections(companyId?: string): Promise<CRMWhatsAppConnection[]> {
+  const { data } = await api.get("/api/v1/core/whatsapp/connections/", companyScopeHeaders(companyId));
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
+export async function createCRMWhatsAppConnection(input: Record<string, string>, companyId?: string) {
+  const { data } = await api.post("/api/v1/core/whatsapp/connections/", input, companyScopeHeaders(companyId));
+  return data as CRMWhatsAppConnection;
+}
+
+export async function updateCRMWhatsAppConnection(id: string, input: Record<string, string>, companyId?: string) {
+  const { data } = await api.patch(`/api/v1/core/whatsapp/connections/${id}/`, input, companyScopeHeaders(companyId));
+  return data as CRMWhatsAppConnection;
+}
+
+export async function testCRMWhatsAppConnection(id: string, companyId?: string) {
+  const { data } = await api.post(`/api/v1/core/whatsapp/connections/${id}/test/`, {}, companyScopeHeaders(companyId));
+  return data;
+}
+
 /* ── Endpoints map ───────────────────────────────── */
 // frontend-next/lib/api/crm.api.ts
 

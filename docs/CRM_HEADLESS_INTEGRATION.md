@@ -2,6 +2,14 @@
 
 Marka tetap menjadi sumber data utama. Sistem eksternal mengirim event ke API Marka, sedangkan perubahan yang perlu disebarkan ke sistem eksternal dikirim melalui outbound webhook yang memiliki antrean, retry, dan riwayat delivery.
 
+## WhatsApp Business Cloud API (inbound awal)
+
+Marka menyediakan halaman **CRM → Koneksi WhatsApp** khusus Company Admin/Super Admin. Administrator menyimpan WABA ID, Phone Number ID, Graph API version, permanent access token, Meta App Secret, dan Verify Token di layar tersebut. Access token, App Secret, dan Verify Token dienkripsi memakai `CRM_INTEGRATION_ENCRYPTION_KEY`; endpoint daftar koneksi hanya mengembalikan status konfigurasi, bukan rahasianya. Tombol **Uji koneksi Meta** memeriksa Phone Number ID melalui Graph API.
+
+Callback bersama untuk semua nomor: `https://<domain-backend-marka>/api/v1/integrations/whatsapp/webhook`. Daftarkan URL itu pada Meta Developers, gunakan Verify Token yang sama seperti di Marka, dan aktifkan subscription `messages` untuk WABA. Callback `GET` menjalankan verifikasi challenge Meta; callback `POST` memvalidasi `X-Hub-Signature-256` menggunakan App Secret. Marka memetakan pesan ke nomor berdasarkan WABA ID dan Phone Number ID. Pesan teks yang sah dikonversi ke event CRM standar dan dimasukkan ke antrean `crm_integration_event`, sehingga pemrosesan Inbox tetap memakai worker, deduplikasi, dan retry yang sama. Pesan media/status belum diproses.
+
+Konektor ini memusatkan konfigurasi dan penerimaan pesan di Marka, tetapi pendaftaran aplikasi, nomor bisnis/WABA, izin/token, HTTPS publik, dan subscription webhook tetap perlu disiapkan pada akun Meta. Fitur balas pesan dari Inbox dan pengiriman template/media belum termasuk tahap ini. Jangan deploy sebelum migration koneksi diterapkan, `CRM_INTEGRATION_ENCRYPTION_KEY` tersedia, URL callback publik memakai HTTPS, dan webhook diuji dengan nomor Meta yang benar-benar terdaftar.
+
 ## Menyiapkan
 
 1. Pastikan modul CRM aktif untuk company dan `CRM_INTEGRATION_ENCRYPTION_KEY` tersedia sebagai base64 dari 32 byte acak.

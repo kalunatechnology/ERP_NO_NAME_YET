@@ -1386,6 +1386,32 @@ model core_integration_source {
   @@map("core_integration_source")
 }
 
+// WhatsApp Cloud API credentials are company-scoped and encrypted at rest.
+// The source_id points to the existing CRM inbound event pipeline.
+model crm_whatsapp_connection {
+  id                    String    @id @default(uuid())
+  tenant_id             String    @map("tenant_id")
+  company_id            String    @map("company_id")
+  source_id             String    @unique @map("source_id")
+  waba_id               String    @map("waba_id")
+  phone_number_id       String    @map("phone_number_id")
+  display_phone_number  String?   @map("display_phone_number")
+  api_version           String    @default("v25.0") @map("api_version")
+  access_token_encrypted String    @map("access_token_encrypted")
+  app_secret_encrypted  String    @map("app_secret_encrypted")
+  verify_token_encrypted String   @map("verify_token_encrypted")
+  status                String    @default("ACTIVE")
+  last_verified_at      DateTime? @map("last_verified_at")
+  last_webhook_at       DateTime? @map("last_webhook_at")
+  created_by_id         String?   @map("created_by_id")
+  created_at            DateTime  @default(now()) @map("created_at")
+  updated_at            DateTime  @updatedAt @map("updated_at")
+
+  @@unique([company_id, phone_number_id])
+  @@index([company_id, status])
+  @@map("crm_whatsapp_connection")
+}
+
 model crm_integration_event {
   id             String    @id @default(uuid())
   source_id      String    @map("source_id")
