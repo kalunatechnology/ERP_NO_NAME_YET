@@ -69,12 +69,13 @@ export class CRMIntegrationService {
         select: { id: true },
       });
       const assignments = user ? await prisma.iam_user_role.findMany({
-        where: { user_id: user.id, tenant_id: tenantId, company_id: companyId },
+        // Scope by company; legacy role assignments may not have tenant_id set.
+        where: { user_id: user.id, company_id: companyId, role_id: { not: null } },
         select: { role_id: true },
       }) : [];
       const roleIds = assignments.flatMap((assignment) => assignment.role_id ? [assignment.role_id] : []);
       const eligible = roleIds.length ? await prisma.iam_role.count({
-        where: { id: { in: roleIds }, role_code: { in: ['CRM_LEAD', 'SALES'] } },
+        where: { id: { in: roleIds }, tenant_id: tenantId, role_code: { in: ['CRM_LEAD', 'SALES'] } },
       }) : 0;
       if (!user || !eligible) throw new ValidationError('default_assigned_user_id harus user aktif dengan role CRM Lead atau Sales pada company ini.');
     }

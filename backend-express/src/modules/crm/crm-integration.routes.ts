@@ -86,12 +86,15 @@ crmIntegrationAdminRouter.get('/eligible-assignees', async (req, res, next) => {
   try {
     if (!req.tenantId) throw new ForbiddenError('Tenant context wajib tersedia.');
     const assignments = await prisma.iam_user_role.findMany({
-      where: { tenant_id: req.tenantId, company_id: companyId(req) },
+      // Company membership is the authoritative scope here. Older role
+      // assignments created by the role-management flow may have a null
+      // tenant_id even though they are correctly attached to this company.
+      where: { company_id: companyId(req), user_id: { not: null }, role_id: { not: null } },
       select: { user_id: true, role_id: true },
     });
     const roleIds = [...new Set(assignments.flatMap((row) => row.role_id ? [row.role_id] : []))];
     const eligibleRoles = roleIds.length ? await prisma.iam_role.findMany({
-      where: { id: { in: roleIds }, role_code: { in: ['CRM_LEAD', 'SALES'] } },
+      where: { id: { in: roleIds }, tenant_id: req.tenantId, role_code: { in: ['CRM_LEAD', 'SALES'] } },
       select: { id: true },
     }) : [];
     const eligibleRoleIds = new Set(eligibleRoles.map((role) => role.id));

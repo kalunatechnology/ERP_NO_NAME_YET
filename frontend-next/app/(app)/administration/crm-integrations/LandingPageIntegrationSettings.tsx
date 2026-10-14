@@ -24,6 +24,8 @@ const EVENT_OPTIONS = [
 export default function LandingPageIntegrationSettings() {
   const [sources, setSources] = useState<CRMIntegrationSource[]>([]);
   const [assignees, setAssignees] = useState<Array<{ id: string; full_name: string; email: string }>>([]);
+  const [assigneesLoading, setAssigneesLoading] = useState(true);
+  const [assigneesError, setAssigneesError] = useState(false);
   const [companyScope, setCompanyScope] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -31,7 +33,7 @@ export default function LandingPageIntegrationSettings() {
   const [createdSource, setCreatedSource] = useState<CRMIntegrationSource | null>(null);
   const [copied, setCopied] = useState(false);
   const [form, setForm] = useState({ source_code: "ARSALYNK_LANDING", account_name: "Arsalynk Landing Page", external_account_id: "landing-page-main", business_unit_code: "SALES", business_unit_name: "Sales", default_assigned_user_id: "" });
-  const [events, setEvents] = useState<string[]>(["message.received", "inquiry.submitted"]);
+  const [events, setEvents] = useState<string[]>(["inquiry.submitted"]);
   const scopeHeaders = companyScope ? { headers: { "X-Company-ID": companyScope } } : undefined;
   const endpoint = typeof window !== "undefined" ? new URL("/api/v1/integrations/webhooks/events", api.defaults.baseURL || window.location.origin).toString() : "/api/v1/integrations/webhooks/events";
 
@@ -44,7 +46,14 @@ export default function LandingPageIntegrationSettings() {
   }, [companyScope]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
-    loadCRMIntegrationAssignees(companyScope || undefined).then(setAssignees).catch(() => setAssignees([]));
+    let cancelled = false;
+    setAssigneesLoading(true);
+    setAssigneesError(false);
+    loadCRMIntegrationAssignees(companyScope || undefined)
+      .then((rows) => { if (!cancelled) setAssignees(rows); })
+      .catch(() => { if (!cancelled) { setAssignees([]); setAssigneesError(true); } })
+      .finally(() => { if (!cancelled) setAssigneesLoading(false); });
+    return () => { cancelled = true; };
   }, [companyScope]);
 
   const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
@@ -79,7 +88,7 @@ export default function LandingPageIntegrationSettings() {
     <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
       <div className="flex items-start gap-3"><div className="rounded-xl bg-[#EAF6FF] p-2 text-[#2649B3]"><Globe2 size={19}/></div><div><h2 className="text-base font-bold text-[#172033]">Hubungkan landing page ke CRM Marka</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748B]">Daftarkan server landing page sebagai sumber resmi. Marka membuat ID dan signing secret agar server website dapat mengirim formulir atau pesan masuk dengan aman.</p></div></div>
       <div className="mt-5 grid gap-3 md:grid-cols-2">{field("Kode sumber", "source_code", "Huruf kapital, angka, _ atau -; contoh ARSALYNK_LANDING")}{field("Nama integrasi", "account_name", "Nama yang mudah dikenali administrator")}{field("ID akun eksternal", "external_account_id", "Penanda channel dari website Anda")}{field("Kode unit bisnis (opsional)", "business_unit_code", "Contoh SALES atau SERVICE")}{field("Nama unit bisnis (opsional)", "business_unit_name", "Nama unit untuk routing inbox")}
-        <label className="flex flex-col gap-1.5 text-xs font-semibold text-[#475569]">Penanggung jawab awal (opsional)<select className={inputClass} value={form.default_assigned_user_id} onChange={(e) => update("default_assigned_user_id", e.target.value)}><option value="">Belum ditentukan</option>{assignees.map((user) => <option key={user.id} value={user.id}>{user.full_name} · {user.email}</option>)}</select><span className="font-normal text-[#718096]">Inquiry dari kanal ini akan diarahkan ke user aktif berperan CRM Lead atau Sales.</span></label>
+        <label className="flex flex-col gap-1.5 text-xs font-semibold text-[#475569]">Penanggung jawab awal (opsional)<select className={inputClass} value={form.default_assigned_user_id} onChange={(e) => update("default_assigned_user_id", e.target.value)} disabled={assigneesLoading || assigneesError || assignees.length === 0}><option value="">{assigneesLoading ? "Memuat pengguna…" : assigneesError ? "Daftar pengguna gagal dimuat" : assignees.length ? "Belum ditentukan" : "Belum ada user CRM/Sales"}</option>{assignees.map((user) => <option key={user.id} value={user.id}>{user.full_name} · {user.email}</option>)}</select><span className="font-normal text-[#718096]">{assigneesError ? "Coba muat ulang halaman. Jika tetap gagal, periksa koneksi atau akses admin." : assignees.length === 0 && !assigneesLoading ? "Tambahkan role CRM Lead atau Sales ke pengguna pada company ini melalui Pengguna & Akses." : "Inquiry dari kanal ini akan diarahkan ke user aktif berperan CRM Lead atau Sales."}</span></label>
       </div>
       <div className="mt-4"><p className="mb-2 text-xs font-semibold text-[#475569]">Jenis event yang boleh dikirim ke Marka</p><div className="grid gap-2 sm:grid-cols-2">{EVENT_OPTIONS.map((event) => <label key={event.value} className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-3 py-2.5 text-sm text-[#334155]"><input type="checkbox" checked={events.includes(event.value)} onChange={(e) => setEvents((current) => e.target.checked ? [...current, event.value] : current.filter((item) => item !== event.value))}/><span>{event.label}</span></label>)}</div></div>
       <button className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#2649B3] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" onClick={submit} disabled={saving || !form.source_code.trim() || !form.account_name.trim() || events.length === 0}><Plus size={16}/>{saving ? "Mendaftarkan..." : "Buat koneksi landing page"}</button>
