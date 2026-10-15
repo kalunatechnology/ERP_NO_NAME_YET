@@ -1,10 +1,10 @@
 import { Prisma, RoleCode } from '@prisma/client';
-import prisma from '../../config/database';
-import { ForbiddenError } from '../../utils/errors';
-import { loadAuthenticationSnapshot, loadUserAccessContext } from '../accounts/access-context.service';
-import { MarbotTenantConfig } from './marbot.types';
-import { MarbotProjectScope, MarbotRuntimeAuthority } from './marbot.types';
-import { ProjectsService } from '../projects/projects.service';
+import prisma from '../../../../config/database';
+import { ForbiddenError } from '../../../../utils/errors';
+import { loadAuthenticationSnapshot, loadUserAccessContext } from '../../../accounts/access-context.service';
+import { MarbotTenantConfig } from '../types';
+import { MarbotProjectScope, MarbotRuntimeAuthority } from '../types';
+import { ProjectsService } from '../../../projects/projects.service';
 
 export const MARBOT_PERMISSION_CODES = [
   'USE_MARBOT', 'READ_GENERAL', 'READ_PROJECT', 'READ_TASK',

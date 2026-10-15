@@ -1,19 +1,19 @@
 import { createHash, randomUUID } from 'crypto';
-import prisma from '../../config/database';
-import { env } from '../../config/env';
-import { AppError, ValidationError } from '../../utils/errors';
+import prisma from '../../../../config/database';
+import { env } from '../../../../config/env';
+import { AppError, ValidationError } from '../../../../utils/errors';
 import {
   ChatbotProvisionTenantResponse,
   ChatbotTenantModuleProvision,
   MarbotTenantConfig,
   TenantIntegrationStatus,
-} from './marbot.types';
-import { envTenantConfig, resolveMarbotTenantConfig } from './marbot.config';
+} from '../types';
+import { envTenantConfig, resolveMarbotTenantConfig } from '../models/config';
 import {
   MarbotControlPlaneClient,
   marbotControlPlaneClient,
-} from './marbot-control-plane.client';
-import { decryptMarbotSecret, encryptMarbotSecret, hasMarbotEncryptionKey } from './marbot-secret.service';
+} from './control-plane.client';
+import { decryptMarbotSecret, encryptMarbotSecret, hasMarbotEncryptionKey } from '../security/secret.service';
 
 const MODULE_PERMISSION_CATALOG: Record<string, string[]> = {
   GENERAL: ['READ_GENERAL'],

@@ -54,7 +54,7 @@ import { reportingRouter } from './modules/reporting/reporting.routes';
 import { managementReportsRouter } from './modules/management_reports/management_reports.routes';
 import { commandsRouter } from './modules/commands/commands.routes';
 import { dashboardRouter, invalidateDashboardCache } from './modules/dashboard/dashboard.routes';
-import { marbotInternalRouter, marbotUserRouter } from './modules/marbot/marbot.routes';
+import { marbotInternalRouter, marbotUserRouter } from './modules/marbot/routing/routes';
 
 // Initialize Workflows
 import './workflows';

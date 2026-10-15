@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { env } from '../../config/env';
-import { isExplicitWriteRequest, isProcedureQuestion, procedureOperation } from './marbot-intent';
+import { env } from '../../../../config/env';
+import { isExplicitWriteRequest, isProcedureQuestion, procedureOperation } from './intent';
 
 const entity = z.string().trim().min(1).max(160).optional();
 export const nativePlanSchema = z.discriminatedUnion('type', [

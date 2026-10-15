@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
-import { answerNative, canUseDashboard, detectTools, followUpQuestion, isNativeTaskReadQuestion, NativeScope, queryPeriod, taskDateIntent } from '../src/modules/marbot/marbot-native.service';
-import { helperAnswer } from '../src/modules/marbot/marbot-knowledge';
-import { renderNativeAnswer } from '../src/modules/marbot/marbot-provider.service';
+import { answerNative, canUseDashboard, detectTools, followUpQuestion, isNativeTaskReadQuestion, NativeScope, queryPeriod, taskDateIntent } from '../src/modules/marbot/brain/reasoning/native.service';
+import { helperAnswer } from '../src/modules/marbot/knowledge/knowledge';
+import { renderNativeAnswer } from '../src/modules/marbot/brain/models/provider.service';
 import prisma from '../src/config/database';
 
 const staff: NativeScope = { tenantId: 'tenant-a', companyId: 'company-a', userId: 'user-a', roleId: 'role-a', roleCode: RoleCode.STAFF, enabledModules: ['MARBOT', 'PROJECTS'], permissions: ['USE_MARBOT', 'READ_TASK', 'READ_PROJECT'], projectScope: { mode: 'LIST', projectIds: ['project-a'] } };

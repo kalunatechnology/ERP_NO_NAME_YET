@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { RoleCode } from '@prisma/client';
 import prisma from '../src/config/database';
-import * as authority from '../src/modules/marbot/marbot-access.service';
-import { nativeMarbotRouter } from '../src/modules/marbot/marbot-native.routes';
-import { marbotAuthorityKey } from '../src/modules/marbot/marbot-authority.service';
+import * as authority from '../src/modules/marbot/brain/security/access.service';
+import { nativeMarbotRouter } from '../src/modules/marbot/routing/native.routes';
+import { marbotAuthorityKey } from '../src/modules/marbot/brain/security/authority.service';
 import { errorHandler } from '../src/middlewares/error.middleware';
-import * as resource from '../src/modules/marbot/marbot-resource.service';
-import * as planner from '../src/modules/marbot/marbot-planner.service';
+import * as resource from '../src/modules/marbot/knowledge/resource.service';
+import * as planner from '../src/modules/marbot/brain/reasoning/planner.service';
 import { env } from '../src/config/env';
-import * as understanding from '../src/modules/marbot/marbot-understanding.service';
+import * as understanding from '../src/modules/marbot/brain/reasoning/understanding.service';
 
 async function main() {
   // Hermetic HTTP test: no production database, provider, or ERP writes.

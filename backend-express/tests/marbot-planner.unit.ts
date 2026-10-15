@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { validateNativePlan, planNativeQuestion } from '../src/modules/marbot/marbot-planner.service';
+import { validateNativePlan, planNativeQuestion } from '../src/modules/marbot/brain/reasoning/planner.service';
 import { env } from '../src/config/env';
 
 async function main() {

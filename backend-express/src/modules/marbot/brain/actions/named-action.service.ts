@@ -1,9 +1,9 @@
 import { Prisma } from '@prisma/client';
-import prisma from '../../config/database';
-import type { NativeScope } from './marbot-native.service';
-import type { MarbotAction } from './marbot-action.service';
-import { proposeAction } from './marbot-action.service';
-import { isProcedureQuestion } from './marbot-intent';
+import prisma from '../../../../config/database';
+import type { NativeScope } from '../reasoning/native.service';
+import type { MarbotAction } from './action.service';
+import { proposeAction } from './action.service';
+import { isProcedureQuestion } from '../reasoning/intent';
 
 /** Resolve only explicitly quoted, unique names inside current authority. No defaults or fuzzy identities. */
 export async function proposeNamedTaskAction(message: string, scope: NativeScope, db = prisma) {

@@ -1,23 +1,23 @@
 import { Router, Request } from 'express';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
-import prisma from '../../config/database';
-import { AppError, ConflictError, ForbiddenError, ValidationError } from '../../utils/errors';
-import { buildMarbotRuntimeAuthority } from './marbot-access.service';
-import { canUseDashboard } from './marbot-native.service';
-import { env } from '../../config/env';
-import { discoverMarbotSchema } from './marbot-schema.service';
-import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
-import { loadNativePolicyRestrictions } from './marbot-policy.service';
-import { executeCanonicalAction } from './marbot-execution.service';
-import type { MarbotAction } from './marbot-action.service';
-import { createMarbotMcpRouter } from './marbot-mcp.routes';
-import { executeResourceRead, executeResourceWrite, resourceCatalog, resourceDefinition } from './marbot-resource.service';
-import { reserveMarbotRequest } from './marbot-rate-limit.service';
-import { assertNativeMarbotStorageReady } from './marbot-runtime.service';
-import { answerMarbotQuestion } from './marbot-orchestrator.service';
+import prisma from '../../../config/database';
+import { AppError, ConflictError, ForbiddenError, ValidationError } from '../../../utils/errors';
+import { buildMarbotRuntimeAuthority } from '../brain/security/access.service';
+import { canUseDashboard } from '../brain/reasoning/native.service';
+import { env } from '../../../config/env';
+import { discoverMarbotSchema } from '../knowledge/schema.service';
+import { requireModuleAccess } from '../../../middlewares/entitlement.middleware';
+import { loadNativePolicyRestrictions } from '../brain/security/policy.service';
+import { executeCanonicalAction } from '../brain/actions/execution.service';
+import type { MarbotAction } from '../brain/actions/action.service';
+import { createMarbotMcpRouter } from './mcp.routes';
+import { executeResourceRead, executeResourceWrite, resourceCatalog, resourceDefinition } from '../knowledge/resource.service';
+import { reserveMarbotRequest } from '../brain/security/rate-limit.service';
+import { assertNativeMarbotStorageReady } from '../brain/runtime.service';
+import { answerMarbotQuestion } from '../brain/reasoning/orchestrator.service';
 import { marbotOwner as owner, marbotAuthorityKey as authorityKey, visibleConversationTitle,
-  marbotAuthorityBaseKey, marbotMessageAuthority, canReadMarbotMessage } from './marbot-authority.service';
+  marbotAuthorityBaseKey, marbotMessageAuthority, canReadMarbotMessage } from '../brain/security/authority.service';
 
 export const nativeMarbotRouter = Router();
 // Authentication and company resolution are mounted by the parent router.

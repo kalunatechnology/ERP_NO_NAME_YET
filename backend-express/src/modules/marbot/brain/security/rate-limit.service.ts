@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import prisma from '../../config/database';
-import { AppError } from '../../utils/errors';
+import prisma from '../../../../config/database';
+import { AppError } from '../../../../utils/errors';
 
 type RequestRecord = {
   tenant_id: string; company_id: string; user_id: string;

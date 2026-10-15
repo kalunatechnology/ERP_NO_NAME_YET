@@ -1,6 +1,6 @@
-import { env } from '../../config/env';
-import { AppError, ValidationError } from '../../utils/errors';
-import { ChatbotProvisionTenantRequest, ChatbotProvisionTenantResponse } from './marbot.types';
+import { env } from '../../../../config/env';
+import { AppError, ValidationError } from '../../../../utils/errors';
+import { ChatbotProvisionTenantRequest, ChatbotProvisionTenantResponse } from '../types';
 
 export class MarbotControlPlaneClient {
   private readonly baseUrl: string;

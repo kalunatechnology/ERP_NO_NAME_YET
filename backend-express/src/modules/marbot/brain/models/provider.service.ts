@@ -1,4 +1,4 @@
-import { env } from '../../config/env';
+import { env } from '../../../../config/env';
 
 /** Optional language rendering. Data access always remains in ERP services. */
 export async function renderNativeAnswer(question: string, groundedAnswer: string, signal: AbortSignal): Promise<{ content: string; model: string }> {

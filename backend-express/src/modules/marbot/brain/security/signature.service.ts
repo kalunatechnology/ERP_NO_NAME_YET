@@ -1,6 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
-import { MarbotRuntimeContextV2 } from './marbot.types';
+import { MarbotRuntimeContextV2 } from '../types';
 
 /**
  * Deterministically formats JSON payloads with sorted keys for consistent HMAC hashing.

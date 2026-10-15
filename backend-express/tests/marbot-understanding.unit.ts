@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
 import { env } from '../src/config/env';
 import prisma from '../src/config/database';
-import { validateUnderstanding, understandMarbotQuestion } from '../src/modules/marbot/marbot-understanding.service';
-import { answerMarbotQuestion } from '../src/modules/marbot/marbot-orchestrator.service';
-import type { NativeScope } from '../src/modules/marbot/marbot-native.service';
-import { isNativeTaskReadQuestion } from '../src/modules/marbot/marbot-native.service';
-import { isDataReadQuestion, isMutationCommand, isProcedureQuestion } from '../src/modules/marbot/marbot-intent';
+import { validateUnderstanding, understandMarbotQuestion } from '../src/modules/marbot/brain/reasoning/understanding.service';
+import { answerMarbotQuestion } from '../src/modules/marbot/brain/reasoning/orchestrator.service';
+import type { NativeScope } from '../src/modules/marbot/brain/reasoning/native.service';
+import { isNativeTaskReadQuestion } from '../src/modules/marbot/brain/reasoning/native.service';
+import { isDataReadQuestion, isMutationCommand, isProcedureQuestion } from '../src/modules/marbot/brain/reasoning/intent';
 
 const scope: NativeScope = { tenantId: 'tenant-fixture', companyId: 'company-fixture', userId: 'user-fixture', roleId: 'role-fixture', roleCode: RoleCode.PROJECT_MANAGER,
   enabledModules: ['MARBOT', 'PROJECTS', 'REQUESTS', 'IMPLEMENTATION'], permissions: ['USE_MARBOT', 'READ_TASK', 'READ_PROJECT'], projectScope: { mode: 'LIST', projectIds: ['project-fixture'] } };

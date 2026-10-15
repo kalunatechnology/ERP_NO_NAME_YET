@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { NativeScope } from './marbot-native.service';
-import { canonicalJson } from './marbot-signature.service';
+import type { NativeScope } from '../reasoning/native.service';
+import { canonicalJson } from './signature.service';
 import { z } from 'zod';
 
 export const marbotOwner = (scope: NativeScope) => ({ tenant_id: scope.tenantId, company_id: scope.companyId, user_id: scope.userId });

@@ -32,7 +32,7 @@ for (const module of modules) {
   visit(tree);
 }
 sources['prisma/schema.prisma'] = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'prisma/schema.prisma'), 'utf8').replace(/\r\n/g, '\n')).digest('hex');
-const target = path.join(root, 'src/modules/marbot/resource-catalog.generated.json');
+const target = path.join(root, 'src/modules/marbot/knowledge/resource-catalog.generated.json');
 const output = JSON.stringify({ sources, resources }, null, 2) + '\n';
 if (process.argv.includes('--check')) {
   if (!fs.existsSync(target) || fs.readFileSync(target, 'utf8').replace(/\r\n/g, '\n') !== output) throw new Error('Marka resource catalogue stale: run node scripts/generate_marbot_catalog.js');

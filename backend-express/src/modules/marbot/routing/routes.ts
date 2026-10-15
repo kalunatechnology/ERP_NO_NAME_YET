@@ -1,17 +1,17 @@
 import { randomUUID } from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import { Prisma, RoleCode } from '@prisma/client';
-import prisma from '../../config/database';
-import { authenticate } from '../../middlewares/auth.middleware';
-import { resolveTenant } from '../../middlewares/tenant.middleware';
-import { AppError, ForbiddenError, UnauthorizedError, ValidationError } from '../../utils/errors';
+import prisma from '../../../config/database';
+import { authenticate } from '../../../middlewares/auth.middleware';
+import { resolveTenant } from '../../../middlewares/tenant.middleware';
+import { AppError, ForbiddenError, UnauthorizedError, ValidationError } from '../../../utils/errors';
 import {
   canonicalJson,
   matchesHmac,
   signRuntimeContext,
   toolSignaturePayload,
-} from './marbot-signature.service';
-import { resolveMarbotTenantConfig } from './marbot.config';
+} from '../brain/security/signature.service';
+import { resolveMarbotTenantConfig } from '../brain/models/config';
 import {
   buildMarbotRuntimeAuthority,
   mapRoleForChatbot,
@@ -19,16 +19,16 @@ import {
   toolModules,
   toolPermissions,
   toolQueryKeys,
-} from './marbot-access.service';
-import { MarbotToolScope } from './marbot.types';
-import { env } from '../../config/env';
-import { nativeMarbotRouter } from './marbot-native.routes';
+} from '../brain/security/access.service';
+import { MarbotToolScope } from '../brain/types';
+import { env } from '../../../config/env';
+import { nativeMarbotRouter } from './native.routes';
 import { z } from 'zod';
-import { loadNativePolicyRestrictions } from './marbot-policy.service';
-import { marbotAuthorityKey, marbotOwner } from './marbot-authority.service';
-import { createMarbotRuntimeContextV2 } from './marbot-runtime.service';
-import { requireSignedExternalContract, externalConversationKey, readExternalAnswer } from './marbot-external-security.service';
-import { reserveMarbotRequest } from './marbot-rate-limit.service';
+import { loadNativePolicyRestrictions } from '../brain/security/policy.service';
+import { marbotAuthorityKey, marbotOwner } from '../brain/security/authority.service';
+import { createMarbotRuntimeContextV2 } from '../brain/runtime.service';
+import { requireSignedExternalContract, externalConversationKey, readExternalAnswer } from '../brain/security/external-security.service';
+import { reserveMarbotRequest } from '../brain/security/rate-limit.service';
 
 async function externalScope(userId: string, tenantId: string, companyId: string) {
   const scope = { ...await buildMarbotRuntimeAuthority(userId, tenantId, companyId), userId, tenantId, companyId };

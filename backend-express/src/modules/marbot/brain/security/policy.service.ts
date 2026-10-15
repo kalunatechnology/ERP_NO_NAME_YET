@@ -1,5 +1,5 @@
-import prisma from '../../config/database';
-import type { NativeScope } from './marbot-native.service';
+import prisma from '../../../../config/database';
+import type { NativeScope } from '../reasoning/native.service';
 
 /** Fail closed for configured custom policies until their expression has a supported evaluator. */
 export async function loadNativePolicyRestrictions(scope: NativeScope, db = prisma) {

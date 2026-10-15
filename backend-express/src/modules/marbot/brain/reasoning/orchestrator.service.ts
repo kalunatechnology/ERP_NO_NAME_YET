@@ -1,13 +1,13 @@
 import type { Request } from 'express';
-import prisma from '../../config/database';
-import { answerNative, detectTools, followUpQuestion, isNativeTaskReadQuestion, type AssistantMode, type NativeScope } from './marbot-native.service';
-import type { MarbotAction } from './marbot-action.service';
-import { helperAnswer, systemKnowledgeAnswer } from './marbot-knowledge';
-import { validateNativePlan } from './marbot-planner.service';
-import { executeResourceRead, planResourceQuestion, type ResourcePlan } from './marbot-resource.service';
-import { discoverMarbotSchema } from './marbot-schema.service';
-import { understandMarbotQuestion } from './marbot-understanding.service';
-import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion } from './marbot-intent';
+import prisma from '../../../../config/database';
+import { answerNative, detectTools, followUpQuestion, isNativeTaskReadQuestion, type AssistantMode, type NativeScope } from './native.service';
+import type { MarbotAction } from '../actions/action.service';
+import { helperAnswer, systemKnowledgeAnswer } from '../../knowledge/knowledge';
+import { validateNativePlan } from './planner.service';
+import { executeResourceRead, planResourceQuestion, type ResourcePlan } from '../../knowledge/resource.service';
+import { discoverMarbotSchema } from '../../knowledge/schema.service';
+import { understandMarbotQuestion } from './understanding.service';
+import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion } from './intent';
 
 export type MarbotAnswer = { content: string; tools: string[]; sources: string[]; action?: MarbotAction };
 export type MarbotDecision = { answer: MarbotAnswer; understanding: { source: 'llm' | 'local' | 'explicit';

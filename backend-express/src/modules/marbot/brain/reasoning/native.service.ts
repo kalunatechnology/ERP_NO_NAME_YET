@@ -1,11 +1,11 @@
 import { Prisma, RoleCode } from '@prisma/client';
-import prisma from '../../config/database';
-import { ForbiddenError, ValidationError } from '../../utils/errors';
-import { MarbotRuntimeAuthority } from './marbot.types';
-import { helperAnswer, systemKnowledgeAnswer } from './marbot-knowledge';
-import { proposeAction } from './marbot-action.service';
-import { proposeNamedTaskAction } from './marbot-named-action.service';
-import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion, procedureOperation, procedureTopic } from './marbot-intent';
+import prisma from '../../../../config/database';
+import { ForbiddenError, ValidationError } from '../../../../utils/errors';
+import { MarbotRuntimeAuthority } from '../types';
+import { helperAnswer, systemKnowledgeAnswer } from '../../knowledge/knowledge';
+import { proposeAction } from '../actions/action.service';
+import { proposeNamedTaskAction } from '../actions/named-action.service';
+import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion, procedureOperation, procedureTopic } from './intent';
 
 export type NativeScope = MarbotRuntimeAuthority & { tenantId: string; companyId: string; userId: string; blockedReadModules?: string[]; blockedWriteModules?: string[] };
 export const dashboardRoles: RoleCode[] = [RoleCode.DIRECTOR, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER];

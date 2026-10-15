@@ -1,9 +1,9 @@
 import { RoleCode } from '@prisma/client';
-import prisma from '../../config/database';
-import { env } from '../../config/env';
-import { ForbiddenError } from '../../utils/errors';
-import { MarbotTenantConfig } from './marbot.types';
-import { decryptMarbotSecret } from './marbot-secret.service';
+import prisma from '../../../../config/database';
+import { env } from '../../../../config/env';
+import { ForbiddenError } from '../../../../utils/errors';
+import { MarbotTenantConfig } from '../types';
+import { decryptMarbotSecret } from '../security/secret.service';
 
 export function envTenantConfig(tenantId: string): MarbotTenantConfig | null {
   try {

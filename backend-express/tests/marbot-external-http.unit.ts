@@ -4,10 +4,10 @@ import { RoleCode } from '@prisma/client';
 import prisma from '../src/config/database';
 import { env } from '../src/config/env';
 import * as accessContext from '../src/modules/accounts/access-context.service';
-import * as authority from '../src/modules/marbot/marbot-access.service';
-import * as configuration from '../src/modules/marbot/marbot.config';
+import * as authority from '../src/modules/marbot/brain/security/access.service';
+import * as configuration from '../src/modules/marbot/brain/models/config';
 import { signAccessToken } from '../src/utils/jwt';
-import { canonicalJson, matchesHmac } from '../src/modules/marbot/marbot-signature.service';
+import { canonicalJson, matchesHmac } from '../src/modules/marbot/brain/security/signature.service';
 
 async function main() {
   env.MARBOT_RUNTIME = 'external';
@@ -36,7 +36,7 @@ async function main() {
   db.marbot_conversation.findFirst = async () => null;
   db.marbot_conversation.create = async () => ({ id: localId });
   db.marbot_message.create = async () => ({});
-  const { marbotUserRouter } = require('../src/modules/marbot/marbot.routes');
+  const { marbotUserRouter } = require('../src/modules/marbot/routing/routes');
   const app = express(); app.use(express.json()); app.use('/api/v1/marbot', marbotUserRouter);
   app.use((error: any, _req: any, res: any, _next: any) => res.status(error.statusCode || 500).json({ error: { message: error.message } }));
   const server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));

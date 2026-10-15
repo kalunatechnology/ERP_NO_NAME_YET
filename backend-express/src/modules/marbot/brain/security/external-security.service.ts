@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
-import { ForbiddenError, AppError } from '../../utils/errors';
-import { canonicalJson } from './marbot-signature.service';
-import type { MarbotTenantConfig } from './marbot.types';
+import { ForbiddenError, AppError } from '../../../../utils/errors';
+import { canonicalJson } from './signature.service';
+import type { MarbotTenantConfig } from '../types';
 
 export function requireSignedExternalContract(config: MarbotTenantConfig) {
   if (config.contractVersion !== 2 || config.runtimeContextVersion !== 2) {

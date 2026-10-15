@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
-import { env } from '../../config/env';
-import { ValidationError } from '../../utils/errors';
+import { env } from '../../../../config/env';
+import { ValidationError } from '../../../../utils/errors';
 
 const PREFIX = 'enc:v1:';
 

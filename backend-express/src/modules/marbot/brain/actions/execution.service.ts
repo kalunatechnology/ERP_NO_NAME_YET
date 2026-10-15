@@ -1,7 +1,7 @@
 import type { Request } from 'express';
-import type { MarbotAction } from './marbot-action.service';
-import { ValidationError } from '../../utils/errors';
-import { callMarbotErp } from './marbot-api-transport';
+import type { MarbotAction } from './action.service';
+import { ValidationError } from '../../../../utils/errors';
+import { callMarbotErp } from '../../routing/transport';
 
 /** Calls the same authenticated HTTP pipeline as the ERP UI. No caller-selected origin or route. */
 export async function executeCanonicalAction(req: Request, action: MarbotAction, ticketId: string) {

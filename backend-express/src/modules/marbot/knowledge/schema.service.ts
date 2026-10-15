@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
-import prisma from '../../config/database';
-import { NativeScope } from './marbot-native.service';
-import { resourceCatalog } from './marbot-resource.service';
+import prisma from '../../../config/database';
+import { NativeScope } from '../brain/reasoning/native.service';
+import { resourceCatalog } from './resource.service';
 
 // Discovery exposes metadata only for executable, permission-checked tools.
 // Column names are never inferred from *_id naming conventions.

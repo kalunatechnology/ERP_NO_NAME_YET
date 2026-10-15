@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
 import prisma from '../src/config/database';
 import { buildResourceScope, applyAndValidateWriteScope } from '../src/modules/accounts/resource-scope.service';
-import { resourceDefinition, validateResourcePlan } from '../src/modules/marbot/marbot-resource.service';
-import type { NativeScope } from '../src/modules/marbot/marbot-native.service';
+import { resourceDefinition, validateResourcePlan } from '../src/modules/marbot/knowledge/resource.service';
+import type { NativeScope } from '../src/modules/marbot/brain/reasoning/native.service';
 
 async function main() {
   const originals: Array<() => void> = [];

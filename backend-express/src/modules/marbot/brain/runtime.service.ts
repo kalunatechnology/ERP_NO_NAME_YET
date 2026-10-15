@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto';
-import prisma from '../../config/database';
-import { buildMarbotRuntimeAuthority, mapRoleForChatbot } from './marbot-access.service';
-import { MarbotRuntimeAuthority, MarbotRuntimeContextV2, MarbotTenantConfig } from './marbot.types';
-import { AppError } from '../../utils/errors';
+import prisma from '../../../config/database';
+import { buildMarbotRuntimeAuthority, mapRoleForChatbot } from './security/access.service';
+import { MarbotRuntimeAuthority, MarbotRuntimeContextV2, MarbotTenantConfig } from './types';
+import { AppError } from '../../../utils/errors';
 
 /** A readable conversation table alone does not prove chat/action storage exists. */
 export async function assertNativeMarbotStorageReady(boundary: { tenant_id: string; company_id?: string; user_id?: string }, db: any = prisma): Promise<void> {

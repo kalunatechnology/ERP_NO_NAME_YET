@@ -1,8 +1,8 @@
 import assert from 'assert';
 import { ForbiddenError, ValidationError, AppError } from '../src/utils/errors';
-import { resolveMarbotTenantConfig } from '../src/modules/marbot/marbot.config';
-import { MarbotTenantService } from '../src/modules/marbot/marbot-tenant.service';
-import { MarbotControlPlaneClient } from '../src/modules/marbot/marbot-control-plane.client';
+import { resolveMarbotTenantConfig } from '../src/modules/marbot/brain/models/config';
+import { MarbotTenantService } from '../src/modules/marbot/brain/tenant/tenant.service';
+import { MarbotControlPlaneClient } from '../src/modules/marbot/brain/tenant/control-plane.client';
 import { RoleCode } from '@prisma/client';
 import { env } from '../src/config/env';
 

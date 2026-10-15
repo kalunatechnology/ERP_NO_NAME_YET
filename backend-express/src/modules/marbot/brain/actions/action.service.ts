@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { NativeScope } from './marbot-native.service';
-import { isProcedureQuestion } from './marbot-intent';
+import { NativeScope } from '../reasoning/native.service';
+import { isProcedureQuestion } from '../reasoning/intent';
 
 const text = z.string().trim().min(1).max(2000);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => {

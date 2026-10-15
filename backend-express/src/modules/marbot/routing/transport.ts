@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Duplex } from 'node:stream';
-import { ForbiddenError, ValidationError } from '../../utils/errors';
+import { ForbiddenError, ValidationError } from '../../../utils/errors';
 
 /** Replay only a server-selected canonical ERP path through the complete app.
  * No dependency on a public hostname, proxy port, or a separate database client.

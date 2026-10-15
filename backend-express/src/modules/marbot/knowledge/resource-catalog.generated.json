@@ -1,21 +1,21 @@
 {
   "sources": {
-    "src/modules/crm/crm.routes.ts": "be2a1efdf47695d742d2ddbb254c97ca858aa9fe85fcf8b986476f4e899e5a57",
-    "src/modules/sales/sales.routes.ts": "41d170d7c3fd30e9293407a9005a7f236e4ccbd90e33ddc75e8e4a28f3a34ac1",
+    "src/modules/crm/crm.routes.ts": "3527c967ea798ada9858e5468445a6e4ee14b9e8e0d976eeaea82fb89abde684",
+    "src/modules/sales/sales.routes.ts": "0a0041580cdf47b68126c7cc3aedf4c86108e4effc15038b30915ae44b59596a",
     "src/modules/procurement/procurement.routes.ts": "60d36ab3204b530771e7a4eb6650b76a755d5935a0ca49bd99864017cf99eb3d",
     "src/modules/inventory/inventory.routes.ts": "92ddbc9dc7e4770ad5d0fb2770b5fab86b842236f0dfceac2ef739d3a90cd978",
     "src/modules/manufacturing/manufacturing.routes.ts": "56483f829d3d4c20de527111f219072222fb2af1142d2c93098348bab6433039",
     "src/modules/quality/quality.routes.ts": "0c21194b5c24f7adf7990fb79d1face5c5d45cc3ca0d0efff9d7e2a960cc766f",
     "src/modules/assets/assets.routes.ts": "16dab8071a2b845277a10e2e975fddda245b56169705fe74eee33667b42e638c",
-    "src/modules/service/service.routes.ts": "ad7fdd3393d3fda41e7f6eb289a5db99db0b553dca47313e762f79983f7635c8",
+    "src/modules/service/service.routes.ts": "94209023dc31f074296534a5abd898f845e2688ec76788c7c004a44f0916aebd",
     "src/modules/logistics/logistics.routes.ts": "eed42cbbe18761afcc3877d5cd3279cac395ba3195a51d901655a1a6a9370dd1",
     "src/modules/analytics/analytics.routes.ts": "1c2580393407411276cd5c8b31619d10212c77b11259dcf4d5dab463cacbbc19",
     "src/modules/implementation/implementation.routes.ts": "5a6ad3c2ca86f7b256d0032aee036cf05b00a33f1ababf2d303d43657d901d9c",
     "src/modules/finance/finance.routes.ts": "901d2de3ffd86b85caa96891e7b2fc3763ed70eab628bed1bb044ca3d6d32c0a",
-    "src/modules/projects/projects.routes.ts": "56e49c0e9346e5761ec48f71c08ecaceff27b70d2d2e43c52fac75960ebf027c",
+    "src/modules/projects/projects.routes.ts": "93d66c3cba3718de50cb3d1954e000dc3745d74a6c74a84e7eb83a11e90a7625",
     "src/modules/master_data/master_data.routes.ts": "d6a09a8ed26dd06e4f382eb7f20ac30dbd276bcf1de2de58cf4b99b02bd89080",
     "src/modules/reporting/reporting.routes.ts": "d9b05602e3213b809226a0913c3f0e2b22a88f37fc19001e65812bffb1dc81bc",
-    "prisma/schema.prisma": "4fd101401afee51c120025d73c4ed6fef0a39667c023ad50c5fa8787d1ba7afc"
+    "prisma/schema.prisma": "f926acf9b17833eaf116b414c95ea4ec55a4d2771ec65aca8f4b4baab21c5151"
   },
   "resources": [
     {
@@ -136,7 +136,7 @@
       "module": "CRM",
       "path": "/api/v1/crm/executive-approvals/",
       "model": "crm_executive_approval",
-      "readOnly": false,
+      "readOnly": true,
       "searchFields": [],
       "source": "src/modules/crm/crm.routes.ts"
     },

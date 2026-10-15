@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { MarbotControlPlaneClient } from '../src/modules/marbot/marbot-control-plane.client';
+import { MarbotControlPlaneClient } from '../src/modules/marbot/brain/tenant/control-plane.client';
 
 const originalFetch = global.fetch;
 let captured: any;

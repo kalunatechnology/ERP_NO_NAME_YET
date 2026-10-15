@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
-import { helperAnswer } from '../src/modules/marbot/marbot-knowledge';
-import { answerNative, followUpQuestion, NativeScope } from '../src/modules/marbot/marbot-native.service';
-import { isProcedureQuestion, procedureOperation, procedureTopic } from '../src/modules/marbot/marbot-intent';
-import { isNativeTaskReadQuestion } from '../src/modules/marbot/marbot-native.service';
-import { proposeAction } from '../src/modules/marbot/marbot-action.service';
-import { proposeNamedTaskAction } from '../src/modules/marbot/marbot-named-action.service';
-import { planNativeQuestion, validateNativePlan } from '../src/modules/marbot/marbot-planner.service';
-import { planResourceQuestion } from '../src/modules/marbot/marbot-resource.service';
+import { helperAnswer } from '../src/modules/marbot/knowledge/knowledge';
+import { answerNative, followUpQuestion, NativeScope } from '../src/modules/marbot/brain/reasoning/native.service';
+import { isProcedureQuestion, procedureOperation, procedureTopic } from '../src/modules/marbot/brain/reasoning/intent';
+import { isNativeTaskReadQuestion } from '../src/modules/marbot/brain/reasoning/native.service';
+import { proposeAction } from '../src/modules/marbot/brain/actions/action.service';
+import { proposeNamedTaskAction } from '../src/modules/marbot/brain/actions/named-action.service';
+import { planNativeQuestion, validateNativePlan } from '../src/modules/marbot/brain/reasoning/planner.service';
+import { planResourceQuestion } from '../src/modules/marbot/knowledge/resource.service';
 import { env } from '../src/config/env';
 import prisma from '../src/config/database';
 

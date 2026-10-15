@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { env } from '../src/config/env';
-import { decryptMarbotSecret, encryptMarbotSecret } from '../src/modules/marbot/marbot-secret.service';
+import { decryptMarbotSecret, encryptMarbotSecret } from '../src/modules/marbot/brain/security/secret.service';
 
 (env as any).MARBOT_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
 const encrypted = encryptMarbotSecret('tenant-secret-value');

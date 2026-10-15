@@ -1,16 +1,16 @@
 import { Router, Request } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { env } from '../../config/env';
-import prisma from '../../config/database';
-import { AppError, ForbiddenError, ValidationError } from '../../utils/errors';
-import { type NativeScope } from './marbot-native.service';
-import { answerMarbotQuestion } from './marbot-orchestrator.service';
-import { isMutationCommand } from './marbot-intent';
-import { discoverMarbotSchema, readableTables } from './marbot-schema.service';
-import { executeResourceRead, resourceCatalog } from './marbot-resource.service';
-import { reserveMarbotRequest } from './marbot-rate-limit.service';
-import { marbotAuthorityKey } from './marbot-authority.service';
+import { env } from '../../../config/env';
+import prisma from '../../../config/database';
+import { AppError, ForbiddenError, ValidationError } from '../../../utils/errors';
+import { type NativeScope } from '../brain/reasoning/native.service';
+import { answerMarbotQuestion } from '../brain/reasoning/orchestrator.service';
+import { isMutationCommand } from '../brain/reasoning/intent';
+import { discoverMarbotSchema, readableTables } from '../knowledge/schema.service';
+import { executeResourceRead, resourceCatalog } from '../knowledge/resource.service';
+import { reserveMarbotRequest } from '../brain/security/rate-limit.service';
+import { marbotAuthorityKey } from '../brain/security/authority.service';
 
 export function allowedMcpTools(scope: NativeScope): Set<string> {
   const tools = new Set(['erp.capabilities']);

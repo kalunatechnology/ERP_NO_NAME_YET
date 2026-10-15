@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { env } from '../../config/env';
-import type { NativeScope } from './marbot-native.service';
-import { canUseDashboard, isNativeTaskReadQuestion } from './marbot-native.service';
-import { intentText, isDataReadQuestion, isProcedureQuestion, procedureOperation, procedureTopic } from './marbot-intent';
-import { moduleKnowledge } from './marbot-knowledge';
-import { nativePlanSchema, validateNativePlan } from './marbot-planner.service';
-import { resourceCatalog, resourcePlanSchema, validateGroundedResourcePlan } from './marbot-resource.service';
-import { readableTables } from './marbot-schema.service';
+import { env } from '../../../../config/env';
+import type { NativeScope } from './native.service';
+import { canUseDashboard, isNativeTaskReadQuestion } from './native.service';
+import { intentText, isDataReadQuestion, isProcedureQuestion, procedureOperation, procedureTopic } from './intent';
+import { moduleKnowledge } from '../../knowledge/knowledge';
+import { nativePlanSchema, validateNativePlan } from './planner.service';
+import { resourceCatalog, resourcePlanSchema, validateGroundedResourcePlan } from '../../knowledge/resource.service';
+import { readableTables } from '../../knowledge/schema.service';
 
 const confidence = z.number().min(0).max(1);
 const topic = z.enum(['meeting', 'minutes', 'weekly', 'daily', 'tasks', 'reports', 'timesheet', 'invoice', 'leave']);

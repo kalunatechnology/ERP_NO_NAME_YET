@@ -1,5 +1,5 @@
 import resourceInventory from './resource-catalog.generated.json';
-import { intentText, procedureOperation, procedureTopic, type ProcedureTopic, type ProcedureOperation } from './marbot-intent';
+import { intentText, procedureOperation, procedureTopic, type ProcedureTopic, type ProcedureOperation } from '../brain/reasoning/intent';
 // Reviewed against the ERP routes and forms. Versioned with the application.
 export const moduleKnowledge = [
   { module: 'GENERAL', title: 'Dashboard', path: '/dashboard', keywords: /dashboard|beranda/i, content: 'Dashboard menampilkan konteks perusahaan aktif dan kartu permintaan. Data serta aksi yang tersedia mengikuti role aktif.' },
