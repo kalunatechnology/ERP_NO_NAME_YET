@@ -1,4 +1,6 @@
+import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
 import prisma from '../../../../config/database';
 import type { Evidence } from '../contracts/evidence.schema';
@@ -27,7 +29,8 @@ export interface CrawlResult {
 
 export class RepositoryCrawler {
   /**
-   * Resolves the current Git commit SHA or returns a deterministic fallback.
+   * Resolves the current Git commit SHA or computes a deterministic content fingerprint
+   * for non-Git / non-GitHub deployments (e.g. FTP, Zip upload, Hostinger, VPS).
    */
   static resolveCommitSha(explicitSha?: string): string {
     if (explicitSha && explicitSha.trim().length > 0) {
@@ -36,6 +39,7 @@ export class RepositoryCrawler {
     if (process.env.GIT_COMMIT_SHA) {
       return process.env.GIT_COMMIT_SHA.trim();
     }
+    // 1. Try Git if available
     try {
       const sha = execSync('git rev-parse HEAD', {
         encoding: 'utf8',
@@ -45,6 +49,31 @@ export class RepositoryCrawler {
     } catch {
       // Git command unavailable or not a git checkout
     }
+
+    // 2. Non-Git Fallback: Check for build-metadata.json (created by npm run build)
+    try {
+      const buildMetaPath = path.resolve(process.cwd(), 'dist', 'build-metadata.json');
+      if (fs.existsSync(buildMetaPath)) {
+        const meta = JSON.parse(fs.readFileSync(buildMetaPath, 'utf8'));
+        if (meta.buildId) return `build-${meta.buildId}`;
+      }
+    } catch {
+      // Ignore if build-metadata.json does not exist
+    }
+
+    // 3. Non-Git Fallback: Content Fingerprint of schema.prisma and package.json
+    try {
+      const schemaPath = path.resolve(process.cwd(), 'prisma', 'schema.prisma');
+      const pkgPath = path.resolve(process.cwd(), 'package.json');
+      const hasher = crypto.createHash('sha256');
+      if (fs.existsSync(schemaPath)) hasher.update(fs.readFileSync(schemaPath));
+      if (fs.existsSync(pkgPath)) hasher.update(fs.readFileSync(pkgPath));
+      const hash = hasher.digest('hex').slice(0, 16);
+      return `release-${hash}`;
+    } catch {
+      // Fallback
+    }
+
     return `local-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
   }
 
