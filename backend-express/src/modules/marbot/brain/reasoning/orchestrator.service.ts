@@ -8,6 +8,7 @@ import { executeResourceRead, planResourceQuestion, type ResourcePlan } from '..
 import { discoverMarbotSchema } from '../../knowledge/schema.service';
 import { understandMarbotQuestion } from './understanding.service';
 import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion } from './intent';
+import { RetrievalGatewayService } from '../../knowledge-engine/gateway/retrieval-gateway.service';
 
 export type MarbotAnswer = { content: string; tools: string[]; sources: string[]; action?: MarbotAction };
 export type MarbotDecision = { answer: MarbotAnswer; understanding: { source: 'llm' | 'local' | 'explicit';
@@ -46,11 +47,18 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
   if (result?.status === 'ready') {
     const intent = result.intent;
     const understanding = { source: 'llm' as const, route: intent.route, status: 'ready', confidence: intent.confidence, model: result.model };
-    if (intent.route === 'guide') return { understanding, answer: { content: helperAnswer(message, scope,
-      { topic: intent.topic, operation: intent.operation ?? undefined }), tools: ['help.procedure'],
-      sources: [`ERP:procedure:${intent.topic}:${intent.operation ?? 'overview'}:2026-10-07`] } };
-    if (intent.route === 'knowledge') return { understanding, answer: { content: systemKnowledgeAnswer(message, scope.enabledModules, intent.modules),
-      tools: ['help.procedure'], sources: intent.modules.map(module => `ERP:code-knowledge:${module}:2026-10-07`) } };
+    if (intent.route === 'guide') {
+      const provenance = await RetrievalGatewayService.getActiveProvenanceString(intent.topic, intent.operation ?? undefined);
+      return { understanding, answer: { content: helperAnswer(message, scope,
+        { topic: intent.topic, operation: intent.operation ?? undefined }), tools: ['help.procedure'],
+        sources: [provenance] } };
+    }
+    if (intent.route === 'knowledge') {
+      const active = await RetrievalGatewayService.getActiveSnapshot();
+      const versionTag = active ? `v${active.version_number}:${active.commit_sha.slice(0, 7)}` : '2026-10-07';
+      return { understanding, answer: { content: systemKnowledgeAnswer(message, scope.enabledModules, intent.modules),
+        tools: ['help.procedure'], sources: intent.modules.map(module => `ERP:code-knowledge:${module}:${versionTag}`) } };
+    }
     if (intent.route === 'clarify') return { understanding, answer: { content: clarification[intent.reason], tools: ['intent.clarification'], sources: [] } };
     if (intent.route === 'access') return { understanding, answer: await answerNative('hak akses', mode, scope, db) };
     if (intent.route === 'schema') return { understanding, answer: {

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../src/config/database';
+import { TypeScriptAnalyzer } from '../src/modules/marbot/knowledge-engine/crawler/typescript-analyzer';
 
 const root = path.resolve(__dirname, '../..');
 function files(dir: string): string[] {
@@ -15,10 +16,19 @@ async function main() {
     fields: m.fields.map(f => ({ name: f.name, column: f.dbName || f.name, type: f.type, kind: f.kind, required: f.isRequired, primaryKey: f.isId, unique: f.isUnique, relation: f.relationName, from: f.relationFromFields, to: f.relationToFields })),
   }));
   const pages = files(path.join(root, 'frontend-next/app')).filter(f => f.endsWith('page.tsx')).map(f => path.relative(root, f).replace(/\\/g, '/'));
-  const endpoints = files(path.join(root, 'backend-express/src/modules')).filter(f => f.endsWith('.routes.ts')).map(f => ({
-    file: path.relative(root, f).replace(/\\/g, '/'),
-    routes: [...fs.readFileSync(f, 'utf8').matchAll(/\b\w+\.(get|post|patch|put|delete|use)\(\s*['"]([^'"]+)['"]/g)].map(m => ({ method: m[1], path: m[2] })),
-  }));
+  const endpoints = files(path.join(root, 'backend-express/src/modules')).filter(f => f.endsWith('.routes.ts')).map(f => {
+    const analysis = TypeScriptAnalyzer.analyzeRouterFile(f, root);
+    return {
+      file: path.relative(root, f).replace(/\\/g, '/'),
+      routes: analysis.map(r => ({
+        method: r.routeMethod,
+        path: r.routePath,
+        guard: r.backendAuthorizationGuard,
+        middlewares: r.middlewareChain,
+        hash: r.astNodeHash,
+      })),
+    };
+  });
   let live: unknown;
   try {
     live = {

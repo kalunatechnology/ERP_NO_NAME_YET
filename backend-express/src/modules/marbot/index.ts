@@ -12,3 +12,9 @@ export * from './knowledge/schema.service';
 
 // 3. Brain Layer (Models, Reasoning, Actions, Security, Tenant, Runtime)
 export * from './brain';
+
+// 4. Knowledge Engine (MKIE)
+export * from './knowledge-engine/routing/knowledge-engine.routes';
+export * from './knowledge-engine/scheduler/scheduler.service';
+export * from './knowledge-engine/queue/worker-registry';
+export * from './knowledge-engine/manager/scan-coordinator.service';

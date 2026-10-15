@@ -55,6 +55,7 @@ import { managementReportsRouter } from './modules/management_reports/management
 import { commandsRouter } from './modules/commands/commands.routes';
 import { dashboardRouter, invalidateDashboardCache } from './modules/dashboard/dashboard.routes';
 import { marbotInternalRouter, marbotUserRouter } from './modules/marbot/routing/routes';
+import { knowledgeEngineInternalRouter } from './modules/marbot/knowledge-engine/routing/knowledge-engine.routes';
 
 // Initialize Workflows
 import './workflows';
@@ -176,6 +177,7 @@ export function createApp(): Express {
   // The chatbot has no ERP JWT. Its internal tools use request-bound HMAC;
   // the browser chat proxy uses the ordinary ERP JWT and company membership.
   app.use('/internal/marbot', marbotInternalRouter);
+  app.use('/internal/marbot/knowledge-engine', knowledgeEngineInternalRouter);
   app.use('/internal/crm-integration-worker', crmIntegrationWorkerRouter);
   app.use('/api/v1/marbot', marbotUserRouter);
   const apiV1 = express.Router();

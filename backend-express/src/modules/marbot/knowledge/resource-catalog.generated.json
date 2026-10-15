@@ -15,7 +15,7 @@
     "src/modules/projects/projects.routes.ts": "93d66c3cba3718de50cb3d1954e000dc3745d74a6c74a84e7eb83a11e90a7625",
     "src/modules/master_data/master_data.routes.ts": "d6a09a8ed26dd06e4f382eb7f20ac30dbd276bcf1de2de58cf4b99b02bd89080",
     "src/modules/reporting/reporting.routes.ts": "d9b05602e3213b809226a0913c3f0e2b22a88f37fc19001e65812bffb1dc81bc",
-    "prisma/schema.prisma": "f926acf9b17833eaf116b414c95ea4ec55a4d2771ec65aca8f4b4baab21c5151"
+    "prisma/schema.prisma": "13c8d1a340506acefe72ba5b330b093e64ca7a93a1c5eb0bca7472ad11deac1d"
   },
   "resources": [
     {

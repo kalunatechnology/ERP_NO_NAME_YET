@@ -133,6 +133,118 @@ model marbot_tenant_config {
   @@map("marbot_tenant_config")
 }
 
+model marbot_knowledge_snapshot {
+  id                  String    @id @default(uuid())
+  version_number      String    @unique
+  commit_sha          String
+  deployment_target   String    @default("production")
+  runtime_config_hash String
+  status              String    @default("STAGING") // STAGING, ACTIVE, SUPERSEDED, ROLLED_BACK, FAILED
+  metrics_json        String?
+  published_at        DateTime?
+  created_at          DateTime  @default(now())
+
+  entries             marbot_knowledge_entry[]
+
+  @@index([status])
+  @@index([commit_sha])
+  @@map("marbot_knowledge_snapshot")
+}
+
+model marbot_knowledge_entry {
+  id                 String    @id @default(uuid())
+  snapshot_id        String
+  feature_id         String
+  topic              String
+  operation          String?
+  module_code        String
+  title              String
+  knowledge_category String    @default("USER_PROCEDURE") // TECHNICAL_FACT, BUSINESS_RULE, USER_PROCEDURE
+  lifecycle_status   String    @default("ACTIVE")         // ACTIVE, STALE, SUPERSEDED, QUARANTINED, RETIRED
+  comparison_status  String    @default("NEW")            // NEW, UPDATED, UNCHANGED, CONFLICT, UNVERIFIED
+  source_priority    String    @default("CODE_FACT")      // TEST_VERIFIED, CODE_FACT, HUMAN_APPROVED, AI_INFERENCE
+  actor_policy_json  String?
+  workflow_json      String?
+  navigation_json    String?
+  content_json       String
+  confidence_score   Float     @default(1.0)
+  review_required    Boolean   @default(false)
+  provenance_json    String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  snapshot           marbot_knowledge_snapshot  @relation(fields: [snapshot_id], references: [id], onDelete: Cascade)
+  evidences          marbot_knowledge_evidence[]
+
+  @@unique([snapshot_id, feature_id])
+  @@index([topic, operation])
+  @@index([module_code])
+  @@index([lifecycle_status])
+  @@map("marbot_knowledge_entry")
+}
+
+model marbot_knowledge_evidence {
+  id                    String   @id @default(uuid())
+  entry_id              String?
+  feature_id            String
+  source_file           String
+  symbol_name           String?
+  ast_node_range        String?
+  ast_node_hash         String
+  route_method          String?
+  route_path            String?
+  middleware_chain_json String?
+  related_symbols_json  String?
+  extraction_method     String   @default("AST") // AST, DMMF, TSX, RUNTIME
+  source_type           String   @default("BACKEND_ROUTE") // BACKEND_ROUTE, SERVICE_METHOD, PRISMA_MODEL, FRONTEND_PAGE, TEST_RECORD
+  commit_sha            String
+  created_at            DateTime @default(now())
+
+  entry                 marbot_knowledge_entry? @relation(fields: [entry_id], references: [id], onDelete: SetNull)
+
+  @@index([feature_id])
+  @@index([ast_node_hash])
+  @@index([source_file])
+  @@index([commit_sha])
+  @@map("marbot_knowledge_evidence")
+}
+
+model marbot_knowledge_job {
+  id              String    @id @default(uuid())
+  job_type        String    // INCREMENTAL_CRAWL, FULL_RECONCILIATION, AST_EXTRACT_MODULE, MINILLM_ANALYZE_FEATURE, VERIFY_SNAPSHOT, PUBLISH_SNAPSHOT
+  queue_name      String    @default("default")
+  priority        Int       @default(10)
+  payload_json    String?
+  checkpoint_json String?
+  status          String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, DEAD_LETTER
+  attempt_count   Int       @default(0)
+  max_attempts    Int       @default(5)
+  next_retry_at   DateTime  @default(now())
+  locked_by       String?
+  lock_token      String?
+  locked_until    DateTime?
+  last_error      String?
+  commit_sha      String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  @@index([status, next_retry_at, locked_until])
+  @@index([queue_name, priority])
+  @@map("marbot_knowledge_job")
+}
+
+model marbot_knowledge_lock {
+  lock_key        String    @id
+  owner_worker_id String
+  lock_token      String
+  commit_sha      String?
+  acquired_at     DateTime  @default(now())
+  expires_at      DateTime
+
+  @@index([expires_at])
+  @@map("marbot_knowledge_lock")
+}
+
 model core_organization {
   created_by_id     String?   @map("created_by_id")
   created_at        DateTime? @default(now())
