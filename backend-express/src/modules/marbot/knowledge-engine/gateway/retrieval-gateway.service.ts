@@ -5,6 +5,7 @@ import type { ProcedureRule, HelpContext } from '../../../marbot/knowledge/schem
 import type { ModuleKnowledge } from '../../../marbot/knowledge/schemas/module.schema';
 import { findProcedureRule, allModules } from '../../../marbot/knowledge/knowledge.registry';
 import { checkAbstention, type AbstentionResult } from './abstention-guard';
+import { MiniLlmClient } from '../minillm/model-client';
 
 interface ActiveSnapshotCache {
   snapshot: {
@@ -180,7 +181,20 @@ export class RetrievalGatewayService {
   ]);
 
   static readonly COLLOQUIAL_SLANG_MAP: Record<string, string> = {
-    gimana: 'bagaimana',
+    tikda: 'tidak',
+    tdk: 'tidak',
+    finace: 'finance',
+    finansial: 'finance',
+    keuagan: 'keuangan',
+    laproan: 'laporan',
+    lprn: 'laporan',
+    jrunal: 'jurnal',
+    nerca: 'neraca',
+    projcet: 'project',
+    brapa: 'berapa',
+    gmna: 'bagaimana',
+    gmn: 'bagaimana',
+    knp: 'kenapa',
     ngeliat: 'lihat',
     nyari: 'cari',
     ngatur: 'kelola',
@@ -199,13 +213,17 @@ export class RetrievalGatewayService {
   };
 
   /**
-   * Normalizes compound accounting/ERP shorthand (such as P&L -> pnl) so symbol
-   * stripping does not split or drop multi-character financial tokens.
+   * Normalizes compound accounting/ERP shorthand (such as P&L -> pnl) and colloquial slang/typos
+   * so symbol stripping does not split or drop multi-character financial tokens.
    */
   static normalizeShorthandTokens(input: string): string {
-    return input
+    let text = input
       .replace(/\bp\s*&\s*l\b/gi, 'pnl')
       .replace(/\br\s*&\s*d\b/gi, 'rnd');
+    for (const [slang, norm] of Object.entries(this.COLLOQUIAL_SLANG_MAP)) {
+      text = text.replace(new RegExp(`\\b${slang}\\b`, 'gi'), norm);
+    }
+    return text;
   }
 
   /**
@@ -1163,6 +1181,53 @@ export class RetrievalGatewayService {
   }
 
   /**
+   * Menggunakan MiniLLM untuk menyaring & memilah kandidat fakta RAG agar hanya menyisakan
+   * fakta yang benar-benar relevan dengan intensi pengguna dan ramah pengguna (bukan noise/teknis).
+   */
+  static async filterFactsWithMiniLlm<T extends { title: string; module_code: string; summary: string }>(
+    query: string,
+    candidates: T[]
+  ): Promise<T[]> {
+    if (candidates.length <= 2) return candidates;
+
+    try {
+      const prompt = `Anda adalah filter informasi cerdas untuk sistem ERP.
+Tugas Anda adalah memilih maksimal 3 fakta yang PALING RELEVAN dengan pertanyaan pengguna dari daftar kandidat berikut.
+Buang kandidat yang tidak nyambung atau hanya kebetulan mengandung kata yang mirip.
+
+Pertanyaan Pengguna: "${query}"
+
+Kandidat Fakta:
+${JSON.stringify(candidates.map((c, i) => ({ id: i, title: c.title, module: c.module_code, summary: c.summary })), null, 2)}
+
+Kembalikan HANYA JSON berformat: { "selectedIds": [nomor_id_yang_relevan] }`;
+
+      const response = await MiniLlmClient.complete({
+        messages: [
+          { role: 'system', content: 'Anda adalah information filter JSON generator.' },
+          { role: 'user', content: prompt },
+        ],
+        responseFormatJson: true,
+        timeoutMs: 6000,
+      });
+
+      if (response) {
+        const parsed = JSON.parse(response);
+        if (Array.isArray(parsed.selectedIds) && parsed.selectedIds.length > 0) {
+          const filtered = parsed.selectedIds
+            .map((id: number) => candidates[id])
+            .filter(Boolean);
+          if (filtered.length > 0) return filtered;
+        }
+      }
+    } catch {
+      // Fallback ke kandidat heuristik jika MiniLLM offline atau timeout
+    }
+
+    return candidates.slice(0, 4);
+  }
+
+  /**
    * Synthesizes an authoritative answer grounded in retrieved MKIE facts.
    * Utilizes OpenRouter LLM when available, falling back gracefully to intent-aware deterministic synthesis.
    */
@@ -1192,7 +1257,18 @@ export class RetrievalGatewayService {
     // Defense-in-depth: Ensure NO unauthorized facts leak through cache/fallback/direct entry injection
     const authorizedEntries = entries.filter((e) => this.validateEntryAuthorization(e, scope));
 
-    if (!authorizedEntries.length) {
+    // Filter out internal API endpoints (e.g. GET /api/v1/...) so technical developer routes never leak to end users
+    const userFacingEntries = authorizedEntries.filter((e) =>
+      !e.feature_id.startsWith('backend.api.') &&
+      e.knowledge_category !== 'API_ENDPOINT' &&
+      !e.title.startsWith('GET ') &&
+      !e.title.startsWith('POST ') &&
+      !e.title.startsWith('PUT ') &&
+      !e.title.startsWith('DELETE ')
+    );
+    const candidateEntries = userFacingEntries.length > 0 ? userFacingEntries : authorizedEntries;
+
+    if (!candidateEntries.length) {
       this.lastTelemetry = {
         usedProvider: 'deterministic_fallback',
         factsCount: 0,
@@ -1200,10 +1276,13 @@ export class RetrievalGatewayService {
       return 'Referensi fitur atau data teknis tersebut tidak ditemukan dalam bukti kode sistem terverifikasi saat ini. Saya belum memiliki bukti kode yang cukup untuk menjawab pertanyaan ini secara akurat.';
     }
 
-    const intent = this.analyzeQueryIntent(query);
-    const restrictedHints = this.resolveRestrictedHintsForAnswer(query, authorizedEntries, scope);
+    // MiniLLM menyaring & memilah fakta RAG: hanya fakta yang benar-benar relevan yang diserahkan ke LLM Utama
+    const filteredFacts = await this.filterFactsWithMiniLlm(query, candidateEntries);
 
-    // Check OpenRouter LLM availability from environment (supports both MARBOT_AI_* and OPENROUTER_*)
+    const intent = this.analyzeQueryIntent(query);
+    const restrictedHints = this.resolveRestrictedHintsForAnswer(query, filteredFacts, scope);
+
+    // Check OpenRouter LLM availability from environment
     const apiKey = (process.env.MARBOT_AI_API_KEY || process.env.OPENROUTER_API_KEY || '').trim();
     const model = (
       process.env.MARBOT_AI_MODEL ||
@@ -1222,7 +1301,7 @@ ATURAN GROUNDING & MULTI-TOPIK KETAT:
 5. DISAMBIGUASI DATA VS PROSEDUR: Jika pengguna menanyakan rincian angka/kondisi periode tertentu (misalnya "bulan ini"), jelaskan halaman laporan yang relevan beserta catatan untuk menerapkan filter periode/tanggal pada halaman tersebut guna melihat mutasi nominal aktual (jangan sekadar menyalin langkah klik tombol secara kaku).
 6. Anda HANYA memberikan bantuan pengetahuan dan panduan sistem. JANGAN mengeksekusi mutasi atau merencanakan perubahan data operasional.`;
 
-    const factsPayload = authorizedEntries.map((e) => ({
+    const factsPayload = filteredFacts.map((e) => ({
       title: e.title,
       module: e.module_code,
       category: e.knowledge_category || 'USER_PROCEDURE',
@@ -1259,6 +1338,7 @@ ${JSON.stringify(factsPayload, null, 2)}${restrictionContext}`;
           headers: {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://arsalynt.com',
             'X-Title': 'Arsalynt ERP - Marka Plus MKIE',
           },
           body: JSON.stringify({
@@ -1282,12 +1362,16 @@ ${JSON.stringify(factsPayload, null, 2)}${restrictionContext}`;
               model,
               systemPrompt,
               userPrompt,
-              factsCount: authorizedEntries.length,
+              factsCount: filteredFacts.length,
             };
             return reply;
           }
+        } else {
+          const errDetail = await response.text().catch(() => '');
+          console.warn(`[MKIE] OpenRouter API error HTTP ${response.status}: ${errDetail}`);
         }
-      } catch {
+      } catch (err) {
+        console.warn(`[MKIE] OpenRouter request failed: ${err instanceof Error ? err.message : String(err)}`);
         // Fallback to deterministic synthesis if API call fails or times out
       }
     }
@@ -1296,7 +1380,7 @@ ${JSON.stringify(factsPayload, null, 2)}${restrictionContext}`;
       usedProvider: 'deterministic_fallback',
       systemPrompt,
       userPrompt,
-      factsCount: authorizedEntries.length,
+      factsCount: filteredFacts.length,
     };
 
     // Intent-aware deterministic fallback synthesis:
@@ -1312,7 +1396,7 @@ ${JSON.stringify(factsPayload, null, 2)}${restrictionContext}`;
         return stripped.includes(`(${mod})`) ? stripped : `${stripped} (${mod})`;
       };
 
-      const itemLines = authorizedEntries.map((e, idx) => {
+      const itemLines = filteredFacts.map((e, idx) => {
         const displayTitle = cleanEntryTitle(e.title, e.module_code);
         const linkPart = e.targetPath ? `**[Buka ${displayTitle}](${e.targetPath})**` : `**${displayTitle}**`;
         const summaryPart = e.summary ? `${e.summary.replace(/\.$/, '')}.` : '';
@@ -1346,7 +1430,7 @@ ${JSON.stringify(factsPayload, null, 2)}${restrictionContext}`;
 
     // Standard single-procedure deterministic fallback
     return (
-      authorizedEntries
+      filteredFacts
         .map((e) => {
           const stepsText =
             e.steps && e.steps.length > 0

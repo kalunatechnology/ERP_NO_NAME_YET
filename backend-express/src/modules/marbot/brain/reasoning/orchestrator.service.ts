@@ -33,11 +33,59 @@ async function resourceAnswer(req: Request, plan: ResourcePlan, scope: NativeSco
     tools: ['resource.query'], sources: [result.source] };
 }
 
+function resolveSpecificAccessInquiry(message: string, scope: NativeScope): MarbotAnswer | null {
+  const normMsg = message.toLowerCase()
+    .replace(/\btikda\b/g, 'tidak')
+    .replace(/\bfinace\b/g, 'finance')
+    .replace(/\bkeuagan\b/g, 'keuangan')
+    .replace(/\bga\b/g, 'tidak')
+    .replace(/\bgak\b/g, 'tidak');
+
+  const isAccessCheck = /\b(akses|izin|bisa|boleh|hak)\b/i.test(normMsg);
+  const isConfirmation = /\b(jadi|berarti|artinya)\b/i.test(normMsg) && /\b(tidak|tanpa|bukan|belum)\b/i.test(normMsg);
+  const isDirectQuestion = /\b(apakah|kenapa|mengapa)\b.*\b(tidak|ada|punya|bisa)\b.*\b(akses|izin)\b/i.test(normMsg);
+
+  if (isAccessCheck || isConfirmation || isDirectQuestion) {
+    const modulesToCheck = [
+      { key: 'FINANCE', terms: ['finance', 'keuangan', 'pembukuan', 'accounting', 'jurnal umum', 'neraca saldo', 'p&l', 'laba rugi'] },
+      { key: 'CRM', terms: ['crm', 'tiket', 'ticket', 'deals', 'leads', 'inbox'] },
+      { key: 'INVENTORY', terms: ['inventory', 'gudang', 'stok', 'stock'] },
+      { key: 'HR', terms: ['hr', 'payroll', 'gaji', 'karyawan'] },
+    ];
+
+    for (const mod of modulesToCheck) {
+      if (mod.terms.some(t => normMsg.includes(t))) {
+        const hasAccess = scope.enabledModules.includes(mod.key) && !scope.blockedReadModules?.includes(mod.key);
+        if (!hasAccess) {
+          return {
+            content: `**Benar.** Sesuai kebijakan hak akses untuk peran Anda saat ini (\`${scope.roleCode || 'STAFF'}\`), Anda **tidak memiliki akses** ke modul **${mod.key}** untuk melihat data operasional atau pembukuan menyeluruh perusahaan.\n\n` +
+                     `Modul aktif yang diizinkan untuk akun Anda saat ini meliputi: **${scope.enabledModules.join(', ')}**.\n\n` +
+                     `Untuk melihat estimasi dan performa proyek yang ditugaskan kepada Anda, silakan akses modul **REPORTING** (tab *Project P&L*) atau modul **PROJECTS**. Jika Anda memerlukan akses resmi ke modul ${mod.key}, silakan ajukan permohonan otorisasi kepada Finance Manager atau Direksi.`,
+            tools: ['access.verification'],
+            sources: ['ERP:role-policy-check'],
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 /** LLM understands -> validated route -> retrieve reference OR execute an
  * existing tool -> answer from that evidence. No model-generated business facts. */
 export async function answerMarbotQuestion(req: Request, message: string, mode: AssistantMode, scope: NativeScope,
   signal: AbortSignal, previousQuestion?: string, db = prisma): Promise<MarbotDecision> {
   const explicit = /^\s*(?:data|resource)\s+\{/.test(message);
+
+  // Early check: Conversational confirmation of lack of access (e.g. "jadi saya tidak ada akses ke finance...")
+  const specificAccessEarly = resolveSpecificAccessInquiry(message, scope);
+  if (specificAccessEarly) {
+    return {
+      understanding: { source: 'local', route: 'access', status: 'ready' },
+      answer: specificAccessEarly,
+    };
+  }
+
   const fallbackQuestion = followUpQuestion(message, previousQuestion);
   if (isIntentCorrection(message) && fallbackQuestion !== message) return {
     understanding: { source: 'local', route: 'guide', status: 'recovered' },
@@ -111,7 +159,11 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
       };
     }
     if (intent.route === 'clarify') return { understanding, answer: { content: clarification[intent.reason], tools: ['intent.clarification'], sources: [] } };
-    if (intent.route === 'access') return { understanding, answer: await answerNative('hak akses', mode, scope, db) };
+    if (intent.route === 'access') {
+      const specific = resolveSpecificAccessInquiry(message, scope);
+      if (specific) return { understanding, answer: specific };
+      return { understanding, answer: await answerNative('hak akses', mode, scope, db) };
+    }
     if (intent.route === 'schema') return { understanding, answer: {
       content: `Metadata database aktual sesuai akses Anda:\n\n\`\`\`json\n${JSON.stringify(await discoverMarbotSchema(scope, db, intent.tables), null, 2)}\n\`\`\`\nMetadata tidak memberi hak tambahan.`,
       tools: ['schema.discovery'], sources: ['ERP:database-metadata'] } };
@@ -140,5 +192,11 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
     understanding: { ...understanding, route: 'clarify' },
     answer: { content: 'Permintaan data ini belum dapat dipetakan ke tool baca yang sesuai. Sebutkan jenis record dan filter yang diperlukan, misalnya proyek, periode, atau status. Data aktual belum diambil.', tools: ['intent.clarification'], sources: [] },
   };
+
+  const specificAccessFallback = resolveSpecificAccessInquiry(message, scope);
+  if (specificAccessFallback) {
+    return { understanding: { ...understanding, route: 'access' }, answer: specificAccessFallback };
+  }
+
   return { understanding, answer: await answerNative(fallbackQuestion, mode, scope, db) };
 }

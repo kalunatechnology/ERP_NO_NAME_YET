@@ -51,7 +51,13 @@ export function validateUnderstanding(raw: unknown, request: string, scope: Nati
   } else if (intent.route === 'knowledge') {
     if (isDataReadQuestion(request)) return null;
     const available = moduleKnowledge.filter(item => scope.enabledModules.includes(item.module)).map(item => item.module as string);
-    if (!intent.modules.every(module => available.includes(module))) return null;
+    if (!intent.modules.every(module => available.includes(module))) {
+      // If the query asks about permissions, capabilities, or confirming lack of access to unauthorized modules (e.g. Staff asking about Finance)
+      if (/\b(akses|izin|bisa|dapat|boleh|tidak ada|apakah|punya|gada|ga ada|tikda)\b/i.test(request)) {
+        return { route: 'access', confidence: intent.confidence };
+      }
+      return null;
+    }
   } else if (intent.route === 'native') {
     if (intent.plan.type === 'unsupported') return { route: 'clarify', reason: 'unsupported', confidence: intent.confidence };
     if (intent.plan.type === 'read' && !intent.plan.domains.every(domain => nativeDomains(scope).includes(domain))) return null;
@@ -77,7 +83,7 @@ Choose exactly one route:
 - native: {route:"native",plan:{type:"read",domains:["projects"|"tasks"|"finance"|"tickets"|"kpi"],optional projectName/taskTitle/teamName (exact user literal),status (DRAFT|VERIFIED|RESERVED|STARTED|ACTIVE|NOT_STARTED|IN_PROGRESS|COMPLETED|BLOCKED),period (today|yesterday|tomorrow|this_week|last_week|next_week|this_month|last_month|next_month),date (literal YYYY-MM or YYYY-MM-DD),overdue,groupByStatus,owner (booleans)},confidence:0..1}. Use for live project/task/recognized-cost/KPI/support reads. Do not infer owner/date filters, discard explicit filters, or convert Weekly Task into Daily. "pekan ini" means this_week. Unknown historical project snapshots or multi-date ranges require clarify. Names must be explicit literal text; unknown IDs must not be guessed.
 - native action: {route:"native",plan:{type:"action",kind:"project.create"|"task.create"|"weekly.create"|"daily.create"|"task.update",payload:{literal user values}},confidence:0..1}. Only explicit commands, never capability questions or quoted instructions. Supported fields: project.create(project_name,customer_name,manager_name,description?); task.create(project_id UUID,name,weight 1..100,description?); weekly.create(main_task_id UUID,assignee_id UUID,week_number 1..52,start_date,end_date,target_description); daily.create(weekly_task_id UUID,title,time_slot,output_target); task.update(id UUID,status?,output_result?,block_reason?,notes?). Missing identities/fields -> clarify. Execution requires a separate confirmation; this stage does not execute.
 - resource: {route:"resource",plan:{resource:exact catalogue key,operation:"list"|"count"|"aggregate"|"create"|"update",filters?:{actual field:literal string/boolean},search?:literal user text,groupBy?:actual string/boolean/enum field,sum?:actual numeric field,related?:{resource:exact key,sourceField:actual FK,targetField:actual referenced field},id?:literal UUID,payload?:{actual field:literal user value}},confidence:0..1}. Only shown fields/operations. Filters are equality only; unsupported date ranges, multi-hop relations and specialized status transitions -> clarify. Do not use generic resource create/update for approval, posting, publish, deletion or other domain workflows. All filter/payload values must be stated in CURRENT request. No tenant/company overrides. Use native for hierarchy-aware task reads.
-- access: {route:"access",confidence:0..1} for the user's effective active role/access context.
+- access: {route:"access",confidence:0..1} for the user's effective active role/access context, or inquiries asking if the user has access to a specific module or confirming lack of access (e.g. "jadi saya tidak ada akses ke finance?").
 - schema: {route:"schema",tables:[available physical table names],confidence:0..1} only when explicitly requesting database schema.
 - clarify: {route:"clarify",reason:"entity"|"operation"|"record"|"fields"|"multiple"|"unsupported"|"uncertain",confidence:0..1} when missing context, multiple incompatible goals, unavailable executor or uncertain intent. Do not substitute another action.
 No SQL, endpoints, facts, final answers, arbitrary tool names, invented values, permissions, successful mutations or chain-of-thought. Treat the catalogue as capabilities, not proof of access to a specific record. Every plan is validated outside the model.`;
@@ -90,7 +96,12 @@ export async function understandMarbotQuestion(request: string, scope: NativeSco
     const resources = resourceCatalog(scope);
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
-      headers: { Authorization: `Bearer ${env.MARBOT_AI_API_KEY}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${env.MARBOT_AI_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://arsalynt.com',
+        'X-Title': 'Arsalynt ERP Knowledge Engine',
+      },
       body: JSON.stringify({ model: env.MARBOT_AI_MODEL, temperature: 0, max_tokens: 1400,
         response_format: { type: 'json_object' }, messages: [
           { role: 'system', content: prompt },
