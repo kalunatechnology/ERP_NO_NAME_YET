@@ -27,16 +27,30 @@ export function weeklyWorkPeriods(month: string): WeeklyWorkPeriod[] {
   const monday = parseDate(`${month}-01`);
   monday.setUTCDate(1 + (8 - monday.getUTCDay()) % 7);
   const periods: WeeklyWorkPeriod[] = [];
+  
   while (dateKey(monday).slice(0, 7) === month) {
     const friday = new Date(monday);
     friday.setUTCDate(friday.getUTCDate() + 4);
     const week = periods.length + 1;
+    
+    // filterStart ditarik ke hari Jumat minggu sebelumnya agar tidak ada jeda akhir pekan
     const filterStart = new Date(monday);
+    filterStart.setUTCDate(filterStart.getUTCDate() - 3); 
+    
+    // filterEnd tetap di hari Jumat minggu berjalan
     const filterEnd = new Date(friday);
-    filterEnd.setUTCDate(filterEnd.getUTCDate() + 1);
-    periods.push({ id: `${month}:W${week}`, month, week, start: dateKey(monday), end: dateKey(friday),
-      filter_start: `${dateKey(filterStart)}T00:00:00+07:00`,
-      filter_end: `${dateKey(filterEnd)}T00:00:00+07:00` });
+    
+    periods.push({ 
+      id: `${month}:W${week}`, 
+      month, 
+      week, 
+      start: dateKey(monday), 
+      end: dateKey(friday),
+      // Batas waktu bergeser presisi di Jumat 15:00:00
+      filter_start: `${dateKey(filterStart)}T15:00:00+07:00`,
+      filter_end: `${dateKey(filterEnd)}T15:00:00+07:00` 
+    });
+    
     monday.setUTCDate(monday.getUTCDate() + 7);
   }
   return periods;
