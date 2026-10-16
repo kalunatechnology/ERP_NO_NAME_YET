@@ -33,6 +33,13 @@ export class FeatureAnalyzer {
       const cleanLabel = (evidence.symbol_name || topic).replace(/^Tab:\s*/i, '').replace(/\s*\([^)]*\)$/, '').trim();
       title = `${cleanLabel} (${moduleCode})`;
       summary = `Tab ${cleanLabel} pada modul ${moduleCode}. Halaman ini dapat diakses langsung melalui ${evidence.route_path || `/${moduleCode.toLowerCase()}`}.`;
+      const linkedModels = relatedEvidences
+        .filter((r) => r.source_type === 'PRISMA_MODEL')
+        .map((r) => r.symbol_name)
+        .filter(Boolean);
+      if (linkedModels.length > 0) {
+        summary += ` Terhubung dengan entitas model: ${Array.from(new Set(linkedModels)).slice(0, 5).join(', ')}.`;
+      }
       steps = [
         `Buka modul ${moduleCode} (${evidence.route_path || `/${moduleCode.toLowerCase()}`}).`,
         `Pilih tab "${cleanLabel}".`,
@@ -46,6 +53,13 @@ export class FeatureAnalyzer {
       knowledgeCategory = 'USER_PROCEDURE';
       title = evidence.symbol_name || `${moduleCode} View`;
       summary = `Halaman antarmuka ${title} di Arsalynt ERP pada rute ${evidence.route_path || '/'}.`;
+      const linkedModels = relatedEvidences
+        .filter((r) => r.source_type === 'PRISMA_MODEL')
+        .map((r) => r.symbol_name)
+        .filter(Boolean);
+      if (linkedModels.length > 0) {
+        summary += ` Terhubung dengan entitas model: ${Array.from(new Set(linkedModels)).slice(0, 5).join(', ')}.`;
+      }
       steps = [
         `Buka rute ${evidence.route_path || '/'}.`,
         `Periksa informasi dan data sesuai izin modul Anda.`,
@@ -142,12 +156,24 @@ export class FeatureAnalyzer {
       }
     }
 
-    // 3. Extract roles from backend guard if present
+    // 3. Extract roles from backend guard or related routes
     const allowedRoles: string[] = [];
-    if (evidence.backend_authorization_guard) {
-      const match = evidence.backend_authorization_guard.match(/[A-Z0-9_]{3,30}/g);
+    const guards = [
+      evidence.backend_authorization_guard,
+      ...relatedEvidences.map((r) => r.backend_authorization_guard),
+    ].filter(Boolean);
+
+    for (const g of guards) {
+      const match = g!.match(/[A-Z0-9_]{3,30}/g);
       if (match) {
-        allowedRoles.push(...match.filter((m) => !['REQUIRE', 'ROLE', 'ACTIVE', 'RESTRICT', 'GUARD'].includes(m)));
+        for (const m of match) {
+          if (
+            !['REQUIRE', 'ROLE', 'ACTIVE', 'RESTRICT', 'GUARD'].includes(m) &&
+            !allowedRoles.includes(m)
+          ) {
+            allowedRoles.push(m);
+          }
+        }
       }
     }
 

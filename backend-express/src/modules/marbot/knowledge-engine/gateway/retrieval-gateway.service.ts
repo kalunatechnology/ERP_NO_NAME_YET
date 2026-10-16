@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import prisma from '../../../../config/database';
 import type { ProcedureTopic, ProcedureOperation } from '../../../marbot/brain/reasoning/intent';
 import type { ProcedureRule, HelpContext } from '../../../marbot/knowledge/schemas/procedure.schema';
@@ -15,8 +16,17 @@ interface ActiveSnapshotCache {
   cachedAt: number;
 }
 
+interface ActiveEntriesCache {
+  snapshotId: string;
+  entries: any[];
+  cachedAt: number;
+}
+
 let snapshotCache: ActiveSnapshotCache | null = null;
+let entriesCache: ActiveEntriesCache | null = null;
+const queryCache = new Map<string, { result: any[]; cachedAt: number }>();
 const CACHE_TTL_MS = 30_000;
+const QUERY_CACHE_TTL_MS = 60_000;
 
 export class RetrievalGatewayService {
   /**
@@ -53,6 +63,8 @@ export class RetrievalGatewayService {
    */
   static invalidateCache() {
     snapshotCache = null;
+    entriesCache = null;
+    queryCache.clear();
   }
 
   /**
@@ -118,12 +130,355 @@ export class RetrievalGatewayService {
     return findProcedureRule(topic, operation);
   }
 
+  static lastTelemetry?: {
+    usedProvider: 'openrouter' | 'deterministic_fallback';
+    model?: string;
+    systemPrompt?: string;
+    userPrompt?: string;
+    factsCount: number;
+  };
+
+  static readonly PROTECTED_BASE_ROOTS = new Set([
+    'kota', 'kopi', 'kaki', 'peta', 'pasar', 'beli', 'kerja', 'uang', 'data',
+    'user', 'role', 'lead', 'deal', 'task', 'form', 'bank', 'kas', 'item',
+    'menu', 'page', 'pos', 'core', 'crm', 'tax', 'view', 'list', 'cost',
+    'file', 'mode', 'part', 'path', 'feed', 'chat', 'link', 'team', 'auth',
+    'transaksi', 'informasi', 'notifikasi', 'integrasi', 'posisi', 'resolusi',
+    'komunikasi', 'konfigurasi', 'kategori', 'distribusi', 'fungsi', 'aplikasi',
+    'validasi', 'produksi', 'kwitansi', 'administrasi', 'organisasi', 'aktivitas',
+    'restitusi', 'subsidi', 'komisi', 'asuransi', 'garansi', 'mutasi', 'revisi',
+    'bukti', 'ganti', 'rugi', 'pasti', 'asli', 'resmi'
+  ]);
+
+  static readonly COLLOQUIAL_SLANG_MAP: Record<string, string> = {
+    gimana: 'bagaimana',
+    ngeliat: 'lihat',
+    nyari: 'cari',
+    ngatur: 'kelola',
+    ngapus: 'hapus',
+    bikin: 'buat',
+    udah: 'sudah',
+    nggak: 'tidak',
+    ga: 'tidak',
+    gak: 'tidak',
+    pake: 'pakai',
+    inbok: 'inbox',
+    custmer: 'customer',
+    transksi: 'transaksi',
+    piutng: 'piutang',
+    kwitansi: 'kwitansi',
+  };
+
   /**
-   * Searches relevant knowledge entries from the currently active snapshot in DB.
+   * Morphological stemmer for Indonesian words that strips common prefixes and suffixes,
+   * including nasalization assimilation rules (meng/peng->k, meny/peny->s, men/pen->t, mem/pem->p),
+   * while protecting base roots and normalizing colloquial slang/typos.
+   */
+  static stemIndonesian(word: string): string {
+    let w = word.toLowerCase().trim();
+    if (this.COLLOQUIAL_SLANG_MAP[w]) {
+      w = this.COLLOQUIAL_SLANG_MAP[w];
+    }
+    if (this.PROTECTED_BASE_ROOTS.has(w) || w.length <= 4) {
+      return w;
+    }
+
+    // Nasalization assimilation rules:
+    if (/^(?:meng|peng)[aeiou]/.test(w)) {
+      w = 'k' + w.slice(4);
+    } else if (/^(?:meny|peny)[aeiou]/.test(w)) {
+      w = 's' + w.slice(4);
+    } else if (/^(?:men|pen)[aeiou]/.test(w)) {
+      w = 't' + w.slice(3);
+    } else if (/^(?:mem|pem)[aeiou]/.test(w)) {
+      w = 'p' + w.slice(3);
+    } else {
+      // Standard prefixes
+      w = w.replace(/^(?:meng|meny|men|mem|me|peng|peny|pen|pem|per|pe|di|ter|ber|ke)/, '');
+    }
+
+    // Check protected roots again after prefix strip (e.g. mengelola -> kelola)
+    if (this.PROTECTED_BASE_ROOTS.has(w) || w.length <= 4) {
+      return w;
+    }
+
+    // Suffixes: -kan, -an, -nya
+    w = w.replace(/(?:kan|an|nya)$/, '');
+
+    // Suffix -i: NEVER strip if ending in -si, -ti, -ri, -gi, -ki, -li, -mi, -ni, -bi, -di, -pi, or loanword
+    if (!/(?:[stgbkldmnp]i)$/.test(w)) {
+      w = w.replace(/i$/, '');
+    }
+
+    return w.length >= 3 ? w : word.toLowerCase().trim();
+  }
+
+  /**
+   * Tokenizes text and code identifiers (camelCase, snake_case, kebab-case, dots).
+   */
+  static tokenizeIdentifiers(str: string): string[] {
+    return str
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[^a-zA-Z0-9]/g, ' ')
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 2);
+  }
+
+  static readonly DYNAMIC_ROOT_CONCEPTS: Record<string, string[]> = {
+    lihat: ['lihat', 'view', 'buka', 'open', 'tampil', 'show', 'browse', 'list'],
+    kelola: ['kelola', 'manage', 'atur', 'admin', 'operation', 'crud', 'edit'],
+    bayar: ['bayar', 'pay', 'payment', 'kas', 'bank', 'cashbank', 'disbursement'],
+    tagih: ['tagih', 'invoice', 'billing', 'piutang', 'ar', 'termin', 'receivable'],
+    beli: ['beli', 'procure', 'purchase', 'po', 'procurement', 'vendor', 'supplier'],
+    jual: ['jual', 'sales', 'deals', 'leads', 'order', 'quotation', 'contract'],
+    tanya: ['tanya', 'inquiry', 'inbox', 'lead', 'client', 'contact', 'pelanggan', 'customer'],
+    dana: ['dana', 'fund', 'funding', 'costing', 'wip', 'biaya', 'pengeluaran', 'expense', 'cost'],
+    tugas: ['tugas', 'task', 'tasks', 'daily', 'weekly', 'pekerjaan', 'milestone', 'proyek', 'project'],
+    tabel: ['tabel', 'table', 'schema', 'model', 'database', 'kolom', 'prisma'],
+    setuju: ['setuju', 'approve', 'approval', 'verifikasi', 'verify'],
+    aset: ['aset', 'asset', 'fixed_asset', 'depresiasi', 'depreciation', 'penyusutan'],
+    pajak: ['pajak', 'tax', 'ppn', 'pph', 'faktur'],
+    lapor: ['lapor', 'report', 'reporting', 'pnl', 'gl', 'financial', 'statement'],
+  };
+
+
+
+  /**
+   * Evaluates operational access policy for a knowledge entry matching the exact
+   * authorization checks used by the backend application:
+   * 1. Multi-tenant & Company scope validation (Hard isolation: NO role, including SUPER_ADMIN or DIRECTOR, can bypass)
+   * 2. Blocked read modules enforcement (blockedReadModules)
+   * 3. Module enablement (enabledModules)
+   * 4. Privileged access for internal database schema models (SUPER_ADMIN, COMPANY_ADMIN, TECHNICAL_ADMIN, DIRECTOR)
+   * 5. Fail-closed default-deny for sensitive domains (FINANCE, CRM, HR, PROCUREMENT, PAYROLL, ACCOUNTING):
+   *    Missing/corrupt metadata is quarantined/denied. Valid metadata requires user to satisfy explicit policy.
+   * 6. Granular operational permissions (permissions) e.g. VIEW_FINANCE, VIEW_CRM, READ_TASK, READ_PROJECT
+   * 7. Actor policy role alignment (allowedRoles)
+   * 8. Project scope boundaries (projectScope)
+   */
+  static validateEntryAuthorization(
+    entry: {
+      feature_id?: string;
+      module_code: string;
+      knowledge_category?: string;
+      actor_policy_json?: string;
+      actorPolicy?: any;
+    },
+    scope: {
+      roleCode?: string;
+      enabledModules: string[];
+      permissions?: string[];
+      blockedReadModules?: string[];
+      projectScope?: { mode: 'ALL' | 'LIST'; projectIds: string[] };
+      tenantId?: string;
+      companyId?: string;
+    }
+  ): boolean {
+    const modUpper = (entry.module_code || '').toUpperCase();
+
+    // Parse actor policy
+    let policy: any = entry.actorPolicy;
+    if (!policy && entry.actor_policy_json) {
+      try {
+        policy = JSON.parse(entry.actor_policy_json);
+      } catch {
+        policy = undefined;
+      }
+    }
+
+    // 1. Strict Multi-Tenant & Company Scope (Hard Physical Barrier)
+    // NO role, including SUPER_ADMIN or DIRECTOR, can cross tenant/company boundaries.
+    const entryTenantId = policy?.tenantId || (entry as any).tenant_id;
+    const entryCompanyId = policy?.companyId || (entry as any).company_id;
+
+    if (entryTenantId && (!scope.tenantId || entryTenantId !== scope.tenantId)) {
+      return false;
+    }
+    if (entryCompanyId && (!scope.companyId || entryCompanyId !== scope.companyId)) {
+      return false;
+    }
+
+    // 2. Blocked read modules (hard deny)
+    if (scope.blockedReadModules && scope.blockedReadModules.map((m) => m.toUpperCase()).includes(modUpper)) {
+      return false;
+    }
+
+    // 3. Module enablement check (must be in enabledModules or CORE/GENERAL)
+    const allowedModules = [...(scope.enabledModules || []), 'GENERAL', 'CORE'].map((m) => m.toUpperCase());
+    if (!allowedModules.includes(modUpper)) {
+      return false;
+    }
+
+    const userRole = scope.roleCode ? scope.roleCode.toUpperCase() : undefined;
+    const isSuperOrDirector = userRole ? ['SUPER_ADMIN', 'COMPANY_ADMIN', 'DIRECTOR'].includes(userRole) : false;
+
+    // 4. Technical database schema models require privileged technical/director role
+    const isSchema = (entry.feature_id || '').startsWith('schema.model.') || entry.knowledge_category === 'SCHEMA_MODEL';
+    if (isSchema) {
+      if (!userRole) return false;
+      const isPrivileged = ['SUPER_ADMIN', 'COMPANY_ADMIN', 'TECHNICAL_ADMIN', 'DIRECTOR'].includes(userRole);
+      if (!isPrivileged) return false;
+    }
+
+    const userPermissions = (scope.permissions || []).map((p) => p.toUpperCase());
+    const hasManageAll = userPermissions.includes('MANAGE_ALL');
+
+    // 5. Fail-Closed Default-Deny on Missing/Incomplete Metadata for Sensitive Business Domains
+    // Missing metadata on sensitive business modules must result in denial/quarantine for ALL users.
+    // When metadata is present, user must actually satisfy the explicit policy (credentials match).
+    const SENSITIVE_BUSINESS_DOMAINS = ['FINANCE', 'CRM', 'HR', 'PROCUREMENT', 'PAYROLL', 'ACCOUNTING'];
+    const isSensitive = SENSITIVE_BUSINESS_DOMAINS.includes(modUpper);
+
+    if (isSensitive) {
+      const hasMetadata = policy && (
+        (Array.isArray(policy.allowedRoles) && policy.allowedRoles.length > 0) ||
+        (Array.isArray(policy.requiredPermissions) && policy.requiredPermissions.length > 0) ||
+        (policy.backendPolicy && Object.keys(policy.backendPolicy).length > 0)
+      );
+
+      // Missing or unverified metadata -> Quarantine / Fail-closed for all roles
+      if (!hasMetadata) {
+        return false;
+      }
+
+      // Credential satisfaction check: User must actively satisfy either the allowedRoles or requiredPermissions
+      const hasReqPerms = Array.isArray(policy.requiredPermissions) && policy.requiredPermissions.length > 0;
+      const hasAllowedRoles = Array.isArray(policy.allowedRoles) && policy.allowedRoles.length > 0;
+
+      const satisfiesPerm = hasReqPerms
+        ? policy.requiredPermissions.some((req: string) => userPermissions.includes(req.toUpperCase()))
+        : false;
+
+      const satisfiesRole = hasAllowedRoles && userRole
+        ? policy.allowedRoles.map((r: string) => r.toUpperCase()).includes(userRole)
+        : false;
+
+      if (hasReqPerms && hasAllowedRoles) {
+        if (!satisfiesPerm && !satisfiesRole && !hasManageAll) return false;
+      } else if (hasReqPerms) {
+        if (!satisfiesPerm && !hasManageAll) return false;
+      } else if (hasAllowedRoles) {
+        if (!satisfiesRole && !hasManageAll) return false;
+      }
+    }
+
+    // 6. Granular operational permission enforcement (for non-sensitive modules with explicit policy)
+    if (!isSensitive && policy?.requiredPermissions && Array.isArray(policy.requiredPermissions) && policy.requiredPermissions.length > 0) {
+      if (!hasManageAll && !isSuperOrDirector) {
+        const hasReqPerm = policy.requiredPermissions.some((req: string) => userPermissions.includes(req.toUpperCase()));
+        if (!hasReqPerm) return false;
+      }
+    }
+
+    // 7. Check domain-level operational permissions if user has permissions defined
+    if (scope.permissions && scope.permissions.length > 0 && !hasManageAll && !isSuperOrDirector) {
+      if (modUpper === 'FINANCE') {
+        const hasFin = userPermissions.some((p) =>
+          ['VIEW_FINANCE', 'READ_COMPANY_FINANCE', 'READ_PROJECT_FINANCE', 'MANAGE_FINANCE'].includes(p)
+        );
+        if (!hasFin) return false;
+      } else if (modUpper === 'CRM') {
+        const hasCrm = userPermissions.some((p) =>
+          ['VIEW_CRM', 'READ_CRM_DEALS', 'READ_TICKET', 'MANAGE_CRM'].includes(p)
+        );
+        if (!hasCrm) return false;
+      } else if (modUpper === 'PROJECTS') {
+        const hasProj = userPermissions.some((p) =>
+          ['READ_PROJECT', 'READ_TASK', 'MANAGE_PROJECT'].includes(p)
+        );
+        if (!hasProj) return false;
+      }
+    }
+
+    // 8. Role-based actor policy check (for non-sensitive modules)
+    if (!isSensitive && policy?.allowedRoles && Array.isArray(policy.allowedRoles) && policy.allowedRoles.length > 0) {
+      if (!userRole) return false;
+      if (!isSuperOrDirector) {
+        const roleAllowed = policy.allowedRoles.some((r: string) => r.toUpperCase() === userRole);
+        if (!roleAllowed) return false;
+      }
+    }
+
+    // 9. Project Scope boundary
+    if (scope.projectScope && scope.projectScope.mode === 'LIST') {
+      const allowedProjects = scope.projectScope.projectIds || [];
+      const entryProjectId = policy?.projectId || policy?.project_id;
+      if (entryProjectId && !allowedProjects.includes(entryProjectId)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Constructs a deterministic, canonical cryptographic cache key incorporating:
+   * 1. Schema version
+   * 2. Active Snapshot ID / version (to automatically bust cache on new crawl/promotion)
+   * 3. Tenant ID & Company ID
+   * 4. User Role (canonicalized)
+   * 5. Granular permissions (deduplicated & lexicographically sorted)
+   * 6. Blocked read modules (deduplicated & lexicographically sorted)
+   * 7. Project scope (mode + sorted project IDs)
+   * 8. Canonical query string (normalized whitespace & casing)
+   *
+   * Uses SHA-256 to guarantee consistent 64-char key length, mathematical collision resistance,
+   * and complete isolation across tenants, companies, and roles.
+   */
+  static buildScopedCacheKey(
+    query: string,
+    scope: {
+      tenantId?: string;
+      companyId?: string;
+      userId?: string;
+      roleCode?: string;
+      permissions?: string[];
+      blockedReadModules?: string[];
+      projectScope?: { mode: 'ALL' | 'LIST'; projectIds: string[] };
+    },
+    snapshotId?: string
+  ): string {
+    const canonicalContext = {
+      v: 2,
+      snap: snapshotId || 'active',
+      tid: (scope.tenantId || 'none').trim().toLowerCase(),
+      cid: (scope.companyId || 'none').trim().toLowerCase(),
+      role: (scope.roleCode || 'USER').trim().toUpperCase(),
+      perms: Array.from(new Set((scope.permissions || []).map((p) => p.trim().toUpperCase()))).sort(),
+      blocked: Array.from(new Set((scope.blockedReadModules || []).map((m) => m.trim().toUpperCase()))).sort(),
+      proj: scope.projectScope
+        ? {
+            mode: scope.projectScope.mode,
+            ids: Array.from(new Set((scope.projectScope.projectIds || []).map((id) => id.trim()))).sort(),
+          }
+        : { mode: 'ALL', ids: [] },
+      q: query.toLowerCase().replace(/\s+/g, ' ').trim(),
+    };
+
+    const hash = crypto
+      .createHash('sha256')
+      .update(JSON.stringify(canonicalContext))
+      .digest('hex');
+
+    return `mkie:cache:v2:${hash}`;
+  }
+
+  /**
+   * Searches relevant active MKIE knowledge entries using dynamic concept normalization,
+   * morphological stemming, category boosts, and fine-grained operational access policy.
    */
   static async searchRelevantKnowledge(
     query: string,
-    scope: { enabledModules: string[] }
+    scope: {
+      roleCode?: string;
+      enabledModules: string[];
+      permissions?: string[];
+      blockedReadModules?: string[];
+      projectScope?: { mode: 'ALL' | 'LIST'; projectIds: string[] };
+      tenantId?: string;
+      companyId?: string;
+    }
   ): Promise<
     Array<{
       feature_id: string;
@@ -140,10 +495,21 @@ export class RetrievalGatewayService {
     const activeSnapshot = await this.getActiveSnapshot();
     if (!activeSnapshot) return [];
 
+    const cacheKey = this.buildScopedCacheKey(query, scope, activeSnapshot.id);
+    const cachedQuery = queryCache.get(cacheKey);
+    if (cachedQuery && Date.now() - cachedQuery.cachedAt < QUERY_CACHE_TTL_MS) {
+      // Re-verify authorization defense-in-depth on every single request
+      // Guarantees that mid-session permission revocations or tenant boundaries are enforced immediately
+      const verifiedResults = cachedQuery.result.filter((e) =>
+        this.validateEntryAuthorization(e, scope)
+      );
+      return verifiedResults;
+    }
+
     try {
       const normalizedQuery = query.toLowerCase().replace(/[?.,!]/g, '').trim();
-      const terms = normalizedQuery.split(/\s+/).filter((t) => t.length > 2);
-      if (!terms.length) return [];
+      const rawTerms = normalizedQuery.split(/\s+/).filter((t) => t.length > 2);
+      if (!rawTerms.length) return [];
 
       const ERP_SYNONYM_MAP: Record<string, string[]> = {
         pelanggan: ['customer', 'inbox', 'lead', 'contact', 'crm', 'deals', 'klien'],
@@ -183,9 +549,30 @@ export class RetrievalGatewayService {
         tabel: ['table', 'model', 'schema', 'database', 'prisma'],
       };
 
-      const expandedTerms = new Set<string>(terms);
-      for (const term of terms) {
-        const syns = ERP_SYNONYM_MAP[term];
+      const queryStems = new Set<string>();
+      const expandedTerms = new Set<string>(rawTerms);
+
+      for (const term of rawTerms) {
+        const stem = this.stemIndonesian(term);
+        if (stem.length > 2) {
+          queryStems.add(stem);
+          expandedTerms.add(stem);
+        }
+
+        // Dynamic concept expansion
+        for (const [conceptKey, conceptWords] of Object.entries(this.DYNAMIC_ROOT_CONCEPTS)) {
+          if (
+            conceptWords.includes(term) ||
+            conceptWords.includes(stem) ||
+            term.includes(conceptKey) ||
+            stem.includes(conceptKey)
+          ) {
+            for (const cw of conceptWords) expandedTerms.add(cw);
+          }
+        }
+
+        // Fallback synonym expansion
+        const syns = ERP_SYNONYM_MAP[term] || (stem !== term ? ERP_SYNONYM_MAP[stem] : undefined);
         if (syns) {
           for (const s of syns) expandedTerms.add(s);
         }
@@ -193,26 +580,42 @@ export class RetrievalGatewayService {
 
       const isSchemaQuery = /\b(?:tabel|table|skema|schema|database|model|kolom|prisma)\b/i.test(normalizedQuery);
 
-      const entries = await (prisma as any).marbot_knowledge_entry.findMany({
-        where: {
-          snapshot_id: activeSnapshot.id,
-          module_code: { in: [...scope.enabledModules, 'GENERAL', 'CORE'] },
-          lifecycle_status: 'ACTIVE',
-        },
-        select: {
-          feature_id: true,
-          module_code: true,
-          title: true,
-          topic: true,
-          knowledge_category: true,
-          content_json: true,
-          navigation_json: true,
-          provenance_json: true,
-          actor_policy_json: true,
-        },
-      });
+      let allEntries: any[] = [];
+      const now = Date.now();
+      if (entriesCache && entriesCache.snapshotId === activeSnapshot.id && (now - entriesCache.cachedAt < CACHE_TTL_MS)) {
+        allEntries = entriesCache.entries;
+      } else {
+        allEntries = await (prisma as any).marbot_knowledge_entry.findMany({
+          where: {
+            snapshot_id: activeSnapshot.id,
+            lifecycle_status: 'ACTIVE',
+          },
+          select: {
+            feature_id: true,
+            module_code: true,
+            title: true,
+            topic: true,
+            knowledge_category: true,
+            content_json: true,
+            navigation_json: true,
+            provenance_json: true,
+            actor_policy_json: true,
+          },
+        });
+        entriesCache = {
+          snapshotId: activeSnapshot.id,
+          entries: allEntries,
+          cachedAt: now,
+        };
+      }
 
-      const scored = entries
+      // Strict operational access authorization
+      const allowedModules = [...(scope.enabledModules || []), 'GENERAL', 'CORE'].map((m) => m.toUpperCase());
+      const roleAuthorizedEntries = allEntries
+        .filter((e: any) => allowedModules.includes((e.module_code || '').toUpperCase()))
+        .filter((e: any) => this.validateEntryAuthorization(e, scope));
+
+      const scored = roleAuthorizedEntries
         .map((e: any) => {
           const titleLower = (e.title || '').toLowerCase();
           const topicLower = (e.topic || '').toLowerCase();
@@ -221,27 +624,37 @@ export class RetrievalGatewayService {
           let score = 0;
 
           // 1. Exact query or phrase match bonus
-          if (titleLower.includes(normalizedQuery)) score += 30;
+          if (titleLower.includes(normalizedQuery)) score += 35;
           if (contentStr.includes(normalizedQuery)) score += 15;
 
           // 2. Direct term match
-          for (const term of terms) {
+          for (const term of rawTerms) {
             if (titleLower.includes(term)) score += 8;
             if (topicLower.includes(term)) score += 6;
             if (featureLower.includes(term)) score += 5;
             if (contentStr.includes(term)) score += 3;
           }
 
-          // 3. Synonym / Concept match
+          // 3. Dynamic concept & stem match
+          const entryTokens = this.tokenizeIdentifiers(`${e.title} ${e.topic} ${e.feature_id}`);
+          for (const qStem of queryStems) {
+            for (const eTok of entryTokens) {
+              const eStem = this.stemIndonesian(eTok);
+              if (eStem === qStem || eTok === qStem) {
+                score += 8;
+              }
+            }
+          }
+
           for (const exp of expandedTerms) {
-            if (titleLower.includes(exp)) score += 4;
-            if (topicLower.includes(exp)) score += 3;
+            if (titleLower.includes(exp)) score += 5;
+            if (topicLower.includes(exp)) score += 4;
             if (featureLower.includes(exp)) score += 3;
             if (contentStr.includes(exp)) score += 2;
           }
 
           // 4. Category-based boosts
-          const isUserGuidanceQuery = /\b(how|cara|bagaimana|panduan|buka|lihat|view|menu|tab|halaman)\b/i.test(normalizedQuery);
+          const isUserGuidanceQuery = /\b(how|cara|bagaimana|panduan|buka|lihat|view|menu|tab|halaman|dimana|di mana)\b/i.test(normalizedQuery);
           if (isUserGuidanceQuery) {
             if (e.feature_id.startsWith('frontend.tab.')) score += 35;
             if (e.feature_id.startsWith('frontend.view.')) score += 20;
@@ -250,15 +663,15 @@ export class RetrievalGatewayService {
             if (e.feature_id.startsWith('frontend.tab.')) score += 15;
             if (e.feature_id.startsWith('frontend.view.')) score += 8;
           }
-          if (isSchemaQuery && e.feature_id.startsWith('schema.model.')) score += 25;
+          if (isSchemaQuery && e.feature_id.startsWith('schema.model.')) score += 30;
 
           return { entry: e, score };
         })
-        .filter((item: { entry: any; score: number }) => item.score > 0);
+        .filter((item: { entry: any; score: number }) => item.score >= 10);
 
       scored.sort((a: { score: number }, b: { score: number }) => b.score - a.score);
 
-      return scored.slice(0, 4).map(({ entry: e }: { entry: any; score: number }) => {
+      const finalResult = scored.slice(0, 4).map(({ entry: e }: { entry: any; score: number }) => {
         const content = JSON.parse(e.content_json || '{}');
         const navigation = e.navigation_json ? JSON.parse(e.navigation_json) : {};
         const actorPolicy = e.actor_policy_json ? JSON.parse(e.actor_policy_json) : undefined;
@@ -274,6 +687,9 @@ export class RetrievalGatewayService {
           actorPolicy,
         };
       });
+
+      queryCache.set(cacheKey, { result: finalResult, cachedAt: Date.now() });
+      return finalResult;
     } catch {
       return [];
     }
@@ -296,37 +712,54 @@ export class RetrievalGatewayService {
       provenance: string;
       actorPolicy?: any;
     }>,
-    scope: { roleCode?: string; enabledModules: string[] }
+    scope: {
+      roleCode?: string;
+      enabledModules: string[];
+      permissions?: string[];
+      blockedReadModules?: string[];
+      projectScope?: { mode: 'ALL' | 'LIST'; projectIds: string[] };
+      tenantId?: string;
+      companyId?: string;
+    }
   ): Promise<string> {
-    if (!entries.length) {
-      return 'Referensi fitur tersebut belum tersedia dalam cakupan modul aktif Anda. Belum ada bukti kode terverifikasi yang cocok.';
+    // Defense-in-depth: Ensure NO unauthorized facts leak through cache/fallback/direct entry injection
+    const authorizedEntries = entries.filter((e) => this.validateEntryAuthorization(e, scope));
+
+    if (!authorizedEntries.length) {
+      this.lastTelemetry = {
+        usedProvider: 'deterministic_fallback',
+        factsCount: 0,
+      };
+      return 'Referensi fitur atau data teknis tersebut tidak ditemukan dalam bukti kode sistem terverifikasi saat ini. Saya belum memiliki bukti kode yang cukup untuk menjawab pertanyaan ini secara akurat.';
     }
 
     // Check OpenRouter LLM availability from environment
     const apiKey = process.env.MARBOT_AI_API_KEY;
     const model = process.env.MARBOT_AI_MODEL;
 
-    if (apiKey && model) {
-      try {
-        const systemPrompt = `Anda adalah Marka Plus, asisten cerdas untuk sistem Arsalynt ERP.
+    const systemPrompt = `Anda adalah Marka Plus, asisten cerdas untuk sistem Arsalynt ERP.
 Tugas Anda adalah menjawab pertanyaan pengguna secara ringkas, akurat, dan ramah dalam Bahasa Indonesia berdasarkan HANYA bukti kode (Code Evidence) yang disediakan.
 
 ATURAN GROUNDING KETAT:
-1. JANGAN mengarang fitur, prosedur, atau hak akses yang tidak tertera dalam bukti kode.
-2. Jelaskan fitur yang dimaksud, modul terkait, rute navigasi dan link markdown [Buka ...] (jika path tersedia), serta langkah penggunaan.
-3. Bila ada detail teknis yang tidak disebutkan dalam bukti kode (misalnya rumus kalkulasi khusus atau batas validasi), nyatakan dengan jujur bahwa hal tersebut belum tercatat pada bukti kode sistem saat ini.
-4. Anda HANYA memberikan panduan dan informasi pengetahuan. JANGAN mengeksekusi mutasi/perubahan data.`;
+1. Jawab HANYA berdasarkan Fakta Kode Terverifikasi yang diberikan. JANGAN berhalusinasi atau mengarang logika bisnis baru.
+2. Jika rute atau path navigasi tersedia, sertakan link markdown [Buka ...] untuk mempermudah pengguna.
+3. Bila ada detail teknis atau formula khusus yang tidak disebutkan dalam bukti kode, nyatakan dengan jujur bahwa hal tersebut belum tercatat pada bukti kode sistem saat ini.
+4. Anda HANYA memberikan bantuan pengetahuan dan panduan sistem. JANGAN mengeksekusi mutasi atau merencanakan perubahan data operasional.`;
 
-        const factsPayload = entries.map((e) => ({
-          title: e.title,
-          module: e.module_code,
-          category: e.knowledge_category || 'USER_PROCEDURE',
-          summary: e.summary,
-          steps: e.steps,
-          path: e.targetPath,
-          allowedRoles: e.actorPolicy?.allowedRoles,
-        }));
+    const factsPayload = authorizedEntries.map((e) => ({
+      title: e.title,
+      module: e.module_code,
+      category: e.knowledge_category || 'USER_PROCEDURE',
+      summary: e.summary,
+      steps: e.steps,
+      path: e.targetPath,
+      allowedRoles: e.actorPolicy?.allowedRoles,
+    }));
 
+    const userPrompt = `Pertanyaan pengguna: "${query}"\nPeran pengguna: ${scope.roleCode || 'USER'} (Modul Aktif: ${scope.enabledModules.join(', ')})\n\nBukti Fitur Kode Sistem Terverifikasi:\n${JSON.stringify(factsPayload, null, 2)}`;
+
+    if (apiKey && model) {
+      try {
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -339,10 +772,7 @@ ATURAN GROUNDING KETAT:
             max_tokens: 800,
             messages: [
               { role: 'system', content: systemPrompt },
-              {
-                role: 'user',
-                content: `Pertanyaan pengguna: "${query}"\nPeran pengguna: ${scope.roleCode || 'USER'} (Modul Aktif: ${scope.enabledModules.join(', ')})\n\nBukti Fitur Kode Sistem Terverifikasi:\n${JSON.stringify(factsPayload, null, 2)}`,
-              },
+              { role: 'user', content: userPrompt },
             ],
           }),
           signal: AbortSignal.timeout(12000),
@@ -352,6 +782,13 @@ ATURAN GROUNDING KETAT:
           const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
           const reply = body.choices?.[0]?.message?.content?.trim();
           if (reply && reply.length > 20) {
+            this.lastTelemetry = {
+              usedProvider: 'openrouter',
+              model,
+              systemPrompt,
+              userPrompt,
+              factsCount: authorizedEntries.length,
+            };
             return reply;
           }
         }
@@ -360,9 +797,16 @@ ATURAN GROUNDING KETAT:
       }
     }
 
+    this.lastTelemetry = {
+      usedProvider: 'deterministic_fallback',
+      systemPrompt,
+      userPrompt,
+      factsCount: authorizedEntries.length,
+    };
+
     // Deterministic fallback synthesis
     return (
-      entries
+      authorizedEntries
         .map((e) => {
           const stepsText =
             e.steps && e.steps.length > 0

@@ -77,7 +77,10 @@ export class ScanCoordinatorService {
 
     for (const ev of targetEvidences) {
       if (candidatesMap.has(ev.feature_id)) continue;
-      const related = crawlResult.graph.findRoutesForPage(ev.feature_id);
+      const chain = crawlResult.graph.traceFullChain(ev.feature_id);
+      const related = chain
+        ? [...chain.apiRoutes, ...chain.prismaModels]
+        : crawlResult.graph.findRoutesForPage(ev.feature_id);
       const candidate = await FeatureAnalyzer.analyze(ev, related);
 
       // Compare with previous active version

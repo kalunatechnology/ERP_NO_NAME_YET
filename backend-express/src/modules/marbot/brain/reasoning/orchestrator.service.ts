@@ -56,6 +56,25 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
     if (intent.route === 'knowledge') {
       const active = await RetrievalGatewayService.getActiveSnapshot();
       const versionTag = active ? `v${active.version_number}:${active.commit_sha.slice(0, 7)}` : '2026-10-07';
+
+      // Check if this is an explicit module overview inquiry
+      const isOverviewQuery = /^(?:jelaskan|apa itu|overview|ruang kerja)\s+(?:modul|ruang kerja)/i.test(message) && intent.modules.length === 1;
+
+      if (!isOverviewQuery) {
+        const mkieEntries = await RetrievalGatewayService.searchRelevantKnowledge(message, scope);
+        if (mkieEntries.length > 0) {
+          const groundedContent = await RetrievalGatewayService.generateGroundedAnswer(message, mkieEntries, scope);
+          return {
+            understanding,
+            answer: {
+              content: groundedContent,
+              tools: ['help.procedure'],
+              sources: mkieEntries.map((e) => e.provenance),
+            },
+          };
+        }
+      }
+
       const canonicalContent = systemKnowledgeAnswer(message, scope.enabledModules, intent.modules);
 
       if (!canonicalContent.includes('belum tersedia')) {

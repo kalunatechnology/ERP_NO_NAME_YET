@@ -1,6 +1,7 @@
 import prisma from '../../../../config/database';
 import type { KnowledgeEntry } from '../contracts/knowledge.schema';
 import { RetrievalGatewayService } from '../gateway/retrieval-gateway.service';
+import { JobLockService } from '../scheduler/job-lock.service';
 
 export interface CreateSnapshotParams {
   versionNumber: string;
@@ -77,8 +78,26 @@ export class SnapshotManager {
 
   /**
    * Promotes a STAGING snapshot to ACTIVE atomically using a transaction.
+   * If fencing options are provided, rigorously verifies that the worker still holds
+   * the active lease for the lock key. If lease expired or stolen, aborts promotion.
    */
-  static async activateSnapshot(snapshotId: string): Promise<void> {
+  static async activateSnapshot(
+    snapshotId: string,
+    fencing?: { lockKey: string; workerId: string; lockToken: string }
+  ): Promise<void> {
+    if (fencing) {
+      const isOwner = await JobLockService.verifyLockOwnership(
+        fencing.lockKey,
+        fencing.workerId,
+        fencing.lockToken
+      );
+      if (!isOwner) {
+        throw new Error(
+          `FENCING_TOKEN_VIOLATION: Worker '${fencing.workerId}' with token '${fencing.lockToken}' no longer holds valid distributed lock '${fencing.lockKey}'. Promotion of snapshot '${snapshotId}' aborted.`
+        );
+      }
+    }
+
     await prisma.$transaction([
       // 1. Demote currently active snapshots to SUPERSEDED
       prisma.marbot_knowledge_snapshot.updateMany({

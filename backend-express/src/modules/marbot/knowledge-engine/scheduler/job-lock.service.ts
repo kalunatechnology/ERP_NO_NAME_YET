@@ -99,4 +99,29 @@ export class JobLockService {
       return false;
     }
   }
+
+  /**
+   * Verifies that the worker still holds the valid, non-expired lock lease.
+   * Used as a fencing check before critical state mutations (e.g. snapshot promotion).
+   * Prevents zombie workers from promoting stale snapshots after lease expiration.
+   */
+  static async verifyLockOwnership(
+    lockKey: string,
+    workerId: string,
+    lockToken: string
+  ): Promise<boolean> {
+    try {
+      const rows = await prisma.$queryRaw<any[]>`
+        SELECT lock_token FROM marbot_knowledge_lock
+        WHERE lock_key = ${lockKey}
+          AND owner_worker_id = ${workerId}
+          AND lock_token = ${lockToken}
+          AND expires_at > NOW()
+        LIMIT 1
+      `;
+      return rows.length > 0;
+    } catch {
+      return false;
+    }
+  }
 }
