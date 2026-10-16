@@ -545,9 +545,24 @@ export class RetrievalGatewayService {
         cuti: ['leave', 'timeoff', 'izin'],
         persetujuan: ['approval', 'approve', 'verifikasi'],
         laporan: ['report', 'reporting', 'pnl', 'gl', 'financial'],
+        jurnal: ['journal', 'journal-entries', 'gl', 'buku besar', 'ledger'],
+        journal: ['jurnal', 'journal-entries', 'gl', 'ledger'],
+        neraca: ['balance', 'trial-balance', 'balance-sheet', 'saldo'],
+        saldo: ['balance', 'trial-balance', 'neraca'],
+        laba: ['profit', 'pnl', 'loss', 'profit-and-loss'],
+        rugi: ['loss', 'pnl', 'profit', 'profit-and-loss'],
         skema: ['schema', 'model', 'tabel', 'database', 'kolom'],
         tabel: ['table', 'model', 'schema', 'database', 'prisma'],
       };
+
+      const STOPWORDS = new Set([
+        'bagaimana', 'cara', 'panduan', 'buka', 'lihat', 'view', 'menu', 'tab', 'halaman', 'dimana', 'di mana',
+        'how', 'dan', 'atau', 'ini', 'itu', 'pada', 'untuk', 'dengan', 'dari', 'ke', 'di', 'yang', 'apa', 'apakah',
+        'saya', 'kami', 'kita', 'kamu', 'anda', 'bulan', 'tahun', 'hari', 'perusahaan', 'tolong', 'mohon',
+        'bisa', 'dapat', 'ada', 'rincian', 'daftar'
+      ]);
+
+      const substantiveTerms = rawTerms.filter((t) => !STOPWORDS.has(t));
 
       const queryStems = new Set<string>();
       const expandedTerms = new Set<string>(rawTerms);
@@ -622,35 +637,60 @@ export class RetrievalGatewayService {
           const featureLower = (e.feature_id || '').toLowerCase();
           const contentStr = (e.content_json || '').toLowerCase();
           let score = 0;
+          let substantiveMatches = 0;
 
           // 1. Exact query or phrase match bonus
-          if (titleLower.includes(normalizedQuery)) score += 35;
-          if (contentStr.includes(normalizedQuery)) score += 15;
+          if (titleLower.includes(normalizedQuery)) {
+            score += 35;
+            substantiveMatches += 2;
+          }
+          if (contentStr.includes(normalizedQuery)) {
+            score += 15;
+            substantiveMatches += 1;
+          }
 
           // 2. Direct term match
           for (const term of rawTerms) {
-            if (titleLower.includes(term)) score += 8;
-            if (topicLower.includes(term)) score += 6;
-            if (featureLower.includes(term)) score += 5;
-            if (contentStr.includes(term)) score += 3;
+            const isSubstantive = substantiveTerms.includes(term);
+            const weight = isSubstantive ? 1 : 0.2;
+            let matched = false;
+
+            if (titleLower.includes(term)) { score += Math.round(8 * weight); matched = true; }
+            if (topicLower.includes(term)) { score += Math.round(6 * weight); matched = true; }
+            if (featureLower.includes(term)) { score += Math.round(5 * weight); matched = true; }
+            if (contentStr.includes(term)) { score += Math.round(3 * weight); matched = true; }
+
+            if (matched && isSubstantive) substantiveMatches++;
           }
 
           // 3. Dynamic concept & stem match
           const entryTokens = this.tokenizeIdentifiers(`${e.title} ${e.topic} ${e.feature_id}`);
           for (const qStem of queryStems) {
+            const isSubstantiveStem = !STOPWORDS.has(qStem);
             for (const eTok of entryTokens) {
               const eStem = this.stemIndonesian(eTok);
               if (eStem === qStem || eTok === qStem) {
-                score += 8;
+                score += isSubstantiveStem ? 8 : 2;
+                if (isSubstantiveStem) substantiveMatches++;
               }
             }
           }
 
           for (const exp of expandedTerms) {
-            if (titleLower.includes(exp)) score += 5;
-            if (topicLower.includes(exp)) score += 4;
-            if (featureLower.includes(exp)) score += 3;
-            if (contentStr.includes(exp)) score += 2;
+            const isSubstantiveExp = !STOPWORDS.has(exp);
+            if (!isSubstantiveExp) continue;
+            let expMatched = false;
+            if (titleLower.includes(exp)) { score += 5; expMatched = true; }
+            if (topicLower.includes(exp)) { score += 4; expMatched = true; }
+            if (featureLower.includes(exp)) { score += 3; expMatched = true; }
+            if (contentStr.includes(exp)) { score += 2; expMatched = true; }
+            if (expMatched) substantiveMatches++;
+          }
+
+          // Strict topic grounding: If the query contains substantive terms (e.g. jurnal, neraca, inbox),
+          // an entry MUST match at least one substantive term to be considered relevant.
+          if (substantiveTerms.length > 0 && substantiveMatches === 0) {
+            return { entry: e, score: 0 };
           }
 
           // 4. Category-based boosts

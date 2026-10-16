@@ -85,34 +85,41 @@ export class SnapshotManager {
     snapshotId: string,
     fencing?: { lockKey: string; workerId: string; lockToken: string }
   ): Promise<void> {
-    if (fencing) {
-      const isOwner = await JobLockService.verifyLockOwnership(
-        fencing.lockKey,
-        fencing.workerId,
-        fencing.lockToken
-      );
-      if (!isOwner) {
-        throw new Error(
-          `FENCING_TOKEN_VIOLATION: Worker '${fencing.workerId}' with token '${fencing.lockToken}' no longer holds valid distributed lock '${fencing.lockKey}'. Promotion of snapshot '${snapshotId}' aborted.`
-        );
+    await prisma.$transaction(async (tx) => {
+      // 1. Atomic fencing lock ownership check INSIDE the same database transaction
+      // Uses FOR UPDATE row lock to completely eliminate TOCTOU race conditions.
+      if (fencing) {
+        const rows = await tx.$queryRaw<any[]>`
+          SELECT lock_token FROM marbot_knowledge_lock
+          WHERE lock_key = ${fencing.lockKey}
+            AND owner_worker_id = ${fencing.workerId}
+            AND lock_token = ${fencing.lockToken}
+            AND expires_at > NOW()
+          LIMIT 1
+          FOR UPDATE
+        `;
+        if (!rows || rows.length === 0) {
+          throw new Error(
+            `FENCING_TOKEN_VIOLATION: Worker '${fencing.workerId}' with token '${fencing.lockToken}' no longer holds valid distributed lock '${fencing.lockKey}'. Promotion of snapshot '${snapshotId}' aborted.`
+          );
+        }
       }
-    }
 
-    await prisma.$transaction([
-      // 1. Demote currently active snapshots to SUPERSEDED
-      prisma.marbot_knowledge_snapshot.updateMany({
+      // 2. Demote currently active snapshots to SUPERSEDED
+      await tx.marbot_knowledge_snapshot.updateMany({
         where: { status: 'ACTIVE' },
         data: { status: 'SUPERSEDED' },
-      }),
-      // 2. Promote target snapshot to ACTIVE
-      prisma.marbot_knowledge_snapshot.update({
+      });
+
+      // 3. Promote target snapshot to ACTIVE
+      await tx.marbot_knowledge_snapshot.update({
         where: { id: snapshotId },
         data: {
           status: 'ACTIVE',
           published_at: new Date(),
         },
-      }),
-    ]);
+      });
+    });
 
     // Invalidate memory cache so queries immediately see the new active snapshot
     RetrievalGatewayService.invalidateCache();
