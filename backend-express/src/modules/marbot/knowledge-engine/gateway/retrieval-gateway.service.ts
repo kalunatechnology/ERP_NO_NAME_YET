@@ -22,9 +22,34 @@ interface ActiveEntriesCache {
   cachedAt: number;
 }
 
+export interface RestrictedTopicHint {
+  clusterId: string;
+  label: string;
+  moduleCode: string;
+  matchedTitles: string[];
+  requiredRoleHint: string;
+}
+
+export interface ConceptClusterDefinition {
+  id: string;
+  label: string;
+  triggers: string[];
+  entryMatchers: string[];
+  defaultRestrictedModule?: string;
+  requiredRoleHint?: string;
+}
+
+export interface QueryIntentAnalysis {
+  isDataOrPeriodInquiry: boolean;
+  isUserGuidanceQuery: boolean;
+  isSchemaQuery: boolean;
+  periodPhrase?: string;
+  detectedClusters: ConceptClusterDefinition[];
+}
+
 let snapshotCache: ActiveSnapshotCache | null = null;
 let entriesCache: ActiveEntriesCache | null = null;
-const queryCache = new Map<string, { result: any[]; cachedAt: number }>();
+const queryCache = new Map<string, { result: any[]; restrictedHints: RestrictedTopicHint[]; cachedAt: number }>();
 const CACHE_TTL_MS = 30_000;
 const QUERY_CACHE_TTL_MS = 60_000;
 
@@ -138,6 +163,10 @@ export class RetrievalGatewayService {
     factsCount: number;
   };
 
+  static readonly ALLOWED_SHORT_ACRONYMS = new Set([
+    'gl', 'ar', 'ap', 'po', 'pr', 'hr', 'qc', 'so', 'do', 'ui', 'db',
+  ]);
+
   static readonly PROTECTED_BASE_ROOTS = new Set([
     'kota', 'kopi', 'kaki', 'peta', 'pasar', 'beli', 'kerja', 'uang', 'data',
     'user', 'role', 'lead', 'deal', 'task', 'form', 'bank', 'kas', 'item',
@@ -147,7 +176,7 @@ export class RetrievalGatewayService {
     'komunikasi', 'konfigurasi', 'kategori', 'distribusi', 'fungsi', 'aplikasi',
     'validasi', 'produksi', 'kwitansi', 'administrasi', 'organisasi', 'aktivitas',
     'restitusi', 'subsidi', 'komisi', 'asuransi', 'garansi', 'mutasi', 'revisi',
-    'bukti', 'ganti', 'rugi', 'pasti', 'asli', 'resmi'
+    'bukti', 'ganti', 'rugi', 'laba', 'neraca', 'saldo', 'jurnal', 'pasti', 'asli', 'resmi',
   ]);
 
   static readonly COLLOQUIAL_SLANG_MAP: Record<string, string> = {
@@ -170,12 +199,22 @@ export class RetrievalGatewayService {
   };
 
   /**
+   * Normalizes compound accounting/ERP shorthand (such as P&L -> pnl) so symbol
+   * stripping does not split or drop multi-character financial tokens.
+   */
+  static normalizeShorthandTokens(input: string): string {
+    return input
+      .replace(/\bp\s*&\s*l\b/gi, 'pnl')
+      .replace(/\br\s*&\s*d\b/gi, 'rnd');
+  }
+
+  /**
    * Morphological stemmer for Indonesian words that strips common prefixes and suffixes,
    * including nasalization assimilation rules (meng/peng->k, meny/peny->s, men/pen->t, mem/pem->p),
    * while protecting base roots and normalizing colloquial slang/typos.
    */
   static stemIndonesian(word: string): string {
-    let w = word.toLowerCase().trim();
+    let w = this.normalizeShorthandTokens(word.toLowerCase().trim());
     if (this.COLLOQUIAL_SLANG_MAP[w]) {
       w = this.COLLOQUIAL_SLANG_MAP[w];
     }
@@ -214,15 +253,15 @@ export class RetrievalGatewayService {
   }
 
   /**
-   * Tokenizes text and code identifiers (camelCase, snake_case, kebab-case, dots).
+   * Tokenizes text and code identifiers (camelCase, snake_case, kebab-case, dots, P&L).
    */
   static tokenizeIdentifiers(str: string): string[] {
-    return str
+    return this.normalizeShorthandTokens(str)
       .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
       .replace(/[^a-zA-Z0-9]/g, ' ')
       .toLowerCase()
       .split(/\s+/)
-      .filter((t) => t.length > 2);
+      .filter((t) => t.length > 2 || this.ALLOWED_SHORT_ACRONYMS.has(t));
   }
 
   static readonly DYNAMIC_ROOT_CONCEPTS: Record<string, string[]> = {
@@ -239,10 +278,140 @@ export class RetrievalGatewayService {
     setuju: ['setuju', 'approve', 'approval', 'verifikasi', 'verify'],
     aset: ['aset', 'asset', 'fixed_asset', 'depresiasi', 'depreciation', 'penyusutan'],
     pajak: ['pajak', 'tax', 'ppn', 'pph', 'faktur'],
-    lapor: ['lapor', 'report', 'reporting', 'pnl', 'gl', 'financial', 'statement'],
+    lapor: ['lapor', 'report', 'reporting', 'pnl', 'p&l', 'gl', 'financial', 'statement'],
+    jurnal: ['jurnal', 'journal', 'general ledger', 'buku besar', 'gl', 'ledger', 'journal-entries'],
+    neraca: ['neraca', 'trial balance', 'trial-balance', 'balance sheet', 'balance-sheet', 'saldo'],
+    laba: ['laba', 'rugi', 'pnl', 'p&l', 'profit', 'loss', 'profit-and-loss', 'project p&l'],
   };
 
+  /**
+   * Multi-topic ERP concept clusters used to ensure queries mentioning multiple distinct
+   * business/accounting entities retrieve at least one authoritative entry per concept
+   * and surface transparent access boundary explanations when a concept lives in a restricted module.
+   */
+  static readonly CONCEPT_CLUSTERS: ConceptClusterDefinition[] = [
+    {
+      id: 'general_ledger',
+      label: 'Jurnal Umum & Buku Besar (General Ledger)',
+      triggers: ['jurnal', 'jurnal umum', 'buku besar', 'general ledger', 'journal', 'gl', 'ledger'],
+      entryMatchers: ['general ledger', 'journal', 'jurnal', 'buku besar', 'ledger', 'gl'],
+      defaultRestrictedModule: 'FINANCE',
+      requiredRoleHint: 'Finance Manager / Direksi',
+    },
+    {
+      id: 'trial_balance',
+      label: 'Neraca Saldo (Trial Balance)',
+      triggers: ['neraca', 'neraca saldo', 'trial balance', 'trial-balance', 'balance sheet', 'posisi keuangan'],
+      entryMatchers: ['trial balance', 'trial-balance', 'neraca', 'balance sheet', 'balance-sheet'],
+      defaultRestrictedModule: 'FINANCE',
+      requiredRoleHint: 'Finance Manager / Direksi',
+    },
+    {
+      id: 'profit_loss',
+      label: 'Laba Rugi (Profit & Loss / P&L)',
+      triggers: ['laba', 'rugi', 'laba rugi', 'pnl', 'p&l', 'profit', 'loss', 'profitabilitas'],
+      entryMatchers: ['p&l', 'pnl', 'profit', 'loss', 'laba', 'rugi', 'profit-and-loss'],
+      defaultRestrictedModule: 'FINANCE',
+      requiredRoleHint: 'Finance Manager / Direksi',
+    },
+    {
+      id: 'accounts_receivable',
+      label: 'Piutang & Penagihan (Accounts Receivable / Invoice)',
+      triggers: ['piutang', 'tagihan', 'invoice', 'billing', 'receivable', 'termin'],
+      entryMatchers: ['invoice', 'billing', 'piutang', 'receivable', 'tagihan', 'termin'],
+      defaultRestrictedModule: 'FINANCE',
+      requiredRoleHint: 'Finance / Accounting',
+    },
+    {
+      id: 'accounts_payable',
+      label: 'Hutang & Tagihan Vendor (Accounts Payable)',
+      triggers: ['hutang', 'payable', 'tagihan vendor', 'supplier invoice'],
+      entryMatchers: ['payable', 'hutang', 'vendor bill', 'ap'],
+      defaultRestrictedModule: 'FINANCE',
+      requiredRoleHint: 'Finance / Procurement',
+    },
+    {
+      id: 'cash_bank',
+      label: 'Kas, Bank & Pembayaran (Cash & Banking)',
+      triggers: ['kas', 'bank', 'rekonsiliasi', 'pembayaran', 'cashbank', 'disbursement'],
+      entryMatchers: ['cash', 'bank', 'kas', 'reconciliation', 'rekonsiliasi', 'payment', 'pembayaran'],
+      defaultRestrictedModule: 'FINANCE',
+      requiredRoleHint: 'Finance Manager / Kasir',
+    },
+    {
+      id: 'tax_management',
+      label: 'Manajemen Pajak (Tax / PPN / PPh)',
+      triggers: ['pajak', 'tax', 'ppn', 'pph', 'faktur pajak'],
+      entryMatchers: ['tax', 'pajak', 'ppn', 'pph', 'faktur'],
+      defaultRestrictedModule: 'FINANCE',
+      requiredRoleHint: 'Finance / Tax Specialist',
+    },
+    {
+      id: 'fixed_assets',
+      label: 'Aset Tetap & Penyusutan (Fixed Assets)',
+      triggers: ['aset', 'asset', 'penyusutan', 'depresiasi', 'aktiva'],
+      entryMatchers: ['asset', 'aset', 'depreciation', 'depresiasi', 'penyusutan'],
+      defaultRestrictedModule: 'FINANCE',
+      requiredRoleHint: 'Finance / Asset Management',
+    },
+  ];
 
+  /**
+   * Analyzes user query intent to distinguish between:
+   * - Actual financial/operational data or period inquiries ("rincian ... bulan ini", "berapa saldo", etc.)
+   * - Procedural UI navigation queries ("bagaimana cara membuka menu...")
+   * - Multi-topic queries spanning several accounting/ERP entities.
+   */
+  static analyzeQueryIntent(query: string): QueryIntentAnalysis {
+    const rawLower = query.toLowerCase().trim();
+    const norm = this.normalizeShorthandTokens(rawLower).replace(/[?.,!]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    const periodMatch = rawLower.match(
+      /\b(bulan ini|bulan lalu|tahun ini|tahun lalu|hari ini|minggu ini|kuartal ini|periode ini|saat ini|terbaru)\b/i
+    );
+
+    const hasDataSignal =
+      /\b(rincian|detail|berapa|total|nilai|nominal|mutasi|posisi|kondisi|ringkasan|rekap|angka|jumlah|ikhtisar)\b/i.test(
+        rawLower
+      ) || Boolean(periodMatch);
+
+    const hasExplicitNavigationSignal = /\b(cara|panduan|langkah|buka|klik|menu|tab|halaman|dimana|di mana|lokasi|navigasi)\b/i.test(
+      rawLower
+    );
+
+    const isUserGuidanceQuery =
+      hasExplicitNavigationSignal || (/\b(how|bagaimana)\b/i.test(rawLower) && !hasDataSignal);
+
+    const isSchemaQuery = /\b(?:tabel|table|skema|schema|database|model|kolom|prisma)\b/i.test(norm);
+
+    const detectedClusters = this.CONCEPT_CLUSTERS.filter((cluster) =>
+      cluster.triggers.some((trigger) => {
+        const normTrigger = this.normalizeShorthandTokens(trigger.toLowerCase());
+        return rawLower.includes(trigger.toLowerCase()) || norm.includes(normTrigger);
+      })
+    );
+
+    return {
+      isDataOrPeriodInquiry: hasDataSignal,
+      isUserGuidanceQuery,
+      isSchemaQuery,
+      periodPhrase: periodMatch ? periodMatch[1].toLowerCase() : undefined,
+      detectedClusters,
+    };
+  }
+
+  /**
+   * Checks whether a knowledge entry matches a specific concept cluster.
+   */
+  private static entryMatchesCluster(entry: any, cluster: ConceptClusterDefinition): boolean {
+    const hayRaw = `${entry.title || ''} ${entry.topic || ''} ${entry.feature_id || ''} ${entry.content_json || ''}`.toLowerCase();
+    const hayNorm = this.normalizeShorthandTokens(hayRaw);
+    return cluster.entryMatchers.some((matcher) => {
+      const mLower = matcher.toLowerCase();
+      const mNorm = this.normalizeShorthandTokens(mLower);
+      return hayRaw.includes(mLower) || hayNorm.includes(mNorm);
+    });
+  }
 
   /**
    * Evaluates operational access policy for a knowledge entry matching the exact
@@ -413,6 +582,33 @@ export class RetrievalGatewayService {
   }
 
   /**
+   * Checks whether an entry belongs to the same tenant/company boundary (so we never leak
+   * cross-tenant metadata even when generating high-level access restriction explanations).
+   */
+  private static isSameTenantAndCompany(
+    entry: any,
+    scope: { tenantId?: string; companyId?: string }
+  ): boolean {
+    let policy: any = entry.actorPolicy;
+    if (!policy && entry.actor_policy_json) {
+      try {
+        policy = JSON.parse(entry.actor_policy_json);
+      } catch {
+        policy = undefined;
+      }
+    }
+    const entryTenantId = policy?.tenantId || entry.tenant_id;
+    const entryCompanyId = policy?.companyId || entry.company_id;
+    if (entryTenantId && (!scope.tenantId || entryTenantId !== scope.tenantId)) {
+      return false;
+    }
+    if (entryCompanyId && (!scope.companyId || entryCompanyId !== scope.companyId)) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Constructs a deterministic, canonical cryptographic cache key incorporating:
    * 1. Schema version
    * 2. Active Snapshot ID / version (to automatically bust cache on new crawl/promotion)
@@ -449,9 +645,9 @@ export class RetrievalGatewayService {
       blocked: Array.from(new Set((scope.blockedReadModules || []).map((m) => m.trim().toUpperCase()))).sort(),
       proj: scope.projectScope
         ? {
-            mode: scope.projectScope.mode,
-            ids: Array.from(new Set((scope.projectScope.projectIds || []).map((id) => id.trim()))).sort(),
-          }
+          mode: scope.projectScope.mode,
+          ids: Array.from(new Set((scope.projectScope.projectIds || []).map((id) => id.trim()))).sort(),
+        }
         : { mode: 'ALL', ids: [] },
       q: query.toLowerCase().replace(/\s+/g, ' ').trim(),
     };
@@ -466,7 +662,7 @@ export class RetrievalGatewayService {
 
   /**
    * Searches relevant active MKIE knowledge entries using dynamic concept normalization,
-   * morphological stemming, category boosts, and fine-grained operational access policy.
+   * morphological stemming, multi-topic cluster aggregation, and fine-grained operational access policy.
    */
   static async searchRelevantKnowledge(
     query: string,
@@ -507,8 +703,14 @@ export class RetrievalGatewayService {
     }
 
     try {
-      const normalizedQuery = query.toLowerCase().replace(/[?.,!]/g, '').trim();
-      const rawTerms = normalizedQuery.split(/\s+/).filter((t) => t.length > 2);
+      const intent = this.analyzeQueryIntent(query);
+      const normalizedQuery = this.normalizeShorthandTokens(query.toLowerCase())
+        .replace(/[?.,!]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const rawTerms = normalizedQuery
+        .split(/\s+/)
+        .filter((t) => t.length > 2 || this.ALLOWED_SHORT_ACRONYMS.has(t));
       if (!rawTerms.length) return [];
 
       const ERP_SYNONYM_MAP: Record<string, string[]> = {
@@ -544,13 +746,14 @@ export class RetrievalGatewayService {
         meeting: ['notulensi', 'rapat', 'agenda'],
         cuti: ['leave', 'timeoff', 'izin'],
         persetujuan: ['approval', 'approve', 'verifikasi'],
-        laporan: ['report', 'reporting', 'pnl', 'gl', 'financial'],
-        jurnal: ['journal', 'journal-entries', 'gl', 'buku besar', 'ledger'],
-        journal: ['jurnal', 'journal-entries', 'gl', 'ledger'],
-        neraca: ['balance', 'trial-balance', 'balance-sheet', 'saldo'],
-        saldo: ['balance', 'trial-balance', 'neraca'],
-        laba: ['profit', 'pnl', 'loss', 'profit-and-loss'],
-        rugi: ['loss', 'pnl', 'profit', 'profit-and-loss'],
+        laporan: ['report', 'reporting', 'pnl', 'p&l', 'gl', 'financial'],
+        jurnal: ['journal', 'journal-entries', 'general ledger', 'gl', 'buku besar', 'ledger'],
+        journal: ['jurnal', 'journal-entries', 'general ledger', 'gl', 'ledger'],
+        neraca: ['balance', 'trial-balance', 'trial balance', 'balance-sheet', 'balance sheet', 'saldo'],
+        saldo: ['balance', 'trial-balance', 'trial balance', 'neraca'],
+        laba: ['profit', 'pnl', 'p&l', 'loss', 'profit-and-loss', 'project p&l', 'laba rugi'],
+        rugi: ['loss', 'pnl', 'p&l', 'profit', 'profit-and-loss', 'project p&l', 'laba rugi'],
+        pnl: ['p&l', 'profit', 'loss', 'laba', 'rugi', 'profit-and-loss', 'project p&l'],
         skema: ['schema', 'model', 'tabel', 'database', 'kolom'],
         tabel: ['table', 'model', 'schema', 'database', 'prisma'],
       };
@@ -558,8 +761,8 @@ export class RetrievalGatewayService {
       const STOPWORDS = new Set([
         'bagaimana', 'cara', 'panduan', 'buka', 'lihat', 'view', 'menu', 'tab', 'halaman', 'dimana', 'di mana',
         'how', 'dan', 'atau', 'ini', 'itu', 'pada', 'untuk', 'dengan', 'dari', 'ke', 'di', 'yang', 'apa', 'apakah',
-        'saya', 'kami', 'kita', 'kamu', 'anda', 'bulan', 'tahun', 'hari', 'perusahaan', 'tolong', 'mohon',
-        'bisa', 'dapat', 'ada', 'rincian', 'daftar'
+        'saya', 'kami', 'kita', 'kamu', 'anda', 'bulan', 'tahun', 'hari', 'minggu', 'perusahaan', 'tolong', 'mohon',
+        'bisa', 'dapat', 'ada', 'rincian', 'daftar', 'detail', 'kondisi', 'posisi', 'umum',
       ]);
 
       const substantiveTerms = rawTerms.filter((t) => !STOPWORDS.has(t));
@@ -569,7 +772,7 @@ export class RetrievalGatewayService {
 
       for (const term of rawTerms) {
         const stem = this.stemIndonesian(term);
-        if (stem.length > 2) {
+        if (stem.length > 2 || this.ALLOWED_SHORT_ACRONYMS.has(stem)) {
           queryStems.add(stem);
           expandedTerms.add(stem);
         }
@@ -593,7 +796,12 @@ export class RetrievalGatewayService {
         }
       }
 
-      const isSchemaQuery = /\b(?:tabel|table|skema|schema|database|model|kolom|prisma)\b/i.test(normalizedQuery);
+      // Also expand terms from any detected multi-word concept clusters
+      for (const cluster of intent.detectedClusters) {
+        for (const matcher of cluster.entryMatchers) {
+          expandedTerms.add(matcher);
+        }
+      }
 
       let allEntries: any[] = [];
       const now = Date.now();
@@ -624,94 +832,224 @@ export class RetrievalGatewayService {
         };
       }
 
+      // Score function reusable across authorized entries and restricted-topic detection
+      const scoreEntry = (e: any): { score: number; matchedClusters: string[] } => {
+        const titleRaw = (e.title || '').toLowerCase();
+        const titleLower = this.normalizeShorthandTokens(titleRaw);
+        const topicLower = this.normalizeShorthandTokens((e.topic || '').toLowerCase());
+        const featureLower = this.normalizeShorthandTokens((e.feature_id || '').toLowerCase());
+        const contentRaw = (e.content_json || '').toLowerCase();
+        const contentStr = this.normalizeShorthandTokens(contentRaw);
+
+        let score = 0;
+        let substantiveMatches = 0;
+        const matchedClusters: string[] = [];
+
+        // 1. Exact query or phrase match bonus
+        if (titleLower.includes(normalizedQuery) || titleRaw.includes(normalizedQuery)) {
+          score += 35;
+          substantiveMatches += 2;
+        }
+        if (contentStr.includes(normalizedQuery) || contentRaw.includes(normalizedQuery)) {
+          score += 15;
+          substantiveMatches += 1;
+        }
+
+        // 2. Concept cluster match bonus (vital for multi-topic queries like Jurnal + Neraca + P&L)
+        for (const cluster of intent.detectedClusters) {
+          if (this.entryMatchesCluster(e, cluster)) {
+            matchedClusters.push(cluster.id);
+            substantiveMatches += 2;
+            const titleClusterHit = cluster.entryMatchers.some(
+              (m) => titleRaw.includes(m) || titleLower.includes(this.normalizeShorthandTokens(m))
+            );
+            score += titleClusterHit ? 28 : 16;
+          }
+        }
+
+        // 3. Direct term match
+        for (const term of rawTerms) {
+          const isSubstantive = substantiveTerms.includes(term);
+          const weight = isSubstantive ? 1 : 0.2;
+          let matched = false;
+
+          if (titleLower.includes(term) || titleRaw.includes(term)) {
+            score += Math.round(8 * weight);
+            matched = true;
+          }
+          if (topicLower.includes(term)) {
+            score += Math.round(6 * weight);
+            matched = true;
+          }
+          if (featureLower.includes(term)) {
+            score += Math.round(5 * weight);
+            matched = true;
+          }
+          if (contentStr.includes(term) || contentRaw.includes(term)) {
+            score += Math.round(3 * weight);
+            matched = true;
+          }
+
+          if (matched && isSubstantive) substantiveMatches++;
+        }
+
+        // 4. Dynamic concept & stem match
+        const entryTokens = this.tokenizeIdentifiers(`${e.title} ${e.topic} ${e.feature_id}`);
+        for (const qStem of queryStems) {
+          const isSubstantiveStem = !STOPWORDS.has(qStem);
+          for (const eTok of entryTokens) {
+            const eStem = this.stemIndonesian(eTok);
+            if (eStem === qStem || eTok === qStem) {
+              score += isSubstantiveStem ? 8 : 2;
+              if (isSubstantiveStem) substantiveMatches++;
+            }
+          }
+        }
+
+        for (const exp of expandedTerms) {
+          const isSubstantiveExp = !STOPWORDS.has(exp);
+          if (!isSubstantiveExp) continue;
+          let expMatched = false;
+          if (titleLower.includes(exp) || titleRaw.includes(exp)) {
+            score += 5;
+            expMatched = true;
+          }
+          if (topicLower.includes(exp)) {
+            score += 4;
+            expMatched = true;
+          }
+          if (featureLower.includes(exp)) {
+            score += 3;
+            expMatched = true;
+          }
+          if (contentStr.includes(exp) || contentRaw.includes(exp)) {
+            score += 2;
+            expMatched = true;
+          }
+          if (expMatched) substantiveMatches++;
+        }
+
+        // Strict topic grounding: If the query contains substantive terms (e.g. jurnal, neraca, inbox),
+        // an entry MUST match at least one substantive term or concept cluster to be considered relevant.
+        if (substantiveTerms.length > 0 && substantiveMatches === 0) {
+          return { score: 0, matchedClusters: [] };
+        }
+
+        // 5. Category-based boosts
+        if (intent.isUserGuidanceQuery) {
+          if (e.feature_id.startsWith('frontend.tab.')) score += 35;
+          if (e.feature_id.startsWith('frontend.view.')) score += 20;
+          if (e.knowledge_category === 'USER_PROCEDURE') score += 15;
+        } else {
+          if (e.feature_id.startsWith('frontend.tab.')) score += 20;
+          if (e.feature_id.startsWith('frontend.view.')) score += 12;
+          if (e.knowledge_category === 'USER_PROCEDURE') score += 10;
+        }
+        if (intent.isSchemaQuery && e.feature_id.startsWith('schema.model.')) score += 30;
+
+        return { score, matchedClusters };
+      };
+
       // Strict operational access authorization
       const allowedModules = [...(scope.enabledModules || []), 'GENERAL', 'CORE'].map((m) => m.toUpperCase());
-      const roleAuthorizedEntries = allEntries
-        .filter((e: any) => allowedModules.includes((e.module_code || '').toUpperCase()))
-        .filter((e: any) => this.validateEntryAuthorization(e, scope));
+      const roleAuthorizedEntries: any[] = [];
+      const restrictedEntriesSameTenant: any[] = [];
+
+      for (const e of allEntries) {
+        const modUpper = (e.module_code || '').toUpperCase();
+        const isSchema =
+          (e.feature_id || '').startsWith('schema.model.') || e.knowledge_category === 'SCHEMA_MODEL';
+        const isAuthorized =
+          allowedModules.includes(modUpper) && this.validateEntryAuthorization(e, scope);
+
+        if (isAuthorized) {
+          roleAuthorizedEntries.push(e);
+        } else if (!isSchema && this.isSameTenantAndCompany(e, scope)) {
+          restrictedEntriesSameTenant.push(e);
+        }
+      }
 
       const scored = roleAuthorizedEntries
         .map((e: any) => {
-          const titleLower = (e.title || '').toLowerCase();
-          const topicLower = (e.topic || '').toLowerCase();
-          const featureLower = (e.feature_id || '').toLowerCase();
-          const contentStr = (e.content_json || '').toLowerCase();
-          let score = 0;
-          let substantiveMatches = 0;
-
-          // 1. Exact query or phrase match bonus
-          if (titleLower.includes(normalizedQuery)) {
-            score += 35;
-            substantiveMatches += 2;
-          }
-          if (contentStr.includes(normalizedQuery)) {
-            score += 15;
-            substantiveMatches += 1;
-          }
-
-          // 2. Direct term match
-          for (const term of rawTerms) {
-            const isSubstantive = substantiveTerms.includes(term);
-            const weight = isSubstantive ? 1 : 0.2;
-            let matched = false;
-
-            if (titleLower.includes(term)) { score += Math.round(8 * weight); matched = true; }
-            if (topicLower.includes(term)) { score += Math.round(6 * weight); matched = true; }
-            if (featureLower.includes(term)) { score += Math.round(5 * weight); matched = true; }
-            if (contentStr.includes(term)) { score += Math.round(3 * weight); matched = true; }
-
-            if (matched && isSubstantive) substantiveMatches++;
-          }
-
-          // 3. Dynamic concept & stem match
-          const entryTokens = this.tokenizeIdentifiers(`${e.title} ${e.topic} ${e.feature_id}`);
-          for (const qStem of queryStems) {
-            const isSubstantiveStem = !STOPWORDS.has(qStem);
-            for (const eTok of entryTokens) {
-              const eStem = this.stemIndonesian(eTok);
-              if (eStem === qStem || eTok === qStem) {
-                score += isSubstantiveStem ? 8 : 2;
-                if (isSubstantiveStem) substantiveMatches++;
-              }
-            }
-          }
-
-          for (const exp of expandedTerms) {
-            const isSubstantiveExp = !STOPWORDS.has(exp);
-            if (!isSubstantiveExp) continue;
-            let expMatched = false;
-            if (titleLower.includes(exp)) { score += 5; expMatched = true; }
-            if (topicLower.includes(exp)) { score += 4; expMatched = true; }
-            if (featureLower.includes(exp)) { score += 3; expMatched = true; }
-            if (contentStr.includes(exp)) { score += 2; expMatched = true; }
-            if (expMatched) substantiveMatches++;
-          }
-
-          // Strict topic grounding: If the query contains substantive terms (e.g. jurnal, neraca, inbox),
-          // an entry MUST match at least one substantive term to be considered relevant.
-          if (substantiveTerms.length > 0 && substantiveMatches === 0) {
-            return { entry: e, score: 0 };
-          }
-
-          // 4. Category-based boosts
-          const isUserGuidanceQuery = /\b(how|cara|bagaimana|panduan|buka|lihat|view|menu|tab|halaman|dimana|di mana)\b/i.test(normalizedQuery);
-          if (isUserGuidanceQuery) {
-            if (e.feature_id.startsWith('frontend.tab.')) score += 35;
-            if (e.feature_id.startsWith('frontend.view.')) score += 20;
-            if (e.knowledge_category === 'USER_PROCEDURE') score += 15;
-          } else {
-            if (e.feature_id.startsWith('frontend.tab.')) score += 15;
-            if (e.feature_id.startsWith('frontend.view.')) score += 8;
-          }
-          if (isSchemaQuery && e.feature_id.startsWith('schema.model.')) score += 30;
-
-          return { entry: e, score };
+          const { score, matchedClusters } = scoreEntry(e);
+          return { entry: e, score, matchedClusters };
         })
-        .filter((item: { entry: any; score: number }) => item.score >= 10);
+        .filter((item) => item.score >= 10);
 
-      scored.sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+      scored.sort((a, b) => b.score - a.score);
 
-      const finalResult = scored.slice(0, 4).map(({ entry: e }: { entry: any; score: number }) => {
+      // Multi-topic diversity selection:
+      // Ensure at least the top-scoring entry for each detected query concept cluster is included first
+      // before filling the remaining slots up to maxResults.
+      const maxResults = Math.max(4, intent.detectedClusters.length + 1);
+      const selectedItems: Array<{ entry: any; score: number; matchedClusters: string[] }> = [];
+      const selectedFeatureIds = new Set<string>();
+      const coveredClusterIds = new Set<string>();
+
+      for (const cluster of intent.detectedClusters) {
+        const bestForCluster = scored.find((item) => item.matchedClusters.includes(cluster.id));
+        if (bestForCluster) {
+          coveredClusterIds.add(cluster.id);
+          if (!selectedFeatureIds.has(bestForCluster.entry.feature_id)) {
+            selectedItems.push(bestForCluster);
+            selectedFeatureIds.add(bestForCluster.entry.feature_id);
+          }
+        }
+      }
+
+      for (const item of scored) {
+        if (selectedItems.length >= maxResults) break;
+        if (!selectedFeatureIds.has(item.entry.feature_id)) {
+          selectedItems.push(item);
+          selectedFeatureIds.add(item.entry.feature_id);
+        }
+      }
+
+      // Compute restricted topic hints for any concept cluster in the user query that had
+      // restricted matches (or was uncovered or partially restricted under FINANCE/sensitive modules)
+      const restrictedHints: RestrictedTopicHint[] = [];
+      for (const cluster of intent.detectedClusters) {
+        const restrictedMatches = restrictedEntriesSameTenant
+          .map((e) => ({ entry: e, ...scoreEntry(e) }))
+          .filter((item) => item.score >= 15 && item.matchedClusters.includes(cluster.id))
+          .sort((a, b) => b.score - a.score);
+
+        if (restrictedMatches.length > 0) {
+          const topRestricted = restrictedMatches[0].entry;
+          let policy: any;
+          try {
+            policy = topRestricted.actor_policy_json
+              ? JSON.parse(topRestricted.actor_policy_json)
+              : undefined;
+          } catch {
+            policy = undefined;
+          }
+          const roleHint =
+            Array.isArray(policy?.allowedRoles) && policy.allowedRoles.length > 0
+              ? policy.allowedRoles.join(' / ')
+              : cluster.requiredRoleHint || 'Finance Manager / Direksi';
+
+          restrictedHints.push({
+            clusterId: cluster.id,
+            label: cluster.label,
+            moduleCode: (topRestricted.module_code || cluster.defaultRestrictedModule || 'FINANCE').toUpperCase(),
+            matchedTitles: Array.from(
+              new Set(restrictedMatches.slice(0, 2).map((m) => m.entry.title as string))
+            ),
+            requiredRoleHint: roleHint,
+          });
+        } else if (!coveredClusterIds.has(cluster.id) && cluster.defaultRestrictedModule) {
+          restrictedHints.push({
+            clusterId: cluster.id,
+            label: cluster.label,
+            moduleCode: cluster.defaultRestrictedModule,
+            matchedTitles: [cluster.label],
+            requiredRoleHint: cluster.requiredRoleHint || 'Finance Manager / Direksi',
+          });
+        }
+      }
+
+      const finalResult = selectedItems.slice(0, maxResults).map(({ entry: e }) => {
         const content = JSON.parse(e.content_json || '{}');
         const navigation = e.navigation_json ? JSON.parse(e.navigation_json) : {};
         const actorPolicy = e.actor_policy_json ? JSON.parse(e.actor_policy_json) : undefined;
@@ -728,7 +1066,11 @@ export class RetrievalGatewayService {
         };
       });
 
-      queryCache.set(cacheKey, { result: finalResult, cachedAt: Date.now() });
+      queryCache.set(cacheKey, {
+        result: finalResult,
+        restrictedHints,
+        cachedAt: Date.now(),
+      });
       return finalResult;
     } catch {
       return [];
@@ -736,8 +1078,93 @@ export class RetrievalGatewayService {
   }
 
   /**
+   * Resolves any restricted-access topic hints for a query and user scope so Marka Plus can
+   * transparently explain when part of a multi-topic query falls under a restricted module (e.g. FINANCE).
+   */
+  private static resolveRestrictedHintsForAnswer(
+    query: string,
+    authorizedEntries: Array<{
+      feature_id: string;
+      title: string;
+      module_code: string;
+      summary: string;
+    }>,
+    scope: {
+      roleCode?: string;
+      enabledModules: string[];
+      permissions?: string[];
+      blockedReadModules?: string[];
+      projectScope?: { mode: 'ALL' | 'LIST'; projectIds: string[] };
+      tenantId?: string;
+      companyId?: string;
+    }
+  ): RestrictedTopicHint[] {
+    const activeSnapshotId = snapshotCache?.snapshot?.id;
+    const cacheKey = this.buildScopedCacheKey(query, scope, activeSnapshotId);
+    const cached = queryCache.get(cacheKey);
+    if (cached?.restrictedHints && cached.restrictedHints.length > 0) {
+      return cached.restrictedHints;
+    }
+
+    const intent = this.analyzeQueryIntent(query);
+    if (!intent.detectedClusters.length) return [];
+
+    const userRole = (scope.roleCode || 'USER').toUpperCase();
+    const isSuperOrDirector = ['SUPER_ADMIN', 'COMPANY_ADMIN', 'DIRECTOR', 'FINANCE_MANAGER'].includes(userRole);
+    const userPermissions = (scope.permissions || []).map((p) => p.toUpperCase());
+    const hasFinanceAccess =
+      isSuperOrDirector ||
+      userPermissions.some((p) =>
+        ['MANAGE_ALL', 'VIEW_FINANCE', 'READ_COMPANY_FINANCE', 'MANAGE_FINANCE'].includes(p)
+      );
+
+    const hints: RestrictedTopicHint[] = [];
+    for (const cluster of intent.detectedClusters) {
+      const isCoveredByAuthorized = authorizedEntries.some((e) =>
+        this.entryMatchesCluster(
+          {
+            title: e.title,
+            topic: '',
+            feature_id: e.feature_id,
+            content_json: e.summary,
+          },
+          cluster
+        )
+      );
+
+      // If the concept is not covered by authorized entries (e.g. Trial Balance) or if the user
+      // only has REPORTING-level P&L access without official FINANCE module access:
+      if (!isCoveredByAuthorized && cluster.defaultRestrictedModule) {
+        hints.push({
+          clusterId: cluster.id,
+          label: cluster.label,
+          moduleCode: cluster.defaultRestrictedModule,
+          matchedTitles: [cluster.label],
+          requiredRoleHint: cluster.requiredRoleHint || 'Finance Manager / Direksi',
+        });
+      } else if (
+        cluster.id === 'profit_loss' &&
+        !hasFinanceAccess &&
+        authorizedEntries.some((e) => e.module_code.toUpperCase() === 'REPORTING') &&
+        !authorizedEntries.some((e) => e.module_code.toUpperCase() === 'FINANCE')
+      ) {
+        // User has Project P&L in REPORTING, but official company-wide P&L closing is in FINANCE
+        hints.push({
+          clusterId: 'profit_loss_official',
+          label: 'Laporan Laba Rugi Resmi Perusahaan',
+          moduleCode: 'FINANCE',
+          matchedTitles: ['Laporan Laba Rugi Resmi Perusahaan'],
+          requiredRoleHint: 'Finance Manager / Direksi',
+        });
+      }
+    }
+
+    return hints;
+  }
+
+  /**
    * Synthesizes an authoritative answer grounded in retrieved MKIE facts.
-   * Utilizes OpenRouter LLM when available, falling back gracefully to deterministic synthesis.
+   * Utilizes OpenRouter LLM when available, falling back gracefully to intent-aware deterministic synthesis.
    */
   static async generateGroundedAnswer(
     query: string,
@@ -773,18 +1200,27 @@ export class RetrievalGatewayService {
       return 'Referensi fitur atau data teknis tersebut tidak ditemukan dalam bukti kode sistem terverifikasi saat ini. Saya belum memiliki bukti kode yang cukup untuk menjawab pertanyaan ini secara akurat.';
     }
 
-    // Check OpenRouter LLM availability from environment
-    const apiKey = process.env.MARBOT_AI_API_KEY;
-    const model = process.env.MARBOT_AI_MODEL;
+    const intent = this.analyzeQueryIntent(query);
+    const restrictedHints = this.resolveRestrictedHintsForAnswer(query, authorizedEntries, scope);
+
+    // Check OpenRouter LLM availability from environment (supports both MARBOT_AI_* and OPENROUTER_*)
+    const apiKey = (process.env.MARBOT_AI_API_KEY || process.env.OPENROUTER_API_KEY || '').trim();
+    const model = (
+      process.env.MARBOT_AI_MODEL ||
+      process.env.OPENROUTER_MODEL ||
+      'google/gemini-2.0-flash-001'
+    ).trim();
 
     const systemPrompt = `Anda adalah Marka Plus, asisten cerdas untuk sistem Arsalynt ERP.
-Tugas Anda adalah menjawab pertanyaan pengguna secara ringkas, akurat, dan ramah dalam Bahasa Indonesia berdasarkan HANYA bukti kode (Code Evidence) yang disediakan.
+Tugas Anda adalah menjawab pertanyaan pengguna secara ringkas, akurat, profesional, dan ramah dalam Bahasa Indonesia berdasarkan HANYA bukti kode (Code Evidence) yang disediakan.
 
-ATURAN GROUNDING KETAT:
-1. Jawab HANYA berdasarkan Fakta Kode Terverifikasi yang diberikan. JANGAN berhalusinasi atau mengarang logika bisnis baru.
-2. Jika rute atau path navigasi tersedia, sertakan link markdown [Buka ...] untuk mempermudah pengguna.
-3. Bila ada detail teknis atau formula khusus yang tidak disebutkan dalam bukti kode, nyatakan dengan jujur bahwa hal tersebut belum tercatat pada bukti kode sistem saat ini.
-4. Anda HANYA memberikan bantuan pengetahuan dan panduan sistem. JANGAN mengeksekusi mutasi atau merencanakan perubahan data operasional.`;
+ATURAN GROUNDING & MULTI-TOPIK KETAT:
+1. Jawab HANYA berdasarkan Fakta Kode Terverifikasi yang diberikan. JANGAN berhalusinasi atau mengarang angka/logika bisnis baru.
+2. CAKUPAN MULTI-TOPIK: Jika pengguna menanyakan beberapa topik sekaligus (misalnya Jurnal Umum, Neraca Saldo, dan Laba Rugi), bahas SETIAP topik tersebut secara terstruktur dalam poin-poin yang jelas—jangan mengabaikan salah satu topik.
+3. SERTAKAN LINK NAVIGASI: Jika rute atau path navigasi tersedia pada fakta, selalu sertakan link markdown [Buka Nama Fitur (MODUL)](path) untuk mempermudah pengguna.
+4. TRANSPARANSI HAK AKSES: Jika sebagian topik yang ditanyakan pengguna berada pada modul terbatas (lihat "Konteks Batasan Hak Akses"), jelaskan secara sopan dan transparan fitur mana yang dapat diakses pengguna saat ini (misalnya pada modul REPORTING) dan fitur mana yang berada di bawah modul khusus (misalnya modul FINANCE yang memerlukan izin Finance Manager / Direksi).
+5. DISAMBIGUASI DATA VS PROSEDUR: Jika pengguna menanyakan rincian angka/kondisi periode tertentu (misalnya "bulan ini"), jelaskan halaman laporan yang relevan beserta catatan untuk menerapkan filter periode/tanggal pada halaman tersebut guna melihat mutasi nominal aktual (jangan sekadar menyalin langkah klik tombol secara kaku).
+6. Anda HANYA memberikan bantuan pengetahuan dan panduan sistem. JANGAN mengeksekusi mutasi atau merencanakan perubahan data operasional.`;
 
     const factsPayload = authorizedEntries.map((e) => ({
       title: e.title,
@@ -796,7 +1232,25 @@ ATURAN GROUNDING KETAT:
       allowedRoles: e.actorPolicy?.allowedRoles,
     }));
 
-    const userPrompt = `Pertanyaan pengguna: "${query}"\nPeran pengguna: ${scope.roleCode || 'USER'} (Modul Aktif: ${scope.enabledModules.join(', ')})\n\nBukti Fitur Kode Sistem Terverifikasi:\n${JSON.stringify(factsPayload, null, 2)}`;
+    const restrictionContext =
+      restrictedHints.length > 0
+        ? `\n\nKonteks Batasan Hak Akses (Topik yang ditanyakan namun memerlukan otorisasi lebih tinggi):\n${JSON.stringify(
+          restrictedHints.map((h) => ({
+            topic: h.label,
+            module: h.moduleCode,
+            requiredRole: h.requiredRoleHint,
+          })),
+          null,
+          2
+        )}`
+        : '';
+
+    const userPrompt = `Pertanyaan pengguna: "${query}"
+Intensi terdeteksi: ${intent.isDataOrPeriodInquiry ? `Pertanyaan Rincian Data/Periode (${intent.periodPhrase || 'periode berjalan'})` : 'Panduan Prosedur/Navigasi'}
+Peran pengguna: ${scope.roleCode || 'USER'} (Modul Aktif: ${scope.enabledModules.join(', ')})
+
+Bukti Fitur Kode Sistem Terverifikasi (Sesuai Hak Akses Pengguna):
+${JSON.stringify(factsPayload, null, 2)}${restrictionContext}`;
 
     if (apiKey && model) {
       try {
@@ -805,6 +1259,7 @@ ATURAN GROUNDING KETAT:
           headers: {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
+            'X-Title': 'Arsalynt ERP - Marka Plus MKIE',
           },
           body: JSON.stringify({
             model: model,
@@ -844,7 +1299,52 @@ ATURAN GROUNDING KETAT:
       factsCount: authorizedEntries.length,
     };
 
-    // Deterministic fallback synthesis
+    // Intent-aware deterministic fallback synthesis:
+    // If the query asks for data/period details OR spans multiple topics/restricted hints,
+    // produce a structured, user-friendly executive synthesis instead of raw manual steps.
+    if (
+      intent.isDataOrPeriodInquiry ||
+      intent.detectedClusters.length > 1 ||
+      restrictedHints.length > 0
+    ) {
+      const cleanEntryTitle = (rawTitle: string, mod: string) => {
+        const stripped = rawTitle.replace(/^Tab:\s*/i, '').trim();
+        return stripped.includes(`(${mod})`) ? stripped : `${stripped} (${mod})`;
+      };
+
+      const itemLines = authorizedEntries.map((e, idx) => {
+        const displayTitle = cleanEntryTitle(e.title, e.module_code);
+        const linkPart = e.targetPath ? `**[Buka ${displayTitle}](${e.targetPath})**` : `**${displayTitle}**`;
+        const summaryPart = e.summary ? `${e.summary.replace(/\.$/, '')}.` : '';
+        const stepHint =
+          !intent.isDataOrPeriodInquiry && e.steps && e.steps.length > 0
+            ? ` Langkah: ${e.steps.join(' → ')}.`
+            : '';
+        return `${idx + 1}. **${e.title.replace(/^Tab:\s*/i, '').trim()}**: ${summaryPart} Akses langsung melalui ${linkPart}.${stepHint}`;
+      });
+
+      if (restrictedHints.length > 0) {
+        const restrictedLabels = Array.from(new Set(restrictedHints.map((h) => h.label))).join(' & ');
+        const restrictedModules = Array.from(new Set(restrictedHints.map((h) => h.moduleCode))).join('/');
+        const requiredRoles = Array.from(new Set(restrictedHints.map((h) => h.requiredRoleHint))).join(' / ');
+        itemLines.push(
+          `${itemLines.length + 1}. **${restrictedLabels}**: Rincian menyeluruh dan penutupan buku resmi perusahaan berada di bawah modul **${restrictedModules}**. Sesuai kebijakan otorisasi untuk peran Anda saat ini (\`${scope.roleCode || 'USER'}\`), akses fitur tersebut memerlukan izin khusus (*${requiredRoles}*).`
+        );
+      }
+
+      const periodNote = intent.isDataOrPeriodInquiry
+        ? `\n\n*Catatan: Marka Plus menampilkan panduan akses berdasarkan bukti kode terverifikasi. Untuk melihat angka dan mutasi nominal aktual ${intent.periodPhrase || 'periode terkait'}, silakan buka halaman laporan di atas lalu terapkan filter periode/tanggal yang sesuai.*`
+        : '';
+
+      return (
+        `Berdasarkan cakupan akses peran Anda (\`${scope.roleCode || 'USER'}\`) dan modul aktif saat ini:\n\n` +
+        itemLines.join('\n') +
+        periodNote +
+        '\n\nSumber: Arsalynt ERP Code Knowledge Engine (MKIE).'
+      );
+    }
+
+    // Standard single-procedure deterministic fallback
     return (
       authorizedEntries
         .map((e) => {
