@@ -2,6 +2,7 @@ import type { ProcedureRule } from './schemas/procedure.schema';
 import type { ProcedureTopic, ProcedureOperation } from '../brain/reasoning/intent';
 import { meetingProcedures } from './data/procedures/meetings';
 import { projectTaskProcedures } from './data/procedures/project-tasks';
+import { projectProcedures } from './data/procedures/projects';
 import { financeProcedures } from './data/procedures/finance';
 import { hrRequestProcedures } from './data/procedures/hr-requests';
 import { moduleKnowledgeCatalog } from './data/modules.catalog';
@@ -9,6 +10,7 @@ import { moduleKnowledgeCatalog } from './data/modules.catalog';
 export const allProcedures: readonly ProcedureRule[] = [
   ...meetingProcedures,
   ...projectTaskProcedures,
+  ...projectProcedures,
   ...financeProcedures,
   ...hrRequestProcedures,
 ];
@@ -24,6 +26,7 @@ export const supportedOperationsByTopic: Record<string, string[]> = {
   leave: ['create', 'submit'],
   meeting: ['create', 'submit', 'publish', 'delete', 'cancel'],
   daily: ['create', 'submit', 'edit', 'delete'],
+  project: ['create', 'edit'],
 };
 
 export function findProcedureRule(topic: ProcedureTopic, operation?: ProcedureOperation): ProcedureRule | undefined {

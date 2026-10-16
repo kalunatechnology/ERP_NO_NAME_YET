@@ -154,34 +154,31 @@ export class RepositoryCrawler {
   ): Promise<number> {
     try {
       let saved = 0;
-      const batchSize = 50;
+      const batchSize = 100;
 
       for (let i = 0; i < evidences.length; i += batchSize) {
         const batch = evidences.slice(i, i + batchSize);
-        await prisma.$transaction(
-          batch.map((ev) =>
-            prisma.marbot_knowledge_evidence.create({
-              data: {
-                feature_id: ev.feature_id,
-                source_file: ev.source_file,
-                symbol_name: ev.symbol_name ?? null,
-                ast_node_range: ev.ast_node_range ?? null,
-                ast_node_hash: ev.ast_node_hash,
-                route_method: ev.route_method ?? null,
-                route_path: ev.route_path ?? null,
-                middleware_chain_json: ev.middleware_chain
-                  ? JSON.stringify(ev.middleware_chain)
-                  : null,
-                related_symbols_json: ev.related_symbols
-                  ? JSON.stringify(ev.related_symbols)
-                  : null,
-                extraction_method: ev.extraction_method,
-                source_type: ev.source_type,
-                commit_sha: commitSha,
-              },
-            })
-          )
-        );
+        await (prisma as any).marbot_knowledge_evidence.createMany({
+          data: batch.map((ev) => ({
+            feature_id: ev.feature_id,
+            source_file: ev.source_file,
+            symbol_name: ev.symbol_name ?? null,
+            ast_node_range: ev.ast_node_range ?? null,
+            ast_node_hash: ev.ast_node_hash,
+            route_method: ev.route_method ?? null,
+            route_path: ev.route_path ?? null,
+            middleware_chain_json: ev.middleware_chain
+              ? JSON.stringify(ev.middleware_chain)
+              : null,
+            related_symbols_json: ev.related_symbols
+              ? JSON.stringify(ev.related_symbols)
+              : null,
+            extraction_method: ev.extraction_method,
+            source_type: ev.source_type,
+            commit_sha: commitSha,
+          })),
+          skipDuplicates: true,
+        });
         saved += batch.length;
       }
       return saved;

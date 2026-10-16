@@ -31,41 +31,45 @@ export class SnapshotManager {
 
     const snapshotId = snapshot.id;
 
-    // Batch insert entries
-    const batchSize = 50;
-    for (let i = 0; i < params.entries.length; i += batchSize) {
-      const batch = params.entries.slice(i, i + batchSize);
-      await prisma.$transaction(
-        batch.map((entry) =>
-          prisma.marbot_knowledge_entry.create({
-            data: {
-              snapshot_id: snapshotId,
-              feature_id: entry.feature_id,
-              topic: entry.topic,
-              operation: entry.operation ?? null,
-              module_code: entry.module_code,
-              title: entry.title,
-              knowledge_category: entry.knowledge_category,
-              lifecycle_status: entry.lifecycle_status,
-              comparison_status: entry.comparison_status,
-              source_priority: entry.source_priority,
-              actor_policy_json: entry.actor_policy
-                ? JSON.stringify(entry.actor_policy)
-                : null,
-              workflow_json: entry.workflow ? JSON.stringify(entry.workflow) : null,
-              navigation_json: entry.navigation
-                ? JSON.stringify(entry.navigation)
-                : null,
-              content_json: JSON.stringify(entry.content),
-              confidence_score: entry.confidence_score,
-              review_required: entry.review_required,
-              provenance_json: entry.provenance
-                ? JSON.stringify(entry.provenance)
-                : null,
-            },
-          })
-        )
-      );
+    // Batch insert unique entries
+    const seenFeatureIds = new Set<string>();
+    const uniqueEntries = params.entries.filter((entry) => {
+      if (seenFeatureIds.has(entry.feature_id)) return false;
+      seenFeatureIds.add(entry.feature_id);
+      return true;
+    });
+
+    const batchSize = 100;
+    for (let i = 0; i < uniqueEntries.length; i += batchSize) {
+      const batch = uniqueEntries.slice(i, i + batchSize);
+      await (prisma as any).marbot_knowledge_entry.createMany({
+        data: batch.map((entry) => ({
+          snapshot_id: snapshotId,
+          feature_id: entry.feature_id,
+          topic: entry.topic,
+          operation: entry.operation ?? null,
+          module_code: entry.module_code,
+          title: entry.title,
+          knowledge_category: entry.knowledge_category,
+          lifecycle_status: entry.lifecycle_status,
+          comparison_status: entry.comparison_status,
+          source_priority: entry.source_priority,
+          actor_policy_json: entry.actor_policy
+            ? JSON.stringify(entry.actor_policy)
+            : null,
+          workflow_json: entry.workflow ? JSON.stringify(entry.workflow) : null,
+          navigation_json: entry.navigation
+            ? JSON.stringify(entry.navigation)
+            : null,
+          content_json: JSON.stringify(entry.content),
+          confidence_score: entry.confidence_score,
+          review_required: entry.review_required,
+          provenance_json: entry.provenance
+            ? JSON.stringify(entry.provenance)
+            : null,
+        })),
+        skipDuplicates: true,
+      });
     }
 
     return snapshotId;

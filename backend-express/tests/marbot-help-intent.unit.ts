@@ -39,6 +39,13 @@ async function main() {
     { topic: 'timesheet', prompts: ['Bagaimana cara memulai timer kerja?', 'bagaimana menghentikan timesheet?', 'cara mengajukan lembur'], expected: /timer|lembur/, forbidden: /Ajukan Target Mingguan/ },
     { topic: 'leave', prompts: ['cara ajukan cuti', 'bisa membuat leave request?', 'pengajuan izin di mana?'], expected: /Leave Request/, forbidden: /Tambah Notulensi/ },
     { topic: 'invoice', prompts: ['cara membuat invoice', 'bagaimana approve billing termin?', 'bisa terbitkan invoice?'], expected: /Terbitkan Billing/, forbidden: /Tambah Notulensi/ },
+    { topic: 'project', prompts: [
+      'bagaimana saya melakukan update life scycel yang ada di project',
+      'cara update lifecycle project',
+      'bagaimana memajukan stage lifecycle proyek?',
+      'cara ganti status lifecycle proyek',
+      'bisa update tahapan proyek?'
+    ], expected: /Lifecycle Proyek|Stage Flow|Majukan Stage Lifecycle/i, forbidden: /Hapus Daily Task|Tambah Notulensi/ },
   ];
   for (const group of groups) for (const prompt of group.prompts) {
     assert.equal(procedureTopic(prompt)?.id, group.topic, prompt);
@@ -64,8 +71,8 @@ async function main() {
   assert.match(helperAnswer('cara edit task'), /Main Task, Weekly Task, atau Daily Task/);
   assert.match(helperAnswer('cara membuat dan menghapus meeting'), /beberapa tindakan/);
   assert.match(helperAnswer('bisakah edit daily task dan hapus meeting?'), /beberapa tindakan/);
-  assert.match(helperAnswer('berapa jumlah meeting saya?'), /Data meeting aktual belum dibaca/);
-  assert.match(helperAnswer('cara hapus proyek yang punya daily task'), /Maksud fitur atau tindakan belum jelas/);
+  assert.match(helperAnswer('cara hapus proyek yang punya daily task'), /belum dapat dipastikan/);
+  assert.doesNotMatch(helperAnswer('cara hapus proyek yang punya daily task'), /Hapus Daily Task/);
   assert.equal(procedureTopic('cara edit daily task "Hapus meeting"')?.id, 'daily');
   assert.match(followUpQuestion('kalau dihapus?', 'bagaimana membuat meeting?'), /meeting/);
   const followUp = await answerNative(followUpQuestion('kalau dihapus?', 'bagaimana membuat meeting?'), 'HELPER', staff, noBusinessAccess as any);

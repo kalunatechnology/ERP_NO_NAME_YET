@@ -6,6 +6,7 @@ import { helperAnswer, systemKnowledgeAnswer } from '../../knowledge/knowledge';
 import { proposeAction } from '../actions/action.service';
 import { proposeNamedTaskAction } from '../actions/named-action.service';
 import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion, procedureOperation, procedureTopic } from './intent';
+import { RetrievalGatewayService } from '../../knowledge-engine/gateway/retrieval-gateway.service';
 
 export type NativeScope = MarbotRuntimeAuthority & { tenantId: string; companyId: string; userId: string; blockedReadModules?: string[]; blockedWriteModules?: string[] };
 export const dashboardRoles: RoleCode[] = [RoleCode.DIRECTOR, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER];
@@ -126,13 +127,44 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
     return { content: `Peran aktif: ${scope.roleCode}.\nModul aktif: ${scope.enabledModules.join(', ')}.\nPermission efektif untuk asisten: ${scope.permissions.join(', ')}.\nCakupan proyek: ${scope.projectScope.mode === 'ALL' ? 'seluruh proyek company aktif' : `${scope.projectScope.projectIds.length} proyek yang diizinkan`}.\nHak operasi tetap divalidasi backend pada setiap permintaan.`, tools: ['access.context'], sources: ['ERP:authority'] };
   }
   if (/\b(cara|bagaimana|panduan|dimana|di mana|how)\b/i.test(message) && !isNativeTaskReadQuestion(message) && (!/progres|progress|kinerja|kpi|target/i.test(message) || isWeeklyTaskQuestion(message))) {
+    const topic = procedureTopic(message);
+    const op = procedureOperation(message);
+    if (topic || op) {
+      return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+    }
+
+    const mkieMatches = await RetrievalGatewayService.searchRelevantKnowledge(message, scope);
+    if (mkieMatches.length > 0) {
+      const grounded = await RetrievalGatewayService.generateGroundedAnswer(message, mkieMatches, scope);
+      return { content: grounded, tools: ['help.procedure'], sources: mkieMatches.map((m) => m.provenance) };
+    }
+
+    const modKnowledge = systemKnowledgeAnswer(message, scope.enabledModules);
+    if (!modKnowledge.includes('belum tersedia')) {
+      return { content: modKnowledge, tools: ['help.procedure'], sources: ['ERP:code-knowledge'] };
+    }
+
     return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
   }
   if (/^\s*(buatkan|buat|hapus|ubah|setujui|approve|delete|update|tambahkan)\b/i.test(message) && !/ringkasan|laporan|summary/i.test(message)) {
     return { content: `Operasi tersebut belum dapat dipetakan ke input yang valid. Saya dapat menyiapkan usulan Project, Main/Weekly/Daily Task, assignment, dan pembaruan task dengan field serta identitas yang jelas. Perubahan memerlukan konfirmasi dan verifikasi backend. Sebutkan record dan perubahan yang diminta.`, tools: [], sources: [] };
   }
   const tools = detectTools(message);
-  if (!tools.length) return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+  if (!tools.length) {
+    if (procedureTopic(message) || procedureOperation(message)) {
+      return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+    }
+    const mkieMatches = await RetrievalGatewayService.searchRelevantKnowledge(message, scope);
+    if (mkieMatches.length > 0) {
+      const grounded = await RetrievalGatewayService.generateGroundedAnswer(message, mkieMatches, scope);
+      return { content: grounded, tools: ['help.procedure'], sources: mkieMatches.map((m) => m.provenance) };
+    }
+    const modKnowledge = systemKnowledgeAnswer(message, scope.enabledModules);
+    if (!modKnowledge.includes('belum tersedia')) {
+      return { content: modKnowledge, tools: ['help.procedure'], sources: ['ERP:code-knowledge'] };
+    }
+    return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+  }
   const unquotedTaskIntent = message.replace(/["“][^"”]*["”]/g, '');
   if (isWeeklyTaskQuestion(unquotedTaskIntent) && /daily\s+tasks?|(?:tugas|task)\s+harian/i.test(unquotedTaskIntent) && isNativeTaskReadQuestion(message)) {
     return { content: 'Weekly Task dan Daily Task adalah record berbeda. Tanyakan jumlah atau daftar masing-masing secara terpisah agar hasil tidak mencampurkan kedua jenis task. Tidak ada query dijalankan.', tools: [], sources: [] };

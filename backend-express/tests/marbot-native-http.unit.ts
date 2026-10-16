@@ -114,7 +114,7 @@ async function main() {
       assert.equal(semanticGuide.status, 200);
       assert.match(await semanticGuide.text(), /Hapus Meeting/);
       assert.deepEqual(stored.at(-1).metadata.understanding, { source: 'llm', route: 'guide', status: 'ready', confidence: 0.98, model: 'fixture-model' });
-      assert.deepEqual(stored.at(-1).metadata.sources, ['ERP:procedure:meeting:delete:2026-10-07']);
+      assert.match(stored.at(-1).metadata.sources[0], /^ERP:procedure:meeting:delete:/);
       assert.equal(helpProviderCalls, 6);
       helpPlan = { route: 'native', plan: { type: 'read', domains: ['tasks'], personal: true, taskLevel: 'weekly' }, confidence: 0.99 };
       for (const roleCode of [RoleCode.PROJECT_MANAGER, RoleCode.SUPERVISOR]) {

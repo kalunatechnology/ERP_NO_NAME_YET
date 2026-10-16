@@ -7,7 +7,7 @@ export function intentText(message: string) {
 const operationPatterns = {
   delete: /\b(?:hapus(?:kan)?|menghapus|dihapus|delete|remove|hapusnya)\b/,
   cancel: /\b(?:batal(?:kan)?|membatalkan|dibatalkan|cancel)\b/,
-  edit: /\b(?:edit|mengedit|diedit|ubah|mengubah|diubah|update|perbarui|memperbarui|koreksi)\b/,
+  edit: /\b(?:edit|mengedit|diedit|ubah|mengubah|diubah|update|perbarui|memperbarui|koreksi|majukan|advance|naikkan|transisi)\b/,
   publish: /\b(?:publikasikan|mempublikasikan|publikasi|publish|terbitkan|menerbitkan)\b/,
   approve: /\b(?:acc|mengacc|approve|approval|setujui|menyetujui|persetujuan|terima|menerima|tolak|menolak|reject)\b/,
   submit: /\b(?:submit|kirim|mengirim|ajukan|mengajukan)\b/,
@@ -45,6 +45,7 @@ const topics = [
   { id: 'reports', name: 'laporan kerja', pattern: /\b(?:laporan|reports?)\b/ },
   { id: 'invoice', name: 'invoice', pattern: /\b(?:invoice|faktur|billing|tagihan)\b/ },
   { id: 'leave', name: 'cuti', pattern: /\b(?:cuti|izin|leave)\b/ },
+  { id: 'project', name: 'proyek', pattern: /\b(?:proyek|projects?|pipeline|life\s*scycel|life\s*cycle|lifecycle|lifecyle|siklus\s*hidup|stage\s+flow|tahapan\s+proyek)\b/ },
   { id: 'tasks', name: 'task', pattern: /\b(?:tugas|tasks?|pekerjaan)\b/ },
 ] as const;
 export type ProcedureTopic = typeof topics[number]['id'];
@@ -52,10 +53,11 @@ export function procedureTopic(message: string) {
   const text = intentText(message);
   // Prefer the explicit object of the action: "hapus meeting yang ada
   // notulensinya" must not become "hapus notulensi".
-  const target = requestedActionText(message).match(/\b(?:hapus(?:kan)?|menghapus|delete|remove|batal(?:kan)?|membatalkan|cancel|edit|mengedit|ubah|mengubah|update|buat(?:kan)?|membuat|create|tambah(?:kan)?|isi|mengisi|publikasikan|publish|setujui|acc|mengacc|approve|terima|menerima|tolak|menolak|reject|kirim|ajukan|restore|pulihkan|transfer|pindahkan|arsipkan|archive)\s+(?:(?:saya|sebuah|satu|data|semua|seluruh|a|an|the|my|pada)\s+){0,3}(.+)/)?.[1];
+  const target = requestedActionText(message).match(/\b(?:hapus(?:kan)?|menghapus|delete|remove|batal(?:kan)?|membatalkan|cancel|edit|mengedit|ubah|mengubah|update|buat(?:kan)?|membuat|create|tambah(?:kan)?|isi|mengisi|publikasikan|publish|setujui|acc|mengacc|approve|terima|menerima|tolak|menolak|reject|kirim|ajukan|restore|pulihkan|transfer|pindahkan|arsipkan|archive|majukan|advance|naikkan)\s+(?:(?:saya|sebuah|satu|data|semua|seluruh|a|an|the|my|pada)\s+){0,3}(.+)/)?.[1];
   if (target) {
-    const direct = topics.find(topic => new RegExp(`^(?:${topic.pattern.source.replace(/^\\b|\\b$/g, '')})\\b`).test(target));
-    return direct;
+    const direct = topics.find(topic => new RegExp(`^(?:${topic.pattern.source.replace(/^\\b|\\b$/g, '')})\\b`).test(target))
+      || topics.find(topic => topic.pattern.test(target));
+    if (direct) return direct;
   }
   return topics.find(topic => topic.pattern.test(text));
 }

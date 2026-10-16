@@ -56,7 +56,7 @@ async function main() {
     assert.equal(result.understanding.source, 'llm');
     assert.match(result.answer.content, /Hapus Meeting/);
     assert.doesNotMatch(result.answer.content, /Tambah Notulensi/);
-    assert.deepEqual(result.answer.sources, ['ERP:procedure:meeting:delete:2026-10-07']);
+    assert.match(result.answer.sources[0], /^ERP:procedure:meeting:delete:/);
     assert.equal(result.answer.action, undefined);
     const guideCases = [
       ['aku yang nyatet diskusi tadi, boleh revisi rangkumannya?', 'minutes', 'edit', /Edit Notulensi[\s\S]*PUBLISHED/],

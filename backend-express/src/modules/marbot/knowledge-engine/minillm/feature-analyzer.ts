@@ -12,24 +12,103 @@ export class FeatureAnalyzer {
     relatedEvidences: Evidence[] = []
   ): Promise<KnowledgeEntry> {
     const parts = evidence.feature_id.split('.');
-    const moduleCode = parts[0]?.toUpperCase() || 'CORE';
-    const topic = parts[1] || 'general';
-    const operation = evidence.route_method?.toLowerCase() || 'overview';
+    const isFrontendTab = evidence.feature_id.startsWith('frontend.tab.');
+    const isFrontendView = evidence.feature_id.startsWith('frontend.view.');
+    const isPrismaModel = evidence.source_type === 'PRISMA_MODEL';
+
+    let moduleCode = 'CORE';
+    let topic = 'general';
+    let operation = evidence.route_method?.toLowerCase() || 'overview';
+    let title = evidence.symbol_name || 'Fitur ERP';
+    let summary = `Fitur ${title}.`;
+    let steps: string[] = [];
+    let knowledgeCategory: 'USER_PROCEDURE' | 'BUSINESS_RULE' | 'TECHNICAL_FACT' = 'USER_PROCEDURE';
+
+    if (isFrontendTab) {
+      // Format: frontend.tab.<module>.<tabId>
+      moduleCode = (parts[2] || 'CRM').toUpperCase();
+      topic = parts[3] || 'tab';
+      operation = 'view';
+      knowledgeCategory = 'USER_PROCEDURE';
+      const cleanLabel = (evidence.symbol_name || topic).replace(/^Tab:\s*/i, '').replace(/\s*\([^)]*\)$/, '').trim();
+      title = `${cleanLabel} (${moduleCode})`;
+      summary = `Tab ${cleanLabel} pada modul ${moduleCode}. Halaman ini dapat diakses langsung melalui ${evidence.route_path || `/${moduleCode.toLowerCase()}`}.`;
+      steps = [
+        `Buka modul ${moduleCode} (${evidence.route_path || `/${moduleCode.toLowerCase()}`}).`,
+        `Pilih tab "${cleanLabel}".`,
+        `Lihat data, jalankan pencarian, atau kelola transaksi sesuai hak akses Anda.`,
+      ];
+    } else if (isFrontendView) {
+      // Format: frontend.view.<module>.<viewSlug>
+      moduleCode = (parts[2] || 'GENERAL').toUpperCase();
+      topic = parts[3] || 'view';
+      operation = 'view';
+      knowledgeCategory = 'USER_PROCEDURE';
+      title = evidence.symbol_name || `${moduleCode} View`;
+      summary = `Halaman antarmuka ${title} di Arsalynt ERP pada rute ${evidence.route_path || '/'}.`;
+      steps = [
+        `Buka rute ${evidence.route_path || '/'}.`,
+        `Periksa informasi dan data sesuai izin modul Anda.`,
+      ];
+    } else if (isPrismaModel) {
+      // Format: schema.model.<model_name>
+      const modelName = parts[2] || evidence.symbol_name || 'unknown_model';
+      topic = 'database_model';
+      operation = 'read';
+      knowledgeCategory = 'TECHNICAL_FACT';
+
+      const deriveMod = (name: string): string => {
+        if (name.startsWith('crm_') || name.startsWith('service_')) return 'CRM';
+        if (name.startsWith('fin_')) return 'FINANCE';
+        if (name.startsWith('project_')) return 'PROJECTS';
+        if (name.startsWith('iam_')) return 'ACCOUNTS';
+        if (name.startsWith('analytics_')) return 'ANALYTICS';
+        if (name.startsWith('asset_')) return 'ASSETS';
+        if (name.startsWith('inv_') || name.startsWith('inventory_')) return 'INVENTORY';
+        if (name.startsWith('proc_') || name.startsWith('procurement_')) return 'PROCUREMENT';
+        if (name.startsWith('mfg_') || name.startsWith('manufacturing_')) return 'MANUFACTURING';
+        if (name.startsWith('qa_') || name.startsWith('quality_')) return 'QUALITY';
+        if (name.startsWith('logistics_')) return 'LOGISTICS';
+        if (name.startsWith('report_')) return 'REPORTING';
+        return 'CORE';
+      };
+
+      moduleCode = deriveMod(modelName);
+      title = `Model Data: ${modelName} (${moduleCode})`;
+      const sampleFields = (evidence.related_symbols || []).slice(0, 12).join(', ');
+      summary = `Tabel database ${modelName} untuk domain ${moduleCode}. Terdiri dari kolom: ${sampleFields}.`;
+      steps = [
+        `Data ${modelName} diakses melalui service dan API modul ${moduleCode}.`,
+        `Hanya pengguna berhak akses ${moduleCode} yang dapat melihat atau mengubah record.`,
+      ];
+    } else {
+      // Backend route
+      moduleCode = parts[0]?.toUpperCase() || 'CORE';
+      topic = parts.length > 2 ? parts[2] : (parts[1] || 'general');
+      operation = evidence.route_method?.toLowerCase() || 'overview';
+      title = evidence.symbol_name || `${moduleCode} ${topic}`;
+
+      if (evidence.backend_authorization_guard) {
+        knowledgeCategory = 'BUSINESS_RULE';
+        summary = `Endpoint API ${title} pada modul ${moduleCode}. Memerlukan hak akses guard: ${evidence.backend_authorization_guard}.`;
+      } else {
+        knowledgeCategory = 'TECHNICAL_FACT';
+        summary = `Endpoint API ${title} pada modul ${moduleCode}.`;
+      }
+
+      steps = [
+        `Buka antarmuka modul ${moduleCode}.`,
+        `Lakukan aksi terkait ${topic} sesuai hak akses Anda.`,
+      ];
+    }
+
+    let importantNotes: string[] = [];
 
     // 1. Prepare sandboxed prompt
     const { systemPrompt, userPrompt } = ContextBuilder.buildFeaturePrompt(
       evidence,
       relatedEvidences
     );
-
-    let title = evidence.symbol_name || `${moduleCode} ${topic}`;
-    let summary = `Prosedur untuk ${title} pada modul ${moduleCode}.`;
-    let steps: string[] = [
-      `Buka modul ${moduleCode}.`,
-      `Pilih menu atau navigasi terkait ${topic}.`,
-      `Lakukan operasi ${operation} sesuai hak akses Anda.`,
-    ];
-    let importantNotes: string[] = [];
 
     // 2. Call MiniLLM if available
     const llmResponse = await MiniLlmClient.complete({
@@ -78,7 +157,7 @@ export class FeatureAnalyzer {
       operation,
       module_code: moduleCode,
       title,
-      knowledge_category: 'USER_PROCEDURE',
+      knowledge_category: knowledgeCategory,
       lifecycle_status: 'ACTIVE',
       comparison_status: 'NEW',
       source_priority: llmResponse ? 'AI_INFERENCE' : 'CODE_FACT',

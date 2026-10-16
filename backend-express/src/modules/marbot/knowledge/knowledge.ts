@@ -45,6 +45,7 @@ const selectedNames: Record<ProcedureTopic, string> = {
   reports: 'laporan kerja',
   invoice: 'invoice',
   leave: 'cuti',
+  project: 'proyek',
   tasks: 'task',
 };
 

@@ -65,13 +65,18 @@ export class ScanCoordinatorService {
       }
     }
 
-    // 4. Generate candidate entries from route and model evidences
-    const candidates: KnowledgeEntry[] = [];
-    const routeEvidences = crawlResult.evidences.filter(
-      (ev) => ev.source_type === 'BACKEND_ROUTE'
+    // 4. Generate candidate entries from route, tab, UI, and database model evidences
+    const candidatesMap = new Map<string, KnowledgeEntry>();
+    const targetEvidences = crawlResult.evidences.filter(
+      (ev) =>
+        ev.source_type === 'BACKEND_ROUTE' ||
+        ev.source_type === 'PRISMA_MODEL' ||
+        ev.feature_id.startsWith('frontend.tab.') ||
+        ev.feature_id.startsWith('frontend.view.')
     );
 
-    for (const ev of routeEvidences) {
+    for (const ev of targetEvidences) {
+      if (candidatesMap.has(ev.feature_id)) continue;
       const related = crawlResult.graph.findRoutesForPage(ev.feature_id);
       const candidate = await FeatureAnalyzer.analyze(ev, related);
 
@@ -80,8 +85,10 @@ export class ScanCoordinatorService {
       const comparison = KnowledgeComparator.compare(candidate, existing);
       candidate.comparison_status = comparison.status;
 
-      candidates.push(candidate);
+      candidatesMap.set(candidate.feature_id, candidate);
     }
+
+    const candidates = Array.from(candidatesMap.values());
 
     // 5. Run Verification & Publishing Engine
     const publishResult = await IndexPublisher.publishPipeline(

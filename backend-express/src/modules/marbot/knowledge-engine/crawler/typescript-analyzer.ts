@@ -102,7 +102,7 @@ export class TypeScriptAnalyzer {
   }
 
   /**
-   * Scans all router files in src/modules and converts them to Evidence records.
+   * Scans all router files in src/modules recursively and converts them to Evidence records.
    */
   static extractModuleRouteEvidences(
     srcDir: string,
@@ -116,30 +116,123 @@ export class TypeScriptAnalyzer {
     const evidences: Evidence[] = [];
     const moduleEntries = fs.readdirSync(modulesDir, { withFileTypes: true });
 
+    const MODULE_MOUNT_PREFIXES: Record<string, string> = {
+      crm: '/api/v1/crm',
+      finance: '/api/v1/finance',
+      projects: '/api/v1/projects',
+      sales: '/api/v1/sales',
+      management_reports: '/api/v1/management-reports',
+      master_data: '/api/v1/master-data',
+      requests: '/api/v1/requests',
+      request: '/api/v1/requests',
+      procurement: '/api/v1/procurement',
+      inventory: '/api/v1/inventory',
+      manufacturing: '/api/v1/manufacturing',
+      quality: '/api/v1/quality',
+      assets: '/api/v1/assets',
+      service: '/api/v1/service',
+      logistics: '/api/v1/logistics',
+      analytics: '/api/v1/analytics',
+      implementation: '/api/v1/implementation',
+      reporting: '/api/v1/reporting',
+      commands: '/api/v1/commands',
+      dashboard: '/api/v1/dashboard',
+      accounts: '/api/v1/accounts',
+      core: '/api/v1/core',
+      marbot: '/api/v1/marbot',
+    };
+
+    const MODULE_ROLE_GUARDS: Record<string, string[]> = {
+      crm: ['CRM_LEAD', 'SALES', 'PROJECT_MANAGER', 'DIRECTOR'],
+      sales: ['CRM_LEAD', 'SALES', 'PROJECT_MANAGER', 'DIRECTOR'],
+      finance: ['FINANCE', 'DIRECTOR'],
+      management_reports: ['OPERATIONAL_MANAGER', 'DIRECTOR'],
+      projects: ['COMPANY_ADMIN', 'PROJECT_MANAGER', 'OPERATIONAL_MANAGER', 'DIRECTOR', 'SUPERVISOR', 'STAFF', 'FINANCE', 'CRM_LEAD', 'SALES'],
+    };
+
+    const findRouteFiles = (dir: string): string[] => {
+      const results: string[] = [];
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          results.push(...findRouteFiles(full));
+        } else if (entry.name.endsWith('.routes.ts')) {
+          results.push(full);
+        }
+      }
+      return results;
+    };
+
     for (const mod of moduleEntries) {
       if (!mod.isDirectory()) continue;
       if (targetModule && mod.name !== targetModule) continue;
 
       const modPath = path.join(modulesDir, mod.name);
-      const files = fs.readdirSync(modPath).filter((f) => f.endsWith('.routes.ts'));
+      const files = findRouteFiles(modPath);
+      const mountPrefix = MODULE_MOUNT_PREFIXES[mod.name] || `/api/v1/${mod.name.replace(/_/g, '-')}`;
+      const defaultRoleGuards = MODULE_ROLE_GUARDS[mod.name] || [];
 
-      for (const file of files) {
-        const fullPath = path.join(modPath, file);
+      for (const fullPath of files) {
+        const fileRel = path.relative(modPath, fullPath).replace(/\\/g, '/');
+        const fileSlug = fileRel.replace(/\.routes\.ts$/, '').replace(/[^a-zA-Z0-9]/g, '_');
         const extracted = this.analyzeRouterFile(fullPath, rootDir);
 
+        // Also check for createCrudRouter usage in file (e.g. implementation.routes.ts)
+        const fileContent = fs.readFileSync(fullPath, 'utf8');
+        const crudRegex = /\.use\(\s*['"]([^'"]+)['"]\s*,\s*createCrudRouter\(\s*\{[^}]*modelName:\s*['"]([^'"]+)['"]/g;
+        let crudMatch: RegExpExecArray | null;
+        while ((crudMatch = crudRegex.exec(fileContent)) !== null) {
+          const subPath = crudMatch[1];
+          const modelName = crudMatch[2];
+          const crudMethods = ['GET', 'POST', 'PUT', 'DELETE'];
+          for (const method of crudMethods) {
+            extracted.push({
+              routeMethod: method,
+              routePath: subPath,
+              sourceFile: path.relative(rootDir, fullPath).replace(/\\/g, '/'),
+              astNodeRange: 'L1:C1-L1:C1',
+              astNodeHash: this.hashNode(`createCrudRouter:${modelName}:${method}:${subPath}`),
+              middlewareChain: ['createCrudRouter', `model:${modelName}`],
+              backendAuthorizationGuard: defaultRoleGuards.join(', ') || undefined,
+              relatedSymbols: [modelName, `${mountPrefix}${subPath}`],
+            });
+          }
+        }
+
+        const seenInFile = new Map<string, number>();
         for (const r of extracted) {
-          const featureId = `${mod.name}.${r.routeMethod.toLowerCase()}${r.routePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          const sanitizedPath = r.routePath.replace(/[^a-zA-Z0-9]/g, '_');
+          const baseKey = `${mod.name}.${fileSlug}.${r.routeMethod.toLowerCase()}${sanitizedPath}`;
+          const count = (seenInFile.get(baseKey) || 0) + 1;
+          seenInFile.set(baseKey, count);
+          const featureId = count === 1 ? baseKey : `${baseKey}_${count}`;
+
+          const canonicalPath = r.routePath === '/'
+            ? mountPrefix
+            : `${mountPrefix}${r.routePath.startsWith('/') ? '' : '/'}${r.routePath}`;
+
+          const combinedGuards = [
+            ...(defaultRoleGuards.length ? defaultRoleGuards : []),
+            ...(r.backendAuthorizationGuard ? [r.backendAuthorizationGuard] : []),
+          ].join(', ') || undefined;
+
           evidences.push({
             feature_id: featureId,
             source_file: r.sourceFile,
-            symbol_name: `${r.routeMethod} ${r.routePath}`,
+            symbol_name: `${r.routeMethod} ${canonicalPath}`,
             ast_node_range: r.astNodeRange,
             ast_node_hash: r.astNodeHash,
             route_method: r.routeMethod,
-            route_path: r.routePath,
+            route_path: canonicalPath,
             middleware_chain: r.middlewareChain,
-            backend_authorization_guard: r.backendAuthorizationGuard,
-            related_symbols: r.relatedSymbols,
+            backend_authorization_guard: combinedGuards,
+            related_symbols: [
+              ...(r.relatedSymbols || []),
+              r.routePath,
+              canonicalPath,
+              `${r.routeMethod} ${canonicalPath}`,
+            ],
             extraction_method: 'AST',
             source_type: 'BACKEND_ROUTE',
             commit_sha: commitSha,
@@ -151,3 +244,4 @@ export class TypeScriptAnalyzer {
     return evidences;
   }
 }
+

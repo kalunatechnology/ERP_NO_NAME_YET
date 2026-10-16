@@ -70,12 +70,16 @@ export class CatalogBuilder {
     const result: ModuleKnowledge[] = [];
     for (const [code, modEntries] of moduleMap.entries()) {
       const name = code.charAt(0) + code.slice(1).toLowerCase();
+      const featureTitles = Array.from(new Set(modEntries.map((e) => e.title))).slice(0, 15);
+      const keywordsList = [code.toLowerCase(), name.toLowerCase(), ...modEntries.map((e) => e.topic.toLowerCase())];
+      const keywordsRegex = new RegExp(`\\b(?:${Array.from(new Set(keywordsList)).filter((k) => k.length > 2).join('|')})\\b`, 'i');
+
       result.push({
         module: code,
         title: name,
         path: `/${code.toLowerCase()}`,
-        keywords: new RegExp(`\\b(?:${code.toLowerCase()}|${name.toLowerCase()})\\b`, 'i'),
-        content: `Modul ${name}: ${modEntries.map((e) => e.title).join(', ')}`,
+        keywords: keywordsRegex,
+        content: `Modul ${name} mencakup fitur dan tab: ${featureTitles.join(', ')}.`,
         snapshotId: modEntries[0]?.snapshot_id,
         commitSha: modEntries[0]?.provenance?.commitSha,
         lifecycleStatus: 'ACTIVE',
