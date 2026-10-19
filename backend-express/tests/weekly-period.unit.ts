@@ -59,6 +59,16 @@ assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week1 }).map
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week2 }).map(record => record.id), ['created-week2']);
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week2, projectId: 'other' }).map(record => record.id), []);
 assert.equal(records.find(row => row.id === 'old-schedule')!.weeklyTask.week_number, 42, 'Project sequence numbers are preserved');
+const missingCreatedAtButScheduledInWeek = {
+  ...records.find(record => record.id === 'created-week1')!,
+  startDate: '2026-10-08',
+  weeklyTask: { ...records.find(record => record.id === 'created-week1')!.weeklyTask, created_at: undefined },
+};
+assert.deepEqual(
+  filterWeeklyTargets([missingCreatedAtButScheduledInWeek], { ...filters, period: week1 }).map(record => record.id),
+  [],
+  'Missing created_at must not fall back to a schedule date inside the selected week',
+);
 
 const boundaries = [
   ['2026-10-04T16:59:59.999Z', false],
