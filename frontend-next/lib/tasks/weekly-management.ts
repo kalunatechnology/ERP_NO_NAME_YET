@@ -30,7 +30,7 @@ export function weeklyPermissions(
     canCreateDaily: canWrite && own && active,
     canEdit: canWrite && Boolean(authority?.can_manage_weekly_tasks) && active,
     canDelete: canWrite && Boolean(authority?.can_manage_weekly_tasks) && record.dailyCount === 0,
-    canReview: canWrite && Boolean(authority?.can_review_weekly_tasks) && pending && !isCreator,
+    canReview: canWrite && Boolean(authority?.can_review_weekly_tasks) && pending && hasKnownCreator && !isCreator,
   };
 }
 
