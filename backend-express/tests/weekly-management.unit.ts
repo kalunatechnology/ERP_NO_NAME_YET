@@ -7,6 +7,7 @@ import type { ProjectAuthority } from '../../frontend-next/lib/api/project.api';
 const weekly = (id: string, assignee: string, status: string): WeeklyTask => ({
   id, main_task: 'main', assignee_id: assignee, week_number: 1,
   target_description: `${id} inventory plan`, start_date: '2026-10-05', end_date: '2026-10-11',
+  created_at: '2026-10-08T02:00:00.000Z',
   status, progress: 0, daily_tasks: [],
 });
 const project: Project = { id: 'project', project_name: 'Operations', project_code: 'OPS', main_tasks: [{
