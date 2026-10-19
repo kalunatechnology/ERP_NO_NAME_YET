@@ -93,16 +93,18 @@ export function filterWeeklyTargets(records: WeeklyTargetRecord[], filters: {
     if (filters.projectId && record.projectId !== filters.projectId) return false;
     if (filters.group && weeklyGroup(record, filters.today) !== filters.group) return false;
     if (filters.period) {
-      // Fallback: gunakan created_at; jika kosong gunakan startDate agar data lama tidak hilang
-      const rawCreatedAt = record.weeklyTask?.created_at || record.startDate;
+      // Membership is based strictly on target creation time; schedule dates are not a fallback.
+      const rawCreatedAt = record.weeklyTask?.created_at;
       const createdAt = rawCreatedAt ? new Date(rawCreatedAt).getTime() : NaN;
 
-      // Mendukung rentang ISO filter_start / filter_end (Jumat 15:00 WIB), dengan fallback start & end
+      // Canonical backend boundaries are Monday 00:00 WIB through before Saturday 00:00 WIB.
       const rawStart = filters.period.filter_start || (filters.period.start ? `${filters.period.start}T00:00:00+07:00` : "");
-      const rawEnd = filters.period.filter_end || (filters.period.end ? `${filters.period.end}T23:59:59.999+07:00` : "");
-
       const start = rawStart ? new Date(rawStart).getTime() : NaN;
-      const end = rawEnd ? new Date(rawEnd).getTime() : NaN;
+      const end = filters.period.filter_end
+        ? new Date(filters.period.filter_end).getTime()
+        : filters.period.end
+          ? new Date(`${filters.period.end}T00:00:00+07:00`).getTime() + 24 * 60 * 60 * 1000
+          : NaN;
 
       const createdInPeriod = Number.isFinite(createdAt) && Number.isFinite(start) && Number.isFinite(end)
         && createdAt >= start && createdAt < end;
