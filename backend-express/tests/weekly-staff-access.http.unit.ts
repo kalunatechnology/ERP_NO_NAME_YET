@@ -134,7 +134,7 @@ async function main() {
     assert(serializedWhere.includes('"created_at"'));
     assert(!serializedWhere.includes('"start_date"'), 'Weekly period membership must not use schedule start dates');
     assert(!serializedWhere.includes('"end_date"'), 'Weekly period membership must not use schedule end dates');
-    assert(serializedWhere.includes('"OR"'));
+    assert(!serializedWhere.includes('"OR"'), 'Weekly period membership must use creation time only');
     assert(serializedWhere.includes(companyId) && serializedWhere.includes(tenantId) && serializedWhere.includes(staffId), 'Period filters must intersect existing tenant/company/owner authorization');
     assert(!serializedWhere.includes('"week_number"'), 'Calendar week cannot be compared to the project-relative sequence');
     assert.equal((await get('/projects/weekly-tasks/?period_month=2026-10&period_week=5')).status, 400);
