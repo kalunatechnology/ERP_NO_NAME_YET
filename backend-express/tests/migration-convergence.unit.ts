@@ -122,6 +122,19 @@ assert(
   'Hostinger build output must confirm the migration gate completed before application publication.',
 );
 
+const marbotKnowledgeMigration = readFileSync(
+  path.join(root, 'prisma', 'migrations', '20261015180000_marbot_knowledge_engine', 'migration.sql'),
+  'utf8',
+);
+assert(
+  marbotKnowledgeMigration.trimStart().startsWith('BEGIN;'),
+  'MarBot knowledge-engine migration must run in an explicit transaction.',
+);
+assert(
+  marbotKnowledgeMigration.trimEnd().endsWith('COMMIT;'),
+  'MarBot knowledge-engine migration must commit only after all DDL succeeds.',
+);
+
 console.log(JSON.stringify({
   status: 'PASS',
   migration: migrationName,
