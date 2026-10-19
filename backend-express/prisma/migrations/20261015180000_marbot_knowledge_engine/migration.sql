@@ -1,3 +1,5 @@
+BEGIN;
+
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "marbot_knowledge_snapshot" (
     "id" TEXT NOT NULL,
@@ -140,3 +142,5 @@ DO $$ BEGIN
         FOREIGN KEY ("entry_id") REFERENCES "marbot_knowledge_entry"("id") ON DELETE SET NULL ON UPDATE CASCADE;
     END IF;
 END $$;
+
+COMMIT;
