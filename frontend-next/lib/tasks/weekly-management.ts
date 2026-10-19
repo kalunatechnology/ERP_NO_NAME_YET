@@ -23,6 +23,7 @@ export function weeklyPermissions(
   const pending = status === "PENDING_APPROVAL";
   const active = !["PENDING_APPROVAL", "REJECTED"].includes(status);
   const createdBy = record.weeklyTask?.created_by_id != null ? String(record.weeklyTask.created_by_id) : undefined;
+  const hasKnownCreator = createdBy !== undefined && createdBy.trim() !== "";
   const isCreator = userId != null && createdBy === String(userId);
 
   return {
