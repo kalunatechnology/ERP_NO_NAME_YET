@@ -22,6 +22,7 @@ import { feedApi } from "@/lib/api/feed.api";
 import { useAuth } from "@/contexts/AuthContext";
 import { canRequestApi } from "@/lib/access/module-contract";
 import { canOpenReportTab } from "@/lib/access/report-tab-access";
+import { getProjectLifecycleLabel } from "@/lib/projects/lifecycle";
 
 /* ── Tab Config ──────────────────────────────────── */
 const REPORT_TABS = [
@@ -321,7 +322,7 @@ function TabExecutive({ data }: { data: ReturnType<typeof createDefaultData> }) 
                       <div className="font-semibold text-brand-deep-green">{p.project_name || p.name}</div>
                       <div className="text-2xs text-text-secondary">{p.project_code || p.code || p.id}</div>
                     </td>
-                    <td className="px-4 py-3"><StatusBadge status={p.status || "DRAFT"} /></td>
+                    <td className="px-4 py-3"><StatusBadge status={getProjectLifecycleLabel(p.lifecycle_status)} /></td>
                     <td className="px-4 py-3 text-right font-medium">{formatMoney(pBudget)}</td>
                     <td className="px-4 py-3 text-right font-medium text-red-600">{formatMoney(pCost)}</td>
                     <td className="px-4 py-3 text-right font-bold" style={{ color: pProfit >= 0 ? "#294BB2" : "#DC2626" }}>

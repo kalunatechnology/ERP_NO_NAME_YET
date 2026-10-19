@@ -15,6 +15,7 @@ import {
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
   Calculator, ShieldCheck, Award, BarChart3, MessageSquare, FileCheck,
   ChevronRight, AlertCircle, Star, UserPlus,
+  Inbox, MessageCircle,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
@@ -23,11 +24,17 @@ import {
   loadCRMData, CRMData, CRMDashboard,
   processDealWon, executiveOverrideCredit, qualifyInquiry,
   createOpportunity, deleteOpportunity,
+  createCRMActivity, getOpportunityCustomer360, markOpportunityLost, createServiceWorkOrder,
   createCustomerInquiry, deleteCustomerInquiry,
   createCostEstimate, calculateCostEstimate, createQuotationFromEstimate, deleteCostEstimate,
   submitQuotationApproval, approveQuotation, sendQuotation, acceptQuotation, rejectQuotation, convertQuotationToOrder,
   createSupportTicket, checkTicketWarrantyStatus, deleteSupportTicket,
   updateCustomerCreditLimit, calculateCreditSnapshot,
+  loadCRMInbox, createInquiryFromConversation, replyToCRMConversation, assignConversationToMe, setConversationDecision,
+  confirmCRMIdentityCustomer,
+  loadCRMWhatsAppConnections, createCRMWhatsAppConnection, updateCRMWhatsAppConnection, testCRMWhatsAppConnection,
+  type CRMWhatsAppConnection,
+  type CRMInboxConversation,
 } from "@/lib/api/crm.api";
 import api from "@/lib/api/axios";
 import { feedApi } from "@/lib/api/feed.api";
@@ -38,6 +45,7 @@ import { canPerform } from "@/lib/access/capability-contract";
 /* ── Tabs Configuration ──────────────────────────── */
 const CRM_TABS = [
   { id: "dashboard",   label: "Dashboard",            icon: BarChart3     },
+  { id: "inbox",       label: "Customer Inbox",       icon: Inbox         },
   { id: "deals",       label: "Deals & Credit",       icon: TrendingUp    },
   { id: "estimate",    label: "Estimating & Quoting", icon: Calculator, module: "SALES" },
   { id: "tickets",     label: "Support & Garansi",    icon: PhoneCall, module: "SERVICE" },
@@ -403,6 +411,9 @@ function TabDeals({
   const [resultModal, setResultModal] = useState<any>(null);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [oppFilter, setOppFilter] = useState<"ACTIVE" | "CANCELLED" | "ALL">("ACTIVE");
+  const [activityOpp, setActivityOpp] = useState<any>(null);
+  const [customer360, setCustomer360] = useState<any>(null);
+  const [activityForm, setActivityForm] = useState({ activity_type: "CALL", subject: "", scheduled_at: "" });
 
   const allOpps = data.opportunities || [];
   const activeOpps = allOpps.filter(o => {
@@ -422,12 +433,12 @@ function TabDeals({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
     const ps = (o.pipeline_stage || "").toUpperCase();
-    return !["CANCELLED", "CANCEL", "BATAL"].includes(st) && !["CANCELLED", "CANCEL", "BATAL"].includes(ps);
+    return !["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(st) && !["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(ps);
   });
   const cancelledOpps = allOpps.filter(o => {
     const st = (o.status || "").toUpperCase();
     const ps = (o.pipeline_stage || "").toUpperCase();
-    return ["CANCELLED", "CANCEL", "BATAL"].includes(st) || ["CANCELLED", "CANCEL", "BATAL"].includes(ps);
+    return ["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(st) || ["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(ps);
   });
   const displayedOpps = oppFilter === "ACTIVE" 
     ? activeOpps 
@@ -490,6 +501,30 @@ function TabDeals({
     catch (e: any) { 
       toast.error(e?.response?.data?.detail || e?.message || "Gagal menghapus opportunity."); 
     }
+  };
+
+  const handleMarkLost = async (id: string | number) => {
+    const reasons = ["PRICE_TOO_HIGH", "LOST_FEATURES", "BUDGET_CANCELLED", "COMPETITOR", "NO_RESPONSE", "OTHER"];
+    const reason = prompt(`Pilih alasan deal kalah:\n${reasons.map((item, index) => `${index + 1}. ${item}`).join("\n")}\nMasukkan nomor pilihan (1–6):`);
+    if (!reason) return;
+    const selected = reasons[Number(reason) - 1];
+    if (!selected) { toast.error("Pilihan alasan tidak valid."); return; }
+    const detail = selected === "OTHER" ? prompt("Jelaskan alasan deal kalah:") || "" : undefined;
+    try { await markOpportunityLost(id, selected, detail); toast.success("Opportunity ditandai kalah."); onRefresh(); }
+    catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal menyimpan alasan kalah."); }
+  };
+
+  const handleActivitySave = async () => {
+    if (!activityOpp || !activityForm.subject.trim()) { toast.error("Isi catatan aktivitas terlebih dahulu."); return; }
+    try {
+      await createCRMActivity({ opportunity_id: activityOpp.id, party_id: activityOpp.customer_party, activity_type: activityForm.activity_type, subject: activityForm.subject.trim(), scheduled_at: activityForm.scheduled_at ? new Date(activityForm.scheduled_at).toISOString() : null });
+      toast.success("Aktivitas tersimpan."); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); onRefresh();
+    } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal menyimpan aktivitas."); }
+  };
+
+  const handleCustomer360 = async (id: string | number) => {
+    try { setCustomer360(await getOpportunityCustomer360(id)); }
+    catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal memuat Customer 360."); }
   };
 
   /**
@@ -653,7 +688,7 @@ function TabDeals({
  */
               const cust = (data.parties||[]).find(p => String(p.id) === String(o.customer_party));
               const isWon = ["WON","CLOSED_WON"].includes((o.status||"").toUpperCase());
-              const isCancelled = ["CANCELLED","CANCEL","BATAL"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL"].includes((o.pipeline_stage||"").toUpperCase());
+              const isCancelled = ["CANCELLED","CANCEL","BATAL","LOST"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL","LOST"].includes((o.pipeline_stage||"").toUpperCase());
 
               return (
                 <div 
@@ -677,6 +712,8 @@ function TabDeals({
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); }} label="Aktivitas" small variant="ghost" />}
+                    {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" />}
                     {!readOnly ? (
                       <>
                         {!isCancelled && (
@@ -685,13 +722,7 @@ function TabDeals({
                         {isWon && !isCancelled && (
                           <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small />
                         )}
-                        <button 
-                          onClick={() => handleDelete(o.id)} 
-                          title={isCancelled ? "Hapus permanen / bersihkan" : "Batalkan opportunity"}
-                          className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {isCancelled ? <button onClick={() => handleDelete(o.id)} title="Hapus permanen" className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={13} /></button> : <ActionBtn onClick={() => handleMarkLost(o.id)} label="Tandai kalah" small variant="ghost" />}
                       </>
                     ) : (
                       <span className="text-2xs text-text-secondary italic">
@@ -855,6 +886,19 @@ function TabDeals({
           </div>
         </Modal>
       )}
+      <Modal isOpen={Boolean(activityOpp)} onClose={() => setActivityOpp(null)} title={`Aktivitas — ${activityOpp?.opportunity_name || "Opportunity"}`} size="sm">
+        <div className="space-y-3">
+          <label className="block text-xs font-medium">Jenis aktivitas<select className="input mt-1 w-full" value={activityForm.activity_type} onChange={e => setActivityForm({ ...activityForm, activity_type: e.target.value })}><option value="CALL">Telepon</option><option value="MEETING">Meeting</option><option value="NOTE">Catatan</option><option value="FOLLOW_UP">Follow-up</option></select></label>
+          <label className="block text-xs font-medium">Catatan<textarea className="input mt-1 w-full min-h-20" value={activityForm.subject} onChange={e => setActivityForm({ ...activityForm, subject: e.target.value })} placeholder="Ringkasan percakapan atau tindak lanjut" /></label>
+          <label className="block text-xs font-medium">Jadwalkan follow-up (opsional)<input className="input mt-1 w-full" type="datetime-local" value={activityForm.scheduled_at} onChange={e => setActivityForm({ ...activityForm, scheduled_at: e.target.value })} /></label>
+          <div className="text-xs text-text-secondary">Riwayat: {(data.activities || []).filter(a => String(a.opportunity_id) === String(activityOpp?.id)).length} aktivitas</div>
+          <div className="max-h-32 overflow-y-auto space-y-1">{(data.activities || []).filter(a => String(a.opportunity_id) === String(activityOpp?.id)).map(a => <div key={a.id} className="border rounded p-2 text-xs"><b>{a.activity_type}</b> · {a.subject}<div className="text-text-secondary">{a.scheduled_at ? formatDate(a.scheduled_at) : "Selesai"}</div></div>)}</div>
+          <button onClick={handleActivitySave} className="btn-primary w-full">Simpan aktivitas</button>
+        </div>
+      </Modal>
+      <Modal isOpen={Boolean(customer360)} onClose={() => setCustomer360(null)} title="Customer 360 View" size="sm">
+        {customer360 && <div className="grid grid-cols-2 gap-3 text-sm"><div className="col-span-2 font-semibold">{customer360.customer?.name || "Pelanggan"}</div><div>LTV<br/><b>{formatMoney(customer360.lifetime_value || 0)}</b></div><div>Proyek berjalan<br/><b>{customer360.active_projects ?? 0}</b></div><div>Total proyek<br/><b>{customer360.projects ?? 0}</b></div><div>Piutang terbuka<br/><b>{formatMoney(customer360.outstanding_ar || 0)}</b></div><div>Pengiriman<br/><b>{customer360.deliveries ?? 0}</b></div><div>Kontrak<br/><b>{customer360.contracts ?? 0}</b></div><div className="col-span-2">Reputasi pembayaran: <b>{customer360.payment_reputation || "—"}</b> · Invoice jatuh tempo: {customer360.overdue_invoice_count ?? 0}</div></div>}
+      </Modal>
     </div>
   );
 }
@@ -1031,7 +1075,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: C
 function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
-  const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", case_type: "WARRANTY_CLAIM", description: "" });
+  const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", case_type: "WARRANTY_CLAIM", description: "", serial_number: "" });
 
   /**
    * Creates a support ticket after enforcing the required subject.
@@ -1078,13 +1122,14 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
                       {cust?.display_name || "Customer"} · Prioritas: <b>{c.priority || "NORMAL"}</b>
                     </div>
                     <StatusBadge status={c.status || "OPEN"} />
+                    {c.warranty_status && <span className={cn("ml-1 px-2 py-0.5 rounded-full text-2xs font-semibold", c.warranty_status === "WARRANTY_ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{c.warranty_status}</span>}
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {!readOnly ? (
                       <>
-                        {!resolved ? (
-                          <ActionBtn onClick={async () => { await checkTicketWarrantyStatus(c.id); toast.success("Status diperbarui."); onRefresh(); }} label="Periksa status" small variant="ghost" />
-                        ) : (
+                        {!resolved && <ActionBtn onClick={async () => { try { const result = await checkTicketWarrantyStatus(c.id); toast.success(`Garansi: ${result.warranty_status}`); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Pemeriksaan garansi gagal."); } }} label="Periksa garansi" small variant="ghost" />}
+                        {c.warranty_status === "WARRANTY_ACTIVE" && !resolved && <ActionBtn onClick={async () => { try { await createServiceWorkOrder(c.id); toast.success("Work Order teknisi dibuat."); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal membuat Work Order."); } }} label="Buat Work Order" small />}
+                        {resolved && (
                           <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">RESOLVED</span>
                         )}
                         <button onClick={async () => { if(!confirm("Hapus tiket?")) return; await deleteSupportTicket(c.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
@@ -1126,6 +1171,10 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Subject *</label>
             <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} placeholder="Judul tiket..." />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Nomor seri produk (untuk pemeriksaan garansi)</label>
+            <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.serial_number} onChange={e => setForm(f => ({...f, serial_number: e.target.value}))} placeholder="Nomor seri pada label produk" />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -1494,6 +1543,160 @@ function TabEngagement({ data }: { data: CRMData }) {
   );
 }
 
+function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefresh }: { userId?: string; readOnly: boolean; canMatchIdentity: boolean; parties: any[]; onRefresh: () => void }) {
+  const [rows, setRows] = useState<CRMInboxConversation[]>([]);
+  const [loadingInbox, setLoadingInbox] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [partyChoice, setPartyChoice] = useState<Record<string, string>>({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyRequestIds, setReplyRequestIds] = useState<Record<string, string>>({});
+  const refreshInbox = useCallback(async () => {
+    setLoadingInbox(true);
+    try {
+      setRows(await loadCRMInbox());
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Inbox customer tidak dapat dimuat.");
+    } finally {
+      setLoadingInbox(false);
+    }
+  }, []);
+
+  useEffect(() => { void refreshInbox(); }, [refreshInbox]);
+
+  const assignToMe = async (row: CRMInboxConversation) => {
+    if (!userId) return;
+    setBusyId(row.id);
+    try {
+      await assignConversationToMe(row.id, userId);
+      toast.success("Conversation ditugaskan kepada Anda.");
+      await refreshInbox();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Penugasan tidak berhasil.");
+    } finally { setBusyId(null); }
+  };
+
+  const makeInquiry = async (row: CRMInboxConversation) => {
+    setBusyId(row.id);
+    try {
+      const result = await createInquiryFromConversation(row.id);
+      toast.success(result?.created === false ? "Inquiry sudah pernah dibuat." : "Inquiry dibuat dari conversation.");
+      await refreshInbox();
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Inquiry tidak dapat dibuat.");
+    } finally { setBusyId(null); }
+  };
+
+  const decideConversation = async (row: CRMInboxConversation, decision: "IGNORE" | "REOPEN") => {
+    setBusyId(row.id);
+    try {
+      await setConversationDecision(row.id, decision);
+      toast.success(decision === "IGNORE" ? "Conversation ditandai untuk diabaikan." : "Conversation dibuka kembali.");
+      await refreshInbox();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Status conversation tidak berhasil diperbarui.");
+    } finally { setBusyId(null); }
+  };
+
+  const matchIdentity = async (identityId: string) => {
+    const partyId = partyChoice[identityId];
+    if (!partyId) return toast.error("Pilih customer yang sudah Anda verifikasi.");
+    setBusyId(identityId);
+    try {
+      await confirmCRMIdentityCustomer(identityId, partyId);
+      toast.success("Identitas ditautkan setelah konfirmasi.");
+      await refreshInbox();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Pencocokan customer tidak berhasil.");
+    } finally { setBusyId(null); }
+  };
+
+  const sendReply = async (row: CRMInboxConversation) => {
+    const text = (replyDrafts[row.id] || "").trim();
+    if (!text) return toast.error("Tulis balasan terlebih dahulu.");
+    setBusyId(row.id);
+    try {
+      await replyToCRMConversation(row.id, text, replyRequestIds[row.id] || crypto.randomUUID());
+      toast.success("Balasan masuk antrean adapter kanal.");
+      setReplyDrafts((current) => ({ ...current, [row.id]: "" }));
+      setReplyRequestIds((current) => ({ ...current, [row.id]: crypto.randomUUID() }));
+      await refreshInbox();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Balasan tidak dapat dimasukkan ke antrean.");
+    } finally { setBusyId(null); }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="card rounded-xl p-4 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold">Inbox CRM</h3>
+          <p className="text-xs text-text-secondary mt-1">Pesan dari pipeline internal, dikelompokkan dan diarahkan berdasarkan konfigurasi unit bisnis Marka.</p>
+        </div>
+        <button className="btn-ghost text-xs" onClick={() => void refreshInbox()} disabled={loadingInbox}><RefreshCw size={13} className={cn("mr-1", loadingInbox && "animate-spin")} />Refresh</button>
+      </div>
+      {loadingInbox ? <div className="card rounded-xl p-5 text-xs text-text-secondary">Memuat conversation…</div> : rows.length === 0 ? (
+        <div className="card rounded-xl p-5"><EmptyState msg="Belum ada conversation masuk. Conversation akan muncul setelah sumber integrasi internal mengirim event." /></div>
+      ) : rows.map((row) => (
+        <article key={row.id} className="card rounded-xl p-4 flex flex-col gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2"><MessageCircle size={15} className="text-brand-deep-green" /><h4 className="text-sm font-semibold truncate">{row.subject || "Percakapan masuk"}</h4><StatusBadge status={row.status} /></div>
+              <p className="text-[11px] text-text-secondary mt-1">{row.business_unit_name || row.business_unit_code ? `Unit ${row.business_unit_name || row.business_unit_code} · ` : ""}{row.external_thread?.external_thread_id ? `Thread ${row.external_thread.external_thread_id}` : `Conversation ${row.id.slice(0, 8)}`}{row.inquiry_id ? " · Sudah dieskalasi menjadi Inquiry" : ""}</p>
+            </div>
+            <div className="flex gap-2">
+              {!readOnly && row.assigned_user_id !== userId && <button className="btn-ghost text-xs" disabled={busyId === row.id || !userId} onClick={() => void assignToMe(row)}><UserPlus size={13} className="mr-1" />{row.assigned_user_id ? "Tugaskan ke saya" : "Ambil"}</button>}
+              {!readOnly && !row.inquiry_id && <button className="btn-primary text-xs" disabled={busyId === row.id} onClick={() => void makeInquiry(row)}><Plus size={13} className="mr-1" />Jadikan Inquiry</button>}
+              {!readOnly && !row.inquiry_id && row.status !== "IGNORED" && <button className="btn-ghost text-xs" disabled={busyId === row.id} onClick={() => void decideConversation(row, "IGNORE")}>Abaikan</button>}
+              {!readOnly && row.status === "IGNORED" && <button className="btn-ghost text-xs" disabled={busyId === row.id} onClick={() => void decideConversation(row, "REOPEN")}>Pulihkan</button>}
+              {row.inquiry && <span className="px-2 py-1 text-[11px] rounded-lg bg-emerald-50 text-emerald-800">Inquiry {row.inquiry.inquiry_number}</span>}
+            </div>
+          </div>
+          <div className="rounded-lg bg-bg-lighter p-3 flex flex-col gap-2 max-h-72 overflow-y-auto">
+            {(row.messages ?? []).length ? row.messages!.map((message) => (
+              <div key={message.id} className={cn("max-w-[88%] rounded-lg px-3 py-2 text-xs", message.direction === "INBOUND" ? "self-start bg-white border border-text-tertiary/40" : "self-end bg-emerald-50")}>{message.message_text}</div>
+            )) : <p className="text-xs text-text-secondary">{row.latest_message?.message_text || "Belum ada pesan yang tersimpan."}</p>}
+          </div>
+          {!readOnly && row.external_thread && row.status !== "IGNORED" && (
+            <div className="flex flex-col sm:flex-row gap-2">
+              <textarea
+                className="input-field flex-1 min-h-16 text-xs"
+                maxLength={10000}
+                value={replyDrafts[row.id] || ""}
+                onChange={(event) => {
+                  setReplyDrafts((current) => ({ ...current, [row.id]: event.target.value }));
+                  setReplyRequestIds((current) => current[row.id] ? current : ({ ...current, [row.id]: crypto.randomUUID() }));
+                }}
+                placeholder="Tulis balasan untuk dikirim melalui adapter kanal..."
+              />
+              <button className="btn-primary text-xs self-end" disabled={busyId === row.id || !(replyDrafts[row.id] || "").trim()} onClick={() => void sendReply(row)}>
+                {busyId === row.id ? "Mengirim..." : "Kirim balasan"}
+              </button>
+            </div>
+          )}
+          {(row.external_identities ?? []).map((identity) => (
+            <div key={identity.id} className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="text-text-secondary">Identitas {identity.type} {identity.masked_value} · verifikasi sumber {identity.channel_verification_status} · customer {identity.customer_match_status}</span>
+              {identity.customer_match_status === "CONFIRMED" && identity.party_id ? (
+                <span className="text-emerald-800">{parties.find((party) => String(party.id) === String(identity.party_id))?.display_name || parties.find((party) => String(party.id) === String(identity.party_id))?.legal_name || "Customer terverifikasi"}</span>
+              ) : canMatchIdentity && identity.channel_verification_status === "VERIFIED" ? (
+                <>
+                  <select className="input-field py-1 text-[11px]" value={partyChoice[identity.id] || ""} onChange={(event) => setPartyChoice((current) => ({ ...current, [identity.id]: event.target.value }))}>
+                    <option value="">Pilih customer untuk verifikasi</option>
+                    {parties.filter((party) => party.status === "ACTIVE").map((party) => <option key={party.id} value={party.id}>{party.display_name || party.legal_name || party.party_name}</option>)}
+                  </select>
+                  <button className="btn-ghost text-[11px]" disabled={busyId === identity.id} onClick={() => void matchIdentity(identity.id)}>Konfirmasi relasi</button>
+                </>
+              ) : null}
+            </div>
+          ))}
+          <div className="text-[11px] text-text-secondary">{row.assigned_user?.full_name ? `PIC: ${row.assigned_user.full_name}` : row.assigned_user_id ? "PIC sudah ditentukan" : "Belum ada PIC"} · {row.priority || "NORMAL"}</div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════
    MAIN CRM CLIENT
 ══════════════════════════════════════════════════ */
@@ -1642,7 +1845,7 @@ export default function CrmClient() {
   };
 
   const data: CRMData = crmData || {
-    inquiries:[], requirements:[], opportunities:[], stages:[], estimates:[], estimateLines:[],
+    inquiries:[], requirements:[], opportunities:[], activities:[], stages:[], estimates:[], estimateLines:[],
     quotations:[], approvals:[], deliveries:[], contracts:[], orders:[], conversations:[],
     feedback:[], credit:[], cases:[], resolutions:[], products:[], parties:[],
   };
@@ -1711,6 +1914,7 @@ export default function CrmClient() {
       ) : (
         <>
           {activeTab === "dashboard"  && <TabDashboard data={data} dash={crmDash} />}
+          {activeTab === "inbox"      && <TabCustomerInbox userId={user?.id == null ? undefined : String(user.id)} readOnly={!canOperateCrm} canMatchIdentity={["ROLE-CRM-LEAD", "CRM_LEAD", "ROLE-SALES", "SALES"].includes(String(user?.active_role_code ?? "").toUpperCase())} parties={data.parties} onRefresh={() => loadData(true)} />}
           {activeTab === "deals"      && (
             <TabDeals 
               data={data} 

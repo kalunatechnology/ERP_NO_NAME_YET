@@ -61,10 +61,29 @@ const envSchema = z.object({
   ERP_BASE_URL: z.string().optional(),
   CHATBOT_ERP_READONLY_DATABASE_URL: z.string().optional(),
   MARBOT_ENCRYPTION_KEY: z.string().optional(),
+  // Base64-encoded 32-byte AES-256 key used to encrypt integration signing
+  // secrets at rest. Required only when provisioning or rotating integrations.
+  CRM_INTEGRATION_ENCRYPTION_KEY: z.string().optional(),
+  CRM_INTEGRATION_WORKER_SECRET: z.string().optional(),
   CHATBOT_CONTRACT_MODE: z.enum(['legacy', 'v2']).default('v2'),
   MARBOT_RUNTIME: z.enum(['native', 'external']).default('native'),
   MARBOT_AI_API_KEY: z.string().optional(),
   MARBOT_AI_MODEL: z.string().optional(),
+  // Marka Plus Knowledge Engine (MKIE)
+  MARBOT_KE_ENABLED: z
+    .string()
+    .default('true')
+    .transform((v) => v.toLowerCase() === 'true'),
+  MARBOT_KE_MODE: z.enum(['observation', 'auto_tier1', 'auto_tier2']).default('observation'),
+  MARBOT_KE_SCHEDULE_CRON: z.string().default('0 0 * * *'),
+  MARBOT_KE_WORKER_SECRET: z.string().optional(),
+  MARBOT_MINILLM_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
+  MARBOT_MINILLM_API_KEY: z.string().optional(),
+  MARBOT_MINILLM_MODEL: z.string().optional(),
+  MARBOT_KE_MAX_CONCURRENCY_CRAWL: z.string().default('2').transform(Number),
+  MARBOT_KE_MAX_CONCURRENCY_LLM: z.string().default('1').transform(Number),
+  MARBOT_KE_CPU_LIMIT_PERCENT: z.string().default('75').transform(Number),
+  MARBOT_KE_MEM_LIMIT_PERCENT: z.string().default('80').transform(Number),
 });
 
 /**

@@ -1,0 +1,489 @@
+"use client";
+
+import { useState, type ReactNode } from "react";
+import { Check, Clipboard, ExternalLink, ShieldCheck } from "lucide-react";
+
+const inboundSender = `import { createHmac, randomBytes } from "node:crypto";
+
+const MARKA_URL = process.env.MARKA_CRM_WEBHOOK_URL!;
+const INTEGRATION_ID = process.env.MARKA_CRM_INTEGRATION_ID!;
+const KEY_ID = process.env.MARKA_CRM_KEY_ID!;
+const SIGNING_SECRET = process.env.MARKA_CRM_SIGNING_SECRET!;
+const PATH = "/api/v1/integrations/webhooks/events";
+
+export async function sendMarkaEvent(eventId: string, eventType: string, data: object) {
+  // eventId harus berasal dari ID submission/outbox yang disimpan; jangan ganti saat retry.
+  const occurredAt = new Date().toISOString();
+  const body = JSON.stringify({
+    event_id: eventId,
+    event_type: eventType,
+    schema_version: 1,
+    occurred_at: occurredAt,
+    timestamp: Math.floor(Date.now() / 1000),
+    data,
+  });
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const nonce = randomBytes(16).toString("hex");
+    const prefix = \`v1\\nPOST\\n\${PATH}\\n\${timestamp}\\n\${nonce}\\n\`;
+    const signature = createHmac("sha256", SIGNING_SECRET)
+      .update(Buffer.from(prefix, "utf8"))
+      .update(Buffer.from(body, "utf8"))
+      .digest("hex");
+
+    let response: Response;
+    try {
+      response = await fetch(MARKA_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Integration-Id": INTEGRATION_ID,
+          "X-Integration-Key-Id": KEY_ID,
+          "X-Integration-Timestamp": timestamp,
+          "X-Integration-Nonce": nonce,
+          "X-Integration-Signature": signature,
+        },
+        body,
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch (error) {
+      if (attempt === 3) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** (attempt - 1)));
+      continue;
+    }
+
+    if (response.status === 200 || response.status === 202) return response.json();
+    if (response.status < 500 && response.status !== 408 && response.status !== 429) {
+      throw new Error(\`Marka rejected event: HTTP \${response.status} \${await response.text()}\`);
+    }
+    if (attempt === 3) throw new Error(\`Marka unavailable after retries: HTTP \${response.status}\`);
+    await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** (attempt - 1)));
+  }
+}`;
+
+const contactRoute = `// app/api/contact/route.ts (Next.js App Router, server-side)
+import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
+import { sendMarkaEvent } from "@/lib/marka-webhook";
+
+export async function POST(request: NextRequest) {
+  const form = await request.json();
+  // Validasi input, rate limit dan CAPTCHA dilakukan sebelum meneruskan ke CRM.
+  if (!form.name || !form.email || !form.subject) {
+    return NextResponse.json({ error: "Data wajib belum lengkap" }, { status: 400 });
+  }
+
+  // Production: browser mengirim Idempotency-Key yang dibuat saat form pertama kali
+  // disubmit. Website menyimpan key + payload di database/outbox dan memakai ulang
+  // keduanya saat retry; jangan membuat randomUUID baru untuk retry submission yang sama.
+  const eventId = request.headers.get("idempotency-key") || randomUUID();
+  const result = await sendMarkaEvent(eventId, "inquiry.submitted", {
+    customer: {
+      name: String(form.name).slice(0, 200),
+      email: String(form.email).slice(0, 320),
+      phone: form.phone ? String(form.phone).slice(0, 40) : undefined,
+    },
+    requirements: {
+      subject: String(form.subject).slice(0, 300),
+      description: String(form.message || "").slice(0, 20000),
+      ...(form.targetBudget ? { target_budget: Number(form.targetBudget) } : {}),
+    },
+  });
+
+  return NextResponse.json({ accepted: true, event_id: result.event_id }, { status: 202 });
+}
+
+// Browser hanya POST ke /api/contact milik website sendiri.
+// Browser tidak pernah menerima signing secret atau memanggil endpoint Marka.
+// Di production, persist eventId/payload di outbox dan kirim asynchronous agar
+// outage Marka tidak membuat lead Contact Us hilang.`;
+
+const eventExamples = `// Pesan baru dari web chat atau WhatsApp (teks saja)
+await sendMarkaEvent("arsalynk-webchat-msg-unique-456", "message.received", {
+    "thread_id": "webchat:visitor-123",
+    "message_id": "msg-unique-456",
+    "sender": {
+      "type": "EXTERNAL",
+      "value": "website:visitor-123",
+      "display_name": "Pengunjung Arsalynk"
+    },
+    "message": { "type": "TEXT", "text": "Saya ingin konsultasi layanan." }
+});
+
+// Tiket baru. Jika serial_number dikirim, serial harus dikenal Marka.
+await sendMarkaEvent("arsalynk-ticket-request-789", "ticket.created", {
+    "subject": "Permintaan dukungan",
+    "description": "Deskripsikan masalah pelanggan",
+    "serial_number": "SN-ARS-001"
+});
+
+// Keputusan penawaran. quotation_id adalah UUID quotation Marka berstatus SENT.
+await sendMarkaEvent("arsalynk-quotation-decision-321", "quotation.decision", {
+  "quotation_id": "00000000-0000-4000-8000-000000000000",
+  "decision": "ACCEPTED"
+});`;
+
+const outboundReceiver = `import { createHmac, timingSafeEqual } from "node:crypto";
+import express from "express";
+
+const app = express();
+// Daftarkan route ini SEBELUM app.use(express.json()), atau gunakan raw parser
+// khusus route. Signature dihitung dari byte body persis yang dikirim Marka.
+app.post("/webhooks/marka", express.raw({ type: "application/json", limit: "1mb" }), async (req, res) => {
+  const rawBody = req.body as Buffer;
+  const timestamp = String(req.header("x-marka-timestamp") || "");
+  const received = String(req.header("x-marka-signature") || "");
+  const secret = process.env.MARKA_OUTBOUND_SIGNING_SECRET!;
+  if (!/^\\d{10}$/.test(timestamp) || Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp)) > 300) return res.sendStatus(401);
+  const expected = "sha256=" + createHmac("sha256", secret)
+    .update(\`v1\\nPOST\\n\${timestamp}\\n\`)
+    .update(rawBody)
+    .digest("hex");
+
+  const a = Buffer.from(received);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return res.sendStatus(401);
+
+  const event = JSON.parse(rawBody.toString("utf8"));
+  if (req.header("x-marka-event-id") !== event.event_id) return res.sendStatus(401);
+  // Simpan event_id dengan unique constraint sebelum memproses; Marka dapat retry.
+  await saveWebhookEventOnce(event.event_id, event);
+  return res.sendStatus(204); // 2xx = diterima; kerjakan proses berat di queue lokal.
+});`;
+
+const pythonSender = `import hashlib, hmac, json, secrets, time, requests
+
+def send_marka_event(url, integration_id, key_id, secret, event):
+    # Serialize once. Sign and send these exact bytes.
+    body = json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    timestamp = str(int(time.time()))
+    nonce = secrets.token_hex(16)
+    prefix = f"v1\\nPOST\\n/api/v1/integrations/webhooks/events\\n{timestamp}\\n{nonce}\\n".encode()
+    signature = hmac.new(secret.encode(), prefix + body, hashlib.sha256).hexdigest()
+    response = requests.post(url, data=body, headers={
+        "Content-Type": "application/json",
+        "X-Integration-Id": integration_id,
+        "X-Integration-Key-Id": key_id,
+        "X-Integration-Timestamp": timestamp,
+        "X-Integration-Nonce": nonce,
+        "X-Integration-Signature": signature,
+    }, timeout=8)
+    if response.status_code not in (200, 202):
+        raise RuntimeError(f"Marka HTTP {response.status_code}: {response.text}")
+    return response.json()`;
+
+const phpSender = `<?php
+function sendMarkaEvent(string $url, string $integrationId, string $keyId, string $secret, array $event): array {
+    // Encode once; hash and send this exact body string.
+    $body = json_encode($event, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $timestamp = (string) time();
+    $nonce = bin2hex(random_bytes(16));
+    $prefix = "v1\\nPOST\\n/api/v1/integrations/webhooks/events\\n{$timestamp}\\n{$nonce}\\n";
+    $signature = hash_hmac('sha256', $prefix . $body, $secret);
+
+    $curl = curl_init($url);
+    curl_setopt_array($curl, [
+        CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body, CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 8, CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'X-Integration-Id: ' . $integrationId, 'X-Integration-Key-Id: ' . $keyId,
+            'X-Integration-Timestamp: ' . $timestamp, 'X-Integration-Nonce: ' . $nonce,
+            'X-Integration-Signature: ' . $signature,
+        ],
+    ]);
+    $responseBody = curl_exec($curl);
+    $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    if ($responseBody === false || !in_array($status, [200, 202], true)) {
+        throw new RuntimeException('Marka HTTP ' . $status . ': ' . curl_error($curl));
+    }
+    curl_close($curl);
+    return json_decode($responseBody, true, flags: JSON_THROW_ON_ERROR);
+}`;
+
+const csharpSender = `using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+
+// eventJson is serialized exactly once and these bytes are both signed and sent.
+var bodyBytes = Encoding.UTF8.GetBytes(eventJson);
+var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+var prefix = Encoding.UTF8.GetBytes($"v1\\nPOST\\n/api/v1/integrations/webhooks/events\\n{timestamp}\\n{nonce}\\n");
+var signatureInput = prefix.Concat(bodyBytes).ToArray();
+var signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), signatureInput)).ToLowerInvariant();
+
+using var request = new HttpRequestMessage(HttpMethod.Post, webhookUrl);
+request.Content = new ByteArrayContent(bodyBytes);
+request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+request.Headers.Add("X-Integration-Id", integrationId);
+request.Headers.Add("X-Integration-Key-Id", keyId);
+request.Headers.Add("X-Integration-Timestamp", timestamp);
+request.Headers.Add("X-Integration-Nonce", nonce);
+request.Headers.Add("X-Integration-Signature", signature);
+using var response = await httpClient.SendAsync(request);
+if (response.StatusCode is not (System.Net.HttpStatusCode.OK or System.Net.HttpStatusCode.Accepted))
+    throw new HttpRequestException($"Marka HTTP {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");`;
+
+function CodeBlock({ title, code }: { title: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return <div className="overflow-hidden rounded-xl border border-[#24324B] bg-[#111827]">
+    <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
+      <span className="text-xs font-semibold text-slate-200">{title}</span>
+      <button type="button" onClick={() => void copy()} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">
+        {copied ? <Check size={13}/> : <Clipboard size={13}/>} {copied ? "Tersalin" : "Salin kode"}
+      </button>
+    </div>
+    <pre className="max-h-[520px] overflow-auto p-4 text-xs leading-5 text-slate-100"><code>{code}</code></pre>
+  </div>;
+}
+
+function Note({ children, tone = "blue" }: { children: ReactNode; tone?: "blue" | "amber" | "green" }) {
+  const styles = {
+    blue: "border-blue-200 bg-blue-50 text-blue-950",
+    amber: "border-amber-200 bg-amber-50 text-amber-950",
+    green: "border-emerald-200 bg-emerald-50 text-emerald-950",
+  };
+  return <div className={`rounded-xl border p-4 text-sm leading-6 ${styles[tone]}`}>{children}</div>;
+}
+
+export default function CRMIntegrationGuide() {
+  return <div className="space-y-5">
+    <section className="rounded-2xl border border-[#DCE5F2] bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="rounded-xl bg-[#EAF6FF] p-2 text-[#2649B3]"><ShieldCheck size={20}/></div>
+        <div><h2 className="text-lg font-bold text-[#172033]">Panduan koneksi sistem eksternal ke CRM Marka</h2>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-[#64748B]">Hubungkan website, aplikasi, ERP, marketplace, helpdesk, portal pelanggan, atau adapter WhatsApp melalui API dan webhook Marka. Ikuti alur dari provisioning source sampai uji end-to-end; tersedia contoh backend Node.js/Next.js, Python, PHP, dan C#.</p>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-[#E2E8F0] p-4"><h3 className="font-semibold text-[#172033]">A. Sistem eksternal → Marka</h3><p className="mt-1 text-sm leading-6 text-[#64748B]">Website, marketplace, ERP, helpdesk, atau adapter kanal mengirim inquiry, pesan, tiket, atau keputusan quotation dengan HMAC. Marka menyimpan event dan memprosesnya di CRM.</p><p className="mt-2 text-xs font-semibold text-[#2649B3]">Website · E-commerce · WhatsApp · Service · Portal</p></div>
+        <div className="rounded-xl border border-[#E2E8F0] p-4"><h3 className="font-semibold text-[#172033]">B. Marka → sistem eksternal</h3><p className="mt-1 text-sm leading-6 text-[#64748B]">Saat status bisnis berubah, worker Marka memanggil URL penerima Anda dengan HMAC. Sistem penerima memvalidasi dan menyimpan event secara idempoten sebelum memperbarui portal atau notifikasi.</p><p className="mt-2 text-xs font-semibold text-[#2649B3]">Quotation · Ticket · Deal · Persetujuan</p></div>
+      </div>
+      <Note tone="amber"><strong>Rahasia dan batas sistem:</strong> semua signing secret hanya boleh berada di server/secret manager. Jangan masukkan ke JavaScript browser, HTML, Git, screenshot, atau log. HMAC membuktikan identitas aplikasi pengirim; itu tidak otomatis membuktikan bahwa pelanggan cocok dengan master customer Marka.</Note>
+    </section>
+
+    <nav aria-label="Navigasi panduan koneksi CRM" className="rounded-xl border border-[#DCE5F2] bg-[#F8FAFC] p-4">
+      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#64748B]">Langsung ke bagian</p>
+      <div className="flex flex-wrap gap-2 text-xs font-semibold">
+        {[["#crm-setup", "1. Setup"], ["#crm-sender", "2. Kirim event"], ["#crm-events", "3. Jenis event"], ["#crm-coverage", "4. Cakupan semua fitur"], ["#crm-outbound", "5. Update keluar"], ["#crm-portal", "6. Portal"], ["#crm-e2e", "7. Uji end-to-end"], ["#crm-troubleshooting", "8. Troubleshooting"]].map(([href, label]) => <a key={href} href={href} className="rounded-lg border border-[#DCE5F2] bg-white px-3 py-2 text-[#2649B3] hover:bg-blue-50">{label}</a>)}
+      </div>
+    </nav>
+
+    <section id="crm-setup" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-[#172033]">1. Siapkan koneksi di Marka</h2>
+      <ol className="mt-3 grid gap-3 md:grid-cols-2">
+        {[
+          ["Pastikan backend siap", "Sebelum membuat source atau koneksi WhatsApp, jalankan migrasi database yang sesuai dan atur CRM_INTEGRATION_ENCRYPTION_KEY sebagai Base64 dari 32 byte acak di backend. Gunakan nilai tetap yang sama di setiap instance; jangan simpan di browser atau Git."],
+          ["Daftarkan source", "Di tab Landing page / aplikasi, pilih hanya event yang akan digunakan. Pesan web/WA perlu message.received; formulir Contact Us perlu inquiry.submitted."],
+          ["Simpan kredensial", "Simpan Webhook URL, Integration ID, Key ID, dan Signing Secret sekali tampil ke environment Production dan Preview yang benar."],
+          ["Atur routing", "Pilih unit bisnis serta penanggung jawab bila dibutuhkan. Data pelanggan dari identitas eksternal tetap UNMATCHED sampai diverifikasi."],
+          ["Siapkan HTTPS publik", "Server website harus dapat mengakses backend Marka lewat HTTPS. URL harus tepat /api/v1/integrations/webhooks/events tanpa query string."],
+        ].map(([title, body], index) => <li key={title} className="flex gap-3 rounded-xl bg-[#F8FAFC] p-4"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EAF6FF] text-sm font-bold text-[#2649B3]">{index + 1}</span><div><h3 className="text-sm font-semibold text-[#172033]">{title}</h3><p className="mt-1 text-sm leading-6 text-[#64748B]">{body}</p></div></li>)}
+      </ol>
+      <div className="mt-4 rounded-xl border border-[#E2E8F0] bg-slate-50 p-4">
+        <h3 className="text-sm font-semibold text-[#172033]">Environment server website</h3>
+        <pre className="mt-2 overflow-auto text-xs leading-5 text-slate-700"><code>{`MARKA_CRM_WEBHOOK_URL=https://api.marka-anda.com/api/v1/integrations/webhooks/events
+MARKA_CRM_INTEGRATION_ID=<UUID dari Marka>
+MARKA_CRM_KEY_ID=<key ID dari Marka>
+MARKA_CRM_SIGNING_SECRET=<secret yang tampil sekali>`}</code></pre>
+      </div>
+      <Note tone="blue"><strong>Kelola source:</strong> secret tidak dapat dibaca kembali setelah pembuatan. Jika hilang, gunakan POST <code>/api/v1/core/integration-sources/:id/rotate-secret/</code> lalu simpan secret baru; key lama hanya diterima selama 24 jam. Status <code>SUSPENDED</code> bisa diaktifkan kembali, sedangkan <code>REVOKED</code> terminal dan memerlukan source baru.</Note>
+    </section>
+
+    <section id="crm-sender" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-[#172033]">2. Buat satu pengirim event di backend website</h2>
+      <p className="mt-1 text-sm leading-6 text-[#64748B]">Contoh berikut untuk Node.js/Next.js. Letakkan helper di folder server, panggil dari API route server setelah validasi form. Fungsi memakai body yang sama pada retry, nonce baru per percobaan, dan menunggu respons Marka.</p>
+      <div className="mt-4"><CodeBlock title="lib/marka-webhook.ts — HMAC signer di server" code={inboundSender}/></div>
+      <div className="mt-4"><CodeBlock title="API route Contact Us — inquiry.submitted" code={contactRoute}/></div>
+      <details className="mt-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[#172033]">Backend memakai Python, PHP, atau C#? Lihat contoh pengirim</summary>
+        <p className="mt-2 text-xs leading-5 text-[#64748B]">Contoh ini menerima object event yang sudah dibentuk dan konfigurasi dari environment server. Python memerlukan package <code>requests</code>; PHP memakai ekstensi cURL; contoh C# memakai .NET 6+ dan instance <code>HttpClient</code>. Simpan event ke outbox dan pertahankan event_id/body yang sama untuk retry produksi.</p>
+        <div className="mt-3 grid gap-3 xl:grid-cols-2">
+          <CodeBlock title="Python — kirim event dengan requests" code={pythonSender}/>
+          <CodeBlock title="PHP — kirim event dengan cURL" code={phpSender}/>
+          <div className="xl:col-span-2"><CodeBlock title="C# .NET 6+ — kirim raw body dengan HttpClient" code={csharpSender}/></div>
+        </div>
+        <Note tone="amber"><strong>Yang harus sama:</strong> body UTF-8 yang ditandatangani harus byte yang dikirim. Saat retry, gunakan event_id/body yang sama, tetapi buat timestamp, nonce, dan signature baru. Jangan pernah menaruh secret di frontend/browser.</Note>
+      </details>
+      <Note><strong>Jangan kirim dari browser langsung ke Marka.</strong> Browser mengirim ke API website Anda. API server yang membaca secret, menyusun event, menghitung HMAC, dan memanggil Marka.</Note>
+      <Note tone="green"><strong>Form Contact Us tetap harus menyimpan lead di website.</strong> Buat satu Idempotency-Key per submission, simpan bersama lead/outbox, lalu pakai ulang jika pengiriman ke Marka harus dicoba kembali. Pola ini mencegah duplikasi dan lead hilang ketika salah satu server sedang bermasalah.</Note>
+    </section>
+
+    <section id="crm-events" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-[#172033]">3. Event masuk yang dapat digunakan</h2>
+      <p className="mt-1 text-sm leading-6 text-[#64748B]">Setiap event memiliki pembungkus standar: <code>event_id</code> stabil, <code>event_type</code>, <code>schema_version: 1</code>, waktu kejadian, dan <code>data</code>. <code>company_id</code> tidak perlu dikirim; Marka mengambil company dari Integration Source yang menandatangani request.</p>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-[#E2E8F0]"><table className="min-w-full text-left text-sm"><thead className="bg-[#F8FAFC] text-xs uppercase text-[#64748B]"><tr><th className="px-4 py-3">Event</th><th className="px-4 py-3">Hasil di Marka</th><th className="px-4 py-3">Field wajib/aturan</th></tr></thead><tbody className="divide-y divide-[#E2E8F0] text-[#334155]">
+        {[
+          ["inquiry.submitted", "Membuat Inquiry CRM", "customer.name, customer.email, requirements.subject; phone, description, target_budget opsional."],
+          ["message.received", "Membuat/memperbarui percakapan Customer Inbox", "thread_id dan message_id stabil, message.type TEXT, message.text; sender opsional. Hanya teks."],
+          ["ticket.created", "Membuat tiket Support", "subject dan description; serial_number opsional tetapi jika dikirim harus terdaftar pada company."],
+          ["quotation.decision", "Menerima keputusan pelanggan", "quotation_id UUID yang berstatus SENT; decision ACCEPTED atau REJECTED. Accept menjalankan aturan Deal Won Marka."],
+          ["quotation.accepted", "Shortcut keputusan Accept", "quotation_id quotation Marka berstatus SENT dan terhubung ke Opportunity."],
+        ].map(([event, result, rules]) => <tr key={event}><td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-semibold text-[#2649B3]">{event}</td><td className="px-4 py-3">{result}</td><td className="min-w-[300px] px-4 py-3 text-xs leading-5">{rules}</td></tr>)}
+      </tbody></table></div>
+      <div className="mt-4"><CodeBlock title="Contoh payload message.received, ticket.created, dan quotation.decision" code={eventExamples}/></div>
+      <div className="mt-4 rounded-xl border border-[#E2E8F0] p-4">
+        <h3 className="text-sm font-semibold text-[#172033]">Pilih event sesuai bidang dan proses</h3>
+        <div className="mt-3 overflow-x-auto"><table className="min-w-full text-left text-xs"><thead className="bg-[#F8FAFC] uppercase text-[#64748B]"><tr><th className="px-3 py-2">Sumber / bidang</th><th className="px-3 py-2">Koneksi yang umum</th><th className="px-3 py-2">Yang perlu dipastikan</th></tr></thead><tbody className="divide-y divide-[#E2E8F0] text-[#475569]">
+          {[
+            ["Website, landing page, iklan", "inquiry.submitted", "Validasi form, persetujuan kontak, anti-spam, dan event_id per submission."],
+            ["E-commerce / marketplace", "inquiry.submitted; update status via outbound subscription", "Mapping ID customer/order, mata uang, SKU, dan aturan kapan order menjadi opportunity."],
+            ["Service / helpdesk", "ticket.created", "Serial number harus sudah dikenal Marka dalam company yang aktif."],
+            ["Web chat / WhatsApp adapter", "message.received; balasan melalui message.reply_requested", "ID thread dan pesan harus stabil; saat ini payload percakapan hanya menerima teks."],
+            ["ERP / Finance / Procurement", "Outbound quotation, deal, atau approval", "Webhook memberi notifikasi perubahan; transaksi akuntansi tetap dikelola modul terkait."],
+            ["Portal pelanggan", "Portal API token scoped", "Terbitkan token per customer; cek hak akses quotation sebelum accept/reject."],
+          ].map(([system, pattern, requirement]) => <tr key={system}><td className="px-3 py-2 font-semibold">{system}</td><td className="px-3 py-2 font-mono">{pattern}</td><td className="min-w-[260px] px-3 py-2">{requirement}</td></tr>)}
+        </tbody></table></div>
+      </div>
+      <Note tone="green"><strong>Idempotensi:</strong> buat <code>event_id</code> unik per event dan <code>message_id</code> stabil per pesan sumber. Pada retry, pertahankan ID dan body yang persis sama; buat timestamp header dan nonce baru. Respons <code>202</code> berarti diterima antrean, bukan berarti Inquiry langsung tampil sebelum worker memproses.</Note>
+    </section>
+
+    <section id="crm-coverage" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-[#172033]">4. Peta lengkap fitur CRM dan koneksi eksternalnya</h2>
+      <p className="mt-1 text-sm leading-6 text-[#64748B]">Tidak semua tindakan di CRM adalah webhook. Gunakan matriks ini untuk memilih integrasi yang sesuai dan mengetahui fitur yang tetap dikelola melalui API CRM atau proses internal Marka.</p>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-[#E2E8F0]"><table className="min-w-full text-left text-sm"><thead className="bg-[#F8FAFC] text-xs uppercase text-[#64748B]"><tr><th className="px-4 py-3">Area CRM</th><th className="px-4 py-3">Masuk dari sistem luar</th><th className="px-4 py-3">Keluar / baca dari sistem luar</th><th className="px-4 py-3">Batas dan tindak lanjut</th></tr></thead><tbody className="divide-y divide-[#E2E8F0] text-[#334155]">
+        {[
+          ["Dashboard & laporan CRM", "Tidak ada event dashboard khusus.", "Aplikasi terotorisasi dapat membaca endpoint CRM terkait melalui REST API.", "Ringkasan dashboard bukan endpoint webhook. Tentukan data dan company scope yang memang boleh dibaca."],
+          ["Inquiry & qualification", "inquiry.submitted membuat inquiry berstatus NEW dari web form/marketing.", "Tidak ada outbound event khusus saat inquiry dikualifikasi.", "Nama/email masuk ke field inquiry; phone, description, dan target_budget dicatat sebagai konteks/description, bukan customer party/field anggaran terstruktur. Qualification dilakukan via POST /api/v1/crm/customer-inquiries/:id/qualify/. Inquiry dari Inbox memakai /api/v1/crm/conversations/:id/create-inquiry/."],
+          ["Customer / Accounts & Customer 360", "Payload inquiry boleh membawa nama, email, telepon; identitas tidak otomatis membuat/mencocokkan master customer.", "API terotorisasi dapat membaca Customer 360 di /api/v1/crm/opportunities/:id/customer-360/.", "Cocokkan party secara eksplisit dan company-scoped. Inbox identity hanya ditautkan setelah POST /api/v1/crm/external-identities/:id/confirm-customer/."],
+          ["Customer Inbox & percakapan", "message.received untuk teks; percakapan dikelompokkan per source + thread_id.", "message.reply_requested meminta adapter eksternal meneruskan balasan staf ke kanal asal.", "Adapter pertahankan thread_id/message_id. Assign, ignore/reopen, reply, confirm-customer, dan create-inquiry tersedia di /api/v1/crm/conversations/* melalui API CRM."],
+          ["Sales pipeline, opportunity & deal", "quotation.decision / quotation.accepted dapat menjalankan alur deal dari quotation yang SENT.", "deal.won dikirim setelah alur Deal Won diproses; keputusan executive juga menghasilkan event.", "Opportunity/stage dikelola melalui REST terautentikasi. Mark lost: POST /api/v1/crm/opportunities/:id/mark-lost/. Tidak ada webhook inbound generik untuk mengubah stage."],
+          ["Cost estimate & quotation", "Tidak ada inbound event untuk membuat estimate/baris atau quotation; keputusan quotation adalah inbound event yang didukung.", "quotation.ready, quotation.approved, quotation.accepted, quotation.rejected.", "Hitung estimate: POST /api/v1/crm/cost-estimates/:id/calculate/; buat quotation: POST /api/v1/crm/cost-estimates/:id/create-quotation/. Keputusan inbound hanya untuk quotation SENT terkait opportunity."],
+          ["Credit & executive approval", "Tidak ada inbound event generik untuk mengubah credit limit, snapshot, atau approval.", "crm.executive_approval.decided dan handoff deal.won memberi notifikasi keputusan.", "Hitung snapshot: POST /api/v1/crm/credit-status-snapshots/calculate/. Override/approval perlu role yang berwenang; webhook tidak melewati approval."],
+          ["Support, ticket & warranty", "ticket.created membuat service case; serial_number opsional tetapi harus ada pada company Marka.", "ticket.status_updated dan ticket.resolved dikirim saat aksi resolve yang didukung dijalankan.", "ticket.created tidak otomatis menautkan customer. Untuk party/serial dan operasi lengkap, gunakan POST /api/v1/service/cases; warranty: POST /api/v1/service/cases/:id/check-warranty; work order: POST /api/v1/service/cases/:id/work-orders; selesai: POST /api/v1/service/cases/:id/resolve. Tidak ada event warranty/work-order khusus."],
+          ["Engagement, activity, survey & feedback", "Tidak tersedia event inbound standar untuk activity, survey response, atau feedback.", "Tidak tersedia event outbound khusus untuk activity/survey/feedback.", "Gunakan CRUD REST API CRM terautentikasi dan lakukan pemetaan field/consent dengan hati-hati."],
+          ["Orders, contracts & project handoff", "Tidak dibuat lewat event inbound generik; quotation accepted dapat memulai handoff bisnis.", "deal.won membawa keputusan handoff dan ID order/project/proforma jika sudah dibuat.", "Jika kredit aman, alur dapat membuat Sales Order dan Project; jika tertahan, membuat Proforma/Credit Hold. Data rinci dibaca dari modul Sales/Finance/Projects."],
+          ["Portal pelanggan", "Portal token tidak menerima event tulis.", "Portal API membaca quotation/tiket yang dimiliki party token.", "Token scoped, customer-specific, dapat kedaluwarsa/dicabut, dan tidak boleh ditanam di browser publik."],
+          ["WhatsApp Business", "Callback Meta memvalidasi challenge dan X-Hub-Signature-256; pesan teks masuk ke Inbox.", "Balasan dari Inbox belum dikirim langsung oleh konektor WhatsApp Marka.", "Kirim balasan melalui adapter outbound message.reply_requested. Media/template belum diproses oleh konektor langsung."],
+        ].map(([area, inbound, outbound, limits]) => <tr key={area}><td className="min-w-[180px] px-4 py-3 font-semibold">{area}</td><td className="min-w-[250px] px-4 py-3 text-xs leading-5">{inbound}</td><td className="min-w-[250px] px-4 py-3 text-xs leading-5">{outbound}</td><td className="min-w-[280px] px-4 py-3 text-xs leading-5">{limits}</td></tr>)}
+      </tbody></table></div>
+
+      <details className="mt-4 rounded-xl border border-[#E2E8F0] p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[#172033]">Alur end-to-end yang umum: dari prospek menjadi pelanggan</summary>
+        <ol className="mt-3 space-y-2 text-sm leading-6 text-[#475569]">
+          <li><strong>1. Tangkap prospek:</strong> website/iklan mengirim inquiry.submitted. Marka menyimpan inquiry; integrasi tidak perlu membuat opportunity pada waktu yang sama.</li>
+          <li><strong>2. Qualify dan tautkan customer:</strong> staf memvalidasi detail inquiry, mencocokkan customer/party bila ada, lalu mengubah inquiry menjadi opportunity melalui CRM. Sistem eksternal yang memakai REST harus memakai kredensial user/service account berizin dan company context.</li>
+          <li><strong>3. Buat penawaran:</strong> tim sales mengisi estimate dan quotation dalam Marka. Sistem luar dapat menerima quotation.ready / quotation.approved melalui outbound subscription untuk memperbarui portal atau ERP.</li>
+          <li><strong>4. Terima keputusan:</strong> portal atau sistem penjualan mengirim quotation.decision dengan UUID quotation Marka. Keputusan ACCEPTED hanya sah saat quotation berstatus SENT dan terhubung dengan opportunity; quotation.accepted adalah shortcut ACCEPTED.</li>
+          <li><strong>5. Jalankan pemeriksaan deal:</strong> Marka memeriksa limit kredit dan piutang lewat jatuh tempo. Deal Won mengirim event deal.won; hasil handoff dapat berupa order/project atau Proforma/Credit Hold.</li>
+          <li><strong>6. Layani customer:</strong> kanal chat mengirim message.received dan tiket mengirim ticket.created. Staf verifikasi identitas, membalas lewat adapter, memeriksa garansi, dan menyelesaikan tiket sesuai hak aksesnya.</li>
+          <li><strong>7. Sinkronkan hasil:</strong> subscription outbound menyampaikan perubahan quotation, tiket, persetujuan, dan deal ke receiver eksternal. Receiver memvalidasi signature dan deduplikasi event_id sebelum memproses.</li>
+        </ol>
+      </details>
+
+      <details className="mt-3 rounded-xl border border-[#E2E8F0] p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[#172033]">Setup WhatsApp Business Cloud langsung di Marka</summary>
+        <ol className="mt-3 space-y-2 text-sm leading-6 text-[#475569]">
+          <li><strong>1.</strong> Siapkan Meta Business/WABA, nomor WhatsApp yang aktif, aplikasi Meta, access token dengan izin yang sesuai, dan endpoint backend Marka yang dapat diakses publik lewat HTTPS.</li>
+          <li><strong>2.</strong> Buka tab <strong>WhatsApp Business</strong> di Pengaturan Integrasi CRM. Isi WABA ID, Phone Number ID, Graph API version, access token, Meta App Secret, dan Verify Token. Simpan, lalu gunakan tombol <strong>Uji koneksi Meta</strong>.</li>
+          <li><strong>3.</strong> Daftarkan callback URL <code>https://&lt;domain-backend-marka&gt;/api/v1/integrations/whatsapp/webhook</code> di Meta Developers. Isi callback dengan Verify Token yang sama dan aktifkan subscription <code>messages</code> untuk WABA.</li>
+          <li><strong>4.</strong> Kirim pesan uji dari nomor WhatsApp lain. Callback GET Meta memverifikasi challenge; POST memverifikasi <code>X-Hub-Signature-256</code> memakai App Secret. Marka memetakan WABA + Phone Number ID ke koneksi company lalu membuat event pesan untuk Inbox.</li>
+        </ol>
+        <Note tone="amber"><strong>Batas konektor langsung:</strong> hanya pesan teks yang diteruskan ke Inbox pada implementasi ini. Media, status pesan, template, dan pengiriman balasan belum ditangani langsung. Jika balasan staf harus terkirim ke WhatsApp, bangun adapter outbound untuk <code>message.reply_requested</code> atau gunakan middleware kanal yang sudah dimiliki perusahaan.</Note>
+      </details>
+
+      <Note tone="amber"><strong>Pemisahan autentikasi:</strong> Integration Source HMAC hanya mengizinkan lima jenis inbound event yang tercantum di bagian 3. Endpoint /api/v1/crm/* dan modul Sales/Service lain memerlukan JWT user Marka dengan izin yang sesuai serta company context (umumnya header <code>X-Company-ID</code>). Customer Portal memakai token party-scoped yang hanya untuk baca quotation/tiket. Ketiga kredensial ini tidak saling menggantikan. Jangan memakai akun staf pribadi sebagai credential production jangka panjang.</Note>
+      <div className="mt-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+        <h3 className="text-sm font-semibold text-[#172033]">REST CRM terautentikasi yang umum dipakai adapter</h3>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <ul className="space-y-1 text-xs leading-5 text-[#475569]"><li><code>/api/v1/crm/customer-inquiries/</code> — inquiry dan qualification</li><li><code>/api/v1/crm/opportunities/</code> — pipeline dan opportunity</li><li><code>/api/v1/crm/activities/</code> — telepon, meeting, follow-up</li><li><code>/api/v1/crm/cost-estimates/</code> — kalkulasi estimate dan create quotation</li><li><code>/api/v1/crm/executive-approvals/</code> — baca/putuskan approval sesuai role</li></ul>
+          <ul className="space-y-1 text-xs leading-5 text-[#475569]"><li><code>/api/v1/crm/inbox/</code> dan <code>/api/v1/crm/conversations/</code> — percakapan</li><li><code>/api/v1/service/cases/</code> — tiket; termasuk check-warranty dan work-orders</li><li><code>/api/v1/sales/quotations/</code>, <code>/api/v1/sales/orders/</code> — dokumen sales</li><li><code>/api/v1/crm/opportunities/:id/customer-360/</code> — ringkasan hubungan customer</li><li><code>/api/v1/crm/feedbacks/</code>, <code>/api/v1/crm/surveys/</code> — survey dan feedback</li></ul>
+        </div>
+        <p className="mt-3 text-xs leading-5 text-[#64748B]">Daftar ini adalah REST API aplikasi yang tetap tunduk pada autentikasi, company scope, akses modul, dan role. Untuk event otomatis antarsistem, gunakan webhook HMAC/ subscription yang dijelaskan di bagian lain. Jangan memakai kredensial staf pribadi sebagai secret permanen untuk integrasi production.</p>
+      </div>
+    </section>
+
+    <section id="crm-outbound" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-[#172033]">5. Jika sistem eksternal perlu menerima update dari Marka</h2>
+      <p className="mt-1 text-sm leading-6 text-[#64748B]">Buat endpoint penerima HTTPS di website, lalu daftarkan outbound subscription. Saat ini subscription outbound dikelola melalui API admin (Company Administrator + JWT Marka + <code>X-Company-ID</code>); tab pengaturan ini menyiapkan source inbound.</p>
+      <div className="mt-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 text-sm leading-6 text-[#475569]">
+        <p><strong>Buat subscription:</strong> <code>POST /api/v1/core/integration-sources/outbound-subscriptions</code></p>
+        <p><strong>Body:</strong> <code>{`{ "name": "Arsalynk portal", "target_url": "https://www.arsalynk.com/api/webhooks/marka", "events": ["quotation.ready", "ticket.resolved", "deal.won"] }`}</code></p>
+        <p><strong>Respons:</strong> simpan <code>signing_secret</code> satu kali di server website sebagai <code>MARKA_OUTBOUND_SIGNING_SECRET</code>.</p>
+      </div>
+      <div className="mt-4"><CodeBlock title="Endpoint penerima — validasi signature outbound Marka" code={outboundReceiver}/></div>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-[#E2E8F0]"><table className="min-w-full text-left text-sm"><thead className="bg-[#F8FAFC] text-xs uppercase text-[#64748B]"><tr><th className="px-4 py-3">Outbound event</th><th className="px-4 py-3">Dikirim ketika</th></tr></thead><tbody className="divide-y divide-[#E2E8F0] text-[#334155]">
+        {[
+          ["quotation.ready", "Staf mengirim quotation dari Marka."],
+          ["quotation.approved", "Quotation lolos persetujuan internal."],
+          ["quotation.accepted / quotation.rejected", "Keputusan quotation selesai diproses."],
+          ["ticket.status_updated / ticket.resolved", "Tiket di-resolve dari Marka."],
+          ["deal.won", "Opportunity melewati alur Deal Won."],
+          ["crm.executive_approval.decided", "Persetujuan eksekutif diputuskan."],
+          ["message.reply_requested", "Staf meminta pengiriman balasan; adapter website/kanal tetap perlu meneruskan pesan ke provider chat."],
+        ].map(([event, when]) => <tr key={event}><td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-semibold text-[#2649B3]">{event}</td><td className="px-4 py-3 text-xs leading-5">{when}</td></tr>)}
+      </tbody></table></div>
+      <Note tone="amber"><strong>Signature outbound berbeda dari inbound.</strong> Outbound dihitung atas teks <code>v1\nPOST\n{`{timestamp}`}\n</code> lalu raw body; header-nya <code>X-Marka-Timestamp</code> dan <code>X-Marka-Signature: sha256=…</code>. Endpoint website harus merespons 2xx setelah menyimpan event. Marka mencoba ulang sampai 5 kali, kemudian delivery masuk DEAD_LETTER.</Note>
+      <Note tone="blue"><strong>Jalur WhatsApp Arsalynk:</strong> jika WhatsApp saat ini terhubung dan dikelola oleh Arsalynk, webhook/provider tetap mengarah ke server Arsalynk, lalu Arsalynk meneruskan pesan masuk ke Marka sebagai <code>message.received</code>. Jangan arahkan callback provider yang sama langsung ke Marka sekaligus meneruskannya dari Arsalynk; pilih satu jalur agar pesan tidak tercatat dua kali. Balasan staf dari Marka membutuhkan adapter outbound yang meneruskan event <code>message.reply_requested</code> ke provider WhatsApp.</Note>
+    </section>
+
+    <section id="crm-portal" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-[#172033]">6. Portal pelanggan: baca quotation dan status tiket</h2>
+      <p className="mt-1 text-sm leading-6 text-[#64748B]">Untuk portal klien, jangan memakai JWT staf atau Integration Source secret. Admin Marka membuat token terbatas untuk satu customer/party; token hanya dapat membaca data milik party tersebut dan dapat dicabut.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-[#E2E8F0] p-4"><h3 className="text-sm font-semibold text-[#172033]">Buat token (admin Marka)</h3><p className="mt-2 text-xs leading-5 text-[#64748B]">POST <code>/api/v1/crm/portal-tokens</code> dengan JWT admin dan <code>X-Company-ID</code>. Body: <code>{`{ "party_id": "<customer UUID>", "scopes": ["quotation:read", "ticket:read"], "expires_in_days": 90 }`}</code>. Simpan <code>api_key</code> satu kali di backend portal, bukan browser.</p></div>
+        <div className="rounded-xl border border-[#E2E8F0] p-4"><h3 className="text-sm font-semibold text-[#172033]">Baca data milik pelanggan</h3><p className="mt-2 text-xs leading-5 text-[#64748B]">GET <code>/api/v1/portal/quotations/:id</code> atau <code>/api/v1/portal/tickets/:id</code> dengan <code>Authorization: Bearer &lt;portal_token&gt;</code>. Akses hanya berhasil jika quotation/tiket sudah ditautkan ke party pemilik token.</p></div>
+      </div>
+      <Note tone="amber"><strong>Keputusan Accept/Reject tetap perlu otorisasi website.</strong> Sebelum mengirim <code>quotation.decision</code>, portal harus memastikan pengguna login memang berhak atas quotation tersebut, lalu meminta konfirmasi eksplisit. API webhook mengautentikasi integrasi website; API itu tidak menggantikan pemeriksaan hak customer.</Note>
+      <div className="mt-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+        <h3 className="text-sm font-semibold text-[#172033]">Kelola dan pantau koneksi outbound</h3>
+        <ul className="mt-2 space-y-1 text-xs leading-5 text-[#64748B]">
+          <li>Daftar: <code>GET /api/v1/core/integration-sources/outbound-subscriptions</code></li>
+          <li>Jeda/aktifkan: <code>PATCH /api/v1/core/integration-sources/outbound-subscriptions/:id/status</code></li>
+          <li>Delivery terbaru: <code>GET /api/v1/core/integration-sources/outbound-subscriptions/:id/deliveries</code></li>
+          <li>Retry delivery dead-letter: <code>POST /api/v1/core/integration-sources/outbound-subscriptions/:id/deliveries/:deliveryId/retry</code></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="crm-e2e" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-[#172033]">7. Uji dari ujung ke ujung</h2>
+      <ol className="mt-3 space-y-3 text-sm leading-6 text-[#475569]">
+        <li><strong>1.</strong> Pastikan source di Marka berstatus ACTIVE dan event yang diuji dicentang.</li>
+        <li><strong>2.</strong> Kirim satu Contact Us atau pesan chat dari website. API website harus menerima request form lalu memanggil <code>sendMarkaEvent</code> dari server.</li>
+        <li><strong>3.</strong> Pastikan backend Marka membalas <code>202</code> (atau <code>200</code> untuk duplikat).</li>
+        <li><strong>4.</strong> Tunggu worker inbound, lalu buka CRM → Customer Inbox untuk chat atau tab Incoming Inquiry untuk inquiry form.</li>
+        <li><strong>5.</strong> Untuk jalur balik, daftar subscription outbound, jalankan aksi bisnis di Marka, lalu cek delivery log dan event penerima website.</li>
+      </ol>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-[#E2E8F0]"><table className="min-w-full text-left text-sm"><thead className="bg-[#F8FAFC] text-xs uppercase text-[#64748B]"><tr><th className="px-4 py-3">Respons</th><th className="px-4 py-3">Makna / tindak lanjut</th></tr></thead><tbody className="divide-y divide-[#E2E8F0] text-[#334155]">
+        {[
+          ["202", "Event baru tersimpan di antrean Marka."], ["200", "event_id dan payload sama sudah pernah diterima; tidak membuat duplikat."], ["400 / 422", "Periksa schema_version, allowed_event_types, tipe event, dan field wajib."], ["401", "Periksa raw body, HMAC, key ID, timestamp ±5 menit, nonce unik, dan secret."], ["403", "Source integrasi dijeda atau tidak aktif."], ["409", "event_id dipakai ulang dengan body berbeda; buat ID baru untuk payload baru."], ["503", "Marka belum memastikan event tersimpan; retry dengan event_id/body sama dan nonce, timestamp, serta signature baru."],
+        ].map(([status, meaning]) => <tr key={status}><td className="px-4 py-3 font-mono text-xs font-semibold text-[#2649B3]">{status}</td><td className="px-4 py-3 text-xs leading-5">{meaning}</td></tr>)}
+      </tbody></table></div>
+      <a href="/crm" className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[#2649B3] hover:underline">Buka CRM Marka <ExternalLink size={14}/></a>
+    </section>
+
+    <section id="crm-troubleshooting" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-[#172033]">8. Diagnosis masalah koneksi</h2>
+      <p className="mt-1 text-sm leading-6 text-[#64748B]">Mulai dari status HTTP, kemudian periksa source, waktu server, dan byte body. Jangan mengirim secret melalui chat atau log untuk mendiagnosis masalah.</p>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-[#E2E8F0]"><table className="min-w-full text-left text-sm"><thead className="bg-[#F8FAFC] text-xs uppercase text-[#64748B]"><tr><th className="px-4 py-3">Gejala</th><th className="px-4 py-3">Penyebab umum</th><th className="px-4 py-3">Langkah perbaikan</th></tr></thead><tbody className="divide-y divide-[#E2E8F0] text-[#334155]">
+        {[
+          ["401 INVALID_SIGNATURE", "Secret/key ID salah atau body berubah setelah HMAC dihitung.", "Cocokkan key ID dengan source aktif. Serialize JSON sekali; hitung HMAC dan kirim byte body yang sama."],
+          ["401 STALE_TIMESTAMP", "Jam server integrasi meleset atau antrean pengiriman terlalu lama.", "Sinkronkan NTP; buat timestamp baru setiap percobaan. Toleransi server Marka ±300 detik."],
+          ["401 INVALID_NONCE / NONCE_REPLAY", "Nonce dipakai kembali atau tidak sesuai format.", "Buat nonce acak 16–128 karakter setiap percobaan, termasuk saat retry."],
+          ["400 EVENT_TYPE_NOT_ALLOWED", "Event yang dikirim tidak dicentang pada source.", "Company Admin gunakan source dengan event yang diperlukan atau kirim tipe yang sudah diizinkan."],
+          ["400 INVALID_INQUIRY_EVENT", "Customer/email/subject wajib kosong atau tidak valid.", "Periksa customer.name, format customer.email, dan requirements.subject pada payload."],
+          ["422 UNSUPPORTED_MESSAGE_TYPE", "Payload chat membawa media atau type selain TEXT.", "Kirim teks yang dinormalisasi. Simpan pemrosesan media di adapter kanal eksternal."],
+          ["503 CRM_INTEGRATION_NOT_CONFIGURED", "Kunci enkripsi server tidak ada atau bukan Base64 dari 32 byte.", "Atur CRM_INTEGRATION_ENCRYPTION_KEY pada backend, pastikan sama di semua instance, lalu restart. Jangan mengganti key yang telah mengenkripsi secret aktif."],
+          ["Tidak ada update outbound", "Subscription nonaktif, event belum dipilih, atau receiver tidak membalas 2xx.", "Periksa company scope, event subscription, delivery log, TLS/DNS, firewall, dan log endpoint penerima."],
+          ["Event PENDING / DEAD_LETTER", "Worker berhenti atau pemrosesan terus gagal.", "Periksa GET /api/v1/core/integration-sources/:id/events/ dan log backend/database. Setelah memperbaiki penyebab, retry dengan POST /api/v1/core/integration-sources/:id/events/:eventId/retry/. Pada serverless, siapkan scheduler worker terproteksi."],
+        ].map(([symptom, cause, fix]) => <tr key={symptom}><td className="min-w-[190px] px-4 py-3 font-mono text-xs font-semibold text-[#2649B3]">{symptom}</td><td className="min-w-[220px] px-4 py-3 text-xs leading-5">{cause}</td><td className="min-w-[300px] px-4 py-3 text-xs leading-5">{fix}</td></tr>)}
+      </tbody></table></div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <Note tone="blue"><strong>Retry yang aman:</strong> untuk gangguan jaringan atau HTTP 503/408/429, pertahankan event_id dan body, tetapi buat timestamp, nonce, dan signature baru. Simpan event ke outbox sebelum mengirim agar tidak hilang saat website restart.</Note>
+        <Note tone="amber"><strong>Data yang perlu dicatat:</strong> simpan status HTTP, event_id, integration source, waktu percobaan, dan error code. Jangan catat signing secret, token akses, atau payload pribadi pelanggan secara penuh.</Note>
+      </div>
+    </section>
+  </div>;
+}

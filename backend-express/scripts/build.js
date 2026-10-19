@@ -14,6 +14,7 @@
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -79,6 +80,15 @@ function main() {
 
   run(process.execPath, [path.join(root, 'node_modules', 'prisma', 'build', 'index.js'), 'generate']);
   run(process.execPath, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc')]);
+
+  // Generate build-metadata.json for non-git/Hostinger deployments
+  const distDir = path.join(root, 'dist');
+  if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
+  const buildId = crypto.randomBytes(6).toString('hex');
+  fs.writeFileSync(
+    path.join(distDir, 'build-metadata.json'),
+    JSON.stringify({ buildId, builtAt: new Date().toISOString() }, null, 2)
+  );
 
   if (isHostinger) {
     console.log('Hostinger application build: production migrations checked/applied, Prisma generated, and TypeScript compiled.');

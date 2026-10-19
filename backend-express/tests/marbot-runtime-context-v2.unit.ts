@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { RoleCode } from '@prisma/client';
-import { createMarbotRuntimeContextV2 } from '../src/modules/marbot/marbot-runtime.service';
+import { createMarbotRuntimeContextV2 } from '../src/modules/marbot/brain/runtime.service';
 import { normalizeRequestPath, normalizeRequestUrl } from '../src/middlewares/path-normalization.middleware';
 
 const context = createMarbotRuntimeContextV2('user-1', 'company-1', {

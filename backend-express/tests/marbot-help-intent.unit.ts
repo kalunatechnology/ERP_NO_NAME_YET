@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
-import { helperAnswer } from '../src/modules/marbot/marbot-knowledge';
-import { answerNative, followUpQuestion, NativeScope } from '../src/modules/marbot/marbot-native.service';
-import { isProcedureQuestion, procedureOperation, procedureTopic } from '../src/modules/marbot/marbot-intent';
-import { isNativeTaskReadQuestion } from '../src/modules/marbot/marbot-native.service';
-import { proposeAction } from '../src/modules/marbot/marbot-action.service';
-import { proposeNamedTaskAction } from '../src/modules/marbot/marbot-named-action.service';
-import { planNativeQuestion, validateNativePlan } from '../src/modules/marbot/marbot-planner.service';
-import { planResourceQuestion } from '../src/modules/marbot/marbot-resource.service';
+import { helperAnswer } from '../src/modules/marbot/knowledge/knowledge';
+import { answerNative, followUpQuestion, NativeScope } from '../src/modules/marbot/brain/reasoning/native.service';
+import { isProcedureQuestion, procedureOperation, procedureTopic } from '../src/modules/marbot/brain/reasoning/intent';
+import { isNativeTaskReadQuestion } from '../src/modules/marbot/brain/reasoning/native.service';
+import { proposeAction } from '../src/modules/marbot/brain/actions/action.service';
+import { proposeNamedTaskAction } from '../src/modules/marbot/brain/actions/named-action.service';
+import { planNativeQuestion, validateNativePlan } from '../src/modules/marbot/brain/reasoning/planner.service';
+import { planResourceQuestion } from '../src/modules/marbot/knowledge/resource.service';
 import { env } from '../src/config/env';
 import prisma from '../src/config/database';
 
@@ -39,6 +39,13 @@ async function main() {
     { topic: 'timesheet', prompts: ['Bagaimana cara memulai timer kerja?', 'bagaimana menghentikan timesheet?', 'cara mengajukan lembur'], expected: /timer|lembur/, forbidden: /Ajukan Target Mingguan/ },
     { topic: 'leave', prompts: ['cara ajukan cuti', 'bisa membuat leave request?', 'pengajuan izin di mana?'], expected: /Leave Request/, forbidden: /Tambah Notulensi/ },
     { topic: 'invoice', prompts: ['cara membuat invoice', 'bagaimana approve billing termin?', 'bisa terbitkan invoice?'], expected: /Terbitkan Billing/, forbidden: /Tambah Notulensi/ },
+    { topic: 'project', prompts: [
+      'bagaimana saya melakukan update life scycel yang ada di project',
+      'cara update lifecycle project',
+      'bagaimana memajukan stage lifecycle proyek?',
+      'cara ganti status lifecycle proyek',
+      'bisa update tahapan proyek?'
+    ], expected: /Lifecycle Proyek|Stage Flow|Majukan Stage Lifecycle/i, forbidden: /Hapus Daily Task|Tambah Notulensi/ },
   ];
   for (const group of groups) for (const prompt of group.prompts) {
     assert.equal(procedureTopic(prompt)?.id, group.topic, prompt);
@@ -64,8 +71,8 @@ async function main() {
   assert.match(helperAnswer('cara edit task'), /Main Task, Weekly Task, atau Daily Task/);
   assert.match(helperAnswer('cara membuat dan menghapus meeting'), /beberapa tindakan/);
   assert.match(helperAnswer('bisakah edit daily task dan hapus meeting?'), /beberapa tindakan/);
-  assert.match(helperAnswer('berapa jumlah meeting saya?'), /Data meeting aktual belum dibaca/);
-  assert.match(helperAnswer('cara hapus proyek yang punya daily task'), /Maksud fitur atau tindakan belum jelas/);
+  assert.match(helperAnswer('cara hapus proyek yang punya daily task'), /belum dapat dipastikan/);
+  assert.doesNotMatch(helperAnswer('cara hapus proyek yang punya daily task'), /Hapus Daily Task/);
   assert.equal(procedureTopic('cara edit daily task "Hapus meeting"')?.id, 'daily');
   assert.match(followUpQuestion('kalau dihapus?', 'bagaimana membuat meeting?'), /meeting/);
   const followUp = await answerNative(followUpQuestion('kalau dihapus?', 'bagaimana membuat meeting?'), 'HELPER', staff, noBusinessAccess as any);

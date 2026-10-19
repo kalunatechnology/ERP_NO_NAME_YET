@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { normalizeProjectScope } from '../src/modules/marbot/marbot-access.service';
+import { normalizeProjectScope } from '../src/modules/marbot/brain/security/access.service';
 
 assert.deepEqual(normalizeProjectScope({ mode: 'LIST', projectIds: ['c', 'a', 'a'] }), {
   mode: 'LIST', projectIds: ['a', 'c'],

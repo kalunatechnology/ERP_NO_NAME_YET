@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { createHmacSignature, matchesHmac } from '../src/modules/marbot/marbot-signature.service';
+import { createHmacSignature, matchesHmac } from '../src/modules/marbot/brain/security/signature.service';
 
 const base = ['GET', '/internal/marbot/projects/summary?projectId=a', '1', 'n', 'hash',
   'tenant', 'user', 'STAFF', 'project.summary', 'request', 'company',

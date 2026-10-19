@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import prisma from '../src/config/database';
-import { buildMarbotRuntimeAuthority } from '../src/modules/marbot/marbot-access.service';
-import { answerNative, NativeScope } from '../src/modules/marbot/marbot-native.service';
-import { discoverMarbotSchema } from '../src/modules/marbot/marbot-schema.service';
-import { loadNativePolicyRestrictions } from '../src/modules/marbot/marbot-policy.service';
-import { assertNativeMarbotStorageReady } from '../src/modules/marbot/marbot-runtime.service';
+import { buildMarbotRuntimeAuthority } from '../src/modules/marbot/brain/security/access.service';
+import { answerNative, NativeScope } from '../src/modules/marbot/brain/reasoning/native.service';
+import { discoverMarbotSchema } from '../src/modules/marbot/knowledge/schema.service';
+import { loadNativePolicyRestrictions } from '../src/modules/marbot/brain/security/policy.service';
+import { assertNativeMarbotStorageReady } from '../src/modules/marbot/brain/runtime.service';
 
 // Explicit read-only smoke test. Never create fixtures in the connected database.
 async function main() {

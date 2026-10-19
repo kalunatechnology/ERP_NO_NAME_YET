@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import express from 'express';
-import { callResourceApi } from '../src/modules/marbot/marbot-resource.service';
-import { executeCanonicalAction } from '../src/modules/marbot/marbot-execution.service';
+import { callResourceApi } from '../src/modules/marbot/knowledge/resource.service';
+import { executeCanonicalAction } from '../src/modules/marbot/brain/actions/execution.service';
 
 async function main() {
   const app = express();

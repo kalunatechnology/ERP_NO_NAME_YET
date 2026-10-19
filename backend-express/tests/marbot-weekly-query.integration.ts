@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { Client } from 'pg';
 import { RoleCode, Prisma } from '@prisma/client';
-import { answerNative, NativeScope } from '../src/modules/marbot/marbot-native.service';
+import { answerNative, NativeScope } from '../src/modules/marbot/brain/reasoning/native.service';
 
 // All rows live in connection-local temporary tables and are rolled back.
 // Refuse shared/cloud databases even if the operational .env selects one.

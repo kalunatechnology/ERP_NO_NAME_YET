@@ -13,61 +13,86 @@ import {
   WorkflowValidationError,
 } from '../../engine';
 
+export const CANONICAL_PROJECT_LIFECYCLE_STAGES = [
+  'INCOMING',
+  'DISCOVERY',
+  'PITCHING',
+  'NEGOTIATION',
+  'VERIFIED',
+  'RESERVED',
+  'ACTIVE',
+  'CLOSED',
+  'LOST',
+] as const;
+
+export type CanonicalLifecycleStage = typeof CANONICAL_PROJECT_LIFECYCLE_STAGES[number];
+
+type ProjectLifecycleRule = {
+  allowedNext: readonly CanonicalLifecycleStage[];
+  allowedRoles: readonly string[];
+};
+
+const SALES_LIFECYCLE_ROLES = [
+  'SUPER_ADMIN', 'COMPANY_ADMIN', 'DIRECTOR', 'CRM_LEAD', 'SALES', 'PROJECT_MANAGER',
+] as const;
+
+const DELIVERY_LIFECYCLE_ROLES = [
+  'SUPER_ADMIN', 'COMPANY_ADMIN', 'DIRECTOR', 'OPERATIONAL_MANAGER', 'PROJECT_MANAGER',
+] as const;
+
+export const PROJECT_LIFECYCLE_RULES: Record<CanonicalLifecycleStage, ProjectLifecycleRule> = {
+  INCOMING: { allowedNext: ['DISCOVERY', 'LOST'], allowedRoles: SALES_LIFECYCLE_ROLES },
+  DISCOVERY: { allowedNext: ['PITCHING', 'LOST'], allowedRoles: SALES_LIFECYCLE_ROLES },
+  PITCHING: { allowedNext: ['NEGOTIATION', 'LOST'], allowedRoles: SALES_LIFECYCLE_ROLES },
+  NEGOTIATION: { allowedNext: ['VERIFIED', 'LOST'], allowedRoles: SALES_LIFECYCLE_ROLES },
+  VERIFIED: { allowedNext: ['RESERVED', 'LOST'], allowedRoles: DELIVERY_LIFECYCLE_ROLES },
+  RESERVED: { allowedNext: ['ACTIVE', 'LOST'], allowedRoles: DELIVERY_LIFECYCLE_ROLES },
+  ACTIVE: { allowedNext: ['CLOSED', 'LOST'], allowedRoles: DELIVERY_LIFECYCLE_ROLES },
+  CLOSED: { allowedNext: [], allowedRoles: [] },
+  LOST: { allowedNext: [], allowedRoles: [] },
+};
+
 export class DefaultProjectWorkflow extends BaseWorkflow {
   readonly TENANT_CODE = 'default';
   readonly MODULE_CODE = 'PROJECT';
 
-  readonly VALID_STATUSES = [
-    'DRAFT',
-    'VERIFIED',
-    'RESOURCE_RESERVED',
-    'IN_PROGRESS',
-    'COMPLETED',
-    'ON_HOLD',
-    'CANCELLED',
-  ];
+  readonly VALID_STATUSES = [...CANONICAL_PROJECT_LIFECYCLE_STAGES];
 
   readonly TRANSITIONS = {
-    DRAFT: [
-      {
-        action: 'verify',
-        label: 'Verify Project',
-        to_status: 'VERIFIED',
-        description: 'All prerequisites validated: budget, scope, resources.',
-      },
+    INCOMING: [
+      { action: 'discover', label: 'Start Discovery', to_status: 'DISCOVERY' },
+      { action: 'mark-lost', label: 'Mark Lost', to_status: 'LOST' },
+    ],
+    DISCOVERY: [
+      { action: 'start-pitching', label: 'Start Pitching', to_status: 'PITCHING' },
+      { action: 'mark-lost', label: 'Mark Lost', to_status: 'LOST' },
+    ],
+    PITCHING: [
+      { action: 'start-negotiation', label: 'Start Negotiation', to_status: 'NEGOTIATION' },
+      { action: 'mark-lost', label: 'Mark Lost', to_status: 'LOST' },
+    ],
+    NEGOTIATION: [
+      { action: 'verify-deal', label: 'Verify Deal', to_status: 'VERIFIED' },
+      { action: 'mark-lost', label: 'Mark Lost', to_status: 'LOST' },
     ],
     VERIFIED: [
-      {
-        action: 'reserve-materials',
-        label: 'Reserve Resources',
-        to_status: 'RESOURCE_RESERVED',
-        description: 'Lock materials and resources for project execution.',
-      },
+      { action: 'reserve-resources', label: 'Reserve Resources', to_status: 'RESERVED' },
+      { action: 'mark-lost', label: 'Mark Lost', to_status: 'LOST' },
     ],
-    RESOURCE_RESERVED: [
-      {
-        action: 'start',
-        label: 'Start Project',
-        to_status: 'IN_PROGRESS',
-        description: 'Begin active project execution. Notifies all departments.',
-      },
+    RESERVED: [
+      { action: 'start-project', label: 'Start Project', to_status: 'ACTIVE' },
+      { action: 'mark-lost', label: 'Mark Lost', to_status: 'LOST' },
     ],
-    IN_PROGRESS: [
-      {
-        action: 'complete',
-        label: 'Complete Project',
-        to_status: 'COMPLETED',
-        description: 'Project delivery done. Triggers billing proposal and close-out.',
-      },
-      { action: 'hold', label: 'Put On Hold', to_status: 'ON_HOLD' },
+    ACTIVE: [
+      { action: 'close-project', label: 'Close Project', to_status: 'CLOSED' },
+      { action: 'mark-lost', label: 'Mark Lost', to_status: 'LOST' },
     ],
-    ON_HOLD: [
-      { action: 'resume', label: 'Resume', to_status: 'IN_PROGRESS' },
-    ],
+    CLOSED: [],
+    LOST: [],
   };
 
   getInitialStatus(): string {
-    return 'DRAFT';
+    return 'INCOMING';
   }
 
   getAvailableTransitions(
@@ -83,7 +108,7 @@ export class DefaultProjectWorkflow extends BaseWorkflow {
     toStatus: string,
     _context: TransitionContext,
   ): void {
-    if (toStatus === 'COMPLETED') {
+    if (toStatus === 'CLOSED') {
       const progress = Number(
         document['progress_percent'] ?? document['progress'] ?? document['progress_percentage'] ?? 0,
       );

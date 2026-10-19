@@ -4,10 +4,10 @@ import { RoleCode } from '@prisma/client';
 import prisma from '../src/config/database';
 import { ProjectsService } from '../src/modules/projects/projects.service';
 import { buildResourceScope, applyAndValidateWriteScope } from '../src/modules/accounts/resource-scope.service';
-import { reserveMarbotRequest } from '../src/modules/marbot/marbot-rate-limit.service';
-import { marbotAuthorityKey, visibleConversationTitle, marbotMessageAuthority, canReadMarbotMessage } from '../src/modules/marbot/marbot-authority.service';
-import { requireSignedExternalContract, externalConversationKey, readExternalAnswer } from '../src/modules/marbot/marbot-external-security.service';
-import { allowedMcpTools } from '../src/modules/marbot/marbot-mcp.routes';
+import { reserveMarbotRequest } from '../src/modules/marbot/brain/security/rate-limit.service';
+import { marbotAuthorityKey, visibleConversationTitle, marbotMessageAuthority, canReadMarbotMessage } from '../src/modules/marbot/brain/security/authority.service';
+import { requireSignedExternalContract, externalConversationKey, readExternalAnswer } from '../src/modules/marbot/brain/security/external-security.service';
+import { allowedMcpTools } from '../src/modules/marbot/routing/mcp.routes';
 import { signAccessToken, verifyAccessToken } from '../src/utils/jwt';
 import { env } from '../src/config/env';
 import jwt from 'jsonwebtoken';
@@ -15,11 +15,15 @@ import jwt from 'jsonwebtoken';
 async function main() {
   const pm = { id: 'pm-a', active_role_code: RoleCode.PROJECT_MANAGER, roles: [RoleCode.PROJECT_MANAGER, RoleCode.STAFF], tenant_id: 'tenant-a' };
   const rows = [{ id: 'p-a', company_id: 'company-a', tenant_id: 'tenant-a', created_by_id: 'pm-a' },
-    { id: 'p-b', company_id: 'company-a', tenant_id: 'tenant-a', created_by_id: 'pm-b', project_manager_id: 'pm-a' },
+    { id: 'p-b', company_id: 'company-a', tenant_id: 'tenant-a', created_by_id: 'pm-b', project_manager_id: 'pm-b' },
     { id: 'p-legacy', company_id: 'company-a', tenant_id: 'tenant-a', created_by_id: null },
     { id: 'p-cross', company_id: 'company-b', tenant_id: 'tenant-b', created_by_id: 'pm-a' }];
-  const matches = (row: any, where: any): boolean => Object.entries(where).every(([key, value]) =>
-    key === 'AND' ? (value as any[]).every(part => matches(row, part)) : row[key] === value);
+  const matches = (row: any, where: any): boolean => Object.entries(where).every(([key, value]) => {
+    if (key === 'AND') return (value as any[]).every(part => matches(row, part));
+    if (key === 'OR') return (value as any[]).some(part => matches(row, part));
+    if (value && typeof value === 'object' && 'in' in (value as any)) return ((value as any).in as any[]).includes(row[key]);
+    return row[key] === value;
+  });
   const projects = {
     findMany: async ({ where }: any) => rows.filter(row => matches(row, where)),
     findFirst: async ({ where }: any) => rows.find(row => matches(row, where)) ?? null,
@@ -28,6 +32,7 @@ async function main() {
     project_main_task: { findMany: async ({ where }: any) => { assert.deepEqual(where.project_id.in, ['p-a']); return [{ id: 'main-a' }]; } },
     project_weekly_task: { findMany: async ({ where }: any) => { assert.deepEqual(where.main_task_id.in, ['main-a']); return [{ id: 'weekly-a' }]; } },
     project_daily_task: { findMany: async ({ where }: any) => { assert.deepEqual(where.weekly_task_id.in, ['weekly-a']); return [{ id: 'daily-a' }]; } },
+    project_member: { findMany: async () => [] },
   };
   assert.deepEqual(await ProjectsService.managedProjectIds(pm, 'company-a', db), ['p-a']);
   await ProjectsService.assertCanManageProject(pm, 'p-a', 'company-a', db);

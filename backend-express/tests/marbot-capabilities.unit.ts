@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
-import { proposeAction } from '../src/modules/marbot/marbot-action.service';
-import { answerNative, NativeScope, queryPeriod, detectTools } from '../src/modules/marbot/marbot-native.service';
-import { discoverMarbotSchema, readableTables } from '../src/modules/marbot/marbot-schema.service';
+import { proposeAction } from '../src/modules/marbot/brain/actions/action.service';
+import { answerNative, NativeScope, queryPeriod, detectTools } from '../src/modules/marbot/brain/reasoning/native.service';
+import { discoverMarbotSchema, readableTables } from '../src/modules/marbot/knowledge/schema.service';
 import prisma from '../src/config/database';
-import { loadNativePolicyRestrictions } from '../src/modules/marbot/marbot-policy.service';
+import { loadNativePolicyRestrictions } from '../src/modules/marbot/brain/security/policy.service';
 
 const scope: NativeScope = { tenantId: 't', companyId: 'c', userId: 'u', roleId: 'r', roleCode: RoleCode.PROJECT_MANAGER, enabledModules: ['MARBOT', 'PROJECTS'], permissions: ['USE_MARBOT', 'READ_PROJECT', 'READ_TASK'], projectScope: { mode: 'LIST', projectIds: ['p'] } };
 const id = 'b75d14c9-365c-49a8-b4c0-de618d827c25';

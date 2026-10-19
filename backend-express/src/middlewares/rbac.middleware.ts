@@ -229,7 +229,7 @@ export function enforceSuperAdminReadOnly(req: Request, _res: Response, next: Ne
   ]);
   if (method === 'POST' && personalUtilityPosts.has(requestPath)) return next();
 
-  const governancePrefixes = ['/auth/', '/accounts/', '/core/companies', '/core/tenants'];
+  const governancePrefixes = ['/auth/', '/accounts/', '/core/companies', '/core/tenants', '/core/integration-sources'];
   if (governancePrefixes.some((prefix) => requestPath.startsWith(prefix))) {
     return next();
   }

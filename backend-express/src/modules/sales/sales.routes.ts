@@ -10,6 +10,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { queueWebhookEvent } from '../crm/crm-outbound-webhook.service';
 
 export const salesRouter = Router();
 
@@ -54,11 +55,24 @@ salesRouter.post('/quotations/:id/submit-approval', async (req: Request, res: Re
  */
 salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const quotation = await prisma.sales_quotation.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
+    const companyId = activeCompanyId(req);
+    const quotation = await prisma.sales_quotation.findFirst({ where: { id: req.params.id, company_id: companyId } });
     if (!quotation) throw new NotFoundError('Quotation');
-    const updated = await prisma.sales_quotation.update({
-      where: { id: quotation.id },
-      data: { status: 'SENT' },
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM sales_quotation WHERE id = ${quotation.id} AND company_id = ${companyId} FOR UPDATE`;
+      const current = await tx.sales_quotation.findFirst({ where: { id: quotation.id, company_id: companyId } });
+      if (!current) throw new NotFoundError('Quotation');
+      if (current.status === 'SENT') return current;
+      const row = await tx.sales_quotation.update({
+        where: { id: quotation.id },
+        data: { status: 'SENT' },
+      });
+      await queueWebhookEvent(tx, companyId, 'quotation.ready', {
+        quotation_id: row.id, opportunity_id: row.opportunity_id,
+        status: row.status, total_amount: row.total_amount?.toString() ?? null,
+        currency_id: row.currency_id, valid_until: row.valid_until?.toISOString() ?? null,
+      });
+      return row;
     });
     res.json(updated);
   } catch (err) {
@@ -181,7 +195,12 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
         project_name: `Project for Order #${order.id.slice(0, 6)}`,
         budget_amount: order.total_amount ?? 0,
         status: 'PLANNED',
-        lifecycle_status: 'DRAFT',
+        // A confirmed Sales Order has passed commercial verification, but
+        // operational execution still waits for the explicit ACTIVE transition.
+        lifecycle_status: 'VERIFIED',
+        stage_entered_at: new Date(),
+        verified_at: new Date(),
+        verified_by: req.user?.id ?? null,
         health_status: 'GOOD',
         source_type: 'SALES_ORDER',
       },

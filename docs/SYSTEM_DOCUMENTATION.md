@@ -97,7 +97,7 @@ Mutation pada root bisnis yang dikonfigurasi wajib membawa `Idempotency-Key` 16â
 
 ### External/file/notification flow
 
-Frontend chatbot memanggil service eksternal langsung, termasuk SSE chat, conversation, knowledge ingestion/search, dan multipart upload. Backend Express tidak menjadi proxy dan tidak memiliki storage upload/provider notification/queue yang ditemukan. Email/WhatsApp notification runtime **NOT FOUND**.
+Frontend chatbot memanggil service eksternal langsung, termasuk SSE chat, conversation, knowledge ingestion/search, dan multipart upload. Backend Express tidak menjadi proxy untuk transport pihak ketiga dan tidak mengirim pesan keluar. CRM memiliki registry integrasi internal, verifikasi HMAC raw-body, durable event inbox, worker, deduplikasi thread/pesan, routing unit bisnis/default PIC, serta Inbox CRM. Konektivitas transport eksternal tetap dikelola sistem upstream.
 
 ## 3. Complete Repository Structure
 
@@ -872,7 +872,7 @@ IMPLEMENTED: Morgan request log, Prisma log menurut environment, global error lo
 | Chatbot/RAG | `frontend-next/services/chatbot.service.ts` | Browser Bearer caller token; SSE/JSON/multipart | throws Error/callback; no backend circuit breaker |
 | Vercel | backend adapter/config; possible frontend host | build artifact + env | platform behavior; no repo runbook |
 
-Payment gateway, transactional email, WhatsApp, cloud object storage, shared Redis, dan message broker: **NOT FOUND**. Cache proses-lokal untuk dashboard BFF dan Request Card **IMPLEMENTED**; cache ini bukan pengganti Redis untuk deployment multi-instance.
+Payment gateway, transactional email, outbound messaging, cloud object storage, shared Redis, dan message broker: **NOT FOUND**. Signed inbound CRM internal-pipeline webhook is **IMPLEMENTED IN SOURCE**; database migrations, secret provisioning, integration source/unit routing configuration, and end-to-end upstream UAT remain rollout work. Cache proses-lokal untuk dashboard BFF dan Request Card **IMPLEMENTED**; cache ini bukan pengganti Redis untuk deployment multi-instance.
 
 ## 18. File-by-File Documentation
 

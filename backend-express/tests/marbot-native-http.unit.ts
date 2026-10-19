@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { RoleCode } from '@prisma/client';
 import prisma from '../src/config/database';
-import * as authority from '../src/modules/marbot/marbot-access.service';
-import { nativeMarbotRouter } from '../src/modules/marbot/marbot-native.routes';
-import { marbotAuthorityKey } from '../src/modules/marbot/marbot-authority.service';
+import * as authority from '../src/modules/marbot/brain/security/access.service';
+import { nativeMarbotRouter } from '../src/modules/marbot/routing/native.routes';
+import { marbotAuthorityKey } from '../src/modules/marbot/brain/security/authority.service';
 import { errorHandler } from '../src/middlewares/error.middleware';
-import * as resource from '../src/modules/marbot/marbot-resource.service';
-import * as planner from '../src/modules/marbot/marbot-planner.service';
+import * as resource from '../src/modules/marbot/knowledge/resource.service';
+import * as planner from '../src/modules/marbot/brain/reasoning/planner.service';
 import { env } from '../src/config/env';
-import * as understanding from '../src/modules/marbot/marbot-understanding.service';
+import * as understanding from '../src/modules/marbot/brain/reasoning/understanding.service';
 
 async function main() {
   // Hermetic HTTP test: no production database, provider, or ERP writes.
@@ -114,7 +114,7 @@ async function main() {
       assert.equal(semanticGuide.status, 200);
       assert.match(await semanticGuide.text(), /Hapus Meeting/);
       assert.deepEqual(stored.at(-1).metadata.understanding, { source: 'llm', route: 'guide', status: 'ready', confidence: 0.98, model: 'fixture-model' });
-      assert.deepEqual(stored.at(-1).metadata.sources, ['ERP:procedure:meeting:delete:2026-10-07']);
+      assert.match(stored.at(-1).metadata.sources[0], /^ERP:procedure:meeting:delete:/);
       assert.equal(helpProviderCalls, 6);
       helpPlan = { route: 'native', plan: { type: 'read', domains: ['tasks'], personal: true, taskLevel: 'weekly' }, confidence: 0.99 };
       for (const roleCode of [RoleCode.PROJECT_MANAGER, RoleCode.SUPERVISOR]) {

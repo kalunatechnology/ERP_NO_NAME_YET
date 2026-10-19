@@ -13,6 +13,11 @@ import { Prisma } from '@prisma/client';
 import { compareTaskOutput } from './output-comparison';
 import { getUserModuleOverride, hasUserModuleWrite } from '../../utils/module-permissions';
 import { WeeklyNotificationService } from './weekly-notification.service';
+import {
+  CANONICAL_PROJECT_LIFECYCLE_STAGES,
+  CanonicalLifecycleStage,
+  PROJECT_LIFECYCLE_RULES,
+} from '../../workflows/tenants/default/project.workflow';
 
 export const PROJECT_MANAGEMENT_ROLES = [
   'PROJECT_MANAGER',
@@ -21,6 +26,38 @@ export const PROJECT_MANAGEMENT_ROLES = [
 ] as const;
 export const ACTING_PROJECT_MANAGER_ROLE = 'ACTING_PROJECT_MANAGER' as const;
 const PROJECT_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
+
+function normalizeProjectLifecycleStage(value: unknown): CanonicalLifecycleStage | null {
+  const stage = String(value ?? '').trim().toUpperCase();
+  const aliases: Record<string, CanonicalLifecycleStage> = {
+    DRAFT: 'INCOMING',
+    PROSPECT: 'INCOMING',
+    SUBMITTED: 'INCOMING',
+    QUALIFICATION: 'DISCOVERY',
+    ESTIMATION: 'PITCHING',
+    PROPOSAL: 'PITCHING',
+    IN_REVIEW: 'NEGOTIATION',
+    APPROVAL: 'NEGOTIATION',
+    WON: 'VERIFIED',
+    APPROVED: 'VERIFIED',
+    RESOURCE_RESERVED: 'RESERVED',
+    ALLOCATED: 'RESERVED',
+    STARTED: 'ACTIVE',
+    IN_PROGRESS: 'ACTIVE',
+    PLANNED: 'INCOMING',
+    ON_HOLD: 'ACTIVE',
+    COMPLETED: 'CLOSED',
+    FINISHED: 'CLOSED',
+    CANCELLED: 'LOST',
+    CANCELED: 'LOST',
+    REJECTED: 'LOST',
+  };
+
+  if ((CANONICAL_PROJECT_LIFECYCLE_STAGES as readonly string[]).includes(stage)) {
+    return stage as CanonicalLifecycleStage;
+  }
+  return aliases[stage] ?? null;
+}
 
 const DAILY_TASK_LEGACY_MUTATION_SELECT = {
   tenant_id: true,
@@ -1730,21 +1767,157 @@ export class ProjectsService {
  * Data/side effects: Reads or mutates Prisma model(s) `project_project`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async advanceStage(projectId: string, targetStage: string | undefined, companyId: string) {
-    const STAGE_ORDER = ['DRAFT', 'VERIFIED', 'RESERVED', 'STARTED', 'COMPLETED'];
-    const project = await prisma.project_project.findFirst({ where: { id: projectId, company_id: companyId } });
-    if (!project) throw new NotFoundError('Project');
+  static async advanceStage(params: {
+    projectId: string;
+    targetStage?: string;
+    companyId: string;
+    userId: string;
+    userRole: string;
+    reason?: string;
+    poContractNumber?: string;
+    notes?: string;
+  }) {
+    const {
+      projectId,
+      targetStage: requestedStage,
+      companyId,
+      userId,
+      userRole,
+      reason,
+      poContractNumber,
+      notes,
+    } = params;
 
-    let nextStage = targetStage;
-    if (!nextStage) {
-      const currIdx = STAGE_ORDER.indexOf(project.status ?? 'DRAFT');
-      nextStage = currIdx >= 0 && currIdx < STAGE_ORDER.length - 1 ? STAGE_ORDER[currIdx + 1] : project.status;
+    const normalizedTarget = requestedStage
+      ? normalizeProjectLifecycleStage(requestedStage)
+      : undefined;
+    if (requestedStage && !normalizedTarget) {
+      throw new ValidationError(`Tahap lifecycle proyek tidak dikenal: ${requestedStage}`);
     }
 
-    return prisma.project_project.update({
-      where: { id: projectId },
-      data: { status: nextStage, lifecycle_status: nextStage },
-    });
+    return prisma.$transaction(async (tx) => {
+      // Serialize lifecycle transitions for the same project so concurrent
+      // requests cannot both pass validation against the same old stage.
+      const lockedProjects = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "project_project"
+        WHERE "id" = ${projectId} AND "company_id" = ${companyId}
+        FOR UPDATE
+      `;
+      if (lockedProjects.length === 0) throw new NotFoundError('Project');
+
+      const project = await tx.project_project.findFirst({
+        where: { id: projectId, company_id: companyId },
+      });
+      if (!project) throw new NotFoundError('Project');
+
+      const currentStage = normalizeProjectLifecycleStage(project.lifecycle_status);
+      if (!currentStage) {
+        throw new ValidationError(
+          `Lifecycle proyek saat ini tidak dikenal: ${project.lifecycle_status || '(kosong)'}`,
+        );
+      }
+
+      if (normalizedTarget === currentStage) {
+        // Normalize legacy aliases (for example DRAFT -> INCOMING) without
+        // recording a false stage transition or changing execution status.
+        if (project.lifecycle_status !== currentStage) {
+          const now = new Date();
+          return tx.project_project.update({
+            where: { id: projectId },
+            data: {
+              lifecycle_status: currentStage,
+              stage_entered_at: project.stage_entered_at ?? now,
+              updated_at: now,
+            },
+          });
+        }
+        return project;
+      }
+
+      const stageRule = PROJECT_LIFECYCLE_RULES[currentStage];
+      const nextStage = normalizedTarget
+        ?? stageRule.allowedNext.find((stage) => stage !== 'LOST');
+      if (!nextStage) {
+        throw new ValidationError(`Proyek pada tahap ${currentStage} tidak memiliki tahap lanjutan.`);
+      }
+      if (!stageRule.allowedNext.includes(nextStage)) {
+        throw new ValidationError(`Transisi tidak valid dari ${currentStage} ke ${nextStage}.`);
+      }
+
+      const normalizedRole = String(userRole ?? '').trim().toUpperCase() as RoleCode;
+      if (!stageRule.allowedRoles.includes(normalizedRole)) {
+        throw new ForbiddenError(
+          `Role ${userRole || '(kosong)'} tidak memiliki izin untuk memajukan proyek dari tahap ${currentStage}.`,
+        );
+      }
+
+      const normalizedReason = reason?.trim() ?? '';
+      const normalizedPoContractNumber = poContractNumber?.trim() ?? '';
+      if (nextStage === 'LOST' && !normalizedReason) {
+        throw new ValidationError('Alasan pembatalan wajib diisi untuk tahap LOST.');
+      }
+      if (nextStage === 'CLOSED' && Number(project.progress_percent ?? 0) < 100) {
+        throw new ValidationError('Progres proyek harus 100% sebelum lifecycle ditutup.');
+      }
+
+      const operationalStatus = String(project.status ?? '').trim().toUpperCase();
+      let nextOperationalStatus: string;
+      if (nextStage === 'CLOSED') {
+        nextOperationalStatus = 'COMPLETED';
+      } else if (nextStage === 'LOST') {
+        nextOperationalStatus = 'CANCELLED';
+      } else if (operationalStatus === 'ON_HOLD') {
+        // Lifecycle progress does not implicitly resume field operations.
+        nextOperationalStatus = 'ON_HOLD';
+      } else if (nextStage === 'ACTIVE') {
+        nextOperationalStatus = 'ACTIVE';
+      } else {
+        // Pre-execution stages, including RESERVED, remain non-operational.
+        nextOperationalStatus = 'PLANNED';
+      }
+
+      const now = new Date();
+      const updated = await tx.project_project.update({
+        where: { id: projectId },
+        data: {
+          lifecycle_status: nextStage,
+          status: nextOperationalStatus,
+          stage_entered_at: now,
+          cancellation_reason: nextStage === 'LOST'
+            ? normalizedReason
+            : project.cancellation_reason,
+          verified_at: nextStage === 'VERIFIED' ? now : project.verified_at,
+          verified_by: nextStage === 'VERIFIED' ? userId : project.verified_by,
+          started_at: nextStage === 'ACTIVE' && !project.started_at ? now : project.started_at,
+          closed_at: nextStage === 'CLOSED' ? now : project.closed_at,
+          closed_by: nextStage === 'CLOSED' ? userId : project.closed_by,
+          updated_at: now,
+        },
+      });
+
+      await tx.project_lifecycle_event.create({
+        data: {
+          tenant_id: project.tenant_id,
+          company_id: project.company_id,
+          project_id: project.id,
+          from_status: currentStage,
+          to_status: nextStage,
+          action: `TRANSITION_${currentStage}_TO_${nextStage}`,
+          actor_id: userId,
+          note: notes?.trim() || normalizedReason,
+          payload_json: {
+            operational_status_before: project.status,
+            operational_status_after: nextOperationalStatus,
+            po_contract_number: normalizedPoContractNumber || null,
+            role: normalizedRole,
+          },
+          created_at: now,
+        },
+      });
+
+      return updated;
+    }, PROJECT_TRANSACTION_OPTIONS);
   }
 
 /**

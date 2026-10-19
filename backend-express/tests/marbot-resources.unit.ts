@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
-import catalog from '../src/modules/marbot/resource-catalog.generated.json';
-import { planResourceQuestion, resourceCatalog, resourceDefinition, validateResourcePlan } from '../src/modules/marbot/marbot-resource.service';
-import type { NativeScope } from '../src/modules/marbot/marbot-native.service';
+import catalog from '../src/modules/marbot/knowledge/resource-catalog.generated.json';
+import { planResourceQuestion, resourceCatalog, resourceDefinition, validateResourcePlan } from '../src/modules/marbot/knowledge/resource.service';
+import type { NativeScope } from '../src/modules/marbot/brain/reasoning/native.service';
 import { env } from '../src/config/env';
 import prisma from '../src/config/database';
 

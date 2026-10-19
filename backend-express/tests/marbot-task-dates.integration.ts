@@ -4,8 +4,8 @@ import prisma from '../src/config/database';
 import { env } from '../src/config/env';
 import { createApp } from '../src/app';
 import { signAccessToken } from '../src/utils/jwt';
-import { queryPeriod } from '../src/modules/marbot/marbot-native.service';
-import { buildMarbotRuntimeAuthority } from '../src/modules/marbot/marbot-access.service';
+import { queryPeriod } from '../src/modules/marbot/brain/reasoning/native.service';
+import { buildMarbotRuntimeAuthority } from '../src/modules/marbot/brain/security/access.service';
 
 async function main() {
   const url = new URL(env.DATABASE_URL);

@@ -14,6 +14,7 @@ export interface CRMData {
   inquiries: any[];
   requirements: any[];
   opportunities: any[];
+  activities: any[];
   stages: any[];
   estimates: any[];
   estimateLines: any[];
@@ -40,6 +41,126 @@ export interface CRMDashboard {
   [key: string]: any;
 }
 
+export interface CRMInboxConversation {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  channel_account_id: string | null;
+  business_unit_code?: string | null;
+  business_unit_name?: string | null;
+  assigned_user_id: string | null;
+  inquiry_id: string | null;
+  inquiry?: { id: string; inquiry_number: string; status: string } | null;
+  assigned_user?: { id: string; full_name: string } | null;
+  external_identities?: Array<{ id: string; type: string; masked_value: string; channel_verification_status: string; customer_match_status: string; party_id: string | null }>;
+  updated_at: string;
+  external_thread?: { external_thread_id: string; link_method: string } | null;
+  latest_message?: { message_text: string; direction: string; received_at?: string | null; sent_at?: string | null } | null;
+  messages?: Array<{ id: string; message_text: string; direction: string; received_at?: string | null; sent_at?: string | null }>;
+}
+
+export async function loadCRMInbox(pageSize = 50): Promise<CRMInboxConversation[]> {
+  const { data } = await api.get(`/api/v1/crm/inbox/?page_size=${Math.min(Math.max(pageSize, 1), 100)}`);
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
+export async function createInquiryFromConversation(id: string) {
+  const { data } = await api.post(`/api/v1/crm/conversations/${id}/create-inquiry/`, {});
+  return data;
+}
+
+export async function replyToCRMConversation(id: string, message_text: string, client_message_id: string) {
+  const { data } = await api.post(`/api/v1/crm/conversations/${id}/reply/`, { message_text, client_message_id });
+  return data;
+}
+
+export async function setConversationDecision(id: string, decision: "IGNORE" | "REOPEN") {
+  const { data } = await api.post(`/api/v1/crm/conversations/${id}/decision/`, { decision });
+  return data;
+}
+
+export async function assignConversationToMe(id: string, userId: string) {
+  const { data } = await api.post(`/api/v1/crm/conversations/${id}/assign/`, { assigned_user_id: userId });
+  return data;
+}
+
+export async function confirmCRMIdentityCustomer(identityId: string, partyId: string) {
+  const { data } = await api.post(`/api/v1/crm/external-identities/${identityId}/confirm-customer/`, { party_id: partyId });
+  return data;
+}
+
+export interface CRMWhatsAppConnection {
+  id: string;
+  source_id: string;
+  waba_id: string;
+  phone_number_id: string;
+  display_phone_number: string | null;
+  api_version: string;
+  status: "ACTIVE" | "SUSPENDED";
+  callback_path: string;
+  last_verified_at: string | null;
+  last_webhook_at: string | null;
+}
+
+function companyScopeHeaders(companyId?: string) {
+  return companyId ? { headers: { "X-Company-ID": companyId } } : undefined;
+}
+
+export async function loadCRMWhatsAppConnections(companyId?: string): Promise<CRMWhatsAppConnection[]> {
+  const { data } = await api.get("/api/v1/core/whatsapp/connections/", companyScopeHeaders(companyId));
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
+export async function createCRMWhatsAppConnection(input: Record<string, string>, companyId?: string) {
+  const { data } = await api.post("/api/v1/core/whatsapp/connections/", input, companyScopeHeaders(companyId));
+  return data as CRMWhatsAppConnection;
+}
+
+export async function updateCRMWhatsAppConnection(id: string, input: Record<string, string>, companyId?: string) {
+  const { data } = await api.patch(`/api/v1/core/whatsapp/connections/${id}/`, input, companyScopeHeaders(companyId));
+  return data as CRMWhatsAppConnection;
+}
+
+export async function testCRMWhatsAppConnection(id: string, companyId?: string) {
+  const { data } = await api.post(`/api/v1/core/whatsapp/connections/${id}/test/`, {}, companyScopeHeaders(companyId));
+  return data;
+}
+
+export interface CRMIntegrationSource {
+  id: string;
+  source_code: string;
+  channel_type: string;
+  channel_account_id: string | null;
+  business_unit_code: string | null;
+  business_unit_name: string | null;
+  key_id: string;
+  allowed_event_types: string[];
+  status: string;
+  created_at: string;
+  last_seen_at?: string | null;
+}
+
+export async function loadCRMIntegrationSources(companyId?: string): Promise<CRMIntegrationSource[]> {
+  const { data } = await api.get("/api/v1/core/integration-sources/", companyScopeHeaders(companyId));
+  return Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+}
+
+export async function loadCRMIntegrationAssignees(companyId?: string): Promise<Array<{ id: string; full_name: string; email: string }>> {
+  const { data } = await api.get("/api/v1/core/integration-sources/eligible-assignees/", companyScopeHeaders(companyId));
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
+export async function createCRMIntegrationSource(input: Record<string, unknown>, companyId?: string) {
+  const { data } = await api.post("/api/v1/core/integration-sources/", input, companyScopeHeaders(companyId));
+  return data as CRMIntegrationSource & { signing_secret: string };
+}
+
+export async function setCRMIntegrationSourceStatus(id: string, status: "ACTIVE" | "SUSPENDED" | "REVOKED", companyId?: string) {
+  const { data } = await api.patch(`/api/v1/core/integration-sources/${id}/status/`, { status }, companyScopeHeaders(companyId));
+  return data;
+}
+
 /* ── Endpoints map ───────────────────────────────── */
 // frontend-next/lib/api/crm.api.ts
 
@@ -47,6 +168,7 @@ const CRM_SOURCES: Record<keyof CRMData, string> = {
   inquiries:    "/api/v1/crm/customer-inquiries/?page_size=100",
   requirements: "/api/v1/crm/inquiry-requirements/?page_size=200",
   opportunities:"/api/v1/crm/opportunities/?page_size=100",
+  activities:   "/api/v1/crm/activities/?page_size=200",
   stages:       "/api/v1/crm/pipeline-stages/?page_size=100",
   estimates:    "/api/v1/crm/cost-estimates/?page_size=100",
   estimateLines:"/api/v1/crm/cost-estimate-lines/?page_size=200",
@@ -158,6 +280,21 @@ export async function createOpportunity(payload: {
     pipeline_stage: payload.pipeline_stage || "OPEN",
     status: "OPEN",
   });
+  return data;
+}
+
+export async function createCRMActivity(payload: { opportunity_id: string | number; party_id?: string | number | null; activity_type: string; subject: string; scheduled_at?: string | null }) {
+  const { data } = await api.post('/api/v1/crm/activities/', { ...payload, status: payload.scheduled_at ? 'PLANNED' : 'COMPLETED', completed_at: payload.scheduled_at ? null : new Date().toISOString() });
+  return data;
+}
+
+export async function getOpportunityCustomer360(id: string | number) {
+  const { data } = await api.get(`/api/v1/crm/opportunities/${id}/customer-360/`);
+  return data;
+}
+
+export async function markOpportunityLost(id: string | number, lost_reason: string, lost_reason_detail?: string) {
+  const { data } = await api.post(`/api/v1/crm/opportunities/${id}/mark-lost/`, { lost_reason, lost_reason_detail });
   return data;
 }
 
@@ -464,6 +601,7 @@ export async function createSupportTicket(payload: {
   priority?: string;
   case_type?: string;
   description?: string;
+  serial_number?: string;
 }) {
   const { data } = await api.post("/api/v1/service/cases/", {
     subject: payload.subject,
@@ -471,6 +609,7 @@ export async function createSupportTicket(payload: {
     priority: payload.priority || "NORMAL",
     case_type: payload.case_type || "WARRANTY_CLAIM",
     description: payload.description || "",
+    serial_number: payload.serial_number?.trim() || null,
     status: "OPEN",
   });
   return data;
@@ -483,7 +622,12 @@ export async function createSupportTicket(payload: {
  * ticket or rely on the unimplemented legacy `/check-status` action.
  */
 export async function checkTicketWarrantyStatus(id: string | number) {
-  const { data } = await api.get(`/api/v1/service/cases/${id}/`);
+  const { data } = await api.post(`/api/v1/service/cases/${id}/check-warranty/`, {});
+  return data;
+}
+
+export async function createServiceWorkOrder(id: string | number, assigned_user_id?: string) {
+  const { data } = await api.post(`/api/v1/service/cases/${id}/work-orders/`, { assigned_user_id });
   return data;
 }
 

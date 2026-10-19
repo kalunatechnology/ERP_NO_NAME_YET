@@ -15,9 +15,11 @@ import { createCrudRouter } from '../../utils/crud-factory';
 import { requireAdminForWrite, requireSuperAdminForWrite, requireSuperuser } from '../../middlewares/rbac.middleware';
 import { isSuperAdmin, RoleCode } from '../../types/roles';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
-import { MarbotTenantService } from '../marbot/marbot-tenant.service';
-import { assertNativeMarbotStorageReady } from '../marbot/marbot-runtime.service';
+import { MarbotTenantService } from '../marbot/brain/tenant/tenant.service';
+import { assertNativeMarbotStorageReady } from '../marbot/brain/runtime.service';
 import { env } from '../../config/env';
+import { crmIntegrationAdminRouter } from '../crm/crm-integration.routes';
+import { crmWhatsAppAdminRouter } from '../crm/crm-whatsapp.routes';
 
 const requireFinanceOrAdminForCompanyWrite = (req: Request, _res: Response, next: NextFunction): void => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
@@ -28,6 +30,11 @@ const requireFinanceOrAdminForCompanyWrite = (req: Request, _res: Response, next
 };
 
 export const coreRouter = Router();
+
+// Integration credentials are provisioned by the company administrator. The
+// router never exposes stored ciphertext or cleartext secrets on reads.
+coreRouter.use('/integration-sources', crmIntegrationAdminRouter);
+coreRouter.use('/whatsapp', crmWhatsAppAdminRouter);
 export const feedShortcutRouter = Router();
 
 coreRouter.get('/app-notifications', authenticate, async (req: Request, res: Response, next: NextFunction) => {

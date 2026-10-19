@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
-import { answerNative, followUpQuestion, isNativeTaskReadQuestion, NativeScope, taskDateIntent } from '../src/modules/marbot/marbot-native.service';
-import { executeCanonicalAction } from '../src/modules/marbot/marbot-execution.service';
-import { systemKnowledgeAnswer } from '../src/modules/marbot/marbot-knowledge';
+import { answerNative, followUpQuestion, isNativeTaskReadQuestion, NativeScope, taskDateIntent } from '../src/modules/marbot/brain/reasoning/native.service';
+import { executeCanonicalAction } from '../src/modules/marbot/brain/actions/execution.service';
+import { systemKnowledgeAnswer } from '../src/modules/marbot/knowledge/knowledge';
 
 const id = '11111111-1111-4111-8111-111111111111';
 const staff: NativeScope = {

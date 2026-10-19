@@ -721,7 +721,16 @@ projectsRouter.get('/projects/:id/evm', async (req: Request, res: Response, next
  */
 projectsRouter.post('/projects/:id/advance_stage', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.advanceStage(req.params.id, req.body.stage ?? req.body.target_status, activeCompanyId(req));
+    const result = await ProjectsService.advanceStage({
+      projectId: req.params.id,
+      targetStage: req.body.stage ?? req.body.target_stage ?? req.body.target_status,
+      companyId: activeCompanyId(req),
+      userId: activeUserId(req),
+      userRole: req.user?.active_role_code ?? req.user?.roles?.[0] ?? '',
+      reason: req.body.reason ?? req.body.cancellation_reason,
+      poContractNumber: req.body.poContractNumber ?? req.body.po_contract_number,
+      notes: req.body.notes,
+    });
     res.json(result);
   } catch (err) {
     next(err);
@@ -738,7 +747,16 @@ projectsRouter.post('/projects/:id/advance_stage', async (req: Request, res: Res
  */
 projectsRouter.post('/projects/:id/advance-stage', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await ProjectsService.advanceStage(req.params.id, req.body.stage ?? req.body.target_status, activeCompanyId(req));
+    const result = await ProjectsService.advanceStage({
+      projectId: req.params.id,
+      targetStage: req.body.stage ?? req.body.target_stage ?? req.body.target_status,
+      companyId: activeCompanyId(req),
+      userId: activeUserId(req),
+      userRole: req.user?.active_role_code ?? req.user?.roles?.[0] ?? '',
+      reason: req.body.reason ?? req.body.cancellation_reason,
+      poContractNumber: req.body.poContractNumber ?? req.body.po_contract_number,
+      notes: req.body.notes,
+    });
     res.json(result);
   } catch (err) {
     next(err);
@@ -2373,12 +2391,18 @@ projectsRouter.use('/projects', createCrudRouter({
     if (data.description === undefined || data.description === null) {
       data.description = '';
     }
-    if (!data.status) {
-      data.status = 'IN_PROGRESS';
-    }
-    if (!data.lifecycle_status) {
-      data.lifecycle_status = 'ACTIVE';
-    }
+    // Every newly-created project starts in the business intake pipeline.
+    // Operational work remains unavailable until the lifecycle explicitly
+    // reaches ACTIVE through the stage transition service.
+    data.status = 'PLANNED';
+    data.lifecycle_status = 'INCOMING';
+    data.stage_entered_at = new Date();
+    data.cancellation_reason = null;
+    data.verified_at = null;
+    data.verified_by = null;
+    data.started_at = null;
+    data.closed_at = null;
+    data.closed_by = null;
     if (!data.health_status) {
       data.health_status = 'ON_TRACK';
     }

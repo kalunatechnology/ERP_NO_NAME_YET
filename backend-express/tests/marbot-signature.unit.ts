@@ -8,11 +8,11 @@ import {
   matchesHmac,
   createHmacSignature,
   verifyHmacSignature,
-} from '../src/modules/marbot/marbot-signature.service';
+} from '../src/modules/marbot/brain/security/signature.service';
 import {
   canonicalJson as routesCanonicalJson,
   toolSignaturePayload as routesToolSignaturePayload,
-} from '../src/modules/marbot/marbot.routes';
+} from '../src/modules/marbot/routing/routes';
 
 // These vectors follow the unmodified chatbot's canonicalJson and
 // buildOutboundToolSignaturePayload contracts, including its sorted GET query.

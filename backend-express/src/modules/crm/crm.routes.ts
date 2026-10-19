@@ -6,15 +6,64 @@
  * Integration: Used through static imports, Express/Next framework discovery, or an explicit npm/script entry point as applicable.
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
+import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { CRMService } from './crm.service';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
-import { requireActiveRole } from '../../middlewares/rbac.middleware';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { requireActiveRole, requireAdminForWrite } from '../../middlewares/rbac.middleware';
 import { RoleCode } from '../../types/roles';
+import { queueWebhookEvent } from './crm-outbound-webhook.service';
 
 export const crmRouter = Router();
+
+crmRouter.get('/portal-tokens', async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const rows = await prisma.core_portal_access_token.findMany({
+      where: { company_id: companyId }, orderBy: { created_at: 'desc' }, take: 100,
+      select: { id: true, party_id: true, scopes: true, expires_at: true, revoked_at: true, created_at: true, last_used_at: true },
+    });
+    res.json({ rows });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/portal-tokens', requireAdminForWrite, async (req, res, next) => {
+  try {
+    if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    const companyId = activeCompanyId(req);
+    const partyId = String(req.body.party_id ?? '').trim();
+    const party = await prisma.master_party.findFirst({ where: { id: partyId, company_id: companyId, party_type: 'CUSTOMER' }, select: { id: true } });
+    if (!party) throw new ValidationError('party_id harus customer terdaftar pada company aktif.');
+    const allowedScopes = ['quotation:read', 'ticket:read'];
+    const scopes: string[] = Array.isArray(req.body.scopes) ? [...new Set<string>(req.body.scopes.map((scope: unknown) => String(scope)))] : allowedScopes;
+    if (!scopes.length || scopes.some((scope) => !allowedScopes.includes(scope))) throw new ValidationError('scopes hanya boleh quotation:read dan ticket:read.');
+    const days = req.body.expires_in_days === undefined ? 90 : Number(req.body.expires_in_days);
+    if (!Number.isInteger(days) || days < 1 || days > 365) throw new ValidationError('expires_in_days harus 1–365.');
+    const token = `marka_portal_${crypto.randomBytes(32).toString('base64url')}`;
+    const row = await prisma.core_portal_access_token.create({
+      data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: companyId,
+        party_id: party.id, token_hash: crypto.createHash('sha256').update(token).digest('hex'),
+        scopes, expires_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000), created_by_id: req.user.id,
+      },
+      select: { id: true, party_id: true, scopes: true, expires_at: true, created_at: true },
+    });
+    res.status(201).json({ ...row, api_key: token });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/portal-tokens/:id/revoke', requireAdminForWrite, async (req, res, next) => {
+  try {
+    const updated = await prisma.core_portal_access_token.updateMany({
+      where: { id: req.params.id, company_id: activeCompanyId(req), revoked_at: null },
+      data: { revoked_at: new Date() },
+    });
+    if (!updated.count) { res.status(404).json({ error: { message: 'Token portal tidak ditemukan atau sudah dicabut.' } }); return; }
+    res.json({ id: req.params.id, revoked: true });
+  } catch (error) { next(error); }
+});
 
 function activeCompanyId(req: Request): string {
   if (!req.companyId) throw new ForbiddenError('Pilih company sebelum menjalankan operasi CRM.');
@@ -24,12 +73,13 @@ function activeCompanyId(req: Request): string {
 async function decideExecutiveApproval(req: Request, decision: 'APPROVED' | 'REJECTED') {
   const companyId = activeCompanyId(req);
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM crm_executive_approval WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
     const approval = await tx.crm_executive_approval.findFirst({
       where: { id: req.params.id, company_id: companyId },
-      select: { id: true },
+      select: { id: true, tenant_id: true, company_id: true, quotation_id: true, opportunity_id: true, approval_type: true, decision: true },
     });
     if (!approval) throw new NotFoundError('ExecutiveApproval');
-    return tx.crm_executive_approval.update({
+    const updated = await tx.crm_executive_approval.update({
       where: { id: approval.id },
       data: {
         decision,
@@ -38,6 +88,12 @@ async function decideExecutiveApproval(req: Request, decision: 'APPROVED' | 'REJ
         decided_at: new Date(),
       },
     });
+    if (approval.decision !== decision) await queueWebhookEvent(tx, companyId, 'crm.executive_approval.decided', {
+        approval_id: approval.id, decision, approval_type: approval.approval_type,
+        quotation_id: approval.quotation_id, opportunity_id: approval.opportunity_id,
+        decided_at: updated.decided_at?.toISOString() ?? null,
+      });
+    return updated;
   });
 }
 
@@ -179,11 +235,19 @@ crmRouter.get('/opportunities/:id/customer-360', async (req: Request, res: Respo
       ? await prisma.master_party.findFirst({ where: { id: opp.customer_party_id, company_id: companyId } })
       : null;
 
-    const [quotationsCount, ordersCount, projectsCount] = await Promise.all([
+    const [quotationsCount, ordersCount, orderTotals, projectsCount, activeProjectsCount, contractsCount, deliveriesCount, outstandingDocs, overdueDocs] = await Promise.all([
       customer ? prisma.sales_quotation.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
       customer ? prisma.sales_order.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.sales_order.aggregate({ where: { customer_party_id: customer.id, company_id: companyId }, _sum: { total_amount: true } }) : { _sum: { total_amount: null } },
       customer ? prisma.project_project.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.project_project.count({ where: { customer_party_id: customer.id, company_id: companyId, status: { notIn: ['CLOSED', 'COMPLETED', 'CANCELLED'] } } }) : 0,
+      customer ? prisma.sales_contract.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.sales_delivery.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
+      customer ? prisma.fin_billing_document.aggregate({ where: { party_id: customer.id, company_id: companyId, billing_type: 'CUSTOMER_INVOICE', outstanding_amount: { gt: 0 }, status: 'POSTED' }, _sum: { outstanding_amount: true } }) : { _sum: { outstanding_amount: null } },
+      customer ? prisma.fin_billing_document.count({ where: { party_id: customer.id, company_id: companyId, billing_type: 'CUSTOMER_INVOICE', outstanding_amount: { gt: 0 }, status: 'POSTED', due_date: { lt: new Date() } } }) : 0,
     ]);
+
+    const activityCount = customer ? await prisma.crm_activity.count({ where: { party_id: customer.id, company_id: companyId } }) : 0;
 
     res.json({
       customer: {
@@ -193,11 +257,15 @@ crmRouter.get('/opportunities/:id/customer-360', async (req: Request, res: Respo
       },
       quotations: quotationsCount,
       orders: ordersCount,
+      lifetime_value: orderTotals._sum.total_amount?.toString() ?? '0',
       projects: projectsCount,
-      contracts: 0,
-      deliveries: 0,
-      outstanding_ar: '0',
-      feedback_count: 0,
+      active_projects: activeProjectsCount,
+      contracts: contractsCount,
+      deliveries: deliveriesCount,
+      outstanding_ar: outstandingDocs._sum.outstanding_amount?.toString() ?? '0',
+      payment_reputation: overdueDocs > 0 ? 'AT_RISK' : 'GOOD',
+      overdue_invoice_count: overdueDocs,
+      activity_count: activityCount,
     });
   } catch (err) {
     next(err);
@@ -263,6 +331,291 @@ crmRouter.post('/executive-approvals/:id/reject', requireActiveRole(RoleCode.DIR
   }
 });
 
+// Read-only first-phase inbox. External identity data is intentionally not
+// joined to master_party here; a verified phone number is not proof of a
+// customer relationship.
+crmRouter.get('/inbox', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const company = activeCompanyId(req);
+    const requestedSize = Number(req.query.page_size ?? 50);
+    const pageSize = Number.isFinite(requestedSize) ? Math.min(Math.max(Math.trunc(requestedSize), 1), 100) : 50;
+    const conversations = await prisma.crm_conversation.findMany({
+      where: { company_id: company },
+      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      take: pageSize,
+    });
+    const conversationIds = conversations.map((conversation) => conversation.id);
+    const [messages, links, inquiries, assignees] = await Promise.all([
+      conversationIds.length ? prisma.crm_message.findMany({
+        where: { company_id: company, conversation_id: { in: conversationIds } },
+        orderBy: [{ received_at: 'desc' }, { sent_at: 'desc' }, { created_at: 'desc' }],
+        take: pageSize * 12,
+      }) : Promise.resolve([]),
+      conversationIds.length ? prisma.crm_external_thread.findMany({
+        where: { company_id: company, conversation_id: { in: conversationIds } },
+        select: { id: true, conversation_id: true, external_thread_id: true, link_method: true },
+      }) : Promise.resolve([]),
+      conversationIds.length ? prisma.crm_customer_inquiry.findMany({
+        where: { company_id: company, id: { in: conversations.flatMap((item) => item.inquiry_id ? [item.inquiry_id] : []) } },
+        select: { id: true, inquiry_number: true, status: true },
+      }) : Promise.resolve([]),
+      conversationIds.length ? prisma.iam_user.findMany({
+        where: { id: { in: conversations.flatMap((item) => item.assigned_user_id ? [item.assigned_user_id] : []) }, tenant_id: req.tenantId ?? undefined },
+        select: { id: true, full_name: true },
+      }) : Promise.resolve([]),
+    ]);
+    const linkIds = links.map((link) => link.id);
+    const threadIdentityLinks = linkIds.length ? await prisma.crm_external_thread_identity.findMany({
+      where: { company_id: company, thread_link_id: { in: linkIds } },
+      select: { thread_link_id: true, external_identity_id: true },
+    }) : [];
+    const externalIdentityIds = [...new Set(threadIdentityLinks.map((item) => item.external_identity_id))];
+    const externalIdentities = externalIdentityIds.length ? await prisma.crm_external_identity.findMany({
+      where: { company_id: company, id: { in: externalIdentityIds } },
+      select: { id: true, identity_type: true, normalized_value: true, channel_verification_status: true, customer_match_status: true, party_id: true },
+    }) : [];
+    const latest = new Map<string, typeof messages[number]>();
+    const grouped = new Map<string, typeof messages>();
+    for (const message of messages) {
+      if (!message.conversation_id) continue;
+      if (!latest.has(message.conversation_id)) latest.set(message.conversation_id, message);
+      const history = grouped.get(message.conversation_id) ?? [];
+      if (history.length < 20) history.push(message);
+      grouped.set(message.conversation_id, history);
+    }
+    const linkByConversation = new Map(links.map((link) => [link.conversation_id, link]));
+    const inquiryById = new Map(inquiries.map((inquiry) => [inquiry.id, inquiry]));
+    const assigneeById = new Map(assignees.map((assignee) => [assignee.id, assignee]));
+    const identitiesById = new Map(externalIdentities.map((identity) => [identity.id, identity]));
+    const identitiesByThread = new Map<string, Array<{ id: string; type: string; masked_value: string; channel_verification_status: string; customer_match_status: string; party_id: string | null }>>();
+    for (const mapping of threadIdentityLinks) {
+      const identity = identitiesById.get(mapping.external_identity_id);
+      if (!identity) continue;
+      const value = identity.normalized_value;
+      const masked = identity.identity_type === 'PHONE'
+        ? `${value.slice(0, 3)}••••${value.slice(-3)}`
+        : identity.identity_type === 'EMAIL' && value.includes('@')
+          ? `${value.slice(0, 1)}•••@${value.split('@')[1]}`
+          : 'External identity';
+      const identities = identitiesByThread.get(mapping.thread_link_id) ?? [];
+      identities.push({ id: identity.id, type: identity.identity_type, masked_value: masked, channel_verification_status: identity.channel_verification_status, customer_match_status: identity.customer_match_status, party_id: identity.party_id });
+      identitiesByThread.set(mapping.thread_link_id, identities);
+    }
+    res.json({ rows: conversations.map((conversation) => ({
+      ...conversation,
+      latest_message: latest.get(conversation.id) ?? null,
+      messages: (grouped.get(conversation.id) ?? []).slice().reverse(),
+      external_thread: linkByConversation.get(conversation.id) ?? null,
+      inquiry: conversation.inquiry_id ? inquiryById.get(conversation.inquiry_id) ?? null : null,
+      assigned_user: conversation.assigned_user_id ? assigneeById.get(conversation.assigned_user_id) ?? null : null,
+      external_identities: (linkByConversation.get(conversation.id)?.id ? identitiesByThread.get(linkByConversation.get(conversation.id)!.id) : []) ?? [],
+    })), page_size: pageSize });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/conversations/:id/reply', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const company = activeCompanyId(req);
+    const text = String(req.body.message_text ?? '').trim();
+    const clientMessageId = String(req.body.client_message_id ?? '').trim();
+    if (!text || text.length > 10_000) throw new ValidationError('Balasan harus berisi 1–10.000 karakter.');
+    if (!/^[A-Za-z0-9._:-]{8,100}$/.test(clientMessageId)) throw new ValidationError('client_message_id wajib unik dan valid.');
+    const userId = req.user?.id;
+    if (!userId) throw new ForbiddenError('User CRM wajib login untuk membalas conversation.');
+
+    const result = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM crm_conversation WHERE id = ${req.params.id} AND company_id = ${company} FOR UPDATE
+      `;
+      if (!locked.length) throw new NotFoundError('Conversation');
+      const conversation = await tx.crm_conversation.findFirst({ where: { id: req.params.id, company_id: company } });
+      if (!conversation) throw new NotFoundError('Conversation');
+      if (conversation.status === 'IGNORED') throw new ConflictError('Pulihkan conversation sebelum mengirim balasan.');
+      const thread = await tx.crm_external_thread.findFirst({
+        where: { conversation_id: conversation.id, company_id: company },
+        select: { id: true, external_thread_id: true, integration_source_id: true, channel_account_id: true },
+      });
+      if (!thread) throw new ValidationError('Conversation ini tidak memiliki thread eksternal untuk menerima balasan.');
+      const source = await tx.core_integration_source.findFirst({
+        where: { id: thread.integration_source_id, company_id: company, status: 'ACTIVE' },
+        select: { id: true, source_code: true },
+      });
+      if (!source) throw new ConflictError('Sumber integrasi conversation sedang tidak aktif.');
+
+      const externalMessageId = `marka-reply:${clientMessageId}`;
+      const existing = await tx.crm_message.findFirst({ where: { conversation_id: conversation.id, external_message_id: externalMessageId } });
+      if (existing) return { message: existing, created: false };
+      const now = new Date();
+      const message = await tx.crm_message.create({ data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company,
+        created_by_id: userId, conversation_id: conversation.id, sender_user_id: userId,
+        external_message_id: externalMessageId, direction: 'OUTBOUND', message_type: 'TEXT',
+        message_text: text, status: 'QUEUED', created_at: now,
+      } });
+      const queuedSubscriptions = await queueWebhookEvent(tx, company, 'message.reply_requested', {
+        conversation_id: conversation.id, message_id: message.id, client_message_id: clientMessageId,
+        integration_source_id: source.id, source_code: source.source_code,
+        channel_account_id: thread.channel_account_id, external_thread_id: thread.external_thread_id,
+        message: { type: 'TEXT', text }, requested_at: now.toISOString(), requested_by: userId,
+      });
+      if (!queuedSubscriptions) throw new ValidationError('Belum ada outbound subscription aktif untuk event message.reply_requested.');
+      await tx.crm_conversation.update({ where: { id: conversation.id }, data: { updated_at: now } });
+      return { message, created: true };
+    }, { maxWait: 5_000, timeout: 20_000, isolationLevel: 'Serializable' });
+    res.status(result.created ? 202 : 200).json(result);
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/external-identities/:id/confirm-customer', requireActiveRole(RoleCode.CRM_LEAD, RoleCode.SALES), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const company = activeCompanyId(req);
+    const partyId = String(req.body.party_id ?? '').trim();
+    if (!partyId) throw new ValidationError('party_id wajib dipilih secara eksplisit.');
+    const identity = await prisma.crm_external_identity.findFirst({
+      where: { id: req.params.id, company_id: company, channel_verification_status: 'VERIFIED' },
+    });
+    if (!identity) throw new NotFoundError('Verified external identity');
+    const party = await prisma.master_party.findFirst({ where: { id: partyId, company_id: company, status: 'ACTIVE' } });
+    if (!party) throw new ValidationError('Customer tidak aktif atau tidak ditemukan di company ini.');
+    const mapping = await prisma.$transaction(async (tx) => {
+      const updatedIdentity = await tx.crm_external_identity.update({
+        where: { id: identity.id },
+        data: { customer_match_status: 'CONFIRMED', party_id: party.id, verified_at: new Date(), verified_by_id: req.user?.id },
+      });
+      const threadLinks = await tx.crm_external_thread_identity.findMany({
+        where: { external_identity_id: identity.id, company_id: company },
+        select: { thread_link_id: true },
+      });
+      const threadIds = [...new Set(threadLinks.map((item) => item.thread_link_id))];
+      if (threadIds.length) {
+        const allThreadIdentities = await tx.crm_external_thread_identity.findMany({
+          where: { thread_link_id: { in: threadIds }, company_id: company },
+          select: { thread_link_id: true, external_identity_id: true },
+        });
+        const threadCounts = new Map<string, Set<string>>();
+        for (const item of allThreadIdentities) {
+          const ids = threadCounts.get(item.thread_link_id) ?? new Set<string>();
+          ids.add(item.external_identity_id);
+          threadCounts.set(item.thread_link_id, ids);
+        }
+        const safeThreadIds = threadIds.filter((id) => threadCounts.get(id)?.size === 1);
+        const threads = safeThreadIds.length ? await tx.crm_external_thread.findMany({
+          where: { id: { in: safeThreadIds }, company_id: company },
+          select: { conversation_id: true },
+        }) : [];
+        const conversationIds = threads.map((thread) => thread.conversation_id);
+        if (conversationIds.length) {
+          await tx.crm_conversation.updateMany({ where: { id: { in: conversationIds }, company_id: company }, data: { customer_party_id: party.id } });
+          await tx.crm_customer_inquiry.updateMany({ where: { company_id: company, id: { in: (await tx.crm_conversation.findMany({ where: { id: { in: conversationIds }, company_id: company }, select: { inquiry_id: true } })).flatMap((item) => item.inquiry_id ? [item.inquiry_id] : []) } }, data: { customer_party_id: party.id, customer_name: party.display_name ?? party.legal_name ?? 'Customer' } });
+        }
+      }
+      return updatedIdentity;
+    }, { maxWait: 5_000, timeout: 20_000 });
+    res.json({ id: mapping.id, customer_match_status: mapping.customer_match_status, party_id: mapping.party_id, customer_name: party.display_name ?? party.legal_name });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/conversations/:id/assign', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const company = activeCompanyId(req);
+    const assignedUserId = String(req.body.assigned_user_id ?? '').trim();
+    if (!assignedUserId) throw new ValidationError('assigned_user_id wajib diisi.');
+    const user = await prisma.iam_user.findFirst({
+      where: { id: assignedUserId, tenant_id: req.tenantId ?? undefined, status: 'ACTIVE', is_active: true },
+      select: { id: true },
+    });
+    if (!user) throw new ValidationError('PIC CRM tidak ditemukan atau tidak aktif dalam tenant ini.');
+    const assignments = await prisma.iam_user_role.findMany({
+      where: { user_id: user.id, tenant_id: req.tenantId ?? undefined, company_id: company },
+      select: { role_id: true },
+    });
+    const roleIds = assignments.flatMap((assignment) => assignment.role_id ? [assignment.role_id] : []);
+    const eligible = roleIds.length ? await prisma.iam_role.count({
+      where: { id: { in: roleIds }, role_code: { in: [RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER] } },
+    }) : 0;
+    if (!eligible) throw new ValidationError('PIC harus memiliki role CRM Lead, Sales, atau Project Manager pada company aktif.');
+    const update = await prisma.crm_conversation.updateMany({
+      where: { id: req.params.id, company_id: company },
+      data: { assigned_user_id: user.id },
+    });
+    if (!update.count) throw new NotFoundError('Conversation');
+    res.json({ id: req.params.id, assigned_user_id: user.id });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/conversations/:id/decision', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const company = activeCompanyId(req);
+    const decision = String(req.body.decision ?? '').trim().toUpperCase();
+    if (!['IGNORE', 'REOPEN'].includes(decision)) throw new ValidationError('decision harus IGNORE atau REOPEN.');
+    await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM crm_conversation WHERE id = ${req.params.id} AND company_id = ${company} FOR UPDATE
+      `;
+      if (!locked.length) throw new NotFoundError('Conversation');
+      const conversation = await tx.crm_conversation.findFirst({ where: { id: req.params.id, company_id: company } });
+      if (!conversation) throw new NotFoundError('Conversation');
+      if (decision === 'IGNORE' && conversation.inquiry_id) throw new ConflictError('Conversation yang sudah dieskalasi menjadi Inquiry tidak dapat diabaikan.');
+      if (decision === 'REOPEN' && conversation.status !== 'IGNORED') throw new ConflictError('Hanya conversation berstatus IGNORED yang dapat dipulihkan.');
+      await tx.crm_conversation.update({
+        where: { id: conversation.id },
+        data: { status: decision === 'IGNORE' ? 'IGNORED' : 'OPEN', closed_at: decision === 'IGNORE' ? new Date() : null },
+      });
+    }, { maxWait: 5_000, timeout: 15_000 });
+    res.json({ id: req.params.id, status: decision === 'IGNORE' ? 'IGNORED' : 'OPEN' });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const company = activeCompanyId(req);
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM crm_conversation WHERE id = ${req.params.id} AND company_id = ${company} FOR UPDATE
+      `;
+      const conversation = await tx.crm_conversation.findFirst({ where: { id: req.params.id, company_id: company } });
+      if (!conversation) throw new NotFoundError('Conversation');
+      if (conversation.inquiry_id) {
+        const inquiry = await tx.crm_customer_inquiry.findFirst({ where: { id: conversation.inquiry_id, company_id: company } });
+        if (inquiry) return { inquiry, created: false };
+      }
+      const confirmedCustomer = conversation.customer_party_id
+        ? await tx.master_party.findFirst({ where: { id: conversation.customer_party_id, company_id: company, status: 'ACTIVE' }, select: { id: true, display_name: true, legal_name: true } })
+        : null;
+      const messages = await tx.crm_message.findMany({
+        where: { conversation_id: conversation.id, company_id: company },
+        orderBy: [{ received_at: 'desc' }, { sent_at: 'desc' }],
+        take: 20,
+      });
+      const description = messages.reverse().map((message) => `${message.direction === 'INBOUND' ? 'Customer' : 'CS'}: ${message.message_text}`).join('\n');
+      const now = new Date();
+      const inquiry = await tx.crm_customer_inquiry.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: conversation.tenant_id ?? req.tenantId,
+          company_id: company,
+          created_by_id: req.user?.id,
+          customer_party_id: confirmedCustomer?.id ?? null,
+          contact_id: null,
+          owner_user_id: conversation.assigned_user_id ?? req.user?.id,
+          inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+          source_channel: 'INTERNAL_PIPELINE',
+          subject: conversation.subject || 'Inquiry dari Customer Inbox',
+          description: description || `Dibuat dari conversation ${conversation.id}.`,
+          customer_name: confirmedCustomer?.display_name || confirmedCustomer?.legal_name || conversation.subject || 'Belum teridentifikasi',
+          customer_email: '',
+          status: 'NEW',
+          created_at: now,
+          updated_at: now,
+        },
+      });
+      await tx.crm_conversation.update({ where: { id: conversation.id }, data: { inquiry_id: inquiry.id, status: 'ESCALATED', closed_at: null } });
+      return { inquiry, created: true };
+    }, { maxWait: 5_000, timeout: 20_000, isolationLevel: 'Serializable' });
+    res.status(result.created ? 201 : 200).json(result);
+  } catch (error) { next(error); }
+});
+
 // =============================================================================
 // CRUD VIEWSETS
 // =============================================================================
@@ -271,13 +624,30 @@ crmRouter.use('/customer-inquiries', createCrudRouter({ modelName: 'crm_customer
 crmRouter.use('/inquiry-requirements', createCrudRouter({ modelName: 'crm_inquiry_requirement', searchFields: ['description'] }));
 crmRouter.use('/cost-estimates', createCrudRouter({ modelName: 'crm_cost_estimate', searchFields: ['estimate_number'] }));
 crmRouter.use('/cost-estimate-lines', createCrudRouter({ modelName: 'crm_cost_estimate_line', searchFields: ['description', 'cost_element'] }));
+crmRouter.post('/opportunities/:id/mark-lost', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const reason = String(req.body.lost_reason ?? '').trim().toUpperCase();
+    const allowed = ['PRICE_TOO_HIGH', 'LOST_FEATURES', 'BUDGET_CANCELLED', 'COMPETITOR', 'NO_RESPONSE', 'OTHER'];
+    if (!allowed.includes(reason)) throw new ValidationError('Pilih alasan deal kalah yang tersedia.');
+    const companyId = activeCompanyId(req);
+    const opportunity = await prisma.crm_opportunity.findFirst({ where: { id: req.params.id, company_id: companyId } });
+    if (!opportunity) throw new NotFoundError('Opportunity');
+    if (['WON', 'CLOSED_WON'].includes(opportunity.status.toUpperCase())) throw new ConflictError('Opportunity yang sudah menang tidak dapat ditandai kalah.');
+    const lostReason = reason === 'OTHER' ? String(req.body.lost_reason_detail ?? '').trim() : reason;
+    if (!lostReason) throw new ValidationError('Jelaskan alasan lain untuk deal kalah.');
+    const updated = await prisma.crm_opportunity.update({ where: { id: opportunity.id }, data: { lost_reason: lostReason, status: 'LOST', pipeline_stage: 'LOST', closed_at: new Date() } });
+    res.json(updated);
+  } catch (error) { next(error); }
+});
 crmRouter.use('/opportunities', createCrudRouter({ modelName: 'crm_opportunity', searchFields: ['opportunity_name', 'pipeline_stage'] }));
 crmRouter.use('/opportunity-products', createCrudRouter({ modelName: 'crm_opportunity_product' }));
 crmRouter.use('/activities', createCrudRouter({ modelName: 'crm_activity', searchFields: ['subject', 'activity_type'] }));
 crmRouter.use('/pipelines', createCrudRouter({ modelName: 'crm_pipeline', searchFields: ['pipeline_name', 'pipeline_code'] }));
 crmRouter.use('/pipeline-stages', createCrudRouter({ modelName: 'crm_pipeline_stage', searchFields: ['stage_name', 'stage_code'] }));
 crmRouter.use('/opportunity-stage-histories', createCrudRouter({ modelName: 'crm_opportunity_stage_history' }));
-crmRouter.use('/executive-approvals', createCrudRouter({ modelName: 'crm_executive_approval' }));
+// Decisions must go through the Director-only commands above. Data Explorer
+// may inspect approval rows but must not mutate them through generic CRUD.
+crmRouter.use('/executive-approvals', createCrudRouter({ modelName: 'crm_executive_approval', readOnly: true }));
 crmRouter.use('/credit-status-snapshots', createCrudRouter({ modelName: 'crm_credit_status_snapshot' }));
 crmRouter.use('/channel-accounts', createCrudRouter({ modelName: 'crm_channel_account' }));
 crmRouter.use('/conversations', createCrudRouter({ modelName: 'crm_conversation' }));

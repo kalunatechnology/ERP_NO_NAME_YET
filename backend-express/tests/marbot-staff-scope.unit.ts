@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { RoleCode } from '@prisma/client';
 import prisma from '../src/config/database';
 import { buildResourceScope, applyAndValidateWriteScope } from '../src/modules/accounts/resource-scope.service';
-import { resourceDefinition, validateResourcePlan } from '../src/modules/marbot/marbot-resource.service';
-import type { NativeScope } from '../src/modules/marbot/marbot-native.service';
+import { resourceDefinition, validateResourcePlan } from '../src/modules/marbot/knowledge/resource.service';
+import type { NativeScope } from '../src/modules/marbot/brain/reasoning/native.service';
 
 async function main() {
   const originals: Array<() => void> = [];
@@ -26,10 +26,16 @@ async function main() {
   mock(prisma.project_project, async ({ where }: any) => {
     assert.equal(where.company_id, 'company'); assert.equal(where.tenant_id, 'tenant');
     const rows = ['member-project', 'assigned-project', 'forbidden-project'];
-    return rows.filter(id => where.id.in.includes(id)).map(id => ({ id }));
+    const inList = where.id?.in || where.OR?.find((o: any) => o?.id?.in)?.id?.in;
+    return rows.filter(id => inList ? inList.includes(id) : true).map(id => ({ id }));
   });
   mock(prisma.project_weekly_task, async ({ where }: any) => {
-    assert.deepEqual(where.main_task_id.in, ['main']); return [{ id: 'weekly' }];
+    if (where.assignee_id) return [];
+    if (where.main_task_id?.in) {
+      assert.deepEqual(where.main_task_id.in, ['main']);
+      return [{ id: 'weekly' }];
+    }
+    return [];
   });
   try {
     for (const role of [RoleCode.STAFF, RoleCode.SUPERVISOR]) {
