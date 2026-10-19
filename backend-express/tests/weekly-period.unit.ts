@@ -55,7 +55,11 @@ const records = weeklyTargetRecords([project]);
 const filters = { query: '', projectId: '', group: '', today: '2026-10-01' };
 const week1 = selectedWeeklyWorkPeriod('2026-10', 1);
 const week2 = selectedWeeklyWorkPeriod('2026-10', 2);
-assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week1 }).map(record => record.id), ['created-week1']);
+// old-schedule was created in Week 1, so its Week 2 schedule must not move it out of Week 1.
+assert.deepEqual(
+  filterWeeklyTargets(records, { ...filters, period: week1 }).map(record => record.id).sort(),
+  ['created-week1', 'old-schedule'],
+);
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week2 }).map(record => record.id), ['created-week2']);
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week2, projectId: 'other' }).map(record => record.id), []);
 assert.equal(records.find(row => row.id === 'old-schedule')!.weeklyTask.week_number, 42, 'Project sequence numbers are preserved');
