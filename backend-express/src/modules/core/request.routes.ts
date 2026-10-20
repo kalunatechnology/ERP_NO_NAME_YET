@@ -148,7 +148,7 @@ requestRouter.put('/meetings/:meetingId/minutes', async (req, res, next) => {
 
 requestRouter.post('/meetings/:meetingId/minutes/publish', async (req, res, next) => {
   try {
-    sendSuccess(res, await MeetingRequestService.publishMinutes(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req), req.body?.occurrence_date));
+    sendSuccess(res, await MeetingRequestService.publishMinutes(req.params.meetingId, activeCompanyId(req), activeUserId(req), activeRoleCode(req), req.body?.occurrence_date, req.body?.mentioned_user_ids));
   } catch (error) { next(error); }
 });
 

@@ -94,8 +94,8 @@ export function filterWeeklyTargets(records: WeeklyTargetRecord[], filters: {
     if (filters.projectId && record.projectId !== filters.projectId) return false;
     if (filters.group && weeklyGroup(record, filters.today) !== filters.group) return false;
     if (filters.period) {
-      // Fallback: gunakan created_at; jika kosong gunakan startDate agar data lama tidak hilang
-      const rawCreatedAt = record.weeklyTask?.created_at || record.startDate;
+      // Weekly membership is based strictly on creation time, never scheduled dates.
+      const rawCreatedAt = record.weeklyTask?.created_at;
       const createdAt = rawCreatedAt ? new Date(rawCreatedAt).getTime() : NaN;
 
       // Mendukung rentang ISO filter_start / filter_end (Jumat 15:00 WIB), dengan fallback start & end
