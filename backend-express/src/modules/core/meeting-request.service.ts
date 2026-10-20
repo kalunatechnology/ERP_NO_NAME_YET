@@ -21,6 +21,7 @@ export interface SaveMeetingMinutesPayload {
     priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
     project_id?: string;
   }>;
+  mentioned_user_ids?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +98,65 @@ async function notifyUser(params: {
 }
 
 // ---------------------------------------------------------------------------
+// NOTIFY USERS TAGGED/MENTIONED WITH @ IN NOTE / MINUTES
+// Direct action_url anchors directly to the note for this meeting occurrence
+// ---------------------------------------------------------------------------
+async function notifyMentionedUsers(params: {
+  meetingId: string;
+  companyId: string;
+  requestNumber: string;
+  requestTitle: string;
+  occurrenceDate: string;
+  actorUserId: string;
+  actorName: string;
+  mentionedUserIds: string[];
+}): Promise<void> {
+  const recipientIds = Array.from(new Set(params.mentionedUserIds.filter((id) => Boolean(id) && id !== params.actorUserId)));
+  if (!recipientIds.length) return;
+
+  const actionUrl = `/requests?meeting=${params.meetingId}&date=${params.occurrenceDate}&note=1`;
+  const title = `Mention di Catatan Meeting: ${params.requestTitle}`;
+  let formattedDate = '';
+  try {
+    formattedDate = new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(params.occurrenceDate));
+  } catch { /* ignore */ }
+  const message = `${params.actorName || 'Anggota meeting'} me-mention Anda dalam catatan meeting ${params.requestNumber}${formattedDate ? ` (${formattedDate})` : ''}. Klik untuk membuka catatan.`;
+
+  // Prevent sending duplicate notifications for the exact same note and recipient within 30 minutes
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+  let toNotify = recipientIds;
+  try {
+    const existing = await prisma.core_app_notification.findMany({
+      where: {
+        company_id: params.companyId,
+        category: 'NOTE_MENTION',
+        recipient_id: { in: recipientIds },
+        target_url: actionUrl,
+        created_at: { gte: thirtyMinutesAgo },
+      },
+      select: { recipient_id: true },
+    });
+    const alreadyNotified = new Set(existing.map((e) => e.recipient_id));
+    toNotify = recipientIds.filter((id) => !alreadyNotified.has(id));
+  } catch { /* proceed with recipientIds */ }
+
+  await Promise.all(
+    toNotify.map((recipientId) =>
+      notifyUser({
+        recipient_user_id: recipientId,
+        actor_user_id: params.actorUserId,
+        title,
+        message,
+        action_url: actionUrl,
+        notification_type: 'NOTE_MENTION',
+        priority: 'HIGH',
+        company_id: params.companyId,
+      }),
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // SEND MINUTES-PUBLISHED NOTIFICATION TO ALL PARTICIPANTS
 // Notifies organizer + notetaker + all participants (except the publisher)
 // that the minutes for a specific occurrence are now available.
@@ -118,7 +178,7 @@ async function notifyMinutesPublished(params: {
     ...params.participants.map((p) => p.user_id),
   ].filter((id): id is string => Boolean(id) && id !== params.publisherUserId)));
 
-  const actionUrl = `/requests?meeting=${params.meetingId}`;
+  const actionUrl = `/requests?meeting=${params.meetingId}&date=${params.occurrenceDate}&note=1`;
   const title = `Notulensi Dipublikasikan: ${params.requestTitle}`;
   let formattedDate = '';
   try { formattedDate = new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(params.occurrenceDate)); } catch { /* ignore */ }
@@ -371,14 +431,54 @@ export class MeetingRequestService {
       after: { meeting_id: meetingId, occurrence_date: occurrenceDate, status: 'DRAFT', decision_count: decisions.length, action_item_count: actionItems.length }, userId, companyId,
       description: `Draft notulensi ${detail.request.request_number} (${occurrenceDate}) disimpan — belum dipublikasikan, notifikasi belum dikirim.`,
     });
-    // NO notifications dispatched — return refreshed detail only.
+    // Check if any users were mentioned/tagged with @ in note
+    try {
+      const explicitMentionIds = Array.isArray(payload.mentioned_user_ids) ? payload.mentioned_user_ids : [];
+      const textToScan = `${payload.general_discussion || ''} ${payload.summary || ''} ${payload.opening_notes || ''}`;
+      const dataUserIdMatches = Array.from(textToScan.matchAll(/data-user-id=["']([0-9a-f-]{36})["']/gi)).map((m) => m[1]);
+      const allCandidateIds = Array.from(new Set([...explicitMentionIds, ...dataUserIdMatches]));
+
+      if (allCandidateIds.length > 0 && detail.request) {
+        const participantRows = await prisma.request_meeting_participant.findMany({
+          where: { meeting_id: meetingId, company_id: companyId },
+          select: { user_id: true },
+        });
+        const meetingMemberIds = new Set<string>([
+          ...(detail.organizer_user_id ? [detail.organizer_user_id] : []),
+          ...(detail.notetaker_user_id ? [detail.notetaker_user_id] : []),
+          ...participantRows.map((p) => p.user_id).filter((id): id is string => Boolean(id)),
+        ]);
+        const validMentionIds = allCandidateIds.filter((id) => meetingMemberIds.has(id) && id !== userId);
+
+        if (validMentionIds.length > 0) {
+          let actorName = 'Anggota meeting';
+          try {
+            const actor = await prisma.iam_user.findUnique({ where: { id: userId }, select: { full_name: true, email: true } });
+            if (actor?.full_name || actor?.email) actorName = actor.full_name || actor.email;
+          } catch { /* ignore */ }
+
+          void notifyMentionedUsers({
+            meetingId,
+            companyId,
+            requestNumber: detail.request.request_number,
+            requestTitle: detail.request.title,
+            occurrenceDate,
+            actorUserId: userId,
+            actorName,
+            mentionedUserIds: validMentionIds,
+          });
+        }
+      }
+    } catch (mentionErr) {
+      console.warn('[MeetingRequestService] Mention notification warning (non-blocking):', mentionErr);
+    }
     return this.getById(meetingId, companyId, userId, activeRole, occurrenceDate);
   }
 
   // ---------------------------------------------------------------------------
   // publishMinutes — PUBLISHED status + NOTIFICATION to all participants
   // ---------------------------------------------------------------------------
-  static async publishMinutes(meetingId: string, companyId: string, userId: string, activeRole: string, occurrenceDate?: string) {
+  static async publishMinutes(meetingId: string, companyId: string, userId: string, activeRole: string, occurrenceDate?: string, mentionedUserIds?: string[]) {
     const detail = await this.getById(meetingId, companyId, userId, activeRole, occurrenceDate);
 
     // Guard 1: a saved draft must exist
@@ -443,6 +543,48 @@ export class MeetingRequestService {
         occurrenceDate: detail.selected_occurrence_date,
         publisherUserId: userId,
       });
+    }
+
+    // Notify mentioned users upon publishing as well
+    try {
+      const explicitMentionIds = Array.isArray(mentionedUserIds) ? mentionedUserIds : [];
+      const textToScan = `${detail.minutes?.general_discussion || ''} ${detail.minutes?.summary || ''} ${detail.minutes?.opening_notes || ''}`;
+      const dataUserIdMatches = Array.from(textToScan.matchAll(/data-user-id=["']([0-9a-f-]{36})["']/gi)).map((m) => m[1]);
+      const allCandidateIds = Array.from(new Set([...explicitMentionIds, ...dataUserIdMatches]));
+
+      if (allCandidateIds.length > 0 && detail.request) {
+        const participantRows = await prisma.request_meeting_participant.findMany({
+          where: { meeting_id: meetingId, company_id: companyId },
+          select: { user_id: true },
+        });
+        const meetingMemberIds = new Set<string>([
+          ...(detail.organizer_user_id ? [detail.organizer_user_id] : []),
+          ...(detail.notetaker_user_id ? [detail.notetaker_user_id] : []),
+          ...participantRows.map((p) => p.user_id).filter((id): id is string => Boolean(id)),
+        ]);
+        const validMentionIds = allCandidateIds.filter((id) => meetingMemberIds.has(id) && id !== userId);
+
+        if (validMentionIds.length > 0) {
+          let actorName = 'Anggota meeting';
+          try {
+            const actor = await prisma.iam_user.findUnique({ where: { id: userId }, select: { full_name: true, email: true } });
+            if (actor?.full_name || actor?.email) actorName = actor.full_name || actor.email;
+          } catch { /* ignore */ }
+
+          void notifyMentionedUsers({
+            meetingId,
+            companyId,
+            requestNumber: detail.request.request_number,
+            requestTitle: detail.request.title,
+            occurrenceDate: detail.selected_occurrence_date,
+            actorUserId: userId,
+            actorName,
+            mentionedUserIds: validMentionIds,
+          });
+        }
+      }
+    } catch (mentionErr) {
+      console.warn('[MeetingRequestService] Mention notification on publish warning:', mentionErr);
     }
 
     return this.getById(meetingId, companyId, userId, activeRole, detail.selected_occurrence_date);
