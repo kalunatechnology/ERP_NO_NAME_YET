@@ -12,25 +12,17 @@ export const WEEKLY_GROUPS = [
 export type WeeklyGroupId = typeof WEEKLY_GROUPS[number]["id"];
 
 /** UI capabilities mirror project authority; ownership alone never grants review. */
-export function weeklyPermissions(
-  record: WeeklyTargetRecord,
-  userId: string | number | undefined,
-  authority: ProjectAuthority | undefined,
-  canWrite: boolean
-) {
+export function weeklyPermissions(record: WeeklyTargetRecord, userId: string | number | undefined,
+  authority: ProjectAuthority | undefined, canWrite: boolean) {
   const own = userId != null && record.assigneeId === String(userId);
-  const status = (record.weeklyTask?.status ?? "").toUpperCase();
-  const pending = status === "PENDING_APPROVAL";
-  const active = !["PENDING_APPROVAL", "REJECTED"].includes(status);
-  const createdBy = record.weeklyTask?.created_by_id != null ? String(record.weeklyTask.created_by_id) : undefined;
-  const hasKnownCreator = createdBy !== undefined && createdBy.trim() !== "";
-  const isCreator = userId != null && createdBy === String(userId);
-
+  const pending = record.weeklyTask.status === "PENDING_APPROVAL";
+  const active = !["PENDING_APPROVAL", "REJECTED"].includes(record.weeklyTask.status);
   return {
     canCreateDaily: canWrite && own && active,
     canEdit: canWrite && Boolean(authority?.can_manage_weekly_tasks) && active,
     canDelete: canWrite && Boolean(authority?.can_manage_weekly_tasks) && record.dailyCount === 0,
-    canReview: canWrite && Boolean(authority?.can_review_weekly_tasks) && pending && hasKnownCreator && !isCreator,
+    canReview: canWrite && Boolean(authority?.can_review_weekly_tasks) && pending
+      && Boolean(record.weeklyTask.created_by_id) && String(record.weeklyTask.created_by_id) !== String(userId),
   };
 }
 
@@ -39,11 +31,7 @@ export function sortWeeklyTargets(records: WeeklyTargetRecord[], sort: string, o
   return [...records].sort((a, b) => {
     if (sort === "manual") return (ranks.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (ranks.get(b.id) ?? Number.MAX_SAFE_INTEGER);
     if (sort === "progress") return b.progress - a.progress;
-    if (sort === "title") {
-      const titleA = a.weeklyTask?.target_description || a.weeklyTask?.target_output || "";
-      const titleB = b.weeklyTask?.target_description || b.weeklyTask?.target_output || "";
-      return titleA.localeCompare(titleB, "id-ID");
-    }
+    if (sort === "title") return (a.weeklyTask.target_description || "").localeCompare(b.weeklyTask.target_description || "", "id-ID");
     return (a.endDate || "9999-12-31").localeCompare(b.endDate || "9999-12-31");
   });
 }
@@ -54,9 +42,7 @@ export function moveWeeklyCard(records: WeeklyTargetRecord[], sourceId: string, 
   const target = records.find(record => record.id === targetId);
   if (!source || !target || weeklyGroup(source, today) !== weeklyGroup(target, today)) return records.map(record => record.id);
   const ids = records.filter(record => record.id !== sourceId).map(record => record.id);
-  const targetIndex = ids.indexOf(targetId);
-  if (targetIndex === -1) return records.map(record => record.id);
-  ids.splice(targetIndex, 0, sourceId);
+  ids.splice(ids.indexOf(targetId), 0, sourceId);
   return ids;
 }
 
@@ -74,8 +60,8 @@ export function personalWeeklyTargets(projects: Project[], userId: string | numb
 }
 
 export function weeklyGroup(record: WeeklyTargetRecord, today: string): WeeklyGroupId {
-  const status = (record.weeklyTask?.status ?? "").toUpperCase();
-  if (status === "PENDING_APPROVAL" || status === "REJECTED") return status as WeeklyGroupId;
+  const status = record.weeklyTask.status.toUpperCase();
+  if (status === "PENDING_APPROVAL" || status === "REJECTED") return status;
   if (["COMPLETED", "DONE"].includes(status) || record.progress >= 100) return "COMPLETED";
   if (record.hasBlockedDaily || status === "BLOCKED" || (record.endDate && record.endDate < today)) return "ATTENTION";
   if (record.progress > 0 || ["IN_PROGRESS", "ON_PROGRESS"].includes(status)) return "IN_PROGRESS";
@@ -83,40 +69,22 @@ export function weeklyGroup(record: WeeklyTargetRecord, today: string): WeeklyGr
 }
 
 export function filterWeeklyTargets(records: WeeklyTargetRecord[], filters: {
-  query: string;
-  projectId: string;
-  period: Pick<WeeklyWorkPeriod, "start" | "end"> & Partial<Pick<WeeklyWorkPeriod, "filter_start" | "filter_end">> | null;
-  group: string;
-  today: string;
+  query: string; projectId: string; period: Pick<WeeklyWorkPeriod, "start" | "end"> & Partial<Pick<WeeklyWorkPeriod, "filter_start" | "filter_end">> | null; group: string; today: string;
 }): WeeklyTargetRecord[] {
   const query = filters.query.trim().toLocaleLowerCase("id-ID");
   return records.filter(record => {
     if (filters.projectId && record.projectId !== filters.projectId) return false;
     if (filters.group && weeklyGroup(record, filters.today) !== filters.group) return false;
     if (filters.period) {
-      // Weekly membership is based strictly on creation time, never scheduled dates.
-      const rawCreatedAt = record.weeklyTask?.created_at;
-      const createdAt = rawCreatedAt ? new Date(rawCreatedAt).getTime() : NaN;
-
-      // Mendukung rentang ISO filter_start / filter_end (Jumat 15:00 WIB), dengan fallback start & end
-      const rawStart = filters.period.filter_start || (filters.period.start ? `${filters.period.start}T00:00:00+07:00` : "");
-      const rawEnd = filters.period.filter_end || (filters.period.end ? `${filters.period.end}T23:59:59.999+07:00` : "");
-
-      const start = rawStart ? new Date(rawStart).getTime() : NaN;
-      const end = rawEnd ? new Date(rawEnd).getTime() : NaN;
-
+      const createdAt = record.weeklyTask.created_at ? new Date(record.weeklyTask.created_at).getTime() : NaN;
+      const start = filters.period.filter_start ? new Date(filters.period.filter_start).getTime() : NaN;
+      const end = filters.period.filter_end ? new Date(filters.period.filter_end).getTime() : NaN;
       const createdInPeriod = Number.isFinite(createdAt) && Number.isFinite(start) && Number.isFinite(end)
         && createdAt >= start && createdAt < end;
       if (!createdInPeriod) return false;
     }
-    return !query || [
-      record.projectName,
-      record.projectCode,
-      record.mainTaskName,
-      record.code,
-      record.assigneeName,
-      record.weeklyTask?.target_description,
-      record.weeklyTask?.target_output,
+    return !query || [record.projectName, record.projectCode, record.mainTaskName, record.code,
+      record.weeklyTask.target_description, record.weeklyTask.target_output,
     ].some(value => String(value ?? "").toLocaleLowerCase("id-ID").includes(query));
   });
 }

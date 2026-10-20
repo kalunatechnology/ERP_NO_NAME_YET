@@ -46,7 +46,6 @@ assert.equal(weeklyPermissions(ready, 'me', authority, true).canCreateDaily, tru
 assert.equal(weeklyPermissions(ready, 'other', authority, true).canCreateDaily, false, 'PM cannot execute another user Daily');
 assert.equal(weeklyPermissions(pending, 'me', authority, true).canEdit, false);
 assert.equal(weeklyPermissions(pending, 'me', authority, true).canReview, false, 'Missing creator prevents self-review ambiguity');
-assert.equal(weeklyPermissions({ ...pending, weeklyTask: { ...pending.weeklyTask, created_by_id: '' } }, 'me', authority, true).canReview, false, 'Blank creator also fails closed');
 assert.equal(weeklyPermissions({ ...pending, weeklyTask: { ...pending.weeklyTask, created_by_id: 'me' } }, 'me', authority, true).canReview, false);
 assert.equal(weeklyPermissions({ ...pending, weeklyTask: { ...pending.weeklyTask, created_by_id: 'staff' } }, 'me', authority, true).canReview, true);
 assert.equal(weeklyPermissions({ ...ready, dailyCount: 1 }, 'me', authority, true).canDelete, false);

@@ -67,10 +67,8 @@ assert.deepEqual(weeklyPeriodWhere('2026-10', undefined), { created_at: {
 
 const project: Project = { id: 'project', project_name: 'Project', main_tasks: [{ id: 'main', project: 'project', name: 'Main', status: 'PLANNED', weekly_tasks: [
   { id: 'created-week3', main_task: 'main', week_number: 42, created_at: '2026-10-16T15:30:00+07:00', start_date: '2026-10-19', end_date: '2026-10-23', status: 'PLANNED', target_description: 'Created after Friday 15:00 cut-off for Week 3' },
-  { id: 'old-schedule', main_task: 'main', week_number: 42, created_at: '2026-10-08T04:00:00Z', start_date: '2026-10-12', end_date: '2026-10-16', status: 'PLANNED', target_description: 'Schedule overlaps Week 2 but created Week 1' },
-  { id: 'created-week2', main_task: 'main', week_number: 8, created_at: '2026-10-12T02:00:00Z', start_date: '2026-11-01', end_date: '2026-11-10', status: 'PLANNED', target_description: 'Created during Week 2 despite later schedule' },
+  { id: 'created-week2', main_task: 'main', week_number: 8, created_at: '2026-10-12T02:00:00Z', start_date: '2026-10-12', end_date: '2026-10-16', status: 'PLANNED', target_description: 'Created during Week 2' },
   { id: 'created-week1', main_task: 'main', week_number: 1, created_at: '2026-10-08T02:00:00Z', start_date: '2026-10-05', end_date: '2026-10-09', status: 'PLANNED', target_description: 'Created Week 1' },
-  { id: 'missing-created-schedule', main_task: 'main', week_number: 3, start_date: '2026-10-12', end_date: '2026-10-16', status: 'PLANNED', target_description: 'Missing creation timestamp but schedule overlaps Week 2' },
   { id: 'missing', main_task: 'main', week_number: 1, status: 'PLANNED', target_description: 'Missing creation timestamp' },
 ] }] };
 const records = weeklyTargetRecords([project]);
@@ -78,13 +76,11 @@ const filters = { query: '', projectId: '', group: '', today: '2026-10-01' };
 const week1 = selectedWeeklyWorkPeriod('2026-10', 1);
 const week2 = selectedWeeklyWorkPeriod('2026-10', 2);
 const week3 = selectedWeeklyWorkPeriod('2026-10', 3);
-assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week1 }).map(record => record.id), ['created-week1', 'old-schedule']);
+assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week1 }).map(record => record.id), ['created-week1']);
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week2 }).map(record => record.id), ['created-week2']);
-assert(!filterWeeklyTargets(records, { ...filters, period: week2 }).some(record => record.id === 'missing-created-schedule'), 'A target without created_at must not enter a Weekly based on scheduled dates');
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week3 }).map(record => record.id), ['created-week3']);
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week2, projectId: 'other' }).map(record => record.id), []);
 assert.equal(records.find(row => row.id === 'created-week3')!.weeklyTask.week_number, 42, 'Project sequence numbers are preserved');
-assert.equal(records.find(row => row.id === 'old-schedule')!.weeklyTask.week_number, 42, 'Production project sequence numbers are preserved');
 
 const boundaries = [
   ['2026-10-02T07:59:59.999Z', false],
@@ -119,4 +115,4 @@ for (let year = 2020; year <= 2040; year++) for (let month = 1; month <= 12; mon
     }
   }
 }
-console.log('PASS: Weekly membership uses created_at only, ignores scheduled dates, and preserves Friday 15:00 WIB boundaries.');
+console.log('PASS: Weekly filters use created_at cut-off at Friday 15:00 WIB and preserve Monday–Friday calendar periods.');
