@@ -1,15 +1,35 @@
 import assert from 'node:assert/strict';
-import { weeklyPeriodCalendar, weeklyPeriodWhere, weeklyWorkPeriodForDate, weeklyWorkPeriods, selectedWeeklyWorkPeriod } from '../src/modules/projects/weekly-period';
+import { weeklyPeriodCalendar, weeklyPeriodWhere, weeklyWorkPeriodForDate, weeklyWorkPeriods, selectedWeeklyWorkPeriod, weeklyWorkPeriodForTimestamp } from '../src/modules/projects/weekly-period';
 import { filterWeeklyTargets } from '../../frontend-next/lib/tasks/weekly-management';
-import { weeklyTargetRecords } from '../../frontend-next/lib/weekly-dashboard';
+import { creationWeeklyPeriod, weeklyTargetRecords } from '../../frontend-next/lib/weekly-dashboard';
 import type { Project } from '../../frontend-next/lib/api/project.api';
 
 assert.deepEqual(weeklyWorkPeriods('2026-10').map(({ week, start, end, filter_start, filter_end }) => ({ week, start, end, filter_start, filter_end })), [
-  { week: 1, start: '2026-10-05', end: '2026-10-09', filter_start: '2026-10-05T00:00:00+07:00', filter_end: '2026-10-10T00:00:00+07:00' },
-  { week: 2, start: '2026-10-12', end: '2026-10-16', filter_start: '2026-10-12T00:00:00+07:00', filter_end: '2026-10-17T00:00:00+07:00' },
-  { week: 3, start: '2026-10-19', end: '2026-10-23', filter_start: '2026-10-19T00:00:00+07:00', filter_end: '2026-10-24T00:00:00+07:00' },
-  { week: 4, start: '2026-10-26', end: '2026-10-30', filter_start: '2026-10-26T00:00:00+07:00', filter_end: '2026-10-31T00:00:00+07:00' },
+  { week: 1, start: '2026-10-05', end: '2026-10-09', filter_start: '2026-10-02T15:00:00+07:00', filter_end: '2026-10-09T15:00:00+07:00' },
+  { week: 2, start: '2026-10-12', end: '2026-10-16', filter_start: '2026-10-09T15:00:00+07:00', filter_end: '2026-10-16T15:00:00+07:00' },
+  { week: 3, start: '2026-10-19', end: '2026-10-23', filter_start: '2026-10-16T15:00:00+07:00', filter_end: '2026-10-23T15:00:00+07:00' },
+  { week: 4, start: '2026-10-26', end: '2026-10-30', filter_start: '2026-10-23T15:00:00+07:00', filter_end: '2026-10-30T15:00:00+07:00' },
 ]);
+
+// Scenario verification:
+// Target dibuat pada Jumat, 16 Okt 2026 pukul 14.59 WIB (sebelum cut-off)
+const beforeCutoff = weeklyWorkPeriodForTimestamp('2026-10-16T14:59:00+07:00');
+assert.equal(beforeCutoff.month, '2026-10');
+assert.equal(beforeCutoff.week, 2);
+assert.equal(beforeCutoff.start, '2026-10-12');
+assert.equal(beforeCutoff.end, '2026-10-16');
+
+// Target dibuat pada Jumat, 16 Okt 2026 pukul 15.30 WIB (setelah cut-off)
+const afterCutoff = weeklyWorkPeriodForTimestamp('2026-10-16T15:30:00+07:00');
+assert.equal(afterCutoff.month, '2026-10');
+assert.equal(afterCutoff.week, 3);
+assert.equal(afterCutoff.start, '2026-10-19');
+assert.equal(afterCutoff.end, '2026-10-23');
+
+// Parity with frontend-next creationWeeklyPeriod:
+assert.deepEqual(creationWeeklyPeriod('2026-10-16T14:59:00+07:00'), { start: '2026-10-12', end: '2026-10-16' });
+assert.deepEqual(creationWeeklyPeriod('2026-10-16T15:30:00+07:00'), { start: '2026-10-19', end: '2026-10-23' });
+
 for (const [date, month, week, start, end] of [
   ['2026-10-01', '2026-09', 4, '2026-09-28', '2026-10-02'],
   ['2026-10-02', '2026-09', 4, '2026-09-28', '2026-10-02'],
@@ -39,15 +59,15 @@ assert.deepEqual(weeklyPeriodWhere(undefined, undefined), {});
 
 const octoberFirst = selectedWeeklyWorkPeriod('2026-10', 1);
 assert.deepEqual(weeklyPeriodWhere('2026-10', 1), { created_at: {
-  gte: new Date('2026-10-04T17:00:00.000Z'), lt: new Date('2026-10-09T17:00:00.000Z'),
+  gte: new Date('2026-10-02T08:00:00.000Z'), lt: new Date('2026-10-09T08:00:00.000Z'),
 } });
 assert.deepEqual(weeklyPeriodWhere('2026-10', undefined), { created_at: {
-  gte: new Date('2026-10-04T17:00:00.000Z'), lt: new Date('2026-10-30T17:00:00.000Z'),
+  gte: new Date('2026-10-02T08:00:00.000Z'), lt: new Date('2026-10-30T08:00:00.000Z'),
 } });
 
 const project: Project = { id: 'project', project_name: 'Project', main_tasks: [{ id: 'main', project: 'project', name: 'Main', status: 'PLANNED', weekly_tasks: [
-  { id: 'old-schedule', main_task: 'main', week_number: 42, created_at: '2026-10-08T04:00:00Z', start_date: '2026-10-12', end_date: '2026-10-16', status: 'PLANNED', target_description: 'Schedule overlaps Week 2 but created Week 1' },
-  { id: 'created-week2', main_task: 'main', week_number: 8, created_at: '2026-10-12T02:00:00Z', start_date: '2026-11-01', end_date: '2026-11-10', status: 'PLANNED', target_description: 'Created during Week 2 despite later schedule' },
+  { id: 'created-week3', main_task: 'main', week_number: 42, created_at: '2026-10-16T15:30:00+07:00', start_date: '2026-10-19', end_date: '2026-10-23', status: 'PLANNED', target_description: 'Created after Friday 15:00 cut-off for Week 3' },
+  { id: 'created-week2', main_task: 'main', week_number: 8, created_at: '2026-10-12T02:00:00Z', start_date: '2026-10-12', end_date: '2026-10-16', status: 'PLANNED', target_description: 'Created during Week 2' },
   { id: 'created-week1', main_task: 'main', week_number: 1, created_at: '2026-10-08T02:00:00Z', start_date: '2026-10-05', end_date: '2026-10-09', status: 'PLANNED', target_description: 'Created Week 1' },
   { id: 'missing', main_task: 'main', week_number: 1, status: 'PLANNED', target_description: 'Missing creation timestamp' },
 ] }] };
@@ -55,16 +75,18 @@ const records = weeklyTargetRecords([project]);
 const filters = { query: '', projectId: '', group: '', today: '2026-10-01' };
 const week1 = selectedWeeklyWorkPeriod('2026-10', 1);
 const week2 = selectedWeeklyWorkPeriod('2026-10', 2);
+const week3 = selectedWeeklyWorkPeriod('2026-10', 3);
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week1 }).map(record => record.id), ['created-week1']);
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week2 }).map(record => record.id), ['created-week2']);
+assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week3 }).map(record => record.id), ['created-week3']);
 assert.deepEqual(filterWeeklyTargets(records, { ...filters, period: week2, projectId: 'other' }).map(record => record.id), []);
-assert.equal(records.find(row => row.id === 'old-schedule')!.weeklyTask.week_number, 42, 'Project sequence numbers are preserved');
+assert.equal(records.find(row => row.id === 'created-week3')!.weeklyTask.week_number, 42, 'Project sequence numbers are preserved');
 
 const boundaries = [
-  ['2026-10-04T16:59:59.999Z', false],
-  ['2026-10-04T17:00:00.000Z', true],
-  ['2026-10-09T16:59:59.999Z', true],
-  ['2026-10-09T17:00:00.000Z', false],
+  ['2026-10-02T07:59:59.999Z', false],
+  ['2026-10-02T08:00:00.000Z', true],
+  ['2026-10-09T07:59:59.999Z', true],
+  ['2026-10-09T08:00:00.000Z', false],
   ['invalid timestamp', false],
   [undefined, false],
 ] as const;
@@ -77,20 +99,20 @@ for (const [created_at, included] of boundaries) {
   assert.equal(timestamp >= where.created_at.gte && timestamp < where.created_at.lt, included);
 }
 
-// Calendar mapping remains stable over month/year/leap boundaries; each created_at filter is Mon 00:00 to Sat 00:00 WIB.
+// Calendar mapping remains stable over month/year/leap boundaries; each created_at filter is Fri 15:00 to Fri 15:00 WIB.
 for (let year = 2020; year <= 2040; year++) for (let month = 1; month <= 12; month++) {
   const key = `${year}-${String(month).padStart(2, '0')}`;
   for (const period of weeklyWorkPeriods(key)) {
     assert.equal(new Date(`${period.start}T00:00:00Z`).getUTCDay(), 1);
     assert.equal(new Date(`${period.end}T00:00:00Z`).getUTCDay(), 5);
-    assert.equal(period.filter_start, `${period.start}T00:00:00+07:00`);
-    const saturday = new Date(`${period.end}T00:00:00Z`);
-    saturday.setUTCDate(saturday.getUTCDate() + 1);
-    assert.equal(period.filter_end, `${saturday.toISOString().slice(0, 10)}T00:00:00+07:00`);
+    const previousFriday = new Date(`${period.start}T00:00:00Z`);
+    previousFriday.setUTCDate(previousFriday.getUTCDate() - 3);
+    assert.equal(period.filter_start, `${previousFriday.toISOString().slice(0, 10)}T15:00:00+07:00`);
+    assert.equal(period.filter_end, `${period.end}T15:00:00+07:00`);
     for (let offset = 0; offset < 5; offset++) {
       const date = new Date(`${period.start}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + offset);
       assert.deepEqual(weeklyWorkPeriodForDate(date.toISOString().slice(0, 10)), period);
     }
   }
 }
-console.log('PASS: Weekly filters use created_at only, exclude schedule/end-date matches, and preserve Monday–Friday calendar periods.');
+console.log('PASS: Weekly filters use created_at cut-off at Friday 15:00 WIB and preserve Monday–Friday calendar periods.');

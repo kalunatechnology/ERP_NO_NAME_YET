@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { Modal } from "@/components/ui/Modal";
 import { createWeeklyTask, getApiErrorDetail, getProjectAuthority, loadWeeklyManagementProjects, type Project, type ProjectAuthority, type WeeklyTask } from "@/lib/api/project.api";
 import { cn, formatDate, localDateKey } from "@/lib/utils";
-import { calendarWeek, weeklyTargetRecords, type WeeklyTargetRecord } from "@/lib/weekly-dashboard";
+import { calendarWeek, creationWeeklyPeriod, weeklyTargetRecords, type WeeklyTargetRecord } from "@/lib/weekly-dashboard";
 import { filterWeeklyTargets, moveWeeklyCard, personalWeeklyTargets, sortWeeklyTargets, weeklyCreationProjects, weeklyGroup, weeklyPermissions, WEEKLY_GROUPS } from "@/lib/tasks/weekly-management";
 import { WeeklyTargetDetail } from "./WeeklyTargetDetail";
 import { useWeeklyPeriodFilter } from "./useWeeklyPeriodFilter";
@@ -130,7 +130,7 @@ export function WeeklyTaskManagement({ projects, userId, userName, canSubmit, lo
         <label><span className="sr-only">Urutkan Weekly Target</span><select value={sort} onChange={event => setSort(event.target.value)} className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs"><option value="due">Deadline terdekat</option><option value="title">Nama target</option><option value="progress">Progres tertinggi</option><option value="manual">Urutan kartu saya</option></select></label>
         <button type="button" onClick={() => { setQuery(""); setProjectId(""); calendar.reset(); setGroupFilter(""); setAssigneeFilter(""); }} className="flex items-center gap-1 text-xs font-semibold text-brand-green"><X size={13} /> Reset filter</button>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-2.5 text-[11px] text-text-secondary"><span>{calendar.error ? "Periode belum tersedia" : loading || calendar.loading ? "Memuat target..." : `${filtered.length} target ditampilkan`}</span>{period && <span aria-label="Rentang Weekly terpilih" className="font-semibold text-brand-deep-green">Weekly {period.week}: {formatDate(period.start)} – {formatDate(period.end)} · Hanya target dibuat pada {formatDate(period.filter_start.slice(0, 10))} pukul 00.00 WIB sampai sebelum {formatDate(period.filter_end.slice(0, 10))} pukul 00.00 WIB</span>}<span>Progres mengikuti Daily Task</span></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-2.5 text-[11px] text-text-secondary"><span>{calendar.error ? "Periode belum tersedia" : loading || calendar.loading ? "Memuat target..." : `${filtered.length} target ditampilkan`}</span>{period && <span aria-label="Rentang Weekly terpilih" className="font-semibold text-brand-deep-green">Weekly {period.week}: {formatDate(period.start)} – {formatDate(period.end)} · Hanya target dibuat pada {formatDate(period.filter_start.slice(0, 10))} pukul {period.filter_start.slice(11, 16).replace(":", ".")} WIB sampai sebelum {formatDate(period.filter_end.slice(0, 10))} pukul {period.filter_end.slice(11, 16).replace(":", ".")} WIB</span>}<span>Progres mengikuti Daily Task</span></div>
       <p className="px-4 pb-3 text-[11px] text-text-secondary">Weekly pada filter mengikuti kalender bulanan. W# pada target mengikuti urutan Main Task proyek.</p>
     </div>
 
@@ -164,7 +164,7 @@ function CreateWeeklyTarget({ projects, userId, userName, onClose, onCreated, te
   const [mainId, setMainId] = useState("");
   const [weekNumber, setWeekNumber] = useState("1");
   const [description, setDescription] = useState("");
-  const period = calendarWeek(localDateKey());
+  const period = creationWeeklyPeriod();
   const [startDate, setStartDate] = useState(period.start);
   const [endDate, setEndDate] = useState(period.end);
   const [saving, setSaving] = useState(false);

@@ -21,6 +21,31 @@ export function calendarWeek(dateKey: string) {
   return { start, end: date.toISOString().slice(0, 10) };
 }
 
+export function creationWeeklyPeriod(now: Date | string | number = new Date()) {
+  const date = new Date(now);
+  const wibMs = date.getTime() + 7 * 3600 * 1000;
+  const wibDate = new Date(wibMs);
+  const day = wibDate.getUTCDay();
+  const hours = wibDate.getUTCHours();
+
+  let daysToMonday = 0;
+  if (day === 5 && hours >= 15) {
+    daysToMonday = 3;
+  } else if (day === 6) {
+    daysToMonday = 2;
+  } else if (day === 0) {
+    daysToMonday = 1;
+  } else {
+    daysToMonday = -(day - 1);
+  }
+
+  const mondayMs = wibMs + daysToMonday * 86400 * 1000;
+  const monday = new Date(mondayMs).toISOString().slice(0, 10);
+  const fridayMs = mondayMs + 4 * 86400 * 1000;
+  const friday = new Date(fridayMs).toISOString().slice(0, 10);
+  return { start: monday, end: friday };
+}
+
 export type WeeklyTargetRecord = {
   id: string; code: string; projectId: string; projectCode: string; projectName: string;
   mainTaskName: string; assigneeId: string; assigneeName: string;
