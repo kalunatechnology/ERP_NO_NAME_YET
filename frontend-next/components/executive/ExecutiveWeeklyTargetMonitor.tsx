@@ -5,7 +5,7 @@ import { AlertTriangle, CalendarDays, CheckCircle2, Search, Target, UserRound, C
 import type { Project } from "@/lib/api/project.api";
 import { cn, formatDate, localDateKey } from "@/lib/utils";
 import { weeklyTargetRecords } from "@/lib/weekly-dashboard";
-import { filterWeeklyTargets, WEEKLY_GROUPS, weeklyGroup, type WeeklyGroupId } from "@/lib/tasks/weekly-management";
+import { WEEKLY_GROUPS, weeklyGroup, type WeeklyGroupId } from "@/lib/tasks/weekly-management";
 import { useWeeklyPeriodFilter } from "@/components/tasks/useWeeklyPeriodFilter";
 
 type WeeklyTargetState = "ALL" | WeeklyGroupId;
@@ -13,6 +13,13 @@ type WeeklyTargetState = "ALL" | WeeklyGroupId;
 function statusPresentation(state: WeeklyGroupId) {
   const group = WEEKLY_GROUPS.find((item) => item.id === state)!;
   return { label: group.label, style: { backgroundColor: group.soft, color: group.color } };
+}
+
+function matchesWeeklyTargetSearch(record: ReturnType<typeof weeklyTargetRecords>[number], query: string) {
+  if (!query) return true;
+  return [record.projectName, record.projectCode, record.mainTaskName, record.code,
+    record.weeklyTask.target_description, record.weeklyTask.target_output, record.assigneeName,
+  ].some(value => String(value ?? "").toLocaleLowerCase("id-ID").includes(query));
 }
 
 export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { projects: Project[]; loading?: boolean }) {
@@ -25,6 +32,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
   const calendar = useWeeklyPeriodFilter(today);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const period = calendar.period;
+  const searchQuery = search.trim().toLocaleLowerCase("id-ID");
 
   const records = useMemo(() => weeklyTargetRecords(projects), [projects]);
 
@@ -50,20 +58,24 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
       if (r.calendarMonth === calendar.month && r.calendarWeek != null && map[r.calendarWeek] !== undefined) {
         if (selectedProjectId !== "all" && r.projectId !== selectedProjectId) return;
         if (selectedUserId !== "all" && (r.assigneeId || "unassigned") !== selectedUserId) return;
+        if (!matchesWeeklyTargetSearch(r, searchQuery)) return;
+        if (selectedState !== "ALL" && weeklyGroup(r, today) !== selectedState) return;
         map[r.calendarWeek]++;
       }
     });
     return map;
-  }, [records, calendar.periods, calendar.month, selectedProjectId, selectedUserId]);
+  }, [records, calendar.periods, calendar.month, selectedProjectId, selectedUserId, searchQuery, selectedState, today]);
 
   const totalMonthTargets = useMemo(() => {
     return records.filter(r => {
       if (r.calendarMonth !== calendar.month) return false;
       if (selectedProjectId !== "all" && r.projectId !== selectedProjectId) return false;
       if (selectedUserId !== "all" && (r.assigneeId || "unassigned") !== selectedUserId) return false;
+      if (!matchesWeeklyTargetSearch(r, searchQuery)) return false;
+      if (selectedState !== "ALL" && weeklyGroup(r, today) !== selectedState) return false;
       return true;
     }).length;
-  }, [records, calendar.month, selectedProjectId, selectedUserId]);
+  }, [records, calendar.month, selectedProjectId, selectedUserId, searchQuery, selectedState, today]);
 
   const scopedRecords = useMemo(() => {
     return records.filter((r) => {
@@ -74,14 +86,10 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
       }
       if (selectedProjectId !== "all" && r.projectId !== selectedProjectId) return false;
       if (selectedUserId !== "all" && (r.assigneeId || "unassigned") !== selectedUserId) return false;
-      if (search.trim()) {
-        const q = search.trim().toLowerCase();
-        const match = [r.projectName, r.projectCode, r.mainTaskName, r.code, r.weeklyTask.target_description, r.weeklyTask.target_output, r.assigneeName].some(v => String(v ?? "").toLowerCase().includes(q));
-        if (!match) return false;
-      }
+      if (!matchesWeeklyTargetSearch(r, searchQuery)) return false;
       return true;
     });
-  }, [records, search, selectedProjectId, selectedUserId, period, allWeeks, calendar.month, calendar.week]);
+  }, [records, searchQuery, selectedProjectId, selectedUserId, period, allWeeks, calendar.month, calendar.week]);
 
   const counts = useMemo(() => ({
     ALL: scopedRecords.length,
@@ -109,59 +117,66 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
 
   return (
     <section className="rounded-[24px] border border-[#D9D9D9] bg-white px-4 py-6 sm:px-7 sm:py-8 lg:px-9">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#EAF6FF] text-[#3157C8]"><Target size={23} /></span>
-            <div>
-              <h2 className="text-[28px] font-bold leading-none tracking-[-0.025em] text-black sm:text-[34px]">Weekly Target Staff</h2>
-              <p className="mt-2 text-sm text-[#5A5B5D]">Pantau target dan progres staf dengan periode mingguan yang sama seperti workspace staf.</p>
-            </div>
+      <div className="flex flex-col gap-6">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#EAF6FF] text-[#3157C8]"><Target size={23} /></span>
+          <div className="min-w-0">
+            <h2 className="text-[28px] font-bold leading-tight tracking-[-0.025em] text-black sm:text-[34px]">Weekly Target Staff</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-5 text-[#5A5B5D]">Pantau target dan progres staf berdasarkan periode, staf, proyek, dan status.</p>
           </div>
         </div>
 
-        <div className="grid w-full gap-3 sm:grid-cols-2 lg:max-w-[900px] lg:grid-cols-5">
-          <label className="text-xs font-semibold text-[#3157C8]">
-            <span className="sr-only">Bulan Weekly Target</span>
-            <input aria-label="Bulan Weekly Target" type="month" value={calendar.month} onChange={event => calendar.changeMonth(event.target.value)} className="h-11 w-full rounded-xl border border-[#BDD7FF] bg-white px-3 outline-none focus:ring-2 focus:ring-[#DCEEFF]" />
-            <span className="mt-1 block text-[10px]">{period ? `${formatDate(period.start)} – ${formatDate(period.end)}` : calendar.error || "Memuat periode…"}</span>
+        <div className="rounded-2xl border border-[#E6EAF1] bg-[#FAFBFD] p-4 sm:p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-[#252A34]">Filter laporan</h3>
+              <p className="mt-0.5 text-xs text-[#737985]">Pilih cakupan data yang ingin ditinjau.</p>
+            </div>
+            <button type="button" onClick={() => { setSelectedUserId("all"); setSelectedProjectId("all"); setSelectedState("ALL"); setSearch(""); setAllWeeks(false); calendar.reset(); }} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#D5DDEA] bg-white px-3 text-xs font-semibold text-[#3157C8] transition hover:bg-[#F1F5FF] focus:outline-none focus:ring-2 focus:ring-[#DCEEFF]">
+              <X size={14} /> Reset filter
+            </button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="block min-w-0 text-xs font-semibold text-[#4F5664]">
+            <span className="mb-1.5 block">Bulan</span>
+            <input aria-label="Bulan Weekly Target" type="month" value={calendar.month} onChange={event => calendar.changeMonth(event.target.value)} className="h-11 w-full min-w-0 rounded-xl border border-[#D5DDEA] bg-white px-3 text-sm font-medium text-[#3157C8] outline-none focus:border-[#3157C8] focus:ring-2 focus:ring-[#DCEEFF]" />
+            <span className="mt-1 block text-[11px] font-normal text-[#737985]">{period ? `${formatDate(period.start)} – ${formatDate(period.end)}` : calendar.error || "Memuat periode…"}</span>
           </label>
-          <label>
-            <span className="sr-only">Weekly dalam bulan</span>
-            <select aria-label="Weekly dalam bulan" value={allWeeks ? "all" : (period ? calendar.week : "")} disabled={calendar.loading || Boolean(calendar.error)} onChange={event => { if (event.target.value === "all") { setAllWeeks(true); } else { setAllWeeks(false); calendar.setWeek(Number(event.target.value)); } }} className="h-11 w-full rounded-xl border border-[#BDD7FF] bg-white px-3 text-xs font-semibold text-[#3157C8] outline-none focus:ring-2 focus:ring-[#DCEEFF] disabled:opacity-50">
-              <option value="all">Semua Weekly ({calendar.month})</option>
-              {calendar.periods.map(item => <option key={item.id} value={item.week}>Weekly {item.week} ({formatDate(item.start)} – {formatDate(item.end)})</option>)}
-            </select>
-            {period && <span className="mt-1 block text-[10px]">{allWeeks ? "Mode seluruh minggu" : "Rentang kalender terpilih"}</span>}
-          </label>
-          <label className="relative">
-            <span className="sr-only">Filter staf</span>
-            <UserRound size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#3157C8]" />
-            <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} className="h-11 w-full appearance-none rounded-xl border border-[#BDD7FF] bg-white pl-10 pr-3 text-xs font-semibold text-[#3157C8] outline-none focus:ring-2 focus:ring-[#DCEEFF]">
+          <label className="block min-w-0 text-xs font-semibold text-[#4F5664]">
+            <span className="mb-1.5 block">Staf</span>
+            <span className="relative block">
+            <UserRound size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#65718A]" />
+            <select aria-label="Filter staf" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} className="h-11 w-full appearance-none rounded-xl border border-[#D5DDEA] bg-white pl-9 pr-9 text-sm font-medium text-[#303744] outline-none focus:border-[#3157C8] focus:ring-2 focus:ring-[#DCEEFF]">
               <option value="all">Semua User</option>
               {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
             </select>
+            <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#65718A]" />
+            </span>
           </label>
-          <label>
-            <span className="sr-only">Filter proyek</span>
-            <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} className="h-11 w-full appearance-none rounded-xl border border-[#BDD7FF] bg-white px-4 text-xs font-semibold text-[#3157C8] outline-none focus:ring-2 focus:ring-[#DCEEFF]">
+          <label className="block min-w-0 text-xs font-semibold text-[#4F5664]">
+            <span className="mb-1.5 block">Proyek</span>
+            <span className="relative block">
+            <select aria-label="Filter proyek" value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} className="h-11 w-full appearance-none rounded-xl border border-[#D5DDEA] bg-white px-3 pr-9 text-sm font-medium text-[#303744] outline-none focus:border-[#3157C8] focus:ring-2 focus:ring-[#DCEEFF]">
               <option value="all">Semua Project</option>
               {projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
+            <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#65718A]" />
+            </span>
           </label>
-          <label className="relative sm:col-span-2 lg:col-span-1">
-            <span className="sr-only">Cari Weekly Target</span>
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari target atau kode" className="h-11 w-full rounded-xl border border-[#BDD7FF] bg-white px-4 pr-10 text-xs outline-none placeholder:text-[#7280A7] focus:ring-2 focus:ring-[#DCEEFF]" />
-            <Search size={17} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#3157C8]" />
+          <label className="block min-w-0 text-xs font-semibold text-[#4F5664] sm:col-span-2 xl:col-span-1">
+            <span className="mb-1.5 block">Pencarian</span>
+            <span className="relative block">
+            <input aria-label="Cari Weekly Target" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari target atau kode" className="h-11 w-full rounded-xl border border-[#D5DDEA] bg-white px-3 pr-10 text-sm font-normal outline-none placeholder:text-[#8A91A0] focus:border-[#3157C8] focus:ring-2 focus:ring-[#DCEEFF]" />
+            <Search size={17} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#65718A]" />
+            </span>
           </label>
-          <button type="button" onClick={() => { setSelectedUserId("all"); setSelectedProjectId("all"); setSelectedState("ALL"); setSearch(""); setAllWeeks(false); calendar.reset(); }} className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-[#BDD7FF] bg-white px-3 text-xs font-semibold text-[#3157C8] hover:bg-[#F4F8FF]">
-            <X size={14} /> Reset filter
-          </button>
+          </div>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-y border-gray-100 py-3" aria-label="Navigasi Cepat Mingguan">
-        <span className="text-xs font-semibold text-[#5A5B5D]">Pilih Minggu:</span>
+      <div className="mt-5 border-y border-gray-100 py-4" aria-label="Navigasi Cepat Mingguan">
+        <p className="mb-3 text-xs font-semibold text-[#5A5B5D]">Pilih minggu</p>
+        <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setAllWeeks(true)}
@@ -199,6 +214,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
             </button>
           );
         })}
+        </div>
       </div>
 
       <div className="mt-2 flex flex-wrap justify-between items-center gap-2 text-[10px] text-[#5A5B5D]">
@@ -206,14 +222,16 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
         {calendar.error && <span role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-red-700">{calendar.error}</span>}
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Ringkasan Weekly Target">
         <SummaryCard value={counts.ALL} label="Total Weekly Target" tone="neutral" />
         <SummaryCard value={`${averageProgress}%`} label="Rata-rata Progress" tone="blue" />
         <SummaryCard value={counts.COMPLETED} label="Target Selesai" tone="green" />
         <SummaryCard value={counts.ATTENTION} label="Perlu Dipantau" tone="red" />
       </div>
 
-      <div className="mt-5 flex max-w-full items-center gap-2 overflow-x-auto pb-1" aria-label="Filter status Weekly Target">
+      <div className="mt-5">
+        <p className="mb-2 text-xs font-semibold text-[#5A5B5D]">Filter status target</p>
+        <div className="flex max-w-full flex-wrap items-center gap-2 pb-1" aria-label="Filter status Weekly Target">
         {filters.map((filter) => (
           <button key={filter.id} type="button" onClick={() => setSelectedState(filter.id)} aria-pressed={selectedState === filter.id} className={cn(
             "shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#BDD7FF]",
@@ -222,6 +240,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
             {filter.label} ({counts[filter.id]})
           </button>
         ))}
+        </div>
       </div>
 
       <div className="mt-7 overflow-hidden rounded-[14px] border border-[#D9D9D9]">
