@@ -21,12 +21,90 @@ export function calendarWeek(dateKey: string) {
   return { start, end: date.toISOString().slice(0, 10) };
 }
 
+export function creationWeeklyPeriod(now: Date | string | number = new Date()) {
+  const date = new Date(now);
+  const wibMs = date.getTime() + 7 * 3600 * 1000;
+  const wibDate = new Date(wibMs);
+  const day = wibDate.getUTCDay();
+  const hours = wibDate.getUTCHours();
+
+  let daysToMonday = 0;
+  if (day === 5 && hours >= 15) {
+    daysToMonday = 3;
+  } else if (day === 6) {
+    daysToMonday = 2;
+  } else if (day === 0) {
+    daysToMonday = 1;
+  } else {
+    daysToMonday = -(day - 1);
+  }
+
+  const mondayMs = wibMs + daysToMonday * 86400 * 1000;
+  const monday = new Date(mondayMs).toISOString().slice(0, 10);
+  const fridayMs = mondayMs + 4 * 86400 * 1000;
+  const friday = new Date(fridayMs).toISOString().slice(0, 10);
+  return { start: monday, end: friday };
+}
+
+export interface TargetCalendarWeekInput {
+  created_at?: string;
+  start_date?: string;
+  week_number?: number;
+  weeklyTask?: {
+    created_at?: string;
+    week_number?: number;
+    start_date?: string;
+  };
+  startDate?: string;
+}
+
+export function resolveTargetCalendarWeek(target: TargetCalendarWeekInput) {
+  const createdAt = target.weeklyTask?.created_at ?? target.created_at;
+  const startDate = target.startDate ?? target.start_date ?? target.weeklyTask?.start_date;
+  const date = createdAt ? new Date(createdAt) : (startDate ? new Date(`${startDate}T00:00:00Z`) : new Date());
+  const wibMs = (Number.isFinite(date.getTime()) ? date.getTime() : Date.now()) + 7 * 3600 * 1000;
+  const wibDate = new Date(wibMs);
+  const day = wibDate.getUTCDay();
+  const hours = wibDate.getUTCHours();
+
+  let daysToMonday = 0;
+  if (createdAt) {
+    if (day === 5 && hours >= 15) daysToMonday = 3;
+    else if (day === 6) daysToMonday = 2;
+    else if (day === 0) daysToMonday = 1;
+    else daysToMonday = -(day - 1);
+  } else {
+    daysToMonday = -(day - 1);
+  }
+
+  const mondayMs = wibMs + daysToMonday * 86400 * 1000;
+  const mondayDate = new Date(mondayMs);
+  const mondayKey = mondayDate.toISOString().slice(0, 10);
+  const calendarMonth = mondayKey.slice(0, 7);
+
+  const firstOfMonth = new Date(`${calendarMonth}-01T00:00:00Z`);
+  const firstMondayDay = (8 - firstOfMonth.getUTCDay()) % 7 + 1;
+  const mondayDayOfMonth = mondayDate.getUTCDate();
+  const week = Math.max(1, Math.floor((mondayDayOfMonth - firstMondayDay) / 7) + 1);
+
+  const weekNumber = target.weeklyTask?.week_number ?? target.week_number ?? 1;
+  return {
+    calendarWeek: week,
+    calendarWeekLabel: `Weekly ${week}`,
+    calendarMonth,
+    sequenceLabel: `Target #${weekNumber}`,
+    sequenceCode: `W#${weekNumber}`,
+  };
+}
+
 export type WeeklyTargetRecord = {
   id: string; code: string; projectId: string; projectCode: string; projectName: string;
   mainTaskName: string; assigneeId: string; assigneeName: string;
   startDate: string; endDate: string; progress: number;
   dailyCount: number; completedDailyCount: number; hasBlockedDaily: boolean;
   dailyTasks: DailyTask[]; weeklyTask: WeeklyTask;
+  calendarWeek: number; calendarWeekLabel: string; calendarMonth: string;
+  sequenceLabel: string; sequenceCode: string;
 };
 
 export function weeklyTargetRecords(projects: Project[]): WeeklyTargetRecord[] {
@@ -49,7 +127,8 @@ export function weeklyTargetRecords(projects: Project[]): WeeklyTargetRecord[] {
           String(assignment.assignee_id ?? assignment.assignee ?? '') === assigneeId)?.assignee_name;
         // A transferred Daily Task's owner is not the Weekly Task's assignee.
         const matchingOwnerName = dailyTasks.find(daily => String(daily.owner_id) === assigneeId)?.owner_name;
-        const projectCode = project.project_code || project.code || 'PROJECT';
+        const projectCode = (project.project_code || project.code || 'PROJECT').replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
+        const calendarMeta = resolveTargetCalendarWeek(weekly);
         records.push({
           id, code: `${projectCode} · W#${weekly.week_number || 1}`,
           projectId: String(project.id), projectCode, projectName: project.project_name || project.name || 'Project',
@@ -59,6 +138,7 @@ export function weeklyTargetRecords(projects: Project[]): WeeklyTargetRecord[] {
           progress: weeklyProgress(weekly, dailyTasks), dailyCount: dailyTasks.length,
           completedDailyCount: dailyTasks.filter(daily => ['COMPLETED', 'DONE'].includes(daily.status)).length,
           hasBlockedDaily: dailyTasks.some(daily => daily.is_blocked || daily.status === 'BLOCKED'), dailyTasks, weeklyTask: weekly,
+          ...calendarMeta,
         });
       }
     }

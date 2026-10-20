@@ -46,6 +46,7 @@ export interface SaveMinutesInput {
   summary: string; opening_notes?: string; general_discussion: string; conclusion?: string;
   decisions: Array<{ text: string }>;
   action_items: Array<{ title: string; description?: string; assignee_user_id?: string; due_at?: string; priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT" }>;
+  mentioned_user_ids?: string[];
 }
 
 export interface NonMeetingRequest {
@@ -83,7 +84,7 @@ export const requestApi = {
   createMeeting: async (input: CreateMeetingInput) => (await api.post("/api/v1/requests/meetings", input)).data,
   deleteMeeting: async (id: string) => { await api.delete(`/api/v1/requests/meetings/${id}`); },
   saveMinutes: async (id: string, input: SaveMinutesInput) => (await api.put<MeetingDetail>(`/api/v1/requests/meetings/${id}/minutes`, input)).data,
-  publishMinutes: async (id: string, occurrenceDate: string) => (await api.post<MeetingDetail>(`/api/v1/requests/meetings/${id}/minutes/publish`, { occurrence_date: occurrenceDate })).data,
+  publishMinutes: async (id: string, occurrenceDate: string, mentionedUserIds?: string[]) => (await api.post<MeetingDetail>(`/api/v1/requests/meetings/${id}/minutes/publish`, { occurrence_date: occurrenceDate, mentioned_user_ids: mentionedUserIds })).data,
   submitDraftMeeting: async (meetingId: string) => {
     const res = await api.post<MeetingDetail | { success: true; data: MeetingDetail }>(`/api/v1/requests/meetings/${meetingId}/submit`);
     const data = res.data;

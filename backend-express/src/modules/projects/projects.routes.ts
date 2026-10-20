@@ -20,7 +20,7 @@ import { invalidateDashboardCache } from '../dashboard/dashboard.routes';
 import { compareTaskOutput } from './output-comparison';
 import { CustomerPartyService } from './customer-party.service';
 import { weeklyPlanningPatch } from './weekly-planning';
-import { weeklyPeriodCalendar, weeklyPeriodWhere } from './weekly-period';
+import { weeklyPeriodCalendar, weeklyPeriodWhere, weeklyWorkPeriodForTimestamp } from './weekly-period';
 
 export const projectsRouter = Router();
 
@@ -1664,6 +1664,9 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     if (!data.target_description && data.target_output) data.target_description = data.target_output;
     if (!String(data.target_description ?? '').trim()) throw new ValidationError('Target mingguan wajib diisi.');
     data.target_description = String(data.target_description).trim();
+    const executionPeriod = weeklyWorkPeriodForTimestamp((data.created_at as any) || new Date());
+    data.start_date = executionPeriod.start;
+    data.end_date = executionPeriod.end;
     const schedule = validateWeeklyTaskFields(data);
     data.week_number = schedule.weekNumber;
     // Progress is derived from Daily Tasks; API payloads cannot seed it.

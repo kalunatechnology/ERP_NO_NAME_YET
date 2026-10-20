@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock, Clock3, Coffee, Briefcase, FileDown, FileText, Filter, Italic, Link2, MapPin, Pencil, Plus, Repeat, Save, Search, Send, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ArrowLeft, ArrowRight, AtSign, Bold, Calendar, CalendarDays, Check, CheckCircle2, Clock, Clock3, Coffee, Briefcase, FileDown, FileText, Filter, Italic, Link2, MapPin, Pencil, Plus, Repeat, Save, Search, Send, Strikethrough, Trash2, UserCircle2, Video, X, ClipboardList } from "lucide-react";
 import toast from "react-hot-toast";
 import { MeetingDetail, MeetingRequestSummary, NonMeetingRequest, requestApi } from "@/lib/api/request.api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -107,12 +108,15 @@ export default function RequestsClient(){
   }, [nonMeetingRequests, searchQuery, nonMeetingTypeFilter]);
 
   const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");setMinutes({summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""});return detail;}catch{toast.error("Detail meeting tidak dapat dimuat.");return null;}},[]);
-  const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);const id=typeof window!=="undefined"?new URLSearchParams(window.location.search).get("meeting"):null;if(id)await openMeeting(id);}catch{toast.error("Data tidak dapat dimuat.");}finally{setLoading(false);}},[openMeeting]);
+  const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);if(typeof window!=="undefined"){const params=new URLSearchParams(window.location.search);const id=params.get("meeting");const date=params.get("date")||params.get("occurrenceDate");const shouldOpenNotes=params.get("note")==="1"||params.get("openNotes")==="1"||params.get("openNotes")==="true";if(id){const detail=await openMeeting(id,date||undefined);if(detail&&shouldOpenNotes){setNotesOpen(true);}}}}catch{toast.error("Data tidak dapat dimuat.");}finally{setLoading(false);}},[openMeeting]);
+  const searchParams = useSearchParams();
   useEffect(()=>{void load();},[load]);
+  useEffect(()=>{const id=searchParams.get("meeting");const date=searchParams.get("date")||searchParams.get("occurrenceDate");const shouldOpenNotes=searchParams.get("note")==="1"||searchParams.get("openNotes")==="1"||searchParams.get("openNotes")==="true";if(id){void openMeeting(id,date||undefined).then(detail=>{if(detail&&shouldOpenNotes){setNotesOpen(true);}});}},[searchParams,openMeeting]);
 
   async function submitMeeting(event:FormEvent,draft:boolean){event.preventDefault();if(createForm.recurrenceType==="RECURRING"&&(!createForm.recurrenceEndDate||!createForm.recurringDays.length)){toast.error("Pilih tanggal akhir dan minimal satu hari recurring.");return;}setBusy(true);try{const ids=new Set(createForm.participantIds);if(createForm.notetakerId)ids.add(createForm.notetakerId);if(createForm.assigneeId)ids.add(createForm.assigneeId);await requestApi.createMeeting({title:createForm.title,description:createForm.description,start_at:localIso(createForm.date,createForm.startTime),end_at:localIso(createForm.date,createForm.endTime),recurrence_type:createForm.recurrenceType,recurrence_end_at:createForm.recurrenceType==="RECURRING"?localIso(createForm.recurrenceEndDate,"23:59"):undefined,recurrence_days:createForm.recurringDays,location:createForm.location,meeting_url:createForm.meetingUrl,meeting_type:"INTERNAL",assignee_user_id:createForm.assigneeId||undefined,notetaker_user_id:createForm.notetakerId||undefined,is_draft:draft,tagged_users:Array.from(ids).map(id=>({id,name:members.find(member=>member.id===id)?.name??id})),agenda_items:createForm.agenda.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title}))});toast.success(draft?"Draft request berhasil disimpan.":"Meeting berhasil dibuat dan seluruh peserta telah diberi notifikasi.");setCreateOpen(false);setCreateForm(initialCreate);await load();}catch{toast.error("Gagal menyimpan request. Periksa jadwal dan data wajib.");}finally{setBusy(false);}}
   async function reassign(){if(!selected?.request||!personInCharge)return toast.error("Pilih person in charge.");setBusy(true);try{await requestApi.assignRequest(selected.request.id,personInCharge);toast.success("Person in charge diperbarui.");await openMeeting(selected.id);}catch{toast.error("Role aktif tidak memiliki izin reassign.");}finally{setBusy(false);}}
-  const minutesPayload=useMemo(()=>({occurrence_date:selected?.selected_occurrence_date??"",summary:minutes.summary||richTextToPlainText(minutes.general_discussion).split("\n")[0]||"Notulensi meeting",opening_notes:minutes.opening_notes,general_discussion:minutes.general_discussion,conclusion:minutes.conclusion,decisions:minutes.decisions.split("\n").map(text=>text.trim()).filter(Boolean).map(text=>({text})),action_items:minutes.action_items.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title}))}),[minutes,selected?.selected_occurrence_date]);
+  const mentionedUserIds=useMemo(()=>{const text=`${minutes.general_discussion} ${minutes.summary} ${minutes.opening_notes}`;const matches=Array.from(text.matchAll(/data-user-id=["']([0-9a-f-]{36})["']/gi)).map(m=>m[1]);return Array.from(new Set(matches));},[minutes.general_discussion,minutes.summary,minutes.opening_notes]);
+  const minutesPayload=useMemo(()=>({occurrence_date:selected?.selected_occurrence_date??"",summary:minutes.summary||richTextToPlainText(minutes.general_discussion).split("\n")[0]||"Notulensi meeting",opening_notes:minutes.opening_notes,general_discussion:minutes.general_discussion,conclusion:minutes.conclusion,decisions:minutes.decisions.split("\n").map(text=>text.trim()).filter(Boolean).map(text=>({text})),action_items:minutes.action_items.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title})),mentioned_user_ids:mentionedUserIds}),[minutes,selected?.selected_occurrence_date,mentionedUserIds]);
   async function saveNotes(publish=false){
     if(!selected)return;
     // Publish flow: save draft first, then publish
@@ -130,7 +134,7 @@ export default function RequestsClient(){
         let detail=await requestApi.saveMinutes(selected.id,minutesPayload);
         if(detail.minutes?.status==='PUBLISHED'){setSelected(detail);toast.error("Notulensi ini sudah dipublikasikan.");return;}
         // 2. Then publish
-        detail=await requestApi.publishMinutes(selected.id,detail.selected_occurrence_date);
+        detail=await requestApi.publishMinutes(selected.id,detail.selected_occurrence_date,mentionedUserIds);
         setSelected(detail);setNotesOpen(false);
         toast.success("Notulensi dipublikasikan. Seluruh peserta meeting telah diberi notifikasi.");
         await load();
@@ -594,7 +598,7 @@ export default function RequestsClient(){
       {createOpen && <CreateRequestModal form={createForm} setForm={setCreateForm} members={members} busy={busy} onClose={() => setCreateOpen(false)} onSubmit={submitMeeting} />}
       {requestModalOpen && <NewNonMeetingRequestModal members={members} busy={busy} onClose={() => setRequestModalOpen(false)} onSuccess={() => { setRequestModalOpen(false); void load(); }} />}
       {selected && !notesOpen && <MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={() => setSelected(null)} onReassign={reassign} onNotes={date => void openNotes(date)} onPublishMeeting={() => void publishMeeting(selected.id)} canDeleteMeeting={canDeleteMeeting} onDeleteMeeting={() => void deleteMeeting(selected.id)} />}
-      {selected && notesOpen && <NotesModal detail={selected} minutes={minutes} setMinutes={setMinutes} busy={busy} onClose={() => setNotesOpen(false)} onSave={saveNotes} />}
+      {selected && notesOpen && <NotesModal detail={selected} members={members} minutes={minutes} setMinutes={setMinutes} busy={busy} onClose={() => setNotesOpen(false)} onSave={saveNotes} />}
     </div>
   );
 }
@@ -634,14 +638,21 @@ function MeetingDetailModal({detail,members,personInCharge,setPersonInCharge,bus
   </div></ModalBackdrop>;
 }
 
-const richTextTags=new Set(["B","STRONG","I","EM","S","STRIKE","BR","DIV","P","UL","OL","LI"]);
+const richTextTags=new Set(["B","STRONG","I","EM","S","STRIKE","BR","DIV","P","UL","OL","LI","SPAN"]);
 function sanitizeRichText(value:string){
   if(typeof window==="undefined")return value;
   const template=document.createElement("template");
   template.innerHTML=value;
   template.content.querySelectorAll("script,style,iframe,object,embed").forEach(node=>node.remove());
   Array.from(template.content.querySelectorAll("*")).reverse().forEach(element=>{
-    if(richTextTags.has(element.tagName))Array.from(element.attributes).forEach(attribute=>element.removeAttribute(attribute.name));
+    if(richTextTags.has(element.tagName)){
+      if(element.tagName==="SPAN" && element.hasAttribute("data-user-id")){
+        const allowedAttrs=new Set(["data-user-id","data-user-name","class","contenteditable"]);
+        Array.from(element.attributes).forEach(attr=>{if(!allowedAttrs.has(attr.name))element.removeAttribute(attr.name);});
+      }else{
+        Array.from(element.attributes).forEach(attribute=>element.removeAttribute(attribute.name));
+      }
+    }
     else element.replaceWith(...Array.from(element.childNodes));
   });
   return template.innerHTML;
@@ -657,30 +668,370 @@ function normalizedEditorHtml(element:HTMLDivElement){
   return richTextToPlainText(html)?html:"";
 }
 
-function RichTextEditor({value,onChange,disabled}:{value:string;onChange:(value:string)=>void;disabled:boolean}){
-  const editorRef=useRef<HTMLDivElement>(null);
-  const [active,setActive]=useState({bold:false,italic:false,strikeThrough:false});
-  const [empty,setEmpty]=useState(!richTextToPlainText(value));
-  useEffect(()=>{const editor=editorRef.current;if(!editor)return;const incoming=sanitizeRichText(value);if(sanitizeRichText(editor.innerHTML)!==incoming)editor.innerHTML=incoming;setEmpty(!richTextToPlainText(incoming));},[value]);
-  useEffect(()=>{const update=()=>{const selection=document.getSelection();if(!editorRef.current||!selection?.anchorNode||!editorRef.current.contains(selection.anchorNode))return;setActive({bold:document.queryCommandState("bold"),italic:document.queryCommandState("italic"),strikeThrough:document.queryCommandState("strikeThrough")});};document.addEventListener("selectionchange",update);return()=>document.removeEventListener("selectionchange",update);},[]);
-  const emitChange=()=>{const editor=editorRef.current;if(!editor)return;const next=normalizedEditorHtml(editor);setEmpty(!richTextToPlainText(next));onChange(next);};
-  const format=(command:"bold"|"italic"|"strikeThrough")=>{if(disabled)return;editorRef.current?.focus();document.execCommand(command,false);emitChange();setActive(old=>({...old,[command]:document.queryCommandState(command)}));};
-  const formats:["bold"|"italic"|"strikeThrough",string,React.ReactNode][]=[["bold","Tebal",<Bold key="bold" size={18}/>],["italic","Miring",<Italic key="italic" size={18}/>],["strikeThrough","Coret",<Strikethrough key="strike" size={18}/>]];
-  return <section className="flex min-h-[360px] flex-col overflow-hidden rounded-2xl border border-[#D9D9D9] bg-white focus-within:border-[#294BB2] focus-within:ring-2 focus-within:ring-[#294BB2]/10 lg:min-h-0">
-    <div className="flex items-center justify-between border-b border-[#E5E5E5] bg-[#F8FAFC] px-3 py-2"><div><p className="text-xs font-extrabold uppercase tracking-[.12em] text-[#294BB2]">Catatan Utama</p><p className="mt-0.5 text-xs text-[#6B7280]">Pilih teks, lalu gunakan format.</p></div><div className="flex items-center gap-1 rounded-xl border border-[#DDE7F2] bg-white p-1" role="toolbar" aria-label="Format teks">{formats.map(([command,label,icon])=><button key={command} type="button" title={label} aria-label={label} aria-pressed={active[command]} disabled={disabled} onMouseDown={event=>event.preventDefault()} onClick={()=>format(command)} className={`grid h-9 w-9 place-items-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40 ${active[command]?"bg-[#294BB2] text-white":"text-[#294BB2] hover:bg-[#EAF6FF]"}`}>{icon}</button>)}</div></div>
-    <div className="relative min-h-0 flex-1"><div ref={editorRef} contentEditable={!disabled} suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Isi notulensi meeting" onInput={emitChange} onBlur={()=>{const editor=editorRef.current;if(editor){const clean=normalizedEditorHtml(editor);editor.innerHTML=clean;onChange(clean);}}} className={`h-full min-h-[300px] overflow-y-auto p-5 text-base leading-7 outline-none sm:p-6 ${disabled?"cursor-default bg-[#FAFAFA]":""}`}/>{empty&&<span className="pointer-events-none absolute left-5 top-5 text-sm text-[#9CA3AF] sm:left-6 sm:top-6">Tulis pembahasan meeting di sini...</span>}</div>
-  </section>;
+function RichTextEditor({ value, onChange, disabled, members = [] }: { value: string; onChange: (value: string) => void; disabled: boolean; members?: Member[] }) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState({ bold: false, italic: false, strikeThrough: false });
+  const [empty, setEmpty] = useState(!richTextToPlainText(value));
+  const [mention, setMention] = useState<{ open: boolean; query: string; index: number }>({ open: false, query: "", index: 0 });
+
+  const filteredMembers = useMemo(() => {
+    if (!members || members.length === 0) return [];
+    if (!mention.query) return members;
+    const q = mention.query.toLowerCase();
+    return members.filter(m => m.name.toLowerCase().includes(q) || (m.email && m.email.toLowerCase().includes(q)));
+  }, [members, mention.query]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const incoming = sanitizeRichText(value);
+    if (sanitizeRichText(editor.innerHTML) !== incoming) editor.innerHTML = incoming;
+    setEmpty(!richTextToPlainText(incoming));
+  }, [value]);
+
+  useEffect(() => {
+    const update = () => {
+      const selection = document.getSelection();
+      if (!editorRef.current || !selection?.anchorNode || !editorRef.current.contains(selection.anchorNode)) return;
+      setActive({ bold: document.queryCommandState("bold"), italic: document.queryCommandState("italic"), strikeThrough: document.queryCommandState("strikeThrough") });
+    };
+    document.addEventListener("selectionchange", update);
+    return () => document.removeEventListener("selectionchange", update);
+  }, []);
+
+  const emitChange = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const next = normalizedEditorHtml(editor);
+    setEmpty(!richTextToPlainText(next));
+    onChange(next);
+  };
+
+  const format = (command: "bold" | "italic" | "strikeThrough") => {
+    if (disabled) return;
+    editorRef.current?.focus();
+    document.execCommand(command, false);
+    emitChange();
+    setActive(old => ({ ...old, [command]: document.queryCommandState(command) }));
+  };
+
+  const checkMentionTrigger = () => {
+    const selection = window.getSelection();
+    if (!selection || !editorRef.current || !selection.anchorNode) return;
+    if (!editorRef.current.contains(selection.anchorNode)) return;
+
+    if (selection.anchorNode.nodeType === Node.TEXT_NODE) {
+      const text = selection.anchorNode.textContent || "";
+      const offset = selection.anchorOffset;
+      const textBefore = text.slice(0, offset);
+      const match = /(?:^|\s)@([^\s@]*)$/.exec(textBefore);
+      if (match) {
+        setMention({ open: true, query: match[1], index: 0 });
+        return;
+      }
+    }
+    setMention(prev => (prev.open ? { ...prev, open: false } : prev));
+  };
+
+  const insertMention = (member: Member) => {
+    if (disabled) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    editor.focus();
+    const selection = window.getSelection();
+
+    const span = document.createElement("span");
+    span.className = "mention inline-flex items-center gap-0.5 rounded bg-[#EAF6FF] px-1.5 py-0.5 text-xs font-bold text-[#2649B3] select-none align-baseline";
+    span.setAttribute("data-user-id", member.id);
+    span.setAttribute("data-user-name", member.name);
+    span.setAttribute("contenteditable", "false");
+    span.textContent = `@${member.name}`;
+
+    const space = document.createTextNode("\u00A0");
+
+    let range: Range | null = null;
+    const anchor = selection?.anchorNode;
+    if (selection && selection.rangeCount > 0 && anchor && editor.contains(anchor)) {
+      range = selection.getRangeAt(0);
+
+      if (anchor.nodeType === Node.TEXT_NODE) {
+        const text = anchor.textContent || "";
+        const offset = selection.anchorOffset;
+        const lastAt = text.lastIndexOf("@", Math.max(0, offset - 1));
+        if (lastAt !== -1) {
+          const replaceRange = document.createRange();
+          replaceRange.setStart(anchor, lastAt);
+          replaceRange.setEnd(anchor, offset);
+          replaceRange.deleteContents();
+          range = replaceRange;
+        }
+      }
+    }
+
+    if (!range) {
+      range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+    }
+
+    range.insertNode(space);
+    range.insertNode(span);
+
+    range.setStartAfter(space);
+    range.setEndAfter(space);
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    setMention({ open: false, query: "", index: 0 });
+    emitChange();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!mention.open) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setMention(prev => ({
+        ...prev,
+        index: filteredMembers.length ? (prev.index + 1) % filteredMembers.length : 0
+      }));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setMention(prev => ({
+        ...prev,
+        index: filteredMembers.length ? (prev.index - 1 + filteredMembers.length) % filteredMembers.length : 0
+      }));
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      if (filteredMembers.length > 0 && filteredMembers[mention.index]) {
+        e.preventDefault();
+        insertMention(filteredMembers[mention.index]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setMention({ open: false, query: "", index: 0 });
+    }
+  };
+
+  const toggleMentionMenu = () => {
+    if (disabled) return;
+    if (mention.open) {
+      setMention({ open: false, query: "", index: 0 });
+    } else {
+      editorRef.current?.focus();
+      setMention({ open: true, query: "", index: 0 });
+    }
+  };
+
+  const formats: ["bold" | "italic" | "strikeThrough", string, React.ReactNode][] = [
+    ["bold", "Tebal", <Bold key="bold" size={18} />],
+    ["italic", "Miring", <Italic key="italic" size={18} />],
+    ["strikeThrough", "Coret", <Strikethrough key="strike" size={18} />]
+  ];
+
+  return (
+    <section className="flex min-h-[360px] flex-col overflow-hidden rounded-2xl border border-[#D9D9D9] bg-white focus-within:border-[#294BB2] focus-within:ring-2 focus-within:ring-[#294BB2]/10 lg:min-h-0">
+      <div className="flex items-center justify-between border-b border-[#E5E5E5] bg-[#F8FAFC] px-3 py-2">
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-[.12em] text-[#294BB2]">Catatan Utama</p>
+          <p className="mt-0.5 text-xs text-[#6B7280]">Pilih teks untuk format atau ketik @ untuk tag anggota.</p>
+        </div>
+        <div className="flex items-center gap-1 rounded-xl border border-[#DDE7F2] bg-white p-1" role="toolbar" aria-label="Format teks">
+          {formats.map(([command, label, icon]) => (
+            <button key={command} type="button" title={label} aria-label={label} aria-pressed={active[command]} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => format(command)} className={`grid h-9 w-9 place-items-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40 ${active[command] ? "bg-[#294BB2] text-white" : "text-[#294BB2] hover:bg-[#EAF6FF]"}`}>
+              {icon}
+            </button>
+          ))}
+          <div className="mx-0.5 h-5 w-px bg-[#E5E7EB]" />
+          <button
+            type="button"
+            title="Tag Anggota Meeting (@)"
+            aria-label="Tag Anggota Meeting"
+            aria-pressed={mention.open}
+            disabled={disabled}
+            onMouseDown={event => event.preventDefault()}
+            onClick={toggleMentionMenu}
+            className={`flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${mention.open ? "bg-[#294BB2] text-white" : "text-[#294BB2] hover:bg-[#EAF6FF]"}`}
+          >
+            <AtSign size={16} />
+            <span className="hidden sm:inline">Tag User</span>
+          </button>
+        </div>
+      </div>
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={editorRef}
+          contentEditable={!disabled}
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="true"
+          aria-label="Isi notulensi meeting"
+          onInput={() => { emitChange(); checkMentionTrigger(); }}
+          onKeyDown={handleKeyDown}
+          onBlur={() => {
+            const editor = editorRef.current;
+            if (editor) {
+              const clean = normalizedEditorHtml(editor);
+              editor.innerHTML = clean;
+              onChange(clean);
+            }
+          }}
+          className={`h-full min-h-[300px] overflow-y-auto p-5 text-base leading-7 outline-none sm:p-6 ${disabled ? "cursor-default bg-[#FAFAFA]" : ""}`}
+        />
+        {empty && <span className="pointer-events-none absolute left-5 top-5 text-sm text-[#9CA3AF] sm:left-6 sm:top-6">Tulis pembahasan meeting di sini... (ketik @ untuk tag anggota)</span>}
+
+        {mention.open && (
+          <div
+            className="absolute left-4 top-4 z-30 w-72 max-w-[calc(100%-2rem)] rounded-2xl border border-[#CFE0F5] bg-white p-2 shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-100"
+            onMouseDown={e => e.preventDefault()}
+          >
+            <div className="flex items-center justify-between border-b border-[#F0F4FA] px-2.5 py-1.5 text-xs">
+              <span className="flex items-center gap-1.5 font-bold text-[#294BB2]">
+                <AtSign size={14} /> Tag Anggota Meeting
+              </span>
+              <span className="rounded bg-[#EAF6FF] px-1.5 py-0.5 text-[10px] font-bold text-[#294BB2]">
+                {filteredMembers.length}
+              </span>
+            </div>
+            <div className="mt-1 max-h-48 overflow-y-auto space-y-0.5">
+              {filteredMembers.length === 0 ? (
+                <p className="px-3 py-3 text-center text-xs text-[#6B7280]">
+                  Tidak ada anggota meeting yang cocok.
+                </p>
+              ) : (
+                filteredMembers.map((m, idx) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => insertMention(m)}
+                    className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition text-xs ${
+                      idx === mention.index ? "bg-[#EAF6FF] text-[#243B7A]" : "text-[#374151] hover:bg-[#F8FAFC]"
+                    }`}
+                  >
+                    <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#294BB2]/10 text-xs font-bold text-[#294BB2]">
+                      {m.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-bold text-xs">{m.name}</p>
+                      <p className="truncate text-[10px] text-[#6B7280]">{m.role || m.email}</p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="mt-1 border-t border-[#F0F4FA] px-2.5 pt-1.5 text-[10px] text-[#9CA3AF]">
+              Tekan <kbd className="rounded border px-1 font-mono">↑↓</kbd> lalu <kbd className="rounded border px-1 font-mono">Enter</kbd> atau klik nama.
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
-function NotesModal({detail,minutes,setMinutes,busy,onClose,onSave}:{detail:MeetingDetail;minutes:typeof initialMinutes;setMinutes:React.Dispatch<React.SetStateAction<typeof initialMinutes>>;busy:boolean;onClose:()=>void;onSave:(publish?:boolean)=>void}){
-  const published=detail.minutes?.status==="PUBLISHED";
-  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#090909]/35 p-2 backdrop-blur-[1px] sm:p-4"><div className="flex max-h-[80vh] min-h-0 w-full max-w-[1008px] flex-col overflow-hidden rounded-[22px] bg-white shadow-2xl sm:w-[80vw]">
-    <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[#EAEAEA] px-4 py-4 sm:px-7"><button onClick={onClose} className="inline-flex min-w-0 items-center gap-3 text-left text-[#294BB2]"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#EAF6FF]"><ArrowLeft size={18}/></span><span className="min-w-0"><strong className="block truncate text-lg">{detail.request?.title}</strong><span className="block truncate text-xs font-semibold text-[#6B7280]">{displayOccurrenceDate(detail.selected_occurrence_date)}</span></span></button>{published?<span className="rounded-lg bg-[#EAF6FF] px-4 py-2 text-xs font-extrabold text-[#294BB2]">COMPLETED</span>:<button disabled={busy} onClick={()=>void onSave(false)} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#294BB2] px-4 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:opacity-50 sm:px-6"><Save size={18}/><span className="hidden sm:inline">Simpan Draft</span><span className="sm:hidden">Simpan</span></button>}</header>
-    {published&&<div className="mx-4 mt-4 rounded-xl border border-[#CFE3F6] bg-[#F1F8FE] px-4 py-3 text-sm text-[#294BB2] sm:mx-7">Notulensi ini telah dipublikasikan dan ditampilkan dalam mode baca. Seluruh peserta sudah mendapat notifikasi.</div>}
-    {!published&&detail.minutes&&<div className="mx-4 mt-4 rounded-xl border border-[#F5C842] bg-[#FFF9E6] px-4 py-3 text-xs text-[#7A5C00] sm:mx-7"><strong>Draft tersimpan.</strong> Notulensi ini belum dipublikasikan — peserta belum mendapat notifikasi. Klik <strong>Publikasikan</strong> setelah selesai mengedit.</div>}
-    <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 sm:p-7 lg:grid-cols-[minmax(0,1.8fr)_minmax(300px,1fr)] lg:overflow-hidden"><RichTextEditor disabled={published} value={minutes.general_discussion} onChange={value=>setMinutes(old=>({...old,general_discussion:value}))}/><aside className="grid content-start gap-4 overflow-visible lg:overflow-y-auto lg:pr-1"><div className="rounded-2xl border border-[#E5E5E5] bg-[#FCFCFC] p-4"><TextArea disabled={published} label="Ringkasan" hint="Gambaran singkat hasil meeting" rows={3} value={minutes.summary} onChange={value=>setMinutes(old=>({...old,summary:value}))}/></div><div className="rounded-2xl border border-[#E5E5E5] bg-[#FCFCFC] p-4"><TextArea disabled={published} label="Keputusan" hint="Tulis satu keputusan per baris" rows={4} value={minutes.decisions} onChange={value=>setMinutes(old=>({...old,decisions:value}))}/></div><div className="rounded-2xl border border-[#E5E5E5] bg-[#FCFCFC] p-4"><TextArea disabled={published} label="Action Item" hint="Tulis satu tindak lanjut per baris" rows={4} value={minutes.action_items} onChange={value=>setMinutes(old=>({...old,action_items:value}))}/></div></aside></div>
-    <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[#EAEAEA] bg-white px-4 py-3 sm:px-7">{!published&&<><button disabled={busy} onClick={()=>void onSave(false)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#294BB2] px-4 text-sm font-bold text-[#294BB2] transition hover:bg-[#EAF6FF] disabled:opacity-50"><Save size={17}/>Simpan Draft</button><button disabled={busy} onClick={()=>void onSave(true)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#147A43] px-5 text-sm font-bold text-white transition hover:bg-[#0e5c32] disabled:opacity-50"><CheckCircle2 size={17}/>Publikasikan</button></>}</footer>
-  </div></div>;
+function NotesModal({ detail, members = [], minutes, setMinutes, busy, onClose, onSave }: { detail: MeetingDetail; members?: Member[]; minutes: typeof initialMinutes; setMinutes: React.Dispatch<React.SetStateAction<typeof initialMinutes>>; busy: boolean; onClose: () => void; onSave: (publish?: boolean) => void }) {
+  const published = detail.minutes?.status === "PUBLISHED";
+
+  const taggableMembers = useMemo(() => {
+    const meetingMemberIds = new Set<string>();
+    if (detail.organizer_user_id) meetingMemberIds.add(detail.organizer_user_id);
+    if (detail.notetaker_user_id) meetingMemberIds.add(detail.notetaker_user_id);
+    detail.participants?.forEach(p => {
+      if (p.user_id) meetingMemberIds.add(p.user_id);
+      if (p.user?.id) meetingMemberIds.add(p.user.id);
+    });
+
+    const list: Member[] = [];
+    const seen = new Set<string>();
+
+    (members || []).forEach(m => {
+      if (meetingMemberIds.has(m.id) && !seen.has(m.id)) {
+        seen.add(m.id);
+        list.push(m);
+      }
+    });
+
+    detail.participants?.forEach(p => {
+      const uid = p.user_id || p.user?.id;
+      if (uid && !seen.has(uid)) {
+        seen.add(uid);
+        list.push({
+          id: uid,
+          name: p.user?.full_name || p.user?.email || "Peserta Meeting",
+          email: p.user?.email || "",
+          role: p.participant_role || "MEMBER"
+        });
+      }
+    });
+
+    return list;
+  }, [members, detail]);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#090909]/35 p-2 backdrop-blur-[1px] sm:p-4">
+      <div className="flex max-h-[80vh] min-h-0 w-full max-w-[1008px] flex-col overflow-hidden rounded-[22px] bg-white shadow-2xl sm:w-[80vw]">
+        <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[#EAEAEA] px-4 py-4 sm:px-7">
+          <button onClick={onClose} className="inline-flex min-w-0 items-center gap-3 text-left text-[#294BB2]">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#EAF6FF]">
+              <ArrowLeft size={18} />
+            </span>
+            <span className="min-w-0">
+              <strong className="block truncate text-lg">{detail.request?.title}</strong>
+              <span className="block truncate text-xs font-semibold text-[#6B7280]">{displayOccurrenceDate(detail.selected_occurrence_date)}</span>
+            </span>
+          </button>
+          {published ? (
+            <span className="rounded-lg bg-[#EAF6FF] px-4 py-2 text-xs font-extrabold text-[#294BB2]">COMPLETED</span>
+          ) : (
+            <button disabled={busy} onClick={() => void onSave(false)} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#294BB2] px-4 text-sm font-bold text-white transition hover:bg-[#203D91] disabled:opacity-50 sm:px-6">
+              <Save size={18} />
+              <span className="hidden sm:inline">Simpan Draft</span>
+              <span className="sm:hidden">Simpan</span>
+            </button>
+          )}
+        </header>
+        {published && (
+          <div className="mx-4 mt-4 rounded-xl border border-[#CFE3F6] bg-[#F1F8FE] px-4 py-3 text-sm text-[#294BB2] sm:mx-7">
+            Notulensi ini telah dipublikasikan dan ditampilkan dalam mode baca. Seluruh peserta sudah mendapat notifikasi.
+          </div>
+        )}
+        {!published && detail.minutes && (
+          <div className="mx-4 mt-4 rounded-xl border border-[#F5C842] bg-[#FFF9E6] px-4 py-3 text-xs text-[#7A5C00] sm:mx-7">
+            <strong>Draft tersimpan.</strong> Notulensi ini belum dipublikasikan — peserta belum mendapat notifikasi. Klik <strong>Publikasikan</strong> setelah selesai mengedit.
+          </div>
+        )}
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 sm:p-7 lg:grid-cols-[minmax(0,1.8fr)_minmax(300px,1fr)] lg:overflow-hidden">
+          <RichTextEditor disabled={published} value={minutes.general_discussion} onChange={value => setMinutes(old => ({ ...old, general_discussion: value }))} members={taggableMembers} />
+          <aside className="grid content-start gap-4 overflow-visible lg:overflow-y-auto lg:pr-1">
+            <div className="rounded-2xl border border-[#E5E5E5] bg-[#FCFCFC] p-4">
+              <TextArea disabled={published} label="Ringkasan" hint="Gambaran singkat hasil meeting" rows={3} value={minutes.summary} onChange={value => setMinutes(old => ({ ...old, summary: value }))} />
+            </div>
+            <div className="rounded-2xl border border-[#E5E5E5] bg-[#FCFCFC] p-4">
+              <TextArea disabled={published} label="Keputusan" hint="Tulis satu keputusan per baris" rows={4} value={minutes.decisions} onChange={value => setMinutes(old => ({ ...old, decisions: value }))} />
+            </div>
+            <div className="rounded-2xl border border-[#E5E5E5] bg-[#FCFCFC] p-4">
+              <TextArea disabled={published} label="Action Item" hint="Tulis satu tindak lanjut per baris" rows={4} value={minutes.action_items} onChange={value => setMinutes(old => ({ ...old, action_items: value }))} />
+            </div>
+          </aside>
+        </div>
+        <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[#EAEAEA] bg-white px-4 py-3 sm:px-7">
+          {!published && (
+            <>
+              <button disabled={busy} onClick={() => void onSave(false)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#294BB2] px-4 text-sm font-bold text-[#294BB2] transition hover:bg-[#EAF6FF] disabled:opacity-50">
+                <Save size={17} />
+                Simpan Draft
+              </button>
+              <button disabled={busy} onClick={() => void onSave(true)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#147A43] px-5 text-sm font-bold text-white transition hover:bg-[#0e5c32] disabled:opacity-50">
+                <CheckCircle2 size={17} />
+                Publikasikan
+              </button>
+            </>
+          )}
+        </footer>
+      </div>
+    </div>
+  );
 }
 
 function Field({label,value,onChange,type="text",required=false}:{label:string;value:string;onChange:(value:string)=>void;type?:string;required?:boolean}){return <label className="block text-xs font-bold text-[#090909]">{label}<input required={required} type={type} value={value} onChange={event=>onChange(event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-[#D9D9D9] bg-white px-3.5 text-xs text-[#090909] outline-none focus:border-[#2649B3] focus:ring-1 focus:ring-[#2649B3]/20 transition-all"/></label>;}
