@@ -66,28 +66,22 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
   }, [records, calendar.month, selectedProjectId, selectedUserId]);
 
   const scopedRecords = useMemo(() => {
-    if (allWeeks) {
-      return records.filter((r) => {
-        if (r.calendarMonth !== calendar.month) return false;
-        if (selectedProjectId !== "all" && r.projectId !== selectedProjectId) return false;
-        if (selectedUserId !== "all" && (r.assigneeId || "unassigned") !== selectedUserId) return false;
-        if (search.trim()) {
-          const q = search.trim().toLowerCase();
-          const match = [r.projectName, r.projectCode, r.mainTaskName, r.code, r.weeklyTask.target_description, r.weeklyTask.target_output, r.assigneeName].some(v => String(v ?? "").toLowerCase().includes(q));
-          if (!match) return false;
-        }
-        return true;
-      });
-    }
-    if (!period) return [];
-    return filterWeeklyTargets(records, {
-      query: search,
-      projectId: selectedProjectId === "all" ? "" : selectedProjectId,
-      period,
-      group: "",
-      today,
-    }).filter((record) => selectedUserId === "all" || (record.assigneeId || "unassigned") === selectedUserId);
-  }, [records, search, selectedProjectId, selectedUserId, period, today, allWeeks, calendar.month]);
+    return records.filter((r) => {
+      if (r.calendarMonth !== calendar.month) return false;
+      if (!allWeeks) {
+        const targetWeek = period?.week ?? calendar.week;
+        if (r.calendarWeek !== targetWeek) return false;
+      }
+      if (selectedProjectId !== "all" && r.projectId !== selectedProjectId) return false;
+      if (selectedUserId !== "all" && (r.assigneeId || "unassigned") !== selectedUserId) return false;
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        const match = [r.projectName, r.projectCode, r.mainTaskName, r.code, r.weeklyTask.target_description, r.weeklyTask.target_output, r.assigneeName].some(v => String(v ?? "").toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [records, search, selectedProjectId, selectedUserId, period, allWeeks, calendar.month, calendar.week]);
 
   const counts = useMemo(() => ({
     ALL: scopedRecords.length,

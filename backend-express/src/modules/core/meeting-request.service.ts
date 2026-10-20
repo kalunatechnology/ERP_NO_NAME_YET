@@ -431,47 +431,7 @@ export class MeetingRequestService {
       after: { meeting_id: meetingId, occurrence_date: occurrenceDate, status: 'DRAFT', decision_count: decisions.length, action_item_count: actionItems.length }, userId, companyId,
       description: `Draft notulensi ${detail.request.request_number} (${occurrenceDate}) disimpan — belum dipublikasikan, notifikasi belum dikirim.`,
     });
-    // Check if any users were mentioned/tagged with @ in note
-    try {
-      const explicitMentionIds = Array.isArray(payload.mentioned_user_ids) ? payload.mentioned_user_ids : [];
-      const textToScan = `${payload.general_discussion || ''} ${payload.summary || ''} ${payload.opening_notes || ''}`;
-      const dataUserIdMatches = Array.from(textToScan.matchAll(/data-user-id=["']([0-9a-f-]{36})["']/gi)).map((m) => m[1]);
-      const allCandidateIds = Array.from(new Set([...explicitMentionIds, ...dataUserIdMatches]));
-
-      if (allCandidateIds.length > 0 && detail.request) {
-        const participantRows = await prisma.request_meeting_participant.findMany({
-          where: { meeting_id: meetingId, company_id: companyId },
-          select: { user_id: true },
-        });
-        const meetingMemberIds = new Set<string>([
-          ...(detail.organizer_user_id ? [detail.organizer_user_id] : []),
-          ...(detail.notetaker_user_id ? [detail.notetaker_user_id] : []),
-          ...participantRows.map((p) => p.user_id).filter((id): id is string => Boolean(id)),
-        ]);
-        const validMentionIds = allCandidateIds.filter((id) => meetingMemberIds.has(id) && id !== userId);
-
-        if (validMentionIds.length > 0) {
-          let actorName = 'Anggota meeting';
-          try {
-            const actor = await prisma.iam_user.findUnique({ where: { id: userId }, select: { full_name: true, email: true } });
-            if (actor?.full_name || actor?.email) actorName = actor.full_name || actor.email;
-          } catch { /* ignore */ }
-
-          void notifyMentionedUsers({
-            meetingId,
-            companyId,
-            requestNumber: detail.request.request_number,
-            requestTitle: detail.request.title,
-            occurrenceDate,
-            actorUserId: userId,
-            actorName,
-            mentionedUserIds: validMentionIds,
-          });
-        }
-      }
-    } catch (mentionErr) {
-      console.warn('[MeetingRequestService] Mention notification warning (non-blocking):', mentionErr);
-    }
+    // Note: Mention notifications are dispatched exclusively when minutes are PUBLISHED (not during DRAFT)
     return this.getById(meetingId, companyId, userId, activeRole, occurrenceDate);
   }
 
