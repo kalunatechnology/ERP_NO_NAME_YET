@@ -1266,7 +1266,9 @@ export default function DashboardClient() {
     try {
       const mayReadProjectDashboard = ["pm", "om", "executive", "staff", "crm"].includes(userRole);
       const primarySections: Array<"projects" | "finance" | "crm"> = [];
-      if (canUseProjects && mayReadProjectDashboard && userRole !== "crm") primarySections.push("projects");
+      // Executive Weekly Target must use the same paginated project loader as
+      // Staff Weekly; the dashboard bootstrap projection omits Weekly fields.
+      if (canUseProjects && mayReadProjectDashboard && userRole !== "crm" && userRole !== "executive") primarySections.push("projects");
       if ((userRole === "finance" || userRole === "executive") && canUseFinance) primarySections.push("finance");
       if (userRole === "crm" && canUseCrm) primarySections.push("crm");
 
@@ -1274,6 +1276,9 @@ export default function DashboardClient() {
       // the underlying reads concurrently while preserving tenant and RBAC scope.
       const primary = await loadDashboardBootstrap(primarySections, { ...apiAccessContext, enabledModules: user?.enabled_modules });
       const primaryTasks: Promise<void>[] = [];
+      if (userRole === "executive" && canUseProjects && mayReadProjectDashboard) {
+        primaryTasks.push(loadAllProjects(user?.enabled_modules || [], undefined, apiAccessContext).then(setProjects));
+      }
       if (primary.projects) {
         if (userRole === "staff") setStaffOvertimeSummary(primary.projects.overtimeSummary ?? null);
         primaryTasks.push(loadAllProjects(user?.enabled_modules || [], primary.projects, apiAccessContext).then(setProjects));
