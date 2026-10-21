@@ -79,6 +79,8 @@ export async function POST(request: NextRequest) {
   // keduanya saat retry; jangan membuat randomUUID baru untuk retry submission yang sama.
   const eventId = request.headers.get("idempotency-key") || randomUUID();
   const result = await sendMarkaEvent(eventId, "inquiry.submitted", {
+    // Hostname ditentukan konfigurasi server dan harus ada di allowlist source Marka.
+    origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN,
     customer: {
       name: String(form.name).slice(0, 200),
       email: String(form.email).slice(0, 320),
@@ -101,6 +103,7 @@ export async function POST(request: NextRequest) {
 
 const eventExamples = `// Pesan baru dari web chat atau WhatsApp (teks saja)
 await sendMarkaEvent("arsalynk-webchat-msg-unique-456", "message.received", {
+    "origin_domain": "arsalynk.com",
     "thread_id": "webchat:visitor-123",
     "message_id": "msg-unique-456",
     "sender": {
@@ -113,6 +116,7 @@ await sendMarkaEvent("arsalynk-webchat-msg-unique-456", "message.received", {
 
 // Tiket baru. Jika serial_number dikirim, serial harus dikenal Marka.
 await sendMarkaEvent("arsalynk-ticket-request-789", "ticket.created", {
+    "origin_domain": "arsalynk.com",
     "subject": "Permintaan dukungan",
     "description": "Deskripsikan masalah pelanggan",
     "serial_number": "SN-ARS-001"
@@ -262,20 +266,51 @@ export default function CRMIntegrationGuide() {
     <section className="rounded-2xl border border-[#DCE5F2] bg-white p-5 shadow-sm">
       <div className="flex items-start gap-3">
         <div className="rounded-xl bg-[#EAF6FF] p-2 text-[#2649B3]"><ShieldCheck size={20}/></div>
-        <div><h2 className="text-lg font-bold text-[#172033]">Panduan koneksi sistem eksternal ke CRM Marka</h2>
-          <p className="mt-1 max-w-4xl text-sm leading-6 text-[#64748B]">Hubungkan website, aplikasi, ERP, marketplace, helpdesk, portal pelanggan, atau adapter WhatsApp melalui API dan webhook Marka. Ikuti alur dari provisioning source sampai uji end-to-end; tersedia contoh backend Node.js/Next.js, Python, PHP, dan C#.</p>
+        <div><h2 className="text-lg font-bold text-[#172033]">Panduan menghubungkan landing page ke Marka</h2>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-[#64748B]">Ikuti langkah dari pendaftaran koneksi di Marka, pemasangan kredensial di server landing page, sampai pengujian inquiry yang tampil di CRM. Bagian setelah panduan cepat menjelaskan contoh kode server dan pilihan integrasi lain.</p>
         </div>
       </div>
       <div className="mt-5 grid gap-3 lg:grid-cols-2">
-        <div className="rounded-xl border border-[#E2E8F0] p-4"><h3 className="font-semibold text-[#172033]">A. Sistem eksternal → Marka</h3><p className="mt-1 text-sm leading-6 text-[#64748B]">Website, marketplace, ERP, helpdesk, atau adapter kanal mengirim inquiry, pesan, tiket, atau keputusan quotation dengan HMAC. Marka menyimpan event dan memprosesnya di CRM.</p><p className="mt-2 text-xs font-semibold text-[#2649B3]">Website · E-commerce · WhatsApp · Service · Portal</p></div>
+        <div className="rounded-xl border border-[#E2E8F0] p-4"><h3 className="font-semibold text-[#172033]">A. Landing page → Marka</h3><p className="mt-1 text-sm leading-6 text-[#64748B]">Backend website meneruskan inquiry atau pesan memakai kredensial dan signature yang dibuat di Marka. Event masuk diproses oleh worker sebelum muncul di CRM.</p><p className="mt-2 text-xs font-semibold text-[#2649B3]">Formulir → Incoming Inquiry · Web chat → Customer Inbox</p></div>
         <div className="rounded-xl border border-[#E2E8F0] p-4"><h3 className="font-semibold text-[#172033]">B. Marka → sistem eksternal</h3><p className="mt-1 text-sm leading-6 text-[#64748B]">Saat status bisnis berubah, worker Marka memanggil URL penerima Anda dengan HMAC. Sistem penerima memvalidasi dan menyimpan event secara idempoten sebelum memperbarui portal atau notifikasi.</p><p className="mt-2 text-xs font-semibold text-[#2649B3]">Quotation · Ticket · Deal · Persetujuan</p></div>
       </div>
       <Note tone="amber"><strong>Rahasia dan batas sistem:</strong> semua signing secret hanya boleh berada di server/secret manager. Jangan masukkan ke JavaScript browser, HTML, Git, screenshot, atau log. HMAC membuktikan identitas aplikasi pengirim; itu tidak otomatis membuktikan bahwa pelanggan cocok dengan master customer Marka.</Note>
     </section>
 
+    <section id="crm-landing-quickstart" className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm">
+      <h2 className="text-base font-bold text-[#172033]">Panduan cepat: sambungkan landing page</h2>
+      <p className="mt-1 text-sm leading-6 text-[#64748B]">Kerjakan empat tahap ini bersama admin Marka dan pengembang website. Pengaturan di Marka menyiapkan identitas koneksi; pengiriman data baru aktif setelah backend landing page dipasang dan diuji.</p>
+      <ol className="mt-4 grid gap-3 lg:grid-cols-2">
+        {[
+          ["1. Daftarkan koneksi di Marka", "Buka tab Landing page / aplikasi di halaman Pengaturan Integrasi CRM. Isi Kode sumber, Nama integrasi, ID akun eksternal, dan routing unit bisnis bila diperlukan. Pilih event Inquiry dari formulir website untuk menerima lead; pilih Pesan masuk jika website memiliki web chat."],
+          ["2. Batasi domain dan pilih event", "Isi Domain website yang diizinkan dengan hostname yang tepat, misalnya promo.arsalynk.com. Pilih hanya event yang dipakai. Domain pada payload harus cocok dengan allowlist; bila domain tidak diatur, website harus mengirim event tanpa origin_domain."],
+          ["3. Simpan kredensial di server website", "Klik Buat koneksi landing page, lalu salin Webhook URL, Integration ID, Key ID, dan Signing Secret ke secret manager/environment backend website. Secret tampil sekali. Jangan menaruh secret di browser atau repository."],
+          ["4. Pasang kode dan uji dari website", "Minta pengembang meneruskan submit form dari backend website ke Marka memakai contoh kode di bagian Kirim event. Kirim satu inquiry uji, tunggu worker memprosesnya, lalu periksa tab Incoming Inquiry di CRM. Web chat diuji pada Customer Inbox."],
+        ].map(([title, body]) => <li key={title} className="rounded-xl border border-emerald-100 bg-white p-4"><h3 className="text-sm font-semibold text-[#172033]">{title}</h3><p className="mt-1 text-sm leading-6 text-[#64748B]">{body}</p></li>)}
+      </ol>
+      <Note tone="blue"><strong>Pembagian tugas:</strong> Company Admin mendaftarkan source, memilih event/domain, dan menjaga kredensial. Pengembang website memasang pemanggilan webhook di server landing page. Marka tidak mengubah website secara otomatis.</Note>
+    </section>
+
+    <section id='crm-integration-results' className='rounded-2xl border border-[#DCE5F2] bg-white p-5 shadow-sm'>
+      <h2 className='text-base font-bold text-[#172033]'>Hasil koneksi: domain asal, inquiry, pesan, tiket, dan CSAT</h2>
+      <p className='mt-1 text-sm leading-6 text-[#64748B]'>Gunakan panduan ini untuk memastikan event landing page tampil di bagian CRM yang tepat dan mengetahui tindakan admin berikutnya.</p>
+      <div className='mt-4 grid gap-3 lg:grid-cols-2'>
+        <article className='rounded-xl border border-sky-200 bg-sky-50/50 p-4'><h3 className='text-sm font-semibold text-[#172033]'>Domain asal website</h3><ol className='mt-2 space-y-1.5 text-xs leading-5 text-[#475569]'><li>1. Isi allowlist pada field <strong>Domain website yang diizinkan</strong> atau perbarui lewat tombol <strong>Domain</strong> pada source tersimpan.</li><li>2. Backend landing page mengirim <code>origin_domain</code> di dalam <code>data</code> untuk event inquiry, pesan, atau tiket.</li><li>3. Marka mencocokkan domain dengan allowlist. Domain tak terdaftar ditolak; jika allowlist kosong, kirim event tanpa domain.</li></ol><p className='mt-2 rounded-lg bg-white p-2 text-xs text-[#475569]'>Contoh hostname <code>promo.arsalynk.com</code> dikirim sebagai <code>{`"origin_domain": "promo.arsalynk.com"`}</code>. Tentukan nilai ini di server website, bukan dari input bebas browser.</p></article>
+        <article className='rounded-xl border border-blue-200 bg-blue-50/50 p-4'><h3 className='text-sm font-semibold text-[#172033]'>Inquiry dari formulir website</h3><p className='mt-2 text-xs leading-5 text-[#475569]'>Event <code>inquiry.submitted</code> muncul di tab <strong>Incoming Inquiry</strong>, lengkap dengan nama/email, ringkasan kebutuhan, dan badge domain bila dikirim.</p><p className='mt-2 text-xs leading-5 text-[#475569]'>Admin meninjau isi inquiry, menautkan customer dari <strong>Accounts</strong> bila identitas sudah dipastikan, lalu memilih <strong>Jadikan opportunity</strong>. Event inquiry tidak otomatis membuat master customer atau opportunity.</p></article>
+        <article className='rounded-xl border border-violet-200 bg-violet-50/50 p-4'><h3 className='text-sm font-semibold text-[#172033]'>Pesan web chat</h3><p className='mt-2 text-xs leading-5 text-[#475569]'>Event <code>message.received</code> masuk ke <strong>Customer Inbox</strong>. Admin dapat memfilter domain, menetapkan PIC, memverifikasi identitas, lalu mengubah percakapan menjadi inquiry.</p><p className='mt-2 text-xs leading-5 text-[#475569]'>Balasan staf memakai event <code>message.reply_requested</code>; adapter website/provider perlu meneruskannya ke kanal chat. Payload pesan saat ini berupa teks.</p></article>
+        <article className='rounded-xl border border-amber-200 bg-amber-50/50 p-4'><h3 className='text-sm font-semibold text-[#172033]'>Tiket dan klaim garansi</h3><p className='mt-2 text-xs leading-5 text-[#475569]'>Event <code>ticket.created</code> muncul di <strong>Support &amp; Garansi</strong>. Untuk pemeriksaan garansi, serial number harus terdaftar pada riwayat transaksi company Marka. Work Order dapat dibuat setelah hasil pemeriksaan <code>WARRANTY_ACTIVE</code>.</p></article>
+        <article className='rounded-xl border border-emerald-200 bg-emerald-50/50 p-4'><h3 className='text-sm font-semibold text-[#172033]'>Accounts, quotation, order, dan kontrak</h3><p className='mt-2 text-xs leading-5 text-[#475569]'>Tab <strong>Accounts</strong> mengelola rekanan melalui Tambah Rekanan/Edit. Buat estimate dan quotation di <strong>Estimating &amp; Quoting</strong>; quotation accepted dapat dikonversi menjadi Sales Order. Deal Won menjalankan pemeriksaan kredit.</p><p className='mt-2 text-xs leading-5 text-[#475569]'><strong>Contracts &amp; Orders</strong> menampilkan transaksi yang terbentuk dan menyediakan jalan pintas ke quotation/deals. Tab ini tidak membuat order manual yang melewati alur komersial.</p></article>
+        <article className='rounded-xl border border-rose-200 bg-rose-50/50 p-4'><h3 className='text-sm font-semibold text-[#172033]'>Feedback dan CSAT</h3><p className='mt-2 text-xs leading-5 text-[#475569]'>Di <strong>Engagement</strong>, Tambah Feedback mencatat customer, rating 1–5, dan komentar. Catat CSAT Transaksi tersedia untuk Sales Order <code>FULFILLED</code> yang belum punya respons; satu respons per order.</p><p className='mt-2 text-xs leading-5 text-[#475569]'>CSAT diinput staf berdasarkan jawaban pelanggan. Undangan otomatis dan form survei publik belum tersedia.</p></article>
+      </div>
+      <Note tone='blue'><strong>Badge domain tidak terlihat?</strong> Record tanpa <code>origin_domain</code> tetap dapat masuk, tetapi tidak memiliki badge. Pilih <strong>Semua domain</strong> untuk melihat record domain maupun tanpa domain. Respons <code>202</code> berarti event diterima antrean; tunggu worker lalu gunakan Refresh Data CRM.</Note>
+    </section>
+
     <nav aria-label="Navigasi panduan koneksi CRM" className="rounded-xl border border-[#DCE5F2] bg-[#F8FAFC] p-4">
       <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#64748B]">Langsung ke bagian</p>
       <div className="flex flex-wrap gap-2 text-xs font-semibold">
+        <a href="#crm-landing-quickstart" className="rounded-lg border border-[#DCE5F2] bg-white px-3 py-2 text-[#2649B3] hover:bg-blue-50">Panduan cepat landing page</a>
+        <a href="#crm-integration-results" className="rounded-lg border border-[#DCE5F2] bg-white px-3 py-2 text-[#2649B3] hover:bg-blue-50">Hasil di CRM &amp; CSAT</a>
+        <a href="#crm-developer-maintenance" className="rounded-lg border border-[#DCE5F2] bg-white px-3 py-2 text-[#2649B3] hover:bg-blue-50">Panduan update developer</a>
         {[["#crm-setup", "1. Setup"], ["#crm-sender", "2. Kirim event"], ["#crm-events", "3. Jenis event"], ["#crm-coverage", "4. Cakupan semua fitur"], ["#crm-outbound", "5. Update keluar"], ["#crm-portal", "6. Portal"], ["#crm-e2e", "7. Uji end-to-end"], ["#crm-troubleshooting", "8. Troubleshooting"]].map(([href, label]) => <a key={href} href={href} className="rounded-lg border border-[#DCE5F2] bg-white px-3 py-2 text-[#2649B3] hover:bg-blue-50">{label}</a>)}
       </div>
     </nav>
@@ -285,7 +320,7 @@ export default function CRMIntegrationGuide() {
       <ol className="mt-3 grid gap-3 md:grid-cols-2">
         {[
           ["Pastikan backend siap", "Sebelum membuat source atau koneksi WhatsApp, jalankan migrasi database yang sesuai dan atur CRM_INTEGRATION_ENCRYPTION_KEY sebagai Base64 dari 32 byte acak di backend. Gunakan nilai tetap yang sama di setiap instance; jangan simpan di browser atau Git."],
-          ["Daftarkan source", "Di tab Landing page / aplikasi, pilih hanya event yang akan digunakan. Pesan web/WA perlu message.received; formulir Contact Us perlu inquiry.submitted."],
+          ["Daftarkan source", "Di tab Landing page / aplikasi, pilih hanya event yang akan digunakan dan isi allowlist domain website bila ingin atribusi sumber. Hostname di payload harus terdaftar; source tanpa domain harus menerima event tanpa origin_domain. Pesan web/WA perlu message.received; formulir Contact Us perlu inquiry.submitted."],
           ["Simpan kredensial", "Simpan Webhook URL, Integration ID, Key ID, dan Signing Secret sekali tampil ke environment Production dan Preview yang benar."],
           ["Atur routing", "Pilih unit bisnis serta penanggung jawab bila dibutuhkan. Data pelanggan dari identitas eksternal tetap UNMATCHED sampai diverifikasi."],
           ["Siapkan HTTPS publik", "Server website harus dapat mengakses backend Marka lewat HTTPS. URL harus tepat /api/v1/integrations/webhooks/events tanpa query string."],
@@ -296,7 +331,9 @@ export default function CRMIntegrationGuide() {
         <pre className="mt-2 overflow-auto text-xs leading-5 text-slate-700"><code>{`MARKA_CRM_WEBHOOK_URL=https://api.marka-anda.com/api/v1/integrations/webhooks/events
 MARKA_CRM_INTEGRATION_ID=<UUID dari Marka>
 MARKA_CRM_KEY_ID=<key ID dari Marka>
-MARKA_CRM_SIGNING_SECRET=<secret yang tampil sekali>`}</code></pre>
+MARKA_CRM_SIGNING_SECRET=<secret yang tampil sekali>
+PUBLIC_ORIGIN_DOMAIN=arsalynk.com`}</code></pre>
+        <p className="mt-2 text-xs leading-5 text-[#64748B]">Nilai <code>PUBLIC_ORIGIN_DOMAIN</code> dipakai contoh route Contact Us untuk mengisi <code>data.origin_domain</code>. Atur nilainya pada konfigurasi server masing-masing website/subdomain dan daftarkan hostname yang sama pada allowlist source Marka. Jangan meminta pelanggan mengisi domain ini pada form.</p>
       </div>
       <Note tone="blue"><strong>Kelola source:</strong> secret tidak dapat dibaca kembali setelah pembuatan. Jika hilang, gunakan POST <code>/api/v1/core/integration-sources/:id/rotate-secret/</code> lalu simpan secret baru; key lama hanya diterima selama 24 jam. Status <code>SUSPENDED</code> bisa diaktifkan kembali, sedangkan <code>REVOKED</code> terminal dan memerlukan source baru.</Note>
     </section>
@@ -322,7 +359,7 @@ MARKA_CRM_SIGNING_SECRET=<secret yang tampil sekali>`}</code></pre>
 
     <section id="crm-events" className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
       <h2 className="text-base font-bold text-[#172033]">3. Event masuk yang dapat digunakan</h2>
-      <p className="mt-1 text-sm leading-6 text-[#64748B]">Setiap event memiliki pembungkus standar: <code>event_id</code> stabil, <code>event_type</code>, <code>schema_version: 1</code>, waktu kejadian, dan <code>data</code>. <code>company_id</code> tidak perlu dikirim; Marka mengambil company dari Integration Source yang menandatangani request.</p>
+      <p className="mt-1 text-sm leading-6 text-[#64748B]">Setiap event memiliki pembungkus standar: <code>event_id</code> stabil, <code>event_type</code>, <code>schema_version: 1</code>, waktu kejadian, dan <code>data</code>. Untuk inquiry, pesan, atau tiket website, isi <code>data.origin_domain</code> dengan hostname yang terdaftar di allowlist source. <code>company_id</code> tidak perlu dikirim; Marka mengambil company dari Integration Source yang menandatangani request.</p>
       <div className="mt-4 overflow-x-auto rounded-xl border border-[#E2E8F0]"><table className="min-w-full text-left text-sm"><thead className="bg-[#F8FAFC] text-xs uppercase text-[#64748B]"><tr><th className="px-4 py-3">Event</th><th className="px-4 py-3">Hasil di Marka</th><th className="px-4 py-3">Field wajib/aturan</th></tr></thead><tbody className="divide-y divide-[#E2E8F0] text-[#334155]">
         {[
           ["inquiry.submitted", "Membuat Inquiry CRM", "customer.name, customer.email, requirements.subject; phone, description, target_budget opsional."],
@@ -362,12 +399,22 @@ MARKA_CRM_SIGNING_SECRET=<secret yang tampil sekali>`}</code></pre>
           ["Cost estimate & quotation", "Tidak ada inbound event untuk membuat estimate/baris atau quotation; keputusan quotation adalah inbound event yang didukung.", "quotation.ready, quotation.approved, quotation.accepted, quotation.rejected.", "Hitung estimate: POST /api/v1/crm/cost-estimates/:id/calculate/; buat quotation: POST /api/v1/crm/cost-estimates/:id/create-quotation/. Keputusan inbound hanya untuk quotation SENT terkait opportunity."],
           ["Credit & executive approval", "Tidak ada inbound event generik untuk mengubah credit limit, snapshot, atau approval.", "crm.executive_approval.decided dan handoff deal.won memberi notifikasi keputusan.", "Hitung snapshot: POST /api/v1/crm/credit-status-snapshots/calculate/. Override/approval perlu role yang berwenang; webhook tidak melewati approval."],
           ["Support, ticket & warranty", "ticket.created membuat service case; serial_number opsional tetapi harus ada pada company Marka.", "ticket.status_updated dan ticket.resolved dikirim saat aksi resolve yang didukung dijalankan.", "ticket.created tidak otomatis menautkan customer. Untuk party/serial dan operasi lengkap, gunakan POST /api/v1/service/cases; warranty: POST /api/v1/service/cases/:id/check-warranty; work order: POST /api/v1/service/cases/:id/work-orders; selesai: POST /api/v1/service/cases/:id/resolve. Tidak ada event warranty/work-order khusus."],
-          ["Engagement, activity, survey & feedback", "Tidak tersedia event inbound standar untuk activity, survey response, atau feedback.", "Tidak tersedia event outbound khusus untuk activity/survey/feedback.", "Gunakan CRUD REST API CRM terautentikasi dan lakukan pemetaan field/consent dengan hati-hati."],
+          ["Engagement, activity, survey & feedback", "Tidak tersedia event inbound standar untuk activity, survey response, atau feedback.", "Tidak tersedia event outbound khusus untuk activity/survey/feedback.", "Feedback umum dicatat dari CRM. CSAT internal dapat dikaitkan ke Sales Order FULFILLED, satu respons per order; staf memasukkan hasil yang disampaikan pelanggan. Undangan otomatis dan form survei publik belum tersedia. Integrasi khusus dapat memakai CRUD REST API CRM terautentikasi dengan pemetaan field/consent yang sesuai."],
           ["Orders, contracts & project handoff", "Tidak dibuat lewat event inbound generik; quotation accepted dapat memulai handoff bisnis.", "deal.won membawa keputusan handoff dan ID order/project/proforma jika sudah dibuat.", "Jika kredit aman, alur dapat membuat Sales Order dan Project; jika tertahan, membuat Proforma/Credit Hold. Data rinci dibaca dari modul Sales/Finance/Projects."],
           ["Portal pelanggan", "Portal token tidak menerima event tulis.", "Portal API membaca quotation/tiket yang dimiliki party token.", "Token scoped, customer-specific, dapat kedaluwarsa/dicabut, dan tidak boleh ditanam di browser publik."],
           ["WhatsApp Business", "Callback Meta memvalidasi challenge dan X-Hub-Signature-256; pesan teks masuk ke Inbox.", "Balasan dari Inbox belum dikirim langsung oleh konektor WhatsApp Marka.", "Kirim balasan melalui adapter outbound message.reply_requested. Media/template belum diproses oleh konektor langsung."],
         ].map(([area, inbound, outbound, limits]) => <tr key={area}><td className="min-w-[180px] px-4 py-3 font-semibold">{area}</td><td className="min-w-[250px] px-4 py-3 text-xs leading-5">{inbound}</td><td className="min-w-[250px] px-4 py-3 text-xs leading-5">{outbound}</td><td className="min-w-[280px] px-4 py-3 text-xs leading-5">{limits}</td></tr>)}
       </tbody></table></div>
+
+      <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+        <h3 className="text-sm font-semibold text-[#172033]">Panduan implementasi untuk Engagement dan sistem non-landing-page</h3>
+        <p className="mt-1 text-xs leading-5 text-[#64748B]">Pilih jalur berdasarkan sistem sumber dan tindakan yang dibutuhkan. Field domain hanya relevan untuk web yang ingin melacak hostname asal; aplikasi marketplace, helpdesk, ERP, atau WhatsApp tidak perlu mengirim <code>origin_domain</code> kecuali event memang berasal dari website tertentu.</p>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <article className="rounded-lg border border-white bg-white p-3"><h4 className="text-xs font-bold text-[#172033]">Feedback dan CSAT pasca transaksi</h4><ol className="mt-2 space-y-1.5 text-xs leading-5 text-[#475569]"><li>1. Feedback umum dari adapter server dapat dicatat ke <code>POST /api/v1/crm/feedbacks/</code> dengan JWT service account/user yang berwenang dan company context. Kaitkan party/order/tiket yang sudah diverifikasi, lalu kirim tipe, rating, catatan, dan status sesuai kebutuhan.</li><li>2. CSAT transaksi memakai <code>POST /api/v1/crm/csat/responses</code> dengan body <code>{`{ "sales_order_id": "<UUID>", "rating": 5, "comments": "Pengiriman tepat waktu" }`}</code>. Hanya order <code>FULFILLED</code> yang diterima dan satu respons per order.</li><li>3. Saat ini staf Marka mencatat jawaban pelanggan. Form publik, tautan/token survey untuk customer, undangan otomatis, dan webhook inbound CSAT belum tersedia. Untuk kanal eksternal, buat form dan autentikasi di aplikasi Anda; backend tepercaya meneruskan respons melalui REST API terautentikasi.</li></ol><p className="mt-2 text-[11px] leading-5 text-[#64748B]">Jangan memanggil endpoint CRM langsung dari browser publik atau menaruh JWT/secret di frontend. Terapkan consent, pembatasan akses order, anti-spam, dan cegah pengiriman ulang di aplikasi eksternal.</p></article>
+          <article className="rounded-lg border border-white bg-white p-3"><h4 className="text-xs font-bold text-[#172033]">Aplikasi di luar landing page</h4><ul className="mt-2 space-y-1.5 text-xs leading-5 text-[#475569]"><li><strong>Marketplace/e-commerce:</strong> backend adapter mengirim <code>inquiry.submitted</code> untuk prospek atau memakai REST API Sales yang berizin untuk sinkronisasi transaksi; simpan pemetaan ID eksternal ↔ ID Marka.</li><li><strong>Helpdesk/service:</strong> kirim <code>ticket.created</code> untuk tiket teks sederhana; gunakan Service REST API bila perlu memilih customer, serial number, warranty, atau work order.</li><li><strong>ERP/finance:</strong> daftarkan outbound subscription agar ERP menerima perubahan quotation, deal, tiket, atau approval; transaksi keuangan tetap diproses oleh modulnya.</li><li><strong>WhatsApp:</strong> pilih konektor WhatsApp Business Cloud langsung di Marka atau adapter/provider milik perusahaan yang meneruskan event. Jangan gunakan kedua jalur untuk pesan/provider yang sama karena dapat menggandakan pesan.</li><li><strong>Portal/customer app:</strong> baca quotation/tiket dengan token portal terbatas per party; jangan pakai Integration Source secret atau JWT staf di aplikasi klien.</li></ul></article>
+        </div>
+        <Note tone="blue"><strong>Pilih autentikasi yang tepat:</strong> HMAC Integration Source digunakan untuk event inbound yang diizinkan (inquiry, message, ticket, dan keputusan quotation). REST CRM/Sales/Service memerlukan JWT dan hak akses/company context. Outbound subscription memakai signing secret tersendiri. Token portal hanya untuk baca data milik customer. Jangan mencampur kredensial atau mengirim data langsung dari browser publik.</Note>
+      </div>
 
       <details className="mt-4 rounded-xl border border-[#E2E8F0] p-4">
         <summary className="cursor-pointer text-sm font-semibold text-[#172033]">Alur end-to-end yang umum: dari prospek menjadi pelanggan</summary>
@@ -473,6 +520,8 @@ MARKA_CRM_SIGNING_SECRET=<secret yang tampil sekali>`}</code></pre>
           ["401 STALE_TIMESTAMP", "Jam server integrasi meleset atau antrean pengiriman terlalu lama.", "Sinkronkan NTP; buat timestamp baru setiap percobaan. Toleransi server Marka ±300 detik."],
           ["401 INVALID_NONCE / NONCE_REPLAY", "Nonce dipakai kembali atau tidak sesuai format.", "Buat nonce acak 16–128 karakter setiap percobaan, termasuk saat retry."],
           ["400 EVENT_TYPE_NOT_ALLOWED", "Event yang dikirim tidak dicentang pada source.", "Company Admin gunakan source dengan event yang diperlukan atau kirim tipe yang sudah diizinkan."],
+          ["400 ORIGIN_DOMAIN_NOT_ALLOWED", "Hostname yang dikirim tidak tercantum di allowlist source.", "Samakan PUBLIC_ORIGIN_DOMAIN pada server website dengan hostname di field Domain website yang diizinkan. Periksa setiap subdomain sebagai hostname tersendiri."],
+          ["400 INVALID_ORIGIN_DOMAIN", "Nilai domain tidak valid atau menyertakan path, port, query, maupun fragment.", "Kirim hostname publik, misalnya arsalynk.com. Tentukan nilainya dari konfigurasi server; jangan kirim URL halaman/form atau nilai bebas dari browser."],
           ["400 INVALID_INQUIRY_EVENT", "Customer/email/subject wajib kosong atau tidak valid.", "Periksa customer.name, format customer.email, dan requirements.subject pada payload."],
           ["422 UNSUPPORTED_MESSAGE_TYPE", "Payload chat membawa media atau type selain TEXT.", "Kirim teks yang dinormalisasi. Simpan pemrosesan media di adapter kanal eksternal."],
           ["503 CRM_INTEGRATION_NOT_CONFIGURED", "Kunci enkripsi server tidak ada atau bukan Base64 dari 32 byte.", "Atur CRM_INTEGRATION_ENCRYPTION_KEY pada backend, pastikan sama di semua instance, lalu restart. Jangan mengganti key yang telah mengenkripsi secret aktif."],
@@ -484,6 +533,17 @@ MARKA_CRM_SIGNING_SECRET=<secret yang tampil sekali>`}</code></pre>
         <Note tone="blue"><strong>Retry yang aman:</strong> untuk gangguan jaringan atau HTTP 503/408/429, pertahankan event_id dan body, tetapi buat timestamp, nonce, dan signature baru. Simpan event ke outbox sebelum mengirim agar tidak hilang saat website restart.</Note>
         <Note tone="amber"><strong>Data yang perlu dicatat:</strong> simpan status HTTP, event_id, integration source, waktu percobaan, dan error code. Jangan catat signing secret, token akses, atau payload pribadi pelanggan secara penuh.</Note>
       </div>
+    </section>
+
+    <section id='crm-developer-maintenance' className='rounded-2xl border border-[#DCE5F2] bg-white p-5 shadow-sm'>
+      <h2 className='text-base font-bold text-[#172033]'>Panduan developer: menyesuaikan dan memperbarui integrasi</h2>
+      <p className='mt-1 text-sm leading-6 text-[#64748B]'>Gunakan aturan ini saat menambah domain, mengubah form website, atau mengembangkan event agar konfigurasi Marka, kode landing page, dan tampilan CRM tetap selaras.</p>
+      <div className='mt-4 grid gap-3 lg:grid-cols-2'>
+        <article className='rounded-xl border border-sky-200 bg-sky-50/50 p-4'><h3 className='text-sm font-semibold text-[#172033]'>Jika menambah domain/subdomain</h3><ol className='mt-2 space-y-1.5 text-xs leading-5 text-[#475569]'><li>1. Daftarkan hostname pada allowlist source Marka; tiap subdomain adalah nilai tersendiri.</li><li>2. Atur <code>PUBLIC_ORIGIN_DOMAIN</code> di environment server deployment yang sesuai.</li><li>3. Pastikan server mengirim hostname yang sama pada <code>data.origin_domain</code>.</li><li>4. Uji event dan pastikan badge domain tampil pada tab CRM yang tepat.</li></ol><p className='mt-2 text-xs leading-5 text-[#64748B]'>Satu backend yang melayani beberapa host harus memakai pemetaan host-ke-domain yang dikontrol server dan divalidasi terhadap allowlist; jangan mempercayai header/browser secara langsung.</p></article>
+        <article className='rounded-xl border border-emerald-200 bg-emerald-50/50 p-4'><h3 className='text-sm font-semibold text-[#172033]'>Jika field form website berubah</h3><ul className='mt-2 space-y-1.5 text-xs leading-5 text-[#475569]'><li>Petakan nama/email/telepon ke <code>data.customer</code>.</li><li>Petakan judul ke <code>data.requirements.subject</code>; deskripsi dan target budget mengikuti kontrak event inquiry.</li><li>Bentuk payload dan HMAC di backend website setelah validasi form dan kontrol anti-spam.</li><li>Simpan submission dan <code>event_id</code> pada outbox agar retry tidak membuat record ganda.</li></ul></article>
+      </div>
+      <div className='mt-4 rounded-xl border border-[#E2E8F0] p-4'><h3 className='text-sm font-semibold text-[#172033]'>Checklist saat menambah event atau field CRM</h3><ol className='mt-2 grid gap-2 text-xs leading-5 text-[#475569] md:grid-cols-2'><li>1. Tentukan kontrak event, field wajib, validasi, dan source/company scope.</li><li>2. Tambahkan pilihan event pada <code>LandingPageIntegrationSettings.tsx</code> jika admin perlu mengaktifkannya.</li><li>3. Selaraskan allowlist dan validasi pada integration routes/service backend.</li><li>4. Implementasikan pemrosesan, deduplikasi, dan penyimpanan pada worker; tambahkan schema/migrasi bila perlu.</li><li>5. Hubungkan record ke API CRM dan tambahkan tampilan/filter/badge bila diperlukan.</li><li>6. Perbarui contoh payload, environment, tes end-to-end, dan troubleshooting dalam panduan ini.</li></ol></div>
+      <Note tone='amber'><strong>Jangan hanya mengubah contoh dokumentasi.</strong> Event baru harus diizinkan oleh source, dikenali backend, dan diproses worker sebelum dapat dipakai. Pertahankan kontrak lama selama masa migrasi website, lalu uji di staging sebelum mengubah production.</Note>
     </section>
   </div>;
 }

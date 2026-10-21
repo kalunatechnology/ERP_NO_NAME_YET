@@ -515,6 +515,84 @@ crmRouter.post('/external-identities/:id/confirm-customer', requireActiveRole(Ro
   } catch (error) { next(error); }
 });
 
+crmRouter.post('/csat/responses', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    const company = activeCompanyId(req);
+    const orderId = String(req.body.sales_order_id ?? '').trim();
+    const rating = Number(req.body.rating);
+    const comments = typeof req.body.comments === 'string' ? req.body.comments.trim() : '';
+    if (!/^[0-9a-f-]{36}$/i.test(orderId)) throw new ValidationError('Pilih Sales Order yang valid.');
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new ValidationError('Rating harus bernilai 1 sampai 5.');
+    if (comments.length > 2000) throw new ValidationError('Catatan CSAT maksimal 2.000 karakter.');
+
+    const result = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM sales_order
+        WHERE id = ${orderId} AND company_id = ${company} AND UPPER(status) = 'FULFILLED'
+        FOR UPDATE
+      `;
+      if (!locked.length) throw new ValidationError('CSAT hanya dapat dicatat untuk Sales Order berstatus FULFILLED.');
+      const order = await tx.sales_order.findFirst({ where: { id: orderId, company_id: company, status: 'FULFILLED' } });
+      if (!order) throw new ValidationError('Sales Order tidak tersedia untuk company aktif.');
+
+      const surveyCode = `CSAT_ORDER_${company.replace(/[^a-z0-9]/gi, '').toUpperCase()}`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${surveyCode}))`;
+      let survey = await tx.crm_survey.findFirst({ where: { company_id: company, survey_code: surveyCode } });
+      if (!survey) {
+        survey = await tx.crm_survey.create({ data: {
+          id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company, created_by_id: req.user!.id,
+          survey_code: surveyCode, survey_name: 'CSAT Pasca Transaksi', survey_type: 'CSAT',
+          active_from: new Date(), active_to: null, status: 'ACTIVE',
+        } });
+      }
+      let ratingQuestion = await tx.crm_survey_question.findFirst({ where: { survey_id: survey.id, position_order: 1 } });
+      if (!ratingQuestion) ratingQuestion = await tx.crm_survey_question.create({ data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company, created_by_id: req.user!.id,
+        survey_id: survey.id, question_text: 'Seberapa puas Anda terhadap transaksi ini?',
+        answer_type: 'RATING_1_5', required: true, position_order: 1, option_json: { min: 1, max: 5 },
+      } });
+      let commentQuestion = await tx.crm_survey_question.findFirst({ where: { survey_id: survey.id, position_order: 2 } });
+      if (!commentQuestion) commentQuestion = await tx.crm_survey_question.create({ data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company, created_by_id: req.user!.id,
+        survey_id: survey.id, question_text: 'Apa masukan Anda untuk kami?',
+        answer_type: 'TEXT', required: false, position_order: 2, option_json: {},
+      } });
+
+      const existing = await tx.crm_survey_response.findFirst({ where: { company_id: company, survey_id: survey.id, sales_order_id: order.id, response_status: 'SUBMITTED' }, select: { id: true } });
+      if (existing) throw new ConflictError('CSAT untuk Sales Order ini sudah pernah dicatat.');
+
+      let originDomain: string | null = null;
+      if (order.quotation_id) {
+        const quotation = await tx.sales_quotation.findFirst({ where: { id: order.quotation_id, company_id: company }, select: { opportunity_id: true } });
+        if (quotation?.opportunity_id) {
+          const opportunity = await tx.crm_opportunity.findFirst({ where: { id: quotation.opportunity_id, company_id: company }, select: { source_inquiry_id: true } });
+          if (opportunity?.source_inquiry_id) {
+            const inquiry = await tx.crm_customer_inquiry.findFirst({ where: { id: opportunity.source_inquiry_id, company_id: company }, select: { origin_domain: true } });
+            originDomain = inquiry?.origin_domain ?? null;
+          }
+        }
+      }
+      const now = new Date();
+      const response = await tx.crm_survey_response.create({ data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company, created_by_id: req.user!.id,
+        survey_id: survey.id, customer_party_id: order.customer_party_id, sales_order_id: order.id,
+        started_at: now, submitted_at: now, response_status: 'SUBMITTED', origin_domain: originDomain,
+      } });
+      await tx.crm_survey_answer.create({ data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company, created_by_id: req.user!.id,
+        response_id: response.id, question_id: ratingQuestion.id, numeric_answer: rating, text_answer: '', option_answer: {},
+      } });
+      if (comments) await tx.crm_survey_answer.create({ data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company, created_by_id: req.user!.id,
+        response_id: response.id, question_id: commentQuestion.id, numeric_answer: null, text_answer: comments, option_answer: {},
+      } });
+      return { response, survey_name: survey.survey_name, rating, comments };
+    }, { maxWait: 10_000, timeout: 30_000, isolationLevel: 'Serializable' });
+    res.status(201).json(result);
+  } catch (error) { next(error); }
+});
+
 crmRouter.post('/conversations/:id/assign', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const company = activeCompanyId(req);

@@ -15,7 +15,7 @@ import {
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
   Calculator, ShieldCheck, Award, BarChart3, MessageSquare, FileCheck,
   ChevronRight, AlertCircle, Star, UserPlus,
-  Inbox, MessageCircle,
+  Inbox, MessageCircle, Globe2,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
@@ -69,6 +69,11 @@ function StatusBadge({ status }: { status: string }) {
       {status || "—"}
     </span>
   );
+}
+
+function OriginDomainBadge({ domain }: { domain?: string | null }) {
+  if (!domain) return null;
+  return <span title={`Website asal: ${domain}`} className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-2xs font-medium text-sky-800"><Globe2 size={11} />{domain}</span>;
 }
 
 /**
@@ -1075,7 +1080,10 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: C
 function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
+  const [domainFilter, setDomainFilter] = useState("");
   const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", case_type: "WARRANTY_CLAIM", description: "", serial_number: "" });
+  const ticketDomains = Array.from(new Set((data.cases || []).map((item) => item.origin_domain).filter((value): value is string => Boolean(value)))).sort();
+  const visibleCases = (data.cases || []).filter((item) => !domainFilter || item.origin_domain === domainFilter);
 
   /**
    * Creates a support ticket after enforcing the required subject.
@@ -1093,18 +1101,19 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
       <div className="lg:col-span-3 card rounded-xl p-4">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <h3 className="text-sm font-bold">Tiket Support & Klaim Garansi</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-2xs font-bold">{(data.cases||[]).length} Tiket</span>
+            <select aria-label="Filter domain tiket" className="rounded-lg border border-text-tertiary bg-white px-2 py-1.5 text-xs" value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}><option value="">Semua domain</option>{ticketDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}</select>
             {!readOnly && (
               <button onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Tiket Baru</button>
             )}
           </div>
         </div>
-        {(data.cases||[]).length === 0 ? <EmptyState msg="Belum ada tiket support." /> : (
+        {visibleCases.length === 0 ? <EmptyState msg={domainFilter ? "Tidak ada tiket dari domain ini." : "Belum ada tiket support."} /> : (
           <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto">
-            {(data.cases||[]).map(c => {
+            {visibleCases.map(c => {
               const resolved = ["RESOLVED","CLOSED"].includes((c.status||"").toUpperCase());
 /**
  * cust coordinates the UI behavior represented by this function.
@@ -1121,6 +1130,7 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
                     <div className="text-xs text-text-secondary mt-0.5">
                       {cust?.display_name || "Customer"} · Prioritas: <b>{c.priority || "NORMAL"}</b>
                     </div>
+                    <div className="mt-1"><OriginDomainBadge domain={c.origin_domain} /></div>
                     <StatusBadge status={c.status || "OPEN"} />
                     {c.warranty_status && <span className={cn("ml-1 px-2 py-0.5 rounded-full text-2xs font-semibold", c.warranty_status === "WARRANTY_ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{c.warranty_status}</span>}
                   </div>
@@ -1250,6 +1260,9 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_party: "", description: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [domainFilter, setDomainFilter] = useState("");
+  const inquiryDomains = Array.from(new Set((data.inquiries || []).map((item) => item.origin_domain).filter((value): value is string => Boolean(value)))).sort();
+  const visibleInquiries = (data.inquiries || []).filter((item) => !domainFilter || item.origin_domain === domainFilter);
 
   /**
    * Creates a customer inquiry from the validated intake form.
@@ -1285,18 +1298,19 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
 
   return (
     <div className="card rounded-xl p-4">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <h3 className="text-sm font-bold">Incoming Customer Inquiries</h3>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.inquiries||[]).length} Inquiry</span>
+          <select aria-label="Filter domain inquiry" className="rounded-lg border border-text-tertiary bg-white px-2 py-1.5 text-xs" value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}><option value="">Semua domain</option>{inquiryDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}</select>
           {!readOnly && (
             <button onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Inquiry Baru</button>
           )}
         </div>
       </div>
-      {(data.inquiries||[]).length === 0 ? <EmptyState msg="Belum ada incoming inquiry." /> : (
+      {visibleInquiries.length === 0 ? <EmptyState msg={domainFilter ? "Tidak ada inquiry dari domain ini." : "Belum ada incoming inquiry."} /> : (
         <div className="flex flex-col gap-2">
-          {(data.inquiries||[]).map(x => {
+          {visibleInquiries.map(x => {
 /**
  * isQual coordinates the UI behavior represented by this function.
  *
@@ -1320,6 +1334,7 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
                   <div className="text-xs text-text-secondary mt-0.5">
                     <b>{x.customer_name || "-"}</b> ({x.customer_email || "-"}) · <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-2xs">{reqs.length} Spesifikasi</span>
                   </div>
+                  <div className="mt-1"><OriginDomainBadge domain={x.origin_domain} /></div>
                   <StatusBadge status={x.status || "NEW"} />
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -1437,26 +1452,87 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabAccounts({ data }: { data: CRMData }) {
+function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated: (party: any) => void; readOnly?: boolean }) {
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [editingParty, setEditingParty] = useState<any | null>(null);
+  const [partyForm, setPartyForm] = useState({ display_name: "", legal_name: "", party_code: "", party_type: "CUSTOMER", status: "ACTIVE" });
+  const [isSaving, setIsSaving] = useState(false);
+
+  const openEdit = (party: any) => {
+    setEditingParty(party);
+    setPartyForm({
+      display_name: party.display_name || "",
+      legal_name: party.legal_name || "",
+      party_code: party.party_code || "",
+      party_type: party.party_type || "CUSTOMER",
+      status: party.status || "ACTIVE",
+    });
+  };
+
+  const saveParty = async () => {
+    if (!editingParty) return;
+    if (!partyForm.display_name.trim() && !partyForm.legal_name.trim()) {
+      toast.error("Nama rekanan wajib diisi.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await api.patch(`/api/v1/master-data/parties/${editingParty.id}/`, {
+        display_name: partyForm.display_name.trim() || partyForm.legal_name.trim(),
+        legal_name: partyForm.legal_name.trim() || partyForm.display_name.trim(),
+        party_code: partyForm.party_code.trim(),
+        party_type: partyForm.party_type,
+        status: partyForm.status,
+      });
+      toast.success("Profil rekanan berhasil diperbarui.");
+      setEditingParty(null);
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Profil rekanan tidak berhasil diperbarui.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="card rounded-xl p-4">
-      <h3 className="text-sm font-bold mb-4">Master Rekanan (Customers & Partners)</h3>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+        <div>
+          <h3 className="text-sm font-bold">Master Rekanan (Customers & Partners)</h3>
+          <p className="text-xs text-text-secondary mt-1">Kelola nama, kode, tipe, dan status rekanan.</p>
+        </div>
+        {!readOnly && <button onClick={() => setIsQuickAddOpen(true)} className="btn-primary self-start text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Rekanan</button>}
+      </div>
       {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada rekanan terdaftar." /> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(data.parties||[]).map(p => (
-            <div key={p.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 hover:bg-bg-lighter">
-              <div>
-                <div className="text-sm font-semibold">{p.display_name || p.legal_name || p.id}</div>
-                <div className="text-xs text-text-secondary mt-0.5">
-                  Code: <code className="font-mono bg-gray-100 px-1 rounded text-2xs">{p.party_code || "-"}</code> · Type: <b>{p.party_type || "CUSTOMER"}</b>
+            <div key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-xl border border-text-tertiary/60 hover:border-brand-green/40 hover:bg-bg-lighter transition-colors">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold break-words">{p.display_name || p.legal_name || p.id}</div>
+                {p.legal_name && p.display_name && p.legal_name !== p.display_name && <div className="text-xs text-text-secondary mt-0.5 break-words">{p.legal_name}</div>}
+                <div className="text-xs text-text-secondary mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span>Kode <code className="font-mono bg-gray-100 px-1 rounded text-2xs">{p.party_code || "-"}</code></span><span aria-hidden="true">·</span><span>Tipe <b>{p.party_type || "CUSTOMER"}</b></span>
                 </div>
-                {p.email && <div className="text-xs text-text-secondary">{p.email}</div>}
               </div>
-              <StatusBadge status={p.status || "ACTIVE"} />
+              <div className="flex items-center justify-between sm:justify-end gap-2 sm:flex-shrink-0">
+                <StatusBadge status={p.status || "ACTIVE"} />
+                {!readOnly && <button type="button" onClick={() => openEdit(p)} className="btn-ghost text-xs py-1 px-2">Edit</button>}
+              </div>
             </div>
           ))}
         </div>
       )}
+      <QuickAddPartyModal isOpen={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} onSuccess={(party) => { onPartyCreated(party); onRefresh(); }} />
+      <Modal isOpen={Boolean(editingParty)} onClose={() => !isSaving && setEditingParty(null)} title="Edit Profil Rekanan" size="sm">
+        <div className="flex flex-col gap-3 p-4">
+          <label className="text-xs font-medium text-text-secondary">Nama tampilan *<input className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={partyForm.display_name} onChange={e => setPartyForm(f => ({ ...f, display_name: e.target.value }))} /></label>
+          <label className="text-xs font-medium text-text-secondary">Nama legal<input className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={partyForm.legal_name} onChange={e => setPartyForm(f => ({ ...f, legal_name: e.target.value }))} /></label>
+          <label className="text-xs font-medium text-text-secondary">Kode rekanan<input className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={partyForm.party_code} onChange={e => setPartyForm(f => ({ ...f, party_code: e.target.value }))} /></label>
+          <label className="text-xs font-medium text-text-secondary">Tipe rekanan<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyForm.party_type} onChange={e => setPartyForm(f => ({ ...f, party_type: e.target.value }))}><option value="CUSTOMER">Customer</option><option value="SUPPLIER">Supplier</option><option value="PARTNER">Partner</option></select></label>
+          <label className="text-xs font-medium text-text-secondary">Status<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyForm.status} onChange={e => setPartyForm(f => ({ ...f, status: e.target.value }))}><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></select></label>
+          <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setEditingParty(null)} disabled={isSaving} className="btn-ghost">Batal</button><button type="button" onClick={saveParty} disabled={isSaving} className="btn-primary">{isSaving ? "Menyimpan..." : "Simpan Perubahan"}</button></div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1471,16 +1547,29 @@ function TabAccounts({ data }: { data: CRMData }) {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabContracts({ data }: { data: CRMData }) {
+function TabContracts({ data, onNavigate }: { data: CRMData; onNavigate: (tab: "estimate" | "deals") => void }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="flex flex-col gap-4">
+      <div className="card rounded-xl border border-blue-200 bg-blue-50/70 p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-bold text-text-primary">Alur Sales Order & Kontrak</h3>
+            <p className="mt-1 text-xs leading-relaxed text-text-secondary">Buat quotation dan minta persetujuan di Estimates & Quoting. Quotation berstatus Accepted dapat dikonversi menjadi Sales Order. Deal Won juga memproses order melalui pemeriksaan kredit. Kontrak dikelola sesuai kesepakatan pelanggan.</p>
+          </div>
+          <div className="flex gap-2 flex-wrap shrink-0">
+            <button type="button" onClick={() => onNavigate("estimate")} className="btn-ghost text-xs py-1.5 px-3 gap-1"><FileText size={12} /> Buka Quotation</button>
+            <button type="button" onClick={() => onNavigate("deals")} className="btn-primary text-xs py-1.5 px-3 gap-1"><ArrowRight size={12} /> Buka Deals</button>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div className="card rounded-xl p-4">
-        <h3 className="text-sm font-bold mb-3">Sales Orders</h3>
+        <div className="flex items-center justify-between gap-2 mb-3"><h3 className="text-sm font-bold">Sales Orders</h3><span className="rounded-full bg-blue-50 px-2 py-0.5 text-2xs font-semibold text-blue-700">{(data.orders || []).length} order</span></div>
         {(data.orders||[]).length === 0 ? <EmptyState msg="Belum ada sales order." /> : (
           <div className="flex flex-col gap-2">
             {(data.orders||[]).map(o => (
-              <div key={o.id} className="flex justify-between items-center p-3 rounded-xl border border-text-tertiary/60">
-                <div>
+              <div key={o.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-3 rounded-xl border border-text-tertiary/60">
+                <div className="min-w-0">
                   <div className="text-sm font-semibold">{o.order_number || `Order ${String(o.id).slice(0,8)}`}</div>
                   <div className="text-xs text-text-secondary">Nilai: <b>{formatMoney(o.total_amount)}</b></div>
                 </div>
@@ -1491,12 +1580,12 @@ function TabContracts({ data }: { data: CRMData }) {
         )}
       </div>
       <div className="card rounded-xl p-4">
-        <h3 className="text-sm font-bold mb-3">Contracts</h3>
+        <div className="flex items-center justify-between gap-2 mb-3"><h3 className="text-sm font-bold">Contracts</h3><span className="rounded-full bg-violet-50 px-2 py-0.5 text-2xs font-semibold text-violet-700">{(data.contracts || []).length} kontrak</span></div>
         {(data.contracts||[]).length === 0 ? <EmptyState msg="Belum ada kontrak." /> : (
           <div className="flex flex-col gap-2">
             {(data.contracts||[]).map(c => (
-              <div key={c.id} className="flex justify-between items-center p-3 rounded-xl border border-text-tertiary/60">
-                <div>
+              <div key={c.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-3 rounded-xl border border-text-tertiary/60">
+                <div className="min-w-0">
                   <div className="text-sm font-semibold">{c.contract_number || `Contract ${String(c.id).slice(0,8)}`}</div>
                   <div className="text-xs text-text-secondary">{formatDate(c.start_date)} – {formatDate(c.end_date)}</div>
                 </div>
@@ -1505,6 +1594,7 @@ function TabContracts({ data }: { data: CRMData }) {
             ))}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
@@ -1520,25 +1610,116 @@ function TabContracts({ data }: { data: CRMData }) {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabEngagement({ data }: { data: CRMData }) {
+function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; onRefresh: () => void; readOnly?: boolean }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [partyId, setPartyId] = useState("");
+  const [rating, setRating] = useState(5);
+  const [comments, setComments] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCsatOpen, setIsCsatOpen] = useState(false);
+  const [csatOrderId, setCsatOrderId] = useState("");
+  const [csatRating, setCsatRating] = useState(5);
+  const [csatComments, setCsatComments] = useState("");
+  const [isCsatSubmitting, setIsCsatSubmitting] = useState(false);
+  const csatQuestionIds = new Set(data.surveyQuestions.filter((question) => question.answer_type === "RATING_1_5").map((question) => String(question.id)));
+  const csatResponses = data.surveyResponses.filter((response) => data.surveyAnswers.some((answer) => String(answer.response_id) === String(response.id) && csatQuestionIds.has(String(answer.question_id))));
+  const submittedOrderIds = new Set(csatResponses.map((response) => String(response.sales_order_id)).filter(Boolean));
+  const completedOrders = data.orders.filter((order) => String(order.status || "").toUpperCase() === "FULFILLED" && !submittedOrderIds.has(String(order.id)));
+
+  const submitFeedback = async () => {
+    if (!partyId) return toast.error("Pilih pelanggan terlebih dahulu.");
+    if (!comments.trim()) return toast.error("Catatan feedback wajib diisi.");
+    setIsSubmitting(true);
+    try {
+      await api.post("/api/v1/crm/feedbacks/", {
+        customer_party: partyId,
+        rating_value: rating,
+        feedback_text: comments.trim(),
+        feedback_type: "CUSTOMER_REVIEW",
+        submitted_at: new Date().toISOString(),
+        status: "SUBMITTED",
+      });
+      toast.success("Feedback pelanggan berhasil disimpan.");
+      setIsOpen(false);
+      setPartyId("");
+      setRating(5);
+      setComments("");
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Feedback tidak berhasil disimpan.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const submitCsat = async () => {
+    if (!csatOrderId) return toast.error("Pilih transaksi yang sudah selesai.");
+    setIsCsatSubmitting(true);
+    try {
+      await api.post("/api/v1/crm/csat/responses/", { sales_order_id: csatOrderId, rating: csatRating, comments: csatComments.trim() });
+      toast.success("Respons CSAT berhasil disimpan.");
+      setIsCsatOpen(false);
+      setCsatOrderId("");
+      setCsatRating(5);
+      setCsatComments("");
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error?.message || error?.response?.data?.detail || "Respons CSAT tidak berhasil disimpan.");
+    } finally {
+      setIsCsatSubmitting(false);
+    }
+  };
+
   return (
     <div className="card rounded-xl p-4">
-      <h3 className="text-sm font-bold mb-4">Customer Feedback & Review</h3>
+      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 mb-4">
+        <div><h3 className="text-sm font-bold">Customer Feedback & Review</h3><p className="text-xs text-text-secondary mt-1">Pantau ulasan pelanggan dan catat kepuasan setelah pesanan selesai.</p></div>
+        {!readOnly && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setIsCsatOpen(true)} disabled={!completedOrders.length} title={!completedOrders.length ? "Belum ada Sales Order berstatus FULFILLED" : undefined} className="btn-ghost text-xs py-1.5 px-3 gap-1 disabled:opacity-50"><Star size={12} /> Catat CSAT Transaksi</button><button type="button" onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Feedback</button></div>}
+      </div>
+      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs leading-relaxed text-text-secondary">CSAT dicatat oleh tim internal setelah pelanggan memberikan penilaian. Form tersedia untuk Sales Order berstatus <b>FULFILLED</b>; satu respons dicatat per transaksi agar rating dan komentar terkait ke order yang tepat.</div>
+      <div className="mb-5 rounded-xl border border-text-tertiary/60 p-3">
+        <div className="flex items-center justify-between gap-2 mb-3"><h4 className="text-xs font-bold">CSAT Pasca Transaksi</h4><span className="text-2xs text-text-secondary">{csatResponses.length} respons</span></div>
+        {csatResponses.length === 0 ? <p className="text-xs text-text-secondary">Belum ada respons CSAT transaksi.</p> : <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{csatResponses.map((response) => {
+          const ratingAnswer = data.surveyAnswers.find((answer) => String(answer.response_id) === String(response.id) && csatQuestionIds.has(String(answer.question_id)));
+          const commentsAnswer = data.surveyAnswers.find((answer) => String(answer.response_id) === String(response.id) && answer.text_answer);
+          const order = data.orders.find((item) => String(item.id) === String(response.sales_order_id));
+          const partyId = response.customer_party || response.customer_party_id || order?.customer_party || order?.customer_party_id;
+          const party = data.parties.find((item) => String(item.id) === String(partyId));
+          return <div key={response.id} className="rounded-lg bg-bg-lighter p-3"><div className="flex items-center justify-between gap-2"><b className="text-xs truncate">{party?.display_name || party?.legal_name || "Pelanggan"} · {order?.order_number || `Order ${String(response.sales_order_id || "").slice(0, 8)}`}</b><OriginDomainBadge domain={response.origin_domain} /></div><div className="mt-1 flex items-center gap-1">{[1,2,3,4,5].map((value) => <Star key={value} size={12} className={value <= Number(ratingAnswer?.numeric_answer || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />)}<span className="ml-1 text-2xs text-text-secondary">{Number(ratingAnswer?.numeric_answer || 0)}/5</span></div>{commentsAnswer?.text_answer && <p className="mt-1 text-xs text-text-secondary">{commentsAnswer.text_answer}</p>}</div>;
+        })}</div>}
+      </div>
       {(data.feedback||[]).length === 0 ? <EmptyState msg="Belum ada feedback customer." /> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(data.feedback||[]).map(f => (
             <div key={f.id} className="p-3 rounded-xl border border-text-tertiary/60">
+              <div className="text-xs font-semibold mb-1">{f.customer_party_name || f.customer_party_display_name || data.parties.find(p => String(p.id) === String(f.customer_party))?.display_name || data.parties.find(p => String(p.id) === String(f.customer_party))?.legal_name || "Pelanggan"}</div>
               <div className="flex items-center gap-1 mb-1">
                 {[...Array(5)].map((_, i) => (
-                  <Star key={i} size={13} className={i < (f.rating_score||5) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />
+                  <Star key={i} size={13} className={i < (Number(f.rating_value ?? f.rating_score) || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />
                 ))}
-                <span className="text-xs text-text-secondary ml-1">{f.rating_score||5}/5</span>
+                <span className="text-xs text-text-secondary ml-1">{Number(f.rating_value ?? f.rating_score) || 0}/5</span>
               </div>
-              <p className="text-xs text-text-secondary">{f.comments || "-"}</p>
+              <p className="text-xs text-text-secondary">{f.feedback_text || f.comments || "-"}</p>
             </div>
           ))}
         </div>
       )}
+      <Modal isOpen={isOpen} onClose={() => !isSubmitting && setIsOpen(false)} title="Tambah Feedback Pelanggan" size="sm">
+        <div className="flex flex-col gap-3 p-4">
+          <label className="text-xs font-medium text-text-secondary">Pelanggan *<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyId} onChange={e => setPartyId(e.target.value)}><option value="">Pilih pelanggan...</option>{data.parties.filter(p => !p.party_type || String(p.party_type).toUpperCase() === "CUSTOMER").map(p => <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name}</option>)}</select></label>
+          <div><span className="text-xs font-medium text-text-secondary block mb-1">Rating *</span><div className="flex gap-1" role="radiogroup" aria-label="Rating pelanggan">{[1, 2, 3, 4, 5].map(value => <button key={value} type="button" onClick={() => setRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={rating === value} className="p-1"><Star size={22} className={value <= rating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}</div></div>
+          <label className="text-xs font-medium text-text-secondary">Catatan Feedback *<textarea rows={4} maxLength={2000} className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={comments} onChange={e => setComments(e.target.value)} placeholder="Tulis ulasan atau masukan pelanggan..." /></label>
+          <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setIsOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button><button type="button" onClick={submitFeedback} disabled={isSubmitting} className="btn-primary">{isSubmitting ? "Menyimpan..." : "Simpan Feedback"}</button></div>
+        </div>
+      </Modal>
+      <Modal isOpen={isCsatOpen} onClose={() => !isCsatSubmitting && setIsCsatOpen(false)} title="Catat Survei CSAT Pasca Transaksi" size="sm">
+        <div className="flex flex-col gap-3 p-4">
+          <label className="text-xs font-medium text-text-secondary">Sales Order selesai *<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={csatOrderId} onChange={(event) => setCsatOrderId(event.target.value)}><option value="">Pilih transaksi...</option>{completedOrders.map((order) => { const partyId = order.customer_party || order.customer_party_id; const party = data.parties.find((item) => String(item.id) === String(partyId)); return <option key={order.id} value={String(order.id)}>{order.order_number || String(order.id).slice(0, 8)} · {party?.display_name || party?.legal_name || "Pelanggan"}</option>; })}</select></label>
+          <div><span className="text-xs font-medium text-text-secondary block mb-1">Seberapa puas pelanggan? *</span><div className="flex gap-1" role="radiogroup" aria-label="Rating CSAT">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => setCsatRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={csatRating === value} className="p-1"><Star size={22} className={value <= csatRating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}</div></div>
+          <label className="text-xs font-medium text-text-secondary">Masukan tambahan (opsional)<textarea rows={4} maxLength={2000} className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={csatComments} onChange={(event) => setCsatComments(event.target.value)} placeholder="Catatan atau saran dari pelanggan..." /></label>
+          <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setIsCsatOpen(false)} disabled={isCsatSubmitting} className="btn-ghost">Batal</button><button type="button" onClick={submitCsat} disabled={isCsatSubmitting} className="btn-primary">{isCsatSubmitting ? "Menyimpan..." : "Simpan Respons CSAT"}</button></div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1550,6 +1731,7 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
   const [partyChoice, setPartyChoice] = useState<Record<string, string>>({});
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [replyRequestIds, setReplyRequestIds] = useState<Record<string, string>>({});
+  const [domainFilter, setDomainFilter] = useState("");
   const refreshInbox = useCallback(async () => {
     setLoadingInbox(true);
     try {
@@ -1562,6 +1744,8 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
   }, []);
 
   useEffect(() => { void refreshInbox(); }, [refreshInbox]);
+  const inboxDomains = Array.from(new Set(rows.map((row) => row.origin_domain).filter((value): value is string => Boolean(value)))).sort();
+  const visibleRows = rows.filter((row) => !domainFilter || row.origin_domain === domainFilter);
 
   const assignToMe = async (row: CRMInboxConversation) => {
     if (!userId) return;
@@ -1628,23 +1812,23 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="card rounded-xl p-4 flex items-center justify-between gap-3">
+      <div className="card rounded-xl p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold">Inbox CRM</h3>
           <p className="text-xs text-text-secondary mt-1">Pesan dari pipeline internal, dikelompokkan dan diarahkan berdasarkan konfigurasi unit bisnis Marka.</p>
         </div>
-        <button className="btn-ghost text-xs" onClick={() => void refreshInbox()} disabled={loadingInbox}><RefreshCw size={13} className={cn("mr-1", loadingInbox && "animate-spin")} />Refresh</button>
+        <div className="flex flex-wrap items-center gap-2"><select aria-label="Filter domain inbox" className="rounded-lg border border-text-tertiary bg-white px-2 py-1.5 text-xs" value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}><option value="">Semua domain</option>{inboxDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}</select><button className="btn-ghost text-xs" onClick={() => void refreshInbox()} disabled={loadingInbox}><RefreshCw size={13} className={cn("mr-1", loadingInbox && "animate-spin")} />Refresh</button></div>
       </div>
-      {loadingInbox ? <div className="card rounded-xl p-5 text-xs text-text-secondary">Memuat conversation…</div> : rows.length === 0 ? (
-        <div className="card rounded-xl p-5"><EmptyState msg="Belum ada conversation masuk. Conversation akan muncul setelah sumber integrasi internal mengirim event." /></div>
-      ) : rows.map((row) => (
+      {loadingInbox ? <div className="card rounded-xl p-5 text-xs text-text-secondary">Memuat conversation…</div> : visibleRows.length === 0 ? (
+        <div className="card rounded-xl p-5"><EmptyState msg={domainFilter ? "Tidak ada conversation dari domain ini." : "Belum ada conversation masuk. Conversation akan muncul setelah sumber integrasi mengirim event."} /></div>
+      ) : visibleRows.map((row) => (
         <article key={row.id} className="card rounded-xl p-4 flex flex-col gap-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2"><MessageCircle size={15} className="text-brand-deep-green" /><h4 className="text-sm font-semibold truncate">{row.subject || "Percakapan masuk"}</h4><StatusBadge status={row.status} /></div>
-              <p className="text-[11px] text-text-secondary mt-1">{row.business_unit_name || row.business_unit_code ? `Unit ${row.business_unit_name || row.business_unit_code} · ` : ""}{row.external_thread?.external_thread_id ? `Thread ${row.external_thread.external_thread_id}` : `Conversation ${row.id.slice(0, 8)}`}{row.inquiry_id ? " · Sudah dieskalasi menjadi Inquiry" : ""}</p>
+              <p className="text-[11px] text-text-secondary mt-1">{row.business_unit_name || row.business_unit_code ? `Unit ${row.business_unit_name || row.business_unit_code} · ` : ""}{row.external_thread?.external_thread_id ? `Thread ${row.external_thread.external_thread_id}` : `Conversation ${row.id.slice(0, 8)}`}{row.inquiry_id ? " · Sudah dieskalasi menjadi Inquiry" : ""}</p><div className="mt-1"><OriginDomainBadge domain={row.origin_domain} /></div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {!readOnly && row.assigned_user_id !== userId && <button className="btn-ghost text-xs" disabled={busyId === row.id || !userId} onClick={() => void assignToMe(row)}><UserPlus size={13} className="mr-1" />{row.assigned_user_id ? "Tugaskan ke saya" : "Ambil"}</button>}
               {!readOnly && !row.inquiry_id && <button className="btn-primary text-xs" disabled={busyId === row.id} onClick={() => void makeInquiry(row)}><Plus size={13} className="mr-1" />Jadikan Inquiry</button>}
               {!readOnly && !row.inquiry_id && row.status !== "IGNORED" && <button className="btn-ghost text-xs" disabled={busyId === row.id} onClick={() => void decideConversation(row, "IGNORE")}>Abaikan</button>}
@@ -1847,7 +2031,7 @@ export default function CrmClient() {
   const data: CRMData = crmData || {
     inquiries:[], requirements:[], opportunities:[], activities:[], stages:[], estimates:[], estimateLines:[],
     quotations:[], approvals:[], deliveries:[], contracts:[], orders:[], conversations:[],
-    feedback:[], credit:[], cases:[], resolutions:[], products:[], parties:[],
+    feedback:[], surveyQuestions:[], surveyResponses:[], surveyAnswers:[], credit:[], cases:[], resolutions:[], products:[], parties:[],
   };
 
   return (
@@ -1931,9 +2115,9 @@ export default function CrmClient() {
           {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} />}
           {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "incoming"   && <TabIncoming data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
-          {activeTab === "accounts"   && <TabAccounts data={data} />}
-          {activeTab === "contracts"  && <TabContracts data={data} />}
-          {activeTab === "engagement" && <TabEngagement data={data} />}
+          {activeTab === "accounts"   && <TabAccounts data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
+          {activeTab === "contracts"  && <TabContracts data={data} onNavigate={setActiveTab} />}
+          {activeTab === "engagement" && <TabEngagement data={data} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} />}
         </>
       )}
     </div>

@@ -25,6 +25,9 @@ export interface CRMData {
   orders: any[];
   conversations: any[];
   feedback: any[];
+  surveyQuestions: any[];
+  surveyResponses: any[];
+  surveyAnswers: any[];
   credit: any[];
   cases: any[];
   resolutions: any[];
@@ -51,6 +54,7 @@ export interface CRMInboxConversation {
   business_unit_name?: string | null;
   assigned_user_id: string | null;
   inquiry_id: string | null;
+  origin_domain?: string | null;
   inquiry?: { id: string; inquiry_number: string; status: string } | null;
   assigned_user?: { id: string; full_name: string } | null;
   external_identities?: Array<{ id: string; type: string; masked_value: string; channel_verification_status: string; customer_match_status: string; party_id: string | null }>;
@@ -136,6 +140,7 @@ export interface CRMIntegrationSource {
   business_unit_name: string | null;
   key_id: string;
   allowed_event_types: string[];
+  allowed_origin_domains: string[];
   status: string;
   created_at: string;
   last_seen_at?: string | null;
@@ -161,6 +166,11 @@ export async function setCRMIntegrationSourceStatus(id: string, status: "ACTIVE"
   return data;
 }
 
+export async function updateCRMIntegrationSourceDomains(id: string, allowed_origin_domains: string[], companyId?: string) {
+  const { data } = await api.patch(`/api/v1/core/integration-sources/${id}/origin-domains/`, { allowed_origin_domains }, companyScopeHeaders(companyId));
+  return data as { id: string; allowed_origin_domains: string[] };
+}
+
 /* ── Endpoints map ───────────────────────────────── */
 // frontend-next/lib/api/crm.api.ts
 
@@ -179,6 +189,9 @@ const CRM_SOURCES: Record<keyof CRMData, string> = {
   orders:       "/api/v1/sales/orders/?page_size=100",
   conversations:"/api/v1/crm/conversations/?page_size=100",
   feedback:     "/api/v1/crm/feedbacks/?page_size=100",
+  surveyQuestions: "/api/v1/crm/survey-questions/?page_size=200",
+  surveyResponses: "/api/v1/crm/survey-responses/?page_size=200",
+  surveyAnswers: "/api/v1/crm/survey-answers/?page_size=500",
   credit:       "/api/v1/crm/credit-status-snapshots/?page_size=100",
   cases:        "/api/v1/service/cases/?page_size=100",
   resolutions:  "/api/v1/service/resolutions/?page_size=100",

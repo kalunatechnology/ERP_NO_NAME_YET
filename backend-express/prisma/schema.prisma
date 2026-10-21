@@ -1488,6 +1488,7 @@ model core_integration_source {
   previous_key_id           String?   @map("previous_key_id")
   previous_valid_until      DateTime? @map("previous_valid_until")
   allowed_event_types       String[]  @default([]) @map("allowed_event_types")
+  allowed_origin_domains    String[]  @default([]) @map("allowed_origin_domains")
   status                    String    @default("ACTIVE")
   created_by_id             String?   @map("created_by_id")
   created_at                DateTime  @default(now()) @map("created_at")
@@ -1888,6 +1889,7 @@ model crm_conversation {
   closed_at                DateTime?
   priority                 String
   status                   String
+  origin_domain            String?   @map("origin_domain")
 
   @@index([tenant_id, company_id])
   @@index([company_id, business_unit_code], map: "crm_conversation_company_id_business_unit_code_idx")
@@ -2043,6 +2045,7 @@ model crm_survey_response {
   started_at        DateTime?
   submitted_at      DateTime?
   response_status   String
+  origin_domain     String?   @map("origin_domain")
 
   @@index([tenant_id, company_id])
   @@map("crm_survey_response")
@@ -2077,6 +2080,7 @@ model crm_customer_inquiry {
   opportunity_id         String?   @unique @map("opportunity_id")
   inquiry_number         String
   source_channel         String
+  origin_domain          String?   @map("origin_domain")
   subject                String
   description            String
   customer_name          String
@@ -5267,6 +5271,7 @@ model service_case {
   warranty_checked_at DateTime? @map("warranty_checked_at")
   warranty_expires_at DateTime? @map("warranty_expires_at")
   status              String
+  origin_domain       String?   @map("origin_domain")
 
   @@index([tenant_id, company_id])
   @@map("service_case")

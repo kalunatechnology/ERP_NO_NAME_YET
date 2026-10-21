@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
-import { normalizeExternalIdentity, retryDelayMs } from './crm-integration.service';
+import { normalizeExternalIdentity, normalizeOriginDomain, retryDelayMs } from './crm-integration.service';
 import { processOutboundWebhookBatch, queueWebhookEvent } from './crm-outbound-webhook.service';
 import { CRMService } from './crm.service';
 
@@ -18,6 +18,14 @@ function isoDate(value: unknown) {
   if (typeof value !== 'string') return new Date();
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function resolveEventOriginDomain(data: any, allowedDomains: string[]): string | null {
+  if (data?.origin_domain === undefined || data?.origin_domain === null || data?.origin_domain === '') return null;
+  if (typeof data.origin_domain !== 'string') throw new Error('INVALID_ORIGIN_DOMAIN');
+  const normalized = normalizeOriginDomain(data.origin_domain);
+  if (!allowedDomains.includes(normalized)) throw new Error('ORIGIN_DOMAIN_NOT_ALLOWED');
+  return normalized;
 }
 
 async function claimEvents(workerId: string, limit: number): Promise<ClaimedEvent[]> {
@@ -76,6 +84,7 @@ async function processMessageEvent(event: ClaimedEvent) {
 
     const source = await tx.core_integration_source.findUnique({ where: { id: event.source_id } });
     if (!source?.channel_account_id) throw new Error('INTEGRATION_CHANNEL_ACCOUNT_MISSING');
+    const originDomain = resolveEventOriginDomain(data, source.allowed_origin_domains ?? []);
 
     const threadKey = {
       integration_source_id_channel_account_id_external_thread_id: {
@@ -106,6 +115,7 @@ async function processMessageEvent(event: ClaimedEvent) {
           closed_at: null,
           priority: 'NORMAL',
           status: 'OPEN',
+          origin_domain: originDomain,
         },
       });
       link = await tx.crm_external_thread.create({
@@ -214,7 +224,7 @@ async function processMessageEvent(event: ClaimedEvent) {
 
     const currentConversation = await tx.crm_conversation.findFirst({
       where: { id: link.conversation_id, company_id: source.company_id },
-      select: { inquiry_id: true },
+      select: { inquiry_id: true, origin_domain: true },
     });
     await tx.crm_conversation.updateMany({
       where: { id: link.conversation_id, company_id: source.company_id },
@@ -224,6 +234,7 @@ async function processMessageEvent(event: ClaimedEvent) {
         // escalated thread stays linked to its Inquiry.
         status: currentConversation?.inquiry_id ? 'ESCALATED' : 'OPEN',
         closed_at: null,
+        origin_domain: currentConversation?.origin_domain ? undefined : originDomain ?? undefined,
       },
     });
     await tx.crm_integration_event.updateMany({
@@ -248,6 +259,7 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
     if (!locked.length) return;
     const source = await tx.core_integration_source.findUnique({ where: { id: event.source_id } });
     if (!source) throw new Error('INTEGRATION_SOURCE_MISSING');
+    const originDomain = resolveEventOriginDomain(data, source.allowed_origin_domains ?? []);
     if (envelope.event_type === 'inquiry.submitted') {
       const customer = data?.customer && typeof data.customer === 'object' && !Array.isArray(data.customer) ? data.customer : data;
       const requirements = data?.requirements && typeof data.requirements === 'object' && !Array.isArray(data.requirements) ? data.requirements : data;
@@ -264,6 +276,7 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
         id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
         owner_user_id: source.default_assigned_user_id, inquiry_number: `EXT-${crypto.randomUUID()}`,
         source_channel: `INTEGRATION:${source.source_code}`, subject,
+        origin_domain: originDomain,
         description: context, customer_name: customerName,
         customer_email: customerEmail, status: 'NEW', created_at: now, updated_at: now,
       } });
@@ -280,6 +293,7 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
         assigned_user_id: source.default_assigned_user_id, product_id: serialRow?.product_id ?? null,
         serial_number_id: serialRow?.id ?? null, priority: 'NORMAL', subject, description,
         status: 'OPEN', created_at: now, updated_at: now,
+        origin_domain: originDomain,
       } });
     } else if (envelope.event_type === 'quotation.decision' || envelope.event_type === 'quotation.accepted') {
       const quotationId = String(data?.quotation_id ?? '').trim();

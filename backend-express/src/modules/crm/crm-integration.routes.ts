@@ -3,7 +3,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { requireAdminForWrite, requireCompanyContextForWrite } from '../../middlewares/rbac.middleware';
-import { CRMIntegrationService, makeWebhookSignature, normalizeExternalIdentity, safeSignatureEqual } from './crm-integration.service';
+import { CRMIntegrationService, makeWebhookSignature, normalizeExternalIdentity, normalizeOriginDomain, safeSignatureEqual } from './crm-integration.service';
 import { createWebhookSubscription, webhookEventTypes } from './crm-outbound-webhook.service';
 
 export const crmIntegrationAdminRouter = Router();
@@ -146,6 +146,9 @@ crmIntegrationAdminRouter.post('/', requireCompanyContextForWrite, async (req, r
     if (req.body.allowed_event_types !== undefined && (!Array.isArray(req.body.allowed_event_types) || req.body.allowed_event_types.some((event: unknown) => typeof event !== 'string'))) {
       throw new ValidationError('allowed_event_types harus berupa array string.');
     }
+    if (req.body.allowed_origin_domains !== undefined && (!Array.isArray(req.body.allowed_origin_domains) || req.body.allowed_origin_domains.some((domain: unknown) => typeof domain !== 'string'))) {
+      throw new ValidationError('allowed_origin_domains harus berupa array domain string.');
+    }
     for (const field of ['account_name', 'external_account_id', 'business_unit_code', 'business_unit_name', 'default_assigned_user_id']) {
       if (req.body[field] !== undefined && typeof req.body[field] !== 'string') throw new ValidationError(`${field} harus berupa teks.`);
     }
@@ -157,6 +160,7 @@ crmIntegrationAdminRouter.post('/', requireCompanyContextForWrite, async (req, r
       business_unit_name: req.body.business_unit_name,
       default_assigned_user_id: req.body.default_assigned_user_id,
       allowed_event_types: req.body.allowed_event_types,
+      allowed_origin_domains: req.body.allowed_origin_domains,
     }, req.tenantId, companyId(req), req.user.id);
     res.status(201).json(result);
   } catch (error) { next(error); }
@@ -167,6 +171,21 @@ crmIntegrationAdminRouter.post('/:id/rotate-secret', requireCompanyContextForWri
     const result = await CRMIntegrationService.rotateSecret(req.params.id, companyId(req));
     if (!result) { res.status(404).json({ error: { message: 'Integration source tidak ditemukan.' } }); return; }
     res.json(result);
+  } catch (error) { next(error); }
+});
+
+crmIntegrationAdminRouter.patch('/:id/origin-domains', requireCompanyContextForWrite, async (req, res, next) => {
+  try {
+    if (!Array.isArray(req.body.allowed_origin_domains) || req.body.allowed_origin_domains.some((domain: unknown) => typeof domain !== 'string')) {
+      throw new ValidationError('allowed_origin_domains harus berupa array domain string.');
+    }
+    const allowedOriginDomains = [...new Set((req.body.allowed_origin_domains as string[]).map(normalizeOriginDomain))];
+    const updated = await prisma.core_integration_source.updateMany({
+      where: { id: req.params.id, company_id: companyId(req), status: { not: 'REVOKED' } },
+      data: { allowed_origin_domains: allowedOriginDomains },
+    });
+    if (!updated.count) { res.status(404).json({ error: { message: 'Integration source tidak ditemukan atau sudah dicabut.' } }); return; }
+    res.json({ id: req.params.id, allowed_origin_domains: allowedOriginDomains });
   } catch (error) { next(error); }
 });
 
@@ -217,6 +236,14 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
     if (!signatureConfig.source.allowed_event_types.includes(eventType)) return res.status(400).json({ error: 'EVENT_TYPE_NOT_ALLOWED' });
 
     const data = envelope.data;
+    if (data.origin_domain !== undefined) {
+      if (typeof data.origin_domain !== 'string') return res.status(400).json({ error: 'INVALID_ORIGIN_DOMAIN' });
+      let normalizedOrigin: string;
+      try { normalizedOrigin = normalizeOriginDomain(data.origin_domain); }
+      catch { return res.status(400).json({ error: 'INVALID_ORIGIN_DOMAIN' }); }
+      const allowedDomains = signatureConfig.source.allowed_origin_domains ?? [];
+      if (!allowedDomains.includes(normalizedOrigin)) return res.status(400).json({ error: 'ORIGIN_DOMAIN_NOT_ALLOWED' });
+    }
     if (eventType === 'inquiry.submitted') {
       const customer = data.customer && typeof data.customer === 'object' && !Array.isArray(data.customer) ? data.customer : data;
       const requirements = data.requirements && typeof data.requirements === 'object' && !Array.isArray(data.requirements) ? data.requirements : data;
