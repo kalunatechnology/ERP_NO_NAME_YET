@@ -15,4 +15,7 @@ ALTER TABLE "service_case"
 ALTER TABLE "crm_survey_response"
   ADD COLUMN IF NOT EXISTS "origin_domain" TEXT;
 
+ALTER TABLE "crm_feedback"
+  ADD COLUMN IF NOT EXISTS "origin_domain" TEXT;
+
 COMMIT;

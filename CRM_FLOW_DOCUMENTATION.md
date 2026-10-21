@@ -119,7 +119,7 @@ flowchart TD
 
 ### 3.1 Atribusi domain untuk data inbound
 
-Integration Source landing page menyimpan allowlist hostname yang diizinkan. Server website mengirim `data.origin_domain` pada event `inquiry.submitted`, `message.received`, atau `ticket.created`. Marka menormalisasi dan memvalidasi hostname terhadap source yang menandatangani event; domain yang tidak diizinkan ditolak. Domain disimpan pada Inquiry, Conversation, atau Service Case agar staf dapat melihat badge dan memfilter Incoming Inquiry, Inbox CRM, dan tiket berdasarkan sumber website. Event tanpa domain tetap diterima dan tampil tanpa badge; jika allowlist kosong, jangan sertakan `origin_domain`.
+Integration Source menyimpan allowlist hostname yang diizinkan untuk event dari website. Server mengirim `data.origin_domain` pada event `inquiry.submitted`, `message.received`, `ticket.created`, atau `feedback.submitted`. Marka menormalisasi dan memvalidasi hostname terhadap source yang menandatangani event; domain yang tidak diizinkan ditolak. Domain disimpan pada Inquiry, Conversation, Service Case, atau Feedback agar staf dapat melihat badge dan memfilter record web berdasarkan sumbernya. Event tanpa domain tetap diterima dan tampil tanpa badge; jika allowlist kosong, jangan sertakan `origin_domain`.
 
 ```mermaid
 flowchart LR

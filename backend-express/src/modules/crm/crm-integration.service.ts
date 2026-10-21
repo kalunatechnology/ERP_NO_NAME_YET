@@ -4,7 +4,7 @@ import prisma from '../../config/database';
 import { env } from '../../config/env';
 import { AppError, ValidationError } from '../../utils/errors';
 
-const SUPPORTED_INBOUND_EVENTS = ['message.received', 'inquiry.submitted', 'ticket.created', 'quotation.decision', 'quotation.accepted'];
+const SUPPORTED_INBOUND_EVENTS = ['message.received', 'inquiry.submitted', 'ticket.created', 'feedback.submitted', 'quotation.decision', 'quotation.accepted'];
 const DEFAULT_EVENTS = ['message.received'];
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 
@@ -195,6 +195,18 @@ export class CRMIntegrationService {
       await tx.core_integration_source.update({ where: { id: sourceId }, data: { status } });
       return true;
     }, { maxWait: 5_000, timeout: 15_000 });
+  }
+
+  static async updateSourceEvents(sourceId: string, companyId: string, eventTypes: string[]) {
+    const allowedEvents = [...new Set(eventTypes.map((event) => event.trim()))];
+    if (!allowedEvents.length || allowedEvents.some((event) => !SUPPORTED_INBOUND_EVENTS.includes(event))) {
+      throw new ValidationError(`Pilih minimal satu event yang didukung: ${SUPPORTED_INBOUND_EVENTS.join(', ')}.`);
+    }
+    const updated = await prisma.core_integration_source.updateMany({
+      where: { id: sourceId, company_id: companyId, status: { not: 'REVOKED' } },
+      data: { allowed_event_types: allowedEvents },
+    });
+    return updated.count > 0;
   }
 
   static async rotateSecret(sourceId: string, companyId: string) {

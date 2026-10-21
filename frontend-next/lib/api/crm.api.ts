@@ -171,6 +171,11 @@ export async function updateCRMIntegrationSourceDomains(id: string, allowed_orig
   return data as { id: string; allowed_origin_domains: string[] };
 }
 
+export async function updateCRMIntegrationSourceEvents(id: string, allowed_event_types: string[], companyId?: string) {
+  const { data } = await api.patch(`/api/v1/core/integration-sources/${id}/allowed-events/`, { allowed_event_types }, companyScopeHeaders(companyId));
+  return data as { id: string; allowed_event_types: string[] };
+}
+
 /* ── Endpoints map ───────────────────────────────── */
 // frontend-next/lib/api/crm.api.ts
 

@@ -59,10 +59,11 @@ Contoh payload inquiry yang direkomendasikan:
 | `message.received` | `thread_id`, `message_id`, `message.text`, `message.type: "TEXT"` |
 | `inquiry.submitted` | `customer: { name, email, phone? }`, `requirements: { subject, description?, target_budget? }`. Format lama yang menaruh field customer dan subject di root tetap diterima. |
 | `ticket.created` | `subject`, `description`; `serial_number` opsional dan harus terdaftar pada company |
+| `feedback.submitted` | `customer_party_id` customer aktif pada company source, `rating` integer 1–5, `feedback_text`; `feedback_type` opsional, `sales_order_id` opsional tetapi harus milik customer yang sama |
 | `quotation.decision` | `quotation_id`, `decision: "ACCEPTED"` atau `"REJECTED"` |
 | `quotation.accepted` | `quotation_id`; hanya quotation berstatus `SENT` dan terhubung ke opportunity |
 
-Contoh `inquiry.submitted` di atas mencakup `data.origin_domain`. Untuk `message.received` dan `ticket.created`, kirim field yang sama di object `data` jika ingin atribusi domain tampil pada inbox atau tiket. Konfigurasikan hostname terlebih dahulu pada allowlist source; domain yang tidak cocok menghasilkan `ORIGIN_DOMAIN_NOT_ALLOWED`.
+Contoh `inquiry.submitted` di atas mencakup `data.origin_domain`. Untuk `message.received`, `ticket.created`, dan `feedback.submitted`, kirim field yang sama di object `data` jika ingin atribusi domain tampil pada inbox, tiket, atau feedback. Konfigurasikan hostname terlebih dahulu pada allowlist source; domain yang tidak cocok menghasilkan `ORIGIN_DOMAIN_NOT_ALLOWED`. Event `feedback.submitted` membuat review pada Engagement dan hanya menerima ID customer Marka yang aktif serta berada pada company source.
 
 Penerimaan mengembalikan `202` setelah event disimpan untuk diproses. Event duplikat dengan payload sama mengembalikan `200`; `event_id` yang sama dengan payload berbeda mengembalikan `409`.
 
@@ -109,6 +110,6 @@ Sertakan `Authorization: Bearer <token>` atau `X-Api-Key: <token>`. Endpoint por
 - Untuk melepas Credit Hold setelah DP lunas, receipt Finance harus dialokasikan ke Proforma Invoice terkait. Setelah receipt terverifikasi dan saldo proforma nol, sistem melanjutkan handoff Deal Won dan membuat Sales Order serta Project Workspace dalam transaksi Finance yang sama.
 - Endpoint `/api/v1/crm/opportunities/:id/customer-360` menyajikan LTV dari nilai Sales Order, proyek aktif, kontrak, pengiriman, piutang terbuka, dan indikator invoice lewat jatuh tempo.
 - Tab **Accounts** menyediakan tambah dan edit nama, kode, tipe, serta status rekanan. Tab **Contracts & Orders** menampilkan transaksi dan mengarahkan staf ke Quotation/Deals; Sales Order mengikuti konversi quotation accepted atau proses Deal Won dengan pemeriksaan kredit.
-- Tab **Engagement** memisahkan feedback umum dari CSAT pasca transaksi. Feedback umum mencatat pelanggan, rating 1–5, dan catatan. CSAT tersedia untuk Sales Order berstatus `FULFILLED`, satu respons per order. Saat ini CSAT dicatat staf berdasarkan jawaban pelanggan; pengiriman undangan dan form publik pelanggan belum termasuk.
+- Tab **Engagement** memisahkan feedback umum dari CSAT pasca transaksi. Feedback umum mencatat pelanggan, rating 1–5, dan catatan; sistem luar dapat mengirim event `feedback.submitted` dengan ID party Marka yang sudah dipetakan. CSAT tersedia untuk Sales Order berstatus `FULFILLED`, satu respons per order. Saat ini CSAT dicatat staf berdasarkan jawaban pelanggan; pengiriman undangan dan form publik pelanggan belum termasuk.
 
 Perubahan database tambahan mencakup token portal, warranty state pada service case, dan service work order. Terapkan migrasi Prisma sebelum menjalankan backend baru.

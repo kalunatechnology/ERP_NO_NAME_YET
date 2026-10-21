@@ -1613,12 +1613,12 @@ function TabContracts({ data, onNavigate }: { data: CRMData; onNavigate: (tab: "
 function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; onRefresh: () => void; readOnly?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [partyId, setPartyId] = useState("");
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [comments, setComments] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCsatOpen, setIsCsatOpen] = useState(false);
   const [csatOrderId, setCsatOrderId] = useState("");
-  const [csatRating, setCsatRating] = useState(5);
+  const [csatRating, setCsatRating] = useState(0);
   const [csatComments, setCsatComments] = useState("");
   const [isCsatSubmitting, setIsCsatSubmitting] = useState(false);
   const csatQuestionIds = new Set(data.surveyQuestions.filter((question) => question.answer_type === "RATING_1_5").map((question) => String(question.id)));
@@ -1628,6 +1628,7 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
 
   const submitFeedback = async () => {
     if (!partyId) return toast.error("Pilih pelanggan terlebih dahulu.");
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) return toast.error("Pilih rating 1 sampai 5 bintang.");
     if (!comments.trim()) return toast.error("Catatan feedback wajib diisi.");
     setIsSubmitting(true);
     try {
@@ -1642,7 +1643,7 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
       toast.success("Feedback pelanggan berhasil disimpan.");
       setIsOpen(false);
       setPartyId("");
-      setRating(5);
+      setRating(0);
       setComments("");
       onRefresh();
     } catch (error: any) {
@@ -1654,13 +1655,14 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
 
   const submitCsat = async () => {
     if (!csatOrderId) return toast.error("Pilih transaksi yang sudah selesai.");
+    if (!Number.isInteger(csatRating) || csatRating < 1 || csatRating > 5) return toast.error("Pilih rating CSAT 1 sampai 5 bintang.");
     setIsCsatSubmitting(true);
     try {
       await api.post("/api/v1/crm/csat/responses/", { sales_order_id: csatOrderId, rating: csatRating, comments: csatComments.trim() });
       toast.success("Respons CSAT berhasil disimpan.");
       setIsCsatOpen(false);
       setCsatOrderId("");
-      setCsatRating(5);
+      setCsatRating(0);
       setCsatComments("");
       onRefresh();
     } catch (error: any) {
@@ -1692,7 +1694,7 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(data.feedback||[]).map(f => (
             <div key={f.id} className="p-3 rounded-xl border border-text-tertiary/60">
-              <div className="text-xs font-semibold mb-1">{f.customer_party_name || f.customer_party_display_name || data.parties.find(p => String(p.id) === String(f.customer_party))?.display_name || data.parties.find(p => String(p.id) === String(f.customer_party))?.legal_name || "Pelanggan"}</div>
+              <div className="flex items-center justify-between gap-2"><div className="text-xs font-semibold mb-1">{f.customer_party_name || f.customer_party_display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.legal_name || "Pelanggan"}</div><OriginDomainBadge domain={f.origin_domain} /></div>
               <div className="flex items-center gap-1 mb-1">
                 {[...Array(5)].map((_, i) => (
                   <Star key={i} size={13} className={i < (Number(f.rating_value ?? f.rating_score) || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />
@@ -1707,17 +1709,17 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
       <Modal isOpen={isOpen} onClose={() => !isSubmitting && setIsOpen(false)} title="Tambah Feedback Pelanggan" size="sm">
         <div className="flex flex-col gap-3 p-4">
           <label className="text-xs font-medium text-text-secondary">Pelanggan *<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyId} onChange={e => setPartyId(e.target.value)}><option value="">Pilih pelanggan...</option>{data.parties.filter(p => !p.party_type || String(p.party_type).toUpperCase() === "CUSTOMER").map(p => <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name}</option>)}</select></label>
-          <div><span className="text-xs font-medium text-text-secondary block mb-1">Rating *</span><div className="flex gap-1" role="radiogroup" aria-label="Rating pelanggan">{[1, 2, 3, 4, 5].map(value => <button key={value} type="button" onClick={() => setRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={rating === value} className="p-1"><Star size={22} className={value <= rating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}</div></div>
+          <div><span className="text-xs font-medium text-text-secondary block mb-1">Rating *</span><div className="flex items-center gap-1" role="group" aria-label="Pilih rating pelanggan">{[1, 2, 3, 4, 5].map(value => <button key={value} type="button" onClick={() => setRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={rating === value} className="p-1"><Star size={22} className={value <= rating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}<span className="ml-2 text-xs text-text-secondary">{rating ? `${rating}/5` : "Pilih rating"}</span></div></div>
           <label className="text-xs font-medium text-text-secondary">Catatan Feedback *<textarea rows={4} maxLength={2000} className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={comments} onChange={e => setComments(e.target.value)} placeholder="Tulis ulasan atau masukan pelanggan..." /></label>
-          <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setIsOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button><button type="button" onClick={submitFeedback} disabled={isSubmitting} className="btn-primary">{isSubmitting ? "Menyimpan..." : "Simpan Feedback"}</button></div>
+          <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setIsOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button><button type="button" onClick={submitFeedback} disabled={isSubmitting || !partyId || rating < 1 || !comments.trim()} className="btn-primary">{isSubmitting ? "Menyimpan..." : "Simpan Feedback"}</button></div>
         </div>
       </Modal>
       <Modal isOpen={isCsatOpen} onClose={() => !isCsatSubmitting && setIsCsatOpen(false)} title="Catat Survei CSAT Pasca Transaksi" size="sm">
         <div className="flex flex-col gap-3 p-4">
           <label className="text-xs font-medium text-text-secondary">Sales Order selesai *<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={csatOrderId} onChange={(event) => setCsatOrderId(event.target.value)}><option value="">Pilih transaksi...</option>{completedOrders.map((order) => { const partyId = order.customer_party || order.customer_party_id; const party = data.parties.find((item) => String(item.id) === String(partyId)); return <option key={order.id} value={String(order.id)}>{order.order_number || String(order.id).slice(0, 8)} · {party?.display_name || party?.legal_name || "Pelanggan"}</option>; })}</select></label>
-          <div><span className="text-xs font-medium text-text-secondary block mb-1">Seberapa puas pelanggan? *</span><div className="flex gap-1" role="radiogroup" aria-label="Rating CSAT">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => setCsatRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={csatRating === value} className="p-1"><Star size={22} className={value <= csatRating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}</div></div>
+          <div><span className="text-xs font-medium text-text-secondary block mb-1">Seberapa puas pelanggan? *</span><div className="flex items-center gap-1" role="group" aria-label="Pilih rating CSAT">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => setCsatRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={csatRating === value} className="p-1"><Star size={22} className={value <= csatRating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}<span className="ml-2 text-xs text-text-secondary">{csatRating ? `${csatRating}/5` : "Pilih rating"}</span></div></div>
           <label className="text-xs font-medium text-text-secondary">Masukan tambahan (opsional)<textarea rows={4} maxLength={2000} className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={csatComments} onChange={(event) => setCsatComments(event.target.value)} placeholder="Catatan atau saran dari pelanggan..." /></label>
-          <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setIsCsatOpen(false)} disabled={isCsatSubmitting} className="btn-ghost">Batal</button><button type="button" onClick={submitCsat} disabled={isCsatSubmitting} className="btn-primary">{isCsatSubmitting ? "Menyimpan..." : "Simpan Respons CSAT"}</button></div>
+          <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setIsCsatOpen(false)} disabled={isCsatSubmitting} className="btn-ghost">Batal</button><button type="button" onClick={submitCsat} disabled={isCsatSubmitting || !csatOrderId || csatRating < 1} className="btn-primary">{isCsatSubmitting ? "Menyimpan..." : "Simpan Respons CSAT"}</button></div>
         </div>
       </Modal>
     </div>

@@ -40,6 +40,7 @@ export default function RequestsClient(){
   const [notesOpen,setNotesOpen]=useState(false);
   const [createForm,setCreateForm]=useState<CreateForm>(initialCreate);
   const [minutes,setMinutes]=useState(initialMinutes);
+  const [savedMinutes,setSavedMinutes]=useState(initialMinutes);
   const [personInCharge,setPersonInCharge]=useState("");
   const [requestModalOpen,setRequestModalOpen]=useState(false);
   const [searchQuery,setSearchQuery]=useState("");
@@ -107,7 +108,7 @@ export default function RequestsClient(){
     });
   }, [nonMeetingRequests, searchQuery, nonMeetingTypeFilter]);
 
-  const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");setMinutes({summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""});return detail;}catch{toast.error("Detail meeting tidak dapat dimuat.");return null;}},[]);
+  const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");const loadedMinutes={summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""};setMinutes(loadedMinutes);setSavedMinutes(loadedMinutes);return detail;}catch{toast.error("Detail meeting tidak dapat dimuat.");return null;}},[]);
   const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);if(typeof window!=="undefined"){const params=new URLSearchParams(window.location.search);const id=params.get("meeting");const date=params.get("date")||params.get("occurrenceDate");const shouldOpenNotes=params.get("note")==="1"||params.get("openNotes")==="1"||params.get("openNotes")==="true";if(id){const detail=await openMeeting(id,date||undefined);if(detail&&shouldOpenNotes){setNotesOpen(true);}}}}catch{toast.error("Data tidak dapat dimuat.");}finally{setLoading(false);}},[openMeeting]);
   const searchParams = useSearchParams();
   useEffect(()=>{void load();},[load]);
@@ -117,6 +118,7 @@ export default function RequestsClient(){
   async function reassign(){if(!selected?.request||!personInCharge)return toast.error("Pilih person in charge.");setBusy(true);try{await requestApi.assignRequest(selected.request.id,personInCharge);toast.success("Person in charge diperbarui.");await openMeeting(selected.id);}catch{toast.error("Role aktif tidak memiliki izin reassign.");}finally{setBusy(false);}}
   const mentionedUserIds=useMemo(()=>{const text=`${minutes.general_discussion} ${minutes.summary} ${minutes.opening_notes}`;const matches=Array.from(text.matchAll(/data-user-id=["']([0-9a-f-]{36})["']/gi)).map(m=>m[1]);return Array.from(new Set(matches));},[minutes.general_discussion,minutes.summary,minutes.opening_notes]);
   const minutesPayload=useMemo(()=>({occurrence_date:selected?.selected_occurrence_date??"",summary:minutes.summary||richTextToPlainText(minutes.general_discussion).split("\n")[0]||"Notulensi meeting",opening_notes:minutes.opening_notes,general_discussion:minutes.general_discussion,conclusion:minutes.conclusion,decisions:minutes.decisions.split("\n").map(text=>text.trim()).filter(Boolean).map(text=>({text})),action_items:minutes.action_items.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title})),mentioned_user_ids:mentionedUserIds}),[minutes,selected?.selected_occurrence_date,mentionedUserIds]);
+  const hasUnsavedMinutes=useMemo(()=>JSON.stringify(minutes)!==JSON.stringify(savedMinutes),[minutes,savedMinutes]);
   async function saveNotes(publish=false){
     if(!selected)return;
     // Publish flow: save draft first, then publish
@@ -133,6 +135,7 @@ export default function RequestsClient(){
         // 1. Always save the latest draft content first
         let detail=await requestApi.saveMinutes(selected.id,minutesPayload);
         if(detail.minutes?.status==='PUBLISHED'){setSelected(detail);toast.error("Notulensi ini sudah dipublikasikan.");return;}
+        setSavedMinutes(minutes);
         // 2. Then publish
         detail=await requestApi.publishMinutes(selected.id,detail.selected_occurrence_date,mentionedUserIds);
         setSelected(detail);setNotesOpen(false);
@@ -152,6 +155,7 @@ export default function RequestsClient(){
     try{
       const detail=await requestApi.saveMinutes(selected.id,minutesPayload);
       setSelected(detail);
+      setSavedMinutes(minutes);
       toast.success("Draft notulensi disimpan. Belum dikirim notifikasi — publikasikan untuk memberi tahu peserta.");
     }catch{
       toast.error("Draft notulensi gagal disimpan. Pastikan data sudah lengkap.");
@@ -598,7 +602,7 @@ export default function RequestsClient(){
       {createOpen && <CreateRequestModal form={createForm} setForm={setCreateForm} members={members} busy={busy} onClose={() => setCreateOpen(false)} onSubmit={submitMeeting} />}
       {requestModalOpen && <NewNonMeetingRequestModal members={members} busy={busy} onClose={() => setRequestModalOpen(false)} onSuccess={() => { setRequestModalOpen(false); void load(); }} />}
       {selected && !notesOpen && <MeetingDetailModal detail={selected} members={members} personInCharge={personInCharge} setPersonInCharge={setPersonInCharge} busy={busy} onClose={() => setSelected(null)} onReassign={reassign} onNotes={date => void openNotes(date)} onPublishMeeting={() => void publishMeeting(selected.id)} canDeleteMeeting={canDeleteMeeting} onDeleteMeeting={() => void deleteMeeting(selected.id)} />}
-      {selected && notesOpen && <NotesModal detail={selected} members={members} minutes={minutes} setMinutes={setMinutes} busy={busy} onClose={() => setNotesOpen(false)} onSave={saveNotes} />}
+      {selected && notesOpen && <NotesModal detail={selected} members={members} minutes={minutes} setMinutes={setMinutes} busy={busy} onClose={() => {if(busy){toast.error("Tunggu proses simpan selesai sebelum menutup notulensi.");return;}if(hasUnsavedMinutes){toast.error("Simpan draft notulensi terlebih dahulu sebelum menutup.");return;}setNotesOpen(false);}} onSave={saveNotes} />}
     </div>
   );
 }
@@ -932,6 +936,16 @@ function RichTextEditor({ value, onChange, disabled, members = [] }: { value: st
 
 function NotesModal({ detail, members = [], minutes, setMinutes, busy, onClose, onSave }: { detail: MeetingDetail; members?: Member[]; minutes: typeof initialMinutes; setMinutes: React.Dispatch<React.SetStateAction<typeof initialMinutes>>; busy: boolean; onClose: () => void; onSave: (publish?: boolean) => void }) {
   const published = detail.minutes?.status === "PUBLISHED";
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
 
   const taggableMembers = useMemo(() => {
     const meetingMemberIds = new Set<string>();

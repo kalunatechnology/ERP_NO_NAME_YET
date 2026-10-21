@@ -189,6 +189,18 @@ crmIntegrationAdminRouter.patch('/:id/origin-domains', requireCompanyContextForW
   } catch (error) { next(error); }
 });
 
+crmIntegrationAdminRouter.patch('/:id/allowed-events', requireCompanyContextForWrite, async (req, res, next) => {
+  try {
+    if (!Array.isArray(req.body.allowed_event_types) || req.body.allowed_event_types.some((event: unknown) => typeof event !== 'string')) {
+      throw new ValidationError('allowed_event_types harus berupa array event string.');
+    }
+    const allowedEventTypes = [...new Set((req.body.allowed_event_types as string[]).map((event) => event.trim()))];
+    const updated = await CRMIntegrationService.updateSourceEvents(req.params.id, companyId(req), allowedEventTypes);
+    if (!updated) { res.status(404).json({ error: { message: 'Integration source tidak ditemukan atau sudah dicabut.' } }); return; }
+    res.json({ id: req.params.id, allowed_event_types: allowedEventTypes });
+  } catch (error) { next(error); }
+});
+
 crmIntegrationAdminRouter.patch('/:id/status', requireCompanyContextForWrite, async (req, res, next) => {
   try {
     const status = String(req.body.status ?? '').toUpperCase();
@@ -256,6 +268,14 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
       if (typeof subject !== 'string' || !subject.trim() || subject.length > 300 || typeof name !== 'string' || !name.trim() || name.length > 200 || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320 || (phone !== undefined && (typeof phone !== 'string' || phone.length > 40)) || (description !== undefined && (typeof description !== 'string' || description.length > 20_000)) || (budget !== undefined && (!Number.isFinite(Number(budget)) || Number(budget) < 0))) return res.status(400).json({ error: 'INVALID_INQUIRY_EVENT' });
     } else if (eventType === 'ticket.created') {
       if (typeof data.subject !== 'string' || !data.subject.trim() || data.subject.length > 300 || typeof data.description !== 'string' || !data.description.trim() || data.description.length > 20_000 || (data.serial_number !== undefined && (typeof data.serial_number !== 'string' || !data.serial_number.trim() || data.serial_number.length > 200))) return res.status(400).json({ error: 'INVALID_TICKET_EVENT' });
+    } else if (eventType === 'feedback.submitted') {
+      if (typeof data.customer_party_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.customer_party_id) || !Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5 || typeof data.feedback_text !== 'string' || !data.feedback_text.trim() || data.feedback_text.length > 2000 || (data.feedback_type !== undefined && (typeof data.feedback_type !== 'string' || !data.feedback_type.trim() || data.feedback_type.length > 60)) || (data.sales_order_id !== undefined && (typeof data.sales_order_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.sales_order_id)))) return res.status(400).json({ error: 'INVALID_FEEDBACK_EVENT' });
+      const party = await prisma.master_party.findFirst({ where: { id: data.customer_party_id, tenant_id: signatureConfig.source.tenant_id, company_id: signatureConfig.source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true } });
+      if (!party) return res.status(400).json({ error: 'CUSTOMER_PARTY_NOT_FOUND' });
+      if (data.sales_order_id) {
+        const order = await prisma.sales_order.findFirst({ where: { id: data.sales_order_id, tenant_id: signatureConfig.source.tenant_id, company_id: signatureConfig.source.company_id, customer_party_id: party.id }, select: { id: true } });
+        if (!order) return res.status(400).json({ error: 'FEEDBACK_SALES_ORDER_NOT_FOUND' });
+      }
     } else if (eventType === 'quotation.decision' || eventType === 'quotation.accepted') {
       const decision = eventType === 'quotation.accepted' ? 'ACCEPTED' : String(data.decision).toUpperCase();
       if (typeof data.quotation_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.quotation_id) || !['ACCEPTED', 'REJECTED'].includes(decision)) return res.status(400).json({ error: 'INVALID_QUOTATION_DECISION' });

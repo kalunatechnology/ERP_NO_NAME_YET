@@ -733,6 +733,33 @@ crmRouter.use('/conversation-participants', createCrudRouter({ modelName: 'crm_c
 crmRouter.use('/messages', createCrudRouter({ modelName: 'crm_message' }));
 crmRouter.use('/message-attachments', createCrudRouter({ modelName: 'crm_message_attachment' }));
 crmRouter.use('/message-delivery-statuses', createCrudRouter({ modelName: 'crm_message_delivery_status' }));
+crmRouter.post('/feedbacks', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    const company = activeCompanyId(req);
+    const partyId = String(req.body.customer_party_id ?? req.body.customer_party ?? '').trim();
+    const rating = Number(req.body.rating_value ?? req.body.rating_score);
+    const feedbackText = typeof req.body.feedback_text === 'string' ? req.body.feedback_text.trim() : '';
+    const feedbackType = typeof req.body.feedback_type === 'string' ? req.body.feedback_type.trim() : 'CUSTOMER_REVIEW';
+    if (!/^[0-9a-f-]{36}$/i.test(partyId)) throw new ValidationError('Pilih customer yang valid.');
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new ValidationError('Rating harus bernilai 1 sampai 5.');
+    if (!feedbackText || feedbackText.length > 2000) throw new ValidationError('Catatan feedback wajib diisi dan maksimal 2.000 karakter.');
+    if (!feedbackType || feedbackType.length > 60) throw new ValidationError('Tipe feedback tidak valid.');
+    const party = await prisma.master_party.findFirst({
+      where: { id: partyId, tenant_id: req.tenantId, company_id: company, party_type: 'CUSTOMER', status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!party) throw new ValidationError('Customer harus aktif dan terdaftar pada company yang dipilih.');
+    const feedback = await prisma.crm_feedback.create({
+      data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company, created_by_id: req.user.id,
+        customer_party_id: party.id, feedback_type: feedbackType, rating_value: rating,
+        feedback_text: feedbackText, submitted_at: new Date(), status: 'SUBMITTED',
+      },
+    });
+    res.status(201).json(feedback);
+  } catch (error) { next(error); }
+});
 crmRouter.use('/feedbacks', createCrudRouter({ modelName: 'crm_feedback', searchFields: ['subject', 'feedback_text'] }));
 crmRouter.use('/surveys', createCrudRouter({ modelName: 'crm_survey', searchFields: ['title'] }));
 crmRouter.use('/survey-questions', createCrudRouter({ modelName: 'crm_survey_question' }));

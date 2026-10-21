@@ -1989,6 +1989,7 @@ model crm_feedback {
   feedback_text     String
   submitted_at      DateTime?
   status            String
+  origin_domain     String?   @map("origin_domain")
 
   @@index([tenant_id, company_id])
   @@map("crm_feedback")

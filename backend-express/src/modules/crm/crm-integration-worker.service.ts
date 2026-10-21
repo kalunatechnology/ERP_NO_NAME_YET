@@ -295,6 +295,25 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
         status: 'OPEN', created_at: now, updated_at: now,
         origin_domain: originDomain,
       } });
+    } else if (envelope.event_type === 'feedback.submitted') {
+      const partyId = String(data?.customer_party_id ?? '').trim();
+      const rating = Number(data?.rating);
+      const feedbackText = String(data?.feedback_text ?? '').trim();
+      const feedbackType = String(data?.feedback_type ?? 'CUSTOMER_REVIEW').trim();
+      if (!partyId || !Number.isInteger(rating) || rating < 1 || rating > 5 || !feedbackText || feedbackText.length > 2000 || !feedbackType || feedbackType.length > 60) throw new Error('INVALID_FEEDBACK_EVENT');
+      const party = await tx.master_party.findFirst({ where: { id: partyId, tenant_id: source.tenant_id, company_id: source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true } });
+      if (!party) throw new Error('CUSTOMER_PARTY_NOT_FOUND');
+      const salesOrderId = typeof data?.sales_order_id === 'string' ? data.sales_order_id.trim() : '';
+      if (salesOrderId) {
+        const order = await tx.sales_order.findFirst({ where: { id: salesOrderId, tenant_id: source.tenant_id, company_id: source.company_id, customer_party_id: party.id }, select: { id: true } });
+        if (!order) throw new Error('FEEDBACK_SALES_ORDER_NOT_FOUND');
+      }
+      await tx.crm_feedback.create({ data: {
+        id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
+        customer_party_id: party.id, sales_order_id: salesOrderId || null,
+        feedback_type: feedbackType, rating_value: rating, feedback_text: feedbackText,
+        submitted_at: isoDate(envelope.occurred_at), status: 'SUBMITTED', origin_domain: originDomain,
+      } });
     } else if (envelope.event_type === 'quotation.decision' || envelope.event_type === 'quotation.accepted') {
       const quotationId = String(data?.quotation_id ?? '').trim();
       const decision = envelope.event_type === 'quotation.accepted' ? 'ACCEPTED' : String(data?.decision ?? '').toUpperCase();
