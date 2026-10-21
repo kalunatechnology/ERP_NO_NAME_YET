@@ -16,7 +16,7 @@ import {
   BookOpen, BarChart3, Activity, Banknote, ArrowLeftRight, TrendingDown,
   AlertTriangle, CheckSquare, Clock, Eye, LayoutDashboard, Crown, BriefcaseBusiness,
   ClipboardList, Receipt, RotateCcw, WalletCards, LibraryBig, FileBarChart,
-  Link2, Calculator, CalendarRange, HardHat
+  Link2, Calculator, CalendarRange, HardHat, Send
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
@@ -234,6 +234,9 @@ export default function FinanceClient() {
     project_name: "",
     invoice_ref: "",
     amount: "",
+    withholding_tax_amount: "",
+    withholding_tax_type: "PPH_23",
+    bupot_number: "",
     bank_account: "",
     payment_date: localDateKey(),
     payment_method: "BANK_TRANSFER",
@@ -321,7 +324,7 @@ export default function FinanceClient() {
       const receiptIds = normalizeList<any>(receiptRes.data).rows.map(receipt => receipt.id).join(",");
       const [readinessResponse, invoicesResponse, receiptSummaryResponse] = await Promise.all([
         receiptIds ? safeGet(`/api/v1/finance/customer-receipts/workflow-readiness?ids=${encodeURIComponent(receiptIds)}`, "ar") : Promise.resolve({ data: [] }),
-        safeGet("/api/v1/finance/billing-documents/?billing_type=CUSTOMER_INVOICE&status=POSTED&page_size=200", "ar"),
+        safeGet("/api/v1/finance/billing-documents/?billing_type=CUSTOMER_INVOICE&page_size=200", "ar"),
         safeGet("/api/v1/finance/customer-receipts/summary", "ar"),
       ]);
       setReceiptReadiness(Object.fromEntries(normalizeList<any>(readinessResponse.data).rows.map(item => [item.receipt_id, item])));
@@ -413,7 +416,7 @@ export default function FinanceClient() {
   const totalCost = totalCostEntries > 0 ? totalCostEntries : totalDisbursedFunding;
 
   const totalBillingRevenue = proposals
-    .filter(p => p.status === "APPROVED" || p.status === "PAID")
+    .filter(p => ["APPROVED", "ISSUED", "INVOICED", "POSTED", "PAID"].includes(String(p.status || "").toUpperCase()))
     .reduce((acc, curr) => acc + Number(curr.total_amount ?? curr.amount ?? curr.subtotal ?? 0), 0);
   const postedReceipts = customerReceipts.filter(receipt => receipt.status === "POSTED");
   const totalInflowRevenue = receiptSummary?.posted_amount ?? 0;
@@ -472,6 +475,21 @@ export default function FinanceClient() {
           ? "Posting WIP ditolak. Periksa status entry, akun kredit, dan periode fiskal."
           : "Validasi cost entry gagal diproses.",
       ));
+    }
+  };
+
+  const [postingProposalId, setPostingProposalId] = useState<string | null>(null);
+
+  const handlePostBillingProposal = async (proposal: any) => {
+    setPostingProposalId(proposal.id);
+    try {
+      await api.post(`/api/v1/finance/billing-proposals/${proposal.id}/post-billing-document`, {});
+      toast.success("Faktur tagihan klien berhasil diposting. Jurnal GL & Pajak PPN telah terbentuk.");
+      await loadFinanceData(true);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error?.message || e?.response?.data?.detail || "Gagal memposting faktur.");
+    } finally {
+      setPostingProposalId(null);
     }
   };
 
@@ -1080,54 +1098,131 @@ export default function FinanceClient() {
             <AccessDeniedState compact section="Billing Termin" />
           </div>
         ) : (
-        <div className="card rounded-2xl p-5 flex flex-col gap-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary">Proposal Billing Termin Klien</h3>
-              <p className="text-2xs text-text-secondary">Approve proposal dan terbitkan faktur penagihan resmi beserta pajak (PPN)</p>
+        <div className="flex flex-col gap-4">
+          {/* 3 Metrics Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="card rounded-xl p-3.5 border border-gray-200 bg-white">
+              <span className="text-3xs font-semibold uppercase tracking-wider text-text-secondary">Total DPP Termin</span>
+              <div className="text-base font-bold font-mono text-text-primary mt-1">
+                {formatMoney(proposals.reduce((sum, p) => sum + Number(p.subtotal || 0), 0))}
+              </div>
+              <span className="text-3xs text-text-secondary mt-0.5 block">{proposals.length} termin diajukan</span>
             </div>
-            {canOperateFinance && (
-              <button onClick={() => setIsBillingModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
-                <Plus size={14} /> Buat Proposal
-              </button>
-            )}
+            <div className="card rounded-xl p-3.5 border border-gray-200 bg-white">
+              <span className="text-3xs font-semibold uppercase tracking-wider text-text-secondary">Total PPN Terbit</span>
+              <div className="text-base font-bold font-mono text-blue-700 mt-1">
+                {formatMoney(proposals.reduce((sum, p) => sum + Number(p.tax_amount || 0), 0))}
+              </div>
+              <span className="text-3xs text-text-secondary mt-0.5 block">PPN Keluaran 11%</span>
+            </div>
+            <div className="card rounded-xl p-3.5 border border-gray-200 bg-white">
+              <span className="text-3xs font-semibold uppercase tracking-wider text-text-secondary">Total Tagihan Bruto</span>
+              <div className="text-base font-bold font-mono text-emerald-700 mt-1">
+                {formatMoney(proposals.reduce((sum, p) => sum + Number(p.total_amount || 0), 0))}
+              </div>
+              <span className="text-3xs text-text-secondary mt-0.5 block">Nilai piutang klien</span>
+            </div>
           </div>
-          <div className="table-scroll-wrapper">
-            <table className="w-full data-table min-w-[560px]">
-              <thead>
-              <tr>
-                <th>Keterangan Termin</th>
-                <th>Nilai Sebelum PPN</th>
-                <th>PPN</th>
-                <th>Total Tagihan</th>
-                <th>Status</th>
-                <th>{canOperateFinance ? "Aksi" : "Status Penagihan"}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {proposals.map(p => (
-                <tr key={p.id}>
-                  <td><strong>{p.description || "Termin Invoice"}</strong></td>
-                  <td>{formatMoney(p.subtotal ?? 0)}</td>
-                  <td>{formatMoney(p.tax_amount ?? 0)}</td>
-                  <td className="font-semibold text-brand-deep-green">{formatMoney(p.total_amount ?? p.subtotal ?? 0)}</td>
-                  <td><span className={cn("badge", getStatusColor(p.status))}>{p.status}</span></td>
-                  <td>
-                    {canOperateFinance && ["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
-                      <button onClick={() => handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
-                        {p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
-                      </button>
-                    ) : (
-                      <span className="text-2xs text-brand-deep-green font-bold">
-                        {p.status === "APPROVED" || p.status === "INVOICED" ? "Billing diterbitkan" : p.status}
-                      </span>
-                    )}
-                  </td>
+
+          <div className="card rounded-2xl p-5 flex flex-col gap-4 border border-gray-200 bg-white shadow-xs">
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-text-primary">Proposal Billing Termin Klien</h3>
+                <p className="text-2xs text-text-secondary">Alur approval termin, penerbitan faktur tagihan resmi, dan posting ke Jurnal GL serta buku Perpajakan.</p>
+              </div>
+              {canOperateFinance && (
+                <button onClick={() => setIsBillingModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
+                  <Plus size={14} /> Buat Proposal
+                </button>
+              )}
+            </div>
+            <div className="table-scroll-wrapper">
+              <table className="w-full data-table text-xs min-w-[620px]">
+                <thead>
+                <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
+                  <th className="py-2.5 px-3">Keterangan Termin</th>
+                  <th className="py-2.5 px-3 text-right">Nilai Sebelum PPN</th>
+                  <th className="py-2.5 px-3 text-right">PPN</th>
+                  <th className="py-2.5 px-3 text-right">Total Tagihan</th>
+                  <th className="py-2.5 px-3 text-center">Status Termin</th>
+                  <th className="py-2.5 px-3 text-right">{canOperateFinance ? "Aksi Workflow" : "Status Penagihan"}</th>
                 </tr>
-              ))}
-              {!proposals.length && <tr><td colSpan={6} className="text-center py-6 text-xs text-text-secondary">Belum ada proposal billing.</td></tr>}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {proposals.map(p => {
+                  const matchingDoc = customerInvoices.find(inv => inv.id === p.billing_document_id);
+                  const isPosted = matchingDoc?.status === "POSTED";
+                  const invoiceNum = matchingDoc?.invoice_number;
+
+                  return (
+                    <tr key={p.id} className="hover:bg-gray-50/80 transition-colors">
+                      <td className="py-3 px-3">
+                        <strong className="text-text-primary block font-semibold">{p.description || "Termin Invoice"}</strong>
+                        {invoiceNum && (
+                          <span className="text-3xs font-mono text-text-secondary block mt-0.5">
+                            Faktur: <span className="text-blue-700 font-bold">{invoiceNum}</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono tabular-nums text-text-secondary">
+                        {formatMoney(p.subtotal ?? 0)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono tabular-nums text-blue-700 font-medium">
+                        {formatMoney(p.tax_amount ?? 0)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono tabular-nums font-bold text-text-primary">
+                        {formatMoney(p.total_amount ?? p.subtotal ?? 0)}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span className={cn("badge text-2xs font-semibold py-0.5 px-2", getStatusColor(p.status))}>
+                          {p.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        {canOperateFinance ? (
+                          ["DRAFT", "SUBMITTED", "APPROVED"].includes(p.status) ? (
+                            <button onClick={() => handleBillingProposalLifecycle(p)} className="btn-primary py-1 px-2.5 text-2xs gap-1">
+                              {p.status === "DRAFT" ? "Submit" : p.status === "SUBMITTED" ? "Approve" : "Terbitkan Billing"}
+                            </button>
+                          ) : p.status === "ISSUED" ? (
+                            isPosted ? (
+                              <span className="inline-flex items-center gap-1 text-2xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                                <CheckCircle2 size={12} className="text-emerald-600" /> POSTED · Masuk Pajak
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handlePostBillingProposal(p)}
+                                disabled={postingProposalId === p.id}
+                                className="btn-primary py-1 px-3 text-2xs gap-1 bg-blue-600 hover:bg-blue-700 font-bold shadow-xs text-white"
+                              >
+                                <Send size={11} />
+                                {postingProposalId === p.id ? "Memposting..." : "Posting Faktur"}
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-2xs text-text-secondary font-medium">
+                              {p.status}
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-2xs text-text-secondary font-medium">
+                            {isPosted ? "Posting Selesai" : p.status}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!proposals.length && (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8 text-xs text-text-secondary">
+                      Belum ada proposal billing termin.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            </div>
           </div>
         </div>
         )
@@ -2416,10 +2511,12 @@ export default function FinanceClient() {
             if (receiptSaving) return;
             const errors: Record<string, string> = {};
             const amount = Number(receiptForm.amount);
+            const withholdingAmount = receiptForm.withholding_tax_amount ? Number(receiptForm.withholding_tax_amount) : 0;
             const bank = bankAccounts.find(account => account.id === receiptForm.bank_account);
             if (!receiptForm.customer_name.trim()) errors.customer_name = "Nama klien / perusahaan wajib diisi.";
             if (!receiptForm.project_name.trim()) errors.project_name = "Nama proyek terkait wajib diisi.";
             if (!receiptForm.amount || !Number.isFinite(amount) || amount < 1000) errors.amount = "Nominal uang masuk wajib diisi, minimal Rp 1.000.";
+            if (!Number.isFinite(withholdingAmount) || withholdingAmount < 0) errors.withholding_tax_amount = "Nominal potongan pajak harus valid (>= 0).";
             if (!bank) errors.bank_account = bankAccounts.length ? "Pilih rekening kas / bank penerima dana." : "Belum ada rekening kas / bank. Tambahkan rekening penerima di menu Kas & Bank terlebih dahulu.";
             if (!receiptForm.payment_date) errors.payment_date = "Tanggal terima dana wajib diisi.";
             if (!receiptForm.reference_number.trim()) errors.reference_number = "No. bukti transfer / resi bank klien wajib diisi.";
@@ -2444,12 +2541,19 @@ export default function FinanceClient() {
                   invoice_id: receiptForm.invoice_ref,
                   invoice_ref: customerInvoices.find(invoice => invoice.id === receiptForm.invoice_ref)?.invoice_number || "",
                   bank_account: bank?.name,
+                  withholding_tax_amount: withholdingAmount,
+                  withholding_tax_type: receiptForm.withholding_tax_type,
+                  bupot_number: receiptForm.bupot_number.trim(),
                   notes: receiptForm.notes.trim(),
                 },
               });
               toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan sebagai Draft.`);
               setIsReceiptModalOpen(false);
-              setReceiptForm({ customer_name: "", project_name: "", invoice_ref: "", amount: "", bank_account: "", payment_date: localDateKey(), payment_method: "BANK_TRANSFER", reference_number: "", notes: "" });
+              setReceiptForm({
+                customer_name: "", project_name: "", invoice_ref: "", amount: "",
+                withholding_tax_amount: "", withholding_tax_type: "PPH_23", bupot_number: "",
+                bank_account: "", payment_date: localDateKey(), payment_method: "BANK_TRANSFER", reference_number: "", notes: ""
+              });
               await loadFinanceData(true);
             } catch (error) {
               const fieldErrors = (error as { response?: { data?: { errors?: Record<string, unknown> } } })?.response?.data?.errors;
@@ -2503,7 +2607,20 @@ export default function FinanceClient() {
               <label htmlFor="receipt-invoice" className="text-xs font-bold text-text-primary block mb-1">Referensi Faktur / Termin</label>
               <select id="receipt-invoice"
                 value={receiptForm.invoice_ref}
-                onChange={e => setReceiptForm({ ...receiptForm, invoice_ref: e.target.value })}
+                onChange={e => {
+                  const invId = e.target.value;
+                  const selectedInv = customerInvoices.find(inv => inv.id === invId);
+                  const remaining = selectedInv ? Number(selectedInv.outstanding_amount ?? (Number(selectedInv.total_amount ?? 0) - Number(selectedInv.paid_amount ?? 0))) : 0;
+                  const pName = selectedInv?.party?.display_name || selectedInv?.party?.legal_name || "";
+                  const prName = selectedInv?.project?.name || "";
+                  setReceiptForm(current => ({
+                    ...current,
+                    invoice_ref: invId,
+                    customer_name: pName || current.customer_name,
+                    project_name: prName || current.project_name,
+                    amount: remaining > 0 ? String(remaining) : current.amount,
+                  }));
+                }}
                 className="input text-xs"
               >
                 <option value="">Tanpa invoice — Uang muka pelanggan</option>
@@ -2514,7 +2631,7 @@ export default function FinanceClient() {
               <p className="text-2xs text-text-secondary mt-1">Pilih invoice yang sudah dibukukan untuk mengurangi piutang.</p>
             </div>
             <div>
-              <label htmlFor="receipt-amount" className="text-xs font-bold text-text-primary block mb-1">Nominal Uang Masuk (Rp) *</label>
+              <label htmlFor="receipt-amount" className="text-xs font-bold text-text-primary block mb-1">Nominal Uang Masuk Bersih (Rp) *</label>
               <input
                 id="receipt-amount"
                 aria-invalid={!!receiptErrors.amount}
@@ -2525,9 +2642,89 @@ export default function FinanceClient() {
                 value={receiptForm.amount}
                 onChange={e => updateReceiptField("amount", e.target.value)}
                 className="input text-xs font-bold text-brand-deep-green"
+                placeholder="Nominal dana masuk ke rekening"
               />
               {receiptError("amount")}
             </div>
+          </div>
+
+          {/* Withholding Tax & e-Bupot Section */}
+          <div className="rounded-xl border border-border-default bg-[#F8FAFC] p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-text-primary">Potongan Pajak Klien (e-Bupot / WAPU)</span>
+              <span className="text-2xs text-text-secondary">Opsional bila klien memotong PPh/WAPU</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-2xs font-semibold text-text-secondary block mb-1">Jenis Potongan</label>
+                <select
+                  value={receiptForm.withholding_tax_type}
+                  onChange={e => updateReceiptField("withholding_tax_type", e.target.value)}
+                  className="input text-xs"
+                >
+                  <option value="PPH_23">PPh 23 Jasa (2%)</option>
+                  <option value="PPH_FINAL">PPh Final (1.75%)</option>
+                  <option value="PPH_21">PPh 21 Tenaga Ahli</option>
+                  <option value="WAPU">PPN Dipungut WAPU</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="receipt-withholding_tax_amount" className="text-2xs font-semibold text-text-secondary block mb-1">Nominal Potongan (Rp)</label>
+                <input
+                  id="receipt-withholding_tax_amount"
+                  type="number"
+                  min="0"
+                  value={receiptForm.withholding_tax_amount}
+                  onChange={e => updateReceiptField("withholding_tax_amount", e.target.value)}
+                  className="input text-xs font-mono"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label htmlFor="receipt-bupot_number" className="text-2xs font-semibold text-text-secondary block mb-1">No. e-Bupot / Bukti Potong</label>
+                <input
+                  id="receipt-bupot_number"
+                  type="text"
+                  value={receiptForm.bupot_number}
+                  onChange={e => updateReceiptField("bupot_number", e.target.value)}
+                  className="input text-xs font-mono uppercase"
+                  placeholder="BP-2026-..."
+                />
+              </div>
+            </div>
+
+            {receiptForm.invoice_ref && (
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const selectedInv = customerInvoices.find(inv => inv.id === receiptForm.invoice_ref);
+                    if (selectedInv) {
+                      const total = Number(selectedInv.total_amount ?? 0);
+                      const taxAmt = Number(selectedInv.tax_amount ?? 0);
+                      const dpp = total - taxAmt > 0 ? total - taxAmt : Math.round(total / 1.11);
+                      const rate = receiptForm.withholding_tax_type === 'PPH_FINAL' ? 0.0175 : 0.02;
+                      const calculatedWht = Math.round(dpp * rate);
+                      const netCash = total - calculatedWht;
+                      setReceiptForm(current => ({
+                        ...current,
+                        withholding_tax_amount: String(calculatedWht),
+                        amount: String(netCash),
+                      }));
+                      toast(`Dihitung PPh ${rate * 100}%: Potongan Rp ${calculatedWht.toLocaleString('id-ID')}, Masuk Bank Rp ${netCash.toLocaleString('id-ID')}`, { icon: 'ℹ️' });
+                    }
+                  }}
+                  className="text-2xs text-[#2649B3] hover:underline font-semibold"
+                >
+                  ⚡ Hitung Otomatis Potongan PPh dari Faktur Terpilih
+                </button>
+                {Number(receiptForm.withholding_tax_amount || 0) > 0 && (
+                  <span className="text-2xs font-mono font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                    Total Pelunasan Piutang: {formatMoney(Number(receiptForm.amount || 0) + Number(receiptForm.withholding_tax_amount || 0))}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div>

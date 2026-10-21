@@ -533,7 +533,11 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
 financeRouter.post('/billing-documents/:id/post', requireFinanceRole([RoleCode.FINANCE]), enforceSoD({
-  getCreatorId: async (req) => (await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { created_by_id: true } }))?.created_by_id ?? null,
+  getCreatorId: async (req) => {
+    const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { created_by_id: true, approved_by_id: true } });
+    if (doc?.approved_by_id && doc.approved_by_id !== doc.created_by_id) return null;
+    return doc?.created_by_id ?? null;
+  },
   action: 'post-billing-document',
 }), async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -810,6 +814,13 @@ financeRouter.post('/billing-proposals/:id/issue-billing-document', requireFinan
   } catch (err) { next(err); }
 });
 
+
+financeRouter.post('/billing-proposals/:id/post-billing-document', requireFinanceRole([RoleCode.FINANCE]), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const posted = await FinanceHardeningService.postIssuedBillingProposal(req.params.id, authenticatedFinanceUserId(req), activeCompanyId(req));
+    sendSuccess(res, posted);
+  } catch (err) { next(err); }
+});
 financeRouter.post('/billing-documents/:id/create-payment', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try {
     sendSuccess(res, await FinanceHardeningService.createAndSubmitPayment(req.params.id, {
@@ -1154,6 +1165,19 @@ financeRouter.post('/tax-transactions/:id/record-ntpn', async (req: Request, res
 });
 
 // =============================================================================
+
+financeRouter.post('/tax-transactions/:id/record-bupot', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { bupot_number, bupot_date, tax_type, notes } = req.body;
+    if (!bupot_number || !bupot_date) {
+      return sendError(res, 'bupot_number dan bupot_date wajib diisi.', 400);
+    }
+    const result = await FinanceService.recordBupot(
+      req.params.id, String(bupot_number).trim(), new Date(bupot_date), String(tax_type || 'PPh 23'), String(notes || ''), activeCompanyId(req),
+    );
+    sendSuccess(res, result);
+  } catch (err) { next(err); }
+});
 // AUDIT TRAIL & EXECUTIVE REPORT (Fase 4)
 // =============================================================================
 

@@ -65,6 +65,12 @@ export class CustomerReceiptService {
         if (currency && currency !== baseCurrency) throw new ValidationError('Posting valuta asing memerlukan konversi kurs; gunakan rekening dan transaksi dalam mata uang dasar perusahaan.');
       }
       const plan = (payment.allocation_plan ?? {}) as Record<string, any>;
+      const withholdingAmount = new Decimal(Number(plan.withholding_tax_amount || 0));
+      if (!withholdingAmount.isFinite() || withholdingAmount.lt(0)) {
+        throw new ValidationError('Nominal potongan PPh / pajak tidak valid.');
+      }
+      const totalSettlement = amount.plus(withholdingAmount);
+
       const allocations = await tx.fin_payment_allocation.findMany({ where: { ...scope, payment_id: payment.id } });
       const targets = new Map<string, Decimal>();
       for (const allocation of allocations) {
@@ -88,11 +94,12 @@ export class CustomerReceiptService {
           if (!linkedHandoff) throw new ValidationError('Proforma belum terhubung ke Deal Won yang menunggu pembayaran DP.');
           if (matches[0].status !== 'DRAFT' || matches[0].payment_status === 'PAID') throw new ConflictError('Proforma tidak lagi menerima pembayaran DP.');
         }
-        targets.set(matches[0].id, amount);
+        targets.set(matches[0].id, totalSettlement);
         createAllocation = true;
       }
-      if (targets.size && !Array.from(targets.values()).reduce((sum, value) => sum.plus(value), new Decimal(0)).equals(amount)) {
-        throw new ValidationError('Total alokasi invoice harus sama dengan nominal penerimaan.');
+      const totalAllocated = Array.from(targets.values()).reduce((sum, value) => sum.plus(value), new Decimal(0));
+      if (targets.size && !totalAllocated.equals(totalSettlement)) {
+        throw new ValidationError('Total alokasi invoice harus sama dengan nominal penerimaan ditambah potongan pajak.');
       }
       let partyId = payment.party_id;
       const bills: Array<{ bill: any; allocated: Decimal; paid: Decimal; outstanding: Decimal }> = [];
@@ -128,13 +135,39 @@ export class CustomerReceiptService {
       const journalEntryId = crypto.randomUUID();
       await tx.fin_journal_entry.create({ data: {
         ...scope, id: journalEntryId, created_by_id: userId, journal_id: journal.id, fiscal_period_id: period.id,
-        entry_number: `RCPT-${payment.id}`, posting_date: postingDate, description: `Penerimaan pelanggan ${payment.reference_number}`,
+        entry_number: `RCPT-${payment.id}`, posting_date: postingDate, description: `Penerimaan pelanggan ${payment.reference_number}${withholdingAmount.gt(0) ? ` (Potongan Pajak Rp ${withholdingAmount.toString()})` : ''}`,
         source_document_id: document.id, status: 'POSTED',
       } });
-      await tx.fin_journal_line.createMany({ data: [
+
+      const journalLines: Array<{
+        company_id: string;
+        tenant_id?: string | null;
+        id: string;
+        created_by_id: string;
+        journal_entry_id: string;
+        account_id: string;
+        party_id: string | null;
+        debit_base: Decimal;
+        credit_base: Decimal;
+        transaction_amount: Decimal;
+      }> = [
         { ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_entry_id: journalEntryId, account_id: bankLedger.id, party_id: partyId, debit_base: amount, credit_base: new Decimal(0), transaction_amount: amount },
-        { ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_entry_id: journalEntryId, account_id: creditAccount.id, party_id: partyId, debit_base: new Decimal(0), credit_base: amount, transaction_amount: amount },
-      ] });
+      ];
+
+      if (withholdingAmount.gt(0)) {
+        const prepaidTaxAccount = coa.get('1160');
+        if (!prepaidTaxAccount) throw new AccountingError('Akun 1160 (Pajak Dibayar Dimuka PPh 23 / Final) tidak ditemukan dalam bagan akun.');
+        journalLines.push({
+          ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_entry_id: journalEntryId, account_id: prepaidTaxAccount.id, party_id: partyId, debit_base: withholdingAmount, credit_base: new Decimal(0), transaction_amount: withholdingAmount,
+        });
+      }
+
+      journalLines.push({
+        ...scope, id: crypto.randomUUID(), created_by_id: userId, journal_entry_id: journalEntryId, account_id: creditAccount.id, party_id: partyId, debit_base: new Decimal(0), credit_base: totalSettlement, transaction_amount: totalSettlement,
+      });
+
+      await tx.fin_journal_line.createMany({ data: journalLines });
+
       for (const { bill, allocated, paid, outstanding } of bills) {
         if (createAllocation) await tx.fin_payment_allocation.create({ data: {
           ...scope, id: crypto.randomUUID(), created_by_id: userId, payment_id: payment.id, billing_document_id: bill.id, allocated_amount: allocated,
@@ -142,7 +175,40 @@ export class CustomerReceiptService {
         await tx.fin_billing_document.update({ where: { id: bill.id }, data: {
           paid_amount: paid, outstanding_amount: outstanding, payment_status: outstanding.isZero() ? 'PAID' : 'PARTIALLY_PAID',
         } });
+
+        const schedule = await tx.fin_ar_ap_schedule.findFirst({
+          where: { billing_document_id: bill.id, company_id: companyId }
+        });
+        if (schedule) {
+          const newSchedPaid = new Decimal(schedule.paid_amount ?? 0).plus(allocated);
+          const newSchedOut = new Decimal(schedule.original_amount ?? 0).minus(newSchedPaid);
+          await tx.fin_ar_ap_schedule.update({
+            where: { id: schedule.id },
+            data: {
+              paid_amount: newSchedPaid,
+              outstanding_amount: newSchedOut.lt(0) ? new Decimal(0) : newSchedOut,
+              status: newSchedOut.lte(0) ? 'PAID' : 'PARTIALLY_PAID',
+            }
+          });
+        }
+
+        if (plan.bupot_number && String(plan.bupot_number).trim()) {
+          const bupotNum = String(plan.bupot_number).trim();
+          const taxType = String(plan.withholding_tax_type || 'PPh 23').trim();
+          const taxTx = await tx.fin_tax_transaction.findFirst({
+            where: { company_id: companyId, billing_document_id: bill.id }
+          });
+          if (taxTx) {
+            await tx.fin_tax_transaction.update({
+              where: { id: taxTx.id },
+              data: {
+                validation_note: `BUPOT:${taxType}:${bupotNum}${withholdingAmount.gt(0) ? ` (Dipotong Rp ${withholdingAmount.toString()})` : ''}`,
+              }
+            });
+          }
+        }
       }
+
       for (const { bill, outstanding } of bills) {
         if (bill.billing_type !== 'PROFORMA_INVOICE' || !outstanding.isZero()) continue;
         const handoff = await tx.crm_deal_handoff.findFirst({ where: { proforma_invoice_id: bill.id, company_id: companyId }, select: { opportunity_id: true } });

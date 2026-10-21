@@ -682,6 +682,7 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
           description: description || `Dibuat dari conversation ${conversation.id}.`,
           customer_name: confirmedCustomer?.display_name || confirmedCustomer?.legal_name || conversation.subject || 'Belum teridentifikasi',
           customer_email: '',
+          origin_domain: conversation.origin_domain ?? null,
           status: 'NEW',
           created_at: now,
           updated_at: now,
@@ -750,11 +751,12 @@ crmRouter.post('/feedbacks', async (req: Request, res: Response, next: NextFunct
       select: { id: true },
     });
     if (!party) throw new ValidationError('Customer harus aktif dan terdaftar pada company yang dipilih.');
+    const originDomain = typeof req.body.origin_domain === 'string' && req.body.origin_domain.trim() ? req.body.origin_domain.trim() : null;
     const feedback = await prisma.crm_feedback.create({
       data: {
         id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: company, created_by_id: req.user.id,
         customer_party_id: party.id, feedback_type: feedbackType, rating_value: rating,
-        feedback_text: feedbackText, submitted_at: new Date(), status: 'SUBMITTED',
+        feedback_text: feedbackText, submitted_at: new Date(), status: 'SUBMITTED', origin_domain: originDomain,
       },
     });
     res.status(201).json(feedback);

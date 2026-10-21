@@ -29,6 +29,8 @@ export const DEFAULT_COA = [
   { code: '1130', name: 'Piutang Usaha (AR)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1140', name: 'Uang Muka & Cash in Transit', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1150', name: 'Persediaan Pekerjaan Dalam Proses (WIP)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
+  { code: '1160', name: 'Pajak Dibayar Dimuka (PPh 23 / Final)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
+  { code: '1161', name: 'PPN Masukan (Input VAT)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   { code: '1200', name: 'Aset Tetap (Fixed Assets)', type: 'ASSET', balance: 'DEBIT', parent_code: null },
   // 2000 - KEWAJIBAN
   { code: '2110', name: 'Hutang Usaha (AP)', type: 'LIABILITY', balance: 'CREDIT', parent_code: null },
@@ -925,6 +927,17 @@ export class FinanceService {
         where: { billing_document_id: billingId, company_id: doc.company_id },
       });
 
+      let calculatedTaxRate = 11;
+      if (subtotal > 0 && taxAmount > 0) {
+        calculatedTaxRate = Number(((taxAmount / subtotal) * 100).toFixed(2));
+      }
+      const linkedProposal = await tx.fin_billing_proposal.findFirst({
+        where: { billing_document_id: billingId, company_id: doc.company_id },
+      });
+      if (linkedProposal && Number(linkedProposal.tax_rate) > 0) {
+        calculatedTaxRate = Number(linkedProposal.tax_rate);
+      }
+
       if (!existingTax && taxAmount > 0) {
         await tx.fin_tax_transaction.create({
           data: {
@@ -934,12 +947,12 @@ export class FinanceService {
             created_by_id: userId,
             billing_document_id: doc.id,
             taxable_amount: subtotal,
-            tax_rate: 11,
+            tax_rate: calculatedTaxRate,
             tax_amount: taxAmount,
             tax_direction: doc.billing_type === 'SUPPLIER_INVOICE' ? 'INPUT' : 'OUTPUT',
-            tax_date: new Date(),
+            tax_date: doc.invoice_date ?? new Date(),
             status: 'CALCULATED',
-            validation_note: 'Auto-generated from posted billing document',
+            validation_note: `Auto-generated from posted ${doc.billing_type}`,
             billing_code: `EFAKTUR-${doc.invoice_number}`,
             payment_reference: '',
             ntpn: '',
@@ -947,78 +960,184 @@ export class FinanceService {
         });
       }
 
-      // Post GL Journal Entry
+      // Post GL Journal Entry (Dual-Path AR vs AP)
       const coaMap = await this.ensureStandardCOA(doc.company_id, tx);
-      const arAccount = coaMap.get('1130');    // Piutang Usaha (AR)
-      const revenueAccount = coaMap.get('4100'); // Pendapatan Proyek
-      const ppnLiability = coaMap.get('2120');   // Hutang Pajak
       const journal = await this.ensureJournal(doc.company_id, 'GJ', 'General Journal', 'GENERAL', tx);
 
-      if (arAccount && revenueAccount && journal) {
-        const entry = await tx.fin_journal_entry.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenant_id: doc.tenant_id,
-            company_id: doc.company_id,
-            created_by_id: userId,
-            journal_id: journal.id,
-            entry_number: `JE-BILL-${doc.invoice_number}`,
-            posting_date: new Date(),
-            description: `Pengakuan Piutang & PPN Invoice ${doc.invoice_number}`,
-            source_document_id: sourceDocument.id,
-            status: 'POSTED',
-          },
-        });
+      if (journal) {
+        if (doc.billing_type === 'SUPPLIER_INVOICE') {
+          // SUPPLIER INVOICE (AP):
+          // Debit: WIP (1150) / Direct Cost (5100) = subtotal
+          // Debit: PPN Masukan (1161) or Hutang Pajak (2120) = taxAmount
+          // Credit: Hutang Usaha AP (2110) = totalAmount
+          const apAccount = coaMap.get('2110');
+          const costAccount = coaMap.get('1150') || coaMap.get('5100');
+          const inputTaxAccount = coaMap.get('1161') || coaMap.get('2120');
 
-        await tx.fin_journal_line.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenant_id: doc.tenant_id,
-            company_id: doc.company_id,
-            created_by_id: userId,
-            journal_entry_id: entry.id,
-            account_id: arAccount.id,
-            project_id: doc.project_id,
-            party_id: doc.party_id,
-            debit_base: totalAmount,
-            credit_base: 0,
-            transaction_amount: totalAmount,
-          },
-        });
+          if (apAccount && costAccount) {
+            const entry = await tx.fin_journal_entry.create({
+              data: {
+                id: crypto.randomUUID(),
+                tenant_id: doc.tenant_id,
+                company_id: doc.company_id,
+                created_by_id: userId,
+                journal_id: journal.id,
+                entry_number: `JE-AP-${doc.invoice_number}`,
+                posting_date: new Date(),
+                description: `Pengakuan Hutang & PPN Masukan Tagihan ${doc.invoice_number}`,
+                source_document_id: sourceDocument.id,
+                status: 'POSTED',
+              },
+            });
 
-        await tx.fin_journal_line.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenant_id: doc.tenant_id,
-            company_id: doc.company_id,
-            created_by_id: userId,
-            journal_entry_id: entry.id,
-            account_id: revenueAccount.id,
-            project_id: doc.project_id,
-            party_id: doc.party_id,
-            debit_base: 0,
-            credit_base: subtotal,
-            transaction_amount: subtotal,
-          },
-        });
+            await tx.fin_journal_line.create({
+              data: {
+                id: crypto.randomUUID(),
+                tenant_id: doc.tenant_id,
+                company_id: doc.company_id,
+                created_by_id: userId,
+                journal_entry_id: entry.id,
+                account_id: costAccount.id,
+                project_id: doc.project_id,
+                party_id: doc.party_id,
+                debit_base: subtotal,
+                credit_base: 0,
+                transaction_amount: subtotal,
+              },
+            });
 
-        if (taxAmount > 0 && ppnLiability) {
-          await tx.fin_journal_line.create({
-            data: {
-              id: crypto.randomUUID(),
-              tenant_id: doc.tenant_id,
-              company_id: doc.company_id,
-              created_by_id: userId,
-              journal_entry_id: entry.id,
-              account_id: ppnLiability.id,
-              project_id: doc.project_id,
-              party_id: doc.party_id,
-              debit_base: 0,
-              credit_base: taxAmount,
-              transaction_amount: taxAmount,
-            },
-          });
+            if (taxAmount > 0 && inputTaxAccount) {
+              await tx.fin_journal_line.create({
+                data: {
+                  id: crypto.randomUUID(),
+                  tenant_id: doc.tenant_id,
+                  company_id: doc.company_id,
+                  created_by_id: userId,
+                  journal_entry_id: entry.id,
+                  account_id: inputTaxAccount.id,
+                  project_id: doc.project_id,
+                  party_id: doc.party_id,
+                  debit_base: taxAmount,
+                  credit_base: 0,
+                  transaction_amount: taxAmount,
+                },
+              });
+            }
+
+            await tx.fin_journal_line.create({
+              data: {
+                id: crypto.randomUUID(),
+                tenant_id: doc.tenant_id,
+                company_id: doc.company_id,
+                created_by_id: userId,
+                journal_entry_id: entry.id,
+                account_id: apAccount.id,
+                project_id: doc.project_id,
+                party_id: doc.party_id,
+                debit_base: 0,
+                credit_base: totalAmount,
+                transaction_amount: totalAmount,
+              },
+            });
+          }
+        } else {
+          // CUSTOMER INVOICE (AR):
+          // Debit: Piutang Usaha AR (1130) = totalAmount
+          // Credit: Pendapatan Proyek (4100) = subtotal
+          // Credit: Hutang PPN Keluaran (2120) = taxAmount
+          const arAccount = coaMap.get('1130');
+          const revenueAccount = coaMap.get('4100');
+          const ppnLiability = coaMap.get('2120');
+
+          if (arAccount && revenueAccount) {
+            const entry = await tx.fin_journal_entry.create({
+              data: {
+                id: crypto.randomUUID(),
+                tenant_id: doc.tenant_id,
+                company_id: doc.company_id,
+                created_by_id: userId,
+                journal_id: journal.id,
+                entry_number: `JE-BILL-${doc.invoice_number}`,
+                posting_date: new Date(),
+                description: `Pengakuan Piutang & PPN Invoice ${doc.invoice_number}`,
+                source_document_id: sourceDocument.id,
+                status: 'POSTED',
+              },
+            });
+
+            await tx.fin_journal_line.create({
+              data: {
+                id: crypto.randomUUID(),
+                tenant_id: doc.tenant_id,
+                company_id: doc.company_id,
+                created_by_id: userId,
+                journal_entry_id: entry.id,
+                account_id: arAccount.id,
+                project_id: doc.project_id,
+                party_id: doc.party_id,
+                debit_base: totalAmount,
+                credit_base: 0,
+                transaction_amount: totalAmount,
+              },
+            });
+
+            await tx.fin_journal_line.create({
+              data: {
+                id: crypto.randomUUID(),
+                tenant_id: doc.tenant_id,
+                company_id: doc.company_id,
+                created_by_id: userId,
+                journal_entry_id: entry.id,
+                account_id: revenueAccount.id,
+                project_id: doc.project_id,
+                party_id: doc.party_id,
+                debit_base: 0,
+                credit_base: subtotal,
+                transaction_amount: subtotal,
+              },
+            });
+
+            if (taxAmount > 0 && ppnLiability) {
+              await tx.fin_journal_line.create({
+                data: {
+                  id: crypto.randomUUID(),
+                  tenant_id: doc.tenant_id,
+                  company_id: doc.company_id,
+                  created_by_id: userId,
+                  journal_entry_id: entry.id,
+                  account_id: ppnLiability.id,
+                  project_id: doc.project_id,
+                  party_id: doc.party_id,
+                  debit_base: 0,
+                  credit_base: taxAmount,
+                  transaction_amount: taxAmount,
+                },
+              });
+            }
+          }
         }
+      }
+
+      // Pastikan jadwal jatuh tempo (AR/AP Schedule) tercipta
+      const existingSchedule = await tx.fin_ar_ap_schedule.findFirst({
+        where: { billing_document_id: doc.id, company_id: doc.company_id },
+      });
+      if (!existingSchedule) {
+        await tx.fin_ar_ap_schedule.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: doc.tenant_id,
+            company_id: doc.company_id,
+            created_by_id: userId,
+            billing_document_id: doc.id,
+            installment_number: 1,
+            due_date: doc.due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            original_amount: totalAmount,
+            paid_amount: 0,
+            outstanding_amount: totalAmount,
+            status: 'UNPAID',
+          },
+        });
       }
 
       await FinanceDocumentService.markPosted(
@@ -1248,6 +1367,27 @@ export class FinanceService {
  * @returns The synchronous result or Promise produced below.
  * Database/side effects: uses `fin_tax_transaction`, `fin_bank_account`, `fin_bank_statement`; transaction scope is exactly the coded scope.
  */
+  static async recordBupot(
+    taxTxId:      string,
+    bupotNumber:  string,
+    bupotDate:    Date,
+    taxType:      string,
+    notes:        string,
+    companyId:    string,
+  ) {
+    const taxTx = await prisma.fin_tax_transaction.findFirst({ where: { id: taxTxId, company_id: companyId } });
+    if (!taxTx) throw new NotFoundError('TaxTransaction');
+    const updated = await prisma.fin_tax_transaction.update({
+      where: { id: taxTxId },
+      data: {
+        validation_note: `BUPOT:${taxType}:${bupotNumber} ${notes || ''}`.trim(),
+        validated_at: bupotDate,
+        status: 'VERIFIED',
+      },
+    });
+    return updated;
+  }
+
   static async recordNTPN(
     taxTxId:      string,
     ntpn:         string,
