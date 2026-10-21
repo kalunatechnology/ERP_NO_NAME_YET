@@ -108,6 +108,40 @@ function migrationEnv(directUrl) {
   return { ...process.env, DATABASE_URL: directUrl, DIRECT_URL: directUrl };
 }
 
+async function verifyCrmOriginDomainSchema(directUrl) {
+  const requiredColumns = [
+    ['core_integration_source', 'allowed_origin_domains'],
+    ['crm_customer_inquiry', 'origin_domain'],
+    ['crm_conversation', 'origin_domain'],
+    ['service_case', 'origin_domain'],
+    ['crm_survey_response', 'origin_domain'],
+    ['crm_feedback', 'origin_domain'],
+  ];
+  const pool = new Pool({ ...postgresPoolConfig(directUrl), max: 1 });
+  try {
+    const result = await pool.query(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND (table_name, column_name) IN (
+          ('core_integration_source', 'allowed_origin_domains'),
+          ('crm_customer_inquiry', 'origin_domain'),
+          ('crm_conversation', 'origin_domain'),
+          ('service_case', 'origin_domain'),
+          ('crm_survey_response', 'origin_domain'),
+          ('crm_feedback', 'origin_domain')
+        )
+    `);
+    const present = new Set(result.rows.map((row) => `${row.table_name}.${row.column_name}`));
+    const missing = requiredColumns.map(([table, column]) => `${table}.${column}`).filter((name) => !present.has(name));
+    if (missing.length) {
+      throw new Error(`CRM origin-domain schema is incomplete after migrations. Missing: ${missing.join(', ')}.`);
+    }
+  } finally {
+    await pool.end();
+  }
+}
+
 function runPrismaResolve(prismaCli, directUrl, mode, migrationName) {
   const result = spawnSync(
     process.execPath,
@@ -392,6 +426,8 @@ async function main() {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
+  await verifyCrmOriginDomainSchema(directUrl);
+  console.log('Hostinger database verification passed: all CRM origin-domain columns are present.');
 }
 
 if (require.main === module) {
