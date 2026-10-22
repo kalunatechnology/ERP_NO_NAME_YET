@@ -108,6 +108,7 @@ export default function FixedAssetsWorkspace() {
   const [scheduleAssetId, setScheduleAssetId] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<DepreciationLine[] | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   // Depreciation Period & Batch State
   const [depreciationPeriod, setDepreciationPeriod] = useState(() => {
@@ -160,7 +161,7 @@ export default function FixedAssetsWorkspace() {
       await Promise.allSettled(
         assetList.map(async (a) => {
           const { data: j } = await api.get(`/api/v1/assets/books?asset_id=${a.id}&page_size=1`);
-          const book = j.data?.rows?.[0] ?? j.data?.[0];
+          const book = normalizeList<AssetBook>(j?.data ?? j).rows[0];
           if (book) bookMap[a.id] = book;
         })
       );
@@ -177,17 +178,60 @@ export default function FixedAssetsWorkspace() {
   }, [loadAssetsAndCategories]);
 
   // Load Schedule for selected asset
+  const buildLocalSchedule = (assetId: string): DepreciationLine[] => {
+    const asset = assets.find((a) => a.id === assetId);
+    if (!asset) return [];
+    const book = books[assetId];
+    const cost = Number(book?.cost_basis ?? asset.acquisition_cost ?? 0);
+    const salvage = Number(asset.salvage_value ?? 0);
+    const life = Number(book?.useful_life_periods ?? asset.useful_life_months ?? 0);
+    const start = new Date(asset.available_for_use_date ?? asset.acquisition_date ?? new Date());
+    if (!life || cost <= 0) return [];
+    const monthly = Math.round(((cost - salvage) / life) * 100) / 100;
+    const rows: DepreciationLine[] = [];
+    let opening = cost;
+    let accumulated = 0;
+    for (let i = 0; i < life; i++) {
+      const d = new Date(start);
+      d.setMonth(d.getMonth() + i);
+      const last = i === life - 1;
+      const amount = last ? Math.max(opening - salvage, 0) : monthly;
+      accumulated += amount;
+      const closing = opening - amount;
+      rows.push({
+        period_number: i + 1,
+        period_date: d.toISOString(),
+        opening_book_value: opening,
+        depreciation_amount: amount,
+        accumulated_depreciation: accumulated,
+        closing_book_value: closing,
+        is_residual_adjustment: last,
+      });
+      opening = closing;
+    }
+    return rows;
+  };
+
   const handleOpenSchedule = async (assetId: string) => {
     setScheduleAssetId(assetId);
     setScheduleLoading(true);
     setSchedule(null);
+    setScheduleError(null);
     setActiveTab("schedule");
     try {
       const { data: json } = await api.get(`/api/v1/assets/assets/${assetId}/depreciation-schedule`);
-      const scheduleData = json?.schedule ?? json?.data?.schedule ?? [];
-      setSchedule(scheduleData);
-    } catch {
-      toast.error("Gagal memuat jadwal penyusutan aset.");
+      const payload = json?.schedule ? json : (json?.data ?? json);
+      const serverRows: DepreciationLine[] = Array.isArray(payload?.schedule) ? payload.schedule : [];
+      if (serverRows.length > 0) {
+        setSchedule(serverRows);
+      } else {
+        setSchedule(buildLocalSchedule(assetId));
+        setScheduleError("Server tidak mengembalikan jadwal; ditampilkan simulasi garis lurus dari data aset.");
+      }
+    } catch (err: any) {
+      const reason = err?.response?.data?.detail || err?.response?.data?.message || err?.message || "Tidak diketahui";
+      setSchedule(buildLocalSchedule(assetId));
+      setScheduleError(`Jadwal dari server gagal dimuat (${reason}). Ditampilkan simulasi garis lurus dari data aset.`);
     } finally {
       setScheduleLoading(false);
     }
@@ -736,6 +780,12 @@ export default function FixedAssetsWorkspace() {
                 </button>
               </div>
 
+              {scheduleError && (
+                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-2xs font-semibold text-amber-800">
+                  {scheduleError}
+                </div>
+              )}
+
               <div className="overflow-x-auto max-h-[500px]">
                 <table className="w-full text-left text-xs">
                   <thead className="sticky top-0 bg-white shadow-2xs">
@@ -787,7 +837,7 @@ export default function FixedAssetsWorkspace() {
             </div>
           ) : (
             <div className="py-12 text-center text-xs text-[#6B7280]">
-              Tidak ada data jadwal tersedia untuk aset ini.
+              {scheduleError || "Tidak ada data jadwal tersedia untuk aset ini."}
             </div>
           )}
         </div>
