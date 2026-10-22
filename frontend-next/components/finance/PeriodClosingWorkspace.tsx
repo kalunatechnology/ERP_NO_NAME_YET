@@ -44,11 +44,11 @@ interface YearEndResult {
 
 const statusColor = (s: string) => {
   const m: Record<string, string> = {
-    OPEN:   'bg-brand-light-green text-brand-deep-green',
-    CLOSED: 'bg-gray-300 text-gray-700',
-    LOCKED: 'bg-red-100 text-red-700',
+    OPEN:   'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    CLOSED: 'bg-slate-100 text-slate-700 border border-slate-200',
+    LOCKED: 'bg-rose-50 text-rose-700 border border-rose-200',
   };
-  return m[s] ?? 'bg-yellow-100 text-yellow-700';
+  return m[s] ?? 'bg-amber-50 text-amber-700 border border-amber-200';
 };
 
 const formatRp = (v: number) => `Rp ${v.toLocaleString('id-ID')}`;
@@ -201,17 +201,17 @@ const executeYearEnd = async () => {
 
       {/* Stats Bar */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-brand-light-green0/10 border border-brand-green/20 rounded-xl p-4 text-center">
-          <p className="text-3xl font-black text-brand-primary-soft">{openPeriods.length}</p>
-          <p className="text-xs text-text-secondary mt-1">Periode Aktif (OPEN)</p>
+        <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-4 text-center shadow-2xs">
+          <p className="text-3xl font-black text-emerald-700">{openPeriods.length}</p>
+          <p className="text-xs text-slate-600 mt-1 font-medium">Periode Aktif (OPEN)</p>
         </div>
-        <div className="bg-gray-500/10 border border-gray-500/20 rounded-xl p-4 text-center">
-          <p className="text-3xl font-black text-gray-400">{closedPeriods.length}</p>
-          <p className="text-xs text-text-secondary mt-1">Periode Ditutup</p>
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center shadow-2xs">
+          <p className="text-3xl font-black text-slate-600">{closedPeriods.length}</p>
+          <p className="text-xs text-slate-600 mt-1 font-medium">Periode Ditutup</p>
         </div>
-        <div className="bg-brand-deep-green/10 border border-brand-deep-green/20 rounded-xl p-4 text-center">
-          <p className="text-3xl font-black text-brand-deep-green">{fiscalYears.length}</p>
-          <p className="text-xs text-text-secondary mt-1">Tahun Fiskal</p>
+        <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-4 text-center shadow-2xs">
+          <p className="text-3xl font-black text-[#203D91]">{fiscalYears.length}</p>
+          <p className="text-xs text-slate-600 mt-1 font-medium">Tahun Fiskal</p>
         </div>
       </div>
 
@@ -219,37 +219,37 @@ const executeYearEnd = async () => {
       <div>
         <h3 className="section-title mb-3">Status Periode Fiskal</h3>
         {loading ? (
-          <div className="text-center py-8 text-text-secondary text-sm animate-pulse">Memuat...</div>
+          <div className="text-center py-8 text-slate-500 text-sm animate-pulse">Memuat...</div>
         ) : periods.length === 0 ? (
           <div className="text-center py-8 space-y-3">
-            <p className="text-text-secondary text-sm">Belum ada periode fiskal terdaftar untuk tahun ini.</p>
+            <p className="text-slate-500 text-sm">Belum ada periode fiskal terdaftar untuk tahun ini.</p>
             {/* Tombol aksi pemicu pembuatan periode */}
             <button
               onClick={handleInitialize}
-              className="px-4 py-2 text-xs font-semibold rounded-lg bg-brand-green/20 text-brand-green border border-brand-green/30 hover:bg-brand-green/30 transition-colors"
+              className="px-4 py-2 text-xs font-semibold rounded-lg bg-[#EAF6FF] text-[#203D91] border border-[#BFDBFE] hover:bg-[#203D91] hover:text-white transition-all shadow-2xs"
             >
               Muat Ulang / Inisialisasi Periode
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/10">
+                <tr className="border-b border-slate-200 bg-slate-50/80">
                   {['#', 'Periode', 'Tanggal Mulai', 'Tanggal Akhir', 'Status', 'Aksi'].map(h => (
-                    <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-text-secondary">{h}</th>
+                    <th key={h} className="py-2.5 px-3 text-left text-xs font-semibold text-slate-600">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-slate-100">
                 {periods.map(p => (
-                  <tr key={p.id} className="hover:bg-white/5 transition-colors">
-                    <td className="py-2.5 px-3 text-text-secondary font-mono text-xs">{p.period_number ?? '—'}</td>
-                    <td className="py-2.5 px-3 text-text-primary font-medium">Periode #{p.period_number ?? '—'}</td>
-                    <td className="py-2.5 px-3 text-text-secondary text-xs">{formatDate(p.start_date)}</td>
-                    <td className="py-2.5 px-3 text-text-secondary text-xs">{formatDate(p.end_date)}</td>
+                  <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="py-2.5 px-3 text-slate-500 font-mono text-xs">{p.period_number ?? '—'}</td>
+                    <td className="py-2.5 px-3 text-slate-900 font-semibold">Periode #{p.period_number ?? '—'}</td>
+                    <td className="py-2.5 px-3 text-slate-600 text-xs">{formatDate(p.start_date)}</td>
+                    <td className="py-2.5 px-3 text-slate-600 text-xs">{formatDate(p.end_date)}</td>
                     <td className="py-2.5 px-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor(p.status)}`}>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColor(p.status)}`}>
                         {p.status}
                       </span>
                     </td>
@@ -259,7 +259,7 @@ const executeYearEnd = async () => {
                           <button
                             onClick={() => closePeriod(p.id)}
                             disabled={closingLoading && closingPeriodId === p.id}
-                            className="px-2 py-1 text-xs rounded-md bg-gray-500/20 text-gray-300 hover:bg-gray-500/30 transition-colors disabled:opacity-50"
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#EAF6FF] text-[#203D91] border border-[#BFDBFE] hover:bg-[#203D91] hover:text-white transition-all shadow-2xs disabled:opacity-50"
                           >
                             {closingLoading && closingPeriodId === p.id ? 'Memproses…' : 'Ajukan Penutupan'}
                           </button>
@@ -267,7 +267,7 @@ const executeYearEnd = async () => {
                         {p.status === 'CLOSED' && (
                           <button
                             onClick={() => reopenPeriod(p.id)}
-                            className="px-2 py-1 text-xs rounded-md bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors"
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-600 hover:text-white transition-all shadow-2xs"
                           >
                             Buka kembali
                           </button>
@@ -283,17 +283,17 @@ const executeYearEnd = async () => {
       </div>
 
       {/* Year-End Closing Section */}
-      <div className="bg-white/5 rounded-2xl border border-white/10 p-6">
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs">
         <h3 className="section-title mb-1">Tutup Buku Tahunan</h3>
-        <p className="text-xs text-text-secondary mb-4">
-          Zero-out akun nominal (4xxx, 5xxx, 6xxx) → selisih laba/rugi masuk ke <span className="font-mono text-brand-green">3200 Laba Ditahan</span>
+        <p className="text-xs text-slate-500 mb-4">
+          Zero-out akun nominal (4xxx, 5xxx, 6xxx) → selisih laba/rugi masuk ke <span className="font-mono text-[#203D91] font-semibold">3200 Laba Ditahan</span>
         </p>
 
         <div className="flex gap-3 items-center flex-wrap">
           <select
             value={selectedYearId}
             onChange={e => setSelectedYearId(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/5 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-green/40"
+            className="px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#203D91]/30"
           >
             <option value="">— Pilih Tahun Fiskal —</option>
             {fiscalYears.filter(y => y.status === 'OPEN').map(y => (
@@ -303,7 +303,7 @@ const executeYearEnd = async () => {
           <button
             onClick={executeYearEnd}
             disabled={!selectedYearId || yearEndLoading}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-brand-deep-green text-white hover:bg-brand-green transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-[#203D91] text-white hover:bg-[#182E6E] transition-colors shadow-2xs disabled:opacity-50"
           >
             {yearEndLoading ? 'Memproses…' : 'Ajukan Tutup Buku Tahunan'}
           </button>
@@ -311,26 +311,26 @@ const executeYearEnd = async () => {
 
         {/* Year-End Result */}
         {yearEndResult && (
-          <div className="mt-4 p-4 rounded-xl border border-white/10 bg-white/5">
-            <p className="text-xs font-bold text-text-primary mb-2">Hasil Tutup Buku: {yearEndResult.fiscal_year_name}</p>
+          <div className="mt-4 p-4 rounded-xl border border-slate-200 bg-slate-50/70">
+            <p className="text-xs font-bold text-slate-800 mb-2">Hasil Tutup Buku: {yearEndResult.fiscal_year_name}</p>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-xs text-text-secondary">Total Pendapatan</p>
-                <p className="text-sm font-bold text-brand-deep-green">{formatRp(yearEndResult.total_revenue)}</p>
+                <p className="text-xs text-slate-500">Total Pendapatan</p>
+                <p className="text-sm font-bold text-emerald-700">{formatRp(yearEndResult.total_revenue)}</p>
               </div>
               <div>
-                <p className="text-xs text-text-secondary">Total Beban</p>
-                <p className="text-sm font-bold text-red-400">{formatRp(yearEndResult.total_expense)}</p>
+                <p className="text-xs text-slate-500">Total Beban</p>
+                <p className="text-sm font-bold text-red-600">{formatRp(yearEndResult.total_expense)}</p>
               </div>
               <div>
-                <p className="text-xs text-text-secondary">Laba / Rugi Bersih</p>
-                <p className={`text-sm font-black ${yearEndResult.is_profit ? 'text-brand-primary-soft' : 'text-red-400'}`}>
+                <p className="text-xs text-slate-500">Laba / Rugi Bersih</p>
+                <p className={`text-sm font-black ${yearEndResult.is_profit ? 'text-emerald-700' : 'text-red-600'}`}>
                   {yearEndResult.is_profit ? '+' : '-'}{formatRp(Math.abs(yearEndResult.net_profit_loss))}
                 </p>
               </div>
             </div>
-            <p className="text-xs text-text-secondary mt-2 text-center">
-              Jurnal Penutup ID: <span className="font-mono text-xs">{yearEndResult.closing_entry_id.slice(0, 8)}...</span>
+            <p className="text-xs text-slate-500 mt-2 text-center">
+              Jurnal Penutup ID: <span className="font-mono text-xs text-slate-700">{yearEndResult.closing_entry_id.slice(0, 8)}...</span>
               · {yearEndResult.nominal_accounts_closed} akun nominal ditutup
             </p>
           </div>
@@ -339,9 +339,9 @@ const executeYearEnd = async () => {
 
       {/* Year-End Rollback Section */}
       {closedYears.length > 0 && (
-        <div className="bg-red-500/5 rounded-2xl border border-red-500/20 p-6">
-          <h3 className="text-sm font-bold text-red-600 mb-1">Rollback Tutup Buku Tahunan (Storno)</h3>
-          <p className="text-xs text-text-secondary mb-4">
+        <div className="bg-red-50/60 rounded-2xl border border-red-200 p-6 shadow-2xs">
+          <h3 className="text-sm font-bold text-red-700 mb-1">Rollback Tutup Buku Tahunan (Storno)</h3>
+          <p className="text-xs text-slate-500 mb-4">
             Hanya Superadmin / Direktur. Menerbitkan jurnal pembalik atas jurnal penutup tahunan.
             Riwayat data historis tetap tersimpan (Immutable Audit Trail).
           </p>
@@ -349,7 +349,7 @@ const executeYearEnd = async () => {
             <select
               value={rollbackYearId ?? ''}
               onChange={e => setRollbackYearId(e.target.value || null)}
-              className="px-3 py-2 text-sm rounded-lg border border-red-500/20 bg-white/5 text-text-primary focus:outline-none focus:ring-2 focus:ring-red-500/40"
+              className="px-3 py-2 text-sm rounded-lg border border-red-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/30"
             >
               <option value="">— Pilih Tahun yang Akan Di-rollback —</option>
               {closedYears.map(y => (
@@ -364,12 +364,12 @@ const executeYearEnd = async () => {
                 value={rollbackReason}
                 onChange={e => setRollbackReason(e.target.value)}
                 placeholder="Alasan pembukaan kembali (min. 10 karakter)..."
-                className="w-full px-3 py-2 text-sm rounded-lg border border-red-500/20 bg-white/5 text-text-primary focus:outline-none focus:ring-2 focus:ring-red-500/40"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-red-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/30"
               />
               <button
                 onClick={executeRollback}
                 disabled={rollbackLoading || rollbackReason.trim().length < 10}
-                className="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors shadow-2xs disabled:opacity-50"
               >
                 {rollbackLoading ? 'Memproses Storno...' : 'Konfirmasi Rollback via Storno'}
               </button>
