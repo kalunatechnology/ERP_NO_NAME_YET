@@ -152,6 +152,8 @@ export function CompanyMasterWorkspace() {
             legal_name: company.legal_name ?? "",
             business_category: company.business_category ?? "CONSULTING_DIGITAL",
             tax_number: company.tax_number ?? "",
+            kpp_name: company.kpp_name ?? "",
+            pkp_status: company.pkp_status ?? "",
             company_code: company.company_code ?? "",
             fiscal_year_start: company.fiscal_year_start?.slice?.(0, 10) ?? "",
             status: company.status ?? "",
@@ -213,6 +215,8 @@ export function CompanyMasterWorkspace() {
         legal_name: companyData.legal_name,
         business_category: companyData.business_category,
         tax_number: companyData.tax_number,
+        kpp_name: companyData.kpp_name,
+        pkp_status: companyData.pkp_status,
         fiscal_year_start: companyData.fiscal_year_start || null,
         status: companyData.status,
       });
@@ -422,9 +426,10 @@ export function CompanyMasterWorkspace() {
                   <label className="text-xs font-semibold text-text-primary block mb-1">KPP Terdaftar</label>
                   <input
                     type="text"
-                    disabled
+                    disabled={!canEditCompany}
                     value={companyData.kpp_name}
-                    title="Field KPP belum tersedia pada kontrak backend company."
+                    onChange={e => setCompanyData({ ...companyData, kpp_name: e.target.value })}
+                    placeholder="Contoh: KPP Pratama Jakarta Setiabudi Satu"
                     className="input text-xs"
                   />
                 </div>
@@ -433,9 +438,10 @@ export function CompanyMasterWorkspace() {
                   <label className="text-xs font-semibold text-text-primary block mb-1">Status Pengukuhan PKP</label>
                   <input
                     type="text"
-                    disabled
+                    disabled={!canEditCompany}
                     value={companyData.pkp_status}
-                    title="Field status PKP belum tersedia pada kontrak backend company."
+                    onChange={e => setCompanyData({ ...companyData, pkp_status: e.target.value })}
+                    placeholder="Contoh: PKP - Terdaftar sejak 2024"
                     className="input text-xs"
                   />
                 </div>

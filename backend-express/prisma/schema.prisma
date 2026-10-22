@@ -55,6 +55,8 @@ model core_company {
   base_currency_id  String?   @map("base_currency_id")
   fiscal_year_start DateTime?
   status            String
+  kpp_name          String?
+  pkp_status        String?
 
   @@index([tenant_id, company_code])
   @@map("core_company")
