@@ -86,14 +86,26 @@ export default function PeriodClosingWorkspace() {
         api.get('/api/v1/finance/fiscal-periods/status'),
         api.get('/api/v1/finance/fiscal-years?page_size=10'),
       ]);
-      setPeriods(pJson.data ?? []);
-      setFiscalYears(yJson.data?.rows ?? yJson.data ?? []);
+      setPeriods(pJson.data ?? pJson.results ?? (Array.isArray(pJson) ? pJson : []));
+      setFiscalYears(yJson.results ?? yJson.data?.rows ?? yJson.data ?? (Array.isArray(yJson) ? yJson : []));
     } catch {
       showToast('Gagal memuat data periode fiskal.', 'error');
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const handleInitialize = async () => {
+    setLoading(true);
+    try {
+      await api.post('/api/v1/finance/fiscal-periods/initialize');
+      showToast('Inisialisasi periode fiskal berhasil.', 'success');
+    } catch (err: any) {
+      showToast(err.response?.data?.message ?? err.message ?? 'Gagal inisialisasi periode.', 'error');
+    } finally {
+      await loadData();
+    }
+  };
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -105,37 +117,49 @@ export default function PeriodClosingWorkspace() {
       showToast('Permintaan tutup periode tercatat dan menunggu persetujuan Finance.', 'success');
       loadData();
     } catch (err: any) {
-      showToast(err.message ?? 'Gagal menutup periode.', 'error');
+      showToast(err.response?.data?.message ?? err.message ?? 'Gagal menutup periode.', 'error');
     } finally {
       setClosingLoading(false);
       setClosingPeriodId(null);
     }
   };
 
-  const reopenPeriod = async (periodId: string) => {
-    try {
-      await api.post(`/api/v1/finance/fiscal-periods/${periodId}/reopen`);
-      showToast('Periode berhasil dibuka kembali.', 'success');
-      loadData();
-    } catch {
-      showToast('Gagal membuka kembali periode.', 'error');
-    }
-  };
+const reopenPeriod = async (periodId: string) => {
+  try {
+    await api.post(`/api/v1/finance/fiscal-periods/${periodId}/reopen`);
+    showToast('Periode berhasil dibuka kembali.', 'success');
+    loadData();
+  } catch (err: any) {
+    // Ambil pesan error spesifik dari response backend jika ada
+    const errorMsg = err.response?.data?.message ?? err.message ?? 'Gagal membuka kembali periode.';
+    showToast(errorMsg, 'error');
+  }
+};
 
-  const executeYearEnd = async () => {
-    if (!selectedYearId) return;
-    setYearEndLoading(true);
-    setYearEndResult(null);
-    try {
-      await api.post('/api/v1/finance/period-closings/request', { closing_type: 'YEAR_END', fiscal_year_id: selectedYearId });
-      showToast('Permintaan tutup buku tahunan tercatat dan menunggu persetujuan Finance.', 'success');
-      loadData();
-    } catch (err: any) {
-      showToast(err.message ?? 'Gagal menutup buku tahunan.', 'error');
-    } finally {
-      setYearEndLoading(false);
+const executeYearEnd = async () => {
+  if (!selectedYearId) return;
+  setYearEndLoading(true);
+  setYearEndResult(null);
+  try {
+    // Tangkap response dari API backend
+    const { data: res } = await api.post('/api/v1/finance/period-closings/request', { 
+      closing_type: 'YEAR_END', 
+      fiscal_year_id: selectedYearId 
+    });
+    
+    // Simpan data hasil kalkulasi P&L ke state agar UI Ringkasan muncul
+    if (res.data) {
+      setYearEndResult(res.data);
     }
-  };
+
+    showToast('Tutup buku tahunan berhasil diproses.', 'success');
+    loadData();
+  } catch (err: any) {
+    showToast(err.response?.data?.message ?? err.message ?? 'Gagal menutup buku tahunan.', 'error');
+  } finally {
+    setYearEndLoading(false);
+  }
+};
 
   const executeRollback = async () => {
     if (!rollbackYearId || rollbackReason.trim().length < 10) return;
@@ -147,7 +171,7 @@ export default function PeriodClosingWorkspace() {
       setRollbackReason('');
       loadData();
     } catch (err: any) {
-      showToast(err.message ?? 'Gagal rollback tutup buku.', 'error');
+      showToast(err.response?.data?.message ?? err.message ?? 'Gagal rollback tutup buku.', 'error');
     } finally {
       setRollbackLoading(false);
     }
@@ -197,7 +221,16 @@ export default function PeriodClosingWorkspace() {
         {loading ? (
           <div className="text-center py-8 text-text-secondary text-sm animate-pulse">Memuat...</div>
         ) : periods.length === 0 ? (
-          <div className="text-center py-8 text-text-secondary text-sm">Belum ada periode fiskal terdaftar.</div>
+          <div className="text-center py-8 space-y-3">
+            <p className="text-text-secondary text-sm">Belum ada periode fiskal terdaftar untuk tahun ini.</p>
+            {/* Tombol aksi pemicu pembuatan periode */}
+            <button
+              onClick={handleInitialize}
+              className="px-4 py-2 text-xs font-semibold rounded-lg bg-brand-green/20 text-brand-green border border-brand-green/30 hover:bg-brand-green/30 transition-colors"
+            >
+              Muat Ulang / Inisialisasi Periode
+            </button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

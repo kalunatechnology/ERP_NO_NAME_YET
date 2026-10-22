@@ -1004,13 +1004,90 @@ financeRouter.post('/payments/:id/execute', requireFinanceRole([RoleCode.FINANCE
  * Data/side effects: Uses Prisma model(s) `fin_fiscal_period` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-financeRouter.get('/fiscal-periods/status', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const periods = await prisma.fin_fiscal_period.findMany({
-      where: { company_id: activeCompanyId(req) },
+async function ensureFiscalPeriodsForCompany(companyId: string, userId?: string, tenantId?: string | null) {
+  let periods = await prisma.fin_fiscal_period.findMany({
+    where: { company_id: companyId },
+    orderBy: { start_date: 'desc' },
+    take: 24,
+  });
+
+  if (periods.length === 0 && companyId) {
+    const currentYear = new Date().getUTCFullYear();
+
+    let resolvedTenantId = tenantId;
+    if (!resolvedTenantId) {
+      const comp = await prisma.core_company.findFirst({
+        where: { id: companyId },
+        select: { tenant_id: true },
+      });
+      resolvedTenantId = comp?.tenant_id || null;
+    }
+
+    let fy = await prisma.fin_fiscal_year.findFirst({
+      where: { company_id: companyId, fiscal_year_name: String(currentYear) },
+    });
+
+    if (!fy) {
+      const yearStart = new Date(Date.UTC(currentYear, 0, 1, 0, 0, 0, 0));
+      const yearEnd = new Date(Date.UTC(currentYear + 1, 0, 1, 0, 0, 0, 0) - 1);
+      fy = await prisma.fin_fiscal_year.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: resolvedTenantId,
+          company_id: companyId,
+          created_by_id: userId || null,
+          fiscal_year_name: String(currentYear),
+          start_date: yearStart,
+          end_date: yearEnd,
+          status: 'OPEN',
+        },
+      });
+    }
+
+    const batch = [];
+    for (let month = 0; month < 12; month += 1) {
+      const startDate = new Date(Date.UTC(currentYear, month, 1, 0, 0, 0, 0));
+      const endDate = new Date(Date.UTC(currentYear, month + 1, 1, 0, 0, 0, 0) - 1);
+      batch.push({
+        id: crypto.randomUUID(),
+        tenant_id: resolvedTenantId,
+        company_id: companyId,
+        created_by_id: userId || null,
+        fiscal_year_id: fy.id,
+        period_number: month + 1,
+        start_date: startDate,
+        end_date: endDate,
+        status: 'OPEN',
+      });
+    }
+    await prisma.fin_fiscal_period.createMany({ data: batch });
+
+    periods = await prisma.fin_fiscal_period.findMany({
+      where: { company_id: companyId },
       orderBy: { start_date: 'desc' },
       take: 24,
     });
+  }
+
+  return periods;
+}
+
+financeRouter.get('/fiscal-periods/status', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = (req as any).user?.id;
+    const tenantId = (req as any).user?.tenant_id;
+    const periods = await ensureFiscalPeriodsForCompany(companyId, userId, tenantId);
+    sendSuccess(res, periods);
+  } catch (err) { next(err); }
+});
+
+financeRouter.post('/fiscal-periods/initialize', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = (req as any).user?.id;
+    const tenantId = (req as any).user?.tenant_id;
+    const periods = await ensureFiscalPeriodsForCompany(companyId, userId, tenantId);
     sendSuccess(res, periods);
   } catch (err) { next(err); }
 });
@@ -1047,9 +1124,7 @@ financeRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const companyId = activeCompanyId(req);
-      const period = await prisma.fin_fiscal_period.findFirst({ where: { id: req.params.id, company_id: companyId }, select: { id: true } });
-      if (!period) throw new NotFoundError('Fiscal period');
-      const updated = await prisma.fin_fiscal_period.update({ where: { id: period.id }, data: { status: 'OPEN' } });
+      const updated = await PeriodClosingService.reopenFiscalPeriod(req.params.id, companyId, req.user!.id);
       sendSuccess(res, updated);
     } catch (err) { next(err); }
   },
