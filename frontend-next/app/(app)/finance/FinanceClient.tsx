@@ -244,7 +244,6 @@ export default function FinanceClient() {
     payment_method: "BANK_TRANSFER",
     reference_number: "",
     notes: "",
-    auto_post: true,
   });
   const [cashBankFilter, setCashBankFilter] = useState<"ALL" | "POSTED" | "PENDING">("ALL");
   const [receiptErrors, setReceiptErrors] = useState<Record<string, string>>({});
@@ -2740,30 +2739,12 @@ export default function FinanceClient() {
                 },
               });
 
-              const created = createdRes.data?.data ?? createdRes.data;
-              let postedDirectly = false;
-              if (receiptForm.auto_post && created?.id) {
-                try {
-                  await api.post(`/api/v1/finance/customer-receipts/${created.id}/approve-and-post`, {});
-                  postedDirectly = true;
-                } catch {
-                  // Fallback jika aturan maker-checker memerlukan reviewer berbeda
-                  postedDirectly = false;
-                }
-              }
-
-              if (postedDirectly) {
-                toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan dan langsung dibukukan ke Kas & Bank!`);
-              } else {
-                toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan sebagai Draft.`);
-              }
-
+              toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan sebagai Draft.`);
               setIsReceiptModalOpen(false);
               setReceiptForm({
                 project_id: "", customer_name: "", project_name: "", invoice_ref: "", amount: "",
                 withholding_tax_amount: "", withholding_tax_type: "PPH_23", bupot_number: "",
                 bank_account: "", payment_date: localDateKey(), payment_method: "BANK_TRANSFER", reference_number: "", notes: "",
-                auto_post: true
               });
               await loadFinanceData(true);
             } catch (error) {
