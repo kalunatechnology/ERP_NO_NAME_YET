@@ -184,7 +184,8 @@ export default function FixedAssetsWorkspace() {
     setActiveTab("schedule");
     try {
       const { data: json } = await api.get(`/api/v1/assets/assets/${assetId}/depreciation-schedule`);
-      setSchedule(json.data?.schedule ?? []);
+      const scheduleData = json?.schedule ?? json?.data?.schedule ?? [];
+      setSchedule(scheduleData);
     } catch {
       toast.error("Gagal memuat jadwal penyusutan aset.");
     } finally {
@@ -200,10 +201,11 @@ export default function FixedAssetsWorkspace() {
       const { data: json } = await api.post(`/api/v1/assets/assets/${assetId}/depreciate`, {
         period_date: depreciationPeriod,
       });
-      if (json.data?.skipped) {
+      const resData = json?.data ?? json;
+      if (resData?.skipped) {
         toast((t) => (
           <span className="text-xs">
-            <b>Info:</b> {json.data.reason}
+            <b>Info:</b> {resData.reason}
           </span>
         ), { icon: "ℹ️" });
       } else {
@@ -211,7 +213,7 @@ export default function FixedAssetsWorkspace() {
         await loadAssetsAndCategories();
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Gagal menjalankan penyusutan aset.");
+      toast.error(err.response?.data?.detail || err.response?.data?.message || "Gagal menjalankan penyusutan aset.");
     } finally {
       setSingleDepLoading(false);
       setSingleDepAssetId(null);
@@ -226,12 +228,13 @@ export default function FixedAssetsWorkspace() {
       const { data: json } = await api.post("/api/v1/assets/assets/batch-depreciate", {
         period_date: depreciationPeriod,
       });
-      setBatchResult(json.data);
-      toast.success(`Batch selesai: ${json.data?.processed ?? 0} diproses, ${json.data?.skipped ?? 0} dilewati.`);
+      const resData = json?.data ?? json;
+      setBatchResult(resData);
+      toast.success(`Batch selesai: ${resData?.processed ?? 0} diproses, ${resData?.skipped ?? 0} dilewati.`);
       setActiveTab("batch");
       await loadAssetsAndCategories();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Gagal menjalankan batch penyusutan.");
+      toast.error(err.response?.data?.detail || err.response?.data?.message || "Gagal menjalankan batch penyusutan.");
     } finally {
       setBatchLoading(false);
     }
