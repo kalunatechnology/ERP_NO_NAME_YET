@@ -14,6 +14,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import api from "@/lib/api/axios";
 import { formatMoney, localDateKey, cn } from "@/lib/utils";
+import { normalizeList } from "@/lib/api/auth.api";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import {
@@ -37,6 +38,14 @@ interface AssetCategory {
   category_code: string;
   category_name: string;
 }
+
+const DEFAULT_CATEGORIES: AssetCategory[] = [
+  { id: "52584a1d-3527-42d3-a5b6-0b336da49124", category_code: "CAT-PROYEK", category_name: "Peralatan & Mesin Operasional Proyek" },
+  { id: "ca60d25f-1f75-48bd-9b54-d943f8780afd", category_code: "CAT-IT", category_name: "Peralatan Komputer & Infrastruktur IT" },
+  { id: "e59e8039-18b3-4f6a-b9eb-8902c4947f14", category_code: "CAT-KNDRN", category_name: "Kendaraan Operasional Perusahaan" },
+  { id: "74ed9075-5f36-40ad-9886-83e45b505310", category_code: "CAT-FURN", category_name: "Perabot, Mebel & Peralatan Kantor" },
+  { id: "97c5b37a-ab84-4df4-b4b7-f64f6363de8b", category_code: "CAT-BLD", category_name: "Bangunan & Prasarana Kantor" },
+];
 
 interface Asset {
   id: string;
@@ -88,7 +97,12 @@ export default function FixedAssetsWorkspace() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
-  const [activeTab, setActiveTab] = useState<"register" | "schedule" | "batch">("register");
+  const [activeTab, setActiveTab] = useState<"register" | "schedule" | "batch" | "categories">("register");
+
+  // Modal: Add / Manage Category
+  const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
+  const [categoryForm, setCategoryForm] = useState({ category_code: "", category_name: "" });
+  const [isSubmittingCategory, setIsSubmittingCategory] = useState(false);
 
   // Schedule View State
   const [scheduleAssetId, setScheduleAssetId] = useState<string | null>(null);
@@ -134,10 +148,12 @@ export default function FixedAssetsWorkspace() {
         api.get("/api/v1/assets/asset-categories?page=1&page_size=100"),
       ]);
 
-      const assetList: Asset[] = assetRes.data?.rows ?? assetRes.data ?? assetRes.rows ?? [];
-      const catList: AssetCategory[] = catRes.data?.rows ?? catRes.data ?? catRes.rows ?? [];
+      const assetList: Asset[] = normalizeList<Asset>(assetRes.data ?? assetRes).rows;
+      const parsedCats = normalizeList<AssetCategory>(catRes.data ?? catRes).rows;
+      const catList: AssetCategory[] = parsedCats.length > 0 ? parsedCats : DEFAULT_CATEGORIES;
       setAssets(assetList);
       setCategories(catList);
+      setRegisterForm((prev) => (prev.category_id ? prev : { ...prev, category_id: catList[0]?.id ?? "" }));
 
       // Load books for each asset
       const bookMap: Record<string, AssetBook> = {};
@@ -218,6 +234,35 @@ export default function FixedAssetsWorkspace() {
       toast.error(err.response?.data?.message || "Gagal menjalankan batch penyusutan.");
     } finally {
       setBatchLoading(false);
+    }
+  };
+
+  // Add / Create Asset Category
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoryForm.category_code.trim() || !categoryForm.category_name.trim()) {
+      toast.error("Kode dan nama kategori wajib diisi.");
+      return;
+    }
+    setIsSubmittingCategory(true);
+    try {
+      const code = categoryForm.category_code.trim().toUpperCase();
+      const res = await api.post("/api/v1/assets/asset-categories", {
+        category_code: code,
+        category_name: categoryForm.category_name.trim(),
+      });
+      const created = res.data?.data ?? res.data;
+      toast.success(`Kategori ${categoryForm.category_name} berhasil ditambahkan!`);
+      setIsAddCategoryModalOpen(false);
+      setCategoryForm({ category_code: "", category_name: "" });
+      await loadAssetsAndCategories();
+      if (created?.id) {
+        setRegisterForm((prev) => ({ ...prev, category_id: created.id }));
+      }
+    } catch {
+      toast.error("Gagal menambahkan kategori aset baru.");
+    } finally {
+      setIsSubmittingCategory(false);
     }
   };
 
@@ -501,6 +546,19 @@ export default function FixedAssetsWorkspace() {
           )}
         >
           Hasil Batch {batchResult ? `(${batchResult.processed} Selesai)` : ""}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("categories")}
+          className={cn(
+            "rounded-xl px-4 py-2 text-xs font-bold transition-all",
+            activeTab === "categories"
+              ? "bg-[#EAF6FF] text-[#2649B3] shadow-2xs"
+              : "text-[#6B7280] hover:bg-slate-50 hover:text-[#090909]"
+          )}
+        >
+          Kategori Aset ({categories.length})
         </button>
       </div>
 
@@ -798,6 +856,69 @@ export default function FixedAssetsWorkspace() {
         </div>
       )}
 
+      {/* ── TAB 4: ASSET CATEGORIES ──────────────────── */}
+      {activeTab === "categories" && (
+        <div className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
+          <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-gray-100 mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-[#090909] flex items-center gap-2">
+                <Layers size={16} className="text-[#2649B3]" /> Master Kategori Aset Tetap
+              </h3>
+              <p className="text-xs text-[#6B7280] mt-0.5">
+                Kategori aset mengelompokkan aktiva kapital dan menghubungkan akun buku besar aset tetap &amp; akumulasi depresiasi.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddCategoryModalOpen(true)}
+              className="btn-primary flex items-center gap-1.5 py-2 px-3.5 text-xs font-bold"
+            >
+              <Plus size={14} /> Tambah Kategori Baru
+            </button>
+          </div>
+
+          <div className="table-scroll-wrapper border border-gray-200 rounded-xl overflow-hidden">
+            <table className="w-full data-table text-xs text-left">
+              <thead>
+                <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-[#6B7280] border-b">
+                  <th className="py-3 px-4 font-bold">Kode Kategori</th>
+                  <th className="py-3 px-4 font-bold">Nama Kategori</th>
+                  <th className="py-3 px-4 font-bold">Akun Aset (COA)</th>
+                  <th className="py-3 px-4 font-bold">Akun Akum. Penyusutan</th>
+                  <th className="py-3 px-4 font-bold text-center">Unit Terdaftar</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {categories.map((c) => {
+                  const count = assets.filter((a) => a.category_id === c.id || a.category_id === c.category_code).length;
+                  return (
+                    <tr key={c.id} className="hover:bg-slate-50/60">
+                      <td className="py-3 px-4 font-mono font-bold text-[#2649B3]">
+                        {c.category_code}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-[#090909]">
+                        {c.category_name}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-2xs text-[#6B7280]">
+                        1200 · Aset Tetap (Fixed Assets)
+                      </td>
+                      <td className="py-3 px-4 font-mono text-2xs text-[#6B7280]">
+                        1210 · Akumulasi Penyusutan
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="badge badge-neutral text-2xs font-bold py-0.5 px-2">
+                          {count} Unit
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ── MODAL: REGISTER ASET TETAP ────────────────── */}
       <Modal
         isOpen={isRegisterModalOpen}
@@ -831,12 +952,27 @@ export default function FixedAssetsWorkspace() {
             </div>
 
             <div>
-              <label className="text-xs font-bold text-[#090909] block mb-1">
-                Kategori Aset *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-[#090909]">
+                  Kategori Aset *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAddCategoryModalOpen(true)}
+                  className="text-2xs font-bold text-[#2649B3] hover:underline flex items-center gap-1"
+                >
+                  <Plus size={11} /> Tambah Kategori
+                </button>
+              </div>
               <select
                 value={registerForm.category_id}
-                onChange={(e) => setRegisterForm({ ...registerForm, category_id: e.target.value })}
+                onChange={(e) => {
+                  if (e.target.value === "__NEW__") {
+                    setIsAddCategoryModalOpen(true);
+                  } else {
+                    setRegisterForm({ ...registerForm, category_id: e.target.value });
+                  }
+                }}
                 className="input text-xs font-semibold"
                 required
               >
@@ -845,6 +981,7 @@ export default function FixedAssetsWorkspace() {
                     {c.category_name} ({c.category_code})
                   </option>
                 ))}
+                <option value="__NEW__">➕ Tambah Kategori Baru...</option>
               </select>
             </div>
           </div>
@@ -1084,6 +1221,70 @@ export default function FixedAssetsWorkspace() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── MODAL: TAMBAH KATEGORI ASET ──────────────── */}
+      <Modal
+        isOpen={isAddCategoryModalOpen}
+        onClose={() => setIsAddCategoryModalOpen(false)}
+        title="Tambah Kategori Aset Baru"
+        subtitle="Buat klasifikasi aset baru untuk pengelompokan inventaris dan depresiasi"
+        size="md"
+      >
+        <form onSubmit={handleCreateCategory} className="flex flex-col gap-4">
+          <div className="rounded-xl border border-blue-200 bg-[#EAF6FF] p-3 text-xs text-[#2649B3] flex items-start gap-2">
+            <Info size={16} className="shrink-0 mt-0.5" />
+            <span>
+              Kategori baru akan otomatis dihubungkan ke akun buku besar standar Aset Tetap (1200),
+              Akumulasi Penyusutan (1210), dan Beban Operasional (6200).
+            </span>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-[#090909] block mb-1">
+              Kode Kategori *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="Contoh: CAT-ELEKTRONIK"
+              value={categoryForm.category_code}
+              onChange={(e) => setCategoryForm({ ...categoryForm, category_code: e.target.value })}
+              className="input font-mono font-bold text-xs uppercase"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-[#090909] block mb-1">
+              Nama Kategori *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="Contoh: Peralatan Elektronik & Dokumentasi"
+              value={categoryForm.category_name}
+              onChange={(e) => setCategoryForm({ ...categoryForm, category_name: e.target.value })}
+              className="input text-xs font-semibold"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setIsAddCategoryModalOpen(false)}
+              className="btn-ghost py-2 px-4 text-xs font-semibold"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmittingCategory}
+              className="btn-primary py-2 px-5 text-xs font-bold"
+            >
+              {isSubmittingCategory ? "Menyimpan..." : "Simpan Kategori"}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

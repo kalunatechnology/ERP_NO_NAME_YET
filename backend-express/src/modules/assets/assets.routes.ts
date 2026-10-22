@@ -179,7 +179,37 @@ assetsRouter.use('/assets', createCrudRouter({
     }
   },
 }));
-assetsRouter.use('/asset-categories',    createCrudRouter({ modelName: 'asset_category',          searchFields: ['category_name', 'category_code'] }));
+assetsRouter.use('/asset-categories',    createCrudRouter({
+  modelName: 'asset_category',
+  searchFields: ['category_name', 'category_code'],
+  beforeCreate: async (req, data) => {
+    const companyId = req.user?.company_id || (req.headers['x-company-id'] as string) || '10000000-0000-0000-0000-000000000001';
+    let assetAccountId = data.asset_account_id;
+    let accumDepAccountId = data.accumulated_depreciation_account_id;
+    let depExpAccountId = data.depreciation_expense_account_id;
+
+    if (!assetAccountId || !accumDepAccountId || !depExpAccountId) {
+      const coaAccounts = await prisma.fin_account.findMany({
+        where: { company_id: companyId, account_code: { in: ['1200', '1210', '6200', '6101'] } },
+      });
+      const acc1200 = coaAccounts.find(a => a.account_code === '1200')?.id;
+      const acc1210 = coaAccounts.find(a => a.account_code === '1210')?.id;
+      const acc6200 = coaAccounts.find(a => a.account_code === '6200' || a.account_code === '6101')?.id;
+
+      assetAccountId = assetAccountId || acc1200 || null;
+      accumDepAccountId = accumDepAccountId || acc1210 || null;
+      depExpAccountId = depExpAccountId || acc6200 || null;
+    }
+
+    return {
+      ...data,
+      company_id: companyId,
+      asset_account_id: assetAccountId,
+      accumulated_depreciation_account_id: accumDepAccountId,
+      depreciation_expense_account_id: depExpAccountId,
+    };
+  },
+}));
 assetsRouter.use('/books',               createCrudRouter({ modelName: 'asset_book' }));
 assetsRouter.use('/depreciation-lines',  createCrudRouter({ modelName: 'asset_depreciation_line' }));
 assetsRouter.use('/maintenances',        createCrudRouter({ modelName: 'asset_maintenance',       searchFields: ['description'] }));
