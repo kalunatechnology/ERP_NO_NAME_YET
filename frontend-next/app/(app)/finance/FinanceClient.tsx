@@ -176,6 +176,7 @@ export default function FinanceClient() {
   const [customerReceipts, setCustomerReceipts] = useState<any[]>([]);
   const [receiptReadiness, setReceiptReadiness] = useState<Record<string, { action: string | null; allowed: boolean; message: string }>>({});
   const [receiptActionId, setReceiptActionId] = useState<string | null>(null);
+  const [receiptDeletingId, setReceiptDeletingId] = useState<string | null>(null);
   const [receiptActionError, setReceiptActionError] = useState<Record<string, string>>({});
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
   const [receiptSummary, setReceiptSummary] = useState<{ posted_amount: number; posted_count: number; pending_count: number; outstanding_amount: number } | null>(null);
@@ -564,13 +565,18 @@ export default function FinanceClient() {
   };
 
   const handleDeleteReceipt = async (receiptId: string) => {
-    if (!confirm("Apakah Anda yakin ingin membatalkan dan menghapus draft penerimaan ini?")) return;
+    if (!confirm("Apakah Anda yakin ingin membatalkan dan menghapus catatan penerimaan ini? Data mutasi draft akan dihapus.")) return;
+    setReceiptDeletingId(receiptId);
+    const toastId = `receipt-delete-${receiptId}`;
+    toast.loading("Menghapus catatan penerimaan...", { id: toastId });
     try {
       await api.delete(`/api/v1/finance/customer-receipts/${receiptId}`);
       await loadFinanceData(true);
-      toast.success("Draft penerimaan berhasil dihapus.");
+      toast.success("Catatan penerimaan berhasil dihapus.", { id: toastId });
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Gagal menghapus draft penerimaan.");
+      toast.error(err.response?.data?.message || "Gagal menghapus catatan penerimaan.", { id: toastId });
+    } finally {
+      setReceiptDeletingId(null);
     }
   };
 
@@ -1147,7 +1153,7 @@ export default function FinanceClient() {
             </div>
             <div className="card rounded-xl p-3.5 border border-gray-200 bg-white">
               <span className="text-3xs font-semibold uppercase tracking-wider text-text-secondary">Total Tagihan Bruto</span>
-              <div className="text-base font-bold font-mono text-emerald-700 mt-1">
+              <div className="text-base font-bold font-mono text-brand-deep-green mt-1">
                 {formatMoney(proposals.reduce((sum, p) => sum + Number(p.total_amount || 0), 0))}
               </div>
               <span className="text-3xs text-text-secondary mt-0.5 block">Nilai piutang klien</span>
@@ -1216,8 +1222,8 @@ export default function FinanceClient() {
                             </button>
                           ) : p.status === "ISSUED" ? (
                             isPosted ? (
-                              <span className="inline-flex items-center gap-1 text-2xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                                <CheckCircle2 size={12} className="text-emerald-600" /> POSTED · Masuk Pajak
+                              <span className="inline-flex items-center gap-1 text-2xs font-bold text-brand-deep-green bg-brand-light-green px-2.5 py-1 rounded-md border border-brand-green/30">
+                                <CheckCircle2 size={12} className="text-brand-green" /> POSTED · Masuk Pajak
                               </span>
                             ) : (
                               <button
@@ -1341,12 +1347,31 @@ export default function FinanceClient() {
                         </span>
                       </td>
                       <td className="py-3 px-4 max-w-[280px]">
-                        {receiptReadiness[rec.id]?.action && (
-                          <button type="button" disabled={!receiptReadiness[rec.id]?.allowed || receiptActionId !== null}
-                            onClick={() => handleReceiptLifecycle(rec)} className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50">
-                            {receiptActionId === rec.id ? "Memproses…" : ({ submit: "Ajukan", "approve-and-post": "Setujui & Posting", approve: "Setujui", post: "Posting Penerimaan" } as Record<string, string>)[receiptReadiness[rec.id].action!]}
-                          </button>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {receiptReadiness[rec.id]?.action && (
+                            <button
+                              type="button"
+                              disabled={!receiptReadiness[rec.id]?.allowed || receiptActionId !== null || receiptDeletingId !== null}
+                              onClick={() => handleReceiptLifecycle(rec)}
+                              className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50 flex items-center gap-1"
+                            >
+                              <CheckCircle2 size={12} />
+                              {receiptActionId === rec.id ? "Memproses…" : ({ submit: "Ajukan", "approve-and-post": "Setujui & Posting", approve: "Setujui", post: "Posting Penerimaan" } as Record<string, string>)[receiptReadiness[rec.id].action!]}
+                            </button>
+                          )}
+                          {rec.status !== "POSTED" && (
+                            <button
+                              type="button"
+                              disabled={receiptActionId !== null || receiptDeletingId !== null}
+                              onClick={() => handleDeleteReceipt(rec.id)}
+                              className="py-1 px-2.5 text-2xs font-bold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all flex items-center gap-1 whitespace-nowrap shadow-2xs"
+                              title="Hapus Catatan Uang Masuk"
+                            >
+                              <Trash2 size={12} className="text-red-600" />
+                              {receiptDeletingId === rec.id ? "Menghapus…" : "Hapus Catatan"}
+                            </button>
+                          )}
+                        </div>
                         <p className="text-2xs text-text-secondary mt-1">{receiptReadiness[rec.id]?.message || (rec.status === "POSTED" ? "Sudah dibukukan." : "Memuat kewenangan…")}</p>
                         {receiptActionError[rec.id] && <p role="alert" className="text-xs text-red-600 mt-1">{receiptActionError[rec.id]}</p>}
                       </td>
@@ -1443,7 +1468,7 @@ export default function FinanceClient() {
                 <button
                   type="button"
                   onClick={() => setCashBankFilter("POSTED")}
-                  className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "POSTED" ? "bg-white text-emerald-700 shadow-xs" : "text-text-secondary hover:text-text-primary")}
+                  className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "POSTED" ? "bg-white text-brand-deep-green shadow-xs" : "text-text-secondary hover:text-text-primary")}
                 >
                   Dibukukan ({postedReceipts.length + vendorBills.filter(b => b.status === "PAID").length})
                 </button>
@@ -1505,22 +1530,25 @@ export default function FinanceClient() {
                         +{formatMoney(rec.amount)}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                        <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
-                            disabled={receiptActionId !== null}
+                            disabled={receiptActionId !== null || receiptDeletingId !== null}
                             onClick={() => handleReceiptLifecycle(rec)}
-                            className="btn-primary py-1 px-3 text-2xs font-bold shadow-xs whitespace-nowrap"
+                            className="btn-primary py-1.5 px-3 text-2xs font-bold shadow-xs whitespace-nowrap flex items-center gap-1.5"
                           >
+                            <CheckCircle2 size={12} />
                             {receiptActionId === rec.id ? "Memproses…" : "Posting Sekarang"}
                           </button>
                           <button
                             type="button"
+                            disabled={receiptActionId !== null || receiptDeletingId !== null}
                             onClick={() => handleDeleteReceipt(rec.id)}
-                            className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-2xs font-bold text-rose-700 hover:bg-rose-100 transition-colors"
-                            title="Hapus Draft Penerimaan"
+                            className="py-1.5 px-3 text-2xs font-bold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap"
+                            title="Hapus Catatan Uang Masuk"
                           >
-                            Hapus
+                            <Trash2 size={12} className="text-red-600" />
+                            {receiptDeletingId === rec.id ? "Menghapus…" : "Hapus Catatan"}
                           </button>
                         </div>
                       </td>
@@ -1544,7 +1572,7 @@ export default function FinanceClient() {
                       <td className="py-3 px-4 font-black text-right text-brand-green text-sm">
                         +{formatMoney(rec.amount)}
                       </td>
-                      <td className="py-3 px-4 text-center text-2xs text-emerald-600 font-semibold">
+                      <td className="py-3 px-4 text-center text-2xs text-brand-deep-green font-semibold">
                         ✓ Dibukukan
                       </td>
                     </tr>
@@ -2668,6 +2696,21 @@ export default function FinanceClient() {
             if (!bank) errors.bank_account = bankAccounts.length ? "Pilih rekening kas / bank penerima dana." : "Belum ada rekening kas / bank. Tambahkan rekening penerima di menu Kas & Bank terlebih dahulu.";
             if (!receiptForm.payment_date) errors.payment_date = "Tanggal terima dana wajib diisi.";
             if (!receiptForm.reference_number.trim()) errors.reference_number = "No. bukti transfer / resi bank klien wajib diisi.";
+
+            if (receiptForm.invoice_ref) {
+              const linkedInv = customerInvoices.find(inv => inv.id === receiptForm.invoice_ref);
+              if (linkedInv) {
+                if (linkedInv.status !== "POSTED") {
+                  errors.invoice_ref = "Hanya invoice resmi berstatus POSTED yang dapat dilunasi.";
+                } else {
+                  const remaining = Number(linkedInv.outstanding_amount ?? (Number(linkedInv.total_amount ?? 0) - Number(linkedInv.paid_amount ?? 0)));
+                  if (amount + withholdingAmount > remaining + 0.01) {
+                    errors.amount = `Total pelunasan (${formatMoney(amount + withholdingAmount)}) melebihi sisa piutang invoice (${formatMoney(remaining)}).`;
+                  }
+                }
+              }
+            }
+
             setReceiptErrors(errors);
             if (Object.keys(errors).length) {
               toast.error("Lengkapi data penerimaan yang ditandai di bawah.");
@@ -2844,9 +2887,9 @@ export default function FinanceClient() {
                 }}
                 className="input text-xs"
               >
-                <option value="">Tanpa invoice — Uang muka / Pelunasan langsung</option>
+                <option value="">Tanpa invoice — Uang muka (DP) / Pelunasan langsung</option>
                 {customerInvoices
-                  .filter(invoice => Number(invoice.outstanding_amount ?? Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0)) > 0)
+                  .filter(invoice => invoice.status === "POSTED" && Number(invoice.outstanding_amount ?? Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0)) > 0)
                   .map(invoice => {
                     const remaining = Number(invoice.outstanding_amount ?? Number(invoice.total_amount ?? 0) - Number(invoice.paid_amount ?? 0));
                     return (
@@ -2856,7 +2899,9 @@ export default function FinanceClient() {
                     );
                   })}
               </select>
-              <p className="text-2xs text-text-secondary mt-1">Pilih invoice yang sudah dibukukan untuk mengurangi piutang.</p>
+              <p className="text-2xs text-text-secondary mt-1">
+                Hanya invoice berstatus <strong>POSTED</strong> (resmi diterbitkan) yang dapat dipilih untuk pelunasan piutang. Invoice DRAFT perlu di-posting terlebih dahulu di menu Termin Penagihan.
+              </p>
             </div>
 
             <div>
@@ -2881,7 +2926,7 @@ export default function FinanceClient() {
                 />
               </div>
               {Number(receiptForm.amount) > 0 && (
-                <p className="text-2xs text-emerald-700 font-semibold mt-1">
+                <p className="text-2xs text-brand-deep-green font-semibold mt-1">
                   Format: {formatMoney(Number(receiptForm.amount))}
                 </p>
               )}
@@ -2963,7 +3008,7 @@ export default function FinanceClient() {
                   <Zap size={11} /> Hitung Otomatis Potongan PPh dari Faktur Terpilih
                 </button>
                 {Number(receiptForm.withholding_tax_amount || 0) > 0 && (
-                  <span className="text-2xs font-mono font-semibold text-emerald-800 bg-emerald-100/70 border border-emerald-300 px-2 py-0.5 rounded">
+                  <span className="text-2xs font-mono font-semibold text-brand-deep-green bg-brand-light-green border border-brand-green/30 px-2 py-0.5 rounded">
                     Total Pelunasan Piutang: {formatMoney(Number(receiptForm.amount || 0) + Number(receiptForm.withholding_tax_amount || 0))}
                   </span>
                 )}
