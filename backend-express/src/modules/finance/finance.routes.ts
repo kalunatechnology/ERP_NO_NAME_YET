@@ -1426,8 +1426,25 @@ const allocationCrud = () => createCrudRouter({
   beforeDelete: async (req, existing) => { await assertAllocationDraft(req, {}, existing); },
 });
 financeRouter.use('/payment-lines', allocationCrud());
-financeRouter.use('/payment-allocations', allocationCrud());
-financeRouter.use('/bank-accounts', createCrudRouter({ modelName: 'fin_bank_account', searchFields: ['account_number', 'bank_name'] }));
+financeRouter.use('/bank-accounts', createCrudRouter({
+  modelName: 'fin_bank_account',
+  searchFields: ['account_number', 'bank_name'],
+  beforeCreate: async (req, data) => {
+    let ledgerAccountId = data.ledger_account_id;
+    if (!ledgerAccountId) {
+      const defaultAccount = await prisma.fin_account.findFirst({
+        where: {
+          company_id: activeCompanyId(req),
+          status: 'ACTIVE',
+          account_code: { in: ['1101', '1120', '1110'] },
+        },
+        orderBy: { account_code: 'asc' },
+      });
+      if (defaultAccount) ledgerAccountId = defaultAccount.id;
+    }
+    return { ...data, ledger_account_id: ledgerAccountId };
+  },
+}));
 financeRouter.use('/bank-statements', createCrudRouter({ modelName: 'fin_bank_statement' }));
 financeRouter.use('/bank-statement-lines', createCrudRouter({ modelName: 'fin_bank_statement_line' }));
 financeRouter.use('/bank-reconciliations', createCrudRouter({ modelName: 'fin_bank_reconciliation' }));

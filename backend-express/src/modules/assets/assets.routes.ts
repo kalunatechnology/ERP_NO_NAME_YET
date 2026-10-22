@@ -13,6 +13,7 @@ import { sendSuccess, sendError } from '../../utils/response';
 import { requireFinanceRole } from '../../middleware/sod.middleware';
 import { RoleCode } from '../../types/roles';
 import { ForbiddenError } from '../../utils/errors';
+import prisma from '../../config/database';
 
 export const assetsRouter = Router();
 
@@ -139,7 +140,45 @@ assetsRouter.post(
 // =============================================================================
 // REST CRUD VIEWSETS
 // =============================================================================
-assetsRouter.use('/assets',              createCrudRouter({ modelName: 'asset_asset',             searchFields: ['asset_name', 'asset_code', 'serial_number'] }));
+assetsRouter.use('/assets', createCrudRouter({
+  modelName: 'asset_asset',
+  searchFields: ['asset_name', 'asset_code', 'serial_number'],
+  beforeCreate: async (_req: Request, data: any) => {
+    if (!data.status) data.status = 'ACTIVE';
+    if (!data.useful_life_months) data.useful_life_months = 48;
+    if (data.salvage_value === undefined || data.salvage_value === null) data.salvage_value = 0;
+    return data;
+  },
+  afterCreate: async (_req: Request, record: any) => {
+    try {
+      const existingBook = await prisma.asset_book.findFirst({
+        where: { asset_id: record.id },
+      });
+      if (!existingBook) {
+        const costBasis = Number(record.acquisition_cost || 0);
+        const salvage = Number(record.salvage_value || 0);
+        const usefulMonths = Number(record.useful_life_months || 48);
+        await prisma.asset_book.create({
+          data: {
+            tenant_id: record.tenant_id,
+            company_id: record.company_id,
+            asset_id: record.id,
+            book_type: 'COMMERCIAL',
+            depreciation_method: 'STRAIGHT_LINE',
+            cost_basis: costBasis,
+            salvage_value: salvage,
+            useful_life_periods: usefulMonths,
+            net_book_value: costBasis,
+            accumulated_depreciation: 0,
+            depreciation_start_date: record.available_for_use_date || record.acquisition_date || new Date(),
+          },
+        });
+      }
+    } catch (err) {
+      console.error('[AssetsRouter] Auto-create asset_book error:', err);
+    }
+  },
+}));
 assetsRouter.use('/asset-categories',    createCrudRouter({ modelName: 'asset_category',          searchFields: ['category_name', 'category_code'] }));
 assetsRouter.use('/books',               createCrudRouter({ modelName: 'asset_book' }));
 assetsRouter.use('/depreciation-lines',  createCrudRouter({ modelName: 'asset_depreciation_line' }));

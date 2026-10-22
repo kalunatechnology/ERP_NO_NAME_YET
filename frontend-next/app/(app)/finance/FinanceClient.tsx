@@ -243,7 +243,9 @@ export default function FinanceClient() {
     payment_method: "BANK_TRANSFER",
     reference_number: "",
     notes: "",
+    auto_post: true,
   });
+  const [cashBankFilter, setCashBankFilter] = useState<"ALL" | "POSTED" | "PENDING">("ALL");
   const [receiptErrors, setReceiptErrors] = useState<Record<string, string>>({});
   const [receiptSaving, setReceiptSaving] = useState(false);
   const updateReceiptField = (field: keyof typeof receiptForm, value: string) => {
@@ -1373,28 +1375,128 @@ export default function FinanceClient() {
             ))}
           </div>
 
+          {/* Notice jika ada penerimaan uang masuk yang masih Draft / Butuh Approval */}
+          {customerReceipts.filter(r => r.status !== "POSTED").length > 0 && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/90 text-xs text-amber-950 flex items-center justify-between flex-wrap gap-2 shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <Clock size={16} className="text-amber-600 shrink-0" />
+                <span>
+                  Terdapat <strong>{customerReceipts.filter(r => r.status !== "POSTED").length} penerimaan uang masuk</strong> yang masih berstatus <strong>Draft / Menunggu Posting</strong>.
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCashBankFilter("PENDING")}
+                  className="btn-secondary py-1 px-3 text-xs font-bold border-amber-300 text-amber-900 bg-white hover:bg-amber-100"
+                >
+                  Tampilkan di Tabel Kas ➔
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Mutasi Kas & Bank (Inflow vs Outflow) */}
           <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
-            <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Buku Mutasi Arus Kas Riil (Inflows & Disbursements)</h4>
+            <div className="flex items-center justify-between flex-wrap gap-2 border-b border-text-tertiary/40 pb-3">
+              <div>
+                <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Buku Mutasi Arus Kas Riil (Inflows & Disbursements)</h4>
+                <p className="text-2xs text-text-secondary mt-0.5">Daftar mutasi arus kas masuk, pengeluaran AP, dan penerimaan dalam proses.</p>
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setCashBankFilter("ALL")}
+                  className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "ALL" ? "bg-white text-brand-deep-green shadow-xs" : "text-text-secondary hover:text-text-primary")}
+                >
+                  Semua ({postedReceipts.length + vendorBills.filter(b => b.status === "PAID").length + customerReceipts.filter(r => r.status !== "POSTED").length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashBankFilter("POSTED")}
+                  className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "POSTED" ? "bg-white text-emerald-700 shadow-xs" : "text-text-secondary hover:text-text-primary")}
+                >
+                  Dibukukan ({postedReceipts.length + vendorBills.filter(b => b.status === "PAID").length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashBankFilter("PENDING")}
+                  className={cn("px-3 py-1 rounded-lg text-2xs font-bold transition-all", cashBankFilter === "PENDING" ? "bg-white text-amber-700 shadow-xs" : "text-text-secondary hover:text-text-primary")}
+                >
+                  Draft / Review ({customerReceipts.filter(r => r.status !== "POSTED").length})
+                </button>
+              </div>
+            </div>
+
             <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
-              <table className="w-full data-table text-xs text-left min-w-[600px]">
+              <table className="w-full data-table text-xs text-left min-w-[650px]">
                 <thead>
                   <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b">
                     <th className="py-3 px-4 font-bold">Tanggal</th>
-                    <th className="py-3 px-4 font-bold">Tipe Arus Kas</th>
+                    <th className="py-3 px-4 font-bold">Status & Tipe</th>
                     <th className="py-3 px-4 font-bold">Rekening Kas/Bank</th>
                     <th className="py-3 px-4 font-bold">Keterangan / Lawan Transaksi</th>
                     <th className="py-3 px-4 font-bold text-right">Nominal Mutasi</th>
+                    <th className="py-3 px-4 font-bold text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {/* Gabungan Mutasi Uang Masuk dan Uang Keluar */}
-                  {postedReceipts.map((rec) => (
+                  {/* Empty state bila belum ada transaksi sesuai filter */}
+                  {((cashBankFilter === "POSTED" && postedReceipts.length === 0 && vendorBills.filter(b => b.status === "PAID").length === 0) ||
+                    (cashBankFilter === "PENDING" && customerReceipts.filter(r => r.status !== "POSTED").length === 0) ||
+                    (cashBankFilter === "ALL" && customerReceipts.length === 0 && vendorBills.filter(b => b.status === "PAID").length === 0)) && (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-text-secondary">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <WalletCards size={32} className="text-slate-300" />
+                          <p className="text-xs font-semibold text-slate-700">Tidak ada transaksi mutasi pada filter ini.</p>
+                          <p className="text-2xs text-text-secondary max-w-md">
+                            Gunakan tombol <strong>[+ Catat Uang Masuk]</strong> di atas untuk menambahkan transaksi penerimaan baru.
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* Penerimaan yang masih DRAFT / PENDING (tampil pada filter ALL dan PENDING) */}
+                  {cashBankFilter !== "POSTED" && customerReceipts.filter(r => r.status !== "POSTED").map((rec) => (
+                    <tr key={`pending-${rec.id}`} className="hover:bg-amber-50/30 bg-amber-50/10">
+                      <td className="py-3 px-4 font-mono text-2xs">{rec.payment_date}</td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-200">
+                          🟡 {rec.status === "APPROVED" ? "Disetujui" : "Draft (Pending)"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-text-primary">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</td>
+                      <td className="py-3 px-4">
+                        <span className="text-text-primary block font-medium">{rec.customer_name} — {rec.project_name || rec.invoice_ref}</span>
+                        <span className="text-2xs text-text-secondary block font-mono">Ref: {rec.reference_number}</span>
+                      </td>
+                      <td className="py-3 px-4 font-black text-right text-amber-700 text-sm">
+                        +{formatMoney(rec.amount)}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          type="button"
+                          disabled={receiptActionId !== null}
+                          onClick={() => handleReceiptLifecycle(rec)}
+                          className="btn-primary py-1 px-3 text-2xs font-bold shadow-xs whitespace-nowrap"
+                        >
+                          {receiptActionId === rec.id ? "Memproses…" : "Posting Sekarang"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Mutasi Uang Masuk yang sudah POSTED (tampil pada filter ALL dan POSTED) */}
+                  {cashBankFilter !== "PENDING" && postedReceipts.map((rec) => (
                     <tr key={`in-${rec.id}`} className="hover:bg-brand-light-green/20">
                       <td className="py-3 px-4 font-mono text-2xs">{rec.payment_date}</td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
-                          🟢 Uang Masuk (Inflow)
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
+                          🟢 Masuk (POSTED)
                         </span>
                       </td>
                       <td className="py-3 px-4 font-semibold text-text-primary">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</td>
@@ -1405,14 +1507,19 @@ export default function FinanceClient() {
                       <td className="py-3 px-4 font-black text-right text-brand-green text-sm">
                         +{formatMoney(rec.amount)}
                       </td>
+                      <td className="py-3 px-4 text-center text-2xs text-emerald-600 font-semibold">
+                        ✓ Dibukukan
+                      </td>
                     </tr>
                   ))}
-                  {vendorBills.filter(b => b.status === "PAID").map((b) => (
+
+                  {/* Mutasi Uang Keluar Tagihan Vendor (tampil pada filter ALL dan POSTED) */}
+                  {cashBankFilter !== "PENDING" && vendorBills.filter(b => b.status === "PAID").map((b) => (
                     <tr key={`out-${b.id}`} className="hover:bg-red-50/20">
                       <td className="py-3 px-4 font-mono text-2xs">{b.due_date || "-"}</td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-red-100 text-red-800">
-                          🔴 Uang Keluar (Outflow)
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-red-100 text-red-800">
+                          🔴 Keluar (PAID)
                         </span>
                       </td>
                       <td className="py-3 px-4 font-semibold text-text-primary">{b.bank_account_name || "-"}</td>
@@ -1422,6 +1529,9 @@ export default function FinanceClient() {
                       </td>
                       <td className="py-3 px-4 font-black text-right text-red-600 text-sm">
                         -{formatMoney(b.amount)}
+                      </td>
+                      <td className="py-3 px-4 text-center text-2xs text-slate-500 font-semibold">
+                        ✓ Dibayar
                       </td>
                     </tr>
                   ))}
@@ -2529,7 +2639,7 @@ export default function FinanceClient() {
             }
             setReceiptSaving(true);
             try {
-              await api.post("/api/v1/finance/customer-receipts/", {
+              const createdRes = await api.post("/api/v1/finance/customer-receipts/", {
                 payment_type: "CUSTOMER_RECEIPT",
                 bank_account_id: receiptForm.bank_account,
                 payment_date: receiptForm.payment_date,
@@ -2549,12 +2659,31 @@ export default function FinanceClient() {
                   notes: receiptForm.notes.trim(),
                 },
               });
-              toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan sebagai Draft.`);
+
+              const created = createdRes.data?.data ?? createdRes.data;
+              let postedDirectly = false;
+              if (receiptForm.auto_post && created?.id) {
+                try {
+                  await api.post(`/api/v1/finance/customer-receipts/${created.id}/approve-and-post`, {});
+                  postedDirectly = true;
+                } catch {
+                  // Fallback jika aturan maker-checker memerlukan reviewer berbeda
+                  postedDirectly = false;
+                }
+              }
+
+              if (postedDirectly) {
+                toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan dan langsung dibukukan ke Kas & Bank!`);
+              } else {
+                toast.success(`Penerimaan ${formatMoney(amount)} berhasil disimpan sebagai Draft.`);
+              }
+
               setIsReceiptModalOpen(false);
               setReceiptForm({
                 project_id: "", customer_name: "", project_name: "", invoice_ref: "", amount: "",
                 withholding_tax_amount: "", withholding_tax_type: "PPH_23", bupot_number: "",
-                bank_account: "", payment_date: localDateKey(), payment_method: "BANK_TRANSFER", reference_number: "", notes: ""
+                bank_account: "", payment_date: localDateKey(), payment_method: "BANK_TRANSFER", reference_number: "", notes: "",
+                auto_post: true
               });
               await loadFinanceData(true);
             } catch (error) {
