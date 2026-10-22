@@ -563,6 +563,17 @@ export default function FinanceClient() {
     }
   };
 
+  const handleDeleteReceipt = async (receiptId: string) => {
+    if (!confirm("Apakah Anda yakin ingin membatalkan dan menghapus draft penerimaan ini?")) return;
+    try {
+      await api.delete(`/api/v1/finance/customer-receipts/${receiptId}`);
+      await loadFinanceData(true);
+      toast.success("Draft penerimaan berhasil dihapus.");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Gagal menghapus draft penerimaan.");
+    }
+  };
+
 /**
  * handleVerifyThreeWayMatch coordinates the UI behavior represented by this function.
  *
@@ -1494,14 +1505,24 @@ export default function FinanceClient() {
                         +{formatMoney(rec.amount)}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <button
-                          type="button"
-                          disabled={receiptActionId !== null}
-                          onClick={() => handleReceiptLifecycle(rec)}
-                          className="btn-primary py-1 px-3 text-2xs font-bold shadow-xs whitespace-nowrap"
-                        >
-                          {receiptActionId === rec.id ? "Memproses…" : "Posting Sekarang"}
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={receiptActionId !== null}
+                            onClick={() => handleReceiptLifecycle(rec)}
+                            className="btn-primary py-1 px-3 text-2xs font-bold shadow-xs whitespace-nowrap"
+                          >
+                            {receiptActionId === rec.id ? "Memproses…" : "Posting Sekarang"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReceipt(rec.id)}
+                            className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-2xs font-bold text-rose-700 hover:bg-rose-100 transition-colors"
+                            title="Hapus Draft Penerimaan"
+                          >
+                            Hapus
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

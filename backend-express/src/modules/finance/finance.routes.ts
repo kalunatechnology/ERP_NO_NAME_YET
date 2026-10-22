@@ -1401,6 +1401,12 @@ financeRouter.use('/customer-receipts', createCrudRouter({
   modelName: 'fin_payment',
   searchFields: ['reference_number'],
   accessWhere: () => ({ payment_type: 'CUSTOMER_RECEIPT' }),
+  beforeDelete: async (_req, existing) => {
+    if (existing.status === 'POSTED') {
+      throw new ConflictError('Penerimaan yang sudah dibukukan (POSTED) tidak dapat dihapus. Gunakan prosedur Storno/Reversal jurnal.');
+    }
+    await prisma.fin_payment_allocation.deleteMany({ where: { payment_id: existing.id } });
+  },
   beforeCreate: async (req, data) => {
     const receipt = validateCustomerReceipt(data);
     const bank = await prisma.fin_bank_account.findFirst({
