@@ -111,8 +111,31 @@ export default function RequestsClient(){
   const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");const loadedMinutes={summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""};setMinutes(loadedMinutes);setSavedMinutes(loadedMinutes);return detail;}catch{toast.error("Detail meeting tidak dapat dimuat.");return null;}},[]);
   const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);if(typeof window!=="undefined"){const params=new URLSearchParams(window.location.search);const id=params.get("meeting");const date=params.get("date")||params.get("occurrenceDate");const shouldOpenNotes=params.get("note")==="1"||params.get("openNotes")==="1"||params.get("openNotes")==="true";if(id){const detail=await openMeeting(id,date||undefined);if(detail&&shouldOpenNotes){setNotesOpen(true);}}}}catch{toast.error("Data tidak dapat dimuat.");}finally{setLoading(false);}},[openMeeting]);
   const searchParams = useSearchParams();
-  useEffect(()=>{void load();},[load]);
-  useEffect(()=>{const id=searchParams.get("meeting");const date=searchParams.get("date")||searchParams.get("occurrenceDate");const shouldOpenNotes=searchParams.get("note")==="1"||searchParams.get("openNotes")==="1"||searchParams.get("openNotes")==="true";if(id){void openMeeting(id,date||undefined).then(detail=>{if(detail&&shouldOpenNotes){setNotesOpen(true);}});}},[searchParams,openMeeting]);
+  const queryRequestId = searchParams?.get('requestId');
+  const queryMeetingId = searchParams?.get('meeting') || searchParams?.get('meetingId');
+  const queryMinuteId = searchParams?.get('minuteId') || searchParams?.get('date') || searchParams?.get('occurrenceDate');
+  const queryNoteId = searchParams?.get('noteId');
+  const shouldOpenNotes = searchParams?.get('note') === '1' || searchParams?.get('openNotes') === '1' || searchParams?.get('openNotes') === 'true' || Boolean(queryNoteId);
+
+  useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const targetMeeting = queryMeetingId
+      ? meetings.find(m => m.id === queryMeetingId)
+      : queryRequestId
+      ? meetings.find(m => m.id === queryRequestId || m.request_id === queryRequestId || m.request?.id === queryRequestId)
+      : null;
+
+    const targetMeetingId = targetMeeting ? targetMeeting.id : (queryMeetingId || null);
+
+    if (targetMeetingId) {
+      void openMeeting(targetMeetingId, queryMinuteId || undefined).then(detail => {
+        if (detail && shouldOpenNotes) {
+          setNotesOpen(true);
+        }
+      });
+    }
+  }, [queryRequestId, queryMeetingId, queryMinuteId, queryNoteId, shouldOpenNotes, meetings, openMeeting]);
 
   async function submitMeeting(event:FormEvent,draft:boolean){event.preventDefault();if(createForm.recurrenceType==="RECURRING"&&(!createForm.recurrenceEndDate||!createForm.recurringDays.length)){toast.error("Pilih tanggal akhir dan minimal satu hari recurring.");return;}setBusy(true);try{const ids=new Set(createForm.participantIds);if(createForm.notetakerId)ids.add(createForm.notetakerId);if(createForm.assigneeId)ids.add(createForm.assigneeId);await requestApi.createMeeting({title:createForm.title,description:createForm.description,start_at:localIso(createForm.date,createForm.startTime),end_at:localIso(createForm.date,createForm.endTime),recurrence_type:createForm.recurrenceType,recurrence_end_at:createForm.recurrenceType==="RECURRING"?localIso(createForm.recurrenceEndDate,"23:59"):undefined,recurrence_days:createForm.recurringDays,location:createForm.location,meeting_url:createForm.meetingUrl,meeting_type:"INTERNAL",assignee_user_id:createForm.assigneeId||undefined,notetaker_user_id:createForm.notetakerId||undefined,is_draft:draft,tagged_users:Array.from(ids).map(id=>({id,name:members.find(member=>member.id===id)?.name??id})),agenda_items:createForm.agenda.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title}))});toast.success(draft?"Draft request berhasil disimpan.":"Meeting berhasil dibuat dan seluruh peserta telah diberi notifikasi.");setCreateOpen(false);setCreateForm(initialCreate);await load();}catch{toast.error("Gagal menyimpan request. Periksa jadwal dan data wajib.");}finally{setBusy(false);}}
   async function reassign(){if(!selected?.request||!personInCharge)return toast.error("Pilih person in charge.");setBusy(true);try{await requestApi.assignRequest(selected.request.id,personInCharge);toast.success("Person in charge diperbarui.");await openMeeting(selected.id);}catch{toast.error("Role aktif tidak memiliki izin reassign.");}finally{setBusy(false);}}
@@ -651,7 +674,7 @@ function sanitizeRichText(value:string){
   Array.from(template.content.querySelectorAll("*")).reverse().forEach(element=>{
     if(richTextTags.has(element.tagName)){
       if(element.tagName==="SPAN" && element.hasAttribute("data-user-id")){
-        const allowedAttrs=new Set(["data-user-id","data-user-name","class","contenteditable"]);
+        const allowedAttrs=new Set(["data-user-id","data-user-name","class","contenteditable","id","data-note-id"]);
         Array.from(element.attributes).forEach(attr=>{if(!allowedAttrs.has(attr.name))element.removeAttribute(attr.name);});
       }else{
         Array.from(element.attributes).forEach(attribute=>element.removeAttribute(attribute.name));
@@ -747,6 +770,8 @@ function RichTextEditor({ value, onChange, disabled, members = [] }: { value: st
 
     const span = document.createElement("span");
     span.className = "mention inline-flex items-center gap-0.5 rounded bg-[#EAF6FF] px-1.5 py-0.5 text-xs font-bold text-[#2649B3] select-none align-baseline";
+    span.id = `note-item-mention-${member.id}`;
+    span.setAttribute("data-note-id", member.id);
     span.setAttribute("data-user-id", member.id);
     span.setAttribute("data-user-name", member.name);
     span.setAttribute("contenteditable", "false");
@@ -936,6 +961,61 @@ function RichTextEditor({ value, onChange, disabled, members = [] }: { value: st
 
 function NotesModal({ detail, members = [], minutes, setMinutes, busy, onClose, onSave }: { detail: MeetingDetail; members?: Member[]; minutes: typeof initialMinutes; setMinutes: React.Dispatch<React.SetStateAction<typeof initialMinutes>>; busy: boolean; onClose: () => void; onSave: (publish?: boolean) => void }) {
   const published = detail.minutes?.status === "PUBLISHED";
+  const searchParams = useSearchParams();
+  const queryNoteId = searchParams?.get("noteId");
+
+  useEffect(() => {
+    if (!queryNoteId) return;
+
+    const timer = setTimeout(() => {
+      let targetElement =
+        document.getElementById(`note-item-${queryNoteId}`) ||
+        document.getElementById(queryNoteId);
+
+      if (!targetElement) {
+        targetElement = document.querySelector(`[data-note-id="${queryNoteId}"]`);
+      }
+
+      if (!targetElement) {
+        const numMatch = queryNoteId.match(/\d+/);
+        if (numMatch) {
+          const index = Math.max(0, parseInt(numMatch[0], 10) - 1);
+          const mentions = document.querySelectorAll(".mention, [data-user-id]");
+          if (mentions.length > 0) {
+            targetElement = (mentions[index] || mentions[0]) as HTMLElement;
+          } else {
+            const blocks = document.querySelectorAll(
+              "[contenteditable] > div, [contenteditable] > p, [contenteditable] > li"
+            );
+            if (blocks.length > 0) {
+              targetElement = (blocks[index] || blocks[0]) as HTMLElement;
+            }
+          }
+        } else {
+          targetElement = document.querySelector(`[data-user-id="${queryNoteId}"]`) as HTMLElement;
+        }
+      }
+
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        targetElement.classList.add(
+          "ring-2",
+          "ring-amber-500",
+          "bg-amber-100",
+          "transition-all",
+          "duration-500",
+          "rounded",
+          "p-0.5"
+        );
+        const clearTimer = setTimeout(() => {
+          targetElement?.classList.remove("ring-2", "ring-amber-500", "bg-amber-100");
+        }, 4000);
+        return () => clearTimeout(clearTimer);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [queryNoteId, detail.selected_occurrence_date, detail.minutes?.id]);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {

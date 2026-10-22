@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { canAccessRoute } from "@/lib/access/module-contract";
+import { fetchNotifications } from "@/lib/api/feed.api";
 import toast from "react-hot-toast";
 
 interface TopbarProps {
@@ -68,6 +69,20 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [switchingRole, setSwitchingRole] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const checkUnread = async () => {
+      try {
+        const res = await fetchNotifications('unread');
+        if (active) setUnreadCount(res.unreadCount || 0);
+      } catch { /* ignore */ }
+    };
+    checkUnread();
+    const interval = setInterval(checkUnread, 30000);
+    return () => { active = false; clearInterval(interval); };
+  }, [company, user?.id]);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const compRef = useRef<HTMLDivElement>(null);
@@ -309,10 +324,16 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
           onClick={onNotificationClick ? onNotificationClick : () => toast("Semua notifikasi dan alert tersinkronisasi.")}
           className="flex-shrink-0 h-9 w-9 rounded-full bg-white border border-[#EFEFEF] hover:border-[#9FD6FF] hover:bg-[#EAF6FF]/30 text-[#4F5050] hover:text-[#2649B3] active:scale-95 transition-all relative cursor-pointer flex items-center justify-center shadow-2xs"
           aria-label="Buka Notifikasi & Feed Tim"
-          title="Buka Notifikasi & Feed Tim"
+          title={unreadCount > 0 ? `${unreadCount} notifikasi belum dibuka` : "Buka Notifikasi & Feed Tim"}
         >
           <Bell size={16} aria-hidden="true" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-[#EF4444] rounded-full ring-2 ring-white" aria-hidden="true" />
+          {unreadCount > 0 ? (
+            <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-blue-600 text-white rounded-full text-[10px] font-black flex items-center justify-center ring-2 ring-white">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          ) : (
+            <span className="absolute top-2 right-2 w-2 h-2 bg-[#66D575] rounded-full ring-2 ring-white" aria-hidden="true" />
+          )}
         </button>
 
         {/* User Avatar & Profile Pop-up */}

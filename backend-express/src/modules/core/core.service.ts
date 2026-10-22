@@ -188,9 +188,57 @@ export class CoreService {
   static async markNotificationsRead(userId: string, companyId: string | null) {
     await prisma.core_app_notification.updateMany({
       where: { recipient_id: userId, is_read: false, ...(companyId ? { company_id: companyId } : { company_id: null }) },
-      data: { is_read: true },
+      data: { is_read: true, read_at: new Date() },
     });
     return { status: 'all notifications marked as read' };
+  }
+
+  // Mengambil daftar notifikasi + jumlah yang belum dibuka
+  static async getNotifications(userId: string, companyId?: string | null, status: 'all' | 'unread' | 'read' = 'all') {
+    const where: any = {
+      recipient_id: userId,
+      ...(companyId ? { company_id: companyId } : {}),
+    };
+
+    if (status === 'unread') where.is_read = false;
+    if (status === 'read') where.is_read = true;
+
+    const [items, unreadCount] = await Promise.all([
+      prisma.core_app_notification.findMany({
+        where,
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        take: 50,
+      }),
+      prisma.core_app_notification.count({
+        where: {
+          recipient_id: userId,
+          ...(companyId ? { company_id: companyId } : {}),
+          is_read: false,
+        },
+      }),
+    ]);
+
+    return { items, unreadCount };
+  }
+
+  // Menandai 1 notifikasi sudah dibuka saat diklik
+  static async markAsRead(notificationId: string, userId: string) {
+    return prisma.core_app_notification.updateMany({
+      where: { id: notificationId, recipient_id: userId },
+      data: { is_read: true, read_at: new Date() },
+    });
+  }
+
+  // Menandai semua notifikasi sudah dibuka
+  static async markAllAsRead(userId: string, companyId?: string | null) {
+    return prisma.core_app_notification.updateMany({
+      where: {
+        recipient_id: userId,
+        ...(companyId ? { company_id: companyId } : {}),
+        is_read: false,
+      },
+      data: { is_read: true, read_at: new Date() },
+    });
   }
 
 /**

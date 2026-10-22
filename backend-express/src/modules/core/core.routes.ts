@@ -45,6 +45,34 @@ coreRouter.get('/app-notifications', authenticate, async (req: Request, res: Res
   } catch (error) { next(error); }
 });
 
+coreRouter.get('/notifications', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const status = (req.query.status as 'all' | 'unread' | 'read') || 'all';
+    const result = await CoreService.getNotifications(req.user!.id, req.companyId ?? null, status);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+coreRouter.patch('/notifications/:id/read', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CoreService.markAsRead(req.params.id, req.user!.id);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+coreRouter.post('/notifications/mark-all-read', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CoreService.markAllAsRead(req.user!.id, req.companyId ?? null);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Sidebar Feed endpoints
 /**
  * GET route handler: `/sidebar-feed`.
@@ -161,6 +189,34 @@ feedShortcutRouter.post('/sidebar-feed/mark-read', authenticate, async (req: Req
   try {
     const result = await CoreService.markNotificationsRead(req.user!.id, req.companyId ?? null);
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+feedShortcutRouter.get('/notifications', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const status = (req.query.status as 'all' | 'unread' | 'read') || 'all';
+    const result = await CoreService.getNotifications(req.user!.id, req.companyId ?? null, status);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+feedShortcutRouter.patch('/notifications/:id/read', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CoreService.markAsRead(req.params.id, req.user!.id);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+feedShortcutRouter.post('/notifications/mark-all-read', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CoreService.markAllAsRead(req.user!.id, req.companyId ?? null);
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

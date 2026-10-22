@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Check, Copy, Mail, PanelRightClose, RefreshCw, Users, X } from "lucide-react";
-import { DynamicContact, RealAlertItem, fetchAppNotifications, fetchDynamicRightPanelData, fetchRealAlertsList } from "@/lib/api/feed.api";
+import { DynamicContact, RealAlertItem, fetchAppNotifications, fetchDynamicRightPanelData, fetchRealAlertsList, markNotificationAsRead } from "@/lib/api/feed.api";
+import { NotificationList } from "@/components/notifications/NotificationList";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import { useAuth } from "@/contexts/AuthContext";
 import { Modal } from "@/components/ui/Modal";
@@ -101,8 +102,15 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
     return () => clearInterval(timer);
   }, [loadFeed]);
 
-  const openAlert = (item: RealAlertItem) => {
+  const openAlert = async (item: RealAlertItem) => {
     if (!item.href || !checkCanAccess(item.href)) return;
+    if (item.isHighlighted) {
+      setAlerts(prev => prev.map(a => a.id === item.id ? { ...a, isHighlighted: false } : a));
+      setNotificationHistory(prev => prev.map(n => n.id === item.id ? { ...n, isHighlighted: false } : n));
+      try {
+        await markNotificationAsRead(String(item.id));
+      } catch { /* ignore */ }
+    }
     closeNotifications();
     router.push(item.href);
     if (isMobile) onClose?.();
@@ -209,28 +217,36 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                 >
                   Belum ada alert baru saat ini.
                 </div>
-              ) : alerts.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => openAlert(item)}
-                  className={cn(
-                    "flex min-h-[72px] w-full flex-col justify-center rounded-[10px] border px-3.5 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-[#9FD6FF] hover:shadow-xs",
-                    item.isHighlighted ? "border-[#9FD6FF] bg-[#EAF6FF]" : "border-[#E5E7EB] bg-white"
-                  )}
-                  title={item.title}
-                >
-                  <span className="flex w-full items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-bold text-[#090909]">
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#66D575]" />
-                      <span className="truncate">{item.category}</span>
+              ) : alerts.map((item) => {
+                const isMention = item.category?.toLowerCase().includes("mention");
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => void openAlert(item)}
+                    className={cn(
+                      "flex min-h-[72px] w-full flex-col justify-center rounded-[10px] border px-3.5 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-[#9FD6FF] hover:shadow-xs",
+                      item.isHighlighted ? "border-blue-200 bg-blue-50/70" : "border-[#E5E7EB] bg-white"
+                    )}
+                    title={item.title}
+                  >
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-bold text-[#090909]">
+                        <span className={cn("h-2 w-2 shrink-0 rounded-full", item.isHighlighted ? "bg-blue-600 ring-2 ring-blue-200" : "bg-[#66D575]")} />
+                        <span className="truncate">{item.category}</span>
+                        {isMention && (
+                          <span className="ml-1 px-1.5 py-0.2 text-[9px] font-extrabold bg-amber-100 text-amber-800 rounded">
+                            @Mention
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 text-[10px] font-medium text-[#4F5050] whitespace-nowrap">{item.time}</span>
                     </span>
-                    <span className="shrink-0 text-[10px] font-medium text-[#4F5050] whitespace-nowrap">{item.time}</span>
-                  </span>
-                  <strong className="mt-1 truncate text-xs leading-tight text-[#090909] font-bold">{item.title}</strong>
-                  <span className="mt-1 truncate text-[10px] leading-relaxed text-[#4F5050]">{item.snippet}</span>
-                </button>
-              ))}
+                    <strong className={cn("mt-1 truncate text-xs leading-tight font-bold", item.isHighlighted ? "text-slate-900" : "text-[#4F5050]")}>{item.title}</strong>
+                    <span className="mt-1 truncate text-[10px] leading-relaxed text-[#4F5050]">{item.snippet}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
           <button type="button" onClick={() => { setNotificationHistory([]); setNextNotificationCursor(null); setShowNotifications(true); void loadNotificationHistory(); }} className="mt-3 w-full rounded-lg border border-[#D9E5FF] px-3 py-2 text-xs font-bold text-[#294BB2] hover:bg-[#EAF6FF]">
@@ -279,18 +295,9 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
         </button>
       </aside>
 
-      <Modal isOpen={showNotifications} onClose={closeNotifications} title="Semua Notifikasi" subtitle="Riwayat 3 hari terakhir. Klik notifikasi untuk membuka pengajuan terkait." size="lg">
-        <div className="flex flex-col gap-3 p-4">
-          <button type="button" disabled={historyLoading} onClick={() => void loadNotificationHistory()} className="self-end text-xs font-semibold text-[#294BB2] disabled:opacity-50">Segarkan notifikasi</button>
-          {historyError && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="alert">{historyError}<button type="button" className="ml-2 underline" onClick={() => void loadNotificationHistory(nextNotificationCursor ?? undefined)}>Coba lagi</button></div>}
-          {!historyLoading && !historyError && notificationHistory.length === 0 && <p className="py-6 text-center text-sm text-[#6B7280]">Belum ada notifikasi dalam 3 hari terakhir.</p>}
-          {notificationHistory.map(item => <button key={item.id} type="button" onClick={() => openAlert(item)} className={cn("rounded-xl border p-4 text-left transition-colors hover:border-[#294BB2]", item.isHighlighted ? "border-[#D9E5FF] bg-[#F3F7FF]" : "border-[#E5E7EB] bg-white")}>
-            <span className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#6B7280]"><span className="font-semibold text-[#294BB2]">{item.category}</span><span>{item.time}</span></span>
-            <strong className="mt-2 block break-words text-sm text-[#111827]">{item.title}</strong>
-            <span className="mt-1 block whitespace-pre-wrap break-words text-sm leading-relaxed text-[#4F5050]">{item.snippet}</span>
-          </button>)}
-          {historyLoading && <p role="status" className="py-3 text-center text-sm text-[#6B7280]">Memuat notifikasi…</p>}
-          {nextNotificationCursor && <button type="button" disabled={historyLoading} onClick={() => void loadNotificationHistory(nextNotificationCursor)} className="rounded-lg bg-[#EAF6FF] px-4 py-2 text-sm font-semibold text-[#294BB2] disabled:opacity-50">Muat notifikasi berikutnya</button>}
+      <Modal isOpen={showNotifications} onClose={closeNotifications} title="Semua Notifikasi" subtitle="Pusat notifikasi dan catatan rapat. Klik item untuk membuka langsung." size="lg">
+        <div className="p-4">
+          <NotificationList onItemClick={closeNotifications} />
         </div>
       </Modal>
       {selectedContact && (

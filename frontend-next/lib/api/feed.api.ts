@@ -274,8 +274,42 @@ export const feedApi = {
   getRecentItems: async (): Promise<UserRecentItemDto[]> => {
     const res = await api.get("/api/v1/core/recent-items/");
     return normalizeList<UserRecentItemDto>(res.data).rows;
-  }
+  },
+  fetchNotifications: async (status: 'all' | 'unread' | 'read' = 'all') => {
+    try {
+      const { data } = await api.get(`/api/v1/core/notifications`, { params: { status } });
+      return data;
+    } catch (error) {
+      if (!routeUnavailable(error)) throw error;
+      const { data } = await api.get(`/api/v1/notifications`, { params: { status } });
+      return data;
+    }
+  },
+  markNotificationAsRead: async (notificationId: string) => {
+    try {
+      const { data } = await api.patch(`/api/v1/core/notifications/${notificationId}/read`);
+      return data;
+    } catch (error) {
+      if (!routeUnavailable(error)) throw error;
+      const { data } = await api.patch(`/api/v1/notifications/${notificationId}/read`);
+      return data;
+    }
+  },
+  markAllNotificationsAsRead: async () => {
+    try {
+      const { data } = await api.post(`/api/v1/core/notifications/mark-all-read`);
+      return data;
+    } catch (error) {
+      if (!routeUnavailable(error)) throw error;
+      const { data } = await api.post(`/api/v1/notifications/mark-all-read`);
+      return data;
+    }
+  },
 };
+
+export const fetchNotifications = feedApi.fetchNotifications;
+export const markNotificationAsRead = feedApi.markNotificationAsRead;
+export const markAllNotificationsAsRead = feedApi.markAllNotificationsAsRead;
 
 /**
  * fetchDynamicRightPanelData adapts a frontend operation to its HTTP API contract.
