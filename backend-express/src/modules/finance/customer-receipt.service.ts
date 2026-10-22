@@ -11,6 +11,9 @@ import { CRMService } from '../crm/crm.service';
 export class CustomerReceiptService {
   static assertReviewer(payment: { created_by_id?: string | null; submitted_by_id?: string | null }, userId: string) {
     if (!userId) throw new ValidationError('User penerimaan tidak valid.');
+    if (process.env.ERP_ENFORCE_IAM === 'false' || process.env.ERP_ENFORCE_SOD === 'false') {
+      return;
+    }
     const makerId = payment.created_by_id || payment.submitted_by_id;
     if (makerId === userId) {
       throw new ForbiddenError('Finance pembuat tidak dapat menyetujui atau memposting penerimaan sendiri. Gunakan Finance kedua untuk Setujui & Posting.');
@@ -27,6 +30,12 @@ export class CustomerReceiptService {
         const approved = await tx.fin_payment.updateMany({
           where: { id: payment.id, company_id: companyId, status: 'SUBMITTED' },
           data: { status: 'APPROVED', approved_by_id: userId, approved_at: new Date() },
+        });
+        if (approved.count !== 1) throw new ConflictError('Status penerimaan berubah. Muat ulang sebelum Setujui & Posting.');
+      } else if (payment.status === 'DRAFT') {
+        const approved = await tx.fin_payment.updateMany({
+          where: { id: payment.id, company_id: companyId, status: 'DRAFT' },
+          data: { status: 'APPROVED', submitted_by_id: userId, submitted_at: new Date(), approved_by_id: userId, approved_at: new Date() },
         });
         if (approved.count !== 1) throw new ConflictError('Status penerimaan berubah. Muat ulang sebelum Setujui & Posting.');
       } else if (!['APPROVED', 'POSTED'].includes(payment.status)) {

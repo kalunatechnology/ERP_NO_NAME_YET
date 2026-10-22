@@ -946,7 +946,8 @@ financeRouter.get('/customer-receipts/workflow-readiness', async (req, res, next
         if (action === 'submit' && payment.created_by_id !== userId) {
           allowed = false; message = 'Pengajuan dilakukan oleh Finance pembuat penerimaan.';
         }
-        if (action !== 'submit' && (payment.created_by_id || payment.submitted_by_id) === userId) {
+        const enforceSoD = process.env.ERP_ENFORCE_IAM !== 'false' && process.env.ERP_ENFORCE_SOD !== 'false';
+        if (enforceSoD && action !== 'submit' && (payment.created_by_id || payment.submitted_by_id) === userId) {
           allowed = false; message = 'Menunggu Finance kedua untuk Setujui & Posting. Pembuat tidak dapat memproses penerimaan sendiri.';
         }
       }

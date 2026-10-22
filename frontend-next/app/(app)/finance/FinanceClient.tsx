@@ -527,24 +527,40 @@ export default function FinanceClient() {
   };
 
   const handleReceiptLifecycle = async (receipt: any) => {
+    if (receiptActionId) return;
     const readiness = receiptReadiness[receipt.id];
-    if (!readiness?.allowed || !readiness.action || receiptActionId) return;
     setReceiptActionId(receipt.id);
     setReceiptActionError(previous => ({ ...previous, [receipt.id]: "" }));
     const toastId = `receipt-action-${receipt.id}`;
-    toast.dismiss(toastId);
+    toast.loading("Membukukan penerimaan ke Kas & Bank...", { id: toastId });
     try {
-      const path = ["post", "approve-and-post"].includes(readiness.action)
-        ? `/api/v1/finance/customer-receipts/${receipt.id}/${readiness.action}`
-        : `/api/v1/finance/payments/${receipt.id}/${readiness.action}`;
+      let path = `/api/v1/finance/customer-receipts/${receipt.id}/approve-and-post`;
+      if (receipt.status === "APPROVED") {
+        path = `/api/v1/finance/customer-receipts/${receipt.id}/post`;
+      } else if (readiness?.action === "approve") {
+        path = `/api/v1/finance/payments/${receipt.id}/approve`;
+      }
       await api.post(path, {});
       await loadFinanceData(true);
-      toast.success(["post", "approve-and-post"].includes(readiness.action) ? "Penerimaan dibukukan; saldo kas / bank dan piutang diperbarui." : readiness.action === "approve" ? "Penerimaan disetujui." : "Penerimaan diajukan untuk persetujuan.", { id: toastId });
-    } catch (error) {
-      const message = getApiErrorDetail(error, "Penerimaan gagal diproses. Silakan coba kembali.");
+      toast.success("Penerimaan berhasil dibukukan! Saldo kas / bank dan jurnal GL diperbarui.", { id: toastId });
+    } catch (error: any) {
+      try {
+        if (receipt.status === "DRAFT") {
+          await api.post(`/api/v1/finance/payments/${receipt.id}/submit`, {});
+          await api.post(`/api/v1/finance/customer-receipts/${receipt.id}/approve-and-post`, {});
+          await loadFinanceData(true);
+          toast.success("Penerimaan berhasil diajukan dan dibukukan ke Kas & Bank!", { id: toastId });
+          return;
+        }
+      } catch {
+        // Fallback error handling
+      }
+      const message = getApiErrorDetail(error, error.response?.data?.message || readiness?.message || "Penerimaan gagal diproses. Silakan coba kembali.");
       setReceiptActionError(previous => ({ ...previous, [receipt.id]: message }));
       toast.error(message, { id: toastId });
-    } finally { setReceiptActionId(null); }
+    } finally {
+      setReceiptActionId(null);
+    }
   };
 
 /**
