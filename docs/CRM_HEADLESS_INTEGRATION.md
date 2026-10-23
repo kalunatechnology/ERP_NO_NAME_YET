@@ -59,11 +59,11 @@ Contoh payload inquiry yang direkomendasikan:
 | `message.received` | `thread_id`, `message_id`, `message.text`, `message.type: "TEXT"` |
 | `inquiry.submitted` | `customer: { name, email, phone? }`, `requirements: { subject, description?, target_budget? }`. Format lama yang menaruh field customer dan subject di root tetap diterima. |
 | `ticket.created` | `subject`, `description`; `serial_number` opsional dan harus terdaftar pada company |
-| `feedback.submitted` | `customer_party_id` customer aktif pada company source, `rating` integer 1–5, `feedback_text`; `feedback_type` opsional, `sales_order_id` opsional tetapi harus milik customer yang sama |
+| `feedback.submitted` | `customer_code` (`party_code` Marka) customer aktif pada company source, `rating` integer 1–5, `feedback_text`; `feedback_type` opsional, `sales_order_id` opsional tetapi harus milik customer yang sama |
 | `quotation.decision` | `quotation_id`, `decision: "ACCEPTED"` atau `"REJECTED"` |
 | `quotation.accepted` | `quotation_id`; hanya quotation berstatus `SENT` dan terhubung ke opportunity |
 
-Contoh `inquiry.submitted` di atas mencakup `data.origin_domain`. Untuk `message.received`, `ticket.created`, dan `feedback.submitted`, kirim field yang sama di object `data` jika ingin atribusi domain tampil pada inbox, tiket, atau feedback. Konfigurasikan hostname terlebih dahulu pada allowlist source; domain yang tidak cocok menghasilkan `ORIGIN_DOMAIN_NOT_ALLOWED`. Event `feedback.submitted` membuat review pada Engagement dan hanya menerima ID customer Marka yang aktif serta berada pada company source.
+Contoh `inquiry.submitted` di atas mencakup `data.origin_domain`. Untuk `message.received`, `ticket.created`, dan `feedback.submitted`, kirim field yang sama di object `data` jika ingin atribusi domain tampil pada inbox, tiket, atau feedback. Konfigurasikan hostname terlebih dahulu pada allowlist source; domain yang tidak cocok menghasilkan `ORIGIN_DOMAIN_NOT_ALLOWED`. Event `feedback.submitted` membuat review pada Engagement berdasarkan `customer_code` (nilai `party_code`) customer aktif yang berada pada company source.
 
 Penerimaan mengembalikan `202` setelah event disimpan untuk diproses. Event duplikat dengan payload sama mengembalikan `200`; `event_id` yang sama dengan payload berbeda mengembalikan `409`.
 
