@@ -3399,6 +3399,8 @@ export default function ProjectsClient() {
               min="0"
               placeholder="0"
               value={financialTargetForm.contract_amount}
+              onFocus={e => { if (e.currentTarget.value === "0") setFinancialTargetForm(prev => ({ ...prev, contract_amount: "" })); }}
+              onBlur={e => { if (e.currentTarget.value === "") setFinancialTargetForm(prev => ({ ...prev, contract_amount: "0" })); }}
               onChange={e => setFinancialTargetForm((prev) => ({ ...prev, contract_amount: e.target.value }))}
               className="input text-xs"
             />
@@ -3411,6 +3413,8 @@ export default function ProjectsClient() {
               min="0"
               placeholder="0"
               value={financialTargetForm.budget_amount}
+              onFocus={e => { if (e.currentTarget.value === "0") setFinancialTargetForm(prev => ({ ...prev, budget_amount: "" })); }}
+              onBlur={e => { if (e.currentTarget.value === "") setFinancialTargetForm(prev => ({ ...prev, budget_amount: "0" })); }}
               onChange={e => setFinancialTargetForm((prev) => ({ ...prev, budget_amount: e.target.value }))}
               className="input text-xs"
             />
@@ -3424,6 +3428,8 @@ export default function ProjectsClient() {
               max="100"
               placeholder="0"
               value={financialTargetForm.target_margin_percent}
+              onFocus={e => { if (e.currentTarget.value === "0") setFinancialTargetForm(prev => ({ ...prev, target_margin_percent: "" })); }}
+              onBlur={e => { if (e.currentTarget.value === "") setFinancialTargetForm(prev => ({ ...prev, target_margin_percent: "0" })); }}
               onChange={e => setFinancialTargetForm((prev) => ({ ...prev, target_margin_percent: e.target.value }))}
               className="input text-xs"
             />

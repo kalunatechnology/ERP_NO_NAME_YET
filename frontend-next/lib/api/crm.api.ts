@@ -291,11 +291,11 @@ export async function createOpportunity(payload: {
 }) {
   const { data } = await api.post("/api/v1/crm/opportunities/", {
     opportunity_name: payload.opportunity_name,
-    customer_party: payload.customer_party || null,
-    expected_amount: payload.expected_amount || 0,
-    expected_margin: payload.expected_margin || 0,
-    probability_percent: payload.probability_percent || 50,
-    pipeline_stage: payload.pipeline_stage || "OPEN",
+    customer_party_id: payload.customer_party || null,
+    expected_amount: payload.expected_amount ?? 0,
+    expected_margin: payload.expected_margin ?? 0,
+    probability_percent: payload.probability_percent ?? 50,
+    pipeline_stage: payload.pipeline_stage ?? "OPEN",
     status: "OPEN",
   });
   return data;
@@ -363,7 +363,7 @@ export async function createCustomerInquiry(payload: {
     subject: payload.subject,
     customer_name: payload.customer_name,
     customer_email: payload.customer_email || "",
-    customer_party: payload.customer_party || null,
+    customer_party_id: payload.customer_party || null,
     description: payload.description || "",
     expected_delivery_date: payload.expected_delivery_date || null,
     status: "NEW",
@@ -388,11 +388,11 @@ export async function createInquiryRequirement(payload: {
   requirement_type?: string;
 }) {
   const { data } = await api.post("/api/v1/crm/inquiry-requirements/", {
-    inquiry: payload.inquiry,
-    product: payload.product || null,
+    inquiry_id: payload.inquiry,
+    product_id: payload.product || null,
     description: payload.description || "Item Spesifikasi Kebutuhan",
-    quantity: payload.quantity || 1,
-    target_unit_price: payload.target_unit_price || 0,
+    quantity: payload.quantity ?? 1,
+    target_unit_price: payload.target_unit_price ?? 0,
     requirement_type: payload.requirement_type || "PRODUCT",
     status: "QUALIFIED",
   });
@@ -428,15 +428,15 @@ export async function createCostEstimate(payload: {
   markup_percent?: number;
   description?: string;
 }) {
-  const directCost   = Number(payload.direct_cost || 0);
-  const overheadCost = Number(payload.overhead_cost || 0);
+  const directCost   = Number(payload.direct_cost ?? 0);
+  const overheadCost = Number(payload.overhead_cost ?? 0);
   const totalCost    = directCost + overheadCost;
-  const markupPct    = Number(payload.markup_percent || 30);
+  const markupPct    = Number(payload.markup_percent ?? 30);
   const offeredAmt   = totalCost * (1 + markupPct / 100);
 
   const { data } = await api.post("/api/v1/crm/cost-estimates/", {
-    opportunity:     payload.opportunity || null,
-    inquiry:         payload.inquiry || null,
+    opportunity_id:  payload.opportunity || null,
+    inquiry_id:      payload.inquiry || null,
     estimate_number: `EST-${Date.now().toString().slice(-6)}`,
     direct_cost:     directCost,
     overhead_cost:   overheadCost,
@@ -446,18 +446,18 @@ export async function createCostEstimate(payload: {
     status:          "DRAFT",
   });
 
-  // Auto-create lines
+  // Auto-create cost lines using the Prisma column names expected by Express.
   if (data?.id) {
-    await api.post("/api/v1/crm/cost-estimate-lines/", {
-        estimate: data.id, cost_element: "MATERIAL",
+    if (directCost > 0) await api.post("/api/v1/crm/cost-estimate-lines/", {
+        estimate_id: data.id, cost_element: "MATERIAL",
         description: payload.description || "Biaya Langsung Pengadaan / Produksi",
-        quantity: 1, unit_cost: directCost, amount: directCost,
+        quantity: 1, unit_cost: directCost, amount: directCost, calculation_source: "MANUAL",
       });
     if (overheadCost > 0) {
-        await api.post("/api/v1/crm/cost-estimate-lines/", {
-          estimate: data.id, cost_element: "OVERHEAD",
+      await api.post("/api/v1/crm/cost-estimate-lines/", {
+          estimate_id: data.id, cost_element: "OVERHEAD",
           description: "Biaya Operasional & Overhead",
-          quantity: 1, unit_cost: overheadCost, amount: overheadCost,
+          quantity: 1, unit_cost: overheadCost, amount: overheadCost, calculation_source: "MANUAL",
         });
     }
   }
@@ -617,7 +617,6 @@ export async function createSupportTicket(payload: {
   subject: string;
   customer_party?: string | number | null;
   priority?: string;
-  case_type?: string;
   description?: string;
   serial_number?: string;
 }) {
@@ -625,7 +624,6 @@ export async function createSupportTicket(payload: {
     subject: payload.subject,
     customer_party: payload.customer_party || null,
     priority: payload.priority || "NORMAL",
-    case_type: payload.case_type || "WARRANTY_CLAIM",
     description: payload.description || "",
     serial_number: payload.serial_number?.trim() || null,
     status: "OPEN",

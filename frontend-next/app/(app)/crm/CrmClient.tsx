@@ -56,6 +56,10 @@ const CRM_TABS = [
 ];
 
 /* ── Shared Helpers ──────────────────────────────── */
+function opportunityPartyId(opportunity: any): string | number | null {
+  return opportunity?.customer_party_id ?? opportunity?.customer_party ?? opportunity?.customer ?? null;
+}
+
 /**
  * StatusBadge coordinates the UI behavior represented by this function.
  *
@@ -201,13 +205,29 @@ function QuickAddPartyModal({
       const payload = {
         display_name: partyForm.display_name.trim() || partyForm.legal_name.trim(),
         legal_name: partyForm.legal_name.trim() || partyForm.display_name.trim(),
-        email: partyForm.email?.trim() || undefined,
         party_code: partyForm.party_code?.trim() || `CUST-${Date.now().toString().slice(-4)}`,
         party_type: "CUSTOMER",
+        tax_number: "",
+        status: "ACTIVE",
       };
       const res = await api.post("/api/v1/master-data/parties/", payload);
       const newParty = res.data;
-      toast.success("Pelanggan baru berhasil ditambahkan!");
+      const contactEmail = partyForm.email.trim();
+      let contactSaveFailed = false;
+      if (contactEmail) {
+        try {
+          await api.post("/api/v1/master-data/contacts/", {
+            party_id: newParty.id,
+            contact_name: payload.display_name,
+            job_title: "",
+            email: contactEmail,
+            phone: "",
+            primary_contact: true,
+          });
+        } catch { contactSaveFailed = true; }
+      }
+      if (contactSaveFailed) toast.error("Pelanggan tersimpan, tetapi email kontak gagal disimpan.");
+      else toast.success("Pelanggan baru berhasil ditambahkan!");
       onSuccess(newParty);
       setPartyForm({ legal_name: "", display_name: "", email: "", party_code: "" });
       onClose();
@@ -522,7 +542,7 @@ function TabDeals({
   const handleActivitySave = async () => {
     if (!activityOpp || !activityForm.subject.trim()) { toast.error("Isi catatan aktivitas terlebih dahulu."); return; }
     try {
-      await createCRMActivity({ opportunity_id: activityOpp.id, party_id: activityOpp.customer_party, activity_type: activityForm.activity_type, subject: activityForm.subject.trim(), scheduled_at: activityForm.scheduled_at ? new Date(activityForm.scheduled_at).toISOString() : null });
+      await createCRMActivity({ opportunity_id: activityOpp.id, party_id: opportunityPartyId(activityOpp), activity_type: activityForm.activity_type, subject: activityForm.subject.trim(), scheduled_at: activityForm.scheduled_at ? new Date(activityForm.scheduled_at).toISOString() : null });
       toast.success("Aktivitas tersimpan."); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); onRefresh();
     } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal menyimpan aktivitas."); }
   };
@@ -691,7 +711,7 @@ function TabDeals({
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-              const cust = (data.parties||[]).find(p => String(p.id) === String(o.customer_party));
+              const cust = (data.parties||[]).find(p => String(p.id) === String(opportunityPartyId(o)));
               const isWon = ["WON","CLOSED_WON"].includes((o.status||"").toUpperCase());
               const isCancelled = ["CANCELLED","CANCEL","BATAL","LOST"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL","LOST"].includes((o.pipeline_stage||"").toUpperCase());
 
@@ -928,6 +948,12 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: C
    * The CRM API owns persistence; this handler owns submission feedback, modal lifecycle, and parent refresh.
    */
   const handleCreate = async () => {
+    if (![estForm.direct_cost, estForm.overhead_cost, estForm.markup_percent].every(Number.isFinite)
+      || estForm.direct_cost < 0 || estForm.overhead_cost < 0 || estForm.markup_percent < 0
+      || estForm.direct_cost + estForm.overhead_cost <= 0) {
+      toast.error("Total biaya harus lebih dari nol dan seluruh nilai tidak boleh negatif.");
+      return;
+    }
     try {
       await createCostEstimate({ ...estForm, opportunity: estForm.opportunity || null });
       toast.success("Cost Estimate dibuat!"); setIsEstModal(false); onRefresh();
@@ -1042,16 +1068,20 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: C
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Biaya Langsung (Rp)</label>
-              <input type="number" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.direct_cost} onChange={e => setEstForm(f => ({...f, direct_cost: Number(e.target.value)}))} />
+              <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.direct_cost} onChange={e => setEstForm(f => ({...f, direct_cost: Number(e.target.value)}))} />
             </div>
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Biaya Overhead (Rp)</label>
-              <input type="number" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.overhead_cost} onChange={e => setEstForm(f => ({...f, overhead_cost: Number(e.target.value)}))} />
+              <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.overhead_cost} onChange={e => setEstForm(f => ({...f, overhead_cost: Number(e.target.value)}))} />
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Markup %</label>
-            <input type="number" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.markup_percent} onChange={e => setEstForm(f => ({...f, markup_percent: Number(e.target.value)}))} />
+            <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.markup_percent} onChange={e => setEstForm(f => ({...f, markup_percent: Number(e.target.value)}))} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Deskripsi biaya langsung</label>
+            <input type="text" maxLength={255} className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.description} onChange={e => setEstForm(f => ({...f, description: e.target.value}))} placeholder="Biaya material / pekerjaan" />
           </div>
           <div className="p-3 rounded-xl bg-brand-light-green text-xs">
             <b>Total HPP:</b> {formatMoney(estForm.direct_cost + estForm.overhead_cost)} &nbsp;|&nbsp;
@@ -1081,7 +1111,7 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [domainFilter, setDomainFilter] = useState("");
-  const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", case_type: "WARRANTY_CLAIM", description: "", serial_number: "" });
+  const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", description: "", serial_number: "" });
   const ticketDomains = Array.from(new Set((data.cases || []).map((item) => item.origin_domain).filter((value): value is string => Boolean(value)))).sort();
   const visibleCases = (data.cases || []).filter((item) => !domainFilter || item.origin_domain === domainFilter);
 
@@ -1208,19 +1238,11 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-text-secondary mb-1 block">Prioritas</label>
-              <select className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.priority} onChange={e => setForm(f => ({...f, priority: e.target.value}))}>
-                {["LOW","NORMAL","HIGH","URGENT"].map(p => <option key={p}>{p}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-text-secondary mb-1 block">Tipe Kasus</label>
-              <select className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.case_type} onChange={e => setForm(f => ({...f, case_type: e.target.value}))}>
-                {["WARRANTY_CLAIM","SERVICE_REQUEST","BUG_REPORT","COMPLAINT","GENERAL"].map(t => <option key={t}>{t}</option>)}
-              </select>
-            </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Prioritas</label>
+            <select className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-green" value={form.priority} onChange={e => setForm(f => ({...f, priority: e.target.value}))}>
+              {["LOW", "NORMAL", "HIGH", "URGENT"].map(priority => <option key={priority} value={priority}>{priority}</option>)}
+            </select>
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Deskripsi</label>
@@ -1633,7 +1655,7 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
     setIsSubmitting(true);
     try {
       await api.post("/api/v1/crm/feedbacks/", {
-        customer_party: partyId,
+        customer_party_id: partyId,
         rating_value: rating,
         feedback_text: comments.trim(),
         feedback_type: "CUSTOMER_REVIEW",
