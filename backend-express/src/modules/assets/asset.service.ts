@@ -22,7 +22,7 @@ import { AuditService } from '../core/audit.service';
 // =============================================================================
 
 // Kode akun default untuk modul aset (sesuai Standard COA)
-const COA_ACCUMULATED_DEPRECIATION = '1200'; // Akun Kontra Aset — Akumulasi Penyusutan
+const COA_ACCUMULATED_DEPRECIATION = '1210'; // Akun Kontra Aset — Akumulasi Penyusutan (1210)
 const COA_DEPRECIATION_EXPENSE     = '6200'; // Beban Penyusutan
 const COA_ASSET_DISPOSAL_GAIN      = '4200'; // Pendapatan Lain-lain (Laba Pelepasan Aset)
 const COA_ASSET_DISPOSAL_LOSS      = '6200'; // Beban Operasional (Rugi Pelepasan Aset)
@@ -186,16 +186,43 @@ export class AssetService {
 
     // ==== POST JURNAL GL & UPDATE BUKU ASET dalam satu transaction ====
     const result = await prisma.$transaction(async (tx) => {
+      // Cari fiscal period & journal book
+      const fiscalPeriod = await tx.fin_fiscal_period.findFirst({
+        where: {
+          company_id: companyId,
+          start_date: { lte: periodDate },
+          end_date:   { gte: periodDate },
+        },
+      });
+      const journalBook = await tx.fin_journal.findFirst({
+        where: { journal_code: 'GJ', company_id: companyId },
+      }) ?? await tx.fin_journal.create({
+        data: {
+          company_id: companyId,
+          tenant_id: asset.tenant_id,
+          created_by_id: userId,
+          journal_code: 'GJ',
+          journal_name: 'General Journal',
+          journal_type: 'GENERAL',
+          status: 'ACTIVE',
+        },
+      });
+
       // Buat Journal Entry
       const entryId = crypto.randomUUID();
       const journalEntry = await tx.fin_journal_entry.create({
         data: {
-          id:           entryId,
-          entry_number: `DEP-${asset.asset_code}-${periodYear}${String(periodMonth + 1).padStart(2, '0')}`,
-          description:  `Penyusutan Bulanan: ${asset.asset_name} — ${periodDate.toLocaleString('id-ID', { month: 'long', year: 'numeric' })}`,
-          status:       'POSTED',
-          posting_date: periodDate,
-          source_document_id: assetId,
+          id:                 entryId,
+          entry_number:       `DEP-${asset.asset_code}-${periodYear}${String(periodMonth + 1).padStart(2, '0')}`,
+          description:        `Penyusutan Bulanan: ${asset.asset_name} — ${periodDate.toLocaleString('id-ID', { month: 'long', year: 'numeric' })}`,
+          status:             'POSTED',
+          posting_date:       periodDate,
+          source_document_id: asset.document_id ?? null,
+          tenant_id:          asset.tenant_id,
+          company_id:         companyId,
+          created_by_id:      userId,
+          journal_id:         journalBook.id,
+          fiscal_period_id:   fiscalPeriod?.id ?? null,
         },
       });
 
@@ -207,10 +234,13 @@ export class AssetService {
           account_id:       depreciationExpenseAccount.id,
           debit_base:       depreciationAmount,
           credit_base:      null,
+          tenant_id:        asset.tenant_id,
+          company_id:       companyId,
+          created_by_id:    userId,
         },
       });
 
-      // Credit Akumulasi Penyusutan (1200)
+      // Credit Akumulasi Penyusutan (1210)
       await tx.fin_journal_line.create({
         data: {
           id:               crypto.randomUUID(),
@@ -218,6 +248,9 @@ export class AssetService {
           account_id:       accumulatedDeprAccount.id,
           debit_base:       null,
           credit_base:      depreciationAmount,
+          tenant_id:        asset.tenant_id,
+          company_id:       companyId,
+          created_by_id:    userId,
         },
       });
 
@@ -232,7 +265,11 @@ export class AssetService {
           accumulated_depreciation: newAccumulatedDepr,
           closing_book_value:      newBookValue,
           journal_entry_id:        entryId,
+          fiscal_period_id:        fiscalPeriod?.id ?? null,
           status:                  'POSTED',
+          tenant_id:               asset.tenant_id,
+          company_id:              companyId,
+          created_by_id:           userId,
         },
       });
 
@@ -509,7 +546,7 @@ export class AssetService {
           description:       `Pelepasan Aset: ${asset.asset_name} — ${isGain ? 'Laba' : 'Rugi'} Rp ${Math.abs(gainOrLoss.toNumber()).toLocaleString()}`,
           status:            'POSTED',
           posting_date:      disposalDate,
-          source_document_id: assetId,
+          source_document_id: asset.document_id ?? null,
         },
       });
 
@@ -522,6 +559,9 @@ export class AssetService {
             account_id:  cashAccount.id,
             debit_base:  proceeds,
             credit_base: null,
+            tenant_id: asset.tenant_id,
+            company_id: companyId,
+            created_by_id: userId,
           },
         });
       }
@@ -536,6 +576,9 @@ export class AssetService {
             account_id:  accumulatedAccount.id,
             debit_base:  accumulatedDepr,
             credit_base: null,
+            tenant_id: asset.tenant_id,
+            company_id: companyId,
+            created_by_id: userId,
           },
         });
       }
@@ -549,6 +592,9 @@ export class AssetService {
           account_id:  assetAccount.id,
           debit_base:  null,
           credit_base: costBasis,
+          tenant_id: asset.tenant_id,
+          company_id: companyId,
+          created_by_id: userId,
         },
       });
 
@@ -561,6 +607,9 @@ export class AssetService {
             account_id:  gainLossAccount.id,
             debit_base:  null,
             credit_base: gainOrLoss,
+            tenant_id: asset.tenant_id,
+            company_id: companyId,
+            created_by_id: userId,
           },
         });
       } else if (!isGain && gainOrLoss.lessThan(0)) {
@@ -571,6 +620,9 @@ export class AssetService {
             account_id:  gainLossAccount.id,
             debit_base:  gainOrLoss.abs(),
             credit_base: null,
+            tenant_id: asset.tenant_id,
+            company_id: companyId,
+            created_by_id: userId,
           },
         });
       }

@@ -55,6 +55,8 @@ model core_company {
   base_currency_id  String?   @map("base_currency_id")
   fiscal_year_start DateTime?
   status            String
+  kpp_name          String?
+  pkp_status        String?
 
   @@index([tenant_id, company_code])
   @@map("core_company")
@@ -727,21 +729,25 @@ model core_user_recent_item {
 }
 
 model core_app_notification {
-  tenant_id     String?  @map("tenant_id")
-  company_id    String?  @map("company_id")
-  created_by_id String?  @map("created_by_id")
-  id            String   @id @default(uuid())
-  created_at    DateTime
-  updated_at    DateTime
-  recipient_id  String   @map("recipient_id")
-  actor_id      String?  @map("actor_id")
-  category      String
-  title         String
-  description   String
-  target_url    String
-  is_read       Boolean
+  tenant_id      String?   @map("tenant_id")
+  company_id     String?   @map("company_id")
+  created_by_id  String?   @map("created_by_id")
+  id             String    @id @default(uuid())
+  created_at     DateTime
+  updated_at     DateTime
+  recipient_id   String    @map("recipient_id")
+  actor_id       String?   @map("actor_id")
+  category       String
+  title          String
+  description    String
+  target_url     String
+  is_read        Boolean
+  read_at        DateTime? @map("read_at")
+  reference_type String?   @map("reference_type")
+  reference_id   String?   @map("reference_id")
 
   @@index([tenant_id, company_id])
+  @@index([recipient_id, is_read])
   @@map("core_app_notification")
 }
 
@@ -1488,6 +1494,7 @@ model core_integration_source {
   previous_key_id           String?   @map("previous_key_id")
   previous_valid_until      DateTime? @map("previous_valid_until")
   allowed_event_types       String[]  @default([]) @map("allowed_event_types")
+  allowed_origin_domains    String[]  @default([]) @map("allowed_origin_domains")
   status                    String    @default("ACTIVE")
   created_by_id             String?   @map("created_by_id")
   created_at                DateTime  @default(now()) @map("created_at")
@@ -1888,6 +1895,7 @@ model crm_conversation {
   closed_at                DateTime?
   priority                 String
   status                   String
+  origin_domain            String?   @map("origin_domain")
 
   @@index([tenant_id, company_id])
   @@index([company_id, business_unit_code], map: "crm_conversation_company_id_business_unit_code_idx")
@@ -1987,6 +1995,7 @@ model crm_feedback {
   feedback_text     String
   submitted_at      DateTime?
   status            String
+  origin_domain     String?   @map("origin_domain")
 
   @@index([tenant_id, company_id])
   @@map("crm_feedback")
@@ -2043,6 +2052,7 @@ model crm_survey_response {
   started_at        DateTime?
   submitted_at      DateTime?
   response_status   String
+  origin_domain     String?   @map("origin_domain")
 
   @@index([tenant_id, company_id])
   @@map("crm_survey_response")
@@ -2077,6 +2087,7 @@ model crm_customer_inquiry {
   opportunity_id         String?   @unique @map("opportunity_id")
   inquiry_number         String
   source_channel         String
+  origin_domain          String?   @map("origin_domain")
   subject                String
   description            String
   customer_name          String
@@ -2561,6 +2572,23 @@ model project_project {
 
   @@index([tenant_id, company_id])
   @@map("project_project")
+}
+
+model project_resource_document {
+  id           String    @id @default(uuid())
+  tenant_id    String?   @map("tenant_id")
+  company_id   String?   @map("company_id")
+  project_id   String    @map("project_id")
+  name         String
+  url          String
+  description  String   @default("")
+  category     String   @default("DOCUMENT")
+  created_by_id String? @map("created_by_id")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([tenant_id, company_id, project_id])
+  @@map("project_resource_document")
 }
 
 model project_control_item {
@@ -5267,6 +5295,7 @@ model service_case {
   warranty_checked_at DateTime? @map("warranty_checked_at")
   warranty_expires_at DateTime? @map("warranty_expires_at")
   status              String
+  origin_domain       String?   @map("origin_domain")
 
   @@index([tenant_id, company_id])
   @@map("service_case")

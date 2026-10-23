@@ -1,9 +1,9 @@
 /**
  * File: frontend-next/components/finance/ProjectTaxWorkspace.tsx
  *
- * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
- * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
- * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ * Purpose: Enterprise Tax Workspace for Project PPN & PPh Withholding management.
+ * Complies with Indonesian DJP regulations: e-Bupot unifikasi vs NTPN Kas Negara,
+ * WAPU vs Non-WAPU treatment, and timing simulation.
  */
 "use client";
 
@@ -16,9 +16,10 @@ import {
   CheckCircle2,
   AlertCircle,
   TrendingUp,
-  Plus,
   Search,
   FileCheck2,
+  CreditCard,
+  ExternalLink,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, localDateKey } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
@@ -44,71 +45,81 @@ export interface TaxTransaction {
   bupot_status: "PENDING" | "RECEIVED" | "VERIFIED";
   bupot_number?: string;
   net_cash_inflow: number;
+  status?: string;
+  ntpn?: string;
 }
 
 const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [];
 
 export function ProjectTaxWorkspace() {
   const [transactions, setTransactions] = useState<TaxTransaction[]>(INITIAL_TAX_TRANSACTIONS);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [schemeFilter, setSchemeFilter] = useState("ALL");
   const [clientTypeFilter, setClientTypeFilter] = useState("ALL");
 
-  // Simulator state
-  const [simContractValue, setSimContractValue] = useState<number>(0);
+  // Simulator Drawer/Modal State
+  const [isSimulatorModalOpen, setIsSimulatorModalOpen] = useState(false);
+  const [simContractValue, setSimContractValue] = useState<number>(100000000);
   const [simDownPaymentPct, setSimDownPaymentPct] = useState<number>(30);
   const [simTaxScheme, setSimTaxScheme] = useState<"PROPORTIONAL" | "FULL_UPFRONT" | "FINAL_SETTLEMENT">("FULL_UPFRONT");
   const [simClientType, setSimClientType] = useState<"NON_WAPU" | "WAPU">("NON_WAPU");
-  const [simPphRate, setSimPphRate] = useState<number>(2.0); // 2% PPh 23 or 2.65% Final
+  const [simPphRate, setSimPphRate] = useState<number>(2.0);
 
-  // Modal Bukti Potong
+  // Modal Bukti Potong (e-Bupot)
   const [isBupotModalOpen, setIsBupotModalOpen] = useState(false);
   const [selectedTxForBupot, setSelectedTxForBupot] = useState<TaxTransaction | null>(null);
   const [bupotForm, setBupotForm] = useState({
     bupot_number: "",
     bupot_date: localDateKey(),
-    tax_type: "PPh 23",
+    tax_type: "PPh 23 Jasa Teknik & Manajemen",
     notes: "",
   });
+  const [isSavingBupot, setIsSavingBupot] = useState(false);
 
-  // Modal Tambah Faktur Pajak
-  const [isAddTaxModalOpen, setIsAddTaxModalOpen] = useState(false);
-  const [newTaxForm, setNewTaxForm] = useState({
-    customer_name: "",
-    project_name: "",
-    invoice_number: "",
-    dpp_amount: 0,
-    tax_scheme: "PROPORTIONAL" as "PROPORTIONAL" | "FULL_UPFRONT" | "FINAL_SETTLEMENT",
-    client_type: "NON_WAPU" as "NON_WAPU" | "WAPU",
-    pph_type: "PPh 23 (2%)",
-    pph_rate: 2.0,
+  // Modal NTPN Setor Kas Negara
+  const [isNtpnModalOpen, setIsNtpnModalOpen] = useState(false);
+  const [selectedTxForNtpn, setSelectedTxForNtpn] = useState<TaxTransaction | null>(null);
+  const [ntpnForm, setNtpnForm] = useState({
+    ntpn: "",
+    paid_at: localDateKey(),
+    payment_reference: "",
   });
+  const [isSavingNtpn, setIsSavingNtpn] = useState(false);
 
-  useEffect(() => {
+  const loadTaxTransactions = () => {
+    setLoading(true);
     api.get("/api/v1/finance/tax-transactions/projection?page_size=200")
       .then((response) => {
         const rows = normalizeList<any>(response.data).rows;
         setTransactions(rows.map((item) => ({
           id: String(item.id),
-          invoice_number: item.invoice_number || item.billing_code || item.payment_reference || "",
-          tax_invoice_number: item.ntpn || "",
-          customer_name: item.customer_name || "",
-          project_name: item.project_name || "",
+          invoice_number: item.invoice_number || item.billing_code || item.payment_reference || "-",
+          tax_invoice_number: item.billing_code || item.ntpn || "-",
+          customer_name: item.customer_name || "Pelanggan Proyek",
+          project_name: item.project_name || "Proyek Berjalan",
           tax_date: item.tax_date || "",
           dpp_amount: Number(item.taxable_amount || 0),
-          ppn_rate: Number(item.tax_rate || 0),
+          ppn_rate: Number(item.tax_rate || 11),
           ppn_amount: Number(item.tax_amount || 0),
-          pph_type: item.tax_direction || "",
-          pph_rate: 0,
-          pph_amount: 0,
+          pph_type: item.pph_type || "PPh 23 (2%)",
+          pph_rate: Number(item.pph_rate ?? 2.0),
+          pph_amount: Number(item.pph_amount ?? ((Number(item.taxable_amount || 0) * 2) / 100)),
           tax_scheme: item.tax_scheme ?? null,
-          client_type: "NON_WAPU",
-          bupot_status: item.ntpn ? "VERIFIED" : "PENDING",
-          bupot_number: item.ntpn || undefined,
-          net_cash_inflow: Number(item.taxable_amount || 0) + Number(item.tax_amount || 0),
+          client_type: (item.client_type as "NON_WAPU" | "WAPU") || "NON_WAPU",
+          bupot_status: (item.bupot_status as any) || (item.ntpn ? "VERIFIED" : "PENDING"),
+          bupot_number: item.bupot_number || item.ntpn || undefined,
+          net_cash_inflow: Number(item.net_cash_inflow ?? (Number(item.taxable_amount || 0) + Number(item.tax_amount || 0))),
+          status: item.status || "CALCULATED",
+          ntpn: item.ntpn || undefined,
         })));
       })
-      .catch(() => toast.error("Transaksi pajak gagal dimuat dari server."));
+      .catch(() => toast.error("Transaksi pajak gagal dimuat dari server."))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadTaxTransactions();
   }, []);
 
   useEffect(() => {
@@ -116,37 +127,33 @@ export function ProjectTaxWorkspace() {
       const company = normalizeList<any>(response.data).rows[0];
       const category = String(company?.business_category || 'CONSULTING_DIGITAL').toUpperCase();
       const construction = category === 'CONSTRUCTION';
-      const pphRate = construction ? 2.65 : 2;
-      const pphType = construction ? 'PPh Final Pelaksana Konstruksi (2.65%)' : 'PPh 23 Jasa Konsultansi, Riset & Digital (2%)';
+      const pphRate = construction ? 2.65 : 2.0;
       setSimPphRate(pphRate);
-      setNewTaxForm((current) => ({ ...current, pph_rate: pphRate, pph_type: pphType }));
     }).catch(() => undefined);
   }, []);
 
-  // Calculations for Simulator
+  // Simulator Calculations
   const totalPpnContract = (simContractValue * 11) / 100;
   const dpDpp = (simContractValue * simDownPaymentPct) / 100;
   
   let dpPpn = 0;
   if (simTaxScheme === "FULL_UPFRONT") {
-    dpPpn = totalPpnContract; // 100% PPN di awal
+    dpPpn = totalPpnContract;
   } else if (simTaxScheme === "PROPORTIONAL") {
     dpPpn = (dpDpp * 11) / 100;
   } else {
-    dpPpn = 0; // Di akhir
+    dpPpn = 0;
   }
 
   const dpPph = (dpDpp * simPphRate) / 100;
-  const dpGrossInvoice = dpDpp + dpPpn;
   const dpNetCash = simClientType === "NON_WAPU" 
     ? dpDpp + dpPpn - dpPph 
-    : dpDpp - dpPph; // If WAPU, PPN is withheld by client
+    : dpDpp - dpPph;
 
-  // Sisa Termin Pelunasan
   const remainDpp = simContractValue - dpDpp;
   let remainPpn = 0;
   if (simTaxScheme === "FULL_UPFRONT") {
-    remainPpn = 0; // Sudah lunas di DP
+    remainPpn = 0;
   } else if (simTaxScheme === "PROPORTIONAL") {
     remainPpn = (remainDpp * 11) / 100;
   } else {
@@ -159,11 +166,12 @@ export function ProjectTaxWorkspace() {
 
   // Filtered transactions
   const filteredTransactions = transactions.filter((tx) => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      tx.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tx.project_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tx.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tx.tax_invoice_number.toLowerCase().includes(searchQuery.toLowerCase());
+      tx.customer_name.toLowerCase().includes(q) ||
+      tx.project_name.toLowerCase().includes(q) ||
+      tx.invoice_number.toLowerCase().includes(q) ||
+      tx.tax_invoice_number.toLowerCase().includes(q);
     const matchesScheme = schemeFilter === "ALL" || tx.tax_scheme === schemeFilter;
     const matchesClient = clientTypeFilter === "ALL" || tx.client_type === clientTypeFilter;
     return matchesSearch && matchesScheme && matchesClient;
@@ -176,53 +184,96 @@ export function ProjectTaxWorkspace() {
   const totalPpnSelfPay = totalPpnIssued - totalPpnWapu;
   const totalPphWithheld = transactions.reduce((acc, t) => acc + t.pph_amount, 0);
 
+  // Open Bupot Modal
   const handleOpenBupotModal = (tx: TaxTransaction) => {
     setSelectedTxForBupot(tx);
     setBupotForm({
       bupot_number: tx.bupot_number || "",
       bupot_date: localDateKey(),
-      tax_type: tx.pph_type,
+      tax_type: tx.pph_type || "PPh 23 Jasa Teknik & Manajemen",
       notes: `Bukti potong atas tagihan ${tx.invoice_number}`,
     });
     setIsBupotModalOpen(true);
   };
 
+  // Save Bupot
   const handleSaveBupot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTxForBupot) return;
+    setIsSavingBupot(true);
 
     try {
-      await api.post(`/api/v1/finance/tax-transactions/${selectedTxForBupot.id}/record-ntpn`, {
-        ntpn: bupotForm.bupot_number,
-        payment_reference: selectedTxForBupot.invoice_number,
-        paid_at: bupotForm.bupot_date,
+      await api.post(`/api/v1/finance/tax-transactions/${selectedTxForBupot.id}/record-bupot`, {
+        bupot_number: bupotForm.bupot_number.trim(),
+        bupot_date: bupotForm.bupot_date,
+        tax_type: bupotForm.tax_type,
+        notes: bupotForm.notes.trim(),
       });
       setTransactions((prev) =>
-      prev.map((t) =>
-        t.id === selectedTxForBupot.id
-          ? {
-              ...t,
-              bupot_status: "VERIFIED",
-              bupot_number: bupotForm.bupot_number,
-            }
-          : t
-      )
+        prev.map((t) =>
+          t.id === selectedTxForBupot.id
+            ? {
+                ...t,
+                bupot_status: "VERIFIED",
+                bupot_number: bupotForm.bupot_number.trim(),
+              }
+            : t
+        )
       );
-      toast.success(`Referensi pajak ${bupotForm.bupot_number} berhasil dicatat.`);
+      toast.success(`Bukti potong ${bupotForm.bupot_number} berhasil dicatat sebagai kredit pajak.`);
       setIsBupotModalOpen(false);
-    } catch {
-      toast.error("Referensi pajak gagal disimpan.");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.response?.data?.error || "Gagal mencatat bukti potong.");
+    } finally {
+      setIsSavingBupot(false);
     }
   };
 
-  const handleCreateTaxTransaction = (e: React.FormEvent) => {
+  // Open NTPN Modal
+  const handleOpenNtpnModal = (tx: TaxTransaction) => {
+    setSelectedTxForNtpn(tx);
+    setNtpnForm({
+      ntpn: tx.ntpn || "",
+      paid_at: localDateKey(),
+      payment_reference: tx.invoice_number,
+    });
+    setIsNtpnModalOpen(true);
+  };
+
+  // Save NTPN
+  const handleSaveNtpn = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.error("Transaksi pajak harus dibentuk dari billing document terposting; penerbitan lokal dinonaktifkan agar tidak menghasilkan data palsu.");
+    if (!selectedTxForNtpn) return;
+    setIsSavingNtpn(true);
+
+    try {
+      await api.post(`/api/v1/finance/tax-transactions/${selectedTxForNtpn.id}/record-ntpn`, {
+        ntpn: ntpnForm.ntpn.trim(),
+        payment_reference: ntpnForm.payment_reference.trim() || selectedTxForNtpn.invoice_number,
+        paid_at: ntpnForm.paid_at,
+      });
+      setTransactions((prev) =>
+        prev.map((t) =>
+          t.id === selectedTxForNtpn.id
+            ? {
+                ...t,
+                status: "PAID",
+                ntpn: ntpnForm.ntpn.trim(),
+              }
+            : t
+        )
+      );
+      toast.success(`NTPN ${ntpnForm.ntpn} berhasil disimpan. Transaksi PPN dinyatakan LUNAS disetor.`);
+      setIsNtpnModalOpen(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.response?.data?.error || "Gagal mencatat NTPN.");
+    } finally {
+      setIsSavingNtpn(false);
+    }
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      
+    <div className="flex flex-col gap-5">
       {/* ── HEADER & ACTIONS ──────────────── */}
       <div className="flex justify-between items-center flex-wrap gap-3">
         <div>
@@ -231,385 +282,255 @@ export function ProjectTaxWorkspace() {
             Kepatuhan Pajak Proyek (Tax Compliance & Withholding)
           </h3>
           <p className="text-xs text-text-secondary mt-0.5">
-            Manajemen PPN Keluaran, Pemotongan PPh 23 / Final 4(2), Penanganan Klien WAPU, dan Skema Pembayaran Pajak Awal vs Proporsional.
+            Manajemen PPN Keluaran, Pemotongan PPh 23 / Final 4(2), Penanganan Klien WAPU, dan Setoran NTPN Kas Negara.
           </p>
         </div>
 
-        <span className="badge badge-neutral text-xs">Dibentuk dari Billing terposting</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsSimulatorModalOpen(true)}
+            className="btn-outline py-2 px-3 text-xs gap-1.5 font-semibold text-text-primary border-gray-300 hover:bg-gray-50 shadow-xs flex items-center"
+          >
+            <Calculator size={14} className="text-blue-600" />
+            Simulator Pajak Proyek
+          </button>
+          <span className="badge badge-neutral text-xs py-1 px-2.5">
+            Dibentuk dari Billing terposting
+          </span>
+        </div>
       </div>
 
-      {/* ── 4 SUMMARY KPI CARDS ───────────── */}
+      {/* ── 4 SUMMARY KPI CARDS (Monochrome Enterprise) ───────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="card p-4 rounded-2xl border border-brand-primary-soft bg-brand-light-green/40">
+        <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-3xs font-bold text-brand-deep-green uppercase tracking-wider">Total DPP Proyek</span>
-            <Building2 size={16} className="text-brand-green" />
+            <span className="text-3xs font-bold text-text-secondary uppercase tracking-wider">Total DPP Proyek</span>
+            <Building2 size={16} className="text-gray-500" />
           </div>
-          <span className="text-xl font-black text-brand-deep-green mt-1.5 block">
+          <span className="text-xl font-bold font-mono text-text-primary mt-1.5 block">
             {formatMoney(totalDpp)}
           </span>
-          <span className="text-3xs text-brand-deep-green mt-0.5 block">{transactions.length} Faktur Tagihan Terbit</span>
+          <span className="text-3xs text-text-secondary mt-0.5 block">{transactions.length} Faktur Tagihan Terbit</span>
         </div>
 
-        <div className="card p-4 rounded-2xl border border-blue-200 bg-blue-50/40">
+        <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-3xs font-bold text-blue-800 uppercase tracking-wider">PPN Keluaran (11%)</span>
+            <span className="text-3xs font-bold text-text-secondary uppercase tracking-wider">PPN Keluaran (11%)</span>
             <FileText size={16} className="text-blue-600" />
           </div>
-          <span className="text-xl font-black text-blue-900 mt-1.5 block">
+          <span className="text-xl font-bold font-mono text-blue-700 mt-1.5 block">
             {formatMoney(totalPpnIssued)}
           </span>
-          <div className="flex items-center gap-2 text-3xs text-blue-700 mt-0.5">
-            <span>Setor Sendiri: <b>{formatMoney(totalPpnSelfPay)}</b></span>
+          <div className="flex items-center gap-2 text-3xs text-text-secondary mt-0.5 font-mono">
+            <span>Setor Sendiri: <b className="text-text-primary">{formatMoney(totalPpnSelfPay)}</b></span>
           </div>
         </div>
 
-        <div className="card p-4 rounded-2xl border border-amber-200 bg-amber-50/40">
+        <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-3xs font-bold text-amber-800 uppercase tracking-wider">PPN Dipungut WAPU</span>
+            <span className="text-3xs font-bold text-text-secondary uppercase tracking-wider">PPN Dipungut WAPU</span>
             <ShieldCheck size={16} className="text-amber-600" />
           </div>
-          <span className="text-xl font-black text-amber-900 mt-1.5 block">
+          <span className="text-xl font-bold font-mono text-amber-800 mt-1.5 block">
             {formatMoney(totalPpnWapu)}
           </span>
-          <span className="text-3xs text-amber-700 mt-0.5 block">Disetor langsung Klien BUMN/Pemerintah</span>
+          <span className="text-3xs text-text-secondary mt-0.5 block">Disetor langsung Klien BUMN/Pemerintah</span>
         </div>
 
-        <div className="card p-4 rounded-2xl border border-purple-200 bg-purple-50/40">
+        <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-3xs font-bold text-purple-800 uppercase tracking-wider">Potongan PPh (Withholding)</span>
+            <span className="text-3xs font-bold text-text-secondary uppercase tracking-wider">Potongan PPh (Withholding)</span>
             <TrendingUp size={16} className="text-purple-600" />
           </div>
-          <span className="text-xl font-black text-purple-900 mt-1.5 block">
+          <span className="text-xl font-bold font-mono text-purple-800 mt-1.5 block">
             {formatMoney(totalPphWithheld)}
           </span>
-          <span className="text-3xs text-purple-700 mt-0.5 block">Kredit Pajak PPh 23 & Final 4(2)</span>
+          <span className="text-3xs text-text-secondary mt-0.5 block">Kredit Pajak PPh 23 & Final 4(2)</span>
         </div>
       </div>
 
-      {/* ── INTERACTIVE TAX SIMULATOR & TIMING ENGINE ── */}
-      <div className="card p-5 rounded-2xl border border-text-tertiary bg-white shadow-xs flex flex-col gap-4">
-        <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-text-tertiary/60">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-brand-light-green text-brand-deep-green flex items-center justify-center font-bold">
-              <Calculator size={17} />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-text-primary">
-                Simulator & Kalkulator Skema Pajak Proyek (Uang Muka DP vs Pelunasan)
-              </h4>
-              <p className="text-2xs text-text-secondary">
-                Simulasikan perlakuan pajak di awal (DP 100% PPN), proporsional per termin, atau potongan PPh WAPU.
-              </p>
-            </div>
-          </div>
-          <span className="badge badge-success text-3xs font-bold">
-            Kalkulasi aktif
-          </span>
-        </div>
-
-        {/* Input Parameters Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+      {/* ── TABEL TRANSAKSI PAJAK PROYEK ── */}
+      <div className="card p-5 rounded-2xl border border-gray-200 bg-white shadow-xs flex flex-col gap-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <label className="font-semibold text-text-primary block mb-1">Nilai Kontrak Proyek (DPP)</label>
-            <input
-              type="number"
-              step="1000000"
-              value={simContractValue}
-              onChange={(e) => setSimContractValue(Number(e.target.value))}
-              className="input text-xs font-bold"
-            />
+            <h4 className="text-sm font-bold text-text-primary">Buku Besar Faktur & Pajak Proyek</h4>
+            <p className="text-2xs text-text-secondary">Daftar transaksi pajak otomatis yang di-generate dari penagihan (billing) termin berstatus POSTED.</p>
           </div>
 
-          <div>
-            <label className="font-semibold text-text-primary block mb-1">Persentase DP Awal (%)</label>
-            <input
-              type="number"
-              min="10"
-              max="90"
-              value={simDownPaymentPct}
-              onChange={(e) => setSimDownPaymentPct(Number(e.target.value))}
-              className="input text-xs font-bold"
-            />
-          </div>
-
-          <div>
-            <label className="font-semibold text-text-primary block mb-1">Skema Timing Pajak</label>
-            <select
-              value={simTaxScheme}
-              onChange={(e) => setSimTaxScheme(e.target.value as any)}
-              className="input text-xs font-semibold"
-            >
-              <option value="FULL_UPFRONT">🟢 Pajak Penuh di Awal (DP 100% PPN)</option>
-              <option value="PROPORTIONAL">🔵 Proporsional per Termin (Standar)</option>
-              <option value="FINAL_SETTLEMENT">🟡 Pajak Diselesaikan di Akhir</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="font-semibold text-text-primary block mb-1">Tipe Pemungut Klien</label>
-            <select
-              value={simClientType}
-              onChange={(e) => setSimClientType(e.target.value as any)}
-              className="input text-xs font-semibold"
-            >
-              <option value="NON_WAPU">Swasta (Non-WAPU - Bayar PPN ke Kita)</option>
-              <option value="WAPU">BUMN / Instansi (WAPU - Pungut Sendiri)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="font-semibold text-text-primary block mb-1">Tarif Potongan PPh</label>
-            <select
-              value={simPphRate}
-              onChange={(e) => setSimPphRate(Number(e.target.value))}
-              className="input text-xs font-semibold"
-            >
-              <option value={2.0}>PPh 23 Jasa Teknik (2.0%)</option>
-              <option value={1.75}>PPh Final Konstruksi Kecil (1.75%)</option>
-              <option value={2.65}>PPh Final Konstruksi Menengah (2.65%)</option>
-              <option value={4.0}>PPh Final Konsultansi (4.0%)</option>
-              <option value={0}>Bebas Potongan (0.0%)</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Live Calculation Results: Two Phase Comparison */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
-          {/* Phase 1: Uang Muka DP */}
-          <div className="p-4 rounded-xl border border-brand-primary-soft bg-white shadow-2xs flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-brand-deep-green flex items-center gap-1.5">
-                <span className="w-5 h-5 rounded-full bg-brand-green text-white flex items-center justify-center text-3xs font-bold">1</span>
-                Termin 1: Uang Muka (DP {simDownPaymentPct}%)
-              </span>
-              <span className="text-3xs px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-brand-light-green text-brand-deep-green">
-                {simTaxScheme === "FULL_UPFRONT" ? "100% PPN Di Awal" : "Proporsional"}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-text-tertiary/50">
-              <div className="text-text-secondary">Nilai DPP Tagihan:</div>
-              <div className="font-bold text-text-primary text-right">{formatMoney(dpDpp)}</div>
-
-              <div className="text-text-secondary">(+) PPN Ditagihkan (11%):</div>
-              <div className="font-bold text-blue-700 text-right">+{formatMoney(dpPpn)}</div>
-
-              <div className="text-text-secondary">(=) Total Nilai Invoice:</div>
-              <div className="font-bold text-text-primary text-right">{formatMoney(dpGrossInvoice)}</div>
-
-              <div className="text-text-secondary">(-) Potongan PPh ({simPphRate}%):</div>
-              <div className="font-bold text-purple-700 text-right">-{formatMoney(dpPph)}</div>
-
-              {simClientType === "WAPU" && (
-                <>
-                  <div className="text-amber-700 font-medium">(-) PPN Disetor Klien (WAPU):</div>
-                  <div className="font-bold text-amber-700 text-right">-{formatMoney(dpPpn)}</div>
-                </>
-              )}
-            </div>
-
-            <div className="mt-2 p-2.5 rounded-lg bg-brand-light-green border border-brand-primary-soft flex justify-between items-center text-xs">
-              <span className="font-bold text-brand-deep-green">Uang Masuk Bersih ke Bank:</span>
-              <span className="text-sm font-black text-brand-deep-green">{formatMoney(dpNetCash)}</span>
-            </div>
-          </div>
-
-          {/* Phase 2: Sisa Pelunasan */}
-          <div className="p-4 rounded-xl border border-text-tertiary bg-white shadow-2xs flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-text-primary flex items-center gap-1.5">
-                <span className="w-5 h-5 rounded-full bg-neutral-600 text-white flex items-center justify-center text-3xs font-bold">2</span>
-                Termin 2: Sisa Pelunasan ({100 - simDownPaymentPct}%)
-              </span>
-              <span className="text-3xs px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-bg-light text-text-secondary border border-text-tertiary">
-                {simTaxScheme === "FULL_UPFRONT" ? "Bebas PPN (Lunas di DP)" : "Proporsional"}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-text-tertiary/50">
-              <div className="text-text-secondary">Nilai DPP Tagihan:</div>
-              <div className="font-bold text-text-primary text-right">{formatMoney(remainDpp)}</div>
-
-              <div className="text-text-secondary">(+) PPN Ditagihkan:</div>
-              <div className="font-bold text-blue-700 text-right">+{formatMoney(remainPpn)}</div>
-
-              <div className="text-text-secondary">(=) Total Nilai Invoice:</div>
-              <div className="font-bold text-text-primary text-right">{formatMoney(remainDpp + remainPpn)}</div>
-
-              <div className="text-text-secondary">(-) Potongan PPh ({simPphRate}%):</div>
-              <div className="font-bold text-purple-700 text-right">-{formatMoney(remainPph)}</div>
-
-              {simClientType === "WAPU" && (
-                <>
-                  <div className="text-amber-700 font-medium">(-) PPN Disetor Klien (WAPU):</div>
-                  <div className="font-bold text-amber-700 text-right">-{formatMoney(remainPpn)}</div>
-                </>
-              )}
-            </div>
-
-            <div className="mt-2 p-2.5 rounded-lg bg-bg-light border border-text-tertiary flex justify-between items-center text-xs">
-              <span className="font-bold text-text-primary">Uang Masuk Bersih ke Bank:</span>
-              <span className="text-sm font-black text-text-primary">{formatMoney(remainNetCash)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── TABLE: DAFTAR TRANSAKSI & FAKTUR PAJAK PROYEK ── */}
-      <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3.5 shadow-2xs">
-        {/* Controls */}
-        <div className="flex justify-between items-center flex-wrap gap-3 pb-1">
-          <div className="flex items-center gap-2 flex-1 max-w-sm">
-            <div className="relative w-full">
-              <Search size={14} className="absolute left-3 top-3 text-text-secondary" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" size={13} />
               <input
                 type="text"
-                placeholder="Cari faktur, klien, nomor e-Faktur..."
+                placeholder="Cari no. faktur / klien..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input pl-9 text-xs h-9"
+                className="input pl-8 py-1.5 text-xs w-48 font-medium"
               />
             </div>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap text-xs">
-            <select
-              value={schemeFilter}
-              onChange={(e) => setSchemeFilter(e.target.value)}
-              className="input h-9 px-2.5 text-xs font-semibold"
-            >
-              <option value="ALL">Semua Skema Pajak</option>
-              <option value="FULL_UPFRONT">Pajak Penuh di Awal</option>
-              <option value="PROPORTIONAL">Proporsional per Termin</option>
-            </select>
 
             <select
               value={clientTypeFilter}
               onChange={(e) => setClientTypeFilter(e.target.value)}
-              className="input h-9 px-2.5 text-xs font-semibold"
+              className="input py-1.5 text-xs font-semibold"
             >
               <option value="ALL">Semua Tipe Klien</option>
               <option value="NON_WAPU">Non-WAPU (Swasta)</option>
               <option value="WAPU">WAPU (BUMN/Pemerintah)</option>
             </select>
+
+            <select
+              value={schemeFilter}
+              onChange={(e) => setSchemeFilter(e.target.value)}
+              className="input py-1.5 text-xs font-semibold"
+            >
+              <option value="ALL">Semua Skema</option>
+              <option value="FULL_UPFRONT">Pajak Di Awal</option>
+              <option value="PROPORTIONAL">Proporsional</option>
+              <option value="FINAL_SETTLEMENT">Pelunasan</option>
+            </select>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="table-scroll-wrapper border border-text-tertiary/70 rounded-xl overflow-hidden">
-          <table className="w-full data-table text-xs text-left min-w-[760px]">
+        <div className="table-scroll-wrapper border border-gray-200 rounded-xl overflow-hidden">
+          <table className="w-full data-table text-xs text-left min-w-[800px]">
             <thead>
-              <tr className="bg-bg-light text-text-secondary text-3xs uppercase tracking-wider border-b border-text-tertiary">
-                <th className="py-3 px-3.5 font-bold">No. Faktur / Tanggal</th>
-                <th className="py-3 px-3.5 font-bold">Klien & Proyek</th>
-                <th className="py-3 px-3.5 font-bold">DPP & Skema Pajak</th>
-                <th className="py-3 px-3.5 font-bold">PPN (11%)</th>
-                <th className="py-3 px-3.5 font-bold">Potongan PPh</th>
-                <th className="py-3 px-3.5 font-bold">Kas Bersih (Inflow)</th>
-                <th className="py-3 px-3.5 font-bold text-right">Status Bukti Potong</th>
+              <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b border-gray-200">
+                <th className="py-2.5 px-3.5 font-bold">No. Faktur / Tanggal</th>
+                <th className="py-2.5 px-3.5 font-bold">Klien & Proyek</th>
+                <th className="py-2.5 px-3.5 font-bold text-right">DPP (Nilai Kena Pajak)</th>
+                <th className="py-2.5 px-3.5 font-bold text-right">PPN (11%)</th>
+                <th className="py-2.5 px-3.5 font-bold text-right">Potongan PPh</th>
+                <th className="py-2.5 px-3.5 font-bold text-right">Kas Bersih (Inflow)</th>
+                <th className="py-2.5 px-3.5 font-bold text-right">Kepatuhan & Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-text-tertiary/40">
-              {filteredTransactions.map((tx) => (
-                <tr key={tx.id} className="hover:bg-brand-light-green/20 transition-colors">
-                  <td className="py-3 px-3.5">
-                    <strong className="text-text-primary font-mono text-xs block">{tx.invoice_number}</strong>
-                    <span className="text-3xs text-text-secondary font-mono block mt-0.5">
-                      e-Faktur: {tx.tax_invoice_number}
-                    </span>
-                    <span className="text-3xs text-text-secondary block">{formatDate(tx.tax_date)}</span>
-                  </td>
+            <tbody className="divide-y divide-gray-100">
+              {filteredTransactions.map((tx) => {
+                const isWapu = tx.client_type === "WAPU";
+                const isPaid = tx.status === "PAID" || Boolean(tx.ntpn);
+                const hasBupot = tx.bupot_status === "VERIFIED" && tx.bupot_number;
 
-                  <td className="py-3 px-3.5">
-                    <strong className="text-text-primary block text-xs">{tx.customer_name}</strong>
-                    <span className="text-3xs text-text-secondary block truncate max-w-[200px] mt-0.5">
-                      {tx.project_name}
-                    </span>
-                    <span className={cn(
-                      "inline-block px-1.5 py-0.5 rounded text-3xs font-bold uppercase tracking-wider mt-1",
-                      tx.client_type === "WAPU" 
-                        ? "bg-amber-100 text-amber-800 border border-amber-300"
-                        : "bg-bg-light text-text-secondary border border-text-tertiary"
-                    )}>
-                      {tx.client_type === "WAPU" ? "Klien WAPU (BUMN)" : "Non-WAPU"}
-                    </span>
-                  </td>
+                return (
+                  <tr key={tx.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="py-3 px-3.5">
+                      <strong className="text-text-primary font-mono text-xs block">{tx.invoice_number}</strong>
+                      <span className="text-3xs text-text-secondary font-mono block mt-0.5">
+                        Ref: {tx.tax_invoice_number}
+                      </span>
+                      <span className="text-3xs text-text-secondary block">{formatDate(tx.tax_date)}</span>
+                    </td>
 
-                  <td className="py-3 px-3.5">
-                    <strong className="text-text-primary block font-bold">{formatMoney(tx.dpp_amount)}</strong>
-                    <span className="text-3xs text-brand-deep-green font-semibold block mt-0.5">
-                      {tx.tax_scheme === "FULL_UPFRONT" ? "Pajak Di Awal" : tx.tax_scheme === "PROPORTIONAL" ? "Proporsional" : tx.tax_scheme === "FINAL_SETTLEMENT" ? "Pelunasan Akhir" : "Belum ditentukan"}
-                    </span>
-                  </td>
+                    <td className="py-3 px-3.5">
+                      <strong className="text-text-primary block text-xs">{tx.customer_name}</strong>
+                      <span className="text-3xs text-text-secondary block truncate max-w-[200px] mt-0.5">
+                        {tx.project_name}
+                      </span>
+                      <span className={cn(
+                        "inline-block px-1.5 py-0.5 rounded text-3xs font-bold uppercase tracking-wider mt-1 border",
+                        isWapu 
+                          ? "bg-amber-50 text-amber-800 border-amber-300"
+                          : "bg-gray-50 text-text-secondary border-gray-200"
+                      )}>
+                        {isWapu ? "Klien WAPU (BUMN/Instansi)" : "Non-WAPU (Swasta)"}
+                      </span>
+                    </td>
 
-                  <td className="py-3 px-3.5">
-                    <span className="font-bold text-blue-700 block">+{formatMoney(tx.ppn_amount)}</span>
-                    <span className="text-3xs text-text-secondary block">
-                      {tx.client_type === "WAPU" ? "Disetor Klien" : "Wajib Setor"}
-                    </span>
-                  </td>
+                    <td className="py-3 px-3.5 text-right">
+                      <strong className="text-text-primary block font-mono font-bold">{formatMoney(tx.dpp_amount)}</strong>
+                      <span className="text-3xs text-text-secondary font-medium block mt-0.5">
+                        {tx.tax_scheme === "FULL_UPFRONT" ? "Pajak Di Awal" : tx.tax_scheme === "PROPORTIONAL" ? "Proporsional" : tx.tax_scheme === "FINAL_SETTLEMENT" ? "Pelunasan Akhir" : "Standar"}
+                      </span>
+                    </td>
 
-                  <td className="py-3 px-3.5">
-                    <span className="font-bold text-purple-700 block">-{formatMoney(tx.pph_amount)}</span>
-                    <span className="text-3xs text-text-secondary block truncate max-w-[130px]">
-                      {tx.pph_type} ({tx.pph_rate}%)
-                    </span>
-                  </td>
+                    <td className="py-3 px-3.5 text-right font-mono">
+                      <span className="font-bold text-blue-700 block">+{formatMoney(tx.ppn_amount)}</span>
+                      <span className="text-3xs text-text-secondary block">
+                        {isWapu ? "Disetor Klien WAPU" : (isPaid ? "✓ Lunas Kas Negara" : "Wajib Setor Sendiri")}
+                      </span>
+                    </td>
 
-                  <td className="py-3 px-3.5">
-                    <strong className="font-black text-brand-deep-green block text-xs">
-                      {formatMoney(tx.net_cash_inflow)}
-                    </strong>
-                    <span className="text-3xs text-text-secondary block">Masuk Rekening Bank</span>
-                  </td>
+                    <td className="py-3 px-3.5 text-right font-mono">
+                      <span className="font-bold text-purple-700 block">-{formatMoney(tx.pph_amount)}</span>
+                      <span className="text-3xs text-text-secondary block truncate max-w-[140px]">
+                        {tx.pph_type} ({tx.pph_rate}%)
+                      </span>
+                    </td>
 
-                  <td className="py-3 px-3.5 text-right">
-                    {tx.bupot_status === "VERIFIED" ? (
-                      <div className="flex flex-col items-end">
-                        <span className="badge badge-success text-3xs gap-1">
-                          <CheckCircle2 size={11} className="text-brand-green" /> Bupot Verified
-                        </span>
-                        <span className="text-3xs text-text-secondary font-mono mt-0.5">{tx.bupot_number}</span>
+                    <td className="py-3 px-3.5 text-right font-mono">
+                      <strong className="font-bold text-emerald-700 block text-xs">
+                        {formatMoney(tx.net_cash_inflow)}
+                      </strong>
+                      <span className="text-3xs text-text-secondary block">Masuk Rekening Bank</span>
+                    </td>
+
+                    <td className="py-3 px-3.5 text-right">
+                      <div className="flex flex-col items-end gap-1.5">
+                        {/* Status Bupot PPh */}
+                        {hasBupot ? (
+                          <span className="inline-flex items-center gap-1 text-3xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            <CheckCircle2 size={10} className="text-emerald-600" /> Bupot: {tx.bupot_number}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleOpenBupotModal(tx)}
+                            className="btn-outline py-1 px-2.5 text-2xs gap-1 text-purple-700 border-purple-300 hover:bg-purple-50 font-bold"
+                          >
+                            <FileCheck2 size={11} /> Input Bukti Potong
+                          </button>
+                        )}
+
+                        {/* Status Setoran NTPN PPN (Hanya untuk Non-WAPU) */}
+                        {!isWapu && (
+                          isPaid ? (
+                            <span className="inline-flex items-center gap-1 text-3xs font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                              <CheckCircle2 size={10} className="text-blue-600" /> NTPN: {tx.ntpn || "LUNAS"}
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenNtpnModal(tx)}
+                              className="btn-primary py-1 px-2.5 text-2xs gap-1 bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                            >
+                              <CreditCard size={11} /> Catat NTPN Setor
+                            </button>
+                          )
+                        )}
                       </div>
-                    ) : tx.bupot_status === "RECEIVED" ? (
-                      <button
-                        onClick={() => handleOpenBupotModal(tx)}
-                        className="btn-outline py-1 px-2.5 text-2xs gap-1 text-brand-deep-green border-brand-primary-soft hover:bg-brand-light-green font-bold"
-                      >
-                        <FileCheck2 size={12} /> Verifikasi Bupot
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleOpenBupotModal(tx)}
-                        className="btn-ghost py-1 px-2.5 text-2xs gap-1 text-amber-700 hover:bg-amber-50 font-bold"
-                      >
-                        <AlertCircle size={12} /> Input Bukti Potong
-                      </button>
-                    )}
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {!filteredTransactions.length && (
+                <tr>
+                  <td colSpan={7} className="text-center py-10 text-xs text-text-secondary">
+                    {loading ? "Memuat transaksi pajak..." : "Belum ada transaksi pajak proyek. Transaksi akan muncul otomatis saat Billing Termin diposting."}
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* ── MODAL: INPUT / VERIFIKASI BUKTI POTONG (BUPOT) PPH ── */}
+      {/* ── MODAL: VERIFIKASI BUKTI POTONG (e-BUPOT PPH) ── */}
       <Modal
         isOpen={isBupotModalOpen}
-        onClose={() => setIsBupotModalOpen(false)}
-        title="📜 Verifikasi Bukti Potong (Bupot) PPh Klien"
+        onClose={() => !isSavingBupot && setIsBupotModalOpen(false)}
+        title="Verifikasi Bukti Potong (e-Bupot) PPh Klien"
         subtitle={`Faktur: ${selectedTxForBupot?.invoice_number} — Klien: ${selectedTxForBupot?.customer_name}`}
         size="md"
       >
-        <form onSubmit={handleSaveBupot} className="flex flex-col gap-3.5 p-1 text-xs">
+        <form onSubmit={handleSaveBupot} className="flex flex-col gap-3.5 p-2 text-xs">
           <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-900">
-            <span className="block font-bold">Informasi Pemotongan Pajak:</span>
+            <span className="block font-bold">Informasi Pemotongan Pajak Klien:</span>
             <div className="grid grid-cols-2 gap-1 mt-1 text-2xs">
               <div>Nilai DPP: <b>{formatMoney(selectedTxForBupot?.dpp_amount || 0)}</b></div>
               <div>Potongan PPh: <b className="text-purple-700">{formatMoney(selectedTxForBupot?.pph_amount || 0)} ({selectedTxForBupot?.pph_rate}%)</b></div>
             </div>
+            <p className="mt-1 text-3xs text-purple-800 leading-relaxed">
+              Catatan: Bukti Potong adalah bukti bahwa PPh Anda telah dipotong dan disetorkan oleh klien ke kas negara (Kredit Pajak Pasal 23 / Final 4(2)).
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -618,7 +539,7 @@ export function ProjectTaxWorkspace() {
               <input
                 type="text"
                 required
-                placeholder="Contoh: BP-23-CISCO-2026-088"
+                placeholder="Contoh: BP-23-0001892"
                 value={bupotForm.bupot_number}
                 onChange={(e) => setBupotForm({ ...bupotForm, bupot_number: e.target.value })}
                 className="input text-xs font-mono font-bold"
@@ -642,24 +563,25 @@ export function ProjectTaxWorkspace() {
               type="text"
               readOnly
               value={bupotForm.tax_type}
-              className="input text-xs bg-bg-light text-text-secondary font-semibold"
+              className="input text-xs bg-gray-50 text-text-secondary font-semibold"
             />
           </div>
 
           <div>
-            <label className="font-bold text-text-primary block mb-1">Catatan Verifikasi Pajak</label>
-            <input
-              type="text"
-              placeholder="Catatan pelaporan SPT Masa / kredit pajak..."
+            <label className="font-bold text-text-primary block mb-1">Catatan Verifikasi</label>
+            <textarea
+              rows={2}
               value={bupotForm.notes}
               onChange={(e) => setBupotForm({ ...bupotForm, notes: e.target.value })}
+              placeholder="Catatan nomor e-Bupot atau nama pemotong..."
               className="input text-xs"
             />
           </div>
 
-          <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-text-tertiary">
+          <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-gray-200">
             <button
               type="button"
+              disabled={isSavingBupot}
               onClick={() => setIsBupotModalOpen(false)}
               className="btn-ghost py-1.5 px-3 text-xs"
             >
@@ -667,138 +589,273 @@ export function ProjectTaxWorkspace() {
             </button>
             <button
               type="submit"
-              className="btn-primary py-2 px-4 text-xs font-bold"
+              disabled={isSavingBupot}
+              className="btn-primary py-2 px-4 text-xs font-bold bg-purple-700 hover:bg-purple-800 text-white"
             >
-              Simpan & Verifikasi Bukti Potong
+              {isSavingBupot ? "Menyimpan..." : "Simpan Bukti Potong"}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* ── MODAL: TERBITKAN FAKTUR PAJAK BARU ── */}
+      {/* ── MODAL: CATAT NTPN SETORAN KAS NEGARA (PPN) ── */}
       <Modal
-        isOpen={isAddTaxModalOpen}
-        onClose={() => setIsAddTaxModalOpen(false)}
-        title="Terbitkan Faktur Pajak & Billing Proyek"
-        subtitle="Entri faktur PPN dan perhitungan withholding tax PPh"
+        isOpen={isNtpnModalOpen}
+        onClose={() => !isSavingNtpn && setIsNtpnModalOpen(false)}
+        title="Catat NTPN Setoran Kas Negara (PPN Keluaran)"
+        subtitle={`Faktur: ${selectedTxForNtpn?.invoice_number} — PPN: ${formatMoney(selectedTxForNtpn?.ppn_amount || 0)}`}
         size="md"
       >
-        <form onSubmit={handleCreateTaxTransaction} className="flex flex-col gap-3 p-1 text-xs">
-          <div>
-            <label className="font-bold text-text-primary block mb-1">Nama Klien / Perusahaan *</label>
-            <input
-              type="text"
-              required
-              placeholder="Contoh: PT. Adhi Karya (Persero) Tbk"
-              value={newTaxForm.customer_name}
-              onChange={(e) => setNewTaxForm({ ...newTaxForm, customer_name: e.target.value })}
-              className="input text-xs"
-            />
-          </div>
-
-          <div>
-            <label className="font-bold text-text-primary block mb-1">Nama Proyek Terkait *</label>
-            <input
-              type="text"
-              required
-              placeholder="Contoh: Pekerjaan Instalasi Instrumentasi & Otomasi"
-              value={newTaxForm.project_name}
-              onChange={(e) => setNewTaxForm({ ...newTaxForm, project_name: e.target.value })}
-              className="input text-xs"
-            />
+        <form onSubmit={handleSaveNtpn} className="flex flex-col gap-3.5 p-2 text-xs">
+          <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900">
+            <span className="block font-bold">Informasi Pembayaran PPN ke Kas Negara:</span>
+            <div className="grid grid-cols-2 gap-1 mt-1 text-2xs">
+              <div>Jumlah PPN: <b className="text-blue-700">{formatMoney(selectedTxForNtpn?.ppn_amount || 0)}</b></div>
+              <div>Kode Billing: <b>{selectedTxForNtpn?.tax_invoice_number || "-"}</b></div>
+            </div>
+            <p className="mt-1 text-3xs text-blue-800 leading-relaxed">
+              NTPN (Nomor Transaksi Penerimaan Negara) adalah bukti resmi 16 karakter setelah pembayaran kode billing via bank/ATM/portal DJP.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="font-bold text-text-primary block mb-1">Nilai DPP Tagihan (Rp) *</label>
-              <input
-                type="number"
-                required
-                min="100000"
-                value={newTaxForm.dpp_amount}
-                onChange={(e) => setNewTaxForm({ ...newTaxForm, dpp_amount: Number(e.target.value) })}
-                className="input text-xs font-bold"
-              />
-            </div>
-            <div>
-              <label className="font-bold text-text-primary block mb-1">Nomor Referensi Invoice</label>
+              <label className="font-bold text-text-primary block mb-1">NTPN (16 Karakter) *</label>
               <input
                 type="text"
-                placeholder="INV-2026-009"
-                value={newTaxForm.invoice_number}
-                onChange={(e) => setNewTaxForm({ ...newTaxForm, invoice_number: e.target.value })}
-                className="input text-xs font-mono"
+                required
+                maxLength={32}
+                placeholder="Contoh: 1A2B3C4D5E6F7G8H"
+                value={ntpnForm.ntpn}
+                onChange={(e) => setNtpnForm({ ...ntpnForm, ntpn: e.target.value.toUpperCase() })}
+                className="input text-xs font-mono font-bold tracking-wider"
+              />
+            </div>
+            <div>
+              <label className="font-bold text-text-primary block mb-1">Tanggal Setor *</label>
+              <input
+                type="date"
+                required
+                value={ntpnForm.paid_at}
+                onChange={(e) => setNtpnForm({ ...ntpnForm, paid_at: e.target.value })}
+                className="input text-xs"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="font-bold text-text-primary block mb-1">Skema Timing Pajak</label>
-              <select
-                value={newTaxForm.tax_scheme}
-                onChange={(e) => setNewTaxForm({ ...newTaxForm, tax_scheme: e.target.value as any })}
-                className="input text-xs font-semibold"
-              >
-                <option value="PROPORTIONAL">Proporsional per Termin</option>
-                <option value="FULL_UPFRONT">🟢 Pajak Penuh di Awal (DP 100% PPN)</option>
-                <option value="FINAL_SETTLEMENT">Pajak di Akhir / Pelunasan</option>
-              </select>
-            </div>
-            <div>
-              <label className="font-bold text-text-primary block mb-1">Tipe Pemungut Klien</label>
-              <select
-                value={newTaxForm.client_type}
-                onChange={(e) => setNewTaxForm({ ...newTaxForm, client_type: e.target.value as any })}
-                className="input text-xs font-semibold"
-              >
-                <option value="NON_WAPU">Non-WAPU (Swasta)</option>
-                <option value="WAPU">WAPU (BUMN / Pemerintah)</option>
-              </select>
-            </div>
-          </div>
-
           <div>
-            <label className="font-bold text-text-primary block mb-1">Jenis & Tarif PPh Withholding</label>
-            <select
-              value={newTaxForm.pph_rate}
-              onChange={(e) => {
-                const rate = Number(e.target.value);
-                let label = "PPh 23 (2%)";
-                if (rate === 1.75) label = "PPh Final Konstruksi Kecil (1.75%)";
-                if (rate === 2.65) label = "PPh Final Konstruksi Menengah (2.65%)";
-                if (rate === 4.0) label = "PPh Final Konsultansi (4%)";
-                if (rate === 0) label = "Bebas Potongan (0%)";
-                setNewTaxForm({ ...newTaxForm, pph_rate: rate, pph_type: label });
-              }}
-              className="input text-xs font-semibold"
-            >
-              <option value={2.0}>PPh 23 Konsultansi, Riset, Digital & Media (2%)</option>
-              <option value={1.75}>PPh Final Jasa Pelaksana Konstruksi Kualifikasi Kecil (1.75%)</option>
-              <option value={2.65}>PPh Final Jasa Pelaksana Konstruksi Kualifikasi Menengah/Besar (2.65%)</option>
-              <option value={4.0}>PPh Final Jasa Konsultansi Konstruksi (4%)</option>
-              <option value={0}>Non-PPh / Bebas Potongan (0%)</option>
-            </select>
+            <label className="font-bold text-text-primary block mb-1">Referensi Pembayaran / Bank</label>
+            <input
+              type="text"
+              value={ntpnForm.payment_reference}
+              onChange={(e) => setNtpnForm({ ...ntpnForm, payment_reference: e.target.value })}
+              placeholder="Contoh: Mandiri e-Tax Ref #88912"
+              className="input text-xs"
+            />
           </div>
 
-          <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-text-tertiary">
+          <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-gray-200">
             <button
               type="button"
-              onClick={() => setIsAddTaxModalOpen(false)}
+              disabled={isSavingNtpn}
+              onClick={() => setIsNtpnModalOpen(false)}
               className="btn-ghost py-1.5 px-3 text-xs"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="btn-primary py-2 px-4 text-xs font-bold"
+              disabled={isSavingNtpn}
+              className="btn-primary py-2 px-4 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
             >
-              Terbitkan Faktur Pajak
+              {isSavingNtpn ? "Menyimpan..." : "Simpan NTPN (Tandai Lunas)"}
             </button>
           </div>
         </form>
       </Modal>
 
+      {/* ── MODAL: SIMULATOR & KALKULATOR SKEMA PAJAK PROYEK ── */}
+      <Modal
+        isOpen={isSimulatorModalOpen}
+        onClose={() => setIsSimulatorModalOpen(false)}
+        title="Simulator & Kalkulator Skema Pajak Proyek (Uang Muka DP vs Pelunasan)"
+        subtitle="Simulasikan perlakuan pajak di awal (DP 100% PPN), proporsional per termin, atau potongan PPh WAPU."
+        size="lg"
+      >
+        <div className="flex flex-col gap-4 p-2 text-xs">
+          {/* Input Parameters Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs p-4 rounded-xl bg-gray-50 border border-gray-200">
+            <div>
+              <label className="font-semibold text-text-primary block mb-1">Nilai Kontrak Proyek (DPP)</label>
+              <input
+                type="number"
+                step="1000000"
+                value={simContractValue}
+                onChange={(e) => setSimContractValue(Number(e.target.value))}
+                className="input text-xs font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-text-primary block mb-1">Persentase DP Awal (%)</label>
+              <input
+                type="number"
+                min="10"
+                max="90"
+                value={simDownPaymentPct}
+                onChange={(e) => setSimDownPaymentPct(Number(e.target.value))}
+                className="input text-xs font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-text-primary block mb-1">Skema Timing Pajak</label>
+              <select
+                value={simTaxScheme}
+                onChange={(e) => setSimTaxScheme(e.target.value as any)}
+                className="input text-xs font-semibold"
+              >
+                <option value="FULL_UPFRONT">🟢 Pajak Penuh di Awal (DP 100% PPN)</option>
+                <option value="PROPORTIONAL">🔵 Proporsional per Termin (Standar)</option>
+                <option value="FINAL_SETTLEMENT">🟡 Pajak Diselesaikan di Akhir</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="font-semibold text-text-primary block mb-1">Tipe Pemungut Klien</label>
+              <select
+                value={simClientType}
+                onChange={(e) => setSimClientType(e.target.value as any)}
+                className="input text-xs font-semibold"
+              >
+                <option value="NON_WAPU">Swasta (Non-WAPU)</option>
+                <option value="WAPU">BUMN / Instansi (WAPU)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="font-semibold text-text-primary block mb-1">Tarif Potongan PPh</label>
+              <select
+                value={simPphRate}
+                onChange={(e) => setSimPphRate(Number(e.target.value))}
+                className="input text-xs font-semibold"
+              >
+                <option value={2.0}>PPh 23 Jasa Tek/Manajemen (2%)</option>
+                <option value={2.65}>PPh Final Konstruksi (2.65%)</option>
+                <option value={1.75}>PPh Final Konstruksi Kecil (1.75%)</option>
+                <option value={4.0}>PPh Final Konsultan Konstruksi (4%)</option>
+                <option value={0}>Non-PPh / Bebas (0%)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Simulation Output Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Termin 1: DP */}
+            <div className="card p-4 rounded-xl border border-blue-200 bg-blue-50/20 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between pb-2 border-b border-blue-200">
+                  <span className="font-bold text-blue-900 text-xs flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-3xs font-black">1</span>
+                    Termin 1: Uang Muka (DP {simDownPaymentPct}%)
+                  </span>
+                  <span className="badge badge-primary text-3xs">
+                    {simTaxScheme === "FULL_UPFRONT" ? "100% PPN DI AWAL" : simTaxScheme === "PROPORTIONAL" ? "PPN PROPORSIONAL" : "BEBAS PPN (AKHIR)"}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1.5 mt-3 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-text-secondary">Nilai DPP Tagihan:</span>
+                    <b className="font-mono">{formatMoney(dpDpp)}</b>
+                  </div>
+                  <div className="flex justify-between text-blue-700">
+                    <span>(+) PPN Ditagihkan (11%):</span>
+                    <b className="font-mono">+{formatMoney(dpPpn)}</b>
+                  </div>
+                  <div className="flex justify-between border-t border-blue-200 pt-1 font-bold">
+                    <span>(=) Total Nilai Invoice:</span>
+                    <span className="font-mono">{formatMoney(dpDpp + dpPpn)}</span>
+                  </div>
+                  <div className="flex justify-between text-purple-700">
+                    <span>(-) Potongan PPh ({simPphRate}%):</span>
+                    <b className="font-mono">-{formatMoney(dpPph)}</b>
+                  </div>
+                  {simClientType === "WAPU" && (
+                    <div className="flex justify-between text-amber-800 text-2xs italic">
+                      <span>(*) PPN Dipungut WAPU (Tidak masuk kas):</span>
+                      <span className="font-mono">-{formatMoney(dpPpn)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-blue-200 flex items-center justify-between bg-blue-100/40 p-2.5 rounded-lg">
+                <span className="font-bold text-blue-950 text-xs">Uang Masuk Bersih ke Bank:</span>
+                <span className="text-sm font-black font-mono text-blue-950">
+                  {formatMoney(dpNetCash)}
+                </span>
+              </div>
+            </div>
+
+            {/* Termin 2: Pelunasan */}
+            <div className="card p-4 rounded-xl border border-gray-200 bg-gray-50/40 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                  <span className="font-bold text-text-primary text-xs flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-gray-600 text-white flex items-center justify-center text-3xs font-black">2</span>
+                    Termin 2: Sisa Pelunasan ({100 - simDownPaymentPct}%)
+                  </span>
+                  <span className="badge badge-neutral text-3xs">
+                    {simTaxScheme === "FULL_UPFRONT" ? "BEBAS PPN (LUNAS DI DP)" : simTaxScheme === "PROPORTIONAL" ? "PPN PROPORSIONAL" : "100% PPN DILUNASI"}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1.5 mt-3 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-text-secondary">Nilai DPP Tagihan:</span>
+                    <b className="font-mono">{formatMoney(remainDpp)}</b>
+                  </div>
+                  <div className="flex justify-between text-blue-700">
+                    <span>(+) PPN Ditagihkan:</span>
+                    <b className="font-mono">+{formatMoney(remainPpn)}</b>
+                  </div>
+                  <div className="flex justify-between border-t border-gray-200 pt-1 font-bold">
+                    <span>(=) Total Nilai Invoice:</span>
+                    <span className="font-mono">{formatMoney(remainDpp + remainPpn)}</span>
+                  </div>
+                  <div className="flex justify-between text-purple-700">
+                    <span>(-) Potongan PPh ({simPphRate}%):</span>
+                    <b className="font-mono">-{formatMoney(remainPph)}</b>
+                  </div>
+                  {simClientType === "WAPU" && (
+                    <div className="flex justify-between text-amber-800 text-2xs italic">
+                      <span>(*) PPN Dipungut WAPU (Tidak masuk kas):</span>
+                      <span className="font-mono">-{formatMoney(remainPpn)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-gray-200 flex items-center justify-between bg-gray-100 p-2.5 rounded-lg">
+                <span className="font-bold text-text-primary text-xs">Uang Masuk Bersih ke Bank:</span>
+                <span className="text-sm font-black font-mono text-text-primary">
+                  {formatMoney(remainNetCash)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={() => setIsSimulatorModalOpen(false)}
+              className="btn-primary py-1.5 px-4 text-xs font-semibold"
+            >
+              Tutup Simulator
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -94,8 +94,8 @@ export function canPerform(
       return ["super_admin", "company_admin", "executive", "crm", "pm"].includes(role);
 
     case "crm:operate":
-      // Executive is view-only in CRM (cannot create deals, edit limits, estimates, tickets, inquiries)
-      return ["company_admin", "crm"].includes(role);
+      // Directors manage CRM by default, including quotation approvals.
+      return ["company_admin", "executive", "crm"].includes(role);
 
     case "attendance:view-team":
       // Executive, PM, OM, Super Admin can view team attendance

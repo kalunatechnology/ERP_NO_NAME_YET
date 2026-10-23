@@ -13,6 +13,7 @@ import { sendSuccess, sendError } from '../../utils/response';
 import { requireFinanceRole } from '../../middleware/sod.middleware';
 import { RoleCode } from '../../types/roles';
 import { ForbiddenError } from '../../utils/errors';
+import prisma from '../../config/database';
 
 export const assetsRouter = Router();
 
@@ -139,8 +140,76 @@ assetsRouter.post(
 // =============================================================================
 // REST CRUD VIEWSETS
 // =============================================================================
-assetsRouter.use('/assets',              createCrudRouter({ modelName: 'asset_asset',             searchFields: ['asset_name', 'asset_code', 'serial_number'] }));
-assetsRouter.use('/asset-categories',    createCrudRouter({ modelName: 'asset_category',          searchFields: ['category_name', 'category_code'] }));
+assetsRouter.use('/assets', createCrudRouter({
+  modelName: 'asset_asset',
+  searchFields: ['asset_name', 'asset_code', 'serial_number'],
+  beforeCreate: async (_req: Request, data: any) => {
+    if (!data.status) data.status = 'ACTIVE';
+    if (!data.useful_life_months) data.useful_life_months = 48;
+    if (data.salvage_value === undefined || data.salvage_value === null) data.salvage_value = 0;
+    return data;
+  },
+  afterCreate: async (_req: Request, record: any) => {
+    try {
+      const existingBook = await prisma.asset_book.findFirst({
+        where: { asset_id: record.id },
+      });
+      if (!existingBook) {
+        const costBasis = Number(record.acquisition_cost || 0);
+        const salvage = Number(record.salvage_value || 0);
+        const usefulMonths = Number(record.useful_life_months || 48);
+        await prisma.asset_book.create({
+          data: {
+            tenant_id: record.tenant_id,
+            company_id: record.company_id,
+            asset_id: record.id,
+            book_type: 'COMMERCIAL',
+            depreciation_method: 'STRAIGHT_LINE',
+            cost_basis: costBasis,
+            salvage_value: salvage,
+            useful_life_periods: usefulMonths,
+            net_book_value: costBasis,
+            accumulated_depreciation: 0,
+            depreciation_start_date: record.available_for_use_date || record.acquisition_date || new Date(),
+          },
+        });
+      }
+    } catch (err) {
+      console.error('[AssetsRouter] Auto-create asset_book error:', err);
+    }
+  },
+}));
+assetsRouter.use('/asset-categories',    createCrudRouter({
+  modelName: 'asset_category',
+  searchFields: ['category_name', 'category_code'],
+  beforeCreate: async (req, data) => {
+    const companyId = req.user?.company_id || (req.headers['x-company-id'] as string) || '10000000-0000-0000-0000-000000000001';
+    let assetAccountId = data.asset_account_id;
+    let accumDepAccountId = data.accumulated_depreciation_account_id;
+    let depExpAccountId = data.depreciation_expense_account_id;
+
+    if (!assetAccountId || !accumDepAccountId || !depExpAccountId) {
+      const coaAccounts = await prisma.fin_account.findMany({
+        where: { company_id: companyId, account_code: { in: ['1200', '1210', '6200', '6101'] } },
+      });
+      const acc1200 = coaAccounts.find(a => a.account_code === '1200')?.id;
+      const acc1210 = coaAccounts.find(a => a.account_code === '1210')?.id;
+      const acc6200 = coaAccounts.find(a => a.account_code === '6200' || a.account_code === '6101')?.id;
+
+      assetAccountId = assetAccountId || acc1200 || null;
+      accumDepAccountId = accumDepAccountId || acc1210 || null;
+      depExpAccountId = depExpAccountId || acc6200 || null;
+    }
+
+    return {
+      ...data,
+      company_id: companyId,
+      asset_account_id: assetAccountId,
+      accumulated_depreciation_account_id: accumDepAccountId,
+      depreciation_expense_account_id: depExpAccountId,
+    };
+  },
+}));
 assetsRouter.use('/books',               createCrudRouter({ modelName: 'asset_book' }));
 assetsRouter.use('/depreciation-lines',  createCrudRouter({ modelName: 'asset_depreciation_line' }));
 assetsRouter.use('/maintenances',        createCrudRouter({ modelName: 'asset_maintenance',       searchFields: ['description'] }));

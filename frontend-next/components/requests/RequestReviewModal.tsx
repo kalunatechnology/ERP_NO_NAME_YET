@@ -8,6 +8,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import {
   X, Check, AlertCircle, Users, Briefcase,
@@ -83,6 +84,26 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
         : null
     );
   }, [isOpen, requestId, requestAssigneeId, requestAssigneeName]);
+
+  const searchParams = useSearchParams();
+  const queryNoteId = searchParams?.get('noteId');
+
+  useEffect(() => {
+    if (!isOpen || !queryNoteId) return;
+
+    const timeoutId = setTimeout(() => {
+      const targetElement = document.getElementById(`note-item-${queryNoteId}`) || document.getElementById(queryNoteId);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetElement.classList.add('ring-2', 'ring-amber-500', 'bg-amber-50', 'transition-all', 'duration-500');
+        setTimeout(() => {
+          targetElement.classList.remove('ring-2', 'ring-amber-500', 'bg-amber-50');
+        }, 4000);
+      }
+    }, 150);
+
+    return () => clearTimeout(timeoutId);
+  }, [isOpen, queryNoteId, requestId]);
 
   useEffect(() => {
     setBankId(""); setBankReference(""); setBanks([]);

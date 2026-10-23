@@ -25,6 +25,9 @@ export interface CRMData {
   orders: any[];
   conversations: any[];
   feedback: any[];
+  surveyQuestions: any[];
+  surveyResponses: any[];
+  surveyAnswers: any[];
   credit: any[];
   cases: any[];
   resolutions: any[];
@@ -51,6 +54,7 @@ export interface CRMInboxConversation {
   business_unit_name?: string | null;
   assigned_user_id: string | null;
   inquiry_id: string | null;
+  origin_domain?: string | null;
   inquiry?: { id: string; inquiry_number: string; status: string } | null;
   assigned_user?: { id: string; full_name: string } | null;
   external_identities?: Array<{ id: string; type: string; masked_value: string; channel_verification_status: string; customer_match_status: string; party_id: string | null }>;
@@ -136,6 +140,7 @@ export interface CRMIntegrationSource {
   business_unit_name: string | null;
   key_id: string;
   allowed_event_types: string[];
+  allowed_origin_domains: string[];
   status: string;
   created_at: string;
   last_seen_at?: string | null;
@@ -161,6 +166,16 @@ export async function setCRMIntegrationSourceStatus(id: string, status: "ACTIVE"
   return data;
 }
 
+export async function updateCRMIntegrationSourceDomains(id: string, allowed_origin_domains: string[], companyId?: string) {
+  const { data } = await api.patch(`/api/v1/core/integration-sources/${id}/origin-domains/`, { allowed_origin_domains }, companyScopeHeaders(companyId));
+  return data as { id: string; allowed_origin_domains: string[] };
+}
+
+export async function updateCRMIntegrationSourceEvents(id: string, allowed_event_types: string[], companyId?: string) {
+  const { data } = await api.patch(`/api/v1/core/integration-sources/${id}/allowed-events/`, { allowed_event_types }, companyScopeHeaders(companyId));
+  return data as { id: string; allowed_event_types: string[] };
+}
+
 /* ── Endpoints map ───────────────────────────────── */
 // frontend-next/lib/api/crm.api.ts
 
@@ -179,6 +194,9 @@ const CRM_SOURCES: Record<keyof CRMData, string> = {
   orders:       "/api/v1/sales/orders/?page_size=100",
   conversations:"/api/v1/crm/conversations/?page_size=100",
   feedback:     "/api/v1/crm/feedbacks/?page_size=100",
+  surveyQuestions: "/api/v1/crm/survey-questions/?page_size=200",
+  surveyResponses: "/api/v1/crm/survey-responses/?page_size=200",
+  surveyAnswers: "/api/v1/crm/survey-answers/?page_size=500",
   credit:       "/api/v1/crm/credit-status-snapshots/?page_size=100",
   cases:        "/api/v1/service/cases/?page_size=100",
   resolutions:  "/api/v1/service/resolutions/?page_size=100",
@@ -273,11 +291,11 @@ export async function createOpportunity(payload: {
 }) {
   const { data } = await api.post("/api/v1/crm/opportunities/", {
     opportunity_name: payload.opportunity_name,
-    customer_party: payload.customer_party || null,
-    expected_amount: payload.expected_amount || 0,
-    expected_margin: payload.expected_margin || 0,
-    probability_percent: payload.probability_percent || 50,
-    pipeline_stage: payload.pipeline_stage || "OPEN",
+    customer_party_id: payload.customer_party || null,
+    expected_amount: payload.expected_amount ?? 0,
+    expected_margin: payload.expected_margin ?? 0,
+    probability_percent: payload.probability_percent ?? 50,
+    pipeline_stage: payload.pipeline_stage ?? "OPEN",
     status: "OPEN",
   });
   return data;
@@ -345,7 +363,7 @@ export async function createCustomerInquiry(payload: {
     subject: payload.subject,
     customer_name: payload.customer_name,
     customer_email: payload.customer_email || "",
-    customer_party: payload.customer_party || null,
+    customer_party_id: payload.customer_party || null,
     description: payload.description || "",
     expected_delivery_date: payload.expected_delivery_date || null,
     status: "NEW",
@@ -370,11 +388,11 @@ export async function createInquiryRequirement(payload: {
   requirement_type?: string;
 }) {
   const { data } = await api.post("/api/v1/crm/inquiry-requirements/", {
-    inquiry: payload.inquiry,
-    product: payload.product || null,
+    inquiry_id: payload.inquiry,
+    product_id: payload.product || null,
     description: payload.description || "Item Spesifikasi Kebutuhan",
-    quantity: payload.quantity || 1,
-    target_unit_price: payload.target_unit_price || 0,
+    quantity: payload.quantity ?? 1,
+    target_unit_price: payload.target_unit_price ?? 0,
     requirement_type: payload.requirement_type || "PRODUCT",
     status: "QUALIFIED",
   });
@@ -410,36 +428,42 @@ export async function createCostEstimate(payload: {
   markup_percent?: number;
   description?: string;
 }) {
-  const directCost   = Number(payload.direct_cost || 0);
-  const overheadCost = Number(payload.overhead_cost || 0);
+  const directCost   = Number(payload.direct_cost ?? 0);
+  const overheadCost = Number(payload.overhead_cost ?? 0);
   const totalCost    = directCost + overheadCost;
-  const markupPct    = Number(payload.markup_percent || 30);
+  const markupPct    = Number(payload.markup_percent ?? 30);
   const offeredAmt   = totalCost * (1 + markupPct / 100);
+  const marginAmt    = offeredAmt - totalCost;
+  const marginPct    = offeredAmt > 0 ? (marginAmt / offeredAmt) * 100 : 0;
 
   const { data } = await api.post("/api/v1/crm/cost-estimates/", {
-    opportunity:     payload.opportunity || null,
-    inquiry:         payload.inquiry || null,
+    opportunity_id:  payload.opportunity || null,
+    inquiry_id:      payload.inquiry || null,
     estimate_number: `EST-${Date.now().toString().slice(-6)}`,
+    version_number:  1,
     direct_cost:     directCost,
     overhead_cost:   overheadCost,
+    contingency_amount: 0,
     total_cost:      totalCost,
     markup_percent:  markupPct,
     offered_amount:  offeredAmt,
+    margin_amount:   marginAmt,
+    margin_percent:  marginPct,
     status:          "DRAFT",
   });
 
-  // Auto-create lines
+  // Auto-create cost lines using the Prisma column names expected by Express.
   if (data?.id) {
-    await api.post("/api/v1/crm/cost-estimate-lines/", {
-        estimate: data.id, cost_element: "MATERIAL",
+    if (directCost > 0) await api.post("/api/v1/crm/cost-estimate-lines/", {
+        estimate_id: data.id, cost_element: "MATERIAL",
         description: payload.description || "Biaya Langsung Pengadaan / Produksi",
-        quantity: 1, unit_cost: directCost, amount: directCost,
+        quantity: 1, unit_cost: directCost, amount: directCost, calculation_source: "MANUAL",
       });
     if (overheadCost > 0) {
-        await api.post("/api/v1/crm/cost-estimate-lines/", {
-          estimate: data.id, cost_element: "OVERHEAD",
+      await api.post("/api/v1/crm/cost-estimate-lines/", {
+          estimate_id: data.id, cost_element: "OVERHEAD",
           description: "Biaya Operasional & Overhead",
-          quantity: 1, unit_cost: overheadCost, amount: overheadCost,
+          quantity: 1, unit_cost: overheadCost, amount: overheadCost, calculation_source: "MANUAL",
         });
     }
   }
@@ -509,17 +533,26 @@ export async function submitQuotationApproval(id: string | number) {
 export async function approveQuotation(quotationId: string | number, approvalsData: any[] = []) {
   let approvalId: string | number | null = null;
   const localApproval = approvalsData.find(
-    a => String(a.quotation) === String(quotationId) && a.decision === "PENDING"
+    a => String(a.quotation_id ?? a.quotation) === String(quotationId) && a.decision === "PENDING"
   );
   if (localApproval) {
     approvalId = localApproval.id;
   } else {
     try {
-      const res = await api.get(`/api/v1/crm/executive-approvals/?quotation=${quotationId}`);
+      const res = await api.get(`/api/v1/crm/executive-approvals/?quotation_id=${quotationId}`);
       const rows = normalizeList<any>(res.data).rows;
-      const pending = rows.find(a => a.decision === "PENDING") || rows[0];
+      const pending = rows.find(a => a.decision === "PENDING");
       if (pending) approvalId = pending.id;
     } catch { /* ignore */ }
+  }
+  // Repair quotations submitted by older handlers that changed status without
+  // creating the corresponding executive-approval row.
+  if (!approvalId) {
+    await submitQuotationApproval(quotationId);
+    const res = await api.get(`/api/v1/crm/executive-approvals/?quotation_id=${quotationId}`);
+    const rows = normalizeList<any>(res.data).rows;
+    const pending = rows.find(a => a.decision === "PENDING");
+    if (pending) approvalId = pending.id;
   }
   if (!approvalId) throw new Error("Record Executive Approval tidak ditemukan untuk Quotation ini.");
 
@@ -599,7 +632,6 @@ export async function createSupportTicket(payload: {
   subject: string;
   customer_party?: string | number | null;
   priority?: string;
-  case_type?: string;
   description?: string;
   serial_number?: string;
 }) {
@@ -607,7 +639,6 @@ export async function createSupportTicket(payload: {
     subject: payload.subject,
     customer_party: payload.customer_party || null,
     priority: payload.priority || "NORMAL",
-    case_type: payload.case_type || "WARRANTY_CLAIM",
     description: payload.description || "",
     serial_number: payload.serial_number?.trim() || null,
     status: "OPEN",

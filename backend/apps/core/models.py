@@ -39,6 +39,9 @@ class Company(models.Model):
     base_currency = models.ForeignKey("master_data.Currency", on_delete=models.PROTECT, db_column="base_currency_id", related_name="core_company_base_currency_set", null=True, blank=True)
     fiscal_year_start = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=255, blank=True, default="")
+    business_category = models.CharField(max_length=255, blank=True, default="")
+    kpp_name = models.CharField(max_length=255, blank=True, default="")
+    pkp_status = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         db_table = "core_company"

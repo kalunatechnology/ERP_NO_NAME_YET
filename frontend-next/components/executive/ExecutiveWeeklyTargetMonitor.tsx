@@ -218,7 +218,7 @@ export function ExecutiveWeeklyTargetMonitor({ projects, loading = false }: { pr
       </div>
 
       <div className="mt-2 flex flex-wrap justify-between items-center gap-2 text-[10px] text-[#5A5B5D]">
-        <span>{allWeeks ? `Menampilkan seluruh Weekly pada bulan ${calendar.month}` : period ? `Weekly ${period.week}: ${formatDate(period.start)} – ${formatDate(period.end)} · filter cut-off Jumat pukul 15.00 WIB.` : ""}</span>
+        <span>{allWeeks ? `Menampilkan seluruh Weekly pada bulan ${calendar.month}` : period ? `Weekly ${period.week}: ${formatDate(period.start)} – ${formatDate(period.end)} · berdasarkan tanggal pelaksanaan.` : ""}</span>
         {calendar.error && <span role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-red-700">{calendar.error}</span>}
       </div>
 

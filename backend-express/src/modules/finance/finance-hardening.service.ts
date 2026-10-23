@@ -539,10 +539,17 @@ export class FinanceHardeningService {
               outstanding_amount: proposal.total_amount,
 
               payment_status: 'UNPAID',
-              status: 'DRAFT',
+              status: 'APPROVED',
+              approved_by_id: proposal.approved_by_id || userId,
+              approved_at: proposal.approved_at || new Date(),
               rejection_reason: '',
             },
           });
+
+        const ppnTaxCode = await tx.master_tax_code.findFirst({
+          where: { company_id: companyId, tax_type: 'PPN' },
+          select: { id: true },
+        });
 
         await tx.fin_billing_document_line.create({
           data: {
@@ -558,6 +565,7 @@ export class FinanceHardeningService {
             quantity: new Decimal(1),
             unit_price: proposal.subtotal,
             discount_amount: new Decimal(0),
+            tax_code_id: ppnTaxCode?.id ?? null,
             line_total: proposal.subtotal,
           },
         });
@@ -578,6 +586,38 @@ export class FinanceHardeningService {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       },
     );
+  }
+
+  static async postIssuedBillingProposal(
+    proposalId: string,
+    userId: string,
+    companyId: string,
+  ) {
+    const proposal = await prisma.fin_billing_proposal.findFirst({
+      where: { id: proposalId, company_id: companyId },
+    });
+    if (!proposal) throw new NotFoundError('BillingProposal');
+    if (!proposal.billing_document_id) {
+      throw new ValidationError('Billing proposal belum diterbitkan menjadi dokumen faktur.');
+    }
+    let billing = await prisma.fin_billing_document.findFirst({
+      where: { id: proposal.billing_document_id, company_id: companyId },
+    });
+    if (!billing) throw new NotFoundError('BillingDocument');
+    if (billing.status === 'POSTED') {
+      return billing;
+    }
+    if (billing.status !== 'APPROVED') {
+      billing = await prisma.fin_billing_document.update({
+        where: { id: billing.id },
+        data: {
+          status: 'APPROVED',
+          approved_by_id: proposal.approved_by_id || userId,
+          approved_at: proposal.approved_at || new Date(),
+        },
+      });
+    }
+    return FinanceService.postBillingDocument(billing.id, userId, companyId);
   }
 
   static async createAndSubmitPayment(
@@ -1133,13 +1173,35 @@ export class FinanceHardeningService {
       count, page, page_size: pageSize, total_pages: Math.ceil(count / pageSize),
       results: rows.map((row) => {
         const bill = row.billing_document_id ? billMap.get(row.billing_document_id) : undefined;
+        const custName = bill?.party_id ? partyMap.get(bill.party_id) ?? null : null;
+        const custUpper = String(custName || '').toUpperCase();
+        const isWapu = /BUMN|PERSERO|KOTA|KABUPATEN|DINAS|KEMENTERIAN|BRIDA|BADAN|PEMKOT|PEMKAB|PEMPROV|INSTANSI/i.test(custUpper);
+        const clientType = isWapu ? 'WAPU' : 'NON_WAPU';
+        const dpp = Number(row.taxable_amount || 0);
+        const ppn = Number(row.tax_amount || 0);
+        const pphRate = 2.0;
+        const pphAmount = Number(((dpp * pphRate) / 100).toFixed(2));
+        const netCashInflow = isWapu ? (dpp - pphAmount) : (dpp + ppn - pphAmount);
+
+        const note = String(row.validation_note || '');
+        const isBupot = note.startsWith('BUPOT:');
+        const bupotNum = isBupot ? note.split(' ')[0].replace(/^BUPOT:[^:]*:/, '') : undefined;
+        const bupotStatus = isBupot ? 'VERIFIED' : (row.ntpn ? 'VERIFIED' : 'PENDING');
+
         return {
           ...row,
           invoice_number: bill?.invoice_number ?? null,
-          customer_name: bill?.party_id ? partyMap.get(bill.party_id) ?? null : null,
+          customer_name: custName,
           project_id: bill?.project_id ?? null,
           project_name: bill?.project_id ? projectMap.get(bill.project_id) ?? null : null,
           tax_scheme: bill?.tax_scheme ?? null,
+          client_type: clientType,
+          pph_type: 'PPh 23 Jasa Teknik & Manajemen',
+          pph_rate: pphRate,
+          pph_amount: pphAmount,
+          bupot_status: bupotStatus,
+          bupot_number: bupotNum || row.ntpn || null,
+          net_cash_inflow: netCashInflow,
         };
       }),
     };

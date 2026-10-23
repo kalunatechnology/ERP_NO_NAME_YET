@@ -33,11 +33,41 @@ function activeCompanyId(req: Request): string {
  */
 salesRouter.post('/quotations/:id/submit-approval', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const quotation = await prisma.sales_quotation.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
-    if (!quotation) throw new NotFoundError('Quotation');
-    const updated = await prisma.sales_quotation.update({
-      where: { id: quotation.id },
-      data: { status: 'PENDING_APPROVAL' },
+    const companyId = activeCompanyId(req);
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM sales_quotation WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
+      const quotation = await tx.sales_quotation.findFirst({ where: { id: req.params.id, company_id: companyId } });
+      if (!quotation) throw new NotFoundError('Quotation');
+
+      if (!['DRAFT', 'PENDING_APPROVAL'].includes(quotation.status)) {
+        throw new ValidationError('Hanya quotation DRAFT yang dapat diajukan untuk approval.');
+      }
+
+      const existingApproval = await tx.crm_executive_approval.findFirst({
+        where: { quotation_id: quotation.id, company_id: companyId, decision: 'PENDING' },
+      });
+      if (!existingApproval) {
+        await tx.crm_executive_approval.create({
+          data: {
+            tenant_id: quotation.tenant_id,
+            company_id: companyId,
+            quotation_id: quotation.id,
+            opportunity_id: quotation.opportunity_id,
+            requested_by: req.user?.id ?? null,
+            approval_type: 'SALES_QUOTATION',
+            requested_amount: quotation.total_amount,
+            decision: 'PENDING',
+            remarks: '',
+            requested_at: new Date(),
+          },
+        });
+      }
+
+      if (quotation.status === 'PENDING_APPROVAL') return quotation;
+      return tx.sales_quotation.update({
+        where: { id: quotation.id },
+        data: { status: 'PENDING_APPROVAL' },
+      });
     });
     res.json(updated);
   } catch (err) {
@@ -173,7 +203,31 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
       res.json(existing);
       return;
     }
-    const pmCandidate = await prisma.iam_user.findFirst({ where: { username: 'pm', is_active: true } });
+    let customerName = '';
+    let projectName = `Project for Order #${order.id.slice(0, 6)}`;
+    let projectDescription = '';
+
+    if (order.customer_party_id) {
+      const party = await prisma.master_party.findFirst({ where: { id: order.customer_party_id, company_id: companyId } });
+      if (party) customerName = party.display_name || party.legal_name || '';
+    }
+
+    if (order.quotation_id) {
+      const quot = await prisma.sales_quotation.findFirst({ where: { id: order.quotation_id, company_id: companyId } });
+      if (quot?.opportunity_id) {
+        const opp = await prisma.crm_opportunity.findFirst({ where: { id: quot.opportunity_id, company_id: companyId } });
+        if (opp?.opportunity_name) projectName = opp.opportunity_name;
+        if (opp?.source_inquiry_id) {
+          const inq = await prisma.crm_customer_inquiry.findFirst({ where: { id: opp.source_inquiry_id, company_id: companyId } });
+          if (inq?.subject) projectName = inq.subject;
+          if (inq?.description) projectDescription = inq.description;
+          if (!customerName && inq?.customer_name) customerName = inq.customer_name;
+        }
+      }
+    }
+
+    const pmCandidate = await prisma.iam_user.findFirst({ where: { id: req.user?.id, is_active: true } })
+      ?? await prisma.iam_user.findFirst({ where: { username: 'pm', is_active: true } });
     const pmMembership = pmCandidate ? await prisma.iam_user_company_membership.findFirst({
       where: { user_id: pmCandidate.id, company_id: companyId, status: 'ACTIVE' },
       select: { id: true },
@@ -186,14 +240,15 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
         company_id: companyId,
         created_by_id: req.user?.id,
         customer_party_id: order.customer_party_id,
-        customer_name: '',
-        description: '',
+        customer_name: customerName,
+        description: projectDescription,
         sales_order_id: order.id,
         project_manager_id: pmUser?.id,
         manager_name: pmUser?.full_name ?? pmUser?.username ?? '',
         project_code: `PRJ-SO-${order.id.slice(0, 6).toUpperCase()}`,
-        project_name: `Project for Order #${order.id.slice(0, 6)}`,
+        project_name: projectName,
         budget_amount: order.total_amount ?? 0,
+        contract_amount: order.total_amount ?? 0,
         status: 'PLANNED',
         // A confirmed Sales Order has passed commercial verification, but
         // operational execution still waits for the explicit ACTIVE transition.
@@ -247,7 +302,24 @@ salesRouter.use('/quotation-lines', createCrudRouter({ modelName: 'sales_quotati
 salesRouter.use('/quotation-costs', createCrudRouter({ modelName: 'sales_quotation_cost', searchFields: ['cost_element'] }));
 salesRouter.use('/contracts', createCrudRouter({ modelName: 'sales_contract', searchFields: ['contract_number'] }));
 salesRouter.use('/contract-lines', createCrudRouter({ modelName: 'sales_contract_line', searchFields: ['description'] }));
-salesRouter.use('/orders', createCrudRouter({ modelName: 'sales_order', searchFields: ['status'] }));
+salesRouter.use('/orders', createCrudRouter({
+  modelName: 'sales_order',
+  searchFields: ['status'],
+  afterUpdate: async (_req, order) => {
+    if (order.total_amount === undefined) return;
+    await prisma.project_project.updateMany({
+      where: {
+        sales_order_id: order.id,
+        company_id: order.company_id,
+        source_type: { in: ['CRM', 'SALES_ORDER'] },
+      },
+      data: {
+        budget_amount: order.total_amount ?? 0,
+        contract_amount: order.total_amount ?? 0,
+      },
+    });
+  },
+}));
 salesRouter.use('/order-lines', createCrudRouter({ modelName: 'sales_order_line', searchFields: ['description'] }));
 salesRouter.use('/deliveries', createCrudRouter({ modelName: 'sales_delivery', searchFields: ['delivery_status'] }));
 salesRouter.use('/delivery-lines', createCrudRouter({ modelName: 'sales_delivery_line', searchFields: ['description'] }));

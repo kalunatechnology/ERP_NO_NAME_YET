@@ -626,4 +626,72 @@ export class PeriodClosingService {
       reopened_at:      new Date(),
     };
   }
+  // =============================================================================
+// TAMBAHAN METHOD PADA PeriodClosingService
+// =============================================================================
+
+/**
+ * 1. Mengambil seluruh status periode fiskal berdasarkan company_id
+ */
+static async getFiscalPeriodsStatus(companyId: string) {
+  return await prisma.fin_fiscal_period.findMany({
+    where: { company_id: companyId },
+    orderBy: { period_number: 'asc' },
+    select: {
+      id: true,
+      period_number: true,
+      start_date: true,
+      end_date: true,
+      status: true,
+      fiscal_year_id: true,
+    },
+  });
+}
+
+/**
+ * 2. Mengambil daftar tahun fiskal berdasarkan company_id
+ */
+static async getFiscalYears(companyId: string, take: number = 10) {
+  return await prisma.fin_fiscal_year.findMany({
+    where: { company_id: companyId },
+    take,
+    orderBy: { start_date: 'desc' },
+    select: {
+      id: true,
+      fiscal_year_name: true,
+      start_date: true,
+      end_date: true,
+      status: true,
+    },
+  });
+}
+
+/**
+ * 3. Buka kembali periode fiskal bulanan (OPEN)
+ */
+static async reopenFiscalPeriod(periodId: string, companyId: string, userId: string) {
+  const period = await prisma.fin_fiscal_period.findFirst({
+    where: { id: periodId, company_id: companyId },
+  });
+
+  if (!period) throw new NotFoundError('FiscalPeriod');
+  if (period.status === 'OPEN') throw new ValidationError('Periode sudah berstatus OPEN.');
+
+  const updatedPeriod = await prisma.fin_fiscal_period.update({
+    where: { id: periodId },
+    data: { status: 'OPEN' },
+  });
+
+  await AuditService.logDeltaEvent({
+    entity: 'fin_fiscal_period',
+    entityId: periodId,
+    action: 'PERIOD_REOPEN',
+    before: { status: period.status },
+    after: { status: 'OPEN' },
+    userId,
+    description: `Membuka kembali periode bulanan #${period.period_number}`,
+  });
+
+  return updatedPeriod;
+}
 }

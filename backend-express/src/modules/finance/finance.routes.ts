@@ -117,6 +117,18 @@ financeRouter.post('/period-closings/request', async (req: Request, res: Respons
   } catch (err) { next(err); }
 });
 
+financeRouter.get('/period-closings', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.companyId) throw new ForbiddenError('Company aktif wajib dipilih.');
+    const records = await prisma.fin_period_closing.findMany({
+      where: { company_id: req.companyId },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+    sendSuccess(res, records);
+  } catch (err) { next(err); }
+});
+
 /**
  * POST route handler: `/period-closings/:id/approve`.
  *
@@ -533,7 +545,11 @@ financeRouter.post('/project-fundings/:id/draw', async (req: Request, res: Respo
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
 financeRouter.post('/billing-documents/:id/post', requireFinanceRole([RoleCode.FINANCE]), enforceSoD({
-  getCreatorId: async (req) => (await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { created_by_id: true } }))?.created_by_id ?? null,
+  getCreatorId: async (req) => {
+    const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: req.companyId }, select: { created_by_id: true, approved_by_id: true } });
+    if (doc?.approved_by_id && doc.approved_by_id !== doc.created_by_id) return null;
+    return doc?.created_by_id ?? null;
+  },
   action: 'post-billing-document',
 }), async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -810,6 +826,13 @@ financeRouter.post('/billing-proposals/:id/issue-billing-document', requireFinan
   } catch (err) { next(err); }
 });
 
+
+financeRouter.post('/billing-proposals/:id/post-billing-document', requireFinanceRole([RoleCode.FINANCE]), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const posted = await FinanceHardeningService.postIssuedBillingProposal(req.params.id, authenticatedFinanceUserId(req), activeCompanyId(req));
+    sendSuccess(res, posted);
+  } catch (err) { next(err); }
+});
 financeRouter.post('/billing-documents/:id/create-payment', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
   try {
     sendSuccess(res, await FinanceHardeningService.createAndSubmitPayment(req.params.id, {
@@ -935,7 +958,8 @@ financeRouter.get('/customer-receipts/workflow-readiness', async (req, res, next
         if (action === 'submit' && payment.created_by_id !== userId) {
           allowed = false; message = 'Pengajuan dilakukan oleh Finance pembuat penerimaan.';
         }
-        if (action !== 'submit' && (payment.created_by_id || payment.submitted_by_id) === userId) {
+        const enforceSoD = process.env.ERP_ENFORCE_IAM !== 'false' && process.env.ERP_ENFORCE_SOD !== 'false';
+        if (enforceSoD && action !== 'submit' && (payment.created_by_id || payment.submitted_by_id) === userId) {
           allowed = false; message = 'Menunggu Finance kedua untuk Setujui & Posting. Pembuat tidak dapat memproses penerimaan sendiri.';
         }
       }
@@ -993,13 +1017,90 @@ financeRouter.post('/payments/:id/execute', requireFinanceRole([RoleCode.FINANCE
  * Data/side effects: Uses Prisma model(s) `fin_fiscal_period` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-financeRouter.get('/fiscal-periods/status', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const periods = await prisma.fin_fiscal_period.findMany({
-      where: { company_id: activeCompanyId(req) },
+async function ensureFiscalPeriodsForCompany(companyId: string, userId?: string, tenantId?: string | null) {
+  let periods = await prisma.fin_fiscal_period.findMany({
+    where: { company_id: companyId },
+    orderBy: { start_date: 'desc' },
+    take: 24,
+  });
+
+  if (periods.length === 0 && companyId) {
+    const currentYear = new Date().getUTCFullYear();
+
+    let resolvedTenantId = tenantId;
+    if (!resolvedTenantId) {
+      const comp = await prisma.core_company.findFirst({
+        where: { id: companyId },
+        select: { tenant_id: true },
+      });
+      resolvedTenantId = comp?.tenant_id || null;
+    }
+
+    let fy = await prisma.fin_fiscal_year.findFirst({
+      where: { company_id: companyId, fiscal_year_name: String(currentYear) },
+    });
+
+    if (!fy) {
+      const yearStart = new Date(Date.UTC(currentYear, 0, 1, 0, 0, 0, 0));
+      const yearEnd = new Date(Date.UTC(currentYear + 1, 0, 1, 0, 0, 0, 0) - 1);
+      fy = await prisma.fin_fiscal_year.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: resolvedTenantId,
+          company_id: companyId,
+          created_by_id: userId || null,
+          fiscal_year_name: String(currentYear),
+          start_date: yearStart,
+          end_date: yearEnd,
+          status: 'OPEN',
+        },
+      });
+    }
+
+    const batch = [];
+    for (let month = 0; month < 12; month += 1) {
+      const startDate = new Date(Date.UTC(currentYear, month, 1, 0, 0, 0, 0));
+      const endDate = new Date(Date.UTC(currentYear, month + 1, 1, 0, 0, 0, 0) - 1);
+      batch.push({
+        id: crypto.randomUUID(),
+        tenant_id: resolvedTenantId,
+        company_id: companyId,
+        created_by_id: userId || null,
+        fiscal_year_id: fy.id,
+        period_number: month + 1,
+        start_date: startDate,
+        end_date: endDate,
+        status: 'OPEN',
+      });
+    }
+    await prisma.fin_fiscal_period.createMany({ data: batch });
+
+    periods = await prisma.fin_fiscal_period.findMany({
+      where: { company_id: companyId },
       orderBy: { start_date: 'desc' },
       take: 24,
     });
+  }
+
+  return periods;
+}
+
+financeRouter.get('/fiscal-periods/status', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = (req as any).user?.id;
+    const tenantId = (req as any).user?.tenant_id;
+    const periods = await ensureFiscalPeriodsForCompany(companyId, userId, tenantId);
+    sendSuccess(res, periods);
+  } catch (err) { next(err); }
+});
+
+financeRouter.post('/fiscal-periods/initialize', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = (req as any).user?.id;
+    const tenantId = (req as any).user?.tenant_id;
+    const periods = await ensureFiscalPeriodsForCompany(companyId, userId, tenantId);
     sendSuccess(res, periods);
   } catch (err) { next(err); }
 });
@@ -1036,9 +1137,7 @@ financeRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const companyId = activeCompanyId(req);
-      const period = await prisma.fin_fiscal_period.findFirst({ where: { id: req.params.id, company_id: companyId }, select: { id: true } });
-      if (!period) throw new NotFoundError('Fiscal period');
-      const updated = await prisma.fin_fiscal_period.update({ where: { id: period.id }, data: { status: 'OPEN' } });
+      const updated = await PeriodClosingService.reopenFiscalPeriod(req.params.id, companyId, req.user!.id);
       sendSuccess(res, updated);
     } catch (err) { next(err); }
   },
@@ -1154,6 +1253,19 @@ financeRouter.post('/tax-transactions/:id/record-ntpn', async (req: Request, res
 });
 
 // =============================================================================
+
+financeRouter.post('/tax-transactions/:id/record-bupot', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { bupot_number, bupot_date, tax_type, notes } = req.body;
+    if (!bupot_number || !bupot_date) {
+      return sendError(res, 'bupot_number dan bupot_date wajib diisi.', 400);
+    }
+    const result = await FinanceService.recordBupot(
+      req.params.id, String(bupot_number).trim(), new Date(bupot_date), String(tax_type || 'PPh 23'), String(notes || ''), activeCompanyId(req),
+    );
+    sendSuccess(res, result);
+  } catch (err) { next(err); }
+});
 // AUDIT TRAIL & EXECUTIVE REPORT (Fase 4)
 // =============================================================================
 
@@ -1301,6 +1413,12 @@ financeRouter.use('/customer-receipts', createCrudRouter({
   modelName: 'fin_payment',
   searchFields: ['reference_number'],
   accessWhere: () => ({ payment_type: 'CUSTOMER_RECEIPT' }),
+  beforeDelete: async (_req, existing) => {
+    if (existing.status === 'POSTED') {
+      throw new ConflictError('Penerimaan yang sudah dibukukan (POSTED) tidak dapat dihapus. Gunakan prosedur Storno/Reversal jurnal.');
+    }
+    await prisma.fin_payment_allocation.deleteMany({ where: { payment_id: existing.id } });
+  },
   beforeCreate: async (req, data) => {
     const receipt = validateCustomerReceipt(data);
     const bank = await prisma.fin_bank_account.findFirst({
@@ -1327,8 +1445,25 @@ const allocationCrud = () => createCrudRouter({
   beforeDelete: async (req, existing) => { await assertAllocationDraft(req, {}, existing); },
 });
 financeRouter.use('/payment-lines', allocationCrud());
-financeRouter.use('/payment-allocations', allocationCrud());
-financeRouter.use('/bank-accounts', createCrudRouter({ modelName: 'fin_bank_account', searchFields: ['account_number', 'bank_name'] }));
+financeRouter.use('/bank-accounts', createCrudRouter({
+  modelName: 'fin_bank_account',
+  searchFields: ['account_number', 'bank_name'],
+  beforeCreate: async (req, data) => {
+    let ledgerAccountId = data.ledger_account_id;
+    if (!ledgerAccountId) {
+      const defaultAccount = await prisma.fin_account.findFirst({
+        where: {
+          company_id: activeCompanyId(req),
+          status: 'ACTIVE',
+          account_code: { in: ['1101', '1120', '1110'] },
+        },
+        orderBy: { account_code: 'asc' },
+      });
+      if (defaultAccount) ledgerAccountId = defaultAccount.id;
+    }
+    return { ...data, ledger_account_id: ledgerAccountId };
+  },
+}));
 financeRouter.use('/bank-statements', createCrudRouter({ modelName: 'fin_bank_statement' }));
 financeRouter.use('/bank-statement-lines', createCrudRouter({ modelName: 'fin_bank_statement_line' }));
 financeRouter.use('/bank-reconciliations', createCrudRouter({ modelName: 'fin_bank_reconciliation' }));

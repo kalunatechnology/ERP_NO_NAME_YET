@@ -61,6 +61,8 @@ async function notifyUser(params: {
   notification_type: string;
   priority: string;
   company_id: string | null;
+  reference_type?: string | null;
+  reference_id?: string | null;
 }): Promise<void> {
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_REGEX.test(params.recipient_user_id)) return;
@@ -90,6 +92,8 @@ async function notifyUser(params: {
         category: params.notification_type, title: params.title,
         description: params.message, target_url: params.action_url,
         is_read: false, created_at: now, updated_at: now,
+        reference_type: params.reference_type ?? null,
+        reference_id: params.reference_id ?? null,
       },
     });
   } catch (err) {
@@ -194,6 +198,111 @@ async function notifyMinutesPublished(params: {
       company_id: params.companyId,
     }),
   ));
+}
+
+// ---------------------------------------------------------------------------
+// DISPATCH MEETING MINUTES NOTIFICATIONS:
+// 1. Publikasi Umum ke seluruh anggota rapat (kecuali aktor)
+// 2. Mention Terpisah ke user yang di-tag (@mention) di dalam baris catatan/note
+// ---------------------------------------------------------------------------
+export async function dispatchMeetingMinutesNotifications(params: {
+  companyId: string;
+  requestId: string;
+  minuteId: string;
+  meetingId?: string;
+  meetingTitle: string;
+  actorId: string;
+  actorName: string;
+  participantIds: string[]; // Semua anggota rapat
+  notes: Array<{
+    noteId: string;         // ID unik tiap poin catatan/baris pesan
+    text: string;           // Isi pesan, contoh: "Tolong @[Budi](uuid-budi) cek laporan"
+    mentionedUserIds?: string[]; // Opsional jika dikirim berupa array ID dari frontend
+  }>;
+  isInitialPublish: boolean;
+  occurrenceDate?: string;
+}): Promise<void> {
+  const {
+    companyId, requestId, minuteId, meetingId, meetingTitle,
+    actorId, actorName, participantIds, notes, isInitialPublish, occurrenceDate
+  } = params;
+
+  const dateParam = occurrenceDate ? `&date=${occurrenceDate}` : '';
+  const mIdParam = meetingId ? `&meeting=${meetingId}&meetingId=${meetingId}` : '';
+
+  // ---------------------------------------------------------------------------
+  // A. NOTIFIKASI 1: Publikasi Umum (Hanya dikirim saat notulensi dipublikasikan)
+  // ---------------------------------------------------------------------------
+  if (isInitialPublish) {
+    const generalTargets = Array.from(new Set(participantIds.filter((uid) => Boolean(uid) && uid !== actorId)));
+    for (const recipientId of generalTargets) {
+      const actionUrl = `/requests?requestId=${requestId}${mIdParam}${dateParam}&minuteId=${minuteId}&note=1`;
+      await notifyUser({
+        recipient_user_id: recipientId,
+        actor_user_id: actorId,
+        title: 'Notulensi Rapat Dipublikasikan',
+        message: `${actorName} mempublikasikan notulensi rapat "${meetingTitle}".`,
+        action_url: actionUrl,
+        notification_type: 'MEETING_MINUTES_PUBLISHED',
+        priority: 'NORMAL',
+        company_id: companyId,
+        reference_type: 'MEETING_MINUTES',
+        reference_id: minuteId,
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // B. NOTIFIKASI 2: Tag / Mention Terpisah (Mengarah spesifik ke Note/Pesan)
+  // ---------------------------------------------------------------------------
+  for (const note of notes) {
+    // Ambil ID user dari format @[Nama](user_id), data-user-id="user_id", maupun array mentionedUserIds
+    const parsedBrackets = Array.from(note.text.matchAll(/@\[[^\]]+\]\(([^)]+)\)/g)).map((m) => m[1]);
+    const parsedDataAttrs = Array.from(note.text.matchAll(/data-user-id=["']([0-9a-f-]{36})["']/gi)).map((m) => m[1]);
+    const mentionedIds = Array.from(new Set([...(note.mentionedUserIds || []), ...parsedBrackets, ...parsedDataAttrs]))
+      .filter((uid) => Boolean(uid) && uid !== actorId);
+
+    if (mentionedIds.length === 0) continue;
+
+    const noteRefId = `${minuteId}:${note.noteId}`;
+
+    // Cek agar tidak mengirim notifikasi duplikat jika catatan yang sama diedit ulang
+    const existing = await prisma.core_app_notification.findMany({
+      where: {
+        category: 'MEETING_MINUTES_MENTION',
+        reference_id: noteRefId,
+        recipient_id: { in: mentionedIds },
+      },
+      select: { recipient_id: true },
+    });
+
+    const notifiedSet = new Set(existing.map((e) => e.recipient_id));
+    const newTargets = mentionedIds.filter((uid) => !notifiedSet.has(uid));
+
+    // Bersihkan format @[Nama](id) atau mention span menjadi @Nama untuk preview pesan notifikasi
+    const cleanPreview = note.text
+      .replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1')
+      .replace(/<span[^>]*class=["'][^"']*mention[^"']*["'][^>]*data-user-name=["']([^"']+)["'][^>]*>.*?<\/span>/gi, '@$1')
+      .replace(/<[^>]+>/g, '')
+      .trim()
+      .slice(0, 90);
+
+    for (const recipientId of newTargets) {
+      const actionUrl = `/requests?requestId=${requestId}${mIdParam}${dateParam}&minuteId=${minuteId}&noteId=${note.noteId}&note=1`;
+      await notifyUser({
+        recipient_user_id: recipientId,
+        actor_user_id: actorId,
+        title: 'Anda Di-tag pada Catatan Notulensi',
+        message: `${actorName} menandai Anda di "${meetingTitle}": "${cleanPreview}${note.text.length > 90 ? '...' : ''}"`,
+        action_url: actionUrl,
+        notification_type: 'MEETING_MINUTES_MENTION',
+        priority: 'HIGH',
+        company_id: companyId,
+        reference_type: 'MEETING_MINUTES_NOTE',
+        reference_id: noteRefId,
+      });
+    }
+  }
 }
 
 async function notifyMeetingPublished(params: {
@@ -489,62 +598,67 @@ export class MeetingRequestService {
       description: `Notulensi ${detail.request?.request_number ?? meetingId} (${detail.selected_occurrence_date}) dipublikasikan — notifikasi dikirim ke seluruh peserta.`,
     });
 
-    // Fire-and-forget: notify organizer + notetaker + all participants (excluding publisher)
-    // This is intentionally non-blocking; errors are logged but never thrown.
+    // Fire-and-forget: dispatch general publication notification + separate targeted @mention note notifications
     if (detail.request) {
-      void notifyMinutesPublished({
-        meetingId,
-        companyId,
-        organizer_user_id: detail.organizer_user_id ?? null,
-        notetaker_user_id: detail.notetaker_user_id ?? null,
-        participants: detail.participants,
-        requestNumber: detail.request.request_number,
-        requestTitle: detail.request.title,
-        occurrenceDate: detail.selected_occurrence_date,
-        publisherUserId: userId,
-      });
-    }
+      let actorName = 'Anggota meeting';
+      try {
+        const actor = await prisma.iam_user.findUnique({ where: { id: userId }, select: { full_name: true, email: true } });
+        if (actor?.full_name || actor?.email) actorName = actor.full_name || actor.email;
+      } catch { /* ignore */ }
 
-    // Notify mentioned users upon publishing as well
-    try {
-      const explicitMentionIds = Array.isArray(mentionedUserIds) ? mentionedUserIds : [];
-      const textToScan = `${detail.minutes?.general_discussion || ''} ${detail.minutes?.summary || ''} ${detail.minutes?.opening_notes || ''}`;
-      const dataUserIdMatches = Array.from(textToScan.matchAll(/data-user-id=["']([0-9a-f-]{36})["']/gi)).map((m) => m[1]);
-      const allCandidateIds = Array.from(new Set([...explicitMentionIds, ...dataUserIdMatches]));
+      // Parse individual note blocks from general_discussion and summary
+      const rawNotesText = detail.minutes?.general_discussion || '';
+      const textBlocks = rawNotesText
+        .split(/<\/p>|<\/div>|<br\s*\/?>|\n+/)
+        .map(b => b.trim())
+        .filter(Boolean);
 
-      if (allCandidateIds.length > 0 && detail.request) {
-        const participantRows = await prisma.request_meeting_participant.findMany({
-          where: { meeting_id: meetingId, company_id: companyId },
-          select: { user_id: true },
-        });
-        const meetingMemberIds = new Set<string>([
-          ...(detail.organizer_user_id ? [detail.organizer_user_id] : []),
-          ...(detail.notetaker_user_id ? [detail.notetaker_user_id] : []),
-          ...participantRows.map((p) => p.user_id).filter((id): id is string => Boolean(id)),
-        ]);
-        const validMentionIds = allCandidateIds.filter((id) => meetingMemberIds.has(id) && id !== userId);
-
-        if (validMentionIds.length > 0) {
-          let actorName = 'Anggota meeting';
-          try {
-            const actor = await prisma.iam_user.findUnique({ where: { id: userId }, select: { full_name: true, email: true } });
-            if (actor?.full_name || actor?.email) actorName = actor.full_name || actor.email;
-          } catch { /* ignore */ }
-
-          void notifyMentionedUsers({
-            meetingId,
-            companyId,
-            requestNumber: detail.request.request_number,
-            requestTitle: detail.request.title,
-            occurrenceDate: detail.selected_occurrence_date,
-            actorUserId: userId,
-            actorName,
-            mentionedUserIds: validMentionIds,
+      const notesList: Array<{ noteId: string; text: string; mentionedUserIds?: string[] }> = [];
+      textBlocks.forEach((blockHtml, idx) => {
+        const parsedIds = [
+          ...Array.from(blockHtml.matchAll(/data-user-id=["']([0-9a-f-]{36})["']/gi)).map(m => m[1]),
+          ...Array.from(blockHtml.matchAll(/@\[[^\]]+\]\(([^)]+)\)/g)).map(m => m[1]),
+        ];
+        if (parsedIds.length > 0) {
+          notesList.push({
+            noteId: `note-${idx + 1}`,
+            text: blockHtml,
+            mentionedUserIds: parsedIds,
           });
         }
+      });
+
+      // Capture any mentions from explicit mentionedUserIds or remaining text
+      const capturedIds = new Set(notesList.flatMap(n => n.mentionedUserIds || []));
+      const explicitMentionIds = Array.isArray(mentionedUserIds) ? mentionedUserIds : [];
+      const extraIds = explicitMentionIds.filter(uid => !capturedIds.has(uid));
+      if (extraIds.length > 0) {
+        notesList.push({
+          noteId: `note-${notesList.length + 1}`,
+          text: detail.minutes?.summary || detail.request.title,
+          mentionedUserIds: extraIds,
+        });
       }
-    } catch (mentionErr) {
-      console.warn('[MeetingRequestService] Mention notification on publish warning:', mentionErr);
+
+      const allParticipantIds = [
+        detail.organizer_user_id,
+        detail.notetaker_user_id,
+        ...detail.participants.map(p => p.user_id),
+      ].filter((id): id is string => Boolean(id));
+
+      void dispatchMeetingMinutesNotifications({
+        companyId,
+        requestId: detail.request.id,
+        minuteId: detail.minutes.id,
+        meetingId,
+        meetingTitle: detail.request.title,
+        actorId: userId,
+        actorName,
+        participantIds: allParticipantIds,
+        notes: notesList,
+        isInitialPublish: true,
+        occurrenceDate: detail.selected_occurrence_date,
+      });
     }
 
     return this.getById(meetingId, companyId, userId, activeRole, detail.selected_occurrence_date);
@@ -635,4 +749,6 @@ export class MeetingRequestService {
 
     return this.getById(meeting.id, companyId, userId, activeRole);
   }
+
+  static dispatchMeetingMinutesNotifications = dispatchMeetingMinutesNotifications;
 }

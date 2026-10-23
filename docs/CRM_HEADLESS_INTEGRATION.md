@@ -4,6 +4,8 @@ Marka tetap menjadi sumber data utama. Sistem eksternal mengirim event ke API Ma
 
 Company Admin mengelola koneksi melalui **Company & Access → Integrasi CRM**. Panel Landing Page mendaftarkan sumber, memilih event yang diizinkan, lalu menampilkan webhook URL, integration ID, key ID, dan signing secret satu kali. Secret harus disimpan di server landing page; jangan pernah ditanam di browser. Panel WhatsApp Cloud mengelola kredensial Meta untuk koneksi langsung.
 
+Pada source Landing Page, Company Admin juga dapat mengatur **Domain website yang diizinkan**. Masukkan hostname publik satu per baris atau pisahkan dengan koma; source tanpa allowlist harus mengirim event tanpa `origin_domain`. Event dengan domain yang tidak terdaftar ditolak. Daftar domain dapat diperbarui dari tombol **Domain** pada source yang sudah ada.
+
 ## WhatsApp Business Cloud API (inbound awal)
 
 Marka menyediakan halaman **CRM → Koneksi WhatsApp** khusus Company Admin/Super Admin. Administrator menyimpan WABA ID, Phone Number ID, Graph API version, permanent access token, Meta App Secret, dan Verify Token di layar tersebut. Access token, App Secret, dan Verify Token dienkripsi memakai `CRM_INTEGRATION_ENCRYPTION_KEY`; endpoint daftar koneksi hanya mengembalikan status konfigurasi, bukan rahasianya. Tombol **Uji koneksi Meta** memeriksa Phone Number ID melalui Graph API.
@@ -36,7 +38,7 @@ Signature inbound adalah HMAC-SHA256 hex dari gabungan berikut, lalu diikuti byt
 v1\nPOST\n/api/v1/integrations/webhooks/events\n{timestamp}\n{nonce}\n{raw_body}
 ```
 
-Envelope selalu memiliki `event_id` unik, `event_type`, `schema_version: 1`, `occurred_at` (ISO 8601) atau `timestamp` (Unix seconds), dan `data`. `company_id` boleh disertakan oleh pengirim, tetapi Marka mengabaikannya dan selalu mengambil company dari Integration Source yang terautentikasi. Event yang tersedia:
+Envelope selalu memiliki `event_id` unik, `event_type`, `schema_version: 1`, `occurred_at` (ISO 8601) atau `timestamp` (Unix seconds), dan `data`. `company_id` boleh disertakan oleh pengirim, tetapi Marka mengabaikannya dan selalu mengambil company dari Integration Source yang terautentikasi. `data.origin_domain` opsional untuk event inquiry, pesan, dan tiket; jika dikirim, hostname/URL dasarnya dinormalisasi dan harus cocok dengan allowlist source. Gunakan konfigurasi server website, bukan nilai domain dari input browser. Domain disimpan pada record CRM dan ditampilkan sebagai badge/filter pada Incoming Inquiry, Inbox CRM, dan Tickets. Event tanpa domain tetap dapat diproses tanpa attribution. Event yang tersedia:
 
 Contoh payload inquiry yang direkomendasikan:
 
@@ -57,8 +59,11 @@ Contoh payload inquiry yang direkomendasikan:
 | `message.received` | `thread_id`, `message_id`, `message.text`, `message.type: "TEXT"` |
 | `inquiry.submitted` | `customer: { name, email, phone? }`, `requirements: { subject, description?, target_budget? }`. Format lama yang menaruh field customer dan subject di root tetap diterima. |
 | `ticket.created` | `subject`, `description`; `serial_number` opsional dan harus terdaftar pada company |
+| `feedback.submitted` | `customer_party_id` customer aktif pada company source, `rating` integer 1–5, `feedback_text`; `feedback_type` opsional, `sales_order_id` opsional tetapi harus milik customer yang sama |
 | `quotation.decision` | `quotation_id`, `decision: "ACCEPTED"` atau `"REJECTED"` |
 | `quotation.accepted` | `quotation_id`; hanya quotation berstatus `SENT` dan terhubung ke opportunity |
+
+Contoh `inquiry.submitted` di atas mencakup `data.origin_domain`. Untuk `message.received`, `ticket.created`, dan `feedback.submitted`, kirim field yang sama di object `data` jika ingin atribusi domain tampil pada inbox, tiket, atau feedback. Konfigurasikan hostname terlebih dahulu pada allowlist source; domain yang tidak cocok menghasilkan `ORIGIN_DOMAIN_NOT_ALLOWED`. Event `feedback.submitted` membuat review pada Engagement dan hanya menerima ID customer Marka yang aktif serta berada pada company source.
 
 Penerimaan mengembalikan `202` setelah event disimpan untuk diproses. Event duplikat dengan payload sama mengembalikan `200`; `event_id` yang sama dengan payload berbeda mengembalikan `409`.
 
@@ -104,5 +109,7 @@ Sertakan `Authorization: Bearer <token>` atau `X-Api-Key: <token>`. Endpoint por
 - Pemeriksaan garansi menggunakan `POST /api/v1/service/cases/:id/check-warranty`. Marka mencocokkan serial number ke pengiriman company dan kontrak garansi. Untuk status `WARRANTY_ACTIVE`, teknisi dapat dibuatkan Work Order melalui `POST /api/v1/service/cases/:id/work-orders`.
 - Untuk melepas Credit Hold setelah DP lunas, receipt Finance harus dialokasikan ke Proforma Invoice terkait. Setelah receipt terverifikasi dan saldo proforma nol, sistem melanjutkan handoff Deal Won dan membuat Sales Order serta Project Workspace dalam transaksi Finance yang sama.
 - Endpoint `/api/v1/crm/opportunities/:id/customer-360` menyajikan LTV dari nilai Sales Order, proyek aktif, kontrak, pengiriman, piutang terbuka, dan indikator invoice lewat jatuh tempo.
+- Tab **Accounts** menyediakan tambah dan edit nama, kode, tipe, serta status rekanan. Tab **Contracts & Orders** menampilkan transaksi dan mengarahkan staf ke Quotation/Deals; Sales Order mengikuti konversi quotation accepted atau proses Deal Won dengan pemeriksaan kredit.
+- Tab **Engagement** memisahkan feedback umum dari CSAT pasca transaksi. Feedback umum mencatat pelanggan, rating 1–5, dan catatan; sistem luar dapat mengirim event `feedback.submitted` dengan ID party Marka yang sudah dipetakan. CSAT tersedia untuk Sales Order berstatus `FULFILLED`, satu respons per order. Saat ini CSAT dicatat staf berdasarkan jawaban pelanggan; pengiriman undangan dan form publik pelanggan belum termasuk.
 
 Perubahan database tambahan mencakup token portal, warranty state pada service case, dan service work order. Terapkan migrasi Prisma sebelum menjalankan backend baru.

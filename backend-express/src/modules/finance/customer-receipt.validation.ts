@@ -21,6 +21,12 @@ export function validateCustomerReceipt(data: Record<string, any>) {
   }
   if (!reference) errors.reference_number = 'No. bukti transfer / resi bank klien wajib diisi.';
   if (!['BANK_TRANSFER', 'GIRO_CEK', 'CASH'].includes(data.payment_method)) errors.payment_method = 'Pilih metode penerimaan yang valid.';
+  if (allocation.withholding_tax_amount !== undefined && allocation.withholding_tax_amount !== null && allocation.withholding_tax_amount !== '') {
+    const wht = Number(allocation.withholding_tax_amount);
+    if (!Number.isFinite(wht) || wht < 0) {
+      errors.withholding_tax_amount = 'Nominal potongan pajak harus berupa angka valid (0 atau lebih).';
+    }
+  }
   if (Object.keys(errors).length) throw new ValidationError('Lengkapi data penerimaan pelanggan yang wajib diisi.', errors);
   return {
     ...data,
@@ -30,6 +36,13 @@ export function validateCustomerReceipt(data: Record<string, any>) {
     reference_number: reference,
     payment_date: date,
     amount,
-    allocation_plan: { ...allocation, customer_name: customerName, project_name: projectName },
+    allocation_plan: {
+      ...allocation,
+      customer_name: customerName,
+      project_name: projectName,
+      withholding_tax_amount: allocation.withholding_tax_amount ? Number(allocation.withholding_tax_amount) : 0,
+      bupot_number: allocation.bupot_number ? String(allocation.bupot_number).trim() : null,
+      withholding_tax_type: allocation.withholding_tax_type ? String(allocation.withholding_tax_type).trim() : 'PPH_23',
+    },
   };
 }

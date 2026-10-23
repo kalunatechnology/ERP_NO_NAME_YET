@@ -59,23 +59,22 @@ export interface TargetCalendarWeekInput {
 }
 
 export function resolveTargetCalendarWeek(target: TargetCalendarWeekInput) {
-  const createdAt = target.weeklyTask?.created_at ?? target.created_at;
   const startDate = target.startDate ?? target.start_date ?? target.weeklyTask?.start_date;
-  const date = createdAt ? new Date(createdAt) : (startDate ? new Date(`${startDate}T00:00:00Z`) : new Date());
+  if (!startDate) {
+    const weekNumber = target.weeklyTask?.week_number ?? target.week_number ?? 1;
+    return {
+      calendarWeek: 0,
+      calendarWeekLabel: "Belum dijadwalkan",
+      calendarMonth: "",
+      sequenceLabel: `Target #${weekNumber}`,
+      sequenceCode: `W#${weekNumber}`,
+    };
+  }
+  const date = new Date(`${startDate.slice(0, 10)}T00:00:00Z`);
   const wibMs = (Number.isFinite(date.getTime()) ? date.getTime() : Date.now()) + 7 * 3600 * 1000;
   const wibDate = new Date(wibMs);
   const day = wibDate.getUTCDay();
-  const hours = wibDate.getUTCHours();
-
-  let daysToMonday = 0;
-  if (createdAt) {
-    if (day === 5 && hours >= 15) daysToMonday = 3;
-    else if (day === 6) daysToMonday = 2;
-    else if (day === 0) daysToMonday = 1;
-    else daysToMonday = -(day - 1);
-  } else {
-    daysToMonday = -(day - 1);
-  }
+  const daysToMonday = -(day - 1);
 
   const mondayMs = wibMs + daysToMonday * 86400 * 1000;
   const mondayDate = new Date(mondayMs);

@@ -4,7 +4,7 @@ import prisma from '../../config/database';
 import { env } from '../../config/env';
 import { AppError, ValidationError } from '../../utils/errors';
 
-const SUPPORTED_INBOUND_EVENTS = ['message.received', 'inquiry.submitted', 'ticket.created', 'quotation.decision', 'quotation.accepted'];
+const SUPPORTED_INBOUND_EVENTS = ['message.received', 'inquiry.submitted', 'ticket.created', 'feedback.submitted', 'quotation.decision', 'quotation.accepted'];
 const DEFAULT_EVENTS = ['message.received'];
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 
@@ -55,6 +55,23 @@ export interface CreateIntegrationSourceInput {
   business_unit_name?: string;
   default_assigned_user_id?: string;
   allowed_event_types?: string[];
+  allowed_origin_domains?: string[];
+}
+
+export function normalizeOriginDomain(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 300) throw new ValidationError('origin_domain kosong atau terlalu panjang.');
+  let parsed: URL;
+  try { parsed = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`); }
+  catch { throw new ValidationError('Domain asal harus berupa hostname atau URL http(s) yang valid.'); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.port || parsed.search || parsed.hash || (parsed.pathname !== '/' && parsed.pathname !== '')) {
+    throw new ValidationError('Domain asal hanya boleh berisi hostname tanpa path, port, query, atau fragment.');
+  }
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  if (hostname.length > 253 || !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(hostname)) {
+    throw new ValidationError('Domain asal harus berupa hostname publik yang valid.');
+  }
+  return hostname;
 }
 
 export class CRMIntegrationService {
@@ -97,6 +114,7 @@ export class CRMIntegrationService {
     if (!allowedEvents.length || allowedEvents.some((event) => !SUPPORTED_INBOUND_EVENTS.includes(event))) {
       throw new ValidationError(`Event yang didukung: ${SUPPORTED_INBOUND_EVENTS.join(', ')}.`);
     }
+    const allowedOriginDomains = [...new Set((input.allowed_origin_domains ?? []).map(normalizeOriginDomain))];
     const sourceId = crypto.randomUUID();
     const channelAccountId = crypto.randomUUID();
     const signingSecret = crypto.randomBytes(32).toString('base64url');
@@ -129,6 +147,7 @@ export class CRMIntegrationService {
           secret_encrypted: encryptIntegrationSecret(signingSecret),
           key_id: keyId,
           allowed_event_types: allowedEvents,
+          allowed_origin_domains: allowedOriginDomains,
           status: 'ACTIVE',
           created_by_id: userId,
         },
@@ -137,6 +156,7 @@ export class CRMIntegrationService {
           channel_type: true, channel_account_id: true, business_unit_code: true,
           business_unit_name: true, default_assigned_user_id: true, key_id: true,
           allowed_event_types: true, status: true, created_at: true,
+          allowed_origin_domains: true,
         },
       });
       return source;
@@ -156,6 +176,7 @@ export class CRMIntegrationService {
         business_unit_name: true, default_assigned_user_id: true, key_id: true,
         previous_key_id: true, previous_valid_until: true,
         allowed_event_types: true, status: true, created_at: true, last_seen_at: true,
+        allowed_origin_domains: true,
       },
     });
   }
@@ -174,6 +195,18 @@ export class CRMIntegrationService {
       await tx.core_integration_source.update({ where: { id: sourceId }, data: { status } });
       return true;
     }, { maxWait: 5_000, timeout: 15_000 });
+  }
+
+  static async updateSourceEvents(sourceId: string, companyId: string, eventTypes: string[]) {
+    const allowedEvents = [...new Set(eventTypes.map((event) => event.trim()))];
+    if (!allowedEvents.length || allowedEvents.some((event) => !SUPPORTED_INBOUND_EVENTS.includes(event))) {
+      throw new ValidationError(`Pilih minimal satu event yang didukung: ${SUPPORTED_INBOUND_EVENTS.join(', ')}.`);
+    }
+    const updated = await prisma.core_integration_source.updateMany({
+      where: { id: sourceId, company_id: companyId, status: { not: 'REVOKED' } },
+      data: { allowed_event_types: allowedEvents },
+    });
+    return updated.count > 0;
   }
 
   static async rotateSecret(sourceId: string, companyId: string) {

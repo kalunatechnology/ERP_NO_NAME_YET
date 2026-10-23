@@ -10,6 +10,8 @@ import {
   loadCRMIntegrationAssignees,
   loadCRMIntegrationSources,
   setCRMIntegrationSourceStatus,
+  updateCRMIntegrationSourceDomains,
+  updateCRMIntegrationSourceEvents,
   type CRMIntegrationSource,
 } from "@/lib/api/crm.api";
 
@@ -17,6 +19,7 @@ const EVENT_OPTIONS = [
   { value: "message.received", label: "Pesan masuk → Customer Inbox" },
   { value: "inquiry.submitted", label: "Inquiry dari formulir website" },
   { value: "ticket.created", label: "Tiket support baru" },
+  { value: "feedback.submitted", label: "Feedback / review pelanggan" },
   { value: "quotation.decision", label: "Keputusan quotation" },
   { value: "quotation.accepted", label: "Quotation disetujui" },
 ];
@@ -32,8 +35,12 @@ export default function LandingPageIntegrationSettings() {
   const [createdSecret, setCreatedSecret] = useState("");
   const [createdSource, setCreatedSource] = useState<CRMIntegrationSource | null>(null);
   const [copied, setCopied] = useState(false);
-  const [form, setForm] = useState({ source_code: "ARSALYNK_LANDING", account_name: "Arsalynk Landing Page", external_account_id: "landing-page-main", business_unit_code: "SALES", business_unit_name: "Sales", default_assigned_user_id: "" });
+  const [form, setForm] = useState({ source_code: "ARSALYNK_LANDING", account_name: "Arsalynk Landing Page", external_account_id: "landing-page-main", business_unit_code: "SALES", business_unit_name: "Sales", default_assigned_user_id: "", allowed_origin_domains: "" });
   const [events, setEvents] = useState<string[]>(["inquiry.submitted"]);
+  const [editingDomains, setEditingDomains] = useState<{ id: string; value: string } | null>(null);
+  const [editingEvents, setEditingEvents] = useState<{ id: string; values: string[] } | null>(null);
+  const [savingDomains, setSavingDomains] = useState(false);
+  const [savingEvents, setSavingEvents] = useState(false);
   const scopeHeaders = companyScope ? { headers: { "X-Company-ID": companyScope } } : undefined;
   const endpoint = typeof window !== "undefined" ? new URL("/api/v1/integrations/webhooks/events", api.defaults.baseURL || window.location.origin).toString() : "/api/v1/integrations/webhooks/events";
 
@@ -60,13 +67,37 @@ export default function LandingPageIntegrationSettings() {
   const submit = async () => {
     setSaving(true); setCreatedSecret(""); setCreatedSource(null);
     try {
-      const created = await createCRMIntegrationSource({ ...form, default_assigned_user_id: form.default_assigned_user_id || undefined, allowed_event_types: events }, companyScope || undefined);
+      const allowedOriginDomains = form.allowed_origin_domains.split(/[\n,;]/).map((domain) => domain.trim()).filter(Boolean);
+      const created = await createCRMIntegrationSource({ ...form, allowed_origin_domains: allowedOriginDomains, default_assigned_user_id: form.default_assigned_user_id || undefined, allowed_event_types: events }, companyScope || undefined);
       setCreatedSecret(created.signing_secret);
       setCreatedSource(created);
       setSources((current) => [created, ...current]);
-      toast.success("Integrasi landing page berhasil dibuat.");
+      toast.success("Koneksi integrasi eksternal berhasil dibuat.");
     } catch (error: any) { toast.error(error?.response?.data?.error?.message || "Gagal membuat integrasi. Periksa company dan pastikan modul CRM aktif."); }
     finally { setSaving(false); }
+  };
+  const saveDomains = async () => {
+    if (!editingDomains) return;
+    setSavingDomains(true);
+    try {
+      const allowedOriginDomains = editingDomains.value.split(/[\n,;]/).map((domain) => domain.trim()).filter(Boolean);
+      const updated = await updateCRMIntegrationSourceDomains(editingDomains.id, allowedOriginDomains, companyScope || undefined);
+      setSources((current) => current.map((source) => source.id === updated.id ? { ...source, allowed_origin_domains: updated.allowed_origin_domains } : source));
+      setEditingDomains(null);
+      toast.success("Daftar domain sumber berhasil diperbarui.");
+    } catch (error: any) { toast.error(error?.response?.data?.error?.message || "Domain sumber gagal diperbarui."); }
+    finally { setSavingDomains(false); }
+  };
+  const saveEvents = async () => {
+    if (!editingEvents) return;
+    setSavingEvents(true);
+    try {
+      const updated = await updateCRMIntegrationSourceEvents(editingEvents.id, editingEvents.values, companyScope || undefined);
+      setSources((current) => current.map((source) => source.id === updated.id ? { ...source, allowed_event_types: updated.allowed_event_types } : source));
+      setEditingEvents(null);
+      toast.success("Jenis event sumber berhasil diperbarui.");
+    } catch (error: any) { toast.error(error?.response?.data?.error?.message || "Jenis event sumber gagal diperbarui."); }
+    finally { setSavingEvents(false); }
   };
   const toggle = async (source: CRMIntegrationSource) => {
     const status = source.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
@@ -86,12 +117,13 @@ export default function LandingPageIntegrationSettings() {
 
   return <div className="space-y-5">
     <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
-      <div className="flex items-start gap-3"><div className="rounded-xl bg-[#EAF6FF] p-2 text-[#2649B3]"><Globe2 size={19}/></div><div><h2 className="text-base font-bold text-[#172033]">Hubungkan landing page ke CRM Marka</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748B]">Daftarkan server landing page sebagai sumber resmi. Marka membuat ID dan signing secret agar server website dapat mengirim formulir atau pesan masuk dengan aman.</p></div></div>
+      <div className="flex items-start gap-3"><div className="rounded-xl bg-[#EAF6FF] p-2 text-[#2649B3]"><Globe2 size={19}/></div><div><h2 className="text-base font-bold text-[#172033]">Hubungkan website atau aplikasi eksternal</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748B]">Daftarkan backend landing page, marketplace, helpdesk, ERP, atau adapter chat sebagai source CRM. Marka membuat ID dan signing secret untuk mengirim event yang dipilih melalui server secara aman.</p></div></div>
       <div className="mt-5 grid gap-3 md:grid-cols-2">{field("Kode sumber", "source_code", "Huruf kapital, angka, _ atau -; contoh ARSALYNK_LANDING")}{field("Nama integrasi", "account_name", "Nama yang mudah dikenali administrator")}{field("ID akun eksternal", "external_account_id", "Penanda channel dari website Anda")}{field("Kode unit bisnis (opsional)", "business_unit_code", "Contoh SALES atau SERVICE")}{field("Nama unit bisnis (opsional)", "business_unit_name", "Nama unit untuk routing inbox")}
+        <label className="flex flex-col gap-1.5 text-xs font-semibold text-[#475569]">Domain website yang diizinkan (opsional)<textarea className={inputClass} rows={3} value={form.allowed_origin_domains} onChange={(e) => update("allowed_origin_domains", e.target.value)} placeholder="arsalynk.com&#10;promo.arsalynk.com"/><span className="font-normal text-[#718096]">Satu hostname per baris atau pisahkan dengan koma. Domain dalam payload harus cocok dengan daftar ini; jika daftar kosong, kirim event tanpa origin_domain.</span></label>
         <label className="flex flex-col gap-1.5 text-xs font-semibold text-[#475569]">Penanggung jawab awal (opsional)<select className={inputClass} value={form.default_assigned_user_id} onChange={(e) => update("default_assigned_user_id", e.target.value)} disabled={assigneesLoading || assigneesError || assignees.length === 0}><option value="">{assigneesLoading ? "Memuat pengguna…" : assigneesError ? "Daftar pengguna gagal dimuat" : assignees.length ? "Belum ditentukan" : "Belum ada user CRM/Sales"}</option>{assignees.map((user) => <option key={user.id} value={user.id}>{user.full_name} · {user.email}</option>)}</select><span className="font-normal text-[#718096]">{assigneesError ? "Coba muat ulang halaman. Jika tetap gagal, periksa koneksi atau akses admin." : assignees.length === 0 && !assigneesLoading ? "Tambahkan role CRM Lead atau Sales ke pengguna pada company ini melalui Pengguna & Akses." : "Inquiry dari kanal ini akan diarahkan ke user aktif berperan CRM Lead atau Sales."}</span></label>
       </div>
       <div className="mt-4"><p className="mb-2 text-xs font-semibold text-[#475569]">Jenis event yang boleh dikirim ke Marka</p><div className="grid gap-2 sm:grid-cols-2">{EVENT_OPTIONS.map((event) => <label key={event.value} className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-3 py-2.5 text-sm text-[#334155]"><input type="checkbox" checked={events.includes(event.value)} onChange={(e) => setEvents((current) => e.target.checked ? [...current, event.value] : current.filter((item) => item !== event.value))}/><span>{event.label}</span></label>)}</div></div>
-      <button className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#2649B3] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" onClick={submit} disabled={saving || !form.source_code.trim() || !form.account_name.trim() || events.length === 0}><Plus size={16}/>{saving ? "Mendaftarkan..." : "Buat koneksi landing page"}</button>
+      <button className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#2649B3] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" onClick={submit} disabled={saving || !form.source_code.trim() || !form.account_name.trim() || events.length === 0}><Plus size={16}/>{saving ? "Mendaftarkan..." : "Buat koneksi integrasi"}</button>
     </section>
 
     {createdSecret && createdSource && <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
@@ -107,7 +139,7 @@ export default function LandingPageIntegrationSettings() {
 
     <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="font-bold text-[#172033]">Sumber integrasi terdaftar</h2><p className="mt-1 text-xs text-[#64748B]">Daftar ini menampilkan metadata aman; signing secret tidak dapat dibaca kembali.</p></div><button onClick={() => void refresh()} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]"><RefreshCw size={13}/>Muat ulang</button></div>
-      {loading ? <p className="py-6 text-sm text-[#64748B]">Memuat sumber integrasi…</p> : sources.length === 0 ? <p className="rounded-lg bg-[#F8FAFC] p-4 text-sm text-[#64748B]">Belum ada landing page atau aplikasi luar yang didaftarkan.</p> : <div className="space-y-2">{sources.map((source) => <div key={source.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E2E8F0] p-3"><div><div className="font-semibold text-[#172033]">{source.source_code}</div><div className="mt-1 text-xs text-[#64748B]">{source.allowed_event_types.join(" · ")} · Key {source.key_id}</div></div><button onClick={() => void toggle(source)} disabled={source.status === "REVOKED"} className={cn("rounded-lg px-3 py-2 text-xs font-semibold", source.status === "ACTIVE" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800")}>{source.status === "ACTIVE" ? "Jeda" : source.status === "REVOKED" ? "Dicabut" : "Aktifkan"}</button></div>)}</div>}
+      {loading ? <p className="py-6 text-sm text-[#64748B]">Memuat sumber integrasi…</p> : sources.length === 0 ? <p className="rounded-lg bg-[#F8FAFC] p-4 text-sm text-[#64748B]">Belum ada landing page atau aplikasi luar yang didaftarkan.</p> : <div className="space-y-2">{sources.map((source) => <div key={source.id} className="rounded-xl border border-[#E2E8F0] p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="font-semibold text-[#172033]">{source.source_code}</div><div className="mt-1 text-xs text-[#64748B]">{source.allowed_event_types.join(" · ")} · Key {source.key_id}</div></div><div className="flex gap-2"><button onClick={() => setEditingEvents({ id: source.id, values: [...source.allowed_event_types] })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Event</button><button onClick={() => setEditingDomains({ id: source.id, value: (source.allowed_origin_domains || []).join("\n") })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]"><Globe2 size={13}/>Domain</button><button onClick={() => void toggle(source)} disabled={source.status === "REVOKED"} className={cn("rounded-lg px-3 py-2 text-xs font-semibold", source.status === "ACTIVE" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800")}>{source.status === "ACTIVE" ? "Jeda" : source.status === "REVOKED" ? "Dicabut" : "Aktifkan"}</button></div></div><div className="mt-2 text-xs text-[#64748B]">Domain diizinkan: {(source.allowed_origin_domains || []).length ? source.allowed_origin_domains.join(", ") : "Belum diatur; event harus tanpa origin_domain"}</div>{editingEvents?.id === source.id && <div className="mt-3 rounded-lg border border-[#E2E8F0] p-3"><p className="mb-2 text-xs font-semibold text-[#475569]">Event yang diizinkan untuk source ini</p><div className="grid gap-2 sm:grid-cols-2">{EVENT_OPTIONS.map((event) => <label key={event.value} className="flex items-center gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-xs text-[#334155]"><input type="checkbox" checked={editingEvents.values.includes(event.value)} onChange={(e) => setEditingEvents((current) => current ? { ...current, values: e.target.checked ? [...current.values, event.value] : current.values.filter((value) => value !== event.value) } : current)}/><span>{event.label}</span></label>)}</div><div className="mt-3 flex justify-end gap-2"><button onClick={() => setEditingEvents(null)} disabled={savingEvents} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveEvents()} disabled={savingEvents || editingEvents.values.length === 0} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingEvents ? "Menyimpan…" : "Simpan Event"}</button></div></div>}{editingDomains?.id === source.id && <div className="mt-3 flex flex-col gap-2"><textarea className={inputClass} rows={3} value={editingDomains.value} onChange={(event) => setEditingDomains((current) => current ? { ...current, value: event.target.value } : current)} placeholder="arsalynk.com"/><div className="flex justify-end gap-2"><button onClick={() => setEditingDomains(null)} disabled={savingDomains} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveDomains()} disabled={savingDomains} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingDomains ? "Menyimpan…" : "Simpan Domain"}</button></div></div>}</div>)}</div>}
     </section>
   </div>;
 }

@@ -6,13 +6,17 @@ Dokumen ini memetakan flow operasional **Customer Relationship Management (CRM)*
 
 > **Pembaruan implementasi — 14 Oktober 2026:** pemeriksaan garansi kini memverifikasi serial number yang tercatat pada pengiriman company dan kontrak garansi aktif; status tiket ditampilkan di CRM dan work order repair dapat dibuat setelah hasil `WARRANTY_ACTIVE`. Pembuatan replacement delivery dan credit note tetap mengikuti workflow Inventory/Finance tersendiri. Credit Hold otomatis dilepas setelah Proforma Invoice terkait dibayar penuh dan terverifikasi. Nilai Proforma saat ini memakai total quotation; aturan nominal DP khusus belum dikonfigurasi. Integrasi webhook, API token portal, dan kontrak event dicatat di [Headless CRM Integration](docs/CRM_HEADLESS_INTEGRATION.md).
 
+> **Pembaruan implementasi — 21 Oktober 2026:** sumber integrasi landing page dapat membatasi hostname domain asal. Event inquiry, pesan, dan tiket menyimpan `origin_domain` untuk ditampilkan serta difilter di CRM. Tab Engagement menyediakan pencatatan feedback dan CSAT untuk Sales Order `FULFILLED`; CSAT saat ini dicatat staf dari hasil survei pelanggan, satu respons per order. Tab Accounts mendukung tambah dan edit profil rekanan, sedangkan Sales Order mengikuti alur quotation accepted atau Deal Won dan pemeriksaan kredit. Detail kontrak integrasi ada di [Headless CRM Integration](docs/CRM_HEADLESS_INTEGRATION.md).
+
+
 ---
 
 ## 📑 Daftar Isi
 1. [Flow 1: Ticket Support & Warranty / Complaint Management](#1-flow-1-ticket-support--warranty--complaint-management)
 2. [Flow 2: Deal Management & Credit Assessment (Won to Execution)](#2-flow-2-deal-management--credit-assessment-won-to-execution)
-3. [Mapping Relasi Model ERP](#3-mapping-relasi-model-erp)
-4. [Panduan Update & Modifikasi Flow](#4-panduan-update--modifikasi-flow)
+3. [Flow 3: Domain Asal, Engagement & CSAT](#3-flow-3-domain-asal-engagement--csat)
+4. [Mapping Relasi Model ERP](#4-mapping-relasi-model-erp)
+5. [Panduan Update & Modifikasi Flow](#5-panduan-update--modifikasi-flow)
 
 ---
 
@@ -111,7 +115,37 @@ flowchart TD
 
 ---
 
-## 3. Mapping Relasi Model ERP
+## 3. Flow 3: Domain Asal, Engagement & CSAT
+
+### 3.1 Atribusi domain untuk data inbound
+
+Integration Source menyimpan allowlist hostname yang diizinkan untuk event dari website. Server mengirim `data.origin_domain` pada event `inquiry.submitted`, `message.received`, `ticket.created`, atau `feedback.submitted`. Marka menormalisasi dan memvalidasi hostname terhadap source yang menandatangani event; domain yang tidak diizinkan ditolak. Domain disimpan pada Inquiry, Conversation, Service Case, atau Feedback agar staf dapat melihat badge dan memfilter record web berdasarkan sumbernya. Event tanpa domain tetap diterima dan tampil tanpa badge; jika allowlist kosong, jangan sertakan `origin_domain`.
+
+```mermaid
+flowchart LR
+    SITE["Website / Landing page"] -->|"event + origin_domain"| SOURCE["Integration Source + domain allowlist"]
+    SOURCE -->|"validasi hostname"| INBOUND["CRM inbound worker"]
+    INBOUND --> RECORDS["Inquiry · Conversation · Service Case"]
+    RECORDS --> UI["Badge dan filter domain di CRM"]
+```
+
+Masukkan hostname saja (misalnya `promo.arsalynk.com`) dalam allowlist; payload boleh mengirim hostname atau URL dasar tanpa path/port. Jangan mempercayai nilai hostname yang dikirim langsung dari browser; tentukan nilainya di server website.
+
+### 3.2 Feedback dan survei CSAT
+
+Tab Engagement memisahkan ulasan umum (`crm_feedback`) dari CSAT yang terkait transaksi (`crm_survey_response` dan `crm_survey_answer`). Feedback umum memerlukan customer, rating 1–5, dan catatan. CSAT dipilih dari Sales Order berstatus `FULFILLED`, memiliki rating 1–5 serta komentar opsional, dan dibatasi satu respons per order. Respons ditautkan ke customer dari Sales Order dan dapat menampilkan domain asal jika tersedia.
+
+Pada implementasi saat ini, tombol **Catat CSAT Transaksi** merupakan input staf berdasarkan jawaban pelanggan. Sistem belum mengirim undangan atau menyediakan form publik untuk pelanggan; untuk itu diperlukan kanal pengiriman, tautan survei bertoken, dan kontrol autentikasi/anti-spam tersendiri.
+
+### 3.3 Tampilan CRM dan aturan pembuatan transaksi
+
+- **Accounts** menampilkan daftar rekanan dengan aksi tambah dan edit. Perubahan nama, kode, tipe, atau status dilakukan dari form edit; data kontak tambahan dikelola sesuai sumber master-data yang tersedia.
+- **Contracts & Orders** adalah tampilan hasil transaksi dan petunjuk alur. Quotation diterima dapat dikonversi menjadi Sales Order; Deal Won berjalan melalui pemeriksaan kredit. Tab ini tidak membuat Sales Order/kontrak manual yang melewati validasi tersebut.
+- **Incoming Inquiry, Inbox, dan Tickets** menyediakan filter domain saat data memiliki `origin_domain`; rekaman lama tanpa domain tetap tersedia lewat pilihan semua domain.
+
+---
+
+## 4. Mapping Relasi Model ERP
 
 ```text
 [CRM Lead] ──> [CRM Opportunity] ──> [Sales Quotation] ──> [Sales Order] ──> [Project Workspace]
@@ -127,7 +161,7 @@ flowchart TD
 
 ---
 
-## 4. Panduan Update & Modifikasi Flow
+## 5. Panduan Update & Modifikasi Flow
 
 Untuk menyesuaikan flow sesuai kebutuhan bisnis di masa mendatang:
 

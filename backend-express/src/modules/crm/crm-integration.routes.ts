@@ -3,7 +3,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { requireAdminForWrite, requireCompanyContextForWrite } from '../../middlewares/rbac.middleware';
-import { CRMIntegrationService, makeWebhookSignature, normalizeExternalIdentity, safeSignatureEqual } from './crm-integration.service';
+import { CRMIntegrationService, makeWebhookSignature, normalizeExternalIdentity, normalizeOriginDomain, safeSignatureEqual } from './crm-integration.service';
 import { createWebhookSubscription, webhookEventTypes } from './crm-outbound-webhook.service';
 
 export const crmIntegrationAdminRouter = Router();
@@ -146,6 +146,9 @@ crmIntegrationAdminRouter.post('/', requireCompanyContextForWrite, async (req, r
     if (req.body.allowed_event_types !== undefined && (!Array.isArray(req.body.allowed_event_types) || req.body.allowed_event_types.some((event: unknown) => typeof event !== 'string'))) {
       throw new ValidationError('allowed_event_types harus berupa array string.');
     }
+    if (req.body.allowed_origin_domains !== undefined && (!Array.isArray(req.body.allowed_origin_domains) || req.body.allowed_origin_domains.some((domain: unknown) => typeof domain !== 'string'))) {
+      throw new ValidationError('allowed_origin_domains harus berupa array domain string.');
+    }
     for (const field of ['account_name', 'external_account_id', 'business_unit_code', 'business_unit_name', 'default_assigned_user_id']) {
       if (req.body[field] !== undefined && typeof req.body[field] !== 'string') throw new ValidationError(`${field} harus berupa teks.`);
     }
@@ -157,6 +160,7 @@ crmIntegrationAdminRouter.post('/', requireCompanyContextForWrite, async (req, r
       business_unit_name: req.body.business_unit_name,
       default_assigned_user_id: req.body.default_assigned_user_id,
       allowed_event_types: req.body.allowed_event_types,
+      allowed_origin_domains: req.body.allowed_origin_domains,
     }, req.tenantId, companyId(req), req.user.id);
     res.status(201).json(result);
   } catch (error) { next(error); }
@@ -167,6 +171,33 @@ crmIntegrationAdminRouter.post('/:id/rotate-secret', requireCompanyContextForWri
     const result = await CRMIntegrationService.rotateSecret(req.params.id, companyId(req));
     if (!result) { res.status(404).json({ error: { message: 'Integration source tidak ditemukan.' } }); return; }
     res.json(result);
+  } catch (error) { next(error); }
+});
+
+crmIntegrationAdminRouter.patch('/:id/origin-domains', requireCompanyContextForWrite, async (req, res, next) => {
+  try {
+    if (!Array.isArray(req.body.allowed_origin_domains) || req.body.allowed_origin_domains.some((domain: unknown) => typeof domain !== 'string')) {
+      throw new ValidationError('allowed_origin_domains harus berupa array domain string.');
+    }
+    const allowedOriginDomains = [...new Set((req.body.allowed_origin_domains as string[]).map(normalizeOriginDomain))];
+    const updated = await prisma.core_integration_source.updateMany({
+      where: { id: req.params.id, company_id: companyId(req), status: { not: 'REVOKED' } },
+      data: { allowed_origin_domains: allowedOriginDomains },
+    });
+    if (!updated.count) { res.status(404).json({ error: { message: 'Integration source tidak ditemukan atau sudah dicabut.' } }); return; }
+    res.json({ id: req.params.id, allowed_origin_domains: allowedOriginDomains });
+  } catch (error) { next(error); }
+});
+
+crmIntegrationAdminRouter.patch('/:id/allowed-events', requireCompanyContextForWrite, async (req, res, next) => {
+  try {
+    if (!Array.isArray(req.body.allowed_event_types) || req.body.allowed_event_types.some((event: unknown) => typeof event !== 'string')) {
+      throw new ValidationError('allowed_event_types harus berupa array event string.');
+    }
+    const allowedEventTypes = [...new Set((req.body.allowed_event_types as string[]).map((event) => event.trim()))];
+    const updated = await CRMIntegrationService.updateSourceEvents(req.params.id, companyId(req), allowedEventTypes);
+    if (!updated) { res.status(404).json({ error: { message: 'Integration source tidak ditemukan atau sudah dicabut.' } }); return; }
+    res.json({ id: req.params.id, allowed_event_types: allowedEventTypes });
   } catch (error) { next(error); }
 });
 
@@ -217,6 +248,14 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
     if (!signatureConfig.source.allowed_event_types.includes(eventType)) return res.status(400).json({ error: 'EVENT_TYPE_NOT_ALLOWED' });
 
     const data = envelope.data;
+    if (data.origin_domain !== undefined) {
+      if (typeof data.origin_domain !== 'string') return res.status(400).json({ error: 'INVALID_ORIGIN_DOMAIN' });
+      let normalizedOrigin: string;
+      try { normalizedOrigin = normalizeOriginDomain(data.origin_domain); }
+      catch { return res.status(400).json({ error: 'INVALID_ORIGIN_DOMAIN' }); }
+      const allowedDomains = signatureConfig.source.allowed_origin_domains ?? [];
+      if (!allowedDomains.includes(normalizedOrigin)) return res.status(400).json({ error: 'ORIGIN_DOMAIN_NOT_ALLOWED' });
+    }
     if (eventType === 'inquiry.submitted') {
       const customer = data.customer && typeof data.customer === 'object' && !Array.isArray(data.customer) ? data.customer : data;
       const requirements = data.requirements && typeof data.requirements === 'object' && !Array.isArray(data.requirements) ? data.requirements : data;
@@ -229,6 +268,14 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
       if (typeof subject !== 'string' || !subject.trim() || subject.length > 300 || typeof name !== 'string' || !name.trim() || name.length > 200 || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320 || (phone !== undefined && (typeof phone !== 'string' || phone.length > 40)) || (description !== undefined && (typeof description !== 'string' || description.length > 20_000)) || (budget !== undefined && (!Number.isFinite(Number(budget)) || Number(budget) < 0))) return res.status(400).json({ error: 'INVALID_INQUIRY_EVENT' });
     } else if (eventType === 'ticket.created') {
       if (typeof data.subject !== 'string' || !data.subject.trim() || data.subject.length > 300 || typeof data.description !== 'string' || !data.description.trim() || data.description.length > 20_000 || (data.serial_number !== undefined && (typeof data.serial_number !== 'string' || !data.serial_number.trim() || data.serial_number.length > 200))) return res.status(400).json({ error: 'INVALID_TICKET_EVENT' });
+    } else if (eventType === 'feedback.submitted') {
+      if (typeof data.customer_party_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.customer_party_id) || !Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5 || typeof data.feedback_text !== 'string' || !data.feedback_text.trim() || data.feedback_text.length > 2000 || (data.feedback_type !== undefined && (typeof data.feedback_type !== 'string' || !data.feedback_type.trim() || data.feedback_type.length > 60)) || (data.sales_order_id !== undefined && (typeof data.sales_order_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.sales_order_id)))) return res.status(400).json({ error: 'INVALID_FEEDBACK_EVENT' });
+      const party = await prisma.master_party.findFirst({ where: { id: data.customer_party_id, tenant_id: signatureConfig.source.tenant_id, company_id: signatureConfig.source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true } });
+      if (!party) return res.status(400).json({ error: 'CUSTOMER_PARTY_NOT_FOUND' });
+      if (data.sales_order_id) {
+        const order = await prisma.sales_order.findFirst({ where: { id: data.sales_order_id, tenant_id: signatureConfig.source.tenant_id, company_id: signatureConfig.source.company_id, customer_party_id: party.id }, select: { id: true } });
+        if (!order) return res.status(400).json({ error: 'FEEDBACK_SALES_ORDER_NOT_FOUND' });
+      }
     } else if (eventType === 'quotation.decision' || eventType === 'quotation.accepted') {
       const decision = eventType === 'quotation.accepted' ? 'ACCEPTED' : String(data.decision).toUpperCase();
       if (typeof data.quotation_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.quotation_id) || !['ACCEPTED', 'REJECTED'].includes(decision)) return res.status(400).json({ error: 'INVALID_QUOTATION_DECISION' });
