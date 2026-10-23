@@ -433,16 +433,22 @@ export async function createCostEstimate(payload: {
   const totalCost    = directCost + overheadCost;
   const markupPct    = Number(payload.markup_percent ?? 30);
   const offeredAmt   = totalCost * (1 + markupPct / 100);
+  const marginAmt    = offeredAmt - totalCost;
+  const marginPct    = offeredAmt > 0 ? (marginAmt / offeredAmt) * 100 : 0;
 
   const { data } = await api.post("/api/v1/crm/cost-estimates/", {
     opportunity_id:  payload.opportunity || null,
     inquiry_id:      payload.inquiry || null,
     estimate_number: `EST-${Date.now().toString().slice(-6)}`,
+    version_number:  1,
     direct_cost:     directCost,
     overhead_cost:   overheadCost,
+    contingency_amount: 0,
     total_cost:      totalCost,
     markup_percent:  markupPct,
     offered_amount:  offeredAmt,
+    margin_amount:   marginAmt,
+    margin_percent:  marginPct,
     status:          "DRAFT",
   });
 

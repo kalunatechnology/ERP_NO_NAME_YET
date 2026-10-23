@@ -940,7 +940,7 @@ function TabDeals({
  */
 function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; readOnly?: boolean }) {
   const [isEstModal, setIsEstModal] = useState(false);
-  const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: 100000000, overhead_cost: 30000000, markup_percent: 30, description: "" });
+  const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: "100000000", overhead_cost: "30000000", markup_percent: "30", description: "" });
 
   /**
    * Creates a cost estimate and preserves a null opportunity relationship when none is selected.
@@ -948,14 +948,17 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: C
    * The CRM API owns persistence; this handler owns submission feedback, modal lifecycle, and parent refresh.
    */
   const handleCreate = async () => {
-    if (![estForm.direct_cost, estForm.overhead_cost, estForm.markup_percent].every(Number.isFinite)
-      || estForm.direct_cost < 0 || estForm.overhead_cost < 0 || estForm.markup_percent < 0
-      || estForm.direct_cost + estForm.overhead_cost <= 0) {
+    const directCost = Number(estForm.direct_cost);
+    const overheadCost = Number(estForm.overhead_cost);
+    const markupPercent = Number(estForm.markup_percent);
+    if (![directCost, overheadCost, markupPercent].every(Number.isFinite)
+      || directCost < 0 || overheadCost < 0 || markupPercent < 0
+      || directCost + overheadCost <= 0) {
       toast.error("Total biaya harus lebih dari nol dan seluruh nilai tidak boleh negatif.");
       return;
     }
     try {
-      await createCostEstimate({ ...estForm, opportunity: estForm.opportunity || null });
+      await createCostEstimate({ ...estForm, direct_cost: directCost, overhead_cost: overheadCost, markup_percent: markupPercent, opportunity: estForm.opportunity || null });
       toast.success("Cost Estimate dibuat!"); setIsEstModal(false); onRefresh();
     } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal buat estimate"); }
   };
@@ -1068,24 +1071,24 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: C
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Biaya Langsung (Rp)</label>
-              <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.direct_cost} onChange={e => setEstForm(f => ({...f, direct_cost: Number(e.target.value)}))} />
+              <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.direct_cost} onFocus={e => { if (e.currentTarget.value === "0") setEstForm(f => ({ ...f, direct_cost: "" })); }} onBlur={e => { if (e.currentTarget.value === "") setEstForm(f => ({ ...f, direct_cost: "0" })); }} onChange={e => setEstForm(f => ({...f, direct_cost: e.target.value}))} />
             </div>
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Biaya Overhead (Rp)</label>
-              <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.overhead_cost} onChange={e => setEstForm(f => ({...f, overhead_cost: Number(e.target.value)}))} />
+              <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.overhead_cost} onFocus={e => { if (e.currentTarget.value === "0") setEstForm(f => ({ ...f, overhead_cost: "" })); }} onBlur={e => { if (e.currentTarget.value === "") setEstForm(f => ({ ...f, overhead_cost: "0" })); }} onChange={e => setEstForm(f => ({...f, overhead_cost: e.target.value}))} />
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Markup %</label>
-            <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.markup_percent} onChange={e => setEstForm(f => ({...f, markup_percent: Number(e.target.value)}))} />
+            <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.markup_percent} onFocus={e => { if (e.currentTarget.value === "0") setEstForm(f => ({ ...f, markup_percent: "" })); }} onBlur={e => { if (e.currentTarget.value === "") setEstForm(f => ({ ...f, markup_percent: "0" })); }} onChange={e => setEstForm(f => ({...f, markup_percent: e.target.value}))} />
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Deskripsi biaya langsung</label>
             <input type="text" maxLength={255} className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.description} onChange={e => setEstForm(f => ({...f, description: e.target.value}))} placeholder="Biaya material / pekerjaan" />
           </div>
           <div className="p-3 rounded-xl bg-brand-light-green text-xs">
-            <b>Total HPP:</b> {formatMoney(estForm.direct_cost + estForm.overhead_cost)} &nbsp;|&nbsp;
-            <b>Penawaran:</b> {formatMoney((estForm.direct_cost + estForm.overhead_cost) * (1 + estForm.markup_percent/100))}
+            <b>Total HPP:</b> {formatMoney(Number(estForm.direct_cost || 0) + Number(estForm.overhead_cost || 0))} &nbsp;|&nbsp;
+            <b>Penawaran:</b> {formatMoney((Number(estForm.direct_cost || 0) + Number(estForm.overhead_cost || 0)) * (1 + Number(estForm.markup_percent || 0)/100))}
           </div>
           <div className="flex gap-2 justify-end pt-2">
             <button onClick={() => setIsEstModal(false)} className="btn-ghost">Batal</button>
