@@ -296,12 +296,13 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
         origin_domain: originDomain,
       } });
     } else if (envelope.event_type === 'feedback.submitted') {
+      const customerCode = typeof data?.customer_code === 'string' ? data.customer_code.trim() : typeof data?.client_code === 'string' ? data.client_code.trim() : '';
       const partyId = String(data?.customer_party_id ?? '').trim();
       const rating = Number(data?.rating);
       const feedbackText = String(data?.feedback_text ?? '').trim();
       const feedbackType = String(data?.feedback_type ?? 'CUSTOMER_REVIEW').trim();
-      if (!partyId || !Number.isInteger(rating) || rating < 1 || rating > 5 || !feedbackText || feedbackText.length > 2000 || !feedbackType || feedbackType.length > 60) throw new Error('INVALID_FEEDBACK_EVENT');
-      const party = await tx.master_party.findFirst({ where: { id: partyId, tenant_id: source.tenant_id, company_id: source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true } });
+      if ((!customerCode && !partyId) || customerCode.length > 100 || !Number.isInteger(rating) || rating < 1 || rating > 5 || !feedbackText || feedbackText.length > 2000 || !feedbackType || feedbackType.length > 60) throw new Error('INVALID_FEEDBACK_EVENT');
+      const party = await tx.master_party.findFirst({ where: { ...(customerCode ? { party_code: customerCode } : { id: partyId }), tenant_id: source.tenant_id, company_id: source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true } });
       if (!party) throw new Error('CUSTOMER_PARTY_NOT_FOUND');
       const salesOrderId = typeof data?.sales_order_id === 'string' ? data.sales_order_id.trim() : '';
       if (salesOrderId) {
