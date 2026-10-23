@@ -33,8 +33,8 @@ import {
   ProjectResourceDocument, fetchProjectResources, createProjectResource, deleteProjectResource
 } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
-import { cn, localDateKey } from "@/lib/utils";
-import { creationWeeklyPeriod } from "@/lib/weekly-dashboard";
+import { cn, formatDate, localDateKey } from "@/lib/utils";
+import { creationWeeklyPeriod, resolveTargetCalendarWeek } from "@/lib/weekly-dashboard";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
@@ -46,6 +46,7 @@ import { getCategoryStyle } from "@/lib/ui/semantic-styles";
 import { canPerform } from "@/lib/access/capability-contract";
 import { getModuleOverride, normalizeRoleCode, type ModulePermission } from "@/lib/access/module-contract";
 import { ProjectWbsTree } from "@/components/projects/ProjectWbsTree";
+import { useWeeklyPeriodFilter } from "@/components/tasks/useWeeklyPeriodFilter";
 import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
 import {
   PROJECT_LIFECYCLE_LABELS,
@@ -107,61 +108,25 @@ function projectClientName(project: Project): string {
   return String(row.customer_name || row.client_name || row.customer?.name || row.client?.name || "").trim();
 }
 
-function isoWeekKey(value?: string | null): string | null {
-  if (!value) return null;
-  const match = String(value).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  if (Number.isNaN(date.getTime())) return null;
-  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-}
-
-function projectActivityWeekKeys(project: Project): Set<string> {
-  const keys = new Set<string>();
-  const add = (date?: string | null) => {
-    const key = isoWeekKey(date);
-    if (key) keys.add(key);
+function projectHasActivityInPeriod(project: Project, period: { start: string; end: string; month: string; week: number }): boolean {
+  const inRange = (value?: string | null) => {
+    const date = String(value || "").slice(0, 10);
+    return Boolean(date && date >= period.start && date <= period.end);
   };
-  (project.main_tasks || []).forEach((main: any) => {
-    (main.weekly_tasks || main.weekly_plans || []).forEach((weekly: any) => {
-      add(weekly.start_date);
-      add(weekly.end_date);
-      if (weekly.start_date && weekly.end_date) {
-        const start = new Date(`${String(weekly.start_date).slice(0, 10)}T00:00:00Z`);
-        const end = new Date(`${String(weekly.end_date).slice(0, 10)}T00:00:00Z`);
-        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start <= end) {
-          for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 7)) {
-            add(cursor.toISOString().slice(0, 10));
-          }
-        }
-      }
-      (weekly.daily_tasks || []).forEach((daily: any) => add(daily.planned_date || daily.activity_date || daily.date));
-    });
-  });
-  (project.tasks || []).forEach((task: any) => add(task.planned_date || task.activity_date || task.due_date || task.date));
-  return keys;
-}
-
-function projectHasActivityInWeek(project: Project, selectedWeek: string): boolean {
-  if (projectActivityWeekKeys(project).has(selectedWeek)) return true;
-  const target = selectedWeek.match(/^(\d{4})-W(\d{2})$/);
-  if (!target) return false;
-  const start = new Date(Date.UTC(Number(target[1]), 0, 4));
-  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7) + (Number(target[2]) - 1) * 7);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 6);
-  const iso = (date: Date) => date.toISOString().slice(0, 10);
-  const weekStart = iso(start);
-  const weekEnd = iso(end);
   return (project.main_tasks || []).some((main: any) =>
     (main.weekly_tasks || main.weekly_plans || []).some((weekly: any) => {
+      const calendar = resolveTargetCalendarWeek({ start_date: weekly.start_date, weeklyTask: weekly });
       const from = String(weekly.start_date || "").slice(0, 10);
       const to = String(weekly.end_date || weekly.start_date || "").slice(0, 10);
-      return Boolean(from && to && from <= weekEnd && to >= weekStart);
+      const sameWeeklyPeriod = calendar.calendarMonth === period.month && calendar.calendarWeek === period.week;
+      const overlapsExecutionDates = Boolean(from && to && from <= period.end && to >= period.start);
+      const hasDailyActivity = (weekly.daily_tasks || []).some((daily: any) =>
+        inRange(daily.planned_date || daily.activity_date || daily.date),
+      );
+      return sameWeeklyPeriod || overlapsExecutionDates || hasDailyActivity;
     }),
+  ) || (project.tasks || []).some((task: any) =>
+    inRange(task.planned_date || task.activity_date || task.due_date || task.date),
   );
 }
 
@@ -209,24 +174,28 @@ export default function ProjectsClient() {
   const [projectSearch, setProjectSearch] = useState("");
   const [projectClientFilter, setProjectClientFilter] = useState("ALL");
   const [projectWeekFilter, setProjectWeekFilter] = useState("ALL");
+  const projectWeeklyCalendar = useWeeklyPeriodFilter(localDateKey());
+  const selectedProjectPeriod = projectWeekFilter === "ALL" ? null : projectWeeklyCalendar.period;
   const [projectPipelineView, setProjectPipelineView] = useState<"ALL" | "PRE_PITCHING" | "PITCHING" | "RUNNING">("ALL");
   const projectClients = useMemo(() => Array.from(new Set(projects.map(projectClientName).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, "id-ID")), [projects]);
-  const projectWeeks = useMemo(() => {
-    const weeks = new Set<string>();
-    projects.forEach((project) => projectActivityWeekKeys(project).forEach((week) => weeks.add(week)));
-    return Array.from(weeks).sort((a, b) => b.localeCompare(a));
-  }, [projects]);
-  const searchedProjects = useMemo(() => {
+  const baseSearchedProjects = useMemo(() => {
     const query = projectSearch.trim().toLocaleLowerCase("id-ID");
     return projects.filter((project) => {
       const client = projectClientName(project);
       if (projectClientFilter !== "ALL" && client !== projectClientFilter) return false;
-      if (projectWeekFilter !== "ALL" && !projectHasActivityInWeek(project, projectWeekFilter)) return false;
       return !query || [project.name, project.project_name, project.code, project.project_code, project.project_manager_name, project.pm_name, client]
         .some((value) => String(value || "").toLocaleLowerCase("id-ID").includes(query));
     });
-  }, [projects, projectSearch, projectClientFilter, projectWeekFilter]);
+  }, [projects, projectSearch, projectClientFilter]);
+  const searchedProjects = useMemo(() => {
+    if (projectWeekFilter === "ALL") return baseSearchedProjects;
+    if (!selectedProjectPeriod) return [];
+    return baseSearchedProjects.filter((project) => projectHasActivityInPeriod(project, selectedProjectPeriod));
+  }, [baseSearchedProjects, projectWeekFilter, selectedProjectPeriod]);
+  const projectWeekCounts = useMemo(() => Object.fromEntries(
+    projectWeeklyCalendar.periods.map((period) => [period.week, baseSearchedProjects.filter((project) => projectHasActivityInPeriod(project, period)).length]),
+  ), [baseSearchedProjects, projectWeeklyCalendar.periods]);
   const pipelineCounts = useMemo(() => ({
     all: searchedProjects.length,
     running: searchedProjects.filter((project) => normalizeProjectLifecycleStage(project.lifecycle_status) === "ACTIVE").length,
@@ -1534,21 +1503,59 @@ export default function ProjectsClient() {
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="project-week-filter" className="text-2xs font-semibold text-text-secondary">Aktivitas minggu:</label>
+            <label className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Bulan
+              <input
+                aria-label="Bulan filter Weekly proyek"
+                type="month"
+                value={projectWeeklyCalendar.month}
+                onChange={(event) => { projectWeeklyCalendar.changeMonth(event.target.value); setProjectWeekFilter("SELECTED"); }}
+                className="min-h-9 rounded-xl border border-text-tertiary bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:ring-2 focus:ring-brand-green/40"
+              />
+            </label>
+            <label htmlFor="project-week-filter" className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Weekly
             <select
               id="project-week-filter"
-              value={projectWeekFilter}
-              onChange={(event) => setProjectWeekFilter(event.target.value)}
+              value={projectWeekFilter === "ALL" ? "ALL" : String(projectWeeklyCalendar.week)}
+              disabled={projectWeeklyCalendar.loading || Boolean(projectWeeklyCalendar.error)}
+              onChange={(event) => {
+                if (event.target.value === "ALL") setProjectWeekFilter("ALL");
+                else { projectWeeklyCalendar.setWeek(Number(event.target.value)); setProjectWeekFilter("SELECTED"); }
+              }}
               className="min-h-9 rounded-xl border border-text-tertiary bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:ring-2 focus:ring-brand-green/40"
             >
               <option value="ALL">Semua minggu</option>
-              {projectWeeks.map((week) => {
-                const [year, number] = week.split("-W");
-                return <option key={week} value={week}>Minggu {Number(number)} · {year}</option>;
-              })}
+              {projectWeeklyCalendar.periods.map((period) => <option key={period.id} value={period.week}>Weekly {period.week} ({formatDate(period.start)} – {formatDate(period.end)})</option>)}
             </select>
-            <span className="text-2xs text-text-secondary">Berdasarkan tanggal Weekly dan Daily Task proyek.</span>
+            </label>
+            <span className="text-2xs text-text-secondary">Menampilkan proyek yang memiliki Weekly atau Daily Task pada periode terpilih.</span>
           </div>
+          {projectWeeklyCalendar.error ? (
+            <div role="alert" className="flex items-center gap-2 text-2xs text-red-700">
+              <span>{projectWeeklyCalendar.error}</span>
+              <button type="button" onClick={projectWeeklyCalendar.retry} className="font-semibold underline">Coba lagi</button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Navigasi cepat Weekly proyek">
+              <span className="text-2xs font-semibold text-text-secondary">Pilih Weekly proyek:</span>
+              {projectWeeklyCalendar.periods.map((period) => {
+                const isSelected = projectWeekFilter !== "ALL" && projectWeeklyCalendar.period?.id === period.id;
+                return <button
+                  key={period.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => { projectWeeklyCalendar.setWeek(period.week); setProjectWeekFilter("SELECTED"); }}
+                  className={cn(
+                    "flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
+                    isSelected ? "border-brand-green bg-brand-light-green text-brand-deep-green" : "border-text-tertiary bg-white text-text-secondary hover:bg-gray-50",
+                  )}
+                >
+                  <span>Weekly {period.week}</span>
+                  <span className="text-2xs opacity-75">({formatDate(period.start)} – {formatDate(period.end)})</span>
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-2xs font-bold", isSelected ? "bg-brand-deep-green text-white" : "bg-black/5")}>{projectWeekCounts[period.week] ?? 0}</span>
+                </button>;
+              })}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 border-t border-text-tertiary pt-3">

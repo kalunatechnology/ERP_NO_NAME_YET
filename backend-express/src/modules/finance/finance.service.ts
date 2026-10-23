@@ -156,7 +156,7 @@ export class FinanceService {
       // ==== PERIOD GUARD (Defense-in-Depth) ====
       const postingDate = entry.posting_date ?? new Date();
       const { PeriodClosingService } = await import('./period-closing.service');
-      await PeriodClosingService.assertPeriodOpen(postingDate);
+      await PeriodClosingService.assertPeriodOpen(postingDate, entry.company_id ?? companyId ?? null);
 
       const lines = await tx.fin_journal_line.findMany({
         where: { journal_entry_id: entryId, ...(companyId ? { company_id: companyId } : {}) },
@@ -874,7 +874,7 @@ export class FinanceService {
 
       // ==== PERIOD GUARD (Defense-in-Depth) ====
       const { PeriodClosingService } = await import('./period-closing.service');
-      await PeriodClosingService.assertPeriodOpen(new Date(), doc.company_id ?? null);
+      await PeriodClosingService.assertPeriodOpen(doc.posting_date ?? doc.invoice_date ?? new Date(), doc.company_id ?? null);
 
       const sourceDocument =
         await FinanceDocumentService.ensure(tx, {
@@ -1467,20 +1467,6 @@ export class FinanceService {
     const statementNumber = `STMT-${Date.now().toString().slice(-6)}`;
     const now = new Date();
 
-    const statement = await prisma.fin_bank_statement.create({
-      data: {
-        id:                 statementId,
-        tenant_id:          bankAcc.tenant_id,
-        company_id:         bankAcc.company_id,
-        created_by_id:      userId,
-        bank_account_id:    bankAccountId,
-        statement_date:     now,
-        opening_balance:    new Decimal(0),
-        closing_balance:    new Decimal(0),
-        status:             'IMPORTED',
-      },
-    });
-
     const importedLines: Array<{
       id: string; tenant_id: string | null; company_id: string | null; created_by_id?: string;
       bank_statement_id: string; transaction_date: Date; reference_number: string; description: string;
@@ -1549,6 +1535,8 @@ export class FinanceService {
           }
         }
       }
+      const { PeriodClosingService } = await import('./period-closing.service');
+      await PeriodClosingService.assertPeriodOpen(isNaN(txDate.getTime()) ? now : txDate, companyId);
 
       if (isNegative) totalOutflow += numAmount;
       else totalInflow += numAmount;
@@ -1569,6 +1557,20 @@ export class FinanceService {
           matchAmount:        numAmount,
       });
     }
+
+    await prisma.fin_bank_statement.create({
+      data: {
+        id: statementId,
+        tenant_id: bankAcc.tenant_id,
+        company_id: bankAcc.company_id,
+        created_by_id: userId,
+        bank_account_id: bankAccountId,
+        statement_date: now,
+        opening_balance: new Decimal(0),
+        closing_balance: new Decimal(0),
+        status: 'IMPORTED',
+      },
+    });
 
     const uniqueAmounts = [...new Set(importedLines.map((line) => line.matchAmount))];
     const matchedPayments = uniqueAmounts.length
