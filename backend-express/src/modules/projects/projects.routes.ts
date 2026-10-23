@@ -553,12 +553,12 @@ const enforceProjectBoundary = async (req: Request, _res: Response, next: NextFu
     const isOperationalUser = ([RoleCode.STAFF, RoleCode.SUPERVISOR] as RoleCode[])
       .includes(activeRole as RoleCode) && !req.moduleAccess?.delegated;
     const isAuthorityRead = ['GET', 'HEAD', 'OPTIONS'].includes(req.method)
-      && /\/(authority|supervisor)\/?$/.test(req.path);
+      && /\/(authority|supervisor)\/?$|\/resources\/?$/.test(req.path);
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || (isOperationalUser && !isAuthorityRead)) {
       // Personal task visibility is served through the staff projection. Full
-      // project-detail endpoints are reserved for an active project-scoped
-      // Acting PM assignment. Assigned Staff may read authority metadata to
-      // render self-submission controls without receiving management rights.
+      // project-detail endpoints are reserved for project managers; assigned
+      // users may read resource links and authority metadata without receiving
+      // project management rights.
       await ProjectsService.assertCanManageProject(req.user, req.params.id, companyId);
     } else {
       await ProjectsService.assertCanViewProject(req.user, req.params.id, companyId);
@@ -2339,6 +2339,77 @@ projectsRouter.get(
     }
   },
 );
+
+projectsRouter.get('/projects/:id/resources', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const resources = await prisma.project_resource_document.findMany({
+      where: {
+        project_id: req.params.id,
+        tenant_id: activeTenantId(req),
+        company_id: activeCompanyId(req),
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    res.json(resources);
+  } catch (err) {
+    next(err);
+  }
+});
+
+projectsRouter.post('/projects/:id/resources', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const name = String(req.body?.name ?? '').trim();
+    const url = String(req.body?.url ?? '').trim();
+    const description = String(req.body?.description ?? '').trim();
+    const category = String(req.body?.category ?? 'DOCUMENT').trim().toUpperCase() || 'DOCUMENT';
+    if (!name) throw new ValidationError('Nama resource wajib diisi.');
+    if (name.length > 200) throw new ValidationError('Nama resource maksimal 200 karakter.');
+    if (!['DOCUMENT', 'CONTRACT', 'DESIGN', 'REPORT', 'OTHER'].includes(category)) {
+      throw new ValidationError('Kategori resource tidak valid.');
+    }
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new ValidationError('Tautan resource tidak valid.');
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new ValidationError('Tautan resource harus menggunakan HTTP atau HTTPS.');
+    }
+    const resource = await prisma.project_resource_document.create({
+      data: {
+        tenant_id: activeTenantId(req),
+        company_id: activeCompanyId(req),
+        project_id: req.params.id,
+        name,
+        url: parsedUrl.toString(),
+        description,
+        category,
+        created_by_id: activeUserId(req),
+      },
+    });
+    res.status(201).json(resource);
+  } catch (err) {
+    next(err);
+  }
+});
+
+projectsRouter.delete('/projects/:id/resources/:resourceId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await prisma.project_resource_document.deleteMany({
+      where: {
+        id: req.params.resourceId,
+        project_id: req.params.id,
+        tenant_id: activeTenantId(req),
+        company_id: activeCompanyId(req),
+      },
+    });
+    if (!result.count) throw new NotFoundError('Resource proyek tidak ditemukan.');
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
 
 projectsRouter.use('/projects', createCrudRouter({
   modelName: 'project_project',

@@ -2574,6 +2574,23 @@ model project_project {
   @@map("project_project")
 }
 
+model project_resource_document {
+  id           String    @id @default(uuid())
+  tenant_id    String?   @map("tenant_id")
+  company_id   String?   @map("company_id")
+  project_id   String    @map("project_id")
+  name         String
+  url          String
+  description  String   @default("")
+  category     String   @default("DOCUMENT")
+  created_by_id String? @map("created_by_id")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([tenant_id, company_id, project_id])
+  @@map("project_resource_document")
+}
+
 model project_control_item {
   tenant_id     String?   @map("tenant_id")
   company_id    String?   @map("company_id")

@@ -13,7 +13,7 @@ import {
   Plus, RefreshCw, Trash2, CheckCircle2,
   TrendingUp, Users, ShieldCheck, Play,
   DollarSign, Layers, Clock, Zap,
-  Edit, Search, Check, Wallet
+  Edit, Search, Check, Wallet, FileText, ExternalLink
 } from "lucide-react";
 import {
   Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, ProjectAuthority, ProjectSupervisor,
@@ -29,7 +29,8 @@ import {
   fetchProjectFundingRequests, submitProjectFundingRequest,
   updateProjectFinancials,
   fetchProjectCustomers, getApiErrorDetail,
-  getProjectAuthority, getProjectSupervisor, assignProjectSupervisor, revokeProjectSupervisor
+  getProjectAuthority, getProjectSupervisor, assignProjectSupervisor, revokeProjectSupervisor,
+  ProjectResourceDocument, fetchProjectResources, createProjectResource, deleteProjectResource
 } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn, localDateKey } from "@/lib/utils";
@@ -347,6 +348,10 @@ export default function ProjectsClient() {
   const [timerDailyId, setTimerDailyId] = useState<string | number | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [transfers, setTransfers] = useState<TaskTransfer[]>([]);
+  const [projectResources, setProjectResources] = useState<ProjectResourceDocument[]>([]);
+  const [resourceLoading, setResourceLoading] = useState(false);
+  const [resourceSaving, setResourceSaving] = useState(false);
+  const [resourceForm, setResourceForm] = useState({ name: "", url: "", description: "", category: "DOCUMENT" });
 
   const selectedProject = projects.find(p => String(p.id) === String(selectedId)) || null;
   const pendingWeeklyCount = useMemo(() => (selectedProject?.main_tasks || []).reduce((count, main) => count
@@ -393,6 +398,54 @@ export default function ProjectsClient() {
   const selectedProjectTitle = selectedProject
     ? selectedProject.project_name || (selectedProject as any).name || `Proyek #${selectedProject.id}`
     : "";
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedProjectId) {
+      setProjectResources([]);
+      setResourceLoading(false);
+      return () => { active = false; };
+    }
+    setResourceLoading(true);
+    fetchProjectResources(selectedProjectId)
+      .then((items) => { if (active) setProjectResources(items); })
+      .catch((error) => {
+        if (active) toast.error(getApiErrorDetail(error, "Gagal memuat resource proyek."));
+      })
+      .finally(() => { if (active) setResourceLoading(false); });
+    return () => { active = false; };
+  }, [selectedProjectId]);
+
+  const handleCreateProjectResource = async () => {
+    if (!selectedProject || !resourceForm.name.trim() || !resourceForm.url.trim()) return;
+    setResourceSaving(true);
+    try {
+      const resource = await createProjectResource(selectedProject.id, {
+        name: resourceForm.name.trim(),
+        url: resourceForm.url.trim(),
+        description: resourceForm.description.trim(),
+        category: resourceForm.category,
+      });
+      setProjectResources((items) => [resource, ...items]);
+      setResourceForm({ name: "", url: "", description: "", category: "DOCUMENT" });
+      toast.success("Resource proyek ditambahkan.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal menambahkan resource proyek."));
+    } finally {
+      setResourceSaving(false);
+    }
+  };
+
+  const handleDeleteProjectResource = async (resource: ProjectResourceDocument) => {
+    if (!selectedProject || !confirm(`Hapus resource "${resource.name}" dari proyek ini?`)) return;
+    try {
+      await deleteProjectResource(selectedProject.id, resource.id);
+      setProjectResources((items) => items.filter((item) => item.id !== resource.id));
+      toast.success("Resource proyek dihapus.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal menghapus resource proyek."));
+    }
+  };
 
   useEffect(() => {
     if (!selectedProjectId || lastTrackedProjectIdRef.current === selectedProjectId) return;
@@ -1880,9 +1933,11 @@ export default function ProjectsClient() {
       <div className="flex items-center gap-2 border-b border-text-tertiary overflow-x-auto no-scrollbar pb-1">
         {(userRole === "staff" && !canManageSelectedProject ? [
           { key: "TREE", label: "Task Terkait Saya", icon: Layers, count: mainTasks.length },
+          ...(selectedProject ? [{ key: "RESOURCES", label: "Resource Proyek", icon: FileText, count: projectResources.length }] : []),
         ] : [
           { key: "TREE", label: "Hierarki Task (Full WBS Plan)", icon: Layers, count: mainTasks.length },
           { key: "WORKSPACE", label: "Workspace Personal Saya (Semua Proyek)", icon: Users, count: allPersonalTasks.length },
+          ...(selectedProject ? [{ key: "RESOURCES", label: "Resource Proyek", icon: FileText, count: projectResources.length }] : []),
           { key: "TRANSFERS", label: "Transfer Requests", icon: RefreshCw, count: transfers.length },
           { key: "MILESTONES", label: "Milestones & Gates", icon: ShieldCheck, count: selectedProject?.milestones?.length },
           ...(canViewFinancials ? [{ key: "FINANCIAL", label: "Biaya, Dana & Billing", icon: DollarSign }] : []),
@@ -2568,6 +2623,69 @@ export default function ProjectsClient() {
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === "RESOURCES" && selectedProject && (
+        <section className="card rounded-2xl p-5 flex flex-col gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-extrabold text-text-primary flex items-center gap-2"><FileText size={17} /> Resource Proyek</h3>
+              <p className="mt-1 text-xs text-text-secondary">Dokumen dan tautan yang disimpan khusus untuk {selectedProject.project_name || selectedProject.name || "proyek ini"}.</p>
+            </div>
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-2xs font-bold text-text-secondary">{projectResources.length} resource</span>
+          </div>
+
+          {canManageSelectedProject && (
+            <div className="rounded-xl border border-text-tertiary bg-gray-50/70 p-4">
+              <div className="mb-3 text-xs font-bold text-text-primary">Tambahkan tautan dokumen</div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <input className="input text-xs" placeholder="Nama dokumen *" value={resourceForm.name} onChange={(event) => setResourceForm((value) => ({ ...value, name: event.target.value }))} />
+                <select className="input text-xs" value={resourceForm.category} onChange={(event) => setResourceForm((value) => ({ ...value, category: event.target.value }))}>
+                  <option value="DOCUMENT">Dokumen</option>
+                  <option value="CONTRACT">Kontrak</option>
+                  <option value="DESIGN">Desain / Teknis</option>
+                  <option value="REPORT">Laporan</option>
+                  <option value="OTHER">Lainnya</option>
+                </select>
+                <input className="input text-xs md:col-span-2" type="url" placeholder="URL dokumen (Drive, SharePoint, atau tautan HTTPS) *" value={resourceForm.url} onChange={(event) => setResourceForm((value) => ({ ...value, url: event.target.value }))} />
+                <textarea className="input text-xs md:col-span-2" rows={2} placeholder="Keterangan (opsional)" value={resourceForm.description} onChange={(event) => setResourceForm((value) => ({ ...value, description: event.target.value }))} />
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button type="button" disabled={resourceSaving || !resourceForm.name.trim() || !resourceForm.url.trim()} onClick={handleCreateProjectResource} className="btn-primary py-2 px-3 text-xs disabled:cursor-not-allowed disabled:opacity-50">
+                  {resourceSaving ? "Menyimpan..." : "Tambahkan Resource"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {resourceLoading ? (
+            <div className="py-8 text-center text-xs text-text-secondary">Memuat resource proyek...</div>
+          ) : projectResources.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-text-tertiary py-10 text-center text-xs text-text-secondary">Belum ada dokumen atau tautan untuk proyek ini.</div>
+          ) : (
+            <div className="divide-y divide-gray-100 rounded-xl border border-text-tertiary">
+              {projectResources.map((resource) => (
+                <div key={resource.id} className="flex flex-wrap items-center justify-between gap-3 p-3.5">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="rounded-lg bg-brand-light-green p-2 text-brand-deep-green"><FileText size={16} /></span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold text-text-primary">{resource.name}</span>
+                        <CategoryLabel label={resource.category || "DOCUMENT"} />
+                      </div>
+                      {resource.description && <p className="mt-1 text-2xs text-text-secondary">{resource.description}</p>}
+                      <p className="mt-1 max-w-2xl truncate text-2xs text-text-tertiary">{resource.url}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a href={resource.url} target="_blank" rel="noopener noreferrer" className="btn-outline inline-flex items-center gap-1.5 py-1.5 px-2.5 text-xs"><ExternalLink size={12} /> Buka</a>
+                    {canManageSelectedProject && <button type="button" title="Hapus resource" onClick={() => handleDeleteProjectResource(resource)} className="btn-ghost p-2 text-red-600"><Trash2 size={14} /></button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {/* ── Modals ── */}

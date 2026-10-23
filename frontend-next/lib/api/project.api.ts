@@ -49,6 +49,31 @@ export interface Project {
   authority?: ProjectAuthority;
 }
 
+export interface ProjectResourceDocument {
+  id: string;
+  project_id: string;
+  name: string;
+  url: string;
+  description?: string;
+  category?: string;
+  created_at?: string;
+  created_by_id?: string | null;
+}
+
+export async function fetchProjectResources(projectId: string | number): Promise<ProjectResourceDocument[]> {
+  const { data } = await api.get<ProjectResourceDocument[]>(`/api/v1/projects/projects/${projectId}/resources`);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createProjectResource(projectId: string | number, payload: Pick<ProjectResourceDocument, "name" | "url" | "description" | "category">) {
+  const { data } = await api.post<ProjectResourceDocument>(`/api/v1/projects/projects/${projectId}/resources`, payload);
+  return data;
+}
+
+export async function deleteProjectResource(projectId: string | number, resourceId: string) {
+  await api.delete(`/api/v1/projects/projects/${projectId}/resources/${resourceId}`);
+}
+
 export interface ProjectAuthority {
   project_id: string;
   effective_role: string | null;
