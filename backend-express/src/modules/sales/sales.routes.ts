@@ -203,7 +203,31 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
       res.json(existing);
       return;
     }
-    const pmCandidate = await prisma.iam_user.findFirst({ where: { username: 'pm', is_active: true } });
+    let customerName = '';
+    let projectName = `Project for Order #${order.id.slice(0, 6)}`;
+    let projectDescription = '';
+
+    if (order.customer_party_id) {
+      const party = await prisma.master_party.findFirst({ where: { id: order.customer_party_id, company_id: companyId } });
+      if (party) customerName = party.display_name || party.legal_name || '';
+    }
+
+    if (order.quotation_id) {
+      const quot = await prisma.sales_quotation.findFirst({ where: { id: order.quotation_id, company_id: companyId } });
+      if (quot?.opportunity_id) {
+        const opp = await prisma.crm_opportunity.findFirst({ where: { id: quot.opportunity_id, company_id: companyId } });
+        if (opp?.opportunity_name) projectName = opp.opportunity_name;
+        if (opp?.source_inquiry_id) {
+          const inq = await prisma.crm_customer_inquiry.findFirst({ where: { id: opp.source_inquiry_id, company_id: companyId } });
+          if (inq?.subject) projectName = inq.subject;
+          if (inq?.description) projectDescription = inq.description;
+          if (!customerName && inq?.customer_name) customerName = inq.customer_name;
+        }
+      }
+    }
+
+    const pmCandidate = await prisma.iam_user.findFirst({ where: { id: req.user?.id, is_active: true } })
+      ?? await prisma.iam_user.findFirst({ where: { username: 'pm', is_active: true } });
     const pmMembership = pmCandidate ? await prisma.iam_user_company_membership.findFirst({
       where: { user_id: pmCandidate.id, company_id: companyId, status: 'ACTIVE' },
       select: { id: true },
@@ -216,13 +240,13 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
         company_id: companyId,
         created_by_id: req.user?.id,
         customer_party_id: order.customer_party_id,
-        customer_name: '',
-        description: '',
+        customer_name: customerName,
+        description: projectDescription,
         sales_order_id: order.id,
         project_manager_id: pmUser?.id,
         manager_name: pmUser?.full_name ?? pmUser?.username ?? '',
         project_code: `PRJ-SO-${order.id.slice(0, 6).toUpperCase()}`,
-        project_name: `Project for Order #${order.id.slice(0, 6)}`,
+        project_name: projectName,
         budget_amount: order.total_amount ?? 0,
         status: 'PLANNED',
         // A confirmed Sales Order has passed commercial verification, but

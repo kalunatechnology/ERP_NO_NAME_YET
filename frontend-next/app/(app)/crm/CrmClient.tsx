@@ -1582,7 +1582,22 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabContracts({ data, onNavigate }: { data: CRMData; onNavigate: (tab: "estimate" | "deals") => void }) {
+function TabContracts({ data, onNavigate, onRefresh }: { data: CRMData; onNavigate: (tab: "estimate" | "deals") => void; onRefresh?: () => void }) {
+  const [convertingOrderId, setConvertingOrderId] = useState<string | null>(null);
+
+  const handleConvertToProject = async (orderId: string) => {
+    setConvertingOrderId(orderId);
+    try {
+      const res = await api.post(`/api/v1/sales/orders/${orderId}/convert-to-project`);
+      toast.success(`Sales Order berhasil ditransfer menjadi Proyek "${res.data?.project_name || 'Baru'}"!`);
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || err?.response?.data?.detail || "Gagal mentransfer order ke proyek.");
+    } finally {
+      setConvertingOrderId(null);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="card rounded-xl border border-blue-200 bg-blue-50/70 p-4">
@@ -1608,7 +1623,18 @@ function TabContracts({ data, onNavigate }: { data: CRMData; onNavigate: (tab: "
                   <div className="text-sm font-semibold">{o.order_number || `Order ${String(o.id).slice(0,8)}`}</div>
                   <div className="text-xs text-text-secondary">Nilai: <b>{formatMoney(o.total_amount)}</b></div>
                 </div>
-                <StatusBadge status={o.status || "CONFIRMED"} />
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleConvertToProject(o.id)}
+                    disabled={convertingOrderId === o.id}
+                    className="btn-primary text-xs py-1.5 px-3 gap-1.5 bg-brand-deep-green hover:bg-brand-green text-white font-bold shadow-xs"
+                  >
+                    <Zap size={12} />
+                    {convertingOrderId === o.id ? "Mentransfer..." : "Transfer ke Proyek"}
+                  </button>
+                  <StatusBadge status={o.status || "CONFIRMED"} />
+                </div>
               </div>
             ))}
           </div>
@@ -2155,7 +2181,7 @@ export default function CrmClient() {
           {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "incoming"   && <TabIncoming data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "accounts"   && <TabAccounts data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
-          {activeTab === "contracts"  && <TabContracts data={data} onNavigate={setActiveTab} />}
+          {activeTab === "contracts"  && <TabContracts data={data} onNavigate={setActiveTab} onRefresh={() => loadData(true)} />}
           {activeTab === "engagement" && <TabEngagement data={data} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} />}
         </>
       )}
