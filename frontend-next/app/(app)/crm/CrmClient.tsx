@@ -938,7 +938,7 @@ function TabDeals({
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; readOnly?: boolean }) {
+function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQuotation = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; readOnly?: boolean; canApproveQuotation?: boolean }) {
   const [isEstModal, setIsEstModal] = useState(false);
   const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: "100000000", overhead_cost: "30000000", markup_percent: "30", description: "" });
 
@@ -980,7 +980,17 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false }: { data: C
  */
     const s = (q.status || "").toUpperCase();
     if (s === "DRAFT") return <ActionBtn onClick={async () => { await submitQuotationApproval(q.id); toast.success("Submitted!"); onRefresh(); }} label="Minta Approval" small />;
-    if (s === "PENDING_APPROVAL") return <ActionBtn onClick={async () => { await approveQuotation(q.id, approvals); toast.success("Disetujui!"); onRefresh(); }} label="Setujui" small />;
+    if (s === "PENDING_APPROVAL") return canApproveQuotation
+      ? <ActionBtn onClick={async () => {
+          try {
+            await approveQuotation(q.id, approvals);
+            toast.success("Quotation disetujui.");
+            onRefresh();
+          } catch (error: any) {
+            toast.error(error?.response?.data?.detail || error?.message || "Gagal menyetujui quotation.");
+          }
+        }} label="Setuju" small />
+      : <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800" title="Persetujuan quotation hanya dapat dilakukan oleh Direktur.">Menunggu Direktur</span>;
     if (s === "APPROVED") return <ActionBtn onClick={async () => { await sendQuotation(q.id); toast.success("Dikirim!"); onRefresh(); }} label="Kirim" small />;
     if (s === "SENT") return <ActionBtn onClick={async () => { await acceptQuotation(q.id); toast.success("Accepted!"); onRefresh(); }} label="Accept" small />;
     if (s === "ACCEPTED") return <ActionBtn onClick={async () => { await convertQuotationToOrder(q.id); toast.success("Converted to Order!"); onRefresh(); }} label="📦 Convert to Order" small />;
@@ -1920,6 +1930,8 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
  */
 export default function CrmClient() {
   const { user, userRole, isLoading: authLoading } = useAuth();
+  const activeRoleCode = String(user?.active_role_code ?? "").toUpperCase().replace(/^ROLE-/, "");
+  const canApproveCrmQuotation = userRole === "super_admin" || activeRoleCode === "DIRECTOR";
   const canOperateCrm = canPerform("crm:operate", userRole, {
     enabledModules: user?.enabled_modules,
     moduleAccess: user?.module_access,
@@ -2139,7 +2151,7 @@ export default function CrmClient() {
               readOnly={!canOperateCrm}
             />
           )}
-          {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} />}
+          {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} canApproveQuotation={canApproveCrmQuotation} />}
           {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "incoming"   && <TabIncoming data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "accounts"   && <TabAccounts data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}

@@ -88,6 +88,12 @@ async function decideExecutiveApproval(req: Request, decision: 'APPROVED' | 'REJ
         decided_at: new Date(),
       },
     });
+    if (approval.quotation_id) {
+      await tx.sales_quotation.updateMany({
+        where: { id: approval.quotation_id, company_id: companyId, status: 'PENDING_APPROVAL' },
+        data: { status: decision === 'APPROVED' ? 'APPROVED' : 'REJECTED' },
+      });
+    }
     if (approval.decision !== decision) await queueWebhookEvent(tx, companyId, 'crm.executive_approval.decided', {
         approval_id: approval.id, decision, approval_type: approval.approval_type,
         quotation_id: approval.quotation_id, opportunity_id: approval.opportunity_id,

@@ -533,17 +533,26 @@ export async function submitQuotationApproval(id: string | number) {
 export async function approveQuotation(quotationId: string | number, approvalsData: any[] = []) {
   let approvalId: string | number | null = null;
   const localApproval = approvalsData.find(
-    a => String(a.quotation) === String(quotationId) && a.decision === "PENDING"
+    a => String(a.quotation_id ?? a.quotation) === String(quotationId) && a.decision === "PENDING"
   );
   if (localApproval) {
     approvalId = localApproval.id;
   } else {
     try {
-      const res = await api.get(`/api/v1/crm/executive-approvals/?quotation=${quotationId}`);
+      const res = await api.get(`/api/v1/crm/executive-approvals/?quotation_id=${quotationId}`);
       const rows = normalizeList<any>(res.data).rows;
-      const pending = rows.find(a => a.decision === "PENDING") || rows[0];
+      const pending = rows.find(a => a.decision === "PENDING");
       if (pending) approvalId = pending.id;
     } catch { /* ignore */ }
+  }
+  // Repair quotations submitted by older handlers that changed status without
+  // creating the corresponding executive-approval row.
+  if (!approvalId) {
+    await submitQuotationApproval(quotationId);
+    const res = await api.get(`/api/v1/crm/executive-approvals/?quotation_id=${quotationId}`);
+    const rows = normalizeList<any>(res.data).rows;
+    const pending = rows.find(a => a.decision === "PENDING");
+    if (pending) approvalId = pending.id;
   }
   if (!approvalId) throw new Error("Record Executive Approval tidak ditemukan untuk Quotation ini.");
 

@@ -33,11 +33,41 @@ function activeCompanyId(req: Request): string {
  */
 salesRouter.post('/quotations/:id/submit-approval', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const quotation = await prisma.sales_quotation.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
-    if (!quotation) throw new NotFoundError('Quotation');
-    const updated = await prisma.sales_quotation.update({
-      where: { id: quotation.id },
-      data: { status: 'PENDING_APPROVAL' },
+    const companyId = activeCompanyId(req);
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM sales_quotation WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
+      const quotation = await tx.sales_quotation.findFirst({ where: { id: req.params.id, company_id: companyId } });
+      if (!quotation) throw new NotFoundError('Quotation');
+
+      if (!['DRAFT', 'PENDING_APPROVAL'].includes(quotation.status)) {
+        throw new ValidationError('Hanya quotation DRAFT yang dapat diajukan untuk approval.');
+      }
+
+      const existingApproval = await tx.crm_executive_approval.findFirst({
+        where: { quotation_id: quotation.id, company_id: companyId, decision: 'PENDING' },
+      });
+      if (!existingApproval) {
+        await tx.crm_executive_approval.create({
+          data: {
+            tenant_id: quotation.tenant_id,
+            company_id: companyId,
+            quotation_id: quotation.id,
+            opportunity_id: quotation.opportunity_id,
+            requested_by: req.user?.id ?? null,
+            approval_type: 'SALES_QUOTATION',
+            requested_amount: quotation.total_amount,
+            decision: 'PENDING',
+            remarks: '',
+            requested_at: new Date(),
+          },
+        });
+      }
+
+      if (quotation.status === 'PENDING_APPROVAL') return quotation;
+      return tx.sales_quotation.update({
+        where: { id: quotation.id },
+        data: { status: 'PENDING_APPROVAL' },
+      });
     });
     res.json(updated);
   } catch (err) {
