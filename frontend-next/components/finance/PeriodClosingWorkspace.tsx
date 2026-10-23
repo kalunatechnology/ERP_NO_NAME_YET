@@ -9,6 +9,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api/axios';
+import { useAuth } from '@/contexts/AuthContext';
+import { canPerform } from '@/lib/access/capability-contract';
 
 // =============================================================================
 // PERIOD CLOSING WORKSPACE
@@ -42,6 +44,17 @@ interface YearEndResult {
   nominal_accounts_closed: number;
 }
 
+interface PeriodClosingRequest {
+  id: string;
+  fiscal_period_id: string | null;
+  document_id: string | null;
+  closing_type: string;
+  status: string;
+  requested_by: string | null;
+  approved_by: string | null;
+  created_at: string | null;
+}
+
 const statusColor = (s: string) => {
   const m: Record<string, string> = {
     OPEN:   'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -55,8 +68,14 @@ const formatRp = (v: number) => `Rp ${v.toLocaleString('id-ID')}`;
 const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 export default function PeriodClosingWorkspace() {
+  const { user, userRole } = useAuth();
+  const canOperateFinance = canPerform('finance:operate', userRole, {
+    enabledModules: user?.enabled_modules,
+    moduleAccess: user?.module_access,
+  });
   const [periods, setPeriods] = useState<FiscalPeriod[]>([]);
   const [fiscalYears, setFiscalYears] = useState<FiscalYear[]>([]);
+  const [closingRequests, setClosingRequests] = useState<PeriodClosingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
@@ -82,12 +101,14 @@ export default function PeriodClosingWorkspace() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: pJson }, { data: yJson }] = await Promise.all([
+      const [{ data: pJson }, { data: yJson }, { data: cJson }] = await Promise.all([
         api.get('/api/v1/finance/fiscal-periods/status'),
         api.get('/api/v1/finance/fiscal-years?page_size=10'),
+        api.get('/api/v1/finance/period-closings?page_size=100'),
       ]);
       setPeriods(pJson.data ?? pJson.results ?? (Array.isArray(pJson) ? pJson : []));
       setFiscalYears(yJson.results ?? yJson.data?.rows ?? yJson.data ?? (Array.isArray(yJson) ? yJson : []));
+      setClosingRequests(cJson.results ?? cJson.data?.rows ?? cJson.data ?? (Array.isArray(cJson) ? cJson : []));
     } catch {
       showToast('Gagal memuat data periode fiskal.', 'error');
     } finally {
@@ -124,6 +145,29 @@ export default function PeriodClosingWorkspace() {
     }
   };
 
+  const approveClosing = async (requestId: string) => {
+    try {
+      await api.post(`/api/v1/finance/period-closings/${requestId}/approve`);
+      showToast('Permintaan penutupan disetujui.', 'success');
+      await loadData();
+    } catch (err: any) {
+      showToast(err.response?.data?.message ?? err.message ?? 'Gagal menyetujui penutupan.', 'error');
+    }
+  };
+
+  const executeClosing = async (requestId: string) => {
+    try {
+      const { data: response } = await api.post(`/api/v1/finance/period-closings/${requestId}/execute`);
+      const request = closingRequests.find((item) => item.id === requestId);
+      const result = response?.data ?? response;
+      if (request?.closing_type === 'YEAR_END' && result?.fiscal_year_name) setYearEndResult(result);
+      showToast('Penutupan periode berhasil dijalankan.', 'success');
+      await loadData();
+    } catch (err: any) {
+      showToast(err.response?.data?.message ?? err.message ?? 'Gagal menjalankan penutupan.', 'error');
+    }
+  };
+
 const reopenPeriod = async (periodId: string) => {
   try {
     await api.post(`/api/v1/finance/fiscal-periods/${periodId}/reopen`);
@@ -142,18 +186,12 @@ const executeYearEnd = async () => {
   setYearEndResult(null);
   try {
     // Tangkap response dari API backend
-    const { data: res } = await api.post('/api/v1/finance/period-closings/request', { 
+    await api.post('/api/v1/finance/period-closings/request', {
       closing_type: 'YEAR_END', 
       fiscal_year_id: selectedYearId 
     });
-    
-    // Simpan data hasil kalkulasi P&L ke state agar UI Ringkasan muncul
-    if (res.data) {
-      setYearEndResult(res.data);
-    }
-
-    showToast('Tutup buku tahunan berhasil diproses.', 'success');
-    loadData();
+    showToast('Permintaan tutup buku tahunan tercatat dan menunggu persetujuan Finance.', 'success');
+    await loadData();
   } catch (err: any) {
     showToast(err.response?.data?.message ?? err.message ?? 'Gagal menutup buku tahunan.', 'error');
   } finally {
@@ -255,7 +293,7 @@ const executeYearEnd = async () => {
                     </td>
                     <td className="py-2.5 px-3">
                       <div className="flex gap-1.5">
-                        {p.status === 'OPEN' && (
+                        {p.status === 'OPEN' && canOperateFinance && (
                           <button
                             onClick={() => closePeriod(p.id)}
                             disabled={closingLoading && closingPeriodId === p.id}
@@ -276,6 +314,42 @@ const executeYearEnd = async () => {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h3 className="section-title mb-3">Permintaan Penutupan</h3>
+        {closingRequests.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">Belum ada permintaan penutupan periode.</div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-slate-200 bg-slate-50/80">
+                {['Diajukan', 'Jenis', 'Periode', 'Status', 'Aksi'].map((heading) => <th key={heading} className="py-2.5 px-3 text-left text-xs font-semibold text-slate-600">{heading}</th>)}
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {closingRequests.map((request) => {
+                  const period = periods.find((item) => item.id === request.fiscal_period_id);
+                  const year = fiscalYears.find((item) => item.id === request.document_id);
+                  return <tr key={request.id}>
+                    <td className="py-2.5 px-3 text-xs text-slate-600">{formatDate(request.created_at)}</td>
+                    <td className="py-2.5 px-3 text-xs">{request.closing_type === 'YEAR_END' ? 'Tahunan' : 'Bulanan'}</td>
+                    <td className="py-2.5 px-3 text-xs">{period ? `Periode #${period.period_number}` : year?.fiscal_year_name ?? '—'}</td>
+                    <td className="py-2.5 px-3"><span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColor(request.status)}`}>{request.status}</span></td>
+                    <td className="py-2.5 px-3"><div className="flex gap-1.5">
+                      {request.status === 'PENDING_APPROVAL' && canOperateFinance && (
+                        <button onClick={() => approveClosing(request.id)} disabled={request.requested_by === user?.id} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#EAF6FF] text-[#203D91] border border-[#BFDBFE] disabled:opacity-50" title={request.requested_by === user?.id ? 'Pemohon tidak dapat menyetujui permintaannya sendiri.' : undefined}>Setujui</button>
+                      )}
+                      {request.status === 'APPROVED' && canOperateFinance && (
+                        <button onClick={() => executeClosing(request.id)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#203D91] text-white">Jalankan Penutupan</button>
+                      )}
+                      {request.status === 'COMPLETED' && <span className="text-xs text-slate-500">Selesai</span>}
+                    </div></td>
+                  </tr>;
+                })}
               </tbody>
             </table>
           </div>

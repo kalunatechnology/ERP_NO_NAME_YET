@@ -190,6 +190,11 @@ export default function FinanceClient() {
   const [bankStatements, setBankStatements] = useState<any[]>([]);
   const [bankReconciliations, setBankReconciliations] = useState<any[]>([]);
   const [bankAccounts, setBankAccounts] = useState<FinanceBankAccount[]>([]);
+  const [bankImportAccountId, setBankImportAccountId] = useState("");
+  const [bankImportFile, setBankImportFile] = useState<File | null>(null);
+  const [bankImporting, setBankImporting] = useState(false);
+  const [bankMatchPaymentIds, setBankMatchPaymentIds] = useState<Record<string, string>>({});
+  const [bankMatchingLineId, setBankMatchingLineId] = useState<string | null>(null);
   const [ledgerAccounts, setLedgerAccounts] = useState<any[]>([]);
   const [financeProjectOptions, setFinanceProjectOptions] = useState<any[]>([]);
   const [selectedBudgetProjectId, setSelectedBudgetProjectId] = useState("");
@@ -289,7 +294,7 @@ export default function FinanceClient() {
         }
       };
 
-      const [costRes, wipReadinessRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
+      const [costRes, wipReadinessRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtLinesRes, reconciliationRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
         safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
         canOperateFinance
           ? safeGet("/api/v1/finance/project-cost-entries/wip-readiness", "costing")
@@ -303,7 +308,8 @@ export default function FinanceClient() {
         safeGet("/api/v1/finance/journal-entries/?page_size=30&ordering=-posting_date", "gl"),
         safeGet("/api/v1/finance/profit-and-loss", "lapkeu"),
         safeGet("/api/v1/finance/balance-sheet", "lapkeu"),
-        safeGet("/api/v1/finance/bank-statements/?page_size=20", "banking_hub"),
+        safeGet("/api/v1/finance/bank-statement-lines/?page_size=200", "banking_hub"),
+        safeGet("/api/v1/finance/bank-reconciliations/?page_size=200", "banking_hub"),
         safeGet("/api/v1/finance/bank-accounts/?page_size=100", "cashbank"),
         safeGet("/api/v1/finance/accounts/?page_size=300", "gl"),
         safeGet("/api/v1/finance/project-options", "costing"),
@@ -347,8 +353,10 @@ export default function FinanceClient() {
       if (bsRes.data?.data) setBalanceSheet(bsRes.data.data);
       else if (bsRes.data?.assets) setBalanceSheet(bsRes.data);
 
-      const stmtList = normalizeList(stmtRes.data).rows;
-      if (stmtList.length > 0) setBankStatements(stmtList);
+      const statementLines = normalizeList<any>(stmtLinesRes.data).rows;
+      const reconciliationRows = normalizeList<any>(reconciliationRes.data).rows;
+      setBankStatements(statementLines);
+      setBankReconciliations(reconciliationRows);
       const bankRows = normalizeList<any>(bankRes.data).rows;
       const bankBalances = await Promise.all(bankRows.map(async account => {
         if (!account.ledger_account_id) return undefined;
@@ -365,6 +373,7 @@ export default function FinanceClient() {
         type: account.account_type || "BANK_ACCOUNT",
         balance: bankBalances[index],
       })));
+      setBankImportAccountId((current) => current || String(bankRows[0]?.id || ""));
       const accountRows = normalizeList<any>(accountRes.data).rows;
       setLedgerAccounts(accountRows);
       setFinanceProjectOptions(normalizeList<any>(projectOptionRes.data).rows);
@@ -379,6 +388,48 @@ export default function FinanceClient() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const importBankStatement = async () => {
+    if (!bankImportAccountId || !bankImportFile) {
+      toast.error("Pilih rekening dan file CSV terlebih dahulu.");
+      return;
+    }
+    setBankImporting(true);
+    try {
+      const csv_content = await bankImportFile.text();
+      const { data: response } = await api.post(`/api/v1/finance/bank-accounts/${bankImportAccountId}/import-csv`, { csv_content });
+      const result = response?.data ?? response;
+      toast.success(`Impor selesai: ${Number(result.total_rows_imported ?? 0)} transaksi, ${Number(result.auto_matched_count ?? 0)} terdeteksi cocok.`);
+      setBankImportFile(null);
+      await loadFinanceData(true);
+    } catch (err: any) {
+      toast.error(getApiErrorDetail(err, "Gagal mengimpor mutasi CSV."));
+    } finally {
+      setBankImporting(false);
+    }
+  };
+
+  const matchBankStatementLine = async (line: any) => {
+    const paymentId = bankMatchPaymentIds[String(line.id)];
+    if (!paymentId) {
+      toast.error("Pilih transaksi pembayaran yang akan dicocokkan.");
+      return;
+    }
+    setBankMatchingLineId(String(line.id));
+    try {
+      await api.post(`/api/v1/finance/bank-statement-lines/${line.id}/reconcile`, {
+        payment_id: paymentId,
+        matched_amount: Number(line.debit_amount || line.credit_amount || 0),
+        match_type: "PAYMENT",
+      });
+      toast.success("Mutasi berhasil direkonsiliasi.");
+      await loadFinanceData(true);
+    } catch (err: any) {
+      toast.error(getApiErrorDetail(err, "Gagal merekonsiliasi mutasi."));
+    } finally {
+      setBankMatchingLineId(null);
     }
   };
 
@@ -1996,6 +2047,24 @@ export default function FinanceClient() {
               </div>
             </div>
 
+            <div className="card rounded-2xl p-4 border border-text-tertiary bg-white flex flex-wrap items-end gap-3">
+              <div className="min-w-[220px] flex-1">
+                <label className="block text-2xs font-semibold text-text-secondary mb-1">Rekening Bank</label>
+                <select value={bankImportAccountId} onChange={(event) => setBankImportAccountId(event.target.value)} className="input w-full">
+                  <option value="">Pilih rekening</option>
+                  {bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.bank} · {account.number}</option>)}
+                </select>
+              </div>
+              <div className="min-w-[220px] flex-1">
+                <label className="block text-2xs font-semibold text-text-secondary mb-1">File mutasi (CSV)</label>
+                <input type="file" accept=".csv,text/csv" onChange={(event) => setBankImportFile(event.target.files?.[0] ?? null)} className="block w-full text-xs text-text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-brand-light-green file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-deep-green" />
+              </div>
+              <button type="button" onClick={importBankStatement} disabled={bankImporting || !bankImportAccountId || !bankImportFile} className="btn-primary px-4 py-2 text-xs disabled:opacity-50">
+                {bankImporting ? "Mengimpor…" : "Impor Mutasi CSV"}
+              </button>
+              <p className="w-full text-2xs text-text-secondary">CSV: kolom tanggal, keterangan, nominal, dan tipe (DB/CR). Maksimal 5 MB.</p>
+            </div>
+
             {/* Ringkasan Saldo Real-Time */}
             <div className="workspace-kpis grid gap-3">
               {bankAccounts.map((b) => (
@@ -2023,14 +2092,14 @@ export default function FinanceClient() {
               <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
                 <h4 className="text-xs font-bold text-text-primary">Status Rekonsiliasi Bank</h4>
                 <span className="text-2xs text-text-secondary">
-                  {bankStatements.length} statement | {bankReconciliations.filter((r: any) => r.status === "MATCHED").length} matched
+                  {new Set(bankStatements.map((line: any) => line.bank_statement_id).filter(Boolean)).size} statement | {bankReconciliations.filter((r: any) => r.status === "MATCHED").length} matched
                 </span>
               </div>
               {bankStatements.length === 0 ? (
                 <div className="py-12 flex flex-col items-center gap-3 text-center">
                   <ArrowLeftRight size={36} className="text-brand-green opacity-30" />
                   <p className="text-xs text-text-secondary">Belum ada mutasi rekening yang diimpor.</p>
-                  <p className="text-2xs text-text-secondary">Gunakan API <code className="font-mono bg-gray-100 px-1 rounded">POST /api/v1/finance/bank-accounts/:id/import-statement</code> untuk mengimpor mutasi.</p>
+                  <p className="text-2xs text-text-secondary">Pilih rekening dan unggah file CSV pada form di atas untuk memulai rekonsiliasi.</p>
                 </div>
               ) : (
                 <div className="table-scroll-wrapper">
@@ -2043,10 +2112,14 @@ export default function FinanceClient() {
                         <th className="py-3 px-4 text-right">Debit</th>
                         <th className="py-3 px-4 text-right">Kredit</th>
                         <th className="py-3 px-4 text-center">Status</th>
+                        <th className="py-3 px-4 text-left">Cocokkan Pembayaran</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {bankStatements.map((stmt: any) => (
+                      {bankStatements.map((stmt: any) => {
+                        const reconciliation = bankReconciliations.find((item: any) => item.bank_statement_line_id === stmt.id);
+                        const isMatched = reconciliation?.status === "MATCHED";
+                        return (
                         <tr key={stmt.id} className="hover:bg-gray-50/50">
                           <td className="py-2.5 px-4 font-mono text-2xs">{stmt.transaction_date ? new Date(stmt.transaction_date).toLocaleDateString("id-ID") : "-"}</td>
                           <td className="py-2.5 px-4 font-mono text-2xs text-brand-deep-green">{stmt.reference_number || "-"}</td>
@@ -2055,11 +2128,24 @@ export default function FinanceClient() {
                           <td className="py-2.5 px-4 text-right text-red-600 font-bold">{stmt.credit_amount > 0 ? formatMoney(stmt.credit_amount) : "-"}</td>
                           <td className="py-2.5 px-4 text-center">
                             <span className={cn("badge text-2xs",
-                              stmt.status === "MATCHED" ? "badge-success" : "badge-neutral"
-                            )}>{stmt.status || "UNRECONCILED"}</span>
+                              isMatched ? "badge-success" : "badge-neutral"
+                            )}>{isMatched ? "MATCHED" : "UNRECONCILED"}</span>
+                          </td>
+                          <td className="py-2.5 px-4">
+                            {isMatched ? <span className="text-2xs text-text-secondary">Sudah dicocokkan</span> : (
+                              <div className="flex min-w-[250px] gap-2">
+                                <select value={bankMatchPaymentIds[String(stmt.id)] || ""} onChange={(event) => setBankMatchPaymentIds((current) => ({ ...current, [String(stmt.id)]: event.target.value }))} className="input min-w-0 flex-1 text-2xs">
+                                  <option value="">Pilih pembayaran</option>
+                                  {payments.map((payment: any) => <option key={payment.id} value={payment.id}>{payment.reference_number || payment.id.slice(0, 8)} · {formatMoney(Number(payment.amount || 0))}</option>)}
+                                </select>
+                                <button type="button" onClick={() => matchBankStatementLine(stmt)} disabled={bankMatchingLineId === String(stmt.id)} className="btn-outline px-2 py-1 text-2xs disabled:opacity-50">
+                                  {bankMatchingLineId === String(stmt.id) ? "…" : "Cocokkan"}
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
-                      ))}
+                      );})}
                     </tbody>
                   </table>
                 </div>

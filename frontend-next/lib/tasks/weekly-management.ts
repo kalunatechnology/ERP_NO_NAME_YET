@@ -88,14 +88,7 @@ export function filterWeeklyTargets(records: WeeklyTargetRecord[], filters: {
       const matchesDateRange = (record.startDate && record.startDate === filters.period.start)
         || (record.startDate && record.endDate && record.startDate <= filters.period.end && record.endDate >= filters.period.start);
 
-      // 3. Fallback match on creation timestamp within cutoff window
-      const createdAt = record.weeklyTask.created_at ? new Date(record.weeklyTask.created_at).getTime() : NaN;
-      const start = filters.period.filter_start ? new Date(filters.period.filter_start).getTime() : NaN;
-      const end = filters.period.filter_end ? new Date(filters.period.filter_end).getTime() : NaN;
-      const createdInPeriod = Number.isFinite(createdAt) && Number.isFinite(start) && Number.isFinite(end)
-        && createdAt >= start && createdAt < end;
-
-      if (!matchesCalendarWeek && !matchesDateRange && !createdInPeriod) return false;
+      if (!matchesCalendarWeek && !matchesDateRange) return false;
     }
     return !query || [record.projectName, record.projectCode, record.mainTaskName, record.code,
       record.weeklyTask.target_description, record.weeklyTask.target_output,

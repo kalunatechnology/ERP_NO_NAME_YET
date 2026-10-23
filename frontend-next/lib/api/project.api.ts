@@ -16,6 +16,11 @@ export interface Project {
   id: string | number;
   name?: string;
   project_name?: string;
+  project_code?: string;
+  customer_name?: string;
+  customer_party_id?: string | null;
+  sales_order_id?: string | null;
+  source_type?: string;
   code?: string;
   project_code?: string;
   lifecycle_status?: ProjectLifecycleStage | string;

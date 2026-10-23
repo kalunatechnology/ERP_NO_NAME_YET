@@ -557,6 +557,7 @@ export class CRMService {
               project_code: `PRJ-CRM-${opportunity.id.replace(/-/g, '').toUpperCase()}`,
               project_name: opportunity.opportunity_name ?? 'New Project from CRM',
               budget_amount: dealAmount,
+              contract_amount: dealAmount,
               status: 'PLANNED',
               lifecycle_status: 'INCOMING',
               stage_entered_at: new Date(),
@@ -705,6 +706,7 @@ export class CRMService {
           project_code: `PRJ-CRM-OVR-${opportunity.id.slice(0, 6).toUpperCase()}`,
           project_name: `[OVERRIDE] ${opportunity.opportunity_name ?? 'Project'}`,
           budget_amount: dealAmount,
+          contract_amount: dealAmount,
           status: 'PLANNED',
           // Executive override also converts an opportunity into an approved order.
           lifecycle_status: 'VERIFIED',

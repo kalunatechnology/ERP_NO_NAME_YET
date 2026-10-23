@@ -248,6 +248,7 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
         project_code: `PRJ-SO-${order.id.slice(0, 6).toUpperCase()}`,
         project_name: projectName,
         budget_amount: order.total_amount ?? 0,
+        contract_amount: order.total_amount ?? 0,
         status: 'PLANNED',
         // A confirmed Sales Order has passed commercial verification, but
         // operational execution still waits for the explicit ACTIVE transition.
@@ -301,7 +302,24 @@ salesRouter.use('/quotation-lines', createCrudRouter({ modelName: 'sales_quotati
 salesRouter.use('/quotation-costs', createCrudRouter({ modelName: 'sales_quotation_cost', searchFields: ['cost_element'] }));
 salesRouter.use('/contracts', createCrudRouter({ modelName: 'sales_contract', searchFields: ['contract_number'] }));
 salesRouter.use('/contract-lines', createCrudRouter({ modelName: 'sales_contract_line', searchFields: ['description'] }));
-salesRouter.use('/orders', createCrudRouter({ modelName: 'sales_order', searchFields: ['status'] }));
+salesRouter.use('/orders', createCrudRouter({
+  modelName: 'sales_order',
+  searchFields: ['status'],
+  afterUpdate: async (_req, order) => {
+    if (order.total_amount === undefined) return;
+    await prisma.project_project.updateMany({
+      where: {
+        sales_order_id: order.id,
+        company_id: order.company_id,
+        source_type: { in: ['CRM', 'SALES_ORDER'] },
+      },
+      data: {
+        budget_amount: order.total_amount ?? 0,
+        contract_amount: order.total_amount ?? 0,
+      },
+    });
+  },
+}));
 salesRouter.use('/order-lines', createCrudRouter({ modelName: 'sales_order_line', searchFields: ['description'] }));
 salesRouter.use('/deliveries', createCrudRouter({ modelName: 'sales_delivery', searchFields: ['delivery_status'] }));
 salesRouter.use('/delivery-lines', createCrudRouter({ modelName: 'sales_delivery_line', searchFields: ['description'] }));

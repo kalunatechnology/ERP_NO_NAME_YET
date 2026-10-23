@@ -117,6 +117,18 @@ financeRouter.post('/period-closings/request', async (req: Request, res: Respons
   } catch (err) { next(err); }
 });
 
+financeRouter.get('/period-closings', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.companyId) throw new ForbiddenError('Company aktif wajib dipilih.');
+    const records = await prisma.fin_period_closing.findMany({
+      where: { company_id: req.companyId },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+    sendSuccess(res, records);
+  } catch (err) { next(err); }
+});
+
 /**
  * POST route handler: `/period-closings/:id/approve`.
  *

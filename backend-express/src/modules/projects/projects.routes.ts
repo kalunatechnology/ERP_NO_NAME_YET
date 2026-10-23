@@ -857,7 +857,10 @@ projectsRouter.post('/projects/:id/update_financials', async (req: Request, res:
       throw new ForbiddenError('Perubahan target finansial memerlukan role PM, OM, atau Company Admin.');
     }
     const { budget_amount, contract_amount, target_margin_percent } = req.body;
-    const project = await prisma.project_project.findFirst({ where: { id: req.params.id, company_id: companyId }, select: { id: true } });
+    const project = await prisma.project_project.findFirst({
+      where: { id: req.params.id, company_id: companyId },
+      select: { id: true, source_type: true, sales_order_id: true, budget_amount: true, contract_amount: true },
+    });
     if (!project) throw new NotFoundError('Project');
     await ProjectsService.assertCanManageProject(req.user, project.id, companyId);
 
@@ -874,11 +877,18 @@ projectsRouter.post('/projects/:id/update_financials', async (req: Request, res:
     const validatedBudget = parseFinancialValue(budget_amount, 'budget_amount');
     const validatedContract = parseFinancialValue(contract_amount, 'contract_amount');
     const validatedMargin = parseFinancialValue(target_margin_percent, 'target_margin_percent', 100);
+    const sourceManagedCommercialValues = ['CRM', 'SALES_ORDER'].includes(String(project.source_type ?? '').toUpperCase())
+      || Boolean(project.sales_order_id);
+    if (sourceManagedCommercialValues
+      && ((validatedBudget !== undefined && validatedBudget !== Number(project.budget_amount ?? 0))
+        || (validatedContract !== undefined && validatedContract !== Number(project.contract_amount ?? 0)))) {
+      throw new ForbiddenError('Anggaran dan nilai kontrak proyek yang berasal dari CRM/Sales Order dikelola dari sumber transaksinya.');
+    }
     const updated = await prisma.project_project.update({
       where: { id: project.id },
       data: {
-        budget_amount: validatedBudget,
-        contract_amount: validatedContract,
+        budget_amount: sourceManagedCommercialValues ? undefined : validatedBudget,
+        contract_amount: sourceManagedCommercialValues ? undefined : validatedContract,
         target_margin_percent: validatedMargin,
       },
     });
@@ -1664,9 +1674,13 @@ projectsRouter.use('/weekly-tasks', createCrudRouter({
     if (!data.target_description && data.target_output) data.target_description = data.target_output;
     if (!String(data.target_description ?? '').trim()) throw new ValidationError('Target mingguan wajib diisi.');
     data.target_description = String(data.target_description).trim();
-    const executionPeriod = weeklyWorkPeriodForTimestamp((data.created_at as any) || new Date());
-    data.start_date = executionPeriod.start;
-    data.end_date = executionPeriod.end;
+    // Creation time only supplies a default when callers do not provide an
+    // execution window. Explicit dates from the editable form are authoritative.
+    if (!data.start_date && !data.end_date) {
+      const suggestedPeriod = weeklyWorkPeriodForTimestamp(new Date());
+      data.start_date = suggestedPeriod.start;
+      data.end_date = suggestedPeriod.end;
+    }
     const schedule = validateWeeklyTaskFields(data);
     data.week_number = schedule.weekNumber;
     // Progress is derived from Daily Tasks; API payloads cannot seed it.
@@ -2501,6 +2515,31 @@ projectsRouter.use('/projects', createCrudRouter({
     await ProjectsService.assertCanManageProject(req.user, existing.id, companyId);
     if (data.name && !data.project_name) data.project_name = data.name;
     if (data.code && !data.project_code) data.project_code = data.code;
+
+    const sourceManagedCommercialValues = ['CRM', 'SALES_ORDER'].includes(String(existing.source_type ?? '').toUpperCase())
+      || Boolean(existing.sales_order_id);
+    if (sourceManagedCommercialValues) {
+      const sourceManagedFields = [
+        'name', 'project_name', 'code', 'project_code', 'customer_name', 'client_name',
+        'customer_party_id', 'description', 'sales_order_id', 'source_type', 'budget_amount', 'contract_amount',
+      ];
+      const hasChangedSourceValue = sourceManagedFields.some((field) => {
+        if (data[field] === undefined) return false;
+        const normalizedField = field === 'name' ? 'project_name'
+          : field === 'code' ? 'project_code'
+            : field === 'client_name' ? 'customer_name'
+              : field;
+        const oldValue = (existing as Record<string, unknown>)[normalizedField];
+        const nextValue = data[field];
+        if (['budget_amount', 'contract_amount'].includes(normalizedField)) {
+          return Number(nextValue ?? 0) !== Number(oldValue ?? 0);
+        }
+        return String(nextValue ?? '') !== String(oldValue ?? '');
+      });
+      if (hasChangedSourceValue) {
+        throw new ForbiddenError('Data komersial yang tersinkron dari CRM/Sales Order hanya dapat diubah pada modul sumbernya.');
+      }
+    }
 
     // Never trust a client-supplied party FK. Resolve it from the customer name
     // inside the active company so Project and Finance cannot drift apart.

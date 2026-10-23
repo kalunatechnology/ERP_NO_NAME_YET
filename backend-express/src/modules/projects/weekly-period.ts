@@ -98,13 +98,16 @@ function jakartaToday(): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
-/** Filter Weekly targets by creation timestamp only; schedule dates and completion dates do not affect calendar membership. */
+/** Filter Weekly targets by their scheduled execution-date range. */
 export function weeklyPeriodWhere(month: unknown, week: unknown): Record<string, unknown> {
   if (month === undefined && week === undefined) return {};
   if (typeof month !== 'string') throw new ValidationError('Bulan filter Weekly wajib diisi.');
   const periods = weeklyWorkPeriods(month);
   const period = week === undefined ? null : selectedWeeklyWorkPeriod(month, week);
-  const start = period?.filter_start ?? periods[0].filter_start;
-  const end = period?.filter_end ?? periods[periods.length - 1].filter_end;
-  return { created_at: { gte: new Date(start), lt: new Date(end) } };
+  const start = period?.start ?? periods[0].start;
+  const end = period?.end ?? periods[periods.length - 1].end;
+  return {
+    start_date: { lte: new Date(`${end}T00:00:00.000Z`) },
+    end_date: { gte: new Date(`${start}T00:00:00.000Z`) },
+  };
 }

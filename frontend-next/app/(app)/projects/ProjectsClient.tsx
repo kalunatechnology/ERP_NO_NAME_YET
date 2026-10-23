@@ -34,6 +34,7 @@ import {
 } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn, localDateKey } from "@/lib/utils";
+import { creationWeeklyPeriod } from "@/lib/weekly-dashboard";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
@@ -354,6 +355,10 @@ export default function ProjectsClient() {
   const [resourceForm, setResourceForm] = useState({ name: "", url: "", description: "", category: "DOCUMENT" });
 
   const selectedProject = projects.find(p => String(p.id) === String(selectedId)) || null;
+  const isSourceSynchronizedProject = Boolean(selectedProject && (
+    ["CRM", "SALES_ORDER"].includes(String(selectedProject.source_type ?? "").toUpperCase())
+    || selectedProject.sales_order_id
+  ));
   const pendingWeeklyCount = useMemo(() => (selectedProject?.main_tasks || []).reduce((count, main) => count
     + (main.weekly_tasks || main.weekly_plans || []).filter((weekly) => weekly.status === "PENDING_APPROVAL").length, 0), [selectedProject?.main_tasks]);
   const completedChecklistCount = checklistItems.filter((item) => ['DONE', 'COMPLETED', 'CHECKED', 'APPROVED'].includes(String(item.status).toUpperCase())).length;
@@ -1701,6 +1706,11 @@ export default function ProjectsClient() {
               <p className="text-xs text-white/80 line-clamp-2">
                 {selectedProject.description || "Tidak ada catatan deskripsi proyek."}
               </p>
+              {isSourceSynchronizedProject && (
+                <p className="mt-2 inline-flex items-center rounded-lg border border-white/20 bg-white/10 px-2.5 py-1 text-2xs font-semibold text-white/90">
+                  Data komersial tersinkron dari CRM / Sales Order · hanya dapat diubah dari modul sumber
+                </p>
+              )}
 
               <div className="flex items-center gap-4 text-2xs text-white/70 mt-1">
                 <span>Mulai: <b>{selectedProject.planned_start_date || "-"}</b></span>
@@ -2001,13 +2011,12 @@ export default function ProjectsClient() {
             const defaultAssigneeId = selectedAuthority?.can_manage_weekly_tasks
               ? main.assignments?.[0]?.assignee || main.assignments?.[0]?.assignee_id || ""
               : user?.id || "";
-            const today = localDateKey();
-            const nextWeek = localDateKey(new Date(Date.now() + 6 * 86400000));
+            const suggestedPeriod = creationWeeklyPeriod();
             setWeeklyForm({
               week_number: String((main.weekly_tasks || main.weekly_plans || []).length + 1),
               target_description: "",
-              start_date: today,
-              end_date: nextWeek,
+              start_date: suggestedPeriod.start,
+              end_date: suggestedPeriod.end,
               assignee_id: String(defaultAssigneeId)
             });
             setIsCreateWeeklyOpen(true);
@@ -2921,6 +2930,7 @@ export default function ProjectsClient() {
               {weeklyErrors.end_date && <p className="mt-1 text-2xs text-red-600">{weeklyErrors.end_date}</p>}
             </div>
           </div>
+          <p className="-mt-2 text-2xs text-text-secondary">Rentang awal disarankan otomatis saat form dibuka. Silakan sesuaikan tanggal pelaksanaan; klasifikasi Weekly mengikuti rentang ini.</p>
 
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Target Pekerjaan Mingguan *</label>
@@ -3510,17 +3520,23 @@ export default function ProjectsClient() {
         size="md"
       >
         <div className="flex flex-col gap-3">
+          {isSourceSynchronizedProject && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-2xs leading-5 text-blue-900">
+              Nilai anggaran dan kontrak berasal dari CRM / Sales Order dan hanya-baca. Perubahan nilai dilakukan di modul sumber; target margin tetap dapat dikelola di sini.
+            </div>
+          )}
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Target Pendapatan / Nilai Kontrak (Revenue Target Rp) *</label>
             <input
               type="number"
               min="0"
               placeholder="0"
+              disabled={isSourceSynchronizedProject}
               value={financialTargetForm.contract_amount}
               onFocus={e => { if (e.currentTarget.value === "0") setFinancialTargetForm(prev => ({ ...prev, contract_amount: "" })); }}
               onBlur={e => { if (e.currentTarget.value === "") setFinancialTargetForm(prev => ({ ...prev, contract_amount: "0" })); }}
               onChange={e => setFinancialTargetForm((prev) => ({ ...prev, contract_amount: e.target.value }))}
-              className="input text-xs"
+              className={cn("input text-xs", isSourceSynchronizedProject && "cursor-not-allowed bg-gray-100 text-text-secondary")}
             />
           </div>
 
@@ -3530,11 +3546,12 @@ export default function ProjectsClient() {
               type="number"
               min="0"
               placeholder="0"
+              disabled={isSourceSynchronizedProject}
               value={financialTargetForm.budget_amount}
               onFocus={e => { if (e.currentTarget.value === "0") setFinancialTargetForm(prev => ({ ...prev, budget_amount: "" })); }}
               onBlur={e => { if (e.currentTarget.value === "") setFinancialTargetForm(prev => ({ ...prev, budget_amount: "0" })); }}
               onChange={e => setFinancialTargetForm((prev) => ({ ...prev, budget_amount: e.target.value }))}
-              className="input text-xs"
+              className={cn("input text-xs", isSourceSynchronizedProject && "cursor-not-allowed bg-gray-100 text-text-secondary")}
             />
           </div>
 
