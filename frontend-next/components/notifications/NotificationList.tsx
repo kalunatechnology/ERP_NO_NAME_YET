@@ -153,6 +153,14 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
                     <p className={cn("text-xs truncate", !notif.is_read ? "font-bold text-slate-900" : "font-normal text-slate-600")}>
                       {notif.title}
                     </p>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold",
+                        notif.is_read ? "bg-slate-100 text-slate-500" : "bg-blue-100 text-blue-700",
+                      )}
+                    >
+                      {notif.is_read ? "Sudah dibuka" : "Belum dibuka"}
+                    </span>
                   </div>
                   <p className="text-xs mt-1 line-clamp-2 leading-relaxed text-slate-600">
                     {notif.description || notif.message}
