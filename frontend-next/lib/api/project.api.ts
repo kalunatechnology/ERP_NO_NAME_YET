@@ -22,7 +22,6 @@ export interface Project {
   sales_order_id?: string | null;
   source_type?: string;
   code?: string;
-  project_code?: string;
   lifecycle_status?: ProjectLifecycleStage | string;
   cancellation_reason?: string | null;
   stage_entered_at?: string | null;
