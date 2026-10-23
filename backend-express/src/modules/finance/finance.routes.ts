@@ -38,6 +38,40 @@ function authenticatedFinanceUserId(req: Request): string {
   return userId;
 }
 
+async function assertFinancialDateOpen(req: Request, dateValue: unknown) {
+  if (!dateValue) return;
+  const date = dateValue instanceof Date ? dateValue : new Date(String(dateValue));
+  if (Number.isNaN(date.getTime())) throw new ValidationError('Tanggal transaksi tidak valid.');
+  await PeriodClosingService.assertPeriodOpen(date, activeCompanyId(req));
+}
+
+async function assertJournalEntryOpen(req: Request, entryId?: string | null) {
+  if (!entryId) return;
+  const entry = await prisma.fin_journal_entry.findFirst({
+    where: { id: entryId, company_id: activeCompanyId(req) },
+    select: { posting_date: true },
+  });
+  if (entry) await assertFinancialDateOpen(req, entry.posting_date);
+}
+
+async function assertBillingDocumentOpen(req: Request, documentId?: string | null) {
+  if (!documentId) return;
+  const document = await prisma.fin_billing_document.findFirst({
+    where: { id: documentId, company_id: activeCompanyId(req) },
+    select: { posting_date: true, invoice_date: true },
+  });
+  if (document) await assertFinancialDateOpen(req, document.posting_date ?? document.invoice_date);
+}
+
+async function assertBankStatementLineOpen(req: Request, lineId?: string | null) {
+  if (!lineId) return;
+  const line = await prisma.fin_bank_statement_line.findFirst({
+    where: { id: lineId, company_id: activeCompanyId(req) },
+    select: { transaction_date: true },
+  });
+  if (line) await assertFinancialDateOpen(req, line.transaction_date);
+}
+
 /**
  * financeUserCount implements a named function within this file's Express API routing boundary.
  *
@@ -108,6 +142,20 @@ financeRouter.post('/period-closings/request', async (req: Request, res: Respons
     const fiscalPeriodId = req.body.fiscal_period_id ?? null;
     if (closingType === 'MONTHLY' && !fiscalPeriodId) throw new ValidationError('fiscal_period_id wajib diisi.');
     if (closingType === 'YEAR_END' && !documentId) throw new ValidationError('fiscal_year_id wajib diisi.');
+    if (closingType === 'MONTHLY') {
+      const period = await prisma.fin_fiscal_period.findFirst({ where: { id: fiscalPeriodId, company_id: req.companyId }, select: { end_date: true, status: true } });
+      if (!period) throw new NotFoundError('FiscalPeriod');
+      if (period.status !== 'OPEN') throw new ValidationError(`Periode sudah berstatus ${period.status}.`);
+      if (period.end_date && period.end_date.getTime() > Date.now()) throw new ValidationError('Periode belum berakhir; pengajuan penutupan tersedia setelah tanggal akhir periode.');
+    }
+    if (closingType === 'YEAR_END') {
+      const fiscalYear = await prisma.fin_fiscal_year.findFirst({ where: { id: documentId, company_id: req.companyId }, select: { end_date: true, status: true } });
+      if (!fiscalYear) throw new NotFoundError('FiscalYear');
+      if (fiscalYear.status !== 'OPEN') throw new ValidationError(`Tahun fiskal berstatus ${fiscalYear.status}.`);
+      if (fiscalYear.end_date && fiscalYear.end_date.getTime() > Date.now()) throw new ValidationError('Tahun fiskal belum berakhir; tutup buku tahunan tersedia setelah tanggal akhir tahun fiskal.');
+      const openPeriods = await prisma.fin_fiscal_period.count({ where: { fiscal_year_id: documentId, company_id: req.companyId, status: { not: 'CLOSED' } } });
+      if (openPeriods > 0) throw new ValidationError(`Masih ada ${openPeriods} periode bulanan yang belum ditutup.`);
+    }
     const record = await prisma.fin_period_closing.create({ data: {
       tenant_id: req.user?.tenant_id, company_id: req.companyId, created_by_id: req.user?.id,
       requested_by: req.user?.id, fiscal_period_id: fiscalPeriodId, document_id: documentId,
@@ -411,6 +459,8 @@ financeRouter.post('/bank-accounts/:id/import-statement', async (req: Request, r
       return sendError(res, 'statement_date dan lines[] wajib diisi.', 400);
     }
     if (lines.length > 5000) throw new ValidationError('Maksimal 5.000 baris per import statement.');
+    await assertFinancialDateOpen(req, statement_date);
+    for (const line of lines) await assertFinancialDateOpen(req, line?.transaction_date ?? statement_date);
     const result = await FinanceService.importBankStatement(
       req.params.id,
       new Date(statement_date),
@@ -439,6 +489,13 @@ financeRouter.post(
       if (!matched_amount || !match_type) {
         return sendError(res, 'matched_amount dan match_type wajib diisi.', 400);
       }
+      await assertBankStatementLineOpen(req, req.params.id);
+      if (payment_id) {
+        const payment = await prisma.fin_payment.findFirst({ where: { id: payment_id, company_id: activeCompanyId(req) }, select: { payment_date: true } });
+        if (!payment) throw new NotFoundError('Payment');
+        await assertFinancialDateOpen(req, payment.payment_date);
+      }
+      if (journal_line_id) await assertJournalEntryOpen(req, (await prisma.fin_journal_line.findFirst({ where: { id: journal_line_id, company_id: activeCompanyId(req) }, select: { journal_entry_id: true } }))?.journal_entry_id);
       const result = await FinanceService.reconcileBankTransaction({
         statementLineId: req.params.id,
         paymentId: payment_id,
@@ -564,6 +621,7 @@ financeRouter.post('/billing-documents/:id/submit', requireFinanceRole([RoleCode
   try {
     const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
     if (!doc) throw new NotFoundError('BillingDocument');
+    await assertFinancialDateOpen(req, doc.posting_date ?? doc.invoice_date);
     const { nextState } = new DocumentFSM('BILLING').apply(doc.status as any, 'submit');
     sendSuccess(res, await prisma.fin_billing_document.update({ where: { id: doc.id }, data: { status: nextState } }));
   } catch (err) { next(err); }
@@ -590,6 +648,7 @@ financeRouter.post(
     try {
       const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
       if (!doc) return sendError(res, 'Billing document tidak ditemukan.', 404);
+      await assertFinancialDateOpen(req, doc.posting_date ?? doc.invoice_date);
 
       const fsm = new DocumentFSM('BILLING');
       const { nextState } = fsm.apply(doc.status as any, 'verify');
@@ -626,6 +685,7 @@ financeRouter.post(
     try {
       const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
       if (!doc) return sendError(res, 'Billing document tidak ditemukan.', 404);
+      await assertFinancialDateOpen(req, doc.posting_date ?? doc.invoice_date);
 
       const fsm = new DocumentFSM('BILLING');
       const { nextState } = fsm.apply(doc.status as any, 'approve');
@@ -653,6 +713,7 @@ financeRouter.post('/billing-documents/:id/reject', requireFinanceRole([RoleCode
   try {
     const doc = await prisma.fin_billing_document.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
     if (!doc) return sendError(res, 'Billing document tidak ditemukan.', 404);
+    await assertFinancialDateOpen(req, doc.posting_date ?? doc.invoice_date);
 
     const fsm = new DocumentFSM('BILLING');
     const { nextState } = fsm.apply(doc.status as any, 'reject');
@@ -717,6 +778,9 @@ financeRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = authenticatedFinanceUserId(req);
+      const entry = await prisma.fin_project_cost_entry.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { transaction_date: true } });
+      if (!entry) throw new NotFoundError('ProjectCostEntry');
+      await assertFinancialDateOpen(req, entry.transaction_date);
       sendSuccess(
         res,
         await FinanceHardeningService.validateProjectCostEntry(
@@ -761,11 +825,12 @@ financeRouter.post(
       const companyId = activeCompanyId(req);
       const entry = await prisma.fin_project_cost_entry.findFirst({
         where: { id: req.params.id, company_id: companyId },
-        select: { id: true, status: true, created_by_id: true },
+        select: { id: true, status: true, created_by_id: true, transaction_date: true },
       });
       if (!entry) {
         throw new NotFoundError('ProjectCostEntry');
       }
+      await assertFinancialDateOpen(req, entry.transaction_date);
       const readiness = describeWipPostingReadiness(entry, userId);
       if (!readiness.can_post) {
         return sendError(
@@ -865,6 +930,7 @@ financeRouter.post('/payments/:id/submit', requireFinanceRole([RoleCode.FINANCE]
   try {
     const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
     if (!payment) return sendError(res, 'Payment tidak ditemukan.', 404);
+    await assertFinancialDateOpen(req, payment.payment_date);
 
     const fsm = new DocumentFSM('PAYMENT');
     const { nextState } = fsm.apply(payment.status as any, 'submit');
@@ -902,6 +968,7 @@ financeRouter.post(
     try {
       const payment = await prisma.fin_payment.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) } });
       if (!payment) return sendError(res, 'Payment tidak ditemukan.', 404);
+      await assertFinancialDateOpen(req, payment.payment_date);
 
       if (payment.payment_type === 'CUSTOMER_RECEIPT') CustomerReceiptService.assertReviewer(payment, authenticatedFinanceUserId(req));
 
@@ -989,9 +1056,10 @@ financeRouter.post('/payments/:id/execute', requireFinanceRole([RoleCode.FINANCE
   try {
     const payment = await prisma.fin_payment.findFirst({
       where: { id: req.params.id, company_id: activeCompanyId(req) },
-      select: { created_by_id: true, submitted_by_id: true, approved_by_id: true },
+      select: { created_by_id: true, submitted_by_id: true, approved_by_id: true, payment_date: true },
     });
     if (!payment) throw new NotFoundError('Payment');
+    await assertFinancialDateOpen(req, payment.payment_date);
     const count = await financeUserCount(activeCompanyId(req));
     if (count >= 2 && [payment.created_by_id, payment.submitted_by_id, payment.approved_by_id].includes(req.user?.id ?? '')) {
       throw new ForbiddenError('Eksekutor payment harus berbeda dari pembuat, submitter, dan approver ketika tersedia minimal dua user Finance.');
@@ -1344,19 +1412,35 @@ financeRouter.post('/bank-accounts/:id/import-csv', async (req: Request, res: Re
 
 financeRouter.use('/accounts', createCrudRouter({ modelName: 'fin_account', searchFields: ['account_code', 'account_name'] }));
 financeRouter.use('/journals', createCrudRouter({ modelName: 'fin_journal', searchFields: ['journal_code', 'journal_name'] }));
-financeRouter.use('/journal-entries', createCrudRouter({ modelName: 'fin_journal_entry', searchFields: ['entry_number', 'description'] }));
-financeRouter.use('/journal-lines', createCrudRouter({ modelName: 'fin_journal_line' }));
+financeRouter.use('/journal-entries', createCrudRouter({
+  modelName: 'fin_journal_entry', searchFields: ['entry_number', 'description'],
+  beforeCreate: async (req, data) => { await assertFinancialDateOpen(req, data.posting_date); return data; },
+  beforeUpdate: async (req, data, existing) => { await assertFinancialDateOpen(req, existing.posting_date); await assertFinancialDateOpen(req, data.posting_date); return data; },
+  beforeDelete: async (req, existing) => { await assertFinancialDateOpen(req, existing.posting_date); },
+}));
+financeRouter.use('/journal-lines', createCrudRouter({
+  modelName: 'fin_journal_line',
+  beforeCreate: async (req, data) => { await assertJournalEntryOpen(req, data.journal_entry_id); return data; },
+  beforeUpdate: async (req, data, existing) => { await assertJournalEntryOpen(req, existing.journal_entry_id); await assertJournalEntryOpen(req, data.journal_entry_id); return data; },
+  beforeDelete: async (req, existing) => { await assertJournalEntryOpen(req, existing.journal_entry_id); },
+}));
 financeRouter.use('/fiscal-years', createCrudRouter({ modelName: 'fin_fiscal_year' }));
 financeRouter.use('/fiscal-periods', createCrudRouter({ modelName: 'fin_fiscal_period' }));
-financeRouter.use('/billing-documents', createCrudRouter({ modelName: 'fin_billing_document', searchFields: ['invoice_number', 'billing_type'], beforeCreate: (_req, data) => ({
-  ...data,
-  status: 'DRAFT',
-  payment_status: 'UNPAID',
-  paid_amount: 0,
-  outstanding_amount: Number(data.total_amount ?? 0),
-  rejection_reason: '',
-}) }));
-financeRouter.use('/billing-document-lines', createCrudRouter({ modelName: 'fin_billing_document_line', searchFields: ['description'] }));
+financeRouter.use('/billing-documents', createCrudRouter({
+  modelName: 'fin_billing_document', searchFields: ['invoice_number', 'billing_type'],
+  beforeCreate: async (req, data) => {
+    await assertFinancialDateOpen(req, data.posting_date ?? data.invoice_date);
+    return { ...data, status: 'DRAFT', payment_status: 'UNPAID', paid_amount: 0, outstanding_amount: Number(data.total_amount ?? 0), rejection_reason: '' };
+  },
+  beforeUpdate: async (req, data, existing) => { await assertFinancialDateOpen(req, existing.posting_date ?? existing.invoice_date); await assertFinancialDateOpen(req, data.posting_date ?? data.invoice_date); return data; },
+  beforeDelete: async (req, existing) => { await assertFinancialDateOpen(req, existing.posting_date ?? existing.invoice_date); },
+}));
+financeRouter.use('/billing-document-lines', createCrudRouter({
+  modelName: 'fin_billing_document_line', searchFields: ['description'],
+  beforeCreate: async (req, data) => { await assertBillingDocumentOpen(req, data.billing_document_id); return data; },
+  beforeUpdate: async (req, data, existing) => { await assertBillingDocumentOpen(req, existing.billing_document_id); await assertBillingDocumentOpen(req, data.billing_document_id); return data; },
+  beforeDelete: async (req, existing) => { await assertBillingDocumentOpen(req, existing.billing_document_id); },
+}));
 financeRouter.use('/billing-proposals', createCrudRouter({
   modelName: 'fin_billing_proposal',
   searchFields: ['description'],
@@ -1408,18 +1492,26 @@ financeRouter.use('/billing-proposals', createCrudRouter({
     return data;
   },
 }));
-financeRouter.use('/payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/payments', createCrudRouter({
+  modelName: 'fin_payment', searchFields: ['reference_number'],
+  beforeCreate: async (req, data) => { await assertFinancialDateOpen(req, data.payment_date); return { ...data, status: 'DRAFT' }; },
+  beforeUpdate: async (req, data, existing) => { await assertFinancialDateOpen(req, existing.payment_date); await assertFinancialDateOpen(req, data.payment_date); return data; },
+  beforeDelete: async (req, existing) => { await assertFinancialDateOpen(req, existing.payment_date); },
+}));
 financeRouter.use('/customer-receipts', createCrudRouter({
   modelName: 'fin_payment',
   searchFields: ['reference_number'],
   accessWhere: () => ({ payment_type: 'CUSTOMER_RECEIPT' }),
-  beforeDelete: async (_req, existing) => {
+  beforeUpdate: async (req, data, existing) => { await assertFinancialDateOpen(req, existing.payment_date); await assertFinancialDateOpen(req, data.payment_date); return data; },
+  beforeDelete: async (req, existing) => {
+    await assertFinancialDateOpen(req, existing.payment_date);
     if (existing.status === 'POSTED') {
       throw new ConflictError('Penerimaan yang sudah dibukukan (POSTED) tidak dapat dihapus. Gunakan prosedur Storno/Reversal jurnal.');
     }
     await prisma.fin_payment_allocation.deleteMany({ where: { payment_id: existing.id } });
   },
   beforeCreate: async (req, data) => {
+    await assertFinancialDateOpen(req, data.payment_date);
     const receipt = validateCustomerReceipt(data);
     const bank = await prisma.fin_bank_account.findFirst({
       where: { id: receipt.bank_account_id, company_id: activeCompanyId(req), tenant_id: req.user?.tenant_id, status: 'ACTIVE' },
@@ -1431,11 +1523,17 @@ financeRouter.use('/customer-receipts', createCrudRouter({
     return { ...receipt, allocation_plan: { ...receipt.allocation_plan, bank_account: bank.account_name || bank.bank_name || bank.account_number } };
   },
 }));
-financeRouter.use('/vendor-payments', createCrudRouter({ modelName: 'fin_payment', searchFields: ['reference_number'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/vendor-payments', createCrudRouter({
+  modelName: 'fin_payment', searchFields: ['reference_number'],
+  beforeCreate: async (req, data) => { await assertFinancialDateOpen(req, data.payment_date); return { ...data, status: 'DRAFT' }; },
+  beforeUpdate: async (req, data, existing) => { await assertFinancialDateOpen(req, existing.payment_date); await assertFinancialDateOpen(req, data.payment_date); return data; },
+  beforeDelete: async (req, existing) => { await assertFinancialDateOpen(req, existing.payment_date); },
+}));
 async function assertAllocationDraft(req: Request, data: any, existing?: any) {
   for (const id of new Set([existing?.payment_id, data?.payment_id].filter(Boolean))) {
     const payment = await prisma.fin_payment.findFirst({ where: { id, company_id: activeCompanyId(req) } });
     if (!payment) throw new ValidationError('Payment alokasi tidak ditemukan pada company ini.');
+    await assertFinancialDateOpen(req, payment.payment_date);
     if (payment.status !== 'DRAFT') throw new ConflictError('Alokasi payment yang sudah diajukan tidak dapat diubah atau dihapus.');
   }
   return data;
@@ -1464,13 +1562,33 @@ financeRouter.use('/bank-accounts', createCrudRouter({
     return { ...data, ledger_account_id: ledgerAccountId };
   },
 }));
-financeRouter.use('/bank-statements', createCrudRouter({ modelName: 'fin_bank_statement' }));
-financeRouter.use('/bank-statement-lines', createCrudRouter({ modelName: 'fin_bank_statement_line' }));
-financeRouter.use('/bank-reconciliations', createCrudRouter({ modelName: 'fin_bank_reconciliation' }));
+financeRouter.use('/bank-statements', createCrudRouter({
+  modelName: 'fin_bank_statement',
+  beforeCreate: async (req, data) => { await assertFinancialDateOpen(req, data.statement_date); return data; },
+  beforeUpdate: async (req, data, existing) => { await assertFinancialDateOpen(req, existing.statement_date); await assertFinancialDateOpen(req, data.statement_date); return data; },
+  beforeDelete: async (req, existing) => { await assertFinancialDateOpen(req, existing.statement_date); },
+}));
+financeRouter.use('/bank-statement-lines', createCrudRouter({
+  modelName: 'fin_bank_statement_line',
+  beforeCreate: async (req, data) => { await assertFinancialDateOpen(req, data.transaction_date); return data; },
+  beforeUpdate: async (req, data, existing) => { await assertFinancialDateOpen(req, existing.transaction_date); await assertFinancialDateOpen(req, data.transaction_date); return data; },
+  beforeDelete: async (req, existing) => { await assertFinancialDateOpen(req, existing.transaction_date); },
+}));
+financeRouter.use('/bank-reconciliations', createCrudRouter({
+  modelName: 'fin_bank_reconciliation',
+  beforeCreate: async (req, data) => { await assertBankStatementLineOpen(req, data.bank_statement_line_id); return data; },
+  beforeUpdate: async (req, data, existing) => { await assertBankStatementLineOpen(req, existing.bank_statement_line_id); await assertBankStatementLineOpen(req, data.bank_statement_line_id); return data; },
+  beforeDelete: async (req, existing) => { await assertBankStatementLineOpen(req, existing.bank_statement_line_id); },
+}));
 financeRouter.use('/tax-transactions', createCrudRouter({ modelName: 'fin_tax_transaction' }));
 financeRouter.use('/budgets', createCrudRouter({ modelName: 'fin_budget' }));
 financeRouter.use('/budget-lines', createCrudRouter({ modelName: 'fin_budget_line' }));
-financeRouter.use('/project-cost-entries', createCrudRouter({ modelName: 'fin_project_cost_entry', searchFields: ['description'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
+financeRouter.use('/project-cost-entries', createCrudRouter({
+  modelName: 'fin_project_cost_entry', searchFields: ['description'],
+  beforeCreate: async (req, data) => { await assertFinancialDateOpen(req, data.transaction_date); return { ...data, status: 'DRAFT' }; },
+  beforeUpdate: async (req, data, existing) => { await assertFinancialDateOpen(req, existing.transaction_date); await assertFinancialDateOpen(req, data.transaction_date); return data; },
+  beforeDelete: async (req, existing) => { await assertFinancialDateOpen(req, existing.transaction_date); },
+}));
 financeRouter.use('/project-fundings', createCrudRouter({ modelName: 'fin_project_funding', searchFields: ['description'], beforeCreate: (_req, data) => ({ ...data, status: 'DRAFT' }) }));
 financeRouter.use('/credit-facilities', createCrudRouter({ modelName: 'fin_credit_facility' }));
 financeRouter.use('/recurring-payment-rules', createCrudRouter({ modelName: 'fin_recurring_payment_rule' }));

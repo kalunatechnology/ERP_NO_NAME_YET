@@ -2068,7 +2068,7 @@ export default function FinanceClient() {
             {/* Ringkasan Saldo Real-Time */}
             <div className="workspace-kpis grid gap-3">
               {bankAccounts.map((b) => (
-                <div key={b.id} className="card p-4 rounded-[14px] border border-text-tertiary bg-white flex flex-col justify-between shadow-xs">
+                <div key={b.id} className={cn("card p-4 rounded-[14px] border bg-white flex flex-col justify-between shadow-xs", bankImportAccountId === b.id ? "border-brand-primary ring-2 ring-brand-primary/15" : "border-text-tertiary")}>
                   <div className="flex items-center justify-between text-2xs font-bold text-text-secondary uppercase">
                     <span>{b.type.replace(/_/g, " ")}</span>
                     <Landmark size={14} className="text-brand-green" />
@@ -2083,6 +2083,9 @@ export default function FinanceClient() {
                       <strong className="text-sm font-black text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
                     )}
                   </div>
+                  <button type="button" onClick={() => setBankImportAccountId(b.id)} aria-pressed={bankImportAccountId === b.id} className={cn("mt-3 w-full rounded-lg border px-3 py-2 text-xs font-semibold transition-colors", bankImportAccountId === b.id ? "border-brand-primary bg-brand-primary text-white" : "border-brand-primary/30 bg-brand-light-green text-brand-deep-green hover:border-brand-primary")}>
+                    {bankImportAccountId === b.id ? "Rekening Dipilih" : "Pilih untuk Rekonsiliasi"}
+                  </button>
                 </div>
               ))}
             </div>
