@@ -228,10 +228,6 @@ export function createApp(): Express {
     '/crm',
     requireModuleAccess('CRM'),
     requireActiveRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR),
-    restrictActiveRoleMutations({
-      restrictedRoles: [RoleCode.DIRECTOR],
-      message: 'Role Director memiliki akses preview CRM; seluruh mutasi operasional dinonaktifkan.',
-    }),
     crmRouter,
   );
   apiV1.use('/sales', requireModuleAccess('SALES'), requireActiveRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), salesRouter);
