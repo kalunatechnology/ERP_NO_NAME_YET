@@ -281,7 +281,10 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
       }
     } else if (eventType === 'quotation.decision' || eventType === 'quotation.accepted') {
       const decision = eventType === 'quotation.accepted' ? 'ACCEPTED' : String(data.decision).toUpperCase();
-      if (typeof data.quotation_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.quotation_id) || !['ACCEPTED', 'REJECTED'].includes(decision)) return res.status(400).json({ error: 'INVALID_QUOTATION_DECISION' });
+      const quotationId = typeof data.quotation_id === 'string' ? data.quotation_id.trim() : '';
+      const quotationCode = typeof data.quotation_code === 'string' ? data.quotation_code.trim() : '';
+      const validId = /^[0-9a-f-]{36}$/i.test(quotationId);
+      if ((!validId && (!quotationCode || quotationCode.length > 100)) || !['ACCEPTED', 'REJECTED'].includes(decision)) return res.status(400).json({ error: 'INVALID_QUOTATION_DECISION' });
     } else if (eventType !== 'message.received') return res.status(422).json({ error: 'EVENT_TYPE_NOT_IMPLEMENTED' });
     if (eventType === 'message.received') {
     const threadId = typeof data.thread_id === 'string' ? data.thread_id.trim() : '';

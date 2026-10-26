@@ -358,12 +358,16 @@ import { sendMarkaEvent } from "@/lib/marka-crm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { quotationId, decision } = await req.json(); // decision: "ACCEPTED" | "REJECTED"
+    const { quotationCode, decision } = await req.json(); // quotationCode seperti QUO-7A91C2F0; decision: "ACCEPTED" | "REJECTED"
+
+    if (!quotationCode || !["ACCEPTED", "REJECTED"].includes(decision)) {
+      return NextResponse.json({ error: "Kode quotation dan keputusan wajib diisi" }, { status: 400 });
+    }
 
     const eventId = \`qdec-\${Date.now()}-\${randomUUID().slice(0, 8)}\`;
 
     await sendMarkaEvent(eventId, "quotation.decision", {
-      quotation_id: quotationId, // UUID quotation Marka berstatus SENT
+      quotation_code: String(quotationCode).trim(), // Kode dokumen QUO-... yang dikirim ke klien
       decision: decision,
     });
 
@@ -458,6 +462,41 @@ function NoteBox({ children, tone = "blue" }: { children: ReactNode; tone?: "blu
   return <div className={`rounded-xl border p-4 text-sm leading-6 ${styles[tone]}`}>{children}</div>;
 }
 
+function RequirementPanel({
+  status,
+  statusLabel,
+  groups,
+  limitation,
+}: {
+  status: "ready" | "partial";
+  statusLabel: string;
+  groups: Array<{ title: string; items: string[] }>;
+  limitation?: string;
+}) {
+  const ready = status === "ready";
+  return (
+    <section className="rounded-xl border border-[#DCE5F2] bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h5 className="text-sm font-bold text-[#172033]">Kebutuhan integrasi</h5>
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${ready ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-amber-500"}`} />{statusLabel}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {groups.map((group) => (
+          <div key={group.title} className="rounded-lg bg-[#F8FAFC] p-3">
+            <p className="text-xs font-bold text-[#334155]">{group.title}</p>
+            <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-5 text-[#526176]">
+              {group.items.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          </div>
+        ))}
+      </div>
+      {limitation && <div className="mt-3"><NoteBox tone="amber"><strong>Catatan kesiapan:</strong> {limitation}</NoteBox></div>}
+    </section>
+  );
+}
+
 export default function CRMIntegrationGuide() {
   const [langTab, setLangTab] = useState<"ts" | "py" | "php" | "cs">("ts");
   const [featureTab, setFeatureTab] = useState<"contact" | "chat" | "ticket" | "feedback" | "quotation" | "outbound">("contact");
@@ -475,7 +514,7 @@ export default function CRMIntegrationGuide() {
               Hubungkan Website &amp; Aplikasi Anda ke CRM Marka
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748B]">
-              Marka CRM sudah aktif dan siap menerima data. Sebagai developer website, Anda cukup mengambil kredensial koneksi, memasang helper pengirim event di backend Anda, dan mengirimkan data form secara aman via <strong>HMAC-SHA256</strong>.
+              Panduan ini menunjukkan prasyarat, data wajib, dan hasil di Marka untuk setiap jenis integrasi. Aktifkan CRM dan daftarkan sumber integrasi terlebih dahulu; pengiriman dilakukan dari server website melalui <strong>HMAC-SHA256</strong>.
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -576,7 +615,7 @@ export default function CRMIntegrationGuide() {
           <h3 className="text-base font-bold text-[#172033]">Implementasi per Fitur Website</h3>
         </div>
         <p className="mt-1 text-sm text-[#64748B]">
-          Pilih fitur website yang ingin Anda hubungkan ke Marka CRM:
+          Pilih item untuk melihat kebutuhan datanya, persiapan di Marka, dan hasil yang akan muncul. Saat ini tersedia lima alur masuk—chat, inquiry, tiket, feedback, dan keputusan quotation (dua event)—serta webhook notifikasi balik. Ini belum berarti sinkronisasi seluruh master data CRM.
         </p>
 
         {/* FEATURE TABS */}
@@ -623,6 +662,12 @@ export default function CRMIntegrationGuide() {
                   inquiry.submitted
                 </span>
               </div>
+              <RequirementPanel status="ready" statusLabel="Dapat menerima inquiry" groups={[
+                { title: "Siapkan di Marka", items: ["Aktifkan modul CRM untuk company.", "Buat sumber integrasi dan aktifkan event inquiry.submitted.", "Opsional: pilih penanggung jawab awal CRM Lead/Sales dan izinkan domain website."] },
+                { title: "Wajib dari formulir website", items: ["Nama klien, email valid, dan subjek inquiry.", "Kirim dari backend website; jangan letakkan signing secret di browser."] },
+                { title: "Opsional", items: ["Nomor telepon, uraian kebutuhan, dan target budget."] },
+                { title: "Hasil di Marka", items: ["Masuk ke CRM > Incoming Inquiry dengan status NEW.", "HTTP 202 berarti masuk antrean; worker memproses setelahnya."] },
+              ]} />
               <CodeBlock title="app/api/contact/route.ts" code={contactCode} />
             </div>
           )}
@@ -640,6 +685,12 @@ export default function CRMIntegrationGuide() {
                   message.received
                 </span>
               </div>
+              <RequirementPanel status="ready" statusLabel="Dapat menerima chat masuk" groups={[
+                { title: "Siapkan di Marka", items: ["Aktifkan sumber integrasi dengan event message.received.", "Izinkan domain widget jika payload mengirim origin_domain."] },
+                { title: "Wajib per pesan", items: ["thread_id stabil untuk percakapan yang sama.", "message_id unik, message.type TEXT, dan message.text tidak kosong."] },
+                { title: "Identitas pengirim", items: ["sender dapat berisi tipe dan nilai identitas serta nama tampilan.", "Tanpa identitas terverifikasi, pesan tetap dapat masuk sebagai pengunjung eksternal dan belum tentu terhubung ke master klien."] },
+                { title: "Hasil di Marka", items: ["Masuk ke CRM > Customer Inbox; balasan dari Marka dapat dikirim balik memakai outbound webhook message.reply_requested."] },
+              ]} />
               <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs leading-5 text-blue-900">
                 <strong>Tips Chat:</strong> Simpan <code>visitorId</code> di browser session/localStorage agar <code>thread_id</code> tetap konsisten selama visitor yang sama mengobrol.
               </div>
@@ -660,6 +711,12 @@ export default function CRMIntegrationGuide() {
                   ticket.created
                 </span>
               </div>
+              <RequirementPanel status="partial" statusLabel="Pembuatan masuk tersedia; pelacakan publik belum siap" groups={[
+                { title: "Wajib saat membuat tiket", items: ["Subjek dan uraian keluhan.", "Payload saat ini tidak mengharuskan kode klien dan tiket belum otomatis terhubung ke master klien."] },
+                { title: "Opsional", items: ["serial_number; jika dikirim harus cocok dengan unit di company Marka agar pemeriksaan garansi dapat dilakukan."] },
+                { title: "Hasil saat ini", items: ["Tiket dibuat di CRM > Support & Garansi setelah diproses worker.", "Webhook hanya mengembalikan event_id/accepted, bukan ID tiket dan token akses klien."] },
+                { title: "Yang diperlukan untuk form cek status", items: ["Tautkan tiket ke klien memakai kode klien.", "Terbitkan ID tiket publik dan token akses, lalu sediakan alur lookup yang memakainya."] },
+              ]} limitation="Form publik pada gambar meminta ID tiket dan token, tetapi alur ticket.created di Marka belum menerbitkan keduanya. Jangan menganggap pencarian status publik sudah berfungsi end-to-end." />
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-xs leading-5 text-emerald-900">
                 <strong>Verifikasi Garansi:</strong> Jika menyertakan <code>serial_number</code>, sistem Marka otomatis mengecek status masa aktif garansi dari riwayat transaksi penjualan.
               </div>
@@ -680,6 +737,12 @@ export default function CRMIntegrationGuide() {
                   feedback.submitted
                 </span>
               </div>
+              <RequirementPanel status="partial" statusLabel="Butuh field kode klien pada formulir" groups={[
+                { title: "Wajib dari formulir", items: ["Kode klien customer_code yang sama dengan party_code customer aktif di company Marka.", "Rating bilangan bulat 1–5 dan feedback_text tidak kosong (maksimal 2.000 karakter)."] },
+                { title: "Opsional", items: ["feedback_type.", "sales_order_id hanya jika UUID Marka yang valid dan order tersebut milik klien yang sama."] },
+                { title: "Yang perlu disiapkan di Marka", items: ["Daftarkan klien di Master Rekanan sebagai Customer dan catat party_code-nya.", "Aktifkan feedback.submitted pada sumber integrasi."] },
+                { title: "Hasil di Marka", items: ["Feedback tercatat di CRM > Engagement dan terhubung ke klien berdasarkan kode.", "Nama/email saja tidak cukup untuk mencocokkan feedback ke data klien secara andal."] },
+              ]} limitation="Formulir pada gambar belum menampilkan field kode klien. Tambahkan input kode klien dan kirim nilainya sebagai customer_code; backend Marka sudah memvalidasi kode tersebut." />
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
                 <strong>Aturan Identifikasi Customer &amp; Order:</strong>
                 <ul className="mt-1 list-disc space-y-1 pl-4">
@@ -708,6 +771,12 @@ export default function CRMIntegrationGuide() {
                   quotation.decision
                 </span>
               </div>
+              <RequirementPanel status="ready" statusLabel="Keputusan quotation tersedia" groups={[
+                { title: "Wajib dikirim website", items: ["quotation_code yang terlihat di daftar Sales Quotations, contohnya QUO-7A91C2F0.", "Untuk quotation.decision, kirim decision ACCEPTED atau REJECTED. Event quotation.accepted selalu berarti ACCEPTED."] },
+                { title: "Siapkan di Marka", items: ["Aktifkan event quotation.decision dan/atau quotation.accepted pada sumber integrasi.", "Setelah quotation dikirim, Marka menyertakan kode pada event quotation.ready agar website dapat menaruhnya di email klien."] },
+                { title: "Hasil di Marka", items: ["Status quotation ditemukan memakai kode dokumen dan berubah sesuai keputusan klien.", "Penerimaan dapat melanjutkan proses deal won dan pembuatan project sesuai alur CRM."] },
+                { title: "Privasi dan validasi", items: ["Kode dibatasi pada company sumber integrasi dan quotation harus berstatus SENT.", "UUID tetap dipakai internal oleh Marka; website tidak perlu mengirim UUID tersebut."] },
+              ]} />
               <CodeBlock title="app/api/portal/quotation/decision/route.ts" code={quotationCode} />
             </div>
           )}
@@ -725,6 +794,12 @@ export default function CRMIntegrationGuide() {
                   X-Marka-Signature
                 </span>
               </div>
+              <RequirementPanel status="ready" statusLabel="Notifikasi balik tersedia" groups={[
+                { title: "Siapkan di Marka", items: ["Daftarkan endpoint penerima HTTPS pada Outbound Webhook.", "Pilih jenis event yang ingin diterima dan simpan secret signing di server website."] },
+                { title: "Endpoint eksternal", items: ["Harus dapat menerima POST JSON dan memvalidasi signature Marka.", "Balas sukses setelah event tersimpan agar Marka tidak mengulang pengiriman."] },
+                { title: "Jenis notifikasi", items: ["Balasan chat, pembaruan/resolusi tiket, status quotation, deal won, dan keputusan approval."] },
+                { title: "Hasil", items: ["Website dapat memperbarui UI atau mengirim notifikasi ke klien berdasarkan status yang diterima."] },
+              ]} />
               <CodeBlock title="app/api/webhooks/marka/route.ts" code={outboundReceiverCode} />
             </div>
           )}

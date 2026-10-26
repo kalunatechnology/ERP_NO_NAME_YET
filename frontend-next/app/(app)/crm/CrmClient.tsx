@@ -14,7 +14,7 @@ import {
   Plus, RefreshCw, CheckCircle2, DollarSign, TrendingUp, Users,
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
   Calculator, ShieldCheck, Award, BarChart3, MessageSquare, FileCheck,
-  ChevronRight, AlertCircle, Star, UserPlus,
+  ChevronRight, AlertCircle, Star, UserPlus, Copy,
   Inbox, MessageCircle, Globe2,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
@@ -1065,7 +1065,10 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
             {(data.quotations||[]).map(q => (
               <div key={q.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold truncate">{q.quotation_number || `Quote ${String(q.id).slice(0,8)}`}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold truncate">{q.quotation_code || q.quotation_number || `Quote ${String(q.id).slice(0,8)}`}</div>
+                    {(q.quotation_code || q.quotation_number) && <button type="button" title="Salin kode quotation untuk email klien" onClick={async () => { try { await navigator.clipboard.writeText(String(q.quotation_code || q.quotation_number)); toast.success("Kode quotation disalin."); } catch { toast.error("Kode quotation tidak dapat disalin."); } }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-text-tertiary/50 px-2 py-1 text-2xs text-text-secondary hover:text-brand-green"><Copy size={12}/>Salin kode</button>}
+                  </div>
                   <div className="text-xs text-text-secondary">Total: <b>{formatMoney(q.total_amount)}</b></div>
                   <StatusBadge status={q.status || "DRAFT"} />
                 </div>
@@ -1510,6 +1513,11 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
   const [editingParty, setEditingParty] = useState<any | null>(null);
   const [partyForm, setPartyForm] = useState({ display_name: "", legal_name: "", party_code: "", party_type: "CUSTOMER", status: "ACTIVE" });
   const [isSaving, setIsSaving] = useState(false);
+  const [projectParty, setProjectParty] = useState<any | null>(null);
+  const [projectOptions, setProjectOptions] = useState<Array<{ id: string; project_code: string; project_name: string; status: string; lifecycle_status: string }>>([]);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsSaving, setProjectsSaving] = useState(false);
 
   const openEdit = (party: any) => {
     setEditingParty(party);
@@ -1547,6 +1555,37 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
     }
   };
 
+  const openProjectManager = async (party: any) => {
+    setProjectParty(party);
+    setProjectsLoading(true);
+    setProjectOptions([]);
+    setSelectedProjectIds([]);
+    try {
+      const { data: result } = await api.get(`/api/v1/crm/parties/${party.id}/projects`);
+      setProjectOptions(Array.isArray(result?.projects) ? result.projects : []);
+      setSelectedProjectIds(Array.isArray(result?.project_ids) ? result.project_ids : []);
+    } catch (error: any) {
+      setProjectParty(null);
+      toast.error(error?.response?.data?.detail || "Gagal memuat daftar proyek rekanan.");
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
+
+  const savePartyProjects = async () => {
+    if (!projectParty) return;
+    setProjectsSaving(true);
+    try {
+      await api.put(`/api/v1/crm/parties/${projectParty.id}/projects`, { project_ids: selectedProjectIds });
+      toast.success("Relasi proyek rekanan berhasil disimpan.");
+      setProjectParty(null);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Relasi proyek rekanan gagal disimpan.");
+    } finally {
+      setProjectsSaving(false);
+    }
+  };
+
   return (
     <div className="card rounded-xl p-4">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
@@ -1569,6 +1608,7 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
               </div>
               <div className="flex items-center justify-between sm:justify-end gap-2 sm:flex-shrink-0">
                 <StatusBadge status={p.status || "ACTIVE"} />
+                {!readOnly && (!p.status || String(p.status).toUpperCase() === "ACTIVE") && ["SUPPLIER", "VENDOR", "PARTNER"].includes(String(p.party_type || "").toUpperCase()) && <button type="button" onClick={() => void openProjectManager(p)} className="btn-ghost text-xs py-1 px-2">Proyek</button>}
                 {!readOnly && <button type="button" onClick={() => openEdit(p)} className="btn-ghost text-xs py-1 px-2">Edit</button>}
               </div>
             </div>
@@ -1584,6 +1624,22 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
           <label className="text-xs font-medium text-text-secondary">Tipe rekanan<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyForm.party_type} onChange={e => setPartyForm(f => ({ ...f, party_type: e.target.value }))}><option value="CUSTOMER">Customer</option><option value="SUPPLIER">Supplier</option><option value="PARTNER">Partner</option></select></label>
           <label className="text-xs font-medium text-text-secondary">Status<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyForm.status} onChange={e => setPartyForm(f => ({ ...f, status: e.target.value }))}><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></select></label>
           <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setEditingParty(null)} disabled={isSaving} className="btn-ghost">Batal</button><button type="button" onClick={saveParty} disabled={isSaving} className="btn-primary">{isSaving ? "Menyimpan..." : "Simpan Perubahan"}</button></div>
+        </div>
+      </Modal>
+      <Modal isOpen={Boolean(projectParty)} onClose={() => !projectsSaving && setProjectParty(null)} title={`Hubungkan Proyek · ${projectParty?.display_name || projectParty?.legal_name || "Rekanan"}`} size="md">
+        <div className="flex flex-col gap-3 p-4">
+          <p className="text-xs text-text-secondary">Pilih proyek yang memakai rekanan ini. Relasi tersimpan di proyek dan rekanan; proyek tanpa vendor/supplier tetap diperbolehkan.</p>
+          {projectsLoading ? <p className="py-4 text-center text-sm text-text-secondary">Memuat daftar proyek...</p> : projectOptions.length === 0 ? <EmptyState msg="Belum ada proyek di company ini." /> : (
+            <div className="max-h-80 overflow-y-auto rounded-lg border border-text-tertiary/50 divide-y divide-text-tertiary/30">
+              {projectOptions.map((project) => (
+                <label key={project.id} className="flex cursor-pointer items-start gap-3 p-3 hover:bg-bg-lighter">
+                  <input type="checkbox" className="mt-1" checked={selectedProjectIds.includes(project.id)} onChange={(event) => setSelectedProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />
+                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{project.project_name}</span><span className="mt-0.5 block text-xs text-text-secondary">{project.project_code} · {project.status || project.lifecycle_status || "—"}</span></span>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={() => setProjectParty(null)} disabled={projectsSaving} className="btn-ghost">Batal</button><button type="button" onClick={() => void savePartyProjects()} disabled={projectsLoading || projectsSaving || projectOptions.length === 0} className="btn-primary">{projectsSaving ? "Menyimpan..." : "Simpan Relasi"}</button></div>
         </div>
       </Modal>
     </div>

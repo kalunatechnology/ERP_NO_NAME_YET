@@ -60,8 +60,10 @@ Contoh payload inquiry yang direkomendasikan:
 | `inquiry.submitted` | `customer: { name, email, phone? }`, `requirements: { subject, description?, target_budget? }`. Format lama yang menaruh field customer dan subject di root tetap diterima. |
 | `ticket.created` | `subject`, `description`; `serial_number` opsional dan harus terdaftar pada company |
 | `feedback.submitted` | `customer_code` (`party_code` Marka) customer aktif pada company source, `rating` integer 1–5, `feedback_text`; `feedback_type` opsional, `sales_order_id` opsional tetapi harus milik customer yang sama |
-| `quotation.decision` | `quotation_id`, `decision: "ACCEPTED"` atau `"REJECTED"` |
-| `quotation.accepted` | `quotation_id`; hanya quotation berstatus `SENT` dan terhubung ke opportunity |
+| `quotation.decision` | `quotation_code` (kode dokumen `QUO-...` yang ditampilkan Marka; disarankan untuk website), `decision: "ACCEPTED"` atau `"REJECTED"`. UUID internal lama `quotation_id` tetap diterima untuk kompatibilitas. |
+| `quotation.accepted` | `quotation_code` atau UUID internal lama `quotation_id`; hanya quotation berstatus `SENT` dan terhubung ke opportunity |
+
+Untuk mengirim keputusan dari website, gunakan kode quotation yang terlihat di Marka dan dapat dicantumkan pada email klien. Event outbound `quotation.ready` menyertakan `quotation_code` setelah quotation dikirim. Marka tetap menggunakan UUID hanya sebagai identitas internal.
 
 Contoh `inquiry.submitted` di atas mencakup `data.origin_domain`. Untuk `message.received`, `ticket.created`, dan `feedback.submitted`, kirim field yang sama di object `data` jika ingin atribusi domain tampil pada inbox, tiket, atau feedback. Konfigurasikan hostname terlebih dahulu pada allowlist source; domain yang tidak cocok menghasilkan `ORIGIN_DOMAIN_NOT_ALLOWED`. Event `feedback.submitted` membuat review pada Engagement berdasarkan `customer_code` (nilai `party_code`) customer aktif yang berada pada company source.
 

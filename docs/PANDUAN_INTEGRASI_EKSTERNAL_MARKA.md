@@ -488,12 +488,16 @@ import { sendMarkaEvent } from "@/lib/marka-crm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { quotationId, decision, reason } = await req.json(); // decision: "ACCEPTED" | "REJECTED"
+    const { quotationCode, decision, reason } = await req.json(); // kode QUO-... dari Marka; decision: "ACCEPTED" | "REJECTED"
+
+    if (!quotationCode || !["ACCEPTED", "REJECTED"].includes(decision)) {
+      return NextResponse.json({ error: "Kode quotation dan keputusan wajib diisi" }, { status: 400 });
+    }
 
     const eventId = `qdec-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     await sendMarkaEvent(eventId, "quotation.decision", {
-      quotation_id: quotationId,
+      quotation_code: String(quotationCode).trim(),
       decision: decision, // "ACCEPTED" atau "REJECTED"
       ...(reason ? { reason } : {}),
     });

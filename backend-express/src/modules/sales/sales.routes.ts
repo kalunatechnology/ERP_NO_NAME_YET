@@ -19,6 +19,28 @@ function activeCompanyId(req: Request): string {
   return req.companyId;
 }
 
+salesRouter.get('/quotations/with-codes', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const quotations = await prisma.sales_quotation.findMany({
+      where: { company_id: companyId },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: 100,
+    });
+    const documentIds = [...new Set(quotations.flatMap((row) => row.document_id ? [row.document_id] : []))];
+    const documents = documentIds.length ? await prisma.core_business_document.findMany({
+      where: { id: { in: documentIds }, company_id: companyId, document_type: 'SALES_QUOTATION' },
+      select: { id: true, document_number: true },
+    }) : [];
+    const codeByDocumentId = new Map(documents.map((document) => [document.id, document.document_number]));
+    res.json(quotations.map((quotation) => ({
+      ...quotation,
+      quotation_code: quotation.document_id ? codeByDocumentId.get(quotation.document_id) ?? null : null,
+      quotation_number: quotation.document_id ? codeByDocumentId.get(quotation.document_id) ?? null : null,
+    })));
+  } catch (error) { next(error); }
+});
+
 // =============================================================================
 // QUOTATION ACTIONS
 // =============================================================================
@@ -97,8 +119,12 @@ salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, nex
         where: { id: quotation.id },
         data: { status: 'SENT' },
       });
+      const document = row.document_id ? await tx.core_business_document.findFirst({
+        where: { id: row.document_id, company_id: companyId, document_type: 'SALES_QUOTATION' },
+        select: { document_number: true },
+      }) : null;
       await queueWebhookEvent(tx, companyId, 'quotation.ready', {
-        quotation_id: row.id, opportunity_id: row.opportunity_id,
+        quotation_id: row.id, quotation_code: document?.document_number ?? null, opportunity_id: row.opportunity_id,
         status: row.status, total_amount: row.total_amount?.toString() ?? null,
         currency_id: row.currency_id, valid_until: row.valid_until?.toISOString() ?? null,
       });

@@ -24,6 +24,12 @@ const EVENT_OPTIONS = [
   { value: "quotation.accepted", label: "Quotation disetujui" },
 ];
 
+function apiErrorMessage(error: any, fallback: string) {
+  return error?.response?.data?.detail
+    || error?.response?.data?.error?.message
+    || fallback;
+}
+
 export default function LandingPageIntegrationSettings() {
   const [sources, setSources] = useState<CRMIntegrationSource[]>([]);
   const [assignees, setAssignees] = useState<Array<{ id: string; full_name: string; email: string }>>([]);
@@ -48,7 +54,7 @@ export default function LandingPageIntegrationSettings() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try { setSources(await loadCRMIntegrationSources(companyScope || undefined)); }
-    catch (error: any) { toast.error(error?.response?.data?.error?.message || "Gagal memuat integrasi CRM."); }
+    catch (error: any) { toast.error(apiErrorMessage(error, "Gagal memuat integrasi CRM.")); }
     finally { setLoading(false); }
   }, [companyScope]);
   useEffect(() => { void refresh(); }, [refresh]);
@@ -73,7 +79,7 @@ export default function LandingPageIntegrationSettings() {
       setCreatedSource(created);
       setSources((current) => [created, ...current]);
       toast.success("Koneksi integrasi eksternal berhasil dibuat.");
-    } catch (error: any) { toast.error(error?.response?.data?.error?.message || "Gagal membuat integrasi. Periksa company dan pastikan modul CRM aktif."); }
+    } catch (error: any) { toast.error(apiErrorMessage(error, "Gagal membuat koneksi integrasi.")); }
     finally { setSaving(false); }
   };
   const saveDomains = async () => {
@@ -123,7 +129,8 @@ export default function LandingPageIntegrationSettings() {
         <label className="flex flex-col gap-1.5 text-xs font-semibold text-[#475569]">Penanggung jawab awal (opsional)<select className={inputClass} value={form.default_assigned_user_id} onChange={(e) => update("default_assigned_user_id", e.target.value)} disabled={assigneesLoading || assigneesError || assignees.length === 0}><option value="">{assigneesLoading ? "Memuat pengguna…" : assigneesError ? "Daftar pengguna gagal dimuat" : assignees.length ? "Belum ditentukan" : "Belum ada user CRM/Sales"}</option>{assignees.map((user) => <option key={user.id} value={user.id}>{user.full_name} · {user.email}</option>)}</select><span className="font-normal text-[#718096]">{assigneesError ? "Coba muat ulang halaman. Jika tetap gagal, periksa koneksi atau akses admin." : assignees.length === 0 && !assigneesLoading ? "Tambahkan role CRM Lead atau Sales ke pengguna pada company ini melalui Pengguna & Akses." : "Inquiry dari kanal ini akan diarahkan ke user aktif berperan CRM Lead atau Sales."}</span></label>
       </div>
       <div className="mt-4"><p className="mb-2 text-xs font-semibold text-[#475569]">Jenis event yang boleh dikirim ke Marka</p><div className="grid gap-2 sm:grid-cols-2">{EVENT_OPTIONS.map((event) => <label key={event.value} className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-3 py-2.5 text-sm text-[#334155]"><input type="checkbox" checked={events.includes(event.value)} onChange={(e) => setEvents((current) => e.target.checked ? [...current, event.value] : current.filter((item) => item !== event.value))}/><span>{event.label}</span></label>)}</div></div>
-      <button className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#2649B3] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" onClick={submit} disabled={saving || !form.source_code.trim() || !form.account_name.trim() || events.length === 0}><Plus size={16}/>{saving ? "Mendaftarkan..." : "Buat koneksi integrasi"}</button>
+      <p className="mt-4 text-xs text-[#64748B]">CRM harus sudah aktif untuk company ini. Tombol ini mendaftarkan sumber eksternal dan membuat kredensial webhook; tombol ini tidak mengaktifkan modul CRM.</p>
+      <button className="mt-2 inline-flex items-center gap-2 rounded-xl bg-[#2649B3] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" onClick={submit} disabled={saving || !form.source_code.trim() || !form.account_name.trim() || events.length === 0}><Plus size={16}/>{saving ? "Mendaftarkan..." : "Buat koneksi integrasi"}</button>
     </section>
 
     {createdSecret && createdSource && <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">

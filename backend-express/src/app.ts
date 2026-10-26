@@ -227,10 +227,10 @@ export function createApp(): Express {
   apiV1.use(
     '/crm',
     requireModuleAccess('CRM'),
-    requireActiveRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR),
+    requireActiveRole(RoleCode.COMPANY_ADMIN, RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR),
     crmRouter,
   );
-  apiV1.use('/sales', requireModuleAccess('SALES'), requireActiveRole(RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), salesRouter);
+  apiV1.use('/sales', requireModuleAccess('SALES'), requireActiveRole(RoleCode.COMPANY_ADMIN, RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), salesRouter);
   apiV1.use(
     '/projects',
     requireModuleAccess('PROJECTS'),

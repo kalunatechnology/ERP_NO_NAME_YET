@@ -13,7 +13,7 @@ import { CRMService } from './crm.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { requireActiveRole, requireAdminForWrite } from '../../middlewares/rbac.middleware';
-import { RoleCode } from '../../types/roles';
+import { isSuperAdmin, RoleCode } from '../../types/roles';
 import { queueWebhookEvent } from './crm-outbound-webhook.service';
 
 export const crmRouter = Router();
@@ -69,6 +69,102 @@ function activeCompanyId(req: Request): string {
   if (!req.companyId) throw new ForbiddenError('Pilih company sebelum menjalankan operasi CRM.');
   return req.companyId;
 }
+
+async function assertProjectModuleAccess(req: Request, mode: 'read' | 'write') {
+  const companyId = activeCompanyId(req);
+  if (!req.user) throw new ForbiddenError();
+  if (isSuperAdmin(req.user.roles)) return;
+  const access = await prisma.iam_company_module_access.findUnique({
+    where: { company_id_module_code: { company_id: companyId, module_code: 'PROJECTS' } },
+  });
+  const now = new Date();
+  if (!access?.enabled || (access.effective_from && access.effective_from > now) || (access.effective_until && access.effective_until < now)) {
+    throw new ForbiddenError('Modul Proyek harus aktif untuk menghubungkan rekanan dengan proyek.');
+  }
+  if (mode === 'read' && !access.allow_read) throw new ForbiddenError('Akses baca modul Proyek dinonaktifkan.');
+  if (mode === 'write' && !access.allow_write) throw new ForbiddenError('Akses tulis modul Proyek dinonaktifkan.');
+  const override = await prisma.iam_user_module_access.findUnique({
+    where: { user_id_module_code: { user_id: req.user.id, module_code: 'PROJECTS' } },
+  });
+  if (!override) return;
+  if (override.company_id !== companyId || override.tenant_id !== req.user.tenant_id) {
+    throw new ForbiddenError('Konfigurasi akses personal Proyek tidak sesuai company.');
+  }
+  if (mode === 'read' && !override.allow_read) throw new ForbiddenError('Akses baca personal modul Proyek dinonaktifkan.');
+  if (mode === 'write' && !override.allow_write) throw new ForbiddenError('Akses tulis personal modul Proyek dinonaktifkan.');
+}
+
+function relatedPartyProjectType(partyType: string | null | undefined): 'VENDOR_SUPPLIER' | 'PARTNER' {
+  const normalized = String(partyType ?? '').toUpperCase();
+  if (['SUPPLIER', 'VENDOR'].includes(normalized)) return 'VENDOR_SUPPLIER';
+  if (normalized === 'PARTNER') return 'PARTNER';
+  throw new ValidationError('Relasi proyek hanya tersedia untuk Vendor/Supplier atau Partner.');
+}
+
+crmRouter.get('/parties/:partyId/projects', async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    await assertProjectModuleAccess(req, 'read');
+    const party = await prisma.master_party.findFirst({
+      where: { id: req.params.partyId, company_id: companyId },
+      select: { id: true, party_type: true, status: true },
+    });
+    if (!party) throw new NotFoundError('Rekanan');
+    relatedPartyProjectType(party.party_type);
+    const [projects, relations] = await Promise.all([
+      prisma.project_project.findMany({
+        where: { company_id: companyId },
+        orderBy: [{ project_name: 'asc' }],
+        select: { id: true, project_code: true, project_name: true, status: true, lifecycle_status: true },
+      }),
+      prisma.project_project_party.findMany({
+        where: { party_id: party.id, company_id: companyId },
+        select: { project_id: true, relationship_type: true },
+      }),
+    ]);
+    res.json({ projects, project_ids: relations.map((relation) => relation.project_id) });
+  } catch (error) { next(error); }
+});
+
+crmRouter.put('/parties/:partyId/projects', async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    await assertProjectModuleAccess(req, 'write');
+    const tenantId = req.tenantId;
+    const userId = req.user?.id;
+    if (!tenantId || !userId) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    const party = await prisma.master_party.findFirst({
+      where: { id: req.params.partyId, company_id: companyId, status: 'ACTIVE' },
+      select: { id: true, party_type: true },
+    });
+    if (!party) throw new NotFoundError('Rekanan aktif');
+    const relationshipType = relatedPartyProjectType(party.party_type);
+    const rawProjectIds = req.body?.project_ids;
+    if (!Array.isArray(rawProjectIds) || rawProjectIds.some((id: unknown) => typeof id !== 'string')) {
+      throw new ValidationError('project_ids harus berupa daftar ID proyek.');
+    }
+    const projectIds = [...new Set<string>(rawProjectIds.map((id: string) => id.trim()).filter(Boolean))];
+    const projects = projectIds.length ? await prisma.project_project.findMany({
+      where: { id: { in: projectIds }, company_id: companyId },
+      select: { id: true },
+    }) : [];
+    if (projects.length !== projectIds.length) throw new ValidationError('Semua proyek harus berasal dari company aktif.');
+
+    await prisma.$transaction(async (tx) => {
+      await tx.project_project_party.deleteMany({
+        where: { party_id: party.id, company_id: companyId, relationship_type: { in: ['VENDOR_SUPPLIER', 'PARTNER'] } },
+      });
+      if (projectIds.length) await tx.project_project_party.createMany({
+        data: projectIds.map((projectId) => ({
+          id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+          project_id: projectId, party_id: party.id, relationship_type: relationshipType,
+          created_by_id: userId,
+        })),
+      });
+    });
+    res.json({ party_id: party.id, project_ids: projectIds });
+  } catch (error) { next(error); }
+});
 
 async function decideExecutiveApproval(req: Request, decision: 'APPROVED' | 'REJECTED') {
   const companyId = activeCompanyId(req);

@@ -317,17 +317,31 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
       } });
     } else if (envelope.event_type === 'quotation.decision' || envelope.event_type === 'quotation.accepted') {
       const quotationId = String(data?.quotation_id ?? '').trim();
+      const quotationCode = String(data?.quotation_code ?? '').trim();
       const decision = envelope.event_type === 'quotation.accepted' ? 'ACCEPTED' : String(data?.decision ?? '').toUpperCase();
-      if (!quotationId || !['ACCEPTED', 'REJECTED'].includes(decision)) throw new Error('INVALID_QUOTATION_DECISION');
-      const quotation = await tx.sales_quotation.findFirst({ where: { id: quotationId, company_id: source.company_id } });
+      if ((!quotationId && !quotationCode) || !['ACCEPTED', 'REJECTED'].includes(decision)) throw new Error('INVALID_QUOTATION_DECISION');
+      let quotation: any = null;
+      if (quotationCode) {
+        const documents = await tx.core_business_document.findMany({
+          where: { company_id: source.company_id, document_type: 'SALES_QUOTATION', document_number: quotationCode },
+          select: { id: true }, take: 2,
+        });
+        if (documents.length > 1) throw new Error('QUOTATION_CODE_AMBIGUOUS');
+        if (documents[0]) quotation = await tx.sales_quotation.findFirst({ where: { document_id: documents[0].id, company_id: source.company_id } });
+      } else if (quotationId) quotation = await tx.sales_quotation.findFirst({ where: { id: quotationId, company_id: source.company_id } });
       if (!quotation) throw new Error('QUOTATION_NOT_FOUND');
       if (quotation.status !== 'SENT') throw new Error('QUOTATION_NOT_DECIDABLE');
+      const quotationDocument = quotation.document_id ? await tx.core_business_document.findFirst({
+        where: { id: quotation.document_id, company_id: source.company_id, document_type: 'SALES_QUOTATION' },
+        select: { document_number: true },
+      }) : null;
+      const resolvedQuotationCode = (quotationDocument?.document_number ?? quotationCode) || null;
       await tx.sales_quotation.update({ where: { id: quotation.id }, data: { status: decision } });
       if (decision === 'ACCEPTED') {
         if (!quotation.opportunity_id) throw new Error('QUOTATION_OPPORTUNITY_MISSING');
         await CRMService.processDealWon(quotation.opportunity_id, { id: source.default_assigned_user_id }, source.company_id, tx);
-        await queueWebhookEvent(tx, source.company_id, 'quotation.accepted', { quotation_id: quotation.id, opportunity_id: quotation.opportunity_id });
-      } else await queueWebhookEvent(tx, source.company_id, 'quotation.rejected', { quotation_id: quotation.id, decision });
+        await queueWebhookEvent(tx, source.company_id, 'quotation.accepted', { quotation_id: quotation.id, quotation_code: resolvedQuotationCode, opportunity_id: quotation.opportunity_id });
+      } else await queueWebhookEvent(tx, source.company_id, 'quotation.rejected', { quotation_id: quotation.id, quotation_code: resolvedQuotationCode, decision });
     } else {
       throw new Error('UNSUPPORTED_EVENT_CONTRACT');
     }
