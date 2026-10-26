@@ -1079,6 +1079,7 @@ model master_party {
   tax_number          String
   default_currency_id String?   @map("default_currency_id")
   status              String
+  project_links       project_project_party[]
 
   @@index([tenant_id, company_id])
   @@map("master_party")
@@ -2569,9 +2570,27 @@ model project_project {
   started_at            DateTime?
   closed_at             DateTime?
   closed_by             String?
+  related_parties       project_project_party[]
 
   @@index([tenant_id, company_id])
   @@map("project_project")
+}
+
+model project_project_party {
+  id                String         @id @default(uuid())
+  tenant_id         String?        @map("tenant_id")
+  company_id        String?        @map("company_id")
+  project_id        String         @map("project_id")
+  party_id          String         @map("party_id")
+  relationship_type String         @map("relationship_type")
+  created_by_id     String?        @map("created_by_id")
+  created_at        DateTime       @default(now()) @db.Timestamp(3)
+  project           project_project @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  party             master_party    @relation(fields: [party_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([project_id, party_id, relationship_type])
+  @@index([tenant_id, company_id, project_id])
+  @@map("project_project_party")
 }
 
 model project_resource_document {

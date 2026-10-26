@@ -24,6 +24,34 @@ import { weeklyPeriodCalendar, weeklyPeriodWhere, weeklyWorkPeriodForTimestamp }
 
 export const projectsRouter = Router();
 
+type RelatedProjectPartySelection = { vendorSupplierIds: string[]; partnerIds: string[] };
+
+function projectPartyIds(value: unknown, label: string): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new ValidationError(`${label} harus berupa daftar rekanan.`);
+  return [...new Set(value.map((id) => String(id ?? '').trim()).filter(Boolean))];
+}
+
+async function validateRelatedProjectParties(
+  db: any,
+  companyId: string,
+  selection: RelatedProjectPartySelection,
+) {
+  const allIds = [...selection.vendorSupplierIds, ...selection.partnerIds];
+  if (!allIds.length) return;
+  const rows = await db.master_party.findMany({
+    where: { id: { in: allIds }, company_id: companyId, status: 'ACTIVE' },
+    select: { id: true, party_type: true },
+  });
+  const types = new Map(rows.map((row: any) => [String(row.id), String(row.party_type).toUpperCase()]));
+  if (selection.vendorSupplierIds.some((id) => !['SUPPLIER', 'VENDOR'].includes(types.get(id) ?? ''))) {
+    throw new ValidationError('Pilih vendor/supplier aktif dari company yang sedang digunakan.');
+  }
+  if (selection.partnerIds.some((id) => (types.get(id) ?? '') !== 'PARTNER')) {
+    throw new ValidationError('Pilih partner aktif dari company yang sedang digunakan.');
+  }
+}
+
 const PROJECT_FUNDING_CATEGORIES = new Set([
   'OPERATIONAL',
   'MATERIAL',
@@ -2425,6 +2453,90 @@ projectsRouter.delete('/projects/:id/resources/:resourceId', async (req: Request
   }
 });
 
+projectsRouter.get('/projects/party-options', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parties = await prisma.master_party.findMany({
+      where: {
+        company_id: activeCompanyId(req),
+        status: 'ACTIVE',
+        party_type: { in: ['SUPPLIER', 'VENDOR', 'PARTNER'] },
+      },
+      select: { id: true, party_code: true, party_type: true, legal_name: true, display_name: true },
+      orderBy: { display_name: 'asc' },
+    });
+    res.json(parties);
+  } catch (err) { next(err); }
+});
+
+projectsRouter.get('/projects/:id/parties', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    await ProjectsService.assertCanViewProject(req.user, req.params.id, companyId);
+    const relations = await prisma.project_project_party.findMany({
+      where: { project_id: req.params.id, company_id: companyId },
+      include: { party: { select: { id: true, party_code: true, party_type: true, legal_name: true, display_name: true } } },
+      orderBy: [{ relationship_type: 'asc' }, { created_at: 'asc' }],
+    });
+    res.json(relations.map((relation) => ({
+      id: relation.party.id,
+      party_code: relation.party.party_code,
+      party_type: relation.party.party_type,
+      legal_name: relation.party.legal_name,
+      display_name: relation.party.display_name,
+      relationship_type: relation.relationship_type,
+    })));
+  } catch (err) { next(err); }
+});
+
+projectsRouter.put('/projects/:id/parties', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    await ProjectsService.assertCanManageProject(req.user, req.params.id, companyId);
+    const selection: RelatedProjectPartySelection = {
+      vendorSupplierIds: projectPartyIds(req.body?.vendor_supplier_party_ids, 'Vendor/Supplier'),
+      partnerIds: projectPartyIds(req.body?.partner_party_ids, 'Partner'),
+    };
+    await validateRelatedProjectParties(prisma, companyId, selection);
+    const tenantId = activeTenantId(req);
+    const userId = activeUserId(req);
+    const relations = await prisma.$transaction(async (tx) => {
+      await tx.project_project_party.deleteMany({
+        where: { project_id: req.params.id, company_id: companyId, relationship_type: { in: ['VENDOR_SUPPLIER', 'PARTNER'] } },
+      });
+      const rows = [
+        ...selection.vendorSupplierIds.map((partyId) => ({ partyId, relationshipType: 'VENDOR_SUPPLIER' })),
+        ...selection.partnerIds.map((partyId) => ({ partyId, relationshipType: 'PARTNER' })),
+      ];
+      if (rows.length) {
+        await tx.project_project_party.createMany({
+          data: rows.map((row) => ({
+            id: crypto.randomUUID(),
+            tenant_id: tenantId,
+            company_id: companyId,
+            project_id: req.params.id,
+            party_id: row.partyId,
+            relationship_type: row.relationshipType,
+            created_by_id: userId,
+          })),
+        });
+      }
+      return tx.project_project_party.findMany({
+        where: { project_id: req.params.id, company_id: companyId },
+        include: { party: { select: { id: true, party_code: true, party_type: true, legal_name: true, display_name: true } } },
+        orderBy: [{ relationship_type: 'asc' }, { created_at: 'asc' }],
+      });
+    });
+    res.json(relations.map((relation) => ({
+      id: relation.party.id,
+      party_code: relation.party.party_code,
+      party_type: relation.party.party_type,
+      legal_name: relation.party.legal_name,
+      display_name: relation.party.display_name,
+      relationship_type: relation.relationship_type,
+    })));
+  } catch (err) { next(err); }
+});
+
 projectsRouter.use('/projects', createCrudRouter({
   modelName: 'project_project',
   searchFields: ['project_name', 'project_code', 'status', 'customer_name'],
@@ -2460,6 +2572,14 @@ projectsRouter.use('/projects', createCrudRouter({
     if (!tenantId) throw new ForbiddenError('Tenant aktif diperlukan.');
 
     const companyId = activeCompanyId(req);
+    const relatedParties: RelatedProjectPartySelection = {
+      vendorSupplierIds: projectPartyIds(data.vendor_supplier_party_ids, 'Vendor/Supplier'),
+      partnerIds: projectPartyIds(data.partner_party_ids, 'Partner'),
+    };
+    await validateRelatedProjectParties(prisma, companyId, relatedParties);
+    (req as any).relatedProjectParties = relatedParties;
+    delete data.vendor_supplier_party_ids;
+    delete data.partner_party_ids;
     const customerParty = await CustomerPartyService.ensureByName(prisma, {
       customerName: clientName,
       companyId,
@@ -2509,6 +2629,26 @@ projectsRouter.use('/projects', createCrudRouter({
     }
 
     return data;
+  },
+  afterCreateInTransaction: async (req, record, tx) => {
+    const selection = (req as any).relatedProjectParties as RelatedProjectPartySelection | undefined;
+    if (!selection) return;
+    const rows = [
+      ...selection.vendorSupplierIds.map((partyId) => ({ partyId, relationshipType: 'VENDOR_SUPPLIER' })),
+      ...selection.partnerIds.map((partyId) => ({ partyId, relationshipType: 'PARTNER' })),
+    ];
+    if (!rows.length) return;
+    await tx.project_project_party.createMany({
+      data: rows.map((row) => ({
+        id: crypto.randomUUID(),
+        tenant_id: record.tenant_id,
+        company_id: record.company_id,
+        project_id: record.id,
+        party_id: row.partyId,
+        relationship_type: row.relationshipType,
+        created_by_id: activeUserId(req),
+      })),
+    });
   },
   beforeUpdate: async (req, data, existing) => {
     const companyId = activeCompanyId(req);

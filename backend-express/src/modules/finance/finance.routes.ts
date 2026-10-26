@@ -750,9 +750,12 @@ financeRouter.get('/party-options', requireFinanceRole([RoleCode.FINANCE, RoleCo
   try {
     const companyId = activeCompanyId(req);
     const requestedRole = String(req.query.role ?? '').trim().toUpperCase();
+    const acceptedPartyTypes = requestedRole === 'VENDOR' || requestedRole === 'SUPPLIER'
+      ? ['VENDOR', 'SUPPLIER']
+      : requestedRole ? [requestedRole] : [];
     const roles = requestedRole
       ? await prisma.master_party_role.findMany({
-          where: { company_id: companyId, active: true, role_type: requestedRole },
+          where: { company_id: companyId, active: true, role_type: { in: acceptedPartyTypes } },
           select: { party_id: true },
         })
       : [];
@@ -762,7 +765,7 @@ financeRouter.get('/party-options', requireFinanceRole([RoleCode.FINANCE, RoleCo
         company_id: companyId,
         status: 'ACTIVE',
         ...(requestedRole
-          ? { OR: [{ id: { in: rolePartyIds } }, { party_type: requestedRole }] }
+          ? { OR: [{ id: { in: rolePartyIds } }, { party_type: { in: acceptedPartyTypes } }] }
           : {}),
       },
       select: { id: true, party_code: true, party_type: true, legal_name: true, display_name: true },

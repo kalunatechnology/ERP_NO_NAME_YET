@@ -180,12 +180,14 @@ function QuickAddPartyModal({
   isOpen,
   onClose,
   onSuccess,
+  allowTypeSelection = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (newParty: any) => void;
+  allowTypeSelection?: boolean;
 }) {
-  const [partyForm, setPartyForm] = useState({ legal_name: "", display_name: "", email: "", party_code: "" });
+  const [partyForm, setPartyForm] = useState({ legal_name: "", display_name: "", email: "", party_code: "", party_type: "CUSTOMER" });
   const [isPartySubmitting, setIsPartySubmitting] = useState(false);
 
 /**
@@ -205,8 +207,8 @@ function QuickAddPartyModal({
       const payload = {
         display_name: partyForm.display_name.trim() || partyForm.legal_name.trim(),
         legal_name: partyForm.legal_name.trim() || partyForm.display_name.trim(),
-        party_code: partyForm.party_code?.trim() || `CUST-${Date.now().toString().slice(-4)}`,
-        party_type: "CUSTOMER",
+        party_code: partyForm.party_code?.trim() || `${partyForm.party_type === "SUPPLIER" ? "SUP" : partyForm.party_type === "PARTNER" ? "PART" : "CUST"}-${Date.now().toString().slice(-4)}`,
+        party_type: partyForm.party_type,
         tax_number: "",
         status: "ACTIVE",
       };
@@ -226,22 +228,38 @@ function QuickAddPartyModal({
           });
         } catch { contactSaveFailed = true; }
       }
-      if (contactSaveFailed) toast.error("Pelanggan tersimpan, tetapi email kontak gagal disimpan.");
-      else toast.success("Pelanggan baru berhasil ditambahkan!");
+      const partyLabel = partyForm.party_type === "SUPPLIER" ? "Vendor / Supplier" : partyForm.party_type === "PARTNER" ? "Partner" : "Pelanggan";
+      if (contactSaveFailed) toast.error(`${partyLabel} tersimpan, tetapi email kontak gagal disimpan.`);
+      else toast.success(`${partyLabel} baru berhasil ditambahkan!`);
       onSuccess(newParty);
-      setPartyForm({ legal_name: "", display_name: "", email: "", party_code: "" });
+      setPartyForm({ legal_name: "", display_name: "", email: "", party_code: "", party_type: "CUSTOMER" });
       onClose();
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || "Gagal menambahkan pelanggan.");
+      toast.error(e?.response?.data?.detail || "Gagal menambahkan rekanan.");
     } finally {
       setIsPartySubmitting(false);
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Tambah Pelanggan Baru ke Database" size="sm">
+    <Modal isOpen={isOpen} onClose={onClose} title={allowTypeSelection ? "Tambah Rekanan Baru ke Database" : "Tambah Pelanggan Baru ke Database"} size="sm">
       <div className="flex flex-col gap-3 p-4">
         <div>
+          {allowTypeSelection && (
+            <>
+              <label className="text-xs font-medium text-text-secondary mb-1 block">Jenis Rekanan *</label>
+              <select
+                required
+                className="mb-3 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-green"
+                value={partyForm.party_type}
+                onChange={e => setPartyForm(p => ({ ...p, party_type: e.target.value }))}
+              >
+                <option value="CUSTOMER">Customer</option>
+                <option value="SUPPLIER">Vendor / Supplier</option>
+                <option value="PARTNER">Partner</option>
+              </select>
+            </>
+          )}
           <label className="text-xs font-medium text-text-secondary mb-1 block">Nama Instansi / Perusahaan *</label>
           <input 
             className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
@@ -272,7 +290,7 @@ function QuickAddPartyModal({
         <div className="flex gap-2 justify-end pt-2">
           <button type="button" onClick={onClose} className="btn-ghost">Batal</button>
           <button type="button" onClick={handleQuickAdd} disabled={isPartySubmitting} className="btn-primary">
-            {isPartySubmitting ? "Menyimpan..." : "Simpan Pelanggan"}
+            {isPartySubmitting ? "Menyimpan..." : allowTypeSelection ? "Simpan Rekanan" : "Simpan Pelanggan"}
           </button>
         </div>
       </div>
@@ -1533,7 +1551,7 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
     <div className="card rounded-xl p-4">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
         <div>
-          <h3 className="text-sm font-bold">Master Rekanan (Customers & Partners)</h3>
+          <h3 className="text-sm font-bold">Master Rekanan (Customer, Vendor & Partner)</h3>
           <p className="text-xs text-text-secondary mt-1">Kelola nama, kode, tipe, dan status rekanan.</p>
         </div>
         {!readOnly && <button onClick={() => setIsQuickAddOpen(true)} className="btn-primary self-start text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Rekanan</button>}
@@ -1557,7 +1575,7 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
           ))}
         </div>
       )}
-      <QuickAddPartyModal isOpen={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} onSuccess={(party) => { onPartyCreated(party); onRefresh(); }} />
+      <QuickAddPartyModal isOpen={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} onSuccess={(party) => { onPartyCreated(party); onRefresh(); }} allowTypeSelection />
       <Modal isOpen={Boolean(editingParty)} onClose={() => !isSaving && setEditingParty(null)} title="Edit Profil Rekanan" size="sm">
         <div className="flex flex-col gap-3 p-4">
           <label className="text-xs font-medium text-text-secondary">Nama tampilan *<input className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={partyForm.display_name} onChange={e => setPartyForm(f => ({ ...f, display_name: e.target.value }))} /></label>
