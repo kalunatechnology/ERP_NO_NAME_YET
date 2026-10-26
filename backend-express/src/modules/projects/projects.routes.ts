@@ -43,7 +43,9 @@ async function validateRelatedProjectParties(
     where: { id: { in: allIds }, company_id: companyId, status: 'ACTIVE' },
     select: { id: true, party_type: true },
   });
-  const types = new Map(rows.map((row: any) => [String(row.id), String(row.party_type).toUpperCase()]));
+  const types = new Map<string, string>(
+    rows.map((row: any) => [String(row.id), String(row.party_type).toUpperCase()] as [string, string]),
+  );
   if (selection.vendorSupplierIds.some((id) => !['SUPPLIER', 'VENDOR'].includes(types.get(id) ?? ''))) {
     throw new ValidationError('Pilih vendor/supplier aktif dari company yang sedang digunakan.');
   }
