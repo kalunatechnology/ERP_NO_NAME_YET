@@ -766,13 +766,13 @@ function TabDeals({
                 <div 
                   key={o.id} 
                   className={cn(
-                    "flex items-center justify-between p-3 rounded-xl border transition-colors gap-3",
+                    "rounded-xl border p-3 transition-colors",
                     isCancelled 
                       ? "border-red-200 bg-red-50/40 opacity-75" 
                       : "border-text-tertiary/60 hover:bg-bg-lighter"
                   )}
                 >
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={cn("text-sm font-semibold truncate", isCancelled ? "line-through text-gray-500" : "text-text-primary")}>
                         {o.opportunity_name || `Opportunity ${String(o.id).slice(0,8)}`}
@@ -782,31 +782,31 @@ function TabDeals({
                     <div className="text-xs text-text-secondary mt-0.5">
                       <span className="font-medium text-slate-700">{cust?.display_name || cust?.legal_name || "Pelanggan Umum"}</span> · <b>{formatMoney(o.expected_amount)}</b>
                     </div>
-                    {!cust && !isCancelled && !readOnly && (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <select
-                          aria-label={`Pilih customer untuk ${o.opportunity_name || "opportunity"}`}
-                          className="max-w-xs rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs"
-                          value={customerFixByOpp[String(o.id)] || ""}
-                          onChange={(event) => setCustomerFixByOpp((current) => ({ ...current, [String(o.id)]: event.target.value }))}
-                        >
-                          <option value="">Pilih customer untuk mengaktifkan Deal Won</option>
-                          {(data.parties || []).filter((party: any) => party.party_type === "CUSTOMER" && party.status === "ACTIVE").map((party: any) => (
-                            <option key={party.id} value={String(party.id)}>{party.display_name || party.legal_name}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => void handleAssignOpportunityCustomer(o)}
-                          disabled={!customerFixByOpp[String(o.id)] || savingCustomerOppId === String(o.id)}
-                          className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {savingCustomerOppId === String(o.id) ? "Menyimpan…" : "Simpan customer"}
-                        </button>
-                      </div>
-                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {!cust && !isCancelled && !readOnly && (
+                    <div className="mt-3 grid w-full grid-cols-1 gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                      <select
+                        aria-label={`Pilih customer untuk ${o.opportunity_name || "opportunity"}`}
+                        className="w-full min-w-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm"
+                        value={customerFixByOpp[String(o.id)] || ""}
+                        onChange={(event) => setCustomerFixByOpp((current) => ({ ...current, [String(o.id)]: event.target.value }))}
+                      >
+                        <option value="">Pilih customer untuk melengkapi opportunity</option>
+                        {(data.parties || []).filter((party: any) => party.party_type === "CUSTOMER" && party.status === "ACTIVE").map((party: any) => (
+                          <option key={party.id} value={String(party.id)}>{party.display_name || party.legal_name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void handleAssignOpportunityCustomer(o)}
+                        disabled={!customerFixByOpp[String(o.id)] || savingCustomerOppId === String(o.id)}
+                        className="w-full rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                      >
+                        {savingCustomerOppId === String(o.id) ? "Menyimpan…" : "Simpan customer"}
+                      </button>
+                    </div>
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-text-tertiary/40 pt-3">
                     {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); }} label="Aktivitas" small variant="ghost" />}
                     {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" />}
                     {!readOnly ? (
