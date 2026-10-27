@@ -331,6 +331,11 @@ export async function createOpportunity(payload: {
   return data;
 }
 
+export async function updateOpportunityCustomer(id: string | number, customerPartyId: string | number) {
+  const { data } = await api.patch(`/api/v1/crm/opportunities/${id}/`, { customer_party_id: customerPartyId });
+  return data;
+}
+
 export async function createCRMActivity(payload: { opportunity_id: string | number; party_id?: string | number | null; activity_type: string; subject: string; scheduled_at?: string | null }) {
   const { data } = await api.post('/api/v1/crm/activities/', { ...payload, status: payload.scheduled_at ? 'PLANNED' : 'COMPLETED', completed_at: payload.scheduled_at ? null : new Date().toISOString() });
   return data;

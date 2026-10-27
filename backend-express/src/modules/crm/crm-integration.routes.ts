@@ -332,8 +332,24 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
         if (quotation.status !== 'SENT') {
           return res.status(409).json({ error: 'QUOTATION_NOT_SENT', current_status: quotation.status, detail: 'Kirim quotation dari Marka sampai statusnya SENT sebelum mengirim keputusan klien.' });
         }
-        if (decision === 'ACCEPTED' && !quotation.opportunity_id) {
-          return res.status(409).json({ error: 'QUOTATION_OPPORTUNITY_MISSING', detail: 'Hubungkan quotation ke opportunity sebelum menerima keputusan ACCEPTED.' });
+        if (decision === 'ACCEPTED') {
+          if (!quotation.opportunity_id) {
+            return res.status(409).json({ error: 'QUOTATION_OPPORTUNITY_MISSING', detail: 'Hubungkan quotation ke opportunity sebelum menerima keputusan ACCEPTED.' });
+          }
+          const opportunity = await prisma.crm_opportunity.findFirst({
+            where: { id: quotation.opportunity_id, company_id: signatureConfig.source.company_id },
+            select: { customer_party_id: true },
+          });
+          if (!opportunity?.customer_party_id) {
+            return res.status(409).json({ error: 'QUOTATION_OPPORTUNITY_CUSTOMER_MISSING', detail: 'Tambahkan customer party pada opportunity sebelum menerima keputusan ACCEPTED.' });
+          }
+          const customer = await prisma.master_party.findFirst({
+            where: { id: opportunity.customer_party_id, tenant_id: signatureConfig.source.tenant_id, company_id: signatureConfig.source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' },
+            select: { id: true },
+          });
+          if (!customer) {
+            return res.status(409).json({ error: 'QUOTATION_OPPORTUNITY_CUSTOMER_INVALID', detail: 'Customer pada opportunity tidak aktif atau bukan milik company sumber integrasi.' });
+          }
         }
       }
     } else if (eventType !== 'message.received') return res.status(422).json({ error: 'EVENT_TYPE_NOT_IMPLEMENTED' });

@@ -369,12 +369,22 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
 async function failEvent(event: ClaimedEvent, error: unknown) {
   const errorCode = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
   const errorMessage = error instanceof Error ? error.message : '';
+  const statusCode = error && typeof error === 'object' && 'statusCode' in error
+    ? Number((error as { statusCode?: unknown }).statusCode)
+    : 0;
   // Worker contract errors are thrown with their public error code as message
   // (for example QUOTATION_NOT_DECIDABLE). Avoid recording arbitrary exception text.
   const publicError = /^[A-Z][A-Z0-9_]{2,199}$/.test(errorMessage) ? errorMessage : '';
-  const code = (errorCode || publicError || 'PROCESSING_ERROR').slice(0, 200);
-  const terminalContractError = Boolean(publicError);
-  const exhausted = terminalContractError || event.attempt_count >= event.max_attempts;
+  // AppError messages with 4xx status are safe, actionable business validation
+  // details (e.g. missing customer party). Keep them for admins and stop retrying.
+  const isTerminalClientError = Number.isInteger(statusCode) && statusCode >= 400 && statusCode < 500;
+  const safeDetail = isTerminalClientError && errorMessage && !publicError
+    ? errorMessage.replace(/[\r\n\t]+/g, ' ').slice(0, 300)
+    : '';
+  const code = (publicError || (errorCode
+    ? `${errorCode}${safeDetail ? `: ${safeDetail}` : ''}`
+    : 'PROCESSING_ERROR')).slice(0, 400);
+  const exhausted = Boolean(publicError) || isTerminalClientError || event.attempt_count >= event.max_attempts;
   const nextRetryAt = new Date(Date.now() + retryDelayMs(event.attempt_count));
   await prisma.crm_integration_event.updateMany({
     where: { id: event.id, lock_token: event.lock_token, status: 'PROCESSING' },

@@ -9,7 +9,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { queueWebhookEvent } from '../crm/crm-outbound-webhook.service';
 
 export const salesRouter = Router();
@@ -115,6 +115,17 @@ salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, nex
       const current = await tx.sales_quotation.findFirst({ where: { id: quotation.id, company_id: companyId } });
       if (!current) throw new NotFoundError('Quotation');
       if (current.status === 'SENT') return current;
+      if (!current.opportunity_id) throw new ValidationError('Hubungkan quotation ke opportunity sebelum mengirim penawaran.');
+      const opportunity = await tx.crm_opportunity.findFirst({
+        where: { id: current.opportunity_id, company_id: companyId },
+        select: { customer_party_id: true },
+      });
+      if (!opportunity?.customer_party_id) throw new ValidationError('Opportunity harus memiliki customer party sebelum quotation dikirim.');
+      const customer = await tx.master_party.findFirst({
+        where: { id: opportunity.customer_party_id, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!customer) throw new ValidationError('Customer pada opportunity tidak aktif atau bukan milik company ini.');
       const row = await tx.sales_quotation.update({
         where: { id: quotation.id },
         data: { status: 'SENT' },
@@ -150,11 +161,31 @@ salesRouter.post('/quotations/:id/customer-decision', async (req: Request, res: 
     if (!['ACCEPTED', 'REJECTED'].includes(decision)) {
       throw new ValidationError('Decision must be ACCEPTED or REJECTED.');
     }
-    const quotation = await prisma.sales_quotation.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
-    if (!quotation) throw new NotFoundError('Quotation');
-    const updated = await prisma.sales_quotation.update({
-      where: { id: quotation.id },
-      data: { status: decision },
+    const companyId = activeCompanyId(req);
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM sales_quotation WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
+      const quotation = await tx.sales_quotation.findFirst({
+        where: { id: req.params.id, company_id: companyId },
+        select: { id: true, status: true, opportunity_id: true },
+      });
+      if (!quotation) throw new NotFoundError('Quotation');
+      if (quotation.status !== 'SENT') throw new ConflictError(`Quotation harus berstatus SENT sebelum diberi keputusan (status saat ini: ${quotation.status}).`);
+
+      if (decision === 'ACCEPTED') {
+        if (!quotation.opportunity_id) throw new ValidationError('Quotation harus terhubung ke opportunity sebelum diterima.');
+        const opportunity = await tx.crm_opportunity.findFirst({
+          where: { id: quotation.opportunity_id, company_id: companyId },
+          select: { customer_party_id: true },
+        });
+        if (!opportunity?.customer_party_id) throw new ValidationError('Opportunity harus memiliki customer party sebelum quotation diterima.');
+        const customer = await tx.master_party.findFirst({
+          where: { id: opportunity.customer_party_id, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
+          select: { id: true },
+        });
+        if (!customer) throw new ValidationError('Customer pada opportunity tidak aktif atau bukan milik company ini.');
+      }
+
+      return tx.sales_quotation.update({ where: { id: quotation.id }, data: { status: decision } });
     });
     res.json(updated);
   } catch (err) {

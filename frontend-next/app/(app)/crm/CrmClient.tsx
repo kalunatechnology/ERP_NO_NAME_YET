@@ -23,7 +23,7 @@ import toast from "react-hot-toast";
 import {
   loadCRMData, CRMData, CRMDashboard,
   processDealWon, executiveOverrideCredit, qualifyInquiry,
-  createOpportunity, deleteOpportunity,
+  createOpportunity, updateOpportunityCustomer, deleteOpportunity,
   createCRMActivity, getOpportunityCustomer360, markOpportunityLost, createServiceWorkOrder,
   createCustomerInquiry, deleteCustomerInquiry,
   createCostEstimate, calculateCostEstimate, createQuotationFromEstimate, deleteCostEstimate,
@@ -103,6 +103,8 @@ interface ActionBtnProps {
   variant?: "primary" | "ghost" | "danger";
   icon?: React.ElementType;
   small?: boolean;
+  disabled?: boolean;
+  title?: string;
 }
 /**
  * ActionBtn coordinates the UI behavior represented by this function.
@@ -111,7 +113,7 @@ interface ActionBtnProps {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function ActionBtn({ onClick, label, variant = "primary", icon: Icon, small }: ActionBtnProps) {
+function ActionBtn({ onClick, label, variant = "primary", icon: Icon, small, disabled = false, title }: ActionBtnProps) {
   const [busy, setBusy] = useState(false);
 /**
  * handle coordinates the UI behavior represented by this function.
@@ -135,8 +137,9 @@ function ActionBtn({ onClick, label, variant = "primary", icon: Icon, small }: A
   return (
     <button
       onClick={handle}
-      disabled={busy}
-      className={cn("inline-flex items-center gap-1.5 rounded-lg font-medium transition-all", base, colors, busy && "opacity-60 cursor-wait")}
+      disabled={busy || disabled}
+      title={title}
+      className={cn("inline-flex items-center gap-1.5 rounded-lg font-medium transition-all", base, colors, (busy || disabled) && "opacity-60 cursor-not-allowed")}
     >
       {busy ? <RefreshCw size={12} className="animate-spin" /> : Icon && <Icon size={12} />}
       {busy ? "Memproses..." : label}
@@ -454,6 +457,8 @@ function TabDeals({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resultModal, setResultModal] = useState<any>(null);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
+  const [customerFixByOpp, setCustomerFixByOpp] = useState<Record<string, string>>({});
+  const [savingCustomerOppId, setSavingCustomerOppId] = useState<string | null>(null);
   const [oppFilter, setOppFilter] = useState<"ACTIVE" | "CANCELLED" | "ALL">("ACTIVE");
   const [activityOpp, setActivityOpp] = useState<any>(null);
   const [customer360, setCustomer360] = useState<any>(null);
@@ -582,6 +587,10 @@ function TabDeals({
       toast.error("Nama opportunity wajib diisi."); 
       return; 
     }
+    if (!form.customer_party) {
+      toast.error("Pilih customer untuk opportunity sebelum menyimpan.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       const payload = {
@@ -604,6 +613,25 @@ function TabDeals({
       toast.error(e?.response?.data?.detail || "Gagal buat opportunity"); 
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAssignOpportunityCustomer = async (opportunity: any) => {
+    const customerPartyId = customerFixByOpp[String(opportunity.id)];
+    if (!customerPartyId) {
+      toast.error("Pilih customer terlebih dahulu.");
+      return;
+    }
+    setSavingCustomerOppId(String(opportunity.id));
+    try {
+      await updateOpportunityCustomer(opportunity.id, customerPartyId);
+      toast.success("Customer opportunity berhasil dilengkapi.");
+      setCustomerFixByOpp((current) => ({ ...current, [String(opportunity.id)]: "" }));
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || error?.response?.data?.error?.message || "Customer opportunity gagal diperbarui.");
+    } finally {
+      setSavingCustomerOppId(null);
     }
   };
 
@@ -754,6 +782,29 @@ function TabDeals({
                     <div className="text-xs text-text-secondary mt-0.5">
                       <span className="font-medium text-slate-700">{cust?.display_name || cust?.legal_name || "Pelanggan Umum"}</span> · <b>{formatMoney(o.expected_amount)}</b>
                     </div>
+                    {!cust && !isCancelled && !readOnly && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <select
+                          aria-label={`Pilih customer untuk ${o.opportunity_name || "opportunity"}`}
+                          className="max-w-xs rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs"
+                          value={customerFixByOpp[String(o.id)] || ""}
+                          onChange={(event) => setCustomerFixByOpp((current) => ({ ...current, [String(o.id)]: event.target.value }))}
+                        >
+                          <option value="">Pilih customer untuk mengaktifkan Deal Won</option>
+                          {(data.parties || []).filter((party: any) => party.party_type === "CUSTOMER" && party.status === "ACTIVE").map((party: any) => (
+                            <option key={party.id} value={String(party.id)}>{party.display_name || party.legal_name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => void handleAssignOpportunityCustomer(o)}
+                          disabled={!customerFixByOpp[String(o.id)] || savingCustomerOppId === String(o.id)}
+                          className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {savingCustomerOppId === String(o.id) ? "Menyimpan…" : "Simpan customer"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); }} label="Aktivitas" small variant="ghost" />}
@@ -761,7 +812,13 @@ function TabDeals({
                     {!readOnly ? (
                       <>
                         {!isCancelled && (
-                          <ActionBtn onClick={() => handleDealWon(o)} label="Deal Won" small />
+                          <ActionBtn
+                            onClick={() => handleDealWon(o)}
+                            label="Deal Won"
+                            small
+                            disabled={!cust}
+                            title={!cust ? "Lengkapi customer pada opportunity sebelum menjalankan Deal Won." : undefined}
+                          />
                         )}
                         {isWon && !isCancelled && (
                           <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small />
@@ -838,7 +895,7 @@ function TabDeals({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium text-text-secondary">Pilih Rekanan / Pelanggan (Database)</label>
+              <label className="text-xs font-medium text-text-secondary">Pilih Pelanggan * (wajib untuk Deal Won)</label>
               <button 
                 type="button" 
                 onClick={() => setIsQuickPartyOpen(true)}
@@ -852,8 +909,8 @@ function TabDeals({
               value={form.customer_party}
               onChange={e => setForm(f => ({ ...f, customer_party: e.target.value }))}
             >
-              <option value="">-- Pilih Rekanan dari Database (Opsional) --</option>
-              {(data.parties || []).map(p => (
+              <option value="">-- Pilih customer aktif --</option>
+              {(data.parties || []).filter((party: any) => party.party_type === "CUSTOMER" && party.status === "ACTIVE").map(p => (
                 <option key={p.id} value={String(p.id)}>
                   {p.display_name || p.legal_name} {p.party_code ? `(${p.party_code})` : ""}
                 </option>
@@ -895,7 +952,7 @@ function TabDeals({
           </div>
           <div className="flex gap-2 pt-2 justify-end">
             <button onClick={() => setIsNewOppOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button>
-            <button onClick={handleCreate} disabled={isSubmitting} className="btn-primary">
+            <button onClick={handleCreate} disabled={isSubmitting || !form.opportunity_name.trim() || !form.customer_party} className="btn-primary">
               {isSubmitting ? "Memproses..." : "Buat Opportunity"}
             </button>
           </div>
@@ -965,11 +1022,15 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
   const [sendingQuotation, setSendingQuotation] = useState(false);
 
   /**
-   * Creates a cost estimate and preserves a null opportunity relationship when none is selected.
+   * Creates a cost estimate attached to an opportunity with an active customer.
    *
    * The CRM API owns persistence; this handler owns submission feedback, modal lifecycle, and parent refresh.
    */
   const handleCreate = async () => {
+    if (!estForm.opportunity) {
+      toast.error("Pilih opportunity yang memiliki customer sebelum membuat estimasi untuk quotation.");
+      return;
+    }
     const directCost = Number(estForm.direct_cost);
     const overheadCost = Number(estForm.overhead_cost);
     const markupPercent = Number(estForm.markup_percent);
@@ -1080,6 +1141,9 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
     const s = (q.status || "").toUpperCase();
+    const quotationOpportunity = (data.opportunities || []).find((opportunity: any) => String(opportunity.id) === String(q.opportunity_id));
+    const quotationPartyId = quotationOpportunity ? opportunityPartyId(quotationOpportunity) : null;
+    const quotationCustomerIsValid = Boolean(quotationPartyId && (data.parties || []).some((party: any) => String(party.id) === String(quotationPartyId) && party.party_type === "CUSTOMER" && party.status === "ACTIVE"));
     if (s === "DRAFT") return <ActionBtn onClick={async () => { await submitQuotationApproval(q.id); toast.success("Submitted!"); onRefresh(); }} label="Minta Approval" small />;
     if (s === "PENDING_APPROVAL") return canApproveQuotation
       ? <ActionBtn onClick={async () => {
@@ -1093,8 +1157,23 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
         }} label="Setuju" small />
       : <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800" title="Persetujuan quotation hanya dapat dilakukan oleh Direktur.">Menunggu Direktur</span>;
     if (s === "APPROVED") return <ActionBtn onClick={() => openSendDialog(q)} label="Kirim" small />;
-    if (s === "SENT") return <ActionBtn onClick={async () => { await acceptQuotation(q.id); toast.success("Accepted!"); onRefresh(); }} label="Accept" small />;
-    if (s === "ACCEPTED") return <ActionBtn onClick={async () => { await convertQuotationToOrder(q.id); toast.success("Converted to Order!"); onRefresh(); }} label="📦 Convert to Order" small />;
+    if (s === "SENT") {
+      const canAccept = Boolean(quotationOpportunity && quotationCustomerIsValid);
+      return <ActionBtn
+        onClick={async () => { await acceptQuotation(q.id); toast.success("Keputusan quotation diterima."); onRefresh(); }}
+        label="Accept"
+        small
+        disabled={!canAccept}
+        title={!canAccept ? "Hubungkan quotation ke opportunity dengan customer aktif sebelum menerima." : undefined}
+      />;
+    }
+    if (s === "ACCEPTED") return <ActionBtn
+      onClick={async () => { await convertQuotationToOrder(q.id); toast.success("Quotation dikonversi menjadi Sales Order."); onRefresh(); }}
+      label="📦 Convert to Order"
+      small
+      disabled={!quotationOpportunity || !quotationCustomerIsValid}
+      title={!quotationOpportunity || !quotationCustomerIsValid ? "Lengkapi customer aktif pada opportunity sebelum konversi." : undefined}
+    />;
     return <StatusBadge status={s} />;
   };
 
@@ -1168,14 +1247,17 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
       <Modal isOpen={isEstModal} onClose={() => setIsEstModal(false)} title="Buat Estimasi HPP" size="md">
         <div className="flex flex-col gap-3 p-4">
           <div>
-            <label className="text-xs font-medium text-text-secondary mb-1 block">Opportunity</label>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Opportunity dengan customer aktif *</label>
             <select
               className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white"
               value={estForm.opportunity}
               onChange={e => setEstForm(f => ({...f, opportunity: e.target.value}))}
             >
-              <option value="">-- Pilih Opportunity Terkait --</option>
-              {(data.opportunities || []).map(o => (
+              <option value="">-- Pilih Opportunity --</option>
+              {(data.opportunities || []).filter((opportunity: any) => {
+                const partyId = opportunityPartyId(opportunity);
+                return partyId && (data.parties || []).some((party: any) => String(party.id) === String(partyId) && party.party_type === "CUSTOMER" && party.status === "ACTIVE");
+              }).map(o => (
                 <option key={o.id} value={String(o.id)}>
                   {o.opportunity_name || `Opp #${o.id}`} ({formatMoney(o.expected_amount)})
                 </option>
@@ -1206,7 +1288,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
           </div>
           <div className="flex gap-2 justify-end pt-2">
             <button onClick={() => setIsEstModal(false)} className="btn-ghost">Batal</button>
-            <button onClick={handleCreate} className="btn-primary">Buat Estimasi</button>
+            <button onClick={handleCreate} disabled={!estForm.opportunity} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">Buat Estimasi</button>
           </div>
         </div>
       </Modal>

@@ -255,19 +255,21 @@ export class CRMService {
         };
       }
 
-      let customerPartyId = null;
-      if (estimate.opportunity_id) {
-        const opp = await tx.crm_opportunity.findFirst({
-          where: { id: estimate.opportunity_id, company_id: companyId },
-        });
-        customerPartyId = opp?.customer_party_id;
+      if (!estimate.opportunity_id) {
+        throw new ValidationError('Hubungkan estimasi ke opportunity sebelum membuat quotation.');
       }
-      if (!customerPartyId && estimate.inquiry_id) {
-        const inq = await tx.crm_customer_inquiry.findFirst({
-          where: { id: estimate.inquiry_id, company_id: companyId },
-        });
-        customerPartyId = inq?.customer_party_id;
-      }
+      const opportunity = await tx.crm_opportunity.findFirst({
+        where: { id: estimate.opportunity_id, company_id: companyId },
+        select: { id: true, customer_party_id: true },
+      });
+      if (!opportunity) throw new ValidationError('Opportunity estimasi tidak ditemukan pada company ini.');
+      if (!opportunity.customer_party_id) throw new ValidationError('Lengkapi customer party pada opportunity sebelum membuat quotation.');
+      const customer = await tx.master_party.findFirst({
+        where: { id: opportunity.customer_party_id, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!customer) throw new ValidationError('Customer opportunity tidak aktif atau bukan milik company ini.');
+      const customerPartyId = customer.id;
 
       const document = await tx.core_business_document.create({
         data: {

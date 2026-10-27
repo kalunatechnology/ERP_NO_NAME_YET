@@ -70,6 +70,28 @@ function activeCompanyId(req: Request): string {
   return req.companyId;
 }
 
+async function validateOpportunityCustomer(req: Request, data: Record<string, any>, existing?: { customer_party_id?: string | null }) {
+  const hasCustomerInput = data.customer_party_id !== undefined || data.customer_party !== undefined;
+  if (!hasCustomerInput && existing) return data;
+
+  const customerPartyId = String(data.customer_party_id ?? data.customer_party ?? '').trim();
+  if (!customerPartyId) throw new ValidationError('Pilih pelanggan/customer sebelum menyimpan opportunity.');
+  if (!req.tenantId) throw new ForbiddenError('Tenant context wajib tersedia untuk memvalidasi customer opportunity.');
+
+  const party = await prisma.master_party.findFirst({
+    where: {
+      id: customerPartyId,
+      tenant_id: req.tenantId,
+      company_id: activeCompanyId(req),
+      party_type: 'CUSTOMER',
+      status: 'ACTIVE',
+    },
+    select: { id: true },
+  });
+  if (!party) throw new ValidationError('Pelanggan tidak ditemukan, tidak aktif, atau bukan milik company yang dipilih.');
+  return { ...data, customer_party_id: party.id };
+}
+
 async function assertProjectModuleAccess(req: Request, mode: 'read' | 'write') {
   const companyId = activeCompanyId(req);
   if (!req.user) throw new ForbiddenError();
@@ -820,7 +842,12 @@ crmRouter.post('/opportunities/:id/mark-lost', async (req: Request, res: Respons
     res.json(updated);
   } catch (error) { next(error); }
 });
-crmRouter.use('/opportunities', createCrudRouter({ modelName: 'crm_opportunity', searchFields: ['opportunity_name', 'pipeline_stage'] }));
+crmRouter.use('/opportunities', createCrudRouter({
+  modelName: 'crm_opportunity',
+  searchFields: ['opportunity_name', 'pipeline_stage'],
+  beforeCreate: async (req, data) => validateOpportunityCustomer(req, data),
+  beforeUpdate: async (req, data, existing) => validateOpportunityCustomer(req, data, existing),
+}));
 crmRouter.use('/opportunity-products', createCrudRouter({ modelName: 'crm_opportunity_product' }));
 crmRouter.use('/activities', createCrudRouter({ modelName: 'crm_activity', searchFields: ['subject', 'activity_type'] }));
 crmRouter.use('/pipelines', createCrudRouter({ modelName: 'crm_pipeline', searchFields: ['pipeline_name', 'pipeline_code'] }));
