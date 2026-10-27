@@ -32,6 +32,10 @@ async function main() {
   assert.throws(() => validateResourcePlan({ resource: order.key, operation: 'aggregate', sum: 'status' }, scope));
   assert.equal(validateResourcePlan({ resource: order.key, operation: 'aggregate', sum: 'total_amount', groupBy: 'status' }, scope).sum, 'total_amount');
   const signal = new AbortController().signal;
+  const personalOpportunityCount = await planResourceQuestion('saya memiliki berapa opportunity?', scope, signal, false);
+  assert.equal(personalOpportunityCount?.resource, 'crm.opportunities');
+  assert.equal(personalOpportunityCount?.operation, 'count');
+  assert.equal(personalOpportunityCount?.filters.owner_user_id, scope.userId, 'personal opportunity counts are scoped to the authenticated owner');
   assert.equal((await planResourceQuestion('berapa procurement.purchase-orders?', scope, signal))!.operation, 'count');
   const originalFetch = globalThis.fetch;
   const key = env.MARBOT_AI_API_KEY;

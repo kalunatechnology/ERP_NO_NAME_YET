@@ -9,7 +9,7 @@ import { discoverMarbotSchema } from '../../knowledge/schema.service';
 import { understandMarbotQuestion } from './understanding.service';
 import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion } from './intent';
 import { RetrievalGatewayService } from '../../knowledge-engine/gateway/retrieval-gateway.service';
-import { renderConversationalAnswer } from '../models/provider.service';
+import { renderConversationalAnswer, renderGroundedAgentAnswer } from '../models/provider.service';
 
 export type MarbotAnswer = { content: string; tools: string[]; sources: string[]; action?: MarbotAction };
 export type MarbotDecision = { answer: MarbotAnswer; understanding: { source: 'llm' | 'local' | 'explicit';
@@ -24,14 +24,23 @@ const clarification = {
   uncertain: 'Saya belum yakin memahami maksud Anda. Sebutkan fitur, tindakan yang diinginkan, dan record atau periode bila terkait data. Belum ada perubahan dijalankan.',
 };
 
-async function resourceAnswer(req: Request, plan: ResourcePlan, scope: NativeScope): Promise<MarbotAnswer> {
+async function resourceAnswer(req: Request, plan: ResourcePlan, scope: NativeScope, question: string): Promise<MarbotAnswer> {
   if (['create', 'update'].includes(plan.operation)) return {
     content: `Usulan perubahan ${plan.resource}:\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n\nBelum disimpan. Konfirmasi diperlukan; backend memvalidasi hak akses dan membaca ulang hasil.`,
     tools: ['resource.proposal'], sources: ['ERP:canonical-api'], action: { kind: 'resource.write', payload: plan },
   };
   const result = await executeResourceRead(req, plan, scope);
-  return { content: `Data aktual ${plan.resource}: ${result.aggregate ? 'agregasi database sesuai filter dan akses Anda' : `${result.count} record sesuai filter dan akses Anda`}.\n\n\`\`\`json\n${JSON.stringify(result.aggregate ?? result.rows, null, 2)}\n\`\`\`${result.truncated ? '\nDaftar dibatasi 30 record; jumlah berasal dari total query ERP.' : ''}`,
+  const rendered = await renderGroundedAgentAnswer(question, { resource: result.resource, operation: plan.operation,
+    count: result.count, aggregate: result.aggregate, rows: result.rows, truncated: result.truncated });
+  return { content: rendered.content,
     tools: ['resource.query'], sources: [result.source] };
+}
+
+function enforcePersonalOpportunityScope(plan: ResourcePlan, message: string, scope: NativeScope): ResourcePlan {
+  const asksForPersonalOpportunities = plan.resource === 'crm.opportunities'
+    && /\b(?:saya|aku|milik saya|punya saya|saya punya|saya memiliki|my|mine|i have)\b/i.test(message);
+  if (!asksForPersonalOpportunities) return plan;
+  return { ...plan, filters: { ...plan.filters, owner_user_id: scope.userId } };
 }
 
 function resolveSpecificAccessInquiry(message: string, scope: NativeScope): MarbotAnswer | null {
@@ -109,7 +118,7 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
         tools: ['help.procedure'], sources: [`ERP:curated-procedure:${intent.procedure.topic}:${intent.procedure.operation ?? 'overview'}:baseline`] } };
       const guidance = helperAnswer(message, scope,
         { topic: intent.procedure.topic, operation: intent.procedure.operation ?? undefined }, rule);
-      const data = await resourceAnswer(req, intent.plan, scope);
+      const data = await resourceAnswer(req, enforcePersonalOpportunityScope(intent.plan, message, scope), scope, message);
       return { understanding, answer: { content: `${guidance}\n\n---\n\n${data.content}`,
         tools: ['help.procedure', ...data.tools], sources: [
           rule.provenance?.snapshotId
@@ -190,7 +199,7 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
     if (intent.route === 'schema') return { understanding, answer: {
       content: `Metadata database aktual sesuai akses Anda:\n\n\`\`\`json\n${JSON.stringify(await discoverMarbotSchema(scope, db, intent.tables), null, 2)}\n\`\`\`\nMetadata tidak memberi hak tambahan.`,
       tools: ['schema.discovery'], sources: ['ERP:database-metadata'] } };
-    if (intent.route === 'resource') return { understanding, answer: await resourceAnswer(req, intent.plan, scope) };
+    if (intent.route === 'resource') return { understanding, answer: await resourceAnswer(req, enforcePersonalOpportunityScope(intent.plan, message, scope), scope, message) };
     if (intent.route === 'native') {
       const planned = validateNativePlan(intent.plan, message, intent.plan.type === 'read');
       if (planned) {
@@ -213,7 +222,7 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
   }
   const taskRead = isNativeTaskReadQuestion(fallbackQuestion);
   const resourcePlan = taskRead || isProcedureQuestion(fallbackQuestion) ? null : await planResourceQuestion(fallbackQuestion, scope, signal, false);
-  if (resourcePlan) return { understanding, answer: await resourceAnswer(req, resourcePlan, scope) };
+  if (resourcePlan) return { understanding, answer: await resourceAnswer(req, resourcePlan, scope, message) };
   if (/\b(schema|skema|foreign key|primary key|relasi tabel|kolom database)\b/i.test(message)) return { understanding, answer: {
     content: `Metadata database aktual sesuai permission tool Anda:\n\n\`\`\`json\n${JSON.stringify(await discoverMarbotSchema(scope, db), null, 2)}\n\`\`\`\n\nMetadata tidak memberikan akses query atau mutasi tambahan.`,
     tools: ['schema.discovery'], sources: ['ERP:database-metadata'] } };

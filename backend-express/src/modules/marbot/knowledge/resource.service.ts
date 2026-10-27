@@ -248,7 +248,7 @@ export async function executeResourceRead(req: Request, raw: unknown, scope: Nat
     if (plan.groupBy) params.set('group_by', plan.groupBy);
     if (plan.sum) params.set('sum', plan.sum);
     const aggregate = await callResourceApi(req, definition.path + 'summary?' + params);
-    return { source: definition.path + 'summary', resource: plan.resource, aggregate, count: undefined, rows: [], truncated: false };
+    return { source: `ERP:resource:${plan.resource}`, resource: plan.resource, aggregate, count: undefined, rows: [], truncated: false };
   }
   const result = await callResourceApi(req, definition.path + '?' + params);
   if (!Number.isInteger(result.count) || !Array.isArray(result.results)) throw new ValidationError('Kontrak respons resource tidak sesuai; jumlah tidak dapat dipastikan.');
@@ -293,7 +293,7 @@ export async function executeResourceRead(req: Request, raw: unknown, scope: Nat
       row.related = cache.get(key);
     }
   }
-  return { source: definition.path, resource: plan.resource, count: result.count, rows, truncated: plan.operation === 'list' && result.count > rows.length };
+  return { source: `ERP:resource:${plan.resource}`, resource: plan.resource, count: result.count, rows, truncated: plan.operation === 'list' && result.count > rows.length };
 }
 
 /** A model can select a catalogue entry; it cannot invent a route, SQL or successful result. */
@@ -312,6 +312,23 @@ export async function planResourceQuestion(request: string, scope: NativeScope, 
   if (resourceIntent.status === 'ambiguous') return null;
   const selectedKeys = new Set(resourceIntent.candidates.map(item => item.key));
   const primaryResources = available.filter(item => selectedKeys.has(item.key));
+  if (/\b(?:berapa|how many|how much|jumlah|total|hitung|count)\b/i.test(request)) {
+    const candidate = primaryResources.length === 1 ? primaryResources[0] : undefined;
+    if (candidate) {
+      let residual = ` ${request.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[._/-]+/g, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ')} `;
+      const phrases = [candidate.key, candidate.model.replace(/_/g, ' '), ...resourceIntentTerms(candidate.key)]
+        .map(value => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[._/-]+/g, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' '))
+        .sort((a, b) => b.length - a.length);
+      for (const phrase of phrases) if (phrase) residual = residual.replace(` ${phrase} `, ' ');
+      const allowedQuestionWords = new Set(['berapa', 'how', 'many', 'much', 'jumlah', 'total', 'hitung', 'count', 'saya', 'aku', 'kami', 'kita', 'i', 'my', 'have', 'memiliki', 'punya', 'milik', 'ada', 'yang', 'data', 'record', 'records']);
+      const extraTerms = residual.trim().split(/\s+/).filter(Boolean);
+      if (extraTerms.every(word => allowedQuestionWords.has(word))) {
+        const personalOpportunity = candidate.key === 'crm.opportunities' && /\b(?:saya|aku|milik saya|punya saya|saya punya|saya memiliki|my|i have)\b/i.test(request);
+        const filters = personalOpportunity ? { owner_user_id: scope.userId } : {};
+        return validateResourcePlan({ resource: candidate.key, operation: 'count', filters }, scope);
+      }
+    }
+  }
   const literalMatch = available.filter(item => request.toLowerCase().includes(item.key.toLowerCase()));
   if (literalMatch.length === 1 && /^(?:berapa|jumlah|tampilkan|daftar|list|count)\s+/i.test(request.trim())) {
     // Exact key with no extra conditions only; never silently drop a filter.

@@ -66,7 +66,10 @@ export function procedureTopic(message: string) {
 export function isDataReadQuestion(message: string) {
   const text = intentText(message).trim();
   if (/\b(?:cara|caranya|panduan|tutorial|how to|how do|how can)\b/.test(text)) return false;
-  return /^(?:(?:tolong|mohon|please)\s+)?(?:tampilkan|lihat|carikan|cari|daftar|list|show|berapa|jumlah|total|hitung|count|ringkasan|rekap|ada\s+berapa)\b/.test(text);
+  if (/^(?:(?:tolong|mohon|please)\s+)?(?:tampilkan|lihat|carikan|cari|daftar|list|show|berapa|jumlah|total|hitung|count|ringkasan|rekap|ada\s+berapa)\b/.test(text)) return true;
+  const asksForCount = /\b(?:berapa|how many|how much|jumlah|total|hitung|count)\b/.test(text);
+  const namesBusinessData = /\b(?:customer|pelanggan|client|klien|inquiry|lead|prospek|opportunit(?:y|ies)|deal|quotation|quote|penawaran|sales order|pesanan|invoice|tagihan|ticket|tiket|project|proyek|task|tugas|pekerjaan|finance|keuangan|inventory|stok|karyawan|employee|payment|pembayaran)\b/.test(text);
+  return asksForCount && namesBusinessData;
 }
 
 /** Asking whether/how an action is possible never authorizes that action. */
