@@ -282,11 +282,60 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
         if (!order) return res.status(400).json({ error: 'FEEDBACK_SALES_ORDER_NOT_FOUND' });
       }
     } else if (eventType === 'quotation.decision' || eventType === 'quotation.accepted') {
-      const decision = eventType === 'quotation.accepted' ? 'ACCEPTED' : String(data.decision).toUpperCase();
+      const hasQuotationId = data.quotation_id !== undefined;
+      const hasQuotationCode = data.quotation_code !== undefined;
       const quotationId = typeof data.quotation_id === 'string' ? data.quotation_id.trim() : '';
       const quotationCode = typeof data.quotation_code === 'string' ? data.quotation_code.trim() : '';
       const validId = /^[0-9a-f-]{36}$/i.test(quotationId);
-      if ((!validId && (!quotationCode || quotationCode.length > 100)) || !['ACCEPTED', 'REJECTED'].includes(decision)) return res.status(400).json({ error: 'INVALID_QUOTATION_DECISION' });
+      const decision = eventType === 'quotation.accepted'
+        ? 'ACCEPTED'
+        : typeof data.decision === 'string' ? data.decision.trim().toUpperCase() : '';
+      // Send exactly one identifier. Website clients should use quotation_code;
+      // quotation_id is reserved for trusted legacy callers with Marka's real UUID.
+      if (hasQuotationId === hasQuotationCode
+        || (hasQuotationId && (!validId || typeof data.quotation_id !== 'string'))
+        || (hasQuotationCode && (typeof data.quotation_code !== 'string' || !quotationCode || quotationCode.length > 100))
+        || !['ACCEPTED', 'REJECTED'].includes(decision)) {
+        return res.status(400).json({
+          error: 'INVALID_QUOTATION_DECISION',
+          detail: 'Kirim tepat satu identifier: quotation_code resmi atau quotation_id UUID asli Marka, serta decision ACCEPTED/REJECTED.',
+        });
+      }
+
+      // Fail fast before enqueueing decisions that cannot be applied. The worker
+      // repeats these checks to protect against state changes after this lookup.
+      let quotation: { id: string; status: string; opportunity_id: string | null } | null = null;
+      if (quotationCode) {
+        const documents = await prisma.core_business_document.findMany({
+          where: { company_id: signatureConfig.source.company_id, document_type: 'SALES_QUOTATION', document_number: quotationCode },
+          select: { id: true },
+          take: 2,
+        });
+        if (documents.length > 1) return res.status(409).json({ error: 'QUOTATION_CODE_AMBIGUOUS' });
+        if (documents[0]) {
+          quotation = await prisma.sales_quotation.findFirst({
+            where: { document_id: documents[0].id, company_id: signatureConfig.source.company_id },
+            select: { id: true, status: true, opportunity_id: true },
+          });
+        }
+      } else {
+        quotation = await prisma.sales_quotation.findFirst({
+          where: { id: quotationId, company_id: signatureConfig.source.company_id },
+          select: { id: true, status: true, opportunity_id: true },
+        });
+      }
+      if (!quotation) return res.status(404).json({ error: 'QUOTATION_NOT_FOUND' });
+      if (quotation.status !== decision) {
+        if (quotation.status === 'ACCEPTED' || quotation.status === 'REJECTED') {
+          return res.status(409).json({ error: `QUOTATION_ALREADY_DECIDED_${quotation.status}`, current_status: quotation.status });
+        }
+        if (quotation.status !== 'SENT') {
+          return res.status(409).json({ error: 'QUOTATION_NOT_SENT', current_status: quotation.status, detail: 'Kirim quotation dari Marka sampai statusnya SENT sebelum mengirim keputusan klien.' });
+        }
+        if (decision === 'ACCEPTED' && !quotation.opportunity_id) {
+          return res.status(409).json({ error: 'QUOTATION_OPPORTUNITY_MISSING', detail: 'Hubungkan quotation ke opportunity sebelum menerima keputusan ACCEPTED.' });
+        }
+      }
     } else if (eventType !== 'message.received') return res.status(422).json({ error: 'EVENT_TYPE_NOT_IMPLEMENTED' });
     if (eventType === 'message.received') {
     const threadId = typeof data.thread_id === 'string' ? data.thread_id.trim() : '';

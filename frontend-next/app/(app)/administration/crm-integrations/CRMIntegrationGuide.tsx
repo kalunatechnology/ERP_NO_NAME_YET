@@ -29,7 +29,8 @@ MARKA_CRM_WEBHOOK_URL=https://api.marka-anda.com/api/v1/integrations/webhooks/ev
 MARKA_CRM_INTEGRATION_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 MARKA_CRM_KEY_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 MARKA_CRM_SIGNING_SECRET=kunci-secret-panjang-dari-dashboard-marka
-PUBLIC_ORIGIN_DOMAIN=arsalynk.com`;
+# Opsional: isi hanya jika hostname ini persis terdaftar pada Domain source Marka
+# PUBLIC_ORIGIN_DOMAIN=dev.arsalynk.com`;
 
 const typescriptHelper = `// lib/marka-crm.ts (Server-side only)
 import { createHmac, randomBytes } from "node:crypto";
@@ -39,6 +40,13 @@ const INTEGRATION_ID = process.env.MARKA_CRM_INTEGRATION_ID!;
 const KEY_ID = process.env.MARKA_CRM_KEY_ID!;
 const SIGNING_SECRET = process.env.MARKA_CRM_SIGNING_SECRET!;
 const PATH = "/api/v1/integrations/webhooks/events";
+
+export class MarkaWebhookError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "MarkaWebhookError";
+  }
+}
 
 export async function sendMarkaEvent(
   eventId: string,
@@ -65,8 +73,9 @@ export async function sendMarkaEvent(
       .update(Buffer.from(body, "utf8"))
       .digest("hex");
 
+    let response: Response;
     try {
-      const response = await fetch(MARKA_URL, {
+      response = await fetch(MARKA_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -79,21 +88,19 @@ export async function sendMarkaEvent(
         body,
         signal: AbortSignal.timeout(8000),
       });
-
-      if (response.status === 200 || response.status === 202) {
-        return await response.json();
-      }
-
-      if (response.status < 500 && response.status !== 408 && response.status !== 429) {
-        const errText = await response.text();
-        throw new Error(\`Marka ditolak (HTTP \${response.status}): \${errText}\`);
-      }
-
-      if (attempt === 3) throw new Error(\`Marka gagal setelah 3x retry: HTTP \${response.status}\`);
     } catch (error) {
       if (attempt === 3) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 300 * Math.pow(2, attempt - 1)));
+      continue;
     }
 
+    if (response.status === 200 || response.status === 202) return await response.json();
+    const errText = await response.text();
+    if (response.status < 500 && response.status !== 408 && response.status !== 429) {
+      // 4xx adalah error kontrak/config; jangan retry otomatis.
+      throw new MarkaWebhookError(response.status, errText);
+    }
+    if (attempt === 3) throw new Error(\`Marka gagal setelah 3x retry: HTTP \${response.status}: \${errText}\`);
     await new Promise((resolve) => setTimeout(resolve, 300 * Math.pow(2, attempt - 1)));
   }
 }`;
@@ -220,7 +227,7 @@ public class MarkaCrmClient {
 const contactCode = `// app/api/contact/route.ts (Next.js App Router Server Route)
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { sendMarkaEvent } from "@/lib/marka-crm";
+import { MarkaWebhookError, sendMarkaEvent } from "@/lib/marka-crm";
 
 export async function POST(req: NextRequest) {
   try {
@@ -233,7 +240,7 @@ export async function POST(req: NextRequest) {
     const eventId = \`inq-\${Date.now()}-\${randomUUID().slice(0, 8)}\`;
 
     const result = await sendMarkaEvent(eventId, "inquiry.submitted", {
-      origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
+      ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
       customer: {
         name: String(name).trim(),
         email: String(email).trim().toLowerCase(),
@@ -248,7 +255,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, eventId: result.event_id });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const status = err instanceof MarkaWebhookError ? err.status : 500;
+    return NextResponse.json({ success: false, error: err.message }, { status });
   }
 }`;
 
@@ -269,7 +277,7 @@ export async function POST(req: NextRequest) {
     const eventId = \`msg-\${messageId || Date.now()}\`;
 
     await sendMarkaEvent(eventId, "message.received", {
-      origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
+      ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
       thread_id: threadId,
       message_id: messageId || \`m-\${Date.now()}\`,
       sender: {
@@ -311,7 +319,7 @@ export async function POST(req: NextRequest) {
     const eventId = \`tkt-\${Date.now()}-\${randomUUID().slice(0, 8)}\`;
 
     await sendMarkaEvent(eventId, "ticket.created", {
-      origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
+      ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
       subject: String(subject),
       description: String(description),
       priority: normalizedPriority,
@@ -344,7 +352,7 @@ export async function POST(req: NextRequest) {
     const isValidUuid = salesOrderId && /^[0-9a-f-]{36}$/i.test(String(salesOrderId));
 
     await sendMarkaEvent(eventId, "feedback.submitted", {
-      origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
+      ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
       customer_code: String(customerCode).trim(), // party_code customer di Marka
       rating: Number(rating),                     // 1 sampai 5
       feedback_text: String(feedbackText || "").trim(),
@@ -360,27 +368,43 @@ export async function POST(req: NextRequest) {
 
 const quotationCode = `// app/api/portal/quotation/decision/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
-import { sendMarkaEvent } from "@/lib/marka-crm";
+import { createHash } from "node:crypto";
+import { MarkaWebhookError, sendMarkaEvent } from "@/lib/marka-crm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { quotationCode, decision } = await req.json(); // quotationCode seperti QUO-7A91C2F0; decision: "ACCEPTED" | "REJECTED"
+    const { quotationCode, decision } = await req.json();
+    const cleanCode = typeof quotationCode === "string" ? quotationCode.trim().toUpperCase() : "";
+    const cleanDecision = typeof decision === "string" ? decision.trim().toUpperCase() : "";
 
-    if (!quotationCode || !["ACCEPTED", "REJECTED"].includes(decision)) {
+    if (!cleanCode || cleanCode.length > 100 || !["ACCEPTED", "REJECTED"].includes(cleanDecision)) {
       return NextResponse.json({ error: "Kode quotation dan keputusan wajib diisi" }, { status: 400 });
     }
 
-    const eventId = \`qdec-\${Date.now()}-\${randomUUID().slice(0, 8)}\`;
+    // Stable for the quotation + decision so retries reuse the same idempotency key.
+    const eventId = \`qdec-\${createHash("sha256").update(cleanCode.toUpperCase() + ":" + cleanDecision).digest("hex").slice(0, 32)}\`;
 
-    await sendMarkaEvent(eventId, "quotation.decision", {
-      quotation_code: String(quotationCode).trim(), // Kode dokumen QUO-... yang dikirim ke klien
-      decision: decision,
+    const result = await sendMarkaEvent(eventId, "quotation.decision", {
+      ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
+      quotation_code: cleanCode, // Gunakan kode dokumen QUO-... yang tampil di Marka
+      decision: cleanDecision,
     });
 
-    return NextResponse.json({ success: true });
+    const duplicate = Boolean(result.duplicate);
+    return NextResponse.json({
+      success: true,
+      accepted: true,
+      duplicate,
+      eventId,
+      processing_status: duplicate ? "DUPLICATE" : "QUEUED",
+      message: duplicate
+        ? "Event keputusan ini sudah pernah diterima Marka."
+        : "Marka menerima event untuk diproses; status akhir quotation diputuskan worker secara asinkron.",
+      markaResponse: result,
+    }, { status: duplicate ? 200 : 202 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const status = err instanceof MarkaWebhookError ? err.status : 500;
+    return NextResponse.json({ success: false, error: err.message }, { status });
   }
 }`;
 

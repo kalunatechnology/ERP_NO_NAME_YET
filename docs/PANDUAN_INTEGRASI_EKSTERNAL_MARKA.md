@@ -31,7 +31,7 @@ Karena sistem Marka Anda sudah aktif (developing / production), Anda cukup login
    - **Kode Sumber**: misal `web-landing-utama`
    - **Nama**: misal `Website Utama & Chatbox`
    - **Event yang diizinkan**: centang event yang akan dipakai (`inquiry.submitted`, `message.received`, `ticket.created`, dll.)
-   - **Domain**: masukkan domain website Anda (misal `arsalynk.com` atau `localhost:3000` saat development).
+   - **Domain**: masukkan hostname publik yang persis akan dikirim sebagai `origin_domain` dan daftarkan pada allowlist source. Jangan isi scheme (`https://`) atau port. Untuk development yang belum terdaftar, kosongkan domain dan hilangkan `origin_domain` dari event.
 3. Salin nilai yang tampil (karena Secret hanya tampil sekali):
 
 Simpan di file environment aplikasi Anda (`.env` di server website Anda):
@@ -42,7 +42,8 @@ MARKA_CRM_WEBHOOK_URL=https://api.marka-anda.com/api/v1/integrations/webhooks/ev
 MARKA_CRM_INTEGRATION_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 MARKA_CRM_KEY_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 MARKA_CRM_SIGNING_SECRET=kunci-secret-panjang-dari-dashboard-marka
-PUBLIC_ORIGIN_DOMAIN=arsalynk.com
+# Opsional: isi hanya jika hostname ini persis terdaftar pada Domain source Marka
+# PUBLIC_ORIGIN_DOMAIN=dev.arsalynk.com
 ```
 
 > ⚠️ **PENTING**: Simpan secret ini di **Server-Side** (Next.js API route, Express, Laravel, FastAPI). **JANGAN PERNAH** meletakkan secret di JavaScript browser/frontend publik!
@@ -62,7 +63,7 @@ Browser Klien (User) ──POST──► Server Website Anda ──HMAC-SHA256 P
 2. Form dikirim ke **Server Backend Website Anda** (misal `/api/contact` atau `/api/chat`).
 3. Server Anda membungkus payload event, menandatanganinya dengan `HMAC-SHA256`, lalu mengirimkannya ke endpoint Marka:
    `POST /api/v1/integrations/webhooks/events`
-4. Marka mengembalikan **HTTP 202 Accepted** jika signature cocok dan data tervalidasi. Data langsung masuk antrean CRM.
+4. Marka mengembalikan **HTTP 202 Accepted** jika autentikasi dan validasi envelope lolos. Artinya event telah masuk antrean, bukan berarti keputusan quotation sudah diterapkan. Pantau status/`last_error` event di halaman Integrasi CRM → Riwayat.
 
 ### Format Signature Header Marka
 
@@ -280,7 +281,7 @@ export async function POST(req: NextRequest) {
     const eventId = `inq-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     const result = await sendMarkaEvent(eventId, "inquiry.submitted", {
-      origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
+      ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
       customer: {
         name: String(name).trim(),
         email: String(email).trim().toLowerCase(),
@@ -332,7 +333,7 @@ export async function POST(req: NextRequest) {
     const eventId = `msg-${messageId || Date.now()}`;
 
     await sendMarkaEvent(eventId, "message.received", {
-      origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
+      ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
       thread_id: threadId,
       message_id: messageId || `m-${Date.now()}`,
       sender: {
@@ -384,7 +385,7 @@ export async function POST(req: NextRequest) {
     const eventId = `tkt-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     await sendMarkaEvent(eventId, "ticket.created", {
-      origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
+      ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
       subject: String(subject),
       description: String(description),
       priority: normalizedPriority,
@@ -467,7 +468,7 @@ export async function POST(req: NextRequest) {
     const isValidUuid = salesOrderId && /^[0-9a-f-]{36}$/i.test(String(salesOrderId));
 
     await sendMarkaEvent(eventId, "feedback.submitted", {
-      origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
+      ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
       customer_code: String(customerCode).trim(), // Kode customer (party_code) di Marka
       rating: Number(rating),                     // Angka integer 1 sampai 5
       feedback_text: String(feedbackText).trim(),
@@ -492,31 +493,44 @@ Jika Anda memiliki portal di mana pelanggan bisa mereview Surat Penawaran (Quota
 ```typescript
 // app/api/portal/quotation/decision/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { sendMarkaEvent } from "@/lib/marka-crm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { quotationCode, decision, reason } = await req.json(); // kode QUO-... dari Marka; decision: "ACCEPTED" | "REJECTED"
+    const { quotationCode, decision } = await req.json(); // kode resmi QUO-... dari Marka
+    const cleanCode = typeof quotationCode === "string" ? quotationCode.trim().toUpperCase() : "";
+    const cleanDecision = typeof decision === "string" ? decision.trim().toUpperCase() : "";
 
-    if (!quotationCode || !["ACCEPTED", "REJECTED"].includes(decision)) {
+    if (!cleanCode || cleanCode.length > 100 || !["ACCEPTED", "REJECTED"].includes(cleanDecision)) {
       return NextResponse.json({ error: "Kode quotation dan keputusan wajib diisi" }, { status: 400 });
     }
 
-    const eventId = `qdec-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    // Stable for this quotation + decision so client retries reuse the same idempotency key.
+    const eventId = `qdec-${createHash("sha256").update(`${cleanCode.toUpperCase()}:${cleanDecision}`).digest("hex").slice(0, 32)}`;
 
-    await sendMarkaEvent(eventId, "quotation.decision", {
-      quotation_code: String(quotationCode).trim(),
-      decision: decision, // "ACCEPTED" atau "REJECTED"
-      ...(reason ? { reason } : {}),
+    const result = await sendMarkaEvent(eventId, "quotation.decision", {
+      // Kirim kode dokumen saja. Jangan membentuk quotation_id dari QUO-...
+      quotation_code: cleanCode,
+      decision: cleanDecision,
     });
 
-    return NextResponse.json({ success: true });
+    const duplicate = Boolean(result.duplicate);
+    return NextResponse.json({
+      accepted: true,
+      duplicate,
+      eventId,
+      processing_status: duplicate ? "DUPLICATE" : "QUEUED",
+      message: "Marka menerima event; periksa Riwayat Integrasi untuk hasil pemrosesan akhir.",
+    }, { status: duplicate ? 200 : 202 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const status = Number.isInteger(err?.status) && err.status >= 400 && err.status <= 599 ? err.status : 500;
+    return NextResponse.json({ error: err.message || "Gagal mengirim keputusan quotation" }, { status });
   }
 }
 ```
+
+Webhook ini hanya menerima keputusan klien setelah quotation dikirim. Tombol internal **Kirim** menjalankan alur terpisah untuk mengubah status `APPROVED` menjadi `SENT`; jangan mengirim event keputusan untuk quotation yang masih `DRAFT`, `PENDING_APPROVAL`, atau `APPROVED`. `202` hanya berarti event masuk antrean. Hasil akhirnya dapat dilihat pada **Integrasi CRM → Riwayat**; keputusan diterapkan bila event berstatus `COMPLETED`.
 
 ---
 
@@ -605,13 +619,14 @@ Saat server website Anda mengirim request ke `POST /api/v1/integrations/webhooks
 
 | Status Code | Arti | Solusi untuk Developer |
 |---|---|---|
-| **`202 Accepted`** | **Sukses!** Payload valid dan masuk queue CRM Marka. | Lanjutkan alur aplikasi Anda. Tampilkan pesan sukses ke pengguna. |
+| **`202 Accepted`** | Payload diterima dan masuk antrean. Worker masih perlu memprosesnya. | Tampilkan “Permintaan diterima untuk diproses”. Untuk keputusan quotation, periksa Riwayat Integrasi sampai `COMPLETED` atau `DEAD_LETTER` sebelum menyatakan keputusan berhasil diterapkan. |
 | **`400 INVALID_FEEDBACK_EVENT`** | Payload feedback belum memenuhi kontrak. | Kirim `customer_code` (party_code customer Marka), rating integer 1–5, dan `feedback_text` (maksimal 2.000 karakter). Jika `sales_order_id` dikirim, harus format UUID. |
 | **`400 CUSTOMER_PARTY_NOT_FOUND`** | Kode customer tidak ditemukan di Marka. | Pastikan `customer_code` sesuai dengan `party_code` customer aktif di company Marka terkait. |
 | **`400 FEEDBACK_SALES_ORDER_NOT_FOUND`** | Sales Order ID tidak cocok dengan customer. | Pastikan `sales_order_id` adalah UUID valid dari Sales Order milik customer tersebut. Jika tidak tahu UUID-nya, kosongkan field ini. |
 | **`400 Bad Request` (Umum)** | Data JSON tidak lengkap / schema salah. | Cek response body. Pastikan field wajib seperti `customer.name`, `customer.email`, `subject` terisi. |
 | **`401 Unauthorized`** | Key ID atau Signature salah. | Cek `MARKA_CRM_SIGNING_SECRET`. Pastikan tidak ada spasi di `.env`. Pastikan urutan string prefix HMAC sama persis dengan rumus. |
-| **`403 Forbidden`** | Domain website ditolak atau event dilarang. | Buka dashboard Marka > Integrasi CRM. Pastikan domain Anda ada di allowlist dan jenis event sudah dicentang. |
+| **`400 Bad Request`** | Payload tidak sesuai schema atau `origin_domain` tidak cocok (`ORIGIN_DOMAIN_NOT_ALLOWED`). | Periksa nama field dan kontrak event. Jika domain dikirim, daftarkan hostname yang sama persis; untuk quotation domain boleh dihilangkan. |
+| **`403 Forbidden`** | Source dinonaktifkan atau akses integrasi tidak diizinkan. | Periksa status source dan kredensial integrasi di dashboard Marka. |
 | **`429 Too Many Requests`** | Melebihi batas rate limit (burst request). | Lakukan retry dengan exponential backoff (sudah otomatis jika pakai helper di Bagian 3). |
 | **`500 Internal Error`** | Kendala sementara di server Marka. | Helper function akan otomatis retry hingga 3x. |
 

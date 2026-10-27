@@ -151,6 +151,23 @@ export async function loadCRMIntegrationSources(companyId?: string): Promise<CRM
   return Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
 }
 
+export interface CRMIntegrationEventLog {
+  event_id: string;
+  event_type: string;
+  status: string;
+  attempt_count: number;
+  max_attempts: number;
+  next_retry_at: string | null;
+  last_error: string | null;
+  received_at: string;
+  processed_at: string | null;
+}
+
+export async function loadCRMIntegrationSourceEvents(id: string, companyId?: string): Promise<CRMIntegrationEventLog[]> {
+  const { data } = await api.get(`/api/v1/core/integration-sources/${id}/events/`, companyScopeHeaders(companyId));
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
 export async function loadCRMIntegrationAssignees(companyId?: string): Promise<Array<{ id: string; full_name: string; email: string }>> {
   const { data } = await api.get("/api/v1/core/integration-sources/eligible-assignees/", companyScopeHeaders(companyId));
   return Array.isArray(data?.rows) ? data.rows : [];

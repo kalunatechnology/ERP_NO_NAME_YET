@@ -1,18 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Globe2, Link2, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { Check, Copy, Globe2, History, Link2, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { cn } from "@/lib/utils";
+import { Modal } from "@/components/ui/Modal";
 import {
   createCRMIntegrationSource,
   loadCRMIntegrationAssignees,
+  loadCRMIntegrationSourceEvents,
   loadCRMIntegrationSources,
   setCRMIntegrationSourceStatus,
   updateCRMIntegrationSourceDomains,
   updateCRMIntegrationSourceEvents,
   type CRMIntegrationSource,
+  type CRMIntegrationEventLog,
 } from "@/lib/api/crm.api";
 
 const EVENT_OPTIONS = [
@@ -49,6 +52,9 @@ export default function LandingPageIntegrationSettings() {
   const [savingEvents, setSavingEvents] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<CRMIntegrationSource | null>(null);
   const [removingSourceId, setRemovingSourceId] = useState<string | null>(null);
+  const [eventLogSource, setEventLogSource] = useState<CRMIntegrationSource | null>(null);
+  const [eventLogRows, setEventLogRows] = useState<CRMIntegrationEventLog[]>([]);
+  const [loadingEventLog, setLoadingEventLog] = useState(false);
   const scopeHeaders = companyScope ? { headers: { "X-Company-ID": companyScope } } : undefined;
   const endpoint = typeof window !== "undefined" ? new URL("/api/v1/integrations/webhooks/events", api.defaults.baseURL || window.location.origin).toString() : "/api/v1/integrations/webhooks/events";
 
@@ -130,6 +136,29 @@ export default function LandingPageIntegrationSettings() {
       setRemovingSourceId(null);
     }
   };
+  const openEventLog = async (source: CRMIntegrationSource) => {
+    setEventLogSource(source);
+    setEventLogRows([]);
+    setLoadingEventLog(true);
+    try {
+      setEventLogRows(await loadCRMIntegrationSourceEvents(source.id, companyScope || undefined));
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error?.message || "Riwayat event integrasi gagal dimuat.");
+    } finally {
+      setLoadingEventLog(false);
+    }
+  };
+  const refreshEventLog = async () => {
+    if (!eventLogSource) return;
+    setLoadingEventLog(true);
+    try {
+      setEventLogRows(await loadCRMIntegrationSourceEvents(eventLogSource.id, companyScope || undefined));
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error?.message || "Riwayat event integrasi gagal dimuat.");
+    } finally {
+      setLoadingEventLog(false);
+    }
+  };
   const copy = async (text: string) => {
     await navigator.clipboard.writeText(text);
     setCopied(true); window.setTimeout(() => setCopied(false), 1800);
@@ -163,7 +192,7 @@ export default function LandingPageIntegrationSettings() {
 
     <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="font-bold text-[#172033]">Sumber integrasi terdaftar</h2><p className="mt-1 text-xs text-[#64748B]">Daftar ini menampilkan metadata aman; signing secret tidak dapat dibaca kembali.</p></div><button onClick={() => void refresh()} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]"><RefreshCw size={13}/>Muat ulang</button></div>
-      {loading ? <p className="py-6 text-sm text-[#64748B]">Memuat sumber integrasi…</p> : sources.length === 0 ? <p className="rounded-lg bg-[#F8FAFC] p-4 text-sm text-[#64748B]">Belum ada landing page atau aplikasi luar yang didaftarkan.</p> : <div className="space-y-2">{sources.map((source) => <div key={source.id} className="rounded-xl border border-[#E2E8F0] p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="font-semibold text-[#172033]">{source.source_code}</div><div className="mt-1 text-xs text-[#64748B]">{source.allowed_event_types.join(" · ")} · Key {source.key_id}</div></div><div className="flex flex-wrap gap-2"><button onClick={() => setEditingEvents({ id: source.id, values: [...source.allowed_event_types] })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Event</button><button onClick={() => setEditingDomains({ id: source.id, value: (source.allowed_origin_domains || []).join("\n") })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]"><Globe2 size={13}/>Domain</button><button onClick={() => void toggle(source)} disabled={source.status === "REVOKED"} className={cn("rounded-lg px-3 py-2 text-xs font-semibold", source.status === "ACTIVE" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800")}>{source.status === "ACTIVE" ? "Jeda" : "Aktifkan"}</button><button onClick={() => setPendingRemoval(source)} disabled={removingSourceId === source.id} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60" aria-label={`Hapus integrasi ${source.source_code}`}><Trash2 size={13}/>Hapus</button></div></div><div className="mt-2 text-xs text-[#64748B]">Domain diizinkan: {(source.allowed_origin_domains || []).length ? source.allowed_origin_domains.join(", ") : "Belum diatur; event harus tanpa origin_domain"}</div>{editingEvents?.id === source.id && <div className="mt-3 rounded-lg border border-[#E2E8F0] p-3"><p className="mb-2 text-xs font-semibold text-[#475569]">Event yang diizinkan untuk source ini</p><div className="grid gap-2 sm:grid-cols-2">{EVENT_OPTIONS.map((event) => <label key={event.value} className="flex items-center gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-xs text-[#334155]"><input type="checkbox" checked={editingEvents.values.includes(event.value)} onChange={(e) => setEditingEvents((current) => current ? { ...current, values: e.target.checked ? [...current.values, event.value] : current.values.filter((value) => value !== event.value) } : current)}/><span>{event.label}</span></label>)}</div><div className="mt-3 flex justify-end gap-2"><button onClick={() => setEditingEvents(null)} disabled={savingEvents} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveEvents()} disabled={savingEvents || editingEvents.values.length === 0} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingEvents ? "Menyimpan…" : "Simpan Event"}</button></div></div>}{editingDomains?.id === source.id && <div className="mt-3 flex flex-col gap-2"><textarea className={inputClass} rows={3} value={editingDomains.value} onChange={(event) => setEditingDomains((current) => current ? { ...current, value: event.target.value } : current)} placeholder="arsalynk.com"/><div className="flex justify-end gap-2"><button onClick={() => setEditingDomains(null)} disabled={savingDomains} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveDomains()} disabled={savingDomains} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingDomains ? "Menyimpan…" : "Simpan Domain"}</button></div></div>}</div>)}</div>}
+      {loading ? <p className="py-6 text-sm text-[#64748B]">Memuat sumber integrasi…</p> : sources.length === 0 ? <p className="rounded-lg bg-[#F8FAFC] p-4 text-sm text-[#64748B]">Belum ada landing page atau aplikasi luar yang didaftarkan.</p> : <div className="space-y-2">{sources.map((source) => <div key={source.id} className="rounded-xl border border-[#E2E8F0] p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="font-semibold text-[#172033]">{source.source_code}</div><div className="mt-1 text-xs text-[#64748B]">{source.allowed_event_types.join(" · ")} · Key {source.key_id}</div></div><div className="flex flex-wrap gap-2"><button onClick={() => setEditingEvents({ id: source.id, values: [...source.allowed_event_types] })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Event</button><button onClick={() => void openEventLog(source)} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]"><History size={13}/>Riwayat</button><button onClick={() => setEditingDomains({ id: source.id, value: (source.allowed_origin_domains || []).join("\n") })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]"><Globe2 size={13}/>Domain</button><button onClick={() => void toggle(source)} disabled={source.status === "REVOKED"} className={cn("rounded-lg px-3 py-2 text-xs font-semibold", source.status === "ACTIVE" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800")}>{source.status === "ACTIVE" ? "Jeda" : "Aktifkan"}</button><button onClick={() => setPendingRemoval(source)} disabled={removingSourceId === source.id} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60" aria-label={`Hapus integrasi ${source.source_code}`}><Trash2 size={13}/>Hapus</button></div></div><div className="mt-2 text-xs text-[#64748B]">Domain diizinkan: {(source.allowed_origin_domains || []).length ? source.allowed_origin_domains.join(", ") : "Belum diatur; event harus tanpa origin_domain"}</div>{editingEvents?.id === source.id && <div className="mt-3 rounded-lg border border-[#E2E8F0] p-3"><p className="mb-2 text-xs font-semibold text-[#475569]">Event yang diizinkan untuk source ini</p><div className="grid gap-2 sm:grid-cols-2">{EVENT_OPTIONS.map((event) => <label key={event.value} className="flex items-center gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-xs text-[#334155]"><input type="checkbox" checked={editingEvents.values.includes(event.value)} onChange={(e) => setEditingEvents((current) => current ? { ...current, values: e.target.checked ? [...current.values, event.value] : current.values.filter((value) => value !== event.value) } : current)}/><span>{event.label}</span></label>)}</div><div className="mt-3 flex justify-end gap-2"><button onClick={() => setEditingEvents(null)} disabled={savingEvents} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveEvents()} disabled={savingEvents || editingEvents.values.length === 0} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingEvents ? "Menyimpan…" : "Simpan Event"}</button></div></div>}{editingDomains?.id === source.id && <div className="mt-3 flex flex-col gap-2"><textarea className={inputClass} rows={3} value={editingDomains.value} onChange={(event) => setEditingDomains((current) => current ? { ...current, value: event.target.value } : current)} placeholder="arsalynk.com"/><div className="flex justify-end gap-2"><button onClick={() => setEditingDomains(null)} disabled={savingDomains} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveDomains()} disabled={savingDomains} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingDomains ? "Menyimpan…" : "Simpan Domain"}</button></div></div>}</div>)}</div>}
     </section>
 
     {pendingRemoval && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation">
@@ -172,5 +201,12 @@ export default function LandingPageIntegrationSettings() {
         <div className="mt-5 flex justify-end gap-2"><button onClick={() => setPendingRemoval(null)} disabled={removingSourceId !== null} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-sm font-semibold text-[#475569]">Batal</button><button onClick={() => void removeSource()} disabled={removingSourceId !== null} className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{removingSourceId === pendingRemoval.id ? "Menghapus…" : "Cabut & hapus"}</button></div>
       </section>
     </div>}
+
+    <Modal isOpen={Boolean(eventLogSource)} onClose={() => setEventLogSource(null)} title={`Riwayat event${eventLogSource ? ` — ${eventLogSource.source_code}` : ""}`} subtitle="202 berarti event masuk antrean; status akhir dan alasan gagal tercatat di sini." size="lg">
+      <div className="space-y-3">
+        <div className="flex justify-end"><button onClick={() => void refreshEventLog()} disabled={loadingEventLog} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569] disabled:opacity-60"><RefreshCw size={13}/>{loadingEventLog ? "Memuat…" : "Muat ulang"}</button></div>
+        {loadingEventLog && eventLogRows.length === 0 ? <p className="py-6 text-sm text-[#64748B]">Memuat riwayat event…</p> : eventLogRows.length === 0 ? <p className="rounded-lg bg-[#F8FAFC] p-4 text-sm text-[#64748B]">Belum ada event untuk integrasi ini.</p> : <div className="max-h-[60vh] space-y-2 overflow-y-auto">{eventLogRows.map((event) => <div key={`${event.event_id}-${event.received_at}`} className="rounded-xl border border-[#E2E8F0] p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div className="font-mono text-xs font-semibold text-[#172033]">{event.event_id}</div><span className={cn("rounded-full px-2 py-1 text-[10px] font-bold", event.status === "COMPLETED" ? "bg-emerald-50 text-emerald-800" : event.status === "DEAD_LETTER" ? "bg-rose-50 text-rose-800" : event.status === "PROCESSING" ? "bg-blue-50 text-blue-800" : "bg-amber-50 text-amber-800")}>{event.status}</span></div><div className="mt-1 text-xs text-[#64748B]">{event.event_type} · Diterima {new Date(event.received_at).toLocaleString("id-ID")}{event.processed_at ? ` · Selesai ${new Date(event.processed_at).toLocaleString("id-ID")}` : ""}</div>{event.last_error && <div className="mt-2 rounded-lg bg-rose-50 p-2 text-xs font-mono text-rose-800">Alasan: {event.last_error}</div>}</div>)}</div>}
+      </div>
+    </Modal>
   </div>;
 }

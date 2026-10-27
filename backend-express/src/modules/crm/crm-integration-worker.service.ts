@@ -321,8 +321,10 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
     } else if (envelope.event_type === 'quotation.decision' || envelope.event_type === 'quotation.accepted') {
       const quotationId = String(data?.quotation_id ?? '').trim();
       const quotationCode = String(data?.quotation_code ?? '').trim();
-      const decision = envelope.event_type === 'quotation.accepted' ? 'ACCEPTED' : String(data?.decision ?? '').toUpperCase();
-      if ((!quotationId && !quotationCode) || !['ACCEPTED', 'REJECTED'].includes(decision)) throw new Error('INVALID_QUOTATION_DECISION');
+      const decision = envelope.event_type === 'quotation.accepted' ? 'ACCEPTED' : String(data?.decision ?? '').trim().toUpperCase();
+      if (Boolean(quotationId) === Boolean(quotationCode)
+        || (quotationId && !/^[0-9a-f-]{36}$/i.test(quotationId))
+        || !['ACCEPTED', 'REJECTED'].includes(decision)) throw new Error('INVALID_QUOTATION_DECISION');
       let quotation: any = null;
       if (quotationCode) {
         const documents = await tx.core_business_document.findMany({
@@ -333,7 +335,15 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
         if (documents[0]) quotation = await tx.sales_quotation.findFirst({ where: { document_id: documents[0].id, company_id: source.company_id } });
       } else if (quotationId) quotation = await tx.sales_quotation.findFirst({ where: { id: quotationId, company_id: source.company_id } });
       if (!quotation) throw new Error('QUOTATION_NOT_FOUND');
-      if (quotation.status !== 'SENT') throw new Error('QUOTATION_NOT_DECIDABLE');
+      // A retry with a new event_id is harmless once the same decision is already applied.
+      // Do not repeat Deal Won or emit another outbound accepted/rejected event.
+      if (quotation.status === decision) {
+        // The common event completion below records this delivery as COMPLETED.
+      } else {
+        if (quotation.status === 'ACCEPTED' || quotation.status === 'REJECTED') {
+          throw new Error(`QUOTATION_ALREADY_DECIDED_${quotation.status}`);
+        }
+        if (quotation.status !== 'SENT') throw new Error(`QUOTATION_NOT_DECIDABLE_${quotation.status || 'UNKNOWN'}`);
       const quotationDocument = quotation.document_id ? await tx.core_business_document.findFirst({
         where: { id: quotation.document_id, company_id: source.company_id, document_type: 'SALES_QUOTATION' },
         select: { document_number: true },
@@ -345,6 +355,7 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
         await CRMService.processDealWon(quotation.opportunity_id, { id: source.default_assigned_user_id }, source.company_id, tx);
         await queueWebhookEvent(tx, source.company_id, 'quotation.accepted', { quotation_id: quotation.id, quotation_code: resolvedQuotationCode, opportunity_id: quotation.opportunity_id });
       } else await queueWebhookEvent(tx, source.company_id, 'quotation.rejected', { quotation_id: quotation.id, quotation_code: resolvedQuotationCode, decision });
+      }
     } else {
       throw new Error('UNSUPPORTED_EVENT_CONTRACT');
     }
@@ -357,8 +368,13 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
 
 async function failEvent(event: ClaimedEvent, error: unknown) {
   const errorCode = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
-  const code = (errorCode || (error instanceof Error ? error.name : 'PROCESSING_ERROR')).slice(0, 200);
-  const exhausted = event.attempt_count >= event.max_attempts;
+  const errorMessage = error instanceof Error ? error.message : '';
+  // Worker contract errors are thrown with their public error code as message
+  // (for example QUOTATION_NOT_DECIDABLE). Avoid recording arbitrary exception text.
+  const publicError = /^[A-Z][A-Z0-9_]{2,199}$/.test(errorMessage) ? errorMessage : '';
+  const code = (errorCode || publicError || 'PROCESSING_ERROR').slice(0, 200);
+  const terminalContractError = Boolean(publicError);
+  const exhausted = terminalContractError || event.attempt_count >= event.max_attempts;
   const nextRetryAt = new Date(Date.now() + retryDelayMs(event.attempt_count));
   await prisma.crm_integration_event.updateMany({
     where: { id: event.id, lock_token: event.lock_token, status: 'PROCESSING' },

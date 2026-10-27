@@ -38,7 +38,7 @@ Signature inbound adalah HMAC-SHA256 hex dari gabungan berikut, lalu diikuti byt
 v1\nPOST\n/api/v1/integrations/webhooks/events\n{timestamp}\n{nonce}\n{raw_body}
 ```
 
-Envelope selalu memiliki `event_id` unik, `event_type`, `schema_version: 1`, `occurred_at` (ISO 8601) atau `timestamp` (Unix seconds), dan `data`. `company_id` boleh disertakan oleh pengirim, tetapi Marka mengabaikannya dan selalu mengambil company dari Integration Source yang terautentikasi. `data.origin_domain` opsional untuk event inquiry, pesan, dan tiket; jika dikirim, hostname/URL dasarnya dinormalisasi dan harus cocok dengan allowlist source. Gunakan konfigurasi server website, bukan nilai domain dari input browser. Domain disimpan pada record CRM dan ditampilkan sebagai badge/filter pada Incoming Inquiry, Inbox CRM, dan Tickets. Event tanpa domain tetap dapat diproses tanpa attribution. Event yang tersedia:
+Envelope selalu memiliki `event_id` unik, `event_type`, `schema_version: 1`, `occurred_at` (ISO 8601) atau `timestamp` (Unix seconds), dan `data`. `company_id` boleh disertakan oleh pengirim, tetapi Marka mengabaikannya dan selalu mengambil company dari Integration Source yang terautentikasi. `data.origin_domain` opsional untuk inquiry, pesan, tiket, dan feedback; jika dikirim, hostname/URL dasarnya dinormalisasi dan harus cocok dengan allowlist source. Gunakan konfigurasi server website, bukan nilai domain dari input browser. Event tanpa domain tetap dapat diproses tanpa atribusi.
 
 Contoh payload inquiry yang direkomendasikan:
 
@@ -60,14 +60,31 @@ Contoh payload inquiry yang direkomendasikan:
 | `inquiry.submitted` | `customer: { name, email, phone? }`, `requirements: { subject, description?, target_budget? }`. Format lama yang menaruh field customer dan subject di root tetap diterima. |
 | `ticket.created` | `subject`, `description`; `priority` opsional: `LOW`, `NORMAL`, `HIGH`, `URGENT` (default `NORMAL`); `serial_number` opsional dan harus terdaftar pada company |
 | `feedback.submitted` | `customer_code` (`party_code` Marka) customer aktif pada company source, `rating` integer 1–5, `feedback_text`; `feedback_type` opsional, `sales_order_id` opsional tetapi harus milik customer yang sama |
-| `quotation.decision` | `quotation_code` (kode dokumen `QUO-...` yang ditampilkan Marka; disarankan untuk website), `decision: "ACCEPTED"` atau `"REJECTED"`. UUID internal lama `quotation_id` tetap diterima untuk kompatibilitas. |
-| `quotation.accepted` | `quotation_code` atau UUID internal lama `quotation_id`; hanya quotation berstatus `SENT` dan terhubung ke opportunity |
+| `quotation.decision` | Tepat satu identifier: `quotation_code` resmi (`QUO-...`, disarankan untuk website) atau `quotation_id` UUID asli Marka untuk integrasi lama; `decision: "ACCEPTED"` atau `"REJECTED"`. Jangan membuat UUID dari kode dokumen atau mengirim kedua identifier sekaligus. |
+| `quotation.accepted` | Tepat satu identifier: `quotation_code` resmi atau UUID internal lama `quotation_id`; secara implisit berarti `ACCEPTED` dan hanya dapat diproses untuk quotation berstatus `SENT` yang terhubung ke opportunity |
 
 Untuk mengirim keputusan dari website, gunakan kode quotation yang terlihat di Marka dan dapat dicantumkan pada email klien. Event outbound `quotation.ready` menyertakan `quotation_code` setelah quotation dikirim. Marka tetap menggunakan UUID hanya sebagai identitas internal.
 
+Contoh `quotation.decision`:
+
+```json
+{
+  "event_id": "qdec_01J9EXAMPLE",
+  "event_type": "quotation.decision",
+  "schema_version": 1,
+  "occurred_at": "2026-10-27T10:00:00.000Z",
+  "data": {
+    "quotation_code": "QUO-9C08CD26",
+    "decision": "ACCEPTED"
+  }
+}
+```
+
+Jika source mengaktifkan allowlist domain, tambahkan `data.origin_domain` hanya dengan hostname yang sama persis dengan salah satu domain di allowlist. Jangan mengganti hostname produksi menjadi hostname development untuk mengakali validasi. Domain tidak diperlukan untuk memproses keputusan quotation; jika tidak diperlukan untuk atribusi, hilangkan field tersebut.
+
 Contoh `inquiry.submitted` di atas mencakup `data.origin_domain`. Untuk `message.received`, `ticket.created`, dan `feedback.submitted`, kirim field yang sama di object `data` jika ingin atribusi domain tampil pada inbox, tiket, atau feedback. Konfigurasikan hostname terlebih dahulu pada allowlist source; domain yang tidak cocok menghasilkan `ORIGIN_DOMAIN_NOT_ALLOWED`. Event `feedback.submitted` membuat review pada Engagement berdasarkan `customer_code` (nilai `party_code`) customer aktif yang berada pada company source.
 
-Penerimaan mengembalikan `202` setelah event disimpan untuk diproses. Event duplikat dengan payload sama mengembalikan `200`; `event_id` yang sama dengan payload berbeda mengembalikan `409`.
+Ada dua tindakan yang berbeda: tombol **Kirim** pada quotation internal harus menjalankan alur Marka untuk mengirim penawaran dan mengubah status quotation menjadi `SENT`; webhook `quotation.decision` hanya untuk respons klien setelah quotation dikirim. Webhook keputusan tidak mengirim email quotation dan tidak dapat mengubah quotation `DRAFT` menjadi `SENT`. Endpoint memeriksa status sebelum mengantrekan event: status selain `SENT` menghasilkan `409 QUOTATION_NOT_SENT` beserta `current_status`; keputusan `ACCEPTED` tanpa opportunity menghasilkan `409 QUOTATION_OPPORTUNITY_MISSING`; keputusan yang bertentangan dengan status final menghasilkan `409 QUOTATION_ALREADY_DECIDED_*`. Jika status sudah sama dengan keputusan event, event boleh diproses sebagai idempoten dan worker menyelesaikannya tanpa mengulang Deal Won atau outbound event. `202` berarti event keputusan tersimpan di antrean, bukan konfirmasi perubahan status. Worker mengulang pemeriksaan untuk menjaga kondisi jika status berubah setelah validasi endpoint. Untuk event yang sudah diterima, periksa `GET /api/v1/core/integration-sources/:id/events` atau tombol **Riwayat** di panel Integrasi CRM, lalu baca `status` serta `last_error`. Event duplikat dengan payload sama mengembalikan `200`; `event_id` yang sama dengan payload berbeda mengembalikan `409`.
 
 ## Mengelola Outbound Webhook
 

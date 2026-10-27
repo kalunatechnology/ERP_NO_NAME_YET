@@ -1023,7 +1023,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
       const emailContact = contacts.find((contact) => contact.primary_contact && contact.email?.trim())
         || contacts.find((contact) => contact.email?.trim());
       if (emailContact?.email) {
-        setSendDialog((current) => current?.quote.id === quote.id ? { ...current, recipientEmail: emailContact.email.trim() } : current);
+        setSendDialog((current) => current && current.quote.id === quote.id ? { ...current, recipientEmail: emailContact.email.trim() } : current);
       }
     } catch {
       // The email remains editable; the user can enter it manually or skip email.
@@ -1092,7 +1092,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
           }
         }} label="Setuju" small />
       : <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800" title="Persetujuan quotation hanya dapat dilakukan oleh Direktur.">Menunggu Direktur</span>;
-    if (s === "APPROVED") return <ActionBtn onClick={() => void openSendDialog(q)} label="Kirim" small />;
+    if (s === "APPROVED") return <ActionBtn onClick={() => openSendDialog(q)} label="Kirim" small />;
     if (s === "SENT") return <ActionBtn onClick={async () => { await acceptQuotation(q.id); toast.success("Accepted!"); onRefresh(); }} label="Accept" small />;
     if (s === "ACCEPTED") return <ActionBtn onClick={async () => { await convertQuotationToOrder(q.id); toast.success("Converted to Order!"); onRefresh(); }} label="📦 Convert to Order" small />;
     return <StatusBadge status={s} />;
