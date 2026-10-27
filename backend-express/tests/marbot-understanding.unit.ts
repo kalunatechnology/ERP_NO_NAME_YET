@@ -21,7 +21,7 @@ async function main() {
   assert.equal(validateUnderstanding({ route: 'knowledge', modules: ['CRM'], confidence: 0.99 }, 'saya memiliki berapa opportunity', crmScope), null,
     'a live opportunity count cannot be routed to reference knowledge');
   const savedKey = env.MARBOT_AI_API_KEY, savedModel = env.MARBOT_AI_MODEL, savedFetch = global.fetch;
-  let modelCalls = 0, synthesisCalls = 0, canonicalCalls = 0, businessReads = 0;
+  let modelCalls = 0, synthesisCalls = 0, canonicalCalls = 0, businessReads = 0, mcpOpportunityShortlistSeen = false;
   let modelOutput: unknown = route('meeting', 'delete');
   let lastPrompt: any;
   let mode: 'ok' | 'http-error' | 'malformed' | 'throw' = 'ok';
@@ -50,6 +50,11 @@ async function main() {
         assert.equal(lastPrompt.messages[0].role, 'system');
         assert.match(lastPrompt.messages[0].content, /interpret intent|BEFORE/);
         assert.doesNotMatch(lastPrompt.messages[1].content, /Bearer|fixture-only|company-fixture|tenant-fixture|user-fixture|Fixture verified task/);
+        const agentContext = JSON.parse(lastPrompt.messages[1].content);
+        assert(agentContext.capabilities.mcpTools.includes('search_erp_schema') && agentContext.capabilities.mcpTools.includes('erp.query'));
+        assert.doesNotMatch(lastPrompt.messages[1].content, /\/api\/v\d+\//, 'MCP metadata sent to model must not contain internal endpoint routes');
+        const asked = JSON.parse(lastPrompt.messages[2].content).request;
+        if (/opportunit/i.test(asked)) mcpOpportunityShortlistSeen = agentContext.capabilities.mcpSchemaSearch.candidates.some((candidate:any)=>candidate.key==='crm.opportunities');
         if (mode === 'http-error') return new Response('{}', { status: 503 });
         if (mode === 'throw') throw new Error('Provider timeout');
         return new Response(JSON.stringify({ choices: [{ message: { content: mode === 'malformed' ? '{invalid' : JSON.stringify(modelOutput) } }] }), { status: 200 });
@@ -120,6 +125,7 @@ async function main() {
     assert.doesNotMatch(result.answer.content, /\`\`\`json|\/api\/v1|Data aktual/);
     assert.equal(canonicalCalls, 2, 'first-person CRM count reads live CRM records');
     assert.equal(synthesisCalls, 2, 'live resource answers are synthesized from verified MCP results');
+    assert.equal(mcpOpportunityShortlistSeen, true, 'MCP schema search must supply the opportunity candidate to the intent model');
     modelOutput = { route: 'native', plan: { type: 'read', domains: ['tasks'], personal: true, period: 'tomorrow' }, confidence: 0.98 };
     result = await answerMarbotQuestion(req, 'pekerjaan saya besok ada apa?', 'HELPER', scope, signal(), undefined, db);
     assert.match(result.answer.content, /Fixture verified task/);

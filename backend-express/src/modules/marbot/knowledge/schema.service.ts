@@ -85,7 +85,7 @@ export function searchMarbotSchema(scope: NativeScope, query: string, limit = 3)
     const matchingFields = item.resource.fields.filter(field => item.matchedTerms.some(hit => hit.endsWith(`→ ${field.name}`)));
     const fallbackFields = item.resource.fields.filter(field => field.isId || /(?:^|_)(?:code|number|name|status|type|date|created_at|updated_at|customer_party_id)(?:_|$)/i.test(field.name));
     return { key: item.resource.key, module: item.resource.module, model: item.resource.model,
-      path: item.resource.path, confidence, matchedTerms: item.matchedTerms,
+      confidence, matchedTerms: item.matchedTerms,
       fields: (matchingFields.length ? matchingFields : fallbackFields).slice(0, 8)
         .map(field => ({ name: field.name, type: field.type, required: field.isRequired && !field.hasDefaultValue })),
       relationships: item.resource.relationships.slice(0, 8) };

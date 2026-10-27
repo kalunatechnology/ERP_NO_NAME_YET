@@ -8,6 +8,7 @@ import { nativePlanSchema, validateNativePlan } from './planner.service';
 import { resourceCatalog, resourcePlanSchema, validateGroundedResourcePlan } from '../../knowledge/resource.service';
 import { rankResourceCandidates, resolveResourceIntent, shortestResourcePaths } from '../../knowledge/resource-semantics';
 import { readableTables } from '../../knowledge/schema.service';
+import { callMcpSchemaSearchTool } from '../../routing/mcp-tools.service';
 
 const confidence = z.number().min(0).max(1);
 const topic = z.enum(['meeting', 'minutes', 'weekly', 'daily', 'tasks', 'reports', 'timesheet', 'invoice', 'leave', 'project']);
@@ -128,6 +129,9 @@ export async function understandMarbotQuestion(request: string, scope: NativeSco
   try {
     const availableResources = resourceCatalog(scope);
     const semanticQuestion = [request, previousQuestion].filter(Boolean).join(' ');
+    const mcpSchemaSearch = semanticQuestion.trim().length >= 2
+      ? callMcpSchemaSearchTool(scope, { query: semanticQuestion.slice(0, 200), limit: 3 })
+      : { candidates: [], relationshipPaths: [], ambiguous: false };
     const resourceIntent = resolveResourceIntent(semanticQuestion, availableResources);
     const primaryCandidates = resourceIntent.status === 'matched' || resourceIntent.status === 'ambiguous'
       ? resourceIntent.candidates.map(item => item.key) : [];
@@ -152,6 +156,7 @@ export async function understandMarbotQuestion(request: string, scope: NativeSco
           { role: 'system', content: prompt },
           { role: 'user', content: JSON.stringify({ capabilities: { nativeReads: nativeDomains(scope),
             referenceModules: [...new Set(moduleKnowledge.filter(item => scope.enabledModules.includes(item.module)).map(item => item.module))],
+            mcpTools: ['search_erp_schema', 'erp.query'], mcpSchemaSearch,
             primaryCandidates, relationshipPaths, unreachableEntities: namedEntities.filter(target => !relationshipPaths.some(path => path.to === target.key)).map(target => target.key),
             resources: resources.map(item => ({ key: item.key, module: item.module, relationTargetOnly: !primarySet.has(item.key), intentTerms: item.intentTerms,
               relationships: item.relationships, readOnly: item.writeBlocked, searchFields: item.searchFields,

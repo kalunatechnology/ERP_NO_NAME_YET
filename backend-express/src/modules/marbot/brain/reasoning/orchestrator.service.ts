@@ -4,12 +4,13 @@ import { answerNative, detectTools, followUpQuestion, isNativeTaskReadQuestion, 
 import type { MarbotAction } from '../actions/action.service';
 import { helperAnswer, systemKnowledgeAnswer } from '../../knowledge/knowledge';
 import { validateNativePlan } from './planner.service';
-import { executeResourceRead, planResourceQuestion, type ResourcePlan } from '../../knowledge/resource.service';
+import { planResourceQuestion, type ResourcePlan } from '../../knowledge/resource.service';
 import { discoverMarbotSchema } from '../../knowledge/schema.service';
 import { understandMarbotQuestion } from './understanding.service';
 import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion } from './intent';
 import { RetrievalGatewayService } from '../../knowledge-engine/gateway/retrieval-gateway.service';
 import { renderConversationalAnswer, renderGroundedAgentAnswer } from '../models/provider.service';
+import { callMcpErpQueryTool } from '../../routing/mcp-tools.service';
 
 export type MarbotAnswer = { content: string; tools: string[]; sources: string[]; action?: MarbotAction };
 export type MarbotDecision = { answer: MarbotAnswer; understanding: { source: 'llm' | 'local' | 'explicit';
@@ -29,7 +30,7 @@ async function resourceAnswer(req: Request, plan: ResourcePlan, scope: NativeSco
     content: `Usulan perubahan ${plan.resource}:\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n\nBelum disimpan. Konfirmasi diperlukan; backend memvalidasi hak akses dan membaca ulang hasil.`,
     tools: ['resource.proposal'], sources: ['ERP:canonical-api'], action: { kind: 'resource.write', payload: plan },
   };
-  const result = await executeResourceRead(req, plan, scope);
+  const result = await callMcpErpQueryTool(req, plan, scope);
   const rendered = await renderGroundedAgentAnswer(question, { resource: result.resource, operation: plan.operation,
     count: result.count, aggregate: result.aggregate, rows: result.rows, truncated: result.truncated });
   return { content: rendered.content,

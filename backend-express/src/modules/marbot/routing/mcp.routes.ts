@@ -7,10 +7,11 @@ import { AppError, ForbiddenError, ValidationError } from '../../../utils/errors
 import { type NativeScope } from '../brain/reasoning/native.service';
 import { answerMarbotQuestion } from '../brain/reasoning/orchestrator.service';
 import { isMutationCommand } from '../brain/reasoning/intent';
-import { discoverMarbotSchema, readableTables, searchMarbotSchema } from '../knowledge/schema.service';
-import { executeResourceRead, resourceCatalog } from '../knowledge/resource.service';
+import { discoverMarbotSchema, readableTables } from '../knowledge/schema.service';
+import { resourceCatalog } from '../knowledge/resource.service';
 import { reserveMarbotRequest } from '../brain/security/rate-limit.service';
 import { marbotAuthorityKey } from '../brain/security/authority.service';
+import { callMcpErpQueryTool, callMcpSchemaSearchTool } from './mcp-tools.service';
 
 export function allowedMcpTools(scope: NativeScope): Set<string> {
   const tools = new Set(['erp.capabilities']);
@@ -86,8 +87,7 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
           result = { modules: [...new Set(resources.map(item => item.module))].sort(), readableResourceCount: resources.length,
             nextTool: 'search_erp_schema', note: 'Katalog lengkap tidak dimuat sekaligus. Cari entitas atau field yang dibutuhkan.' };
         } else if (call.data.name === 'search_erp_schema') {
-          const search = z.object({ query: z.string().trim().min(2).max(200), limit: z.number().int().min(1).max(3).default(3) }).strict().parse(args);
-          result = searchMarbotSchema(scope, search.query, search.limit);
+          result = callMcpSchemaSearchTool(scope, args);
         } else if (call.data.name === 'erp.schema') {
           const schema = z.object({ tables: z.array(z.string()).max(20).optional() }).strict().parse(args);
           result = await discoverMarbotSchema(scope, prisma, schema.tables);
@@ -97,7 +97,7 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
           const decision = await answerMarbotQuestion(req, question, 'HELPER', scope, AbortSignal.timeout(30000));
           if (decision.answer.action) throw new ValidationError('Tool baca tidak dapat menyiapkan atau menjalankan perubahan data.');
           result = decision.answer;
-        } else result = await executeResourceRead(req, args, scope);
+        } else result = await callMcpErpQueryTool(req, args, scope);
         if (marbotAuthorityKey(await scopeFor(req)) !== marbotAuthorityKey(scope)) throw new ForbiddenError('Hak akses berubah selama pemrosesan tool.');
         await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } });
         reply({ content: [{ type: 'text', text: JSON.stringify(result) }], isError: false });

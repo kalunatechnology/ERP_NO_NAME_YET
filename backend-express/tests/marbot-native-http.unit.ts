@@ -241,10 +241,10 @@ async function main() {
       const invalidSchemaCall=await mcpTool('search_erp_schema',{query:'x',limit:99});
       assert.equal(invalidSchemaCall.result.isError,true,'invalid MCP schema arguments must fail closed');
       const read=await mcpQuestion('jumlah pekerjaan implementasi yang tercatat ada berapa?');
-      assert.equal(read.result.isError,false);const answer=JSON.parse(read.result.content[0].text);assert.match(answer.content,/7 record/);assert(answer.sources.length);assert.equal(mcpCanonicalReads,1);
+      assert.equal(read.result.isError,false);const answer=JSON.parse(read.result.content[0].text);assert.match(answer.content,/\b7\b/);assert(answer.sources.length);assert.equal(mcpCanonicalReads,1);
       const quoted=await mcpQuestion('berapa implementation.work-items dengan judul "Buat laporan"?');
       assert.equal(quoted.result.isError,false,'An action word in a record title must not trigger the mutation guard');
-      assert.match(JSON.parse(quoted.result.content[0].text).content,/1 record/);
+      assert.match(JSON.parse(quoted.result.content[0].text).content,/\b1\b/);
       for(const question of ['tolong buatkan proyek A','hapus meeting','approve weekly target']){
         const before:number=mcpCanonicalReads;const mutation=await mcpQuestion(question);assert.equal(mutation.result.isError,true);assert.match(mutation.result.content[0].text,/Tool baca/);assert.equal(mcpCanonicalReads,before);
       }
