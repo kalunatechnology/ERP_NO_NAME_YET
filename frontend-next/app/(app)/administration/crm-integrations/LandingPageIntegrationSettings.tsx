@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Globe2, Link2, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { Check, Copy, Globe2, Link2, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { cn } from "@/lib/utils";
@@ -47,13 +47,15 @@ export default function LandingPageIntegrationSettings() {
   const [editingEvents, setEditingEvents] = useState<{ id: string; values: string[] } | null>(null);
   const [savingDomains, setSavingDomains] = useState(false);
   const [savingEvents, setSavingEvents] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<CRMIntegrationSource | null>(null);
+  const [removingSourceId, setRemovingSourceId] = useState<string | null>(null);
   const scopeHeaders = companyScope ? { headers: { "X-Company-ID": companyScope } } : undefined;
   const endpoint = typeof window !== "undefined" ? new URL("/api/v1/integrations/webhooks/events", api.defaults.baseURL || window.location.origin).toString() : "/api/v1/integrations/webhooks/events";
 
   useEffect(() => { setCompanyScope(new URLSearchParams(window.location.search).get("company_id") || ""); }, []);
   const refresh = useCallback(async () => {
     setLoading(true);
-    try { setSources(await loadCRMIntegrationSources(companyScope || undefined)); }
+    try { setSources((await loadCRMIntegrationSources(companyScope || undefined)).filter((source) => source.status !== "REVOKED")); }
     catch (error: any) { toast.error(apiErrorMessage(error, "Gagal memuat integrasi CRM.")); }
     finally { setLoading(false); }
   }, [companyScope]);
@@ -113,6 +115,21 @@ export default function LandingPageIntegrationSettings() {
       toast.success(status === "ACTIVE" ? "Integrasi diaktifkan." : "Integrasi dijeda.");
     } catch (error: any) { toast.error(error?.response?.data?.error?.message || "Status integrasi gagal diubah."); }
   };
+  const removeSource = async () => {
+    if (!pendingRemoval) return;
+    const source = pendingRemoval;
+    setRemovingSourceId(source.id);
+    try {
+      await setCRMIntegrationSourceStatus(source.id, "REVOKED", companyScope || undefined);
+      setSources((current) => current.filter((item) => item.id !== source.id));
+      setPendingRemoval(null);
+      toast.success("Integrasi dicabut dan dihapus dari daftar. Riwayat event tetap tersimpan.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error?.message || "Integrasi gagal dihapus.");
+    } finally {
+      setRemovingSourceId(null);
+    }
+  };
   const copy = async (text: string) => {
     await navigator.clipboard.writeText(text);
     setCopied(true); window.setTimeout(() => setCopied(false), 1800);
@@ -146,7 +163,14 @@ export default function LandingPageIntegrationSettings() {
 
     <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="font-bold text-[#172033]">Sumber integrasi terdaftar</h2><p className="mt-1 text-xs text-[#64748B]">Daftar ini menampilkan metadata aman; signing secret tidak dapat dibaca kembali.</p></div><button onClick={() => void refresh()} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]"><RefreshCw size={13}/>Muat ulang</button></div>
-      {loading ? <p className="py-6 text-sm text-[#64748B]">Memuat sumber integrasi…</p> : sources.length === 0 ? <p className="rounded-lg bg-[#F8FAFC] p-4 text-sm text-[#64748B]">Belum ada landing page atau aplikasi luar yang didaftarkan.</p> : <div className="space-y-2">{sources.map((source) => <div key={source.id} className="rounded-xl border border-[#E2E8F0] p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="font-semibold text-[#172033]">{source.source_code}</div><div className="mt-1 text-xs text-[#64748B]">{source.allowed_event_types.join(" · ")} · Key {source.key_id}</div></div><div className="flex gap-2"><button onClick={() => setEditingEvents({ id: source.id, values: [...source.allowed_event_types] })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Event</button><button onClick={() => setEditingDomains({ id: source.id, value: (source.allowed_origin_domains || []).join("\n") })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]"><Globe2 size={13}/>Domain</button><button onClick={() => void toggle(source)} disabled={source.status === "REVOKED"} className={cn("rounded-lg px-3 py-2 text-xs font-semibold", source.status === "ACTIVE" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800")}>{source.status === "ACTIVE" ? "Jeda" : source.status === "REVOKED" ? "Dicabut" : "Aktifkan"}</button></div></div><div className="mt-2 text-xs text-[#64748B]">Domain diizinkan: {(source.allowed_origin_domains || []).length ? source.allowed_origin_domains.join(", ") : "Belum diatur; event harus tanpa origin_domain"}</div>{editingEvents?.id === source.id && <div className="mt-3 rounded-lg border border-[#E2E8F0] p-3"><p className="mb-2 text-xs font-semibold text-[#475569]">Event yang diizinkan untuk source ini</p><div className="grid gap-2 sm:grid-cols-2">{EVENT_OPTIONS.map((event) => <label key={event.value} className="flex items-center gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-xs text-[#334155]"><input type="checkbox" checked={editingEvents.values.includes(event.value)} onChange={(e) => setEditingEvents((current) => current ? { ...current, values: e.target.checked ? [...current.values, event.value] : current.values.filter((value) => value !== event.value) } : current)}/><span>{event.label}</span></label>)}</div><div className="mt-3 flex justify-end gap-2"><button onClick={() => setEditingEvents(null)} disabled={savingEvents} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveEvents()} disabled={savingEvents || editingEvents.values.length === 0} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingEvents ? "Menyimpan…" : "Simpan Event"}</button></div></div>}{editingDomains?.id === source.id && <div className="mt-3 flex flex-col gap-2"><textarea className={inputClass} rows={3} value={editingDomains.value} onChange={(event) => setEditingDomains((current) => current ? { ...current, value: event.target.value } : current)} placeholder="arsalynk.com"/><div className="flex justify-end gap-2"><button onClick={() => setEditingDomains(null)} disabled={savingDomains} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveDomains()} disabled={savingDomains} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingDomains ? "Menyimpan…" : "Simpan Domain"}</button></div></div>}</div>)}</div>}
+      {loading ? <p className="py-6 text-sm text-[#64748B]">Memuat sumber integrasi…</p> : sources.length === 0 ? <p className="rounded-lg bg-[#F8FAFC] p-4 text-sm text-[#64748B]">Belum ada landing page atau aplikasi luar yang didaftarkan.</p> : <div className="space-y-2">{sources.map((source) => <div key={source.id} className="rounded-xl border border-[#E2E8F0] p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="font-semibold text-[#172033]">{source.source_code}</div><div className="mt-1 text-xs text-[#64748B]">{source.allowed_event_types.join(" · ")} · Key {source.key_id}</div></div><div className="flex flex-wrap gap-2"><button onClick={() => setEditingEvents({ id: source.id, values: [...source.allowed_event_types] })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Event</button><button onClick={() => setEditingDomains({ id: source.id, value: (source.allowed_origin_domains || []).join("\n") })} disabled={source.status === "REVOKED"} className="inline-flex items-center gap-1 rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]"><Globe2 size={13}/>Domain</button><button onClick={() => void toggle(source)} disabled={source.status === "REVOKED"} className={cn("rounded-lg px-3 py-2 text-xs font-semibold", source.status === "ACTIVE" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800")}>{source.status === "ACTIVE" ? "Jeda" : "Aktifkan"}</button><button onClick={() => setPendingRemoval(source)} disabled={removingSourceId === source.id} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60" aria-label={`Hapus integrasi ${source.source_code}`}><Trash2 size={13}/>Hapus</button></div></div><div className="mt-2 text-xs text-[#64748B]">Domain diizinkan: {(source.allowed_origin_domains || []).length ? source.allowed_origin_domains.join(", ") : "Belum diatur; event harus tanpa origin_domain"}</div>{editingEvents?.id === source.id && <div className="mt-3 rounded-lg border border-[#E2E8F0] p-3"><p className="mb-2 text-xs font-semibold text-[#475569]">Event yang diizinkan untuk source ini</p><div className="grid gap-2 sm:grid-cols-2">{EVENT_OPTIONS.map((event) => <label key={event.value} className="flex items-center gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-xs text-[#334155]"><input type="checkbox" checked={editingEvents.values.includes(event.value)} onChange={(e) => setEditingEvents((current) => current ? { ...current, values: e.target.checked ? [...current.values, event.value] : current.values.filter((value) => value !== event.value) } : current)}/><span>{event.label}</span></label>)}</div><div className="mt-3 flex justify-end gap-2"><button onClick={() => setEditingEvents(null)} disabled={savingEvents} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveEvents()} disabled={savingEvents || editingEvents.values.length === 0} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingEvents ? "Menyimpan…" : "Simpan Event"}</button></div></div>}{editingDomains?.id === source.id && <div className="mt-3 flex flex-col gap-2"><textarea className={inputClass} rows={3} value={editingDomains.value} onChange={(event) => setEditingDomains((current) => current ? { ...current, value: event.target.value } : current)} placeholder="arsalynk.com"/><div className="flex justify-end gap-2"><button onClick={() => setEditingDomains(null)} disabled={savingDomains} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-xs font-semibold text-[#475569]">Batal</button><button onClick={() => void saveDomains()} disabled={savingDomains} className="rounded-lg bg-[#2649B3] px-3 py-2 text-xs font-semibold text-white">{savingDomains ? "Menyimpan…" : "Simpan Domain"}</button></div></div>}</div>)}</div>}
     </section>
+
+    {pendingRemoval && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation">
+      <section role="dialog" aria-modal="true" aria-labelledby="remove-integration-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+        <div className="flex items-start gap-3"><div className="rounded-xl bg-rose-50 p-2 text-rose-700"><Trash2 size={18}/></div><div><h2 id="remove-integration-title" className="font-bold text-[#172033]">Hapus integrasi {pendingRemoval.source_code}?</h2><p className="mt-2 text-sm leading-6 text-[#64748B]">Kredensial integrasi akan langsung dicabut dan item ini dihapus dari daftar. Riwayat event dan data CRM yang sudah diterima tetap tersimpan. Tindakan ini tidak dapat dibatalkan; integrasi bisa didaftarkan kembali dengan kredensial baru.</p></div></div>
+        <div className="mt-5 flex justify-end gap-2"><button onClick={() => setPendingRemoval(null)} disabled={removingSourceId !== null} className="rounded-lg border border-[#D8DEE8] px-3 py-2 text-sm font-semibold text-[#475569]">Batal</button><button onClick={() => void removeSource()} disabled={removingSourceId !== null} className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{removingSourceId === pendingRemoval.id ? "Menghapus…" : "Cabut & hapus"}</button></div>
+      </section>
+    </div>}
   </div>;
 }

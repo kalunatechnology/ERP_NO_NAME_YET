@@ -156,6 +156,19 @@ export async function loadCRMIntegrationAssignees(companyId?: string): Promise<A
   return Array.isArray(data?.rows) ? data.rows : [];
 }
 
+export interface CRMPartyContact {
+  id: string;
+  party_id: string | null;
+  contact_name: string;
+  email: string;
+  primary_contact: boolean;
+}
+
+export async function loadCRMPartyContacts(partyId: string | number): Promise<CRMPartyContact[]> {
+  const { data } = await api.get(`/api/v1/master-data/contacts/?party_id=${encodeURIComponent(String(partyId))}&page_size=100`);
+  return normalizeList<CRMPartyContact>(data).rows;
+}
+
 export async function createCRMIntegrationSource(input: Record<string, unknown>, companyId?: string) {
   const { data } = await api.post("/api/v1/core/integration-sources/", input, companyScopeHeaders(companyId));
   return data as CRMIntegrationSource & { signing_secret: string };

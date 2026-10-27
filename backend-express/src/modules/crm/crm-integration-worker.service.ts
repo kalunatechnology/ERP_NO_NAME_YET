@@ -4,6 +4,7 @@ import prisma from '../../config/database';
 import { normalizeExternalIdentity, normalizeOriginDomain, retryDelayMs } from './crm-integration.service';
 import { processOutboundWebhookBatch, queueWebhookEvent } from './crm-outbound-webhook.service';
 import { CRMService } from './crm.service';
+import { normalizeServiceCasePriority } from '../service/service.constants';
 
 type ClaimedEvent = {
   id: string;
@@ -284,6 +285,8 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
       const subject = String(data?.subject ?? '').trim();
       const description = String(data?.description ?? '').trim();
       if (!subject || !description) throw new Error('INVALID_TICKET_EVENT');
+      const priority = normalizeServiceCasePriority(data?.priority);
+      if (!priority) throw new Error('INVALID_TICKET_PRIORITY');
       const serial = typeof data?.serial_number === 'string' ? data.serial_number.trim() : '';
       const serialRow = serial ? await tx.inv_serial_number.findFirst({ where: { serial_number: serial, company_id: source.company_id }, select: { id: true, product_id: true } }) : null;
       if (serial && !serialRow) throw new Error('SERIAL_NUMBER_NOT_FOUND');
@@ -291,7 +294,7 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
       await tx.service_case.create({ data: {
         id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
         assigned_user_id: source.default_assigned_user_id, product_id: serialRow?.product_id ?? null,
-        serial_number_id: serialRow?.id ?? null, priority: 'NORMAL', subject, description,
+        serial_number_id: serialRow?.id ?? null, priority, subject, description,
         status: 'OPEN', created_at: now, updated_at: now,
         origin_domain: originDomain,
       } });

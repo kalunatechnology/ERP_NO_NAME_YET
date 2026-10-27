@@ -296,7 +296,13 @@ import { sendMarkaEvent } from "@/lib/marka-crm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { subject, description, serialNumber } = await req.json();
+    const { subject, description, serialNumber, priority } = await req.json();
+
+    const allowedPriorities = ["LOW", "NORMAL", "HIGH", "URGENT"];
+    const normalizedPriority = priority === undefined ? "NORMAL" : String(priority).trim().toUpperCase();
+    if (!allowedPriorities.includes(normalizedPriority)) {
+      return NextResponse.json({ error: "Prioritas harus LOW, NORMAL, HIGH, atau URGENT" }, { status: 400 });
+    }
 
     if (!subject || !description) {
       return NextResponse.json({ error: "Subjek dan keluhan wajib diisi" }, { status: 400 });
@@ -308,6 +314,7 @@ export async function POST(req: NextRequest) {
       origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
       subject: String(subject),
       description: String(description),
+      priority: normalizedPriority,
       // serial_number opsional: jika dikirim, Marka memverifikasi garansi
       ...(serialNumber ? { serial_number: String(serialNumber).trim() } : {}),
     });
@@ -713,7 +720,7 @@ export default function CRMIntegrationGuide() {
               </div>
               <RequirementPanel status="partial" statusLabel="Pembuatan masuk tersedia; pelacakan publik belum siap" groups={[
                 { title: "Wajib saat membuat tiket", items: ["Subjek dan uraian keluhan.", "Payload saat ini tidak mengharuskan kode klien dan tiket belum otomatis terhubung ke master klien."] },
-                { title: "Opsional", items: ["serial_number; jika dikirim harus cocok dengan unit di company Marka agar pemeriksaan garansi dapat dilakukan."] },
+                { title: "Opsional", items: ["priority: LOW, NORMAL, HIGH, atau URGENT; jika tidak dikirim default NORMAL.", "serial_number; jika dikirim harus cocok dengan unit di company Marka agar pemeriksaan garansi dapat dilakukan."] },
                 { title: "Hasil saat ini", items: ["Tiket dibuat di CRM > Support & Garansi setelah diproses worker.", "Webhook hanya mengembalikan event_id/accepted, bukan ID tiket dan token akses klien."] },
                 { title: "Yang diperlukan untuk form cek status", items: ["Tautkan tiket ke klien memakai kode klien.", "Terbitkan ID tiket publik dan token akses, lalu sediakan alur lookup yang memakainya."] },
               ]} limitation="Form publik pada gambar meminta ID tiket dan token, tetapi alur ticket.created di Marka belum menerbitkan keduanya. Jangan menganggap pencarian status publik sudah berfungsi end-to-end." />

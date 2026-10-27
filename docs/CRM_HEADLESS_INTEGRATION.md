@@ -58,7 +58,7 @@ Contoh payload inquiry yang direkomendasikan:
 | --- | --- |
 | `message.received` | `thread_id`, `message_id`, `message.text`, `message.type: "TEXT"` |
 | `inquiry.submitted` | `customer: { name, email, phone? }`, `requirements: { subject, description?, target_budget? }`. Format lama yang menaruh field customer dan subject di root tetap diterima. |
-| `ticket.created` | `subject`, `description`; `serial_number` opsional dan harus terdaftar pada company |
+| `ticket.created` | `subject`, `description`; `priority` opsional: `LOW`, `NORMAL`, `HIGH`, `URGENT` (default `NORMAL`); `serial_number` opsional dan harus terdaftar pada company |
 | `feedback.submitted` | `customer_code` (`party_code` Marka) customer aktif pada company source, `rating` integer 1–5, `feedback_text`; `feedback_type` opsional, `sales_order_id` opsional tetapi harus milik customer yang sama |
 | `quotation.decision` | `quotation_code` (kode dokumen `QUO-...` yang ditampilkan Marka; disarankan untuk website), `decision: "ACCEPTED"` atau `"REJECTED"`. UUID internal lama `quotation_id` tetap diterima untuk kompatibilitas. |
 | `quotation.accepted` | `quotation_code` atau UUID internal lama `quotation_id`; hanya quotation berstatus `SENT` dan terhubung ke opportunity |

@@ -5,6 +5,7 @@ import { ForbiddenError, ValidationError } from '../../utils/errors';
 import { requireAdminForWrite, requireCompanyContextForWrite } from '../../middlewares/rbac.middleware';
 import { CRMIntegrationService, makeWebhookSignature, normalizeExternalIdentity, normalizeOriginDomain, safeSignatureEqual } from './crm-integration.service';
 import { createWebhookSubscription, webhookEventTypes } from './crm-outbound-webhook.service';
+import { normalizeServiceCasePriority } from '../service/service.constants';
 
 export const crmIntegrationAdminRouter = Router();
 export const crmIntegrationWebhookRouter = Router();
@@ -268,6 +269,7 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
       if (typeof subject !== 'string' || !subject.trim() || subject.length > 300 || typeof name !== 'string' || !name.trim() || name.length > 200 || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320 || (phone !== undefined && (typeof phone !== 'string' || phone.length > 40)) || (description !== undefined && (typeof description !== 'string' || description.length > 20_000)) || (budget !== undefined && (!Number.isFinite(Number(budget)) || Number(budget) < 0))) return res.status(400).json({ error: 'INVALID_INQUIRY_EVENT' });
     } else if (eventType === 'ticket.created') {
       if (typeof data.subject !== 'string' || !data.subject.trim() || data.subject.length > 300 || typeof data.description !== 'string' || !data.description.trim() || data.description.length > 20_000 || (data.serial_number !== undefined && (typeof data.serial_number !== 'string' || !data.serial_number.trim() || data.serial_number.length > 200))) return res.status(400).json({ error: 'INVALID_TICKET_EVENT' });
+      if (data.priority !== undefined && !normalizeServiceCasePriority(data.priority)) return res.status(400).json({ error: 'INVALID_TICKET_PRIORITY', allowed: ['LOW', 'NORMAL', 'HIGH', 'URGENT'] });
     } else if (eventType === 'feedback.submitted') {
       const customerCode = typeof data.customer_code === 'string' ? data.customer_code.trim() : typeof data.client_code === 'string' ? data.client_code.trim() : '';
       const customerPartyId = typeof data.customer_party_id === 'string' ? data.customer_party_id.trim() : '';

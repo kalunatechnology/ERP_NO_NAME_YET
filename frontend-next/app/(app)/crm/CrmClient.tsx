@@ -32,6 +32,7 @@ import {
   updateCustomerCreditLimit, calculateCreditSnapshot,
   loadCRMInbox, createInquiryFromConversation, replyToCRMConversation, assignConversationToMe, setConversationDecision,
   confirmCRMIdentityCustomer,
+  loadCRMPartyContacts,
   loadCRMWhatsAppConnections, createCRMWhatsAppConnection, updateCRMWhatsAppConnection, testCRMWhatsAppConnection,
   type CRMWhatsAppConnection,
   type CRMInboxConversation,
@@ -959,6 +960,9 @@ function TabDeals({
 function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQuotation = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; readOnly?: boolean; canApproveQuotation?: boolean }) {
   const [isEstModal, setIsEstModal] = useState(false);
   const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: "100000000", overhead_cost: "30000000", markup_percent: "30", description: "" });
+  const [sendDialog, setSendDialog] = useState<{ quote: any; customerName: string; recipientEmail: string; subject: string; body: string } | null>(null);
+  const [loadingRecipient, setLoadingRecipient] = useState(false);
+  const [sendingQuotation, setSendingQuotation] = useState(false);
 
   /**
    * Creates a cost estimate and preserves a null opportunity relationship when none is selected.
@@ -979,6 +983,85 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
       await createCostEstimate({ ...estForm, direct_cost: directCost, overhead_cost: overheadCost, markup_percent: markupPercent, opportunity: estForm.opportunity || null });
       toast.success("Cost Estimate dibuat!"); setIsEstModal(false); onRefresh();
     } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal buat estimate"); }
+  };
+
+  const openSendDialog = async (quote: any) => {
+    const opportunity = (data.opportunities || []).find((item) => String(item.id) === String(quote.opportunity_id));
+    const partyId = opportunity?.customer_party_id || quote.customer_party_id;
+    const party = (data.parties || []).find((item) => String(item.id) === String(partyId));
+    const customerName = party?.display_name || party?.legal_name || "Pelanggan";
+    const quotationCode = quote.quotation_code || quote.quotation_number || `QUO-${String(quote.id).slice(0, 8).toUpperCase()}`;
+    const validUntil = quote.valid_until && !Number.isNaN(new Date(quote.valid_until).getTime())
+      ? new Date(quote.valid_until).toLocaleDateString("id-ID", { dateStyle: "long" })
+      : "";
+    const subject = `Penawaran Harga ${quotationCode}`;
+    const body = [
+      `Yth. ${customerName},`,
+      "",
+      "Terima kasih atas kesempatan yang diberikan kepada kami. Bersama email ini kami sampaikan penawaran harga berikut:",
+      "",
+      `Kode quotation: ${quotationCode}`,
+      `Nilai penawaran: ${formatMoney(quote.total_amount)}`,
+      ...(quote.estimated_total_cost !== null && quote.estimated_total_cost !== undefined
+        ? [`Estimasi HPP: ${formatMoney(quote.estimated_total_cost)}`]
+        : []),
+      ...(validUntil ? [`Berlaku sampai: ${validUntil}`] : []),
+      "",
+      "Mohon meninjau penawaran tersebut. Jika Bapak/Ibu menyetujuinya, silakan membalas email ini untuk konfirmasi.",
+      "",
+      "Apabila ada pertanyaan atau diperlukan penyesuaian, silakan menghubungi kami.",
+      "",
+      "Hormat kami,",
+      "Tim Arsalynk",
+    ].join("\n");
+
+    setSendDialog({ quote, customerName, recipientEmail: "", subject, body });
+    setLoadingRecipient(Boolean(partyId));
+    if (!partyId) return;
+    try {
+      const contacts = await loadCRMPartyContacts(partyId);
+      const emailContact = contacts.find((contact) => contact.primary_contact && contact.email?.trim())
+        || contacts.find((contact) => contact.email?.trim());
+      if (emailContact?.email) {
+        setSendDialog((current) => current?.quote.id === quote.id ? { ...current, recipientEmail: emailContact.email.trim() } : current);
+      }
+    } catch {
+      // The email remains editable; the user can enter it manually or skip email.
+    } finally {
+      setLoadingRecipient(false);
+    }
+  };
+
+  const copyQuotationEmail = async () => {
+    if (!sendDialog) return;
+    const email = sendDialog.recipientEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Masukkan alamat email pelanggan yang valid sebelum menyalin draft.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(`Kepada: ${email}\nSubjek: ${sendDialog.subject}\n\n${sendDialog.body}`);
+      toast.success("Draft email disalin. Kirim melalui aplikasi email Anda.");
+    } catch {
+      toast.error("Draft tidak dapat disalin dari browser ini.");
+    }
+  };
+
+  const finalizeQuotationSend = async (emailWasSent: boolean) => {
+    if (!sendDialog) return;
+    setSendingQuotation(true);
+    try {
+      await sendQuotation(sendDialog.quote.id);
+      toast.success(emailWasSent
+        ? "Quotation ditandai SENT. Email tetap dikirim manual melalui aplikasi email Anda."
+        : "Quotation ditandai SENT tanpa mengirim email dari CRM.");
+      setSendDialog(null);
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || error?.response?.data?.error?.message || "Quotation gagal dikirim.");
+    } finally {
+      setSendingQuotation(false);
+    }
   };
 
 /**
@@ -1009,7 +1092,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
           }
         }} label="Setuju" small />
       : <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800" title="Persetujuan quotation hanya dapat dilakukan oleh Direktur.">Menunggu Direktur</span>;
-    if (s === "APPROVED") return <ActionBtn onClick={async () => { await sendQuotation(q.id); toast.success("Dikirim!"); onRefresh(); }} label="Kirim" small />;
+    if (s === "APPROVED") return <ActionBtn onClick={() => void openSendDialog(q)} label="Kirim" small />;
     if (s === "SENT") return <ActionBtn onClick={async () => { await acceptQuotation(q.id); toast.success("Accepted!"); onRefresh(); }} label="Accept" small />;
     if (s === "ACCEPTED") return <ActionBtn onClick={async () => { await convertQuotationToOrder(q.id); toast.success("Converted to Order!"); onRefresh(); }} label="📦 Convert to Order" small />;
     return <StatusBadge status={s} />;
@@ -1126,6 +1209,81 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
             <button onClick={handleCreate} className="btn-primary">Buat Estimasi</button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(sendDialog)}
+        onClose={() => sendingQuotation ? undefined : setSendDialog(null)}
+        title="Kirim quotation ke pelanggan"
+        subtitle="Periksa alamat tujuan dan salin draft email. CRM tidak mengirim email secara otomatis."
+        size="lg"
+      >
+        {sendDialog && <div className="space-y-4">
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+            Draft mencantumkan nilai penawaran dan estimasi HPP yang tersimpan pada quotation. Periksa isinya sebelum dikirim; CRM hanya menyiapkan dan menyalin draft.
+          </div>
+          <label className="block text-xs font-semibold text-text-secondary">
+            Email pelanggan
+            <input
+              type="email"
+              autoComplete="email"
+              className="mt-1.5 w-full rounded-lg border border-text-tertiary px-3 py-2.5 text-sm text-text-primary outline-none focus:border-brand-green"
+              value={sendDialog.recipientEmail}
+              onChange={(event) => setSendDialog((current) => current ? { ...current, recipientEmail: event.target.value } : current)}
+              placeholder={loadingRecipient ? "Mencari email dari kontak pelanggan…" : "nama@perusahaan.com"}
+              disabled={sendingQuotation}
+            />
+            <span className="mt-1 block font-normal text-text-secondary">
+              {loadingRecipient
+                ? "Sedang mencari kontak utama dari customer pada Opportunity."
+                : sendDialog.recipientEmail
+                  ? `Email ditemukan untuk ${sendDialog.customerName}. Anda dapat mengubahnya sebelum menyalin.`
+                  : "Email tidak ditemukan. Masukkan email pelanggan secara manual, atau lewati email."}
+            </span>
+          </label>
+          <label className="block text-xs font-semibold text-text-secondary">
+            Subjek email
+            <input
+              className="mt-1.5 w-full rounded-lg border border-text-tertiary px-3 py-2.5 text-sm text-text-primary outline-none focus:border-brand-green"
+              value={sendDialog.subject}
+              onChange={(event) => setSendDialog((current) => current ? { ...current, subject: event.target.value } : current)}
+              disabled={sendingQuotation}
+            />
+          </label>
+          <label className="block text-xs font-semibold text-text-secondary">
+            Isi email
+            <textarea
+              rows={12}
+              className="mt-1.5 w-full resize-y rounded-lg border border-text-tertiary px-3 py-2.5 text-sm leading-6 text-text-primary outline-none focus:border-brand-green"
+              value={sendDialog.body}
+              onChange={(event) => setSendDialog((current) => current ? { ...current, body: event.target.value } : current)}
+              disabled={sendingQuotation}
+            />
+          </label>
+          <div className="flex flex-col-reverse gap-2 border-t border-text-tertiary/50 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <button onClick={() => setSendDialog(null)} disabled={sendingQuotation} className="btn-ghost">Batal</button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <button onClick={() => void finalizeQuotationSend(false)} disabled={sendingQuotation} className="btn-ghost">
+                {sendingQuotation ? "Memproses…" : "Lewati email & lanjutkan"}
+              </button>
+              <button
+                onClick={() => void copyQuotationEmail()}
+                disabled={sendingQuotation || loadingRecipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sendDialog.recipientEmail.trim()) || !sendDialog.subject.trim()}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-text-tertiary px-3 py-2 text-sm font-semibold text-text-primary hover:bg-gray-50 disabled:opacity-50"
+              >
+                <Copy size={15}/>Salin draft email
+              </button>
+              <button
+                onClick={() => void finalizeQuotationSend(true)}
+                disabled={sendingQuotation || loadingRecipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sendDialog.recipientEmail.trim()) || !sendDialog.subject.trim()}
+                className="btn-primary"
+              >
+                {sendingQuotation ? "Memproses…" : "Email sudah dikirim"}
+              </button>
+            </div>
+          </div>
+          <p className="text-right text-[11px] leading-5 text-text-secondary">Tombol lanjut mengubah status quotation menjadi SENT. Untuk opsi email, salin draft, kirim melalui aplikasi email, lalu pilih “Email sudah dikirim”.</p>
+        </div>}
       </Modal>
     </div>
   );

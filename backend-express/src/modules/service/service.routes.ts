@@ -12,6 +12,7 @@ import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { queueWebhookEvent } from '../crm/crm-outbound-webhook.service';
+import { normalizeServiceCasePriority } from './service.constants';
 
 export const serviceRouter = Router();
 
@@ -107,6 +108,8 @@ serviceRouter.post('/cases', async (req: Request, res: Response, next: NextFunct
     if (!req.companyId || !req.tenantId) throw new ForbiddenError('Pilih company sebelum membuat tiket.');
     const subject = String(req.body.subject ?? '').trim();
     if (!subject) throw new ValidationError('Subject tiket wajib diisi.');
+    const priority = normalizeServiceCasePriority(req.body.priority);
+    if (!priority) throw new ValidationError('Prioritas tiket harus LOW, NORMAL, HIGH, atau URGENT.');
     const serialValue = String(req.body.serial_number ?? '').trim();
     let serial = null;
     if (serialValue) {
@@ -117,7 +120,7 @@ serviceRouter.post('/cases', async (req: Request, res: Response, next: NextFunct
       id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: req.companyId,
       created_by_id: req.user?.id, customer_party_id: req.body.customer_party ? String(req.body.customer_party) : null,
       product_id: serial?.product_id ?? null, serial_number_id: serial?.id ?? null,
-      priority: String(req.body.priority ?? 'NORMAL').toUpperCase(), subject,
+      priority, subject,
       description: String(req.body.description ?? ''), status: 'OPEN',
     } });
     res.status(201).json(caseRow);

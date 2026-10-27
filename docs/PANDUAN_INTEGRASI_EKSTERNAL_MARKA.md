@@ -369,7 +369,13 @@ import { sendMarkaEvent } from "@/lib/marka-crm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { subject, description, serialNumber, customerEmail } = await req.json();
+    const { subject, description, serialNumber, customerEmail, priority } = await req.json();
+
+    const allowedPriorities = ["LOW", "NORMAL", "HIGH", "URGENT"];
+    const normalizedPriority = priority === undefined ? "NORMAL" : String(priority).trim().toUpperCase();
+    if (!allowedPriorities.includes(normalizedPriority)) {
+      return NextResponse.json({ error: "Prioritas harus LOW, NORMAL, HIGH, atau URGENT" }, { status: 400 });
+    }
 
     if (!subject || !description) {
       return NextResponse.json({ error: "Subjek dan keluhan wajib diisi" }, { status: 400 });
@@ -381,6 +387,7 @@ export async function POST(req: NextRequest) {
       origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN || "arsalynk.com",
       subject: String(subject),
       description: String(description),
+      priority: normalizedPriority,
       ...(serialNumber ? { serial_number: String(serialNumber).trim() } : {}),
     });
 
@@ -390,6 +397,8 @@ export async function POST(req: NextRequest) {
   }
 }
 ```
+
+Prioritas yang didukung: `LOW`, `NORMAL`, `HIGH`, `URGENT`. Jika `priority` tidak dikirim, Marka menggunakan `NORMAL`. Nilai lain ditolak dengan `INVALID_TICKET_PRIORITY`.
 
 > 💡 **Tips Garansi**: Jika Anda mengirimkan `serial_number`, Marka akan otomatis memvalidasi apakah nomor seri tersebut pernah dibeli di sistem Marka dan status garansinya aktif.
 
