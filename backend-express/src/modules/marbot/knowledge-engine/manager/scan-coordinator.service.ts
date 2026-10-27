@@ -102,6 +102,7 @@ export class ScanCoordinatorService {
         commitSha: crawlResult.commitSha,
         runtimeConfigHash: crawlResult.runtimeFacts.runtimeHash,
         modeOverride: options.modeOverride,
+        previousActiveEntries: Array.from(existingMap.values()),
       }
     );
 

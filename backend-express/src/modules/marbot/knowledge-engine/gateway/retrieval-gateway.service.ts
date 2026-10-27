@@ -109,7 +109,8 @@ export class RetrievalGatewayService {
           where: {
             snapshot_id: activeSnapshot.id,
             topic,
-            ...(operation ? { operation } : {}),
+            operation: operation ?? null,
+            knowledge_category: 'USER_PROCEDURE',
             lifecycle_status: { in: ['ACTIVE', 'QUARANTINED', 'RETIRED'] },
           },
         });

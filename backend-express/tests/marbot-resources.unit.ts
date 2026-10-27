@@ -22,7 +22,7 @@ async function main() {
   assert.throws(() => validateResourcePlan({ resource: order.key, operation: 'list', sql: 'DROP TABLE x' }, scope));
   assert.throws(() => validateResourcePlan({ resource: order.key, operation: 'list', filters: { company_id: 'other' } }, scope));
   assert.throws(() => validateResourcePlan({ resource: order.key, operation: 'list', filters: { status: true } }, scope));
-  assert.throws(() => validateResourcePlan({ resource: order.key, operation: 'list', filters: { status: 'null' } }, scope));
+  assert.equal(validateResourcePlan({ resource: order.key, operation: 'list', filters: { status: 'null' } }, scope).filters.status, 'null', 'String fields keep string literals instead of coercing them to null');
   assert.throws(() => validateResourcePlan({ resource: order.key, operation: 'update', id: 'b75d14c9-365c-49a8-b4c0-de618d827c25', payload: { order_date: '2026-02-30' } }, scope));
   assert.throws(() => validateResourcePlan({ resource: order.key, operation: 'create', payload: { status: 'DRAFT', tenant_id: 'other' } }, scope));
   assert.throws(() => resourceDefinition(order.key, { ...scope, blockedReadModules: ['PROCUREMENT'] }));

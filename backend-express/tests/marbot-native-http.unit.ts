@@ -114,7 +114,7 @@ async function main() {
       assert.equal(semanticGuide.status, 200);
       assert.match(await semanticGuide.text(), /Hapus Meeting/);
       assert.deepEqual(stored.at(-1).metadata.understanding, { source: 'llm', route: 'guide', status: 'ready', confidence: 0.98, model: 'fixture-model' });
-      assert.match(stored.at(-1).metadata.sources[0], /^ERP:procedure:meeting:delete:/);
+      assert.match(stored.at(-1).metadata.sources[0], /^(?:ERP:procedure:meeting:delete:|ERP:curated-procedure:meeting\.delete:)/);
       assert.equal(helpProviderCalls, 6);
       helpPlan = { route: 'native', plan: { type: 'read', domains: ['tasks'], personal: true, taskLevel: 'weekly' }, confidence: 0.99 };
       for (const roleCode of [RoleCode.PROJECT_MANAGER, RoleCode.SUPERVISOR]) {
@@ -224,6 +224,22 @@ async function main() {
         const response=await mcpFetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream',Authorization:'Bearer mcp-fixture'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'erp.readQuestion',arguments:{question}}})});
         assert.equal(response.status,200);return response.json() as any;
       };
+      const mcpTool=async(name:string,args:Record<string,unknown>={})=>{
+        const response=await mcpFetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream',Authorization:'Bearer mcp-fixture'},body:JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/call',params:{name,arguments:args}})});
+        assert.equal(response.status,200);return response.json() as any;
+      };
+      const discovered=await mcpFetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream',Authorization:'Bearer mcp-fixture'},body:JSON.stringify({jsonrpc:'2.0',id:4,method:'tools/list'})});
+      const discoveredTools=(await discovered.json() as any).result.tools.map((tool:any)=>tool.name);
+      assert(discoveredTools.includes('search_erp_schema'),'authorized users with readable resources can discover scoped schema search');
+      assert(discoveredTools.includes('erp.query'),'schema shortlist must have a canonical query tool');
+      const schemaCall=await mcpTool('search_erp_schema',{query:'implementation release',limit:3});
+      assert.equal(schemaCall.result.isError,false,'schema search contract should accept a bounded query');
+      const schemaPayload=JSON.parse(schemaCall.result.content[0].text);
+      assert(schemaPayload.candidates.length<=3,'MCP schema search must cap candidate disclosure');
+      assert(schemaPayload.candidates.every((candidate:any)=>candidate.module==='IMPLEMENTATION'),'schema search must honor active module scope');
+      assert(!('results' in schemaPayload),'schema discovery returns metadata, never business row samples');
+      const invalidSchemaCall=await mcpTool('search_erp_schema',{query:'x',limit:99});
+      assert.equal(invalidSchemaCall.result.isError,true,'invalid MCP schema arguments must fail closed');
       const read=await mcpQuestion('jumlah pekerjaan implementasi yang tercatat ada berapa?');
       assert.equal(read.result.isError,false);const answer=JSON.parse(read.result.content[0].text);assert.match(answer.content,/7 record/);assert(answer.sources.length);assert.equal(mcpCanonicalReads,1);
       const quoted=await mcpQuestion('berapa implementation.work-items dengan judul "Buat laporan"?');

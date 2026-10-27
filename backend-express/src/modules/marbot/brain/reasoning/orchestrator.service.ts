@@ -9,12 +9,13 @@ import { discoverMarbotSchema } from '../../knowledge/schema.service';
 import { understandMarbotQuestion } from './understanding.service';
 import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion } from './intent';
 import { RetrievalGatewayService } from '../../knowledge-engine/gateway/retrieval-gateway.service';
+import { renderConversationalAnswer } from '../models/provider.service';
 
 export type MarbotAnswer = { content: string; tools: string[]; sources: string[]; action?: MarbotAction };
 export type MarbotDecision = { answer: MarbotAnswer; understanding: { source: 'llm' | 'local' | 'explicit';
   route: string; status: string; confidence?: number; model?: string } };
 const clarification = {
-  entity: 'Fitur yang dimaksud apa: meeting, notulensi, Weekly Task, Daily Task, atau fitur lain? Sebutkan fitur dan tujuan Anda.',
+  entity: 'Jenis data yang dimaksud belum spesifik. Sebutkan entitasnya, misalnya customer, opportunity, quotation, order, invoice, tiket, atau proyek. Jika ingin menghubungkan dua jenis data, sebutkan keduanya. Belum ada data yang diambil.',
   operation: 'Tujuan Anda ingin melihat data, mengetahui caranya, atau meminta perubahan data? Sebutkan satu tindakan yang dimaksud.',
   record: 'Record yang dimaksud belum teridentifikasi. Sebutkan nama lengkap dan konteks project/meeting atau identitas record yang tepat.',
   fields: 'Data untuk tindakan ini belum lengkap. Sebutkan record yang dimaksud dan nilai yang ingin dibuat atau diubah; saya belum menyiapkan perubahan.',
@@ -95,16 +96,38 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
   if (result?.status === 'ready') {
     const intent = result.intent;
     const understanding = { source: 'llm' as const, route: intent.route, status: 'ready', confidence: intent.confidence, model: result.model };
+    if (intent.route === 'conversation') {
+      const rendered = await renderConversationalAnswer(message, previousQuestion, signal);
+      return { understanding: { ...understanding, model: rendered.model }, answer: {
+        content: rendered.content, tools: ['llm.conversation'], sources: [],
+      } };
+    }
+    if (intent.route === 'hybrid') {
+      const rule = await RetrievalGatewayService.resolveProcedureRule(intent.procedure.topic, intent.procedure.operation ?? undefined);
+      if (!rule) return { understanding, answer: { content: helperAnswer(message, scope,
+        { topic: intent.procedure.topic, operation: intent.procedure.operation ?? undefined }),
+        tools: ['help.procedure'], sources: [`ERP:curated-procedure:${intent.procedure.topic}:${intent.procedure.operation ?? 'overview'}:baseline`] } };
+      const guidance = helperAnswer(message, scope,
+        { topic: intent.procedure.topic, operation: intent.procedure.operation ?? undefined }, rule);
+      const data = await resourceAnswer(req, intent.plan, scope);
+      return { understanding, answer: { content: `${guidance}\n\n---\n\n${data.content}`,
+        tools: ['help.procedure', ...data.tools], sources: [
+          rule.provenance?.snapshotId
+            ? `ERP:procedure:${rule.topic}:${rule.operation ?? 'overview'}:v${rule.version ?? 'unknown'}:${rule.provenance.commitSha.slice(0, 7)}`
+            : `ERP:curated-procedure:${rule.id}:${rule.version ?? 'baseline'}`,
+          ...data.sources,
+        ] } };
+    }
     if (intent.route === 'guide') {
-      const provenance = await RetrievalGatewayService.getActiveProvenanceString(intent.topic, intent.operation ?? undefined);
+      const rule = await RetrievalGatewayService.resolveProcedureRule(intent.topic, intent.operation ?? undefined);
+      const provenance = rule?.provenance?.snapshotId
+        ? `ERP:procedure:${rule.topic}:${rule.operation ?? 'overview'}:v${rule.version ?? 'unknown'}:${rule.provenance.commitSha.slice(0, 7)}`
+        : `ERP:curated-procedure:${rule?.id ?? `${intent.topic}.${intent.operation ?? 'overview'}`}:${rule?.version ?? 'baseline'}`;
       return { understanding, answer: { content: helperAnswer(message, scope,
-        { topic: intent.topic, operation: intent.operation ?? undefined }), tools: ['help.procedure'],
+        { topic: intent.topic, operation: intent.operation ?? undefined }, rule), tools: ['help.procedure'],
         sources: [provenance] } };
     }
     if (intent.route === 'knowledge') {
-      const active = await RetrievalGatewayService.getActiveSnapshot();
-      const versionTag = active ? `v${active.version_number}:${active.commit_sha.slice(0, 7)}` : '2026-10-07';
-
       // Check if this is an explicit module overview inquiry
       const isOverviewQuery = /^(?:jelaskan|apa itu|overview|ruang kerja)\s+(?:modul|ruang kerja)/i.test(message) && intent.modules.length === 1;
 
@@ -131,7 +154,7 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
           answer: {
             content: canonicalContent,
             tools: ['help.procedure'],
-            sources: intent.modules.map((module) => `ERP:code-knowledge:${module}:${versionTag}`),
+            sources: intent.modules.map((module) => `ERP:curated-module:${module}:baseline`),
           },
         };
       }
@@ -154,7 +177,7 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
         answer: {
           content: canonicalContent,
           tools: ['help.procedure'],
-          sources: intent.modules.map((module) => `ERP:code-knowledge:${module}:${versionTag}`),
+          sources: intent.modules.map((module) => `ERP:curated-module:${module}:baseline`),
         },
       };
     }
@@ -182,6 +205,12 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
   // Never retry a failed intent with a second model that chooses another goal.
   const understanding = { source: explicit ? 'explicit' as const : 'local' as const,
     route: 'fallback', status: explicit ? 'explicit' : result?.status ?? 'unconfigured' };
+  if (!explicit && /^(?:halo|hai|hi|hello|pagi|selamat pagi|siang|selamat siang|sore|selamat sore|malam|selamat malam|terima kasih|makasih|thanks|thank you)[!.?\s]*$/i.test(message.trim())) {
+    const rendered = await renderConversationalAnswer(message, previousQuestion, signal);
+    return { understanding: { ...understanding, route: 'conversation', model: rendered.model }, answer: {
+      content: rendered.content, tools: ['llm.conversation'], sources: [],
+    } };
+  }
   const taskRead = isNativeTaskReadQuestion(fallbackQuestion);
   const resourcePlan = taskRead || isProcedureQuestion(fallbackQuestion) ? null : await planResourceQuestion(fallbackQuestion, scope, signal, false);
   if (resourcePlan) return { understanding, answer: await resourceAnswer(req, resourcePlan, scope) };

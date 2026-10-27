@@ -44,7 +44,9 @@ Tool MCP `erp.readQuestion` memakai pemahaman dan pemilihan tool yang sama denga
 
 Untuk task, pemeriksaan lokal tetap memverifikasi ownership, Weekly/Daily, rentang tanggal dan pengecualian hari ini yang dinyatakan eksplisit. Model tidak dapat menghilangkan kata “saya” atau menambahkan default “hari ini” pada pembacaan seluruh task. Perintah terstruktur `data {...}` menggunakan validasi tool langsung karena sudah eksplisit.
 
-Retrieval saat ini memakai referensi lokal terkurasi/versioned dari kode ERP, dipilih melalui intent terstruktur. Ini retrieval referensi untuk grounding; **belum merupakan pencarian embedding/vector atas semua dokumen perusahaan**, dan tidak ada tabel vector, crawler atau pipeline upload dokumen baru. Sumber dan version referensi ikut dikirim pada jawaban. Hasil operasional dan batas permission tidak ditulis ulang oleh LLM.
+Retrieval saat ini mencakup katalog prosedur terkurasi dan snapshot MKIE yang dipindai dari kode ERP. MKIE adalah retrieval referensi untuk grounding; **belum merupakan pencarian embedding/vector atas semua dokumen perusahaan**, dan belum menerima dokumen perusahaan melalui pipeline upload. Isi panduan prosedur menggunakan entry aktif yang cocok secara tepat; jika tidak ada, jawaban memakai katalog terkurasi dan sumbernya dilabeli sebagai baseline. Jawaban tidak boleh mengutip versi snapshot yang tidak memasok isinya.
+
+Teks yang disintesis MiniLLM dari bukti kode berstatus `AI_INFERENCE` dan memerlukan review; bukti test atas kode tidak otomatis memverifikasi kebenaran narasi. Regression gate membandingkan kandidat dengan entry aktif sebelumnya dan menahan promosi bila entry aktif hilang atau turun status tanpa review. Hasil pemindaian menyertakan alasan regresi agar snapshot STAGING dapat ditelusuri. Sumber/provenance tetap disertakan pada jawaban; hasil operasional dan batas permission tidak ditulis ulang oleh LLM.
 
 Tanpa konfigurasi model, ketika provider gagal, atau JSON/rencana tidak valid, aplikasi memakai fallback lokal terverifikasi satu kali tanpa mencoba planner model kedua. Jika fallback tidak bisa menentukan maksud, pengguna diminta memperjelas. Metadata pesan menyimpan sumber pemahaman (`llm`, `local`, `explicit`), route, status, confidence dan model untuk penelusuran, tanpa menyimpan chain-of-thought. Riwayat dan metadata tetap dibatasi authority yang berlaku.
 
@@ -74,13 +76,32 @@ Contoh: “agenda tadi udah nggak kepake, langkah nyingkirinnya gimana?” dapat
   meminta klarifikasi dan tidak menampilkan data agregat pengganti.
 - Periode: minggu ini/lalu, bulan ini/lalu, atau YYYY-MM, zona Asia/Jakarta.
 - Proyek tertentu: `proyek "Nama Lengkap"`; nama ambigu memerlukan klarifikasi.
-- Query resource mendukung list, count, equality filter, search, aggregate dan
-  satu relasi yang harus terbukti sebagai foreign key fisik. SQL, URL, nama tabel,
-  field, atau hasil bisnis yang dibuat model tidak pernah dieksekusi langsung.
+- Query resource mendukung list, count, equality filter, search, aggregate,
+  pengayaan relasi langsung, dan filter lintas relasi melalui jalur Prisma
+  terpendek maksimal tiga hop. Kunci relasi dihitung dengan pembacaan API ERP
+  yang tetap terscope, lalu primary-key hasil dibatasi ulang melalui API
+  canonical. Tiap edge diperiksa pada foreign key fisik.
+- Filter list dan aggregate divalidasi terhadap `schema.prisma` aktual dan
+  dikonversi ke tipe Prisma (termasuk angka, Decimal, BigInt, Boolean, enum,
+  dan DateTime). Filter tak dikenal atau salah tipe ditolak, bukan diabaikan;
+  query tetap melewati API canonical agar tenant, company, role, dan project
+  scope yang berlaku tetap diterapkan.
+- Pilihan resource dimulai dari istilah bisnis dan pencocokan field aktual,
+  lalu dibatasi ke kandidat utama dan jalur relasi terpendek yang ditemukan
+  dari Prisma. Istilah yang ambigu atau tidak memiliki jalur meminta klarifikasi,
+  bukan query tebakan. MCP memakai progressive disclosure melalui
+  `search_erp_schema` yang mengembalikan maksimal tiga kandidat metadata.
+- Pertanyaan gabungan panduan + data aktual memakai route hybrid hanya jika
+  kedua bagian dapat divalidasi. Panduan berasal dari MKIE; data berasal dari
+  query ERP dan ditampilkan dengan sumber terpisah. Jika salah satu sisi tidak
+  tersedia, sistem tidak mengganti data aktual dengan teks panduan.
+- Pencarian schema memakai alias terkurasi dan pencocokan leksikal field secara
+  lokal. Belum ada vector database, embedding schema, atau sampel nilai bisnis
+  distinct; jangan menafsirkan skor ranking sebagai probabilitas terkalibrasi.
 - MCP Streamable HTTP tersedia pada `POST /api/v1/marbot/mcp` dengan autentikasi
   JWT ERP, company aktif, validasi Origin, versi protokol 2025-11-25, rate limit,
-  audit request, dan tool baca `erp.capabilities`, `erp.schema`, `erp.query`,
-  serta `erp.readQuestion`.
+  audit request, dan tool baca `erp.capabilities`, `search_erp_schema`,
+  `erp.schema`, `erp.query`, serta `erp.readQuestion`.
 - OpenRouter opsional hanya memilih plan terstruktur. Executor lokal memvalidasi
   resource, field, literal input, permission dan hasil database.
 - Riwayat dimiliki tenant + perusahaan + pengguna. Perubahan authority menyaring

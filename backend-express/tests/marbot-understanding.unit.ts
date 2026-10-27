@@ -56,7 +56,7 @@ async function main() {
     assert.equal(result.understanding.source, 'llm');
     assert.match(result.answer.content, /Hapus Meeting/);
     assert.doesNotMatch(result.answer.content, /Tambah Notulensi/);
-    assert.match(result.answer.sources[0], /^ERP:procedure:meeting:delete:/);
+    assert.match(result.answer.sources[0], /^(?:ERP:procedure:meeting:delete:|ERP:curated-procedure:meeting\.delete:)/);
     assert.equal(result.answer.action, undefined);
     const guideCases = [
       ['aku yang nyatet diskusi tadi, boleh revisi rangkumannya?', 'minutes', 'edit', /Edit Notulensi[\s\S]*PUBLISHED/],
@@ -125,8 +125,8 @@ async function main() {
     assert.equal(validateUnderstanding({ ...route('minutes', 'create') }, 'apakah saya bisa hapus meeting?', scope), null, 'Wrong meaning must not reach retrieval');
     assert.equal(validateUnderstanding({ ...route('meeting', 'delete'), sql: 'DROP TABLE' }, 'hapus meeting?', scope), null);
     assert.equal(validateUnderstanding({ route: 'native', plan: { type: 'read', domains: ['finance'] }, confidence: 1 }, 'total biaya', scope), null);
-    assert.equal(validateUnderstanding({ route: 'resource', plan: { resource: 'implementation.work-items', operation: 'list', filters: { title: 'invented' } }, confidence: 1 }, 'jumlah pekerjaan', scope), null);
-    assert.equal(validateUnderstanding({ route: 'resource', plan: { resource: 'finance.payments', operation: 'list' }, confidence: 1 }, 'daftar payments', scope), null);
+    assert.equal(validateUnderstanding({ route: 'resource', plan: { resource: 'implementation.work-items', operation: 'list', filters: { title: 'invented' } }, confidence: 1 }, 'jumlah pekerjaan implementasi', scope), null);
+    assert.equal(validateUnderstanding({ route: 'resource', plan: { resource: 'finance.payments', operation: 'list' }, confidence: 1 }, 'daftar payments', scope)?.route, 'clarify', 'Out-of-scope entity must not execute as a resource read');
     assert.equal(validateUnderstanding({ route: 'knowledge', modules: ['FINANCE'], confidence: 1 }, 'fitur finance', scope), null);
     assert.equal(validateUnderstanding({ route: 'schema', tables: ['iam_user'], confidence: 1 }, 'schema user', scope), null);
 
