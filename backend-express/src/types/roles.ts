@@ -13,6 +13,28 @@ export type RoleCode = DatabaseRoleCode;
 
 export const ADMIN_ROLE_CODES = [RoleCode.SUPER_ADMIN, RoleCode.COMPANY_ADMIN] as const;
 
+/** Role boundaries enforced by the canonical module API routers. */
+export const CRM_MODULE_ACCESS_ROLES = [
+  RoleCode.COMPANY_ADMIN,
+  RoleCode.CRM_LEAD,
+  RoleCode.SALES,
+  RoleCode.PROJECT_MANAGER,
+  RoleCode.DIRECTOR,
+] as const;
+export const SALES_MODULE_ACCESS_ROLES = [...CRM_MODULE_ACCESS_ROLES] as const;
+export const PROJECT_MODULE_ACCESS_ROLES = [
+  RoleCode.COMPANY_ADMIN,
+  RoleCode.PROJECT_MANAGER,
+  RoleCode.OPERATIONAL_MANAGER,
+  RoleCode.DIRECTOR,
+  RoleCode.SUPERVISOR,
+  RoleCode.STAFF,
+  RoleCode.FINANCE,
+  RoleCode.CRM_LEAD,
+  RoleCode.SALES,
+] as const;
+export const FINANCE_MODULE_ACCESS_ROLES = [RoleCode.FINANCE, RoleCode.DIRECTOR] as const;
+
 const EXTERNAL_ROLE_CODES: Record<RoleCode, string> = {
   [RoleCode.SUPER_ADMIN]: 'ROLE-SUPER-ADMIN',
   [RoleCode.COMPANY_ADMIN]: 'ROLE-COMPANY-ADMIN',

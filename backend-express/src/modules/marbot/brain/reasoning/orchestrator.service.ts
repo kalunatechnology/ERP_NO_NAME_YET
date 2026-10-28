@@ -23,7 +23,7 @@ async function resourceAnswer(req: Request, plan: ResourcePlan, scope: NativeSco
   const rendered = await renderGroundedAgentAnswer(question, { resource: result.resource, operation: plan.operation,
     count: result.count, aggregate: result.aggregate, rows: result.rows, truncated: result.truncated });
   return { content: rendered.content,
-    tools: ['resource.query'], sources: [result.source] };
+    tools: ['erp.query'], sources: [result.source] };
 }
 
 function resolveSpecificAccessInquiry(message: string, scope: NativeScope): MarbotAnswer | null {

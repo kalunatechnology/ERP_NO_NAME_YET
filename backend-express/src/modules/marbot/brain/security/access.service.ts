@@ -1,6 +1,11 @@
 import { Prisma, RoleCode } from '@prisma/client';
 import prisma from '../../../../config/database';
 import { ForbiddenError } from '../../../../utils/errors';
+import {
+  CRM_MODULE_ACCESS_ROLES,
+  FINANCE_MODULE_ACCESS_ROLES,
+  PROJECT_MODULE_ACCESS_ROLES,
+} from '../../../../types/roles';
 import { loadAuthenticationSnapshot, loadUserAccessContext } from '../../../accounts/access-context.service';
 import { MarbotTenantConfig } from '../types';
 import { MarbotProjectScope, MarbotRuntimeAuthority } from '../types';
@@ -16,6 +21,18 @@ const PERMISSION_MODULE: Record<string, string> = {
   USE_MARBOT: 'MARBOT', READ_GENERAL: 'GENERAL', READ_PROJECT: 'PROJECTS', READ_TASK: 'PROJECTS',
   READ_FINANCE_SUMMARY: 'FINANCE', READ_PROJECT_FINANCE: 'FINANCE', READ_COMPANY_FINANCE: 'FINANCE',
   READ_TICKET: 'CRM', READ_CRM_DEALS: 'CRM',
+};
+
+/** Maps Marbot's resource permissions to the same active-role gates used by
+ * canonical ERP API routers. Module entitlement is checked separately. */
+const SYSTEM_ROLE_PERMISSION_ACCESS: Record<string, readonly RoleCode[]> = {
+  READ_PROJECT: PROJECT_MODULE_ACCESS_ROLES,
+  READ_TASK: PROJECT_MODULE_ACCESS_ROLES,
+  READ_FINANCE_SUMMARY: FINANCE_MODULE_ACCESS_ROLES,
+  READ_PROJECT_FINANCE: FINANCE_MODULE_ACCESS_ROLES,
+  READ_COMPANY_FINANCE: FINANCE_MODULE_ACCESS_ROLES,
+  READ_TICKET: CRM_MODULE_ACCESS_ROLES,
+  READ_CRM_DEALS: CRM_MODULE_ACCESS_ROLES,
 };
 
 export const roleDefaults: Partial<Record<RoleCode, string>> = { DIRECTOR: 'EXECUTIVE' };
@@ -191,6 +208,33 @@ export async function buildMarbotRuntimeAuthority(
   );
   if (!permissions.includes('USE_MARBOT')) throw new ForbiddenError();
   const enabledModuleSet = new Set<string>(access.enabledModules.map(String));
+  // For every module with a canonical role gate, mirror role+module read access
+  // into Marbot's permission-scoped resource map when no explicit Marbot grant
+  // or denial exists. Explicit role-permission records remain authoritative.
+  const role = access.activeRoleCode!;
+  const derivedCodes = MARBOT_PERMISSION_CODES.filter(code => {
+    const module = PERMISSION_MODULE[code];
+    const allowedRoles = SYSTEM_ROLE_PERMISSION_ACCESS[code];
+    return Boolean(module && allowedRoles && enabledModuleSet.has(module)
+      && allowedRoles.includes(role) && !permissions.includes(code));
+  });
+  if (derivedCodes.length) {
+    const definitions = await db.iam_permission.findMany({
+      where: { permission_code: { in: [...derivedCodes] } }, select: { id: true, permission_code: true },
+    });
+    const explicit = definitions.length ? await db.iam_role_permission.findMany({
+      where: {
+        role_id: access.activeRoleId!, tenant_id: tenantId, company_id: companyId,
+        permission_id: { in: definitions.map((item: { id: string }) => item.id) },
+      }, select: { permission_id: true },
+    }) : [];
+    const explicitIds = new Set(explicit.map((item: { permission_id: string | null }) => item.permission_id));
+    const permissionIds = new Map(definitions.map((item: { id: string; permission_code: string }) => [item.permission_code, item.id]));
+    for (const code of derivedCodes) {
+      const permissionId = permissionIds.get(code);
+      if (!permissionId || !explicitIds.has(permissionId)) permissions.push(code);
+    }
+  }
   const effectivePermissions = permissions.filter((code) => enabledModuleSet.has(PERMISSION_MODULE[code]));
   const user = { id: userId, roles: access.roles, active_role_code: access.activeRoleCode };
   const accessWhere = await ProjectsService.projectAccessWhere(user, companyId, db);

@@ -8,6 +8,7 @@ import { env } from '../../../config/env';
 import prisma from '../../../config/database';
 import { getCrudModelMetadata } from '../../../utils/crud-factory';
 import { callMarbotErp } from '../routing/transport';
+import { SALES_MODULE_ACCESS_ROLES } from '../../../types/roles';
 import { isExplicitWriteRequest, isProcedureQuestion } from '../brain/reasoning/intent';
 import { resolveResourceIntent, resourceIntentTerms, rankResourceCandidates, shortestResourcePaths } from './resource-semantics';
 import { fieldMeaning, resourceMeaning } from './resource-knowledge';
@@ -38,6 +39,7 @@ export type ResourcePlan = z.infer<typeof resourcePlanSchema>;
 function canDiscover(resource: typeof catalog.resources[number], scope: NativeScope) {
   const module = resource.module;
   if (!scope.enabledModules.includes(module) || scope.blockedReadModules?.includes(module)) return false;
+  if (module === 'SALES') return SALES_MODULE_ACCESS_ROLES.includes(scope.roleCode as typeof SALES_MODULE_ACCESS_ROLES[number]);
   if (module === 'FINANCE') return scope.permissions.includes('READ_COMPANY_FINANCE');
   if (module === 'PROJECTS') {
     if (projectFinancialModels.has(resource.model) && !canReadProjectFinance(scope)) return false;
@@ -279,7 +281,7 @@ export async function executeResourceRead(req: Request, raw: unknown, scope: Nat
     if (plan.groupBy) params.set('group_by', plan.groupBy);
     if (plan.sum) params.set('sum', plan.sum);
     const aggregate = await callResourceApi(req, definition.path + 'summary?' + params);
-    return { source: `ERP:resource:${plan.resource}`, resource: plan.resource, aggregate, count: undefined, rows: [], truncated: false };
+    return { source: `ERP:database:${definition.databaseSchema}.${definition.tableName}`, resource: plan.resource, aggregate, count: undefined, rows: [], truncated: false };
   }
   const result = await callResourceApi(req, definition.path + '?' + params);
   if (!Number.isInteger(result.count) || !Array.isArray(result.results)) throw new ValidationError('Kontrak respons resource tidak sesuai; jumlah tidak dapat dipastikan.');
@@ -327,7 +329,7 @@ export async function executeResourceRead(req: Request, raw: unknown, scope: Nat
   const outputRows = plan.select
     ? rows.map((row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => plan.select!.includes(key) || key === 'related')))
     : rows;
-  return { source: `ERP:resource:${plan.resource}`, resource: plan.resource, count: result.count, rows: outputRows, truncated: plan.operation === 'list' && result.count > rows.length };
+  return { source: `ERP:database:${definition.databaseSchema}.${definition.tableName}`, resource: plan.resource, count: result.count, rows: outputRows, truncated: plan.operation === 'list' && result.count > rows.length };
 }
 
 /** A model can select a catalogue entry; it cannot invent a route, SQL or successful result. */

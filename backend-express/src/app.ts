@@ -18,7 +18,13 @@ import { authenticate } from './middlewares/auth.middleware';
 import { resolveTenant } from './middlewares/tenant.middleware';
 import { auditLog } from './middlewares/audit.middleware';
 import { enforceSuperAdminReadOnly, requireActiveRole, requireRole, restrictActiveRoleMutations } from './middlewares/rbac.middleware';
-import { RoleCode } from './types/roles';
+import {
+  CRM_MODULE_ACCESS_ROLES,
+  FINANCE_MODULE_ACCESS_ROLES,
+  PROJECT_MODULE_ACCESS_ROLES,
+  SALES_MODULE_ACCESS_ROLES,
+  RoleCode,
+} from './types/roles';
 import { requireModuleAccess } from './middlewares/entitlement.middleware';
 import { errorHandler } from './middlewares/error.middleware';
 import { enforceTransactionIdempotency } from './middlewares/idempotency.middleware';
@@ -227,24 +233,14 @@ export function createApp(): Express {
   apiV1.use(
     '/crm',
     requireModuleAccess('CRM'),
-    requireActiveRole(RoleCode.COMPANY_ADMIN, RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR),
+    requireActiveRole(...CRM_MODULE_ACCESS_ROLES),
     crmRouter,
   );
-  apiV1.use('/sales', requireModuleAccess('SALES'), requireActiveRole(RoleCode.COMPANY_ADMIN, RoleCode.CRM_LEAD, RoleCode.SALES, RoleCode.PROJECT_MANAGER, RoleCode.DIRECTOR), salesRouter);
+  apiV1.use('/sales', requireModuleAccess('SALES'), requireActiveRole(...SALES_MODULE_ACCESS_ROLES), salesRouter);
   apiV1.use(
     '/projects',
     requireModuleAccess('PROJECTS'),
-    requireActiveRole(
-      RoleCode.COMPANY_ADMIN,
-      RoleCode.PROJECT_MANAGER,
-      RoleCode.OPERATIONAL_MANAGER,
-      RoleCode.DIRECTOR,
-      RoleCode.SUPERVISOR,
-      RoleCode.STAFF,
-      RoleCode.FINANCE,
-      RoleCode.CRM_LEAD,
-      RoleCode.SALES,
-    ),
+    requireActiveRole(...PROJECT_MODULE_ACCESS_ROLES),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
       message: 'Role Director memiliki akses preview seluruh proyek.',
@@ -262,7 +258,7 @@ export function createApp(): Express {
   apiV1.use(
     '/finance',
     requireModuleAccess('FINANCE'),
-    requireActiveRole(RoleCode.FINANCE, RoleCode.DIRECTOR),
+    requireActiveRole(...FINANCE_MODULE_ACCESS_ROLES),
     restrictActiveRoleMutations({
       restrictedRoles: [RoleCode.DIRECTOR],
       message: 'Role Director memiliki akses preview Finance; seluruh mutasi operasional dinonaktifkan.',
