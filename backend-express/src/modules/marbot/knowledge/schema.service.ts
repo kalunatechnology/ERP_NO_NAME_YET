@@ -15,19 +15,20 @@ export function readableTables(scope: NativeScope): string[] {
   if (scope.enabledModules.includes('FINANCE') && scope.permissions.some(p => ['READ_PROJECT_FINANCE', 'READ_COMPANY_FINANCE', 'READ_FINANCE_SUMMARY'].includes(p))) tables.push('fin_project_cost_entry');
   if (scope.enabledModules.includes('CRM') && scope.permissions.includes('READ_TICKET')) tables.push('service_case');
   const blocked = new Set(scope.blockedReadModules || []);
-  return [...new Set([...tables.filter(table => !blocked.has(table.startsWith('project_') ? 'PROJECTS' : table.startsWith('fin_') ? 'FINANCE' : 'CRM')), ...resourceCatalog(scope).map(item => item.model)])];
+  const nativeTables = tables.filter(table => !blocked.has(table.startsWith('project_') ? 'PROJECTS' : table.startsWith('fin_') ? 'FINANCE' : 'CRM'));
+  return [...new Set([...nativeTables, ...resourceCatalog(scope).map(item => item.tableName)])];
 }
 
 export async function discoverMarbotSchema(scope: NativeScope, db = prisma, requestedTables?: string[]) {
   const tables = readableTables(scope).filter(table => !requestedTables || requestedTables.includes(table));
   if (!tables.length) return { source: 'database', tables: [], columns: [], constraints: [] };
-  const columns = await db.$queryRaw(Prisma.sql`
+  const columns = await db.$queryRaw<Array<{ table_name: string; column_name: string; data_type: string; is_nullable: string }>>(Prisma.sql`
     SELECT table_name::text AS table_name, column_name::text AS column_name, data_type::text AS data_type, is_nullable::text AS is_nullable
     FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name IN (${Prisma.join(tables)})
     ORDER BY table_name, ordinal_position
   `);
-  const constraints = await db.$queryRaw(Prisma.sql`
+  const constraints = await db.$queryRaw<Array<{ table_name: string; name: string; type: string; definition: string }>>(Prisma.sql`
     SELECT c.relname::text AS table_name, con.conname::text AS name, con.contype::text AS type,
       pg_get_constraintdef(con.oid, true) AS definition
     FROM pg_constraint con
@@ -66,7 +67,7 @@ export function searchMarbotSchema(scope: NativeScope, query: string, limit = 3)
     const hits: string[] = [];
     let fieldScore = 0;
     for (const field of resource.fields) {
-      const fieldTerms = schemaWords(field.name.replace(/_/g, ' '));
+      const fieldTerms = schemaWords([field.name.replace(/_/g, ' '), field.label, ...field.terms].join(' '));
       const matching = terms.filter(term => fieldTerms.some(candidate => candidate === term || candidate.startsWith(term) || term.startsWith(candidate)));
       if (matching.length) {
         fieldScore += matching.length * 1.4;

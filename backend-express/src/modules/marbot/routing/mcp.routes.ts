@@ -64,7 +64,13 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
           { name: 'erp.schema', description: 'Read live database columns and physical primary/foreign/check constraints for permitted resources.', inputSchema: { type: 'object', properties: { tables: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
           { name: 'erp.query', description: 'Run a typed list/count/aggregate via canonical ERP APIs. No SQL. Uses actual fields and user scope. Mutation requests are rejected.', inputSchema: { type: 'object', properties: {
             resource: { type: 'string' }, operation: { enum: ['list', 'count', 'aggregate'] },
-            filters: { type: 'object', additionalProperties: { type: ['string', 'number', 'boolean'] } }, search: { type: 'string' }, groupBy: { type: 'string' }, sum: { type: 'string' },
+            select: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 40 },
+            orderBy: { type: 'object', properties: { field: { type: 'string' }, direction: { enum: ['asc', 'desc'] } }, required: ['field', 'direction'], additionalProperties: false },
+            limit: { type: 'integer', minimum: 1, maximum: 100 },
+            filters: { type: 'object', additionalProperties: { anyOf: [
+              { type: ['string', 'number', 'boolean'] },
+              { type: 'array', minItems: 1, maxItems: 100, items: { type: ['string', 'number', 'boolean'] } },
+            ] } }, search: { type: 'string' }, groupBy: { type: 'string' }, sum: { type: 'string' },
             related: { type: 'object', properties: { resource: { type: 'string' }, sourceField: { type: 'string' }, targetField: { type: 'string' } }, required: ['resource', 'sourceField', 'targetField'], additionalProperties: false },
             relatedFilter: { type: 'object', properties: { path: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'string' } }, field: { type: 'string' }, value: { type: ['string', 'number', 'boolean'] } }, required: ['path', 'field', 'value'], additionalProperties: false },
           }, required: ['resource', 'operation'], additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },

@@ -1,3 +1,5 @@
+import { resourceMeaning } from './resource-knowledge';
+
 /** Curated business language mapped to canonical ERP resources. Keep this
  * registry small and explicit; the Prisma schema remains the authority for
  * fields and relations, while these aliases only help identify user intent.
@@ -118,7 +120,7 @@ function inferredResourceTerms(resource: { key: string; model: string }): string
 }
 
 export function resourceIntentTerms(key: string): string[] {
-  return RESOURCE_TERMS[key] ?? [];
+  return [...new Set([...(RESOURCE_TERMS[key] ?? []), ...resourceMeaning(key).terms])];
 }
 
 export type ResourceCandidate = { key: string; module: string; model: string; score: number; matchedTerms: string[] };
@@ -156,7 +158,7 @@ export function rankResourceCandidates<T extends { key: string; module: string; 
       score += 100;
       matches.push(resource.key);
     }
-    for (const term of RESOURCE_TERMS[resource.key] ?? []) {
+    for (const term of resourceIntentTerms(resource.key)) {
       if (containsPhrase(question, term)) {
         const termScore = 4 + Math.min(normalize(term).split(' ').length, 4) * 0.75;
         if (termScore > score) score = termScore;

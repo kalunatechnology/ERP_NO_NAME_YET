@@ -10,6 +10,7 @@ import { getCrudModelMetadata } from '../../../utils/crud-factory';
 import { callMarbotErp } from '../routing/transport';
 import { isExplicitWriteRequest, isProcedureQuestion } from '../brain/reasoning/intent';
 import { resolveResourceIntent, resourceIntentTerms, rankResourceCandidates, shortestResourcePaths } from './resource-semantics';
+import { fieldMeaning, resourceMeaning } from './resource-knowledge';
 
 const sensitive = /password|secret|token|credential|private_key|api_key|access_key|authorization|cookie|connection_string/i;
 const projectFinancialModels = new Set(['project_expense', 'project_budget_line', 'project_financial_snapshot', 'project_evm_record']);
@@ -23,10 +24,13 @@ function isSupportedRelationKey(field: { type: string; kind: string }): boolean 
 }
 export const resourcePlanSchema = z.object({
   resource: z.string().max(120), operation: z.enum(['list', 'count', 'aggregate', 'create', 'update']),
+  select: z.array(z.string().max(100)).min(1).max(40).optional(),
+  orderBy: z.object({ field: z.string().max(100), direction: z.enum(['asc', 'desc']) }).strict().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
   groupBy: z.string().max(100).optional(), sum: z.string().max(100).optional(),
   related: z.object({ resource: z.string().max(120), sourceField: z.string().max(100), targetField: z.string().max(100) }).strict().optional(),
   relatedFilter: z.object({ path: z.array(z.string().max(120)).min(2).max(4), field: z.string().max(100), value: z.union([z.string().max(2000), z.number().finite(), z.boolean()]) }).strict().optional(),
-  id: z.string().uuid().optional(), filters: z.record(z.union([z.string().max(2000), z.number().finite(), z.boolean()])).default({}),
+  id: z.string().uuid().optional(), filters: z.record(z.union([z.string().max(2000), z.number().finite(), z.boolean(), z.array(z.union([z.string().max(2000), z.number().finite(), z.boolean()])).min(1).max(100)])).default({}),
   search: z.string().max(160).optional(), payload: z.record(z.unknown()).optional(),
 }).strict();
 export type ResourcePlan = z.infer<typeof resourcePlanSchema>;
@@ -87,7 +91,18 @@ export function resourceDefinition(key: string, scope: NativeScope, write = fals
         ['tenant_id', 'company_id'].includes(sourceFieldName!) || ['tenant_id', 'company_id'].includes(targetFieldName!)) return [];
     return [{ resource: target.key, relation: field.name, sourceField: sourceFieldName, targetField: targetFieldName, direction, cardinality }];
   });
-  return { ...resource, fields: visibleFields,
+  const fields = visibleFields.map(field => {
+    const enumValues = field.kind === 'enum'
+      ? Prisma.dmmf.datamodel.enums.find(item => item.name === field.type)?.values.map(item => item.name) ?? []
+      : [];
+    const physicalField = prismaModel?.fields.find((item: any) => item.name === field.name);
+    return { ...field, databaseColumn: physicalField?.dbName || field.name,
+      isUnique: Boolean(physicalField?.isUnique),
+      isForeignKey: relationships.some((relation: { sourceField: string }) => relation.sourceField === field.name),
+      ...fieldMeaning(resource.key, field.name, enumValues) };
+  });
+  return { ...resource, databaseSchema: prismaModel?.schema || 'public', tableName: prismaModel?.dbName || resource.model,
+    meaning: resourceMeaning(resource.key), fields,
     intentTerms: resourceIntentTerms(resource.key), relationships };
 }
 
@@ -100,6 +115,19 @@ export function validateResourcePlan(raw: unknown, scope: NativeScope): Resource
   const plan = resourcePlanSchema.parse(raw);
   const write = ['create', 'update'].includes(plan.operation);
   const definition = resourceDefinition(plan.resource, scope, write);
+  if (plan.select) {
+    if (plan.operation !== 'list') throw new ValidationError('Pemilihan kolom hanya untuk operasi list.');
+    if (new Set(plan.select).size !== plan.select.length || plan.select.some(name => {
+      const field = definition.fields.find(item => item.name === name);
+      return !field || ['Json', 'Bytes'].includes(field.type);
+    })) throw new ValidationError('Kolom terpilih tidak valid atau tidak tersedia dalam scope pengguna.');
+  }
+  if (plan.orderBy) {
+    if (plan.operation !== 'list') throw new ValidationError('Pengurutan hanya untuk operasi list.');
+    const field = definition.fields.find(item => item.name === plan.orderBy!.field);
+    if (!field || ['Json', 'Bytes'].includes(field.type)) throw new ValidationError('Kolom pengurutan tidak valid atau tidak tersedia dalam scope pengguna.');
+  }
+  if (plan.limit && plan.operation !== 'list') throw new ValidationError('Batas jumlah baris hanya untuk operasi list.');
   if (plan.related) {
     if (plan.operation !== 'list') throw new ValidationError('Relasi hanya untuk query list.');
     const target = resourceDefinition(plan.related.resource, scope);
@@ -132,24 +160,25 @@ export function validateResourcePlan(raw: unknown, scope: NativeScope): Resource
   if ((plan.groupBy || plan.sum) && plan.operation !== 'aggregate') throw new ValidationError('Field agregasi hanya untuk operasi aggregate.');
   if (plan.groupBy && !definition.fields.some(f => f.name === plan.groupBy && (['String', 'Boolean'].includes(f.type) || f.kind === 'enum'))) throw new ValidationError('Field grouping tidak valid.');
   if (plan.sum && !definition.fields.some(f => f.name === plan.sum && ['Int', 'Float', 'Decimal', 'BigInt'].includes(f.type))) throw new ValidationError('Field penjumlahan tidak valid.');
-  for (const key of Object.keys(plan.filters)) {
+  for (const [key, rawValue] of Object.entries(plan.filters)) {
     const field = definition.fields.find(f => f.name === key);
     if (!field || !['String', 'Boolean', 'Int', 'BigInt', 'Float', 'Decimal', 'DateTime'].includes(field.type) && field.kind !== 'enum' || ['tenant_id', 'company_id'].includes(key)) throw new ValidationError(`Filter ${key} tidak didukung oleh tipe field Prisma aktual.`);
-    const value = plan.filters[key];
-    if (field.type === 'Boolean' && typeof value !== 'boolean') throw new ValidationError(`Tipe filter ${key} harus boolean.`);
-    if (['String', 'DateTime'].includes(field.type) || field.kind === 'enum') {
-      if (typeof value !== 'string') throw new ValidationError(`Tipe filter ${key} harus string sesuai schema.`);
-      if (field.type === 'DateTime') {
-        const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
-        if (!dateOnly && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) throw new ValidationError(`Filter ${key} harus berupa tanggal ISO atau timestamp dengan zona waktu.`);
-        const parsed = new Date(value);
-        if (!Number.isFinite(parsed.getTime()) || dateOnly && parsed.toISOString().slice(0, 10) !== value) throw new ValidationError(`Tanggal filter ${key} tidak valid.`);
-      }
-      if (field.kind === 'enum' && !Prisma.dmmf.datamodel.enums.find(e => e.name === field.type)?.values.some(v => v.name === value)) throw new ValidationError(`Nilai filter ${key} tidak ada pada enum ${field.type}.`);
-    } else if (field.type === 'Int' && (typeof value !== 'number' || !Number.isSafeInteger(value))) throw new ValidationError(`Filter ${key} harus bilangan bulat.`);
-    else if (field.type === 'BigInt' && !(typeof value === 'string' && /^-?\d+$/.test(value) || typeof value === 'number' && Number.isSafeInteger(value))) throw new ValidationError(`Filter ${key} harus bilangan bulat.`);
-    else if (field.type === 'Float' && (typeof value !== 'number' || !Number.isFinite(value))) throw new ValidationError(`Filter ${key} harus angka.`);
-    else if (field.type === 'Decimal' && !(typeof value === 'number' && Number.isFinite(value) || typeof value === 'string' && /^-?(?:\d+\.?\d*|\.\d+)$/.test(value))) throw new ValidationError(`Filter ${key} harus angka desimal.`);
+    for (const value of Array.isArray(rawValue) ? rawValue : [rawValue]) {
+      if (field.type === 'Boolean' && typeof value !== 'boolean') throw new ValidationError(`Tipe filter ${key} harus boolean.`);
+      if (['String', 'DateTime'].includes(field.type) || field.kind === 'enum') {
+        if (typeof value !== 'string') throw new ValidationError(`Tipe filter ${key} harus string sesuai schema.`);
+        if (field.type === 'DateTime') {
+          const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+          if (!dateOnly && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) throw new ValidationError(`Filter ${key} harus berupa tanggal ISO atau timestamp dengan zona waktu.`);
+          const parsed = new Date(value);
+          if (!Number.isFinite(parsed.getTime()) || dateOnly && parsed.toISOString().slice(0, 10) !== value) throw new ValidationError(`Tanggal filter ${key} tidak valid.`);
+        }
+        if (field.kind === 'enum' && !Prisma.dmmf.datamodel.enums.find(e => e.name === field.type)?.values.some(v => v.name === value)) throw new ValidationError(`Nilai filter ${key} tidak ada pada enum ${field.type}.`);
+      } else if (field.type === 'Int' && (typeof value !== 'number' || !Number.isSafeInteger(value))) throw new ValidationError(`Filter ${key} harus bilangan bulat.`);
+      else if (field.type === 'BigInt' && !(typeof value === 'string' && /^-?\d+$/.test(value) || typeof value === 'number' && Number.isSafeInteger(value))) throw new ValidationError(`Filter ${key} harus bilangan bulat.`);
+      else if (field.type === 'Float' && (typeof value !== 'number' || !Number.isFinite(value))) throw new ValidationError(`Filter ${key} harus angka.`);
+      else if (field.type === 'Decimal' && !(typeof value === 'number' && Number.isFinite(value) || typeof value === 'string' && /^-?(?:\d+\.?\d*|\.\d+)$/.test(value))) throw new ValidationError(`Filter ${key} harus angka desimal.`);
+    }
   }
   if (plan.search && !definition.searchFields.length) throw new ValidationError('Resource tidak memiliki pencarian teks.');
   if (write) {
@@ -227,21 +256,23 @@ export async function executeResourceRead(req: Request, raw: unknown, scope: Nat
   const plan = validateResourcePlan(raw, scope);
   if (!['list', 'count', 'aggregate'].includes(plan.operation)) throw new ValidationError('Mutasi memerlukan tiket konfirmasi.');
   const definition = resourceDefinition(plan.resource, scope);
-  const filters: Record<string, string | number | boolean | string[]> = { ...plan.filters };
+  const filters: Record<string, string | number | boolean | Array<string | number | boolean>> = { ...plan.filters };
   if (plan.relatedFilter) {
     const { idField, ids } = await resolveRelatedFilterIds(req, plan, scope);
     const directId = filters[idField];
     if (directId !== undefined) {
-      const directString = String(directId);
-      filters[idField] = directString;
-      const narrowed = ids.filter(id => id === directString);
+      const directIds = (Array.isArray(directId) ? directId : [directId]).map(value => String(value));
+      const narrowed = ids.filter(id => directIds.includes(id));
       ids.splice(0, ids.length, ...narrowed);
       delete filters[idField];
     }
-    filters[`${idField}__in`] = ids;
+    filters[idField] = ids;
   }
-  const params = new URLSearchParams({ page_size: plan.operation === 'count' ? '1' : String(pageSizeOverride ?? (plan.related ? 10 : 30)),
-    ...Object.fromEntries(Object.entries(filters).map(([key, value]) => [key, Array.isArray(value) ? JSON.stringify(value) : String(value)])) });
+  const params = new URLSearchParams({ page_size: plan.operation === 'count' ? '1' : String(pageSizeOverride ?? plan.limit ?? (plan.related ? 10 : 30)) });
+  for (const [key, value] of Object.entries(filters)) {
+    params.set(Array.isArray(value) ? `${key}__in` : key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+  }
+  if (plan.orderBy) params.set('ordering', `${plan.orderBy.direction === 'desc' ? '-' : ''}${plan.orderBy.field}`);
   if (plan.search) params.set('search', plan.search);
   if (plan.operation === 'aggregate') {
     params.delete('page_size');
@@ -293,7 +324,10 @@ export async function executeResourceRead(req: Request, raw: unknown, scope: Nat
       row.related = cache.get(key);
     }
   }
-  return { source: `ERP:resource:${plan.resource}`, resource: plan.resource, count: result.count, rows, truncated: plan.operation === 'list' && result.count > rows.length };
+  const outputRows = plan.select
+    ? rows.map((row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => plan.select!.includes(key) || key === 'related')))
+    : rows;
+  return { source: `ERP:resource:${plan.resource}`, resource: plan.resource, count: result.count, rows: outputRows, truncated: plan.operation === 'list' && result.count > rows.length };
 }
 
 /** A model can select a catalogue entry; it cannot invent a route, SQL or successful result. */
@@ -368,7 +402,8 @@ export function validateGroundedResourcePlan(raw: unknown, scope: NativeScope, r
   const plan = validateResourcePlan(raw, scope);
   const definition = resourceDefinition(plan.resource, scope, ['create', 'update'].includes(plan.operation));
   const values: Array<{ value: unknown; field?: { kind: string } }> = [
-    ...Object.entries(plan.filters).map(([key, value]) => ({ value, field: definition.fields.find(field => field.name === key) })),
+    ...Object.entries(plan.filters).flatMap(([key, value]) => (Array.isArray(value) ? value : [value])
+      .map(item => ({ value: item, field: definition.fields.find(field => field.name === key) }))),
     ...(plan.search ? [{ value: plan.search }] : []),
     ...Object.entries(plan.payload || {}).map(([key, value]) => ({ value, field: definition.fields.find(field => field.name === key) })),
     ...(plan.relatedFilter ? [{ value: plan.relatedFilter.value, field: resourceDefinition(plan.relatedFilter.path.at(-1)!, scope).fields.find(field => field.name === plan.relatedFilter!.field) }] : []),
