@@ -1,30 +1,19 @@
 import type { Request } from 'express';
 import prisma from '../../../../config/database';
-import { answerNative, detectTools, followUpQuestion, isNativeTaskReadQuestion, type AssistantMode, type NativeScope } from './native.service';
+import { answerNative, followUpQuestion, isNativeTaskReadQuestion, type AssistantMode, type NativeScope } from './native.service';
 import type { MarbotAction } from '../actions/action.service';
 import { helperAnswer, systemKnowledgeAnswer } from '../../knowledge/knowledge';
 import { validateNativePlan } from './planner.service';
 import { planResourceQuestion, type ResourcePlan } from '../../knowledge/resource.service';
 import { discoverMarbotSchema } from '../../knowledge/schema.service';
 import { understandMarbotQuestion } from './understanding.service';
-import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion } from './intent';
 import { RetrievalGatewayService } from '../../knowledge-engine/gateway/retrieval-gateway.service';
-import { renderConversationalAnswer, renderGroundedAgentAnswer } from '../models/provider.service';
+import { renderClarificationAnswer, renderConversationalAnswer, renderGroundedAgentAnswer } from '../models/provider.service';
 import { callMcpErpQueryTool } from '../../routing/mcp-tools.service';
 
 export type MarbotAnswer = { content: string; tools: string[]; sources: string[]; action?: MarbotAction };
 export type MarbotDecision = { answer: MarbotAnswer; understanding: { source: 'llm' | 'local' | 'explicit';
   route: string; status: string; confidence?: number; model?: string } };
-const clarification = {
-  entity: 'Jenis data yang dimaksud belum spesifik. Sebutkan entitasnya, misalnya customer, opportunity, quotation, order, invoice, tiket, atau proyek. Jika ingin menghubungkan dua jenis data, sebutkan keduanya. Belum ada data yang diambil.',
-  operation: 'Tujuan Anda ingin melihat data, mengetahui caranya, atau meminta perubahan data? Sebutkan satu tindakan yang dimaksud.',
-  record: 'Record yang dimaksud belum teridentifikasi. Sebutkan nama lengkap dan konteks project/meeting atau identitas record yang tepat.',
-  fields: 'Data untuk tindakan ini belum lengkap. Sebutkan record yang dimaksud dan nilai yang ingin dibuat atau diubah; saya belum menyiapkan perubahan.',
-  multiple: 'Pertanyaan ini memuat beberapa tujuan yang perlu dipisahkan. Tanyakan satu tindakan atau satu kelompok data terlebih dahulu.',
-  unsupported: 'Belum ada tool atau referensi terverifikasi untuk menjalankan kebutuhan ini melalui chat. Sebutkan fitur dan tujuan yang lebih spesifik; saya belum mengambil atau mengubah data.',
-  uncertain: 'Saya belum yakin memahami maksud Anda. Sebutkan fitur, tindakan yang diinginkan, dan record atau periode bila terkait data. Belum ada perubahan dijalankan.',
-};
-
 async function resourceAnswer(req: Request, plan: ResourcePlan, scope: NativeScope, question: string): Promise<MarbotAnswer> {
   if (['create', 'update'].includes(plan.operation)) return {
     content: `Usulan perubahan ${plan.resource}:\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n\nBelum disimpan. Konfirmasi diperlukan; backend memvalidasi hak akses dan membaca ulang hasil.`,
@@ -35,13 +24,6 @@ async function resourceAnswer(req: Request, plan: ResourcePlan, scope: NativeSco
     count: result.count, aggregate: result.aggregate, rows: result.rows, truncated: result.truncated });
   return { content: rendered.content,
     tools: ['resource.query'], sources: [result.source] };
-}
-
-function enforcePersonalOpportunityScope(plan: ResourcePlan, message: string, scope: NativeScope): ResourcePlan {
-  const asksForPersonalOpportunities = plan.resource === 'crm.opportunities'
-    && /\b(?:saya|aku|milik saya|punya saya|saya punya|saya memiliki|my|mine|i have)\b/i.test(message);
-  if (!asksForPersonalOpportunities) return plan;
-  return { ...plan, filters: { ...plan.filters, owner_user_id: scope.userId } };
 }
 
 function resolveSpecificAccessInquiry(message: string, scope: NativeScope): MarbotAnswer | null {
@@ -88,21 +70,23 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
   signal: AbortSignal, previousQuestion?: string, db = prisma): Promise<MarbotDecision> {
   const explicit = /^\s*(?:data|resource)\s+\{/.test(message);
 
-  // Early check: Conversational confirmation of lack of access (e.g. "jadi saya tidak ada akses ke finance...")
-  const specificAccessEarly = resolveSpecificAccessInquiry(message, scope);
-  if (specificAccessEarly) {
+  const fallbackQuestion = followUpQuestion(message, previousQuestion);
+  const result = explicit ? null : await understandMarbotQuestion(message, scope, signal, previousQuestion);
+  if (!explicit && result?.status !== 'ready') {
+    if (result?.status === 'invalid') {
+      const rendered = await renderClarificationAnswer(message,
+        'Rencana belum sesuai katalog resource atau aturan query yang diizinkan.', signal);
+      return { understanding: { source: 'llm', route: 'clarify', status: 'recovered', model: rendered.model },
+        answer: { content: rendered.content, tools: ['llm.clarification'], sources: [] } };
+    }
+    const content = result?.status === 'unconfigured'
+      ? 'Asisten AI belum aktif karena provider bahasa belum dikonfigurasi. Silakan atur MARBOT_AI_API_KEY dan MARBOT_AI_MODEL pada secret environment backend.'
+      : 'Asisten AI belum dapat memproses permintaan ini karena layanan model tidak merespons dengan rencana yang valid. Coba lagi setelah layanan pulih.';
     return {
-      understanding: { source: 'local', route: 'access', status: 'ready' },
-      answer: specificAccessEarly,
+      understanding: { source: 'local', route: 'model-unavailable', status: result?.status ?? 'unavailable' },
+      answer: { content, tools: [], sources: [] },
     };
   }
-
-  const fallbackQuestion = followUpQuestion(message, previousQuestion);
-  if (isIntentCorrection(message) && fallbackQuestion !== message) return {
-    understanding: { source: 'local', route: 'guide', status: 'recovered' },
-    answer: await answerNative(fallbackQuestion, mode, scope, db),
-  };
-  const result = explicit ? null : await understandMarbotQuestion(message, scope, signal, previousQuestion);
   if (result?.status === 'ready') {
     const intent = result.intent;
     const understanding = { source: 'llm' as const, route: intent.route, status: 'ready', confidence: intent.confidence, model: result.model };
@@ -119,7 +103,7 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
         tools: ['help.procedure'], sources: [`ERP:curated-procedure:${intent.procedure.topic}:${intent.procedure.operation ?? 'overview'}:baseline`] } };
       const guidance = helperAnswer(message, scope,
         { topic: intent.procedure.topic, operation: intent.procedure.operation ?? undefined }, rule);
-      const data = await resourceAnswer(req, enforcePersonalOpportunityScope(intent.plan, message, scope), scope, message);
+      const data = await resourceAnswer(req, intent.plan, scope, message);
       return { understanding, answer: { content: `${guidance}\n\n---\n\n${data.content}`,
         tools: ['help.procedure', ...data.tools], sources: [
           rule.provenance?.snapshotId
@@ -191,7 +175,12 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
         },
       };
     }
-    if (intent.route === 'clarify') return { understanding, answer: { content: clarification[intent.reason], tools: ['intent.clarification'], sources: [] } };
+    if (intent.route === 'clarify') {
+      const rendered = await renderClarificationAnswer(message, intent.reason, signal);
+      return { understanding: { ...understanding, model: rendered.model }, answer: {
+        content: rendered.content, tools: ['llm.clarification'], sources: [],
+      } };
+    }
     if (intent.route === 'access') {
       const specific = resolveSpecificAccessInquiry(message, scope);
       if (specific) return { understanding, answer: specific };
@@ -200,7 +189,7 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
     if (intent.route === 'schema') return { understanding, answer: {
       content: `Metadata database aktual sesuai akses Anda:\n\n\`\`\`json\n${JSON.stringify(await discoverMarbotSchema(scope, db, intent.tables), null, 2)}\n\`\`\`\nMetadata tidak memberi hak tambahan.`,
       tools: ['schema.discovery'], sources: ['ERP:database-metadata'] } };
-    if (intent.route === 'resource') return { understanding, answer: await resourceAnswer(req, enforcePersonalOpportunityScope(intent.plan, message, scope), scope, message) };
+    if (intent.route === 'resource') return { understanding, answer: await resourceAnswer(req, intent.plan, scope, message) };
     if (intent.route === 'native') {
       const planned = validateNativePlan(intent.plan, message, intent.plan.type === 'read');
       if (planned) {
@@ -211,31 +200,14 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
       }
     }
   }
-  // Missing credentials/provider failure use the verified local path once.
-  // Never retry a failed intent with a second model that chooses another goal.
-  const understanding = { source: explicit ? 'explicit' as const : 'local' as const,
-    route: 'fallback', status: explicit ? 'explicit' : result?.status ?? 'unconfigured' };
-  if (!explicit && /^(?:halo|hai|hi|hello|pagi|selamat pagi|siang|selamat siang|sore|selamat sore|malam|selamat malam|terima kasih|makasih|thanks|thank you)[!.?\s]*$/i.test(message.trim())) {
-    const rendered = await renderConversationalAnswer(message, previousQuestion, signal);
-    return { understanding: { ...understanding, route: 'conversation', model: rendered.model }, answer: {
-      content: rendered.content, tools: ['llm.conversation'], sources: [],
-    } };
+  if (!explicit) {
+    const rendered = await renderClarificationAnswer(message, 'Rencana belum lolos validasi keamanan backend.', signal);
+    return { understanding: { source: 'llm', route: 'plan-rejected', status: 'invalid', model: rendered.model },
+      answer: { content: rendered.content, tools: ['llm.clarification'], sources: [] } };
   }
-  const taskRead = isNativeTaskReadQuestion(fallbackQuestion);
-  const resourcePlan = taskRead || isProcedureQuestion(fallbackQuestion) ? null : await planResourceQuestion(fallbackQuestion, scope, signal, false);
+
+  const understanding = { source: 'explicit' as const, route: 'explicit', status: 'explicit' };
+  const resourcePlan = await planResourceQuestion(message, scope, signal, false);
   if (resourcePlan) return { understanding, answer: await resourceAnswer(req, resourcePlan, scope, message) };
-  if (/\b(schema|skema|foreign key|primary key|relasi tabel|kolom database)\b/i.test(message)) return { understanding, answer: {
-    content: `Metadata database aktual sesuai permission tool Anda:\n\n\`\`\`json\n${JSON.stringify(await discoverMarbotSchema(scope, db), null, 2)}\n\`\`\`\n\nMetadata tidak memberikan akses query atau mutasi tambahan.`,
-    tools: ['schema.discovery'], sources: ['ERP:database-metadata'] } };
-  if (isDataReadQuestion(fallbackQuestion) && !detectTools(fallbackQuestion).length) return {
-    understanding: { ...understanding, route: 'clarify' },
-    answer: { content: 'Permintaan data ini belum dapat dipetakan ke tool baca yang sesuai. Sebutkan jenis record dan filter yang diperlukan, misalnya proyek, periode, atau status. Data aktual belum diambil.', tools: ['intent.clarification'], sources: [] },
-  };
-
-  const specificAccessFallback = resolveSpecificAccessInquiry(message, scope);
-  if (specificAccessFallback) {
-    return { understanding: { ...understanding, route: 'access' }, answer: specificAccessFallback };
-  }
-
-  return { understanding, answer: await answerNative(fallbackQuestion, mode, scope, db) };
+  return { understanding, answer: { content: 'Format permintaan data terstruktur tidak valid. Belum ada data yang diambil.', tools: ['intent.rejected'], sources: [] } };
 }

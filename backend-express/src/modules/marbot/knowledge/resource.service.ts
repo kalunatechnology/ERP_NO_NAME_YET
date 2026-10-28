@@ -323,9 +323,7 @@ export async function planResourceQuestion(request: string, scope: NativeScope, 
       const allowedQuestionWords = new Set(['berapa', 'how', 'many', 'much', 'jumlah', 'total', 'hitung', 'count', 'saya', 'aku', 'kami', 'kita', 'i', 'my', 'have', 'memiliki', 'punya', 'milik', 'ada', 'yang', 'data', 'record', 'records']);
       const extraTerms = residual.trim().split(/\s+/).filter(Boolean);
       if (extraTerms.every(word => allowedQuestionWords.has(word))) {
-        const personalOpportunity = candidate.key === 'crm.opportunities' && /\b(?:saya|aku|milik saya|punya saya|saya punya|saya memiliki|my|i have)\b/i.test(request);
-        const filters = personalOpportunity ? { owner_user_id: scope.userId } : {};
-        return validateResourcePlan({ resource: candidate.key, operation: 'count', filters }, scope);
+        return validateResourcePlan({ resource: candidate.key, operation: 'count' }, scope);
       }
     }
   }

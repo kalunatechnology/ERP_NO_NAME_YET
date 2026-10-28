@@ -16,10 +16,10 @@ antarserver. Endpoint lama hanya dipakai bila `MARBOT_RUNTIME=external`.
 3. Build backend/frontend dan restart melalui prosedur deployment ERP.
 4. Aktifkan modul MARBOT dan permission USE_MARBOT pada perusahaan/peran yang
    membutuhkan. Izin PROJECTS, FINANCE, CRM tetap diperiksa di server.
-5. Untuk pemahaman bahasa dengan LLM, atur `MARBOT_AI_API_KEY` dan `MARBOT_AI_MODEL` di secret environment
+5. Untuk chat bahasa alami, atur `MARBOT_AI_API_KEY` dan `MARBOT_AI_MODEL` di secret environment
    backend. Provider saat ini OpenRouter; pertanyaan, pertanyaan sebelumnya yang
    masih diizinkan dan katalog kemampuan yang dibatasi akses dikirim untuk memahami intent. Data hasil query bisnis, JWT dan credential database tidak dimasukkan ke prompt. Tanpa credential, jawaban
-   terverifikasi tetap tersedia melalui mesin lokal. Jangan gunakan NEXT_PUBLIC
+   percakapan bebas tidak dipetakan dengan fallback lokal; chatbot menampilkan bahwa provider AI belum tersedia. Jangan gunakan NEXT_PUBLIC
    untuk secret. Jangan menyalin credential chatbot lama sebagai key model.
 
 Tidak ada migrasi database jarak jauh atau deployment yang dijalankan oleh perubahan
