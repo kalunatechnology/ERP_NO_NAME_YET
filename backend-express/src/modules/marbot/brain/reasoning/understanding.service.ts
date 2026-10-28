@@ -8,7 +8,6 @@ import { nativePlanSchema, validateNativePlan } from './planner.service';
 import { resourceCatalog, resourcePlanSchema, validateGroundedResourcePlan } from '../../knowledge/resource.service';
 import { rankResourceCandidates, resolveResourceIntent, shortestResourcePaths } from '../../knowledge/resource-semantics';
 import { discoverMarbotSchema, readableTables } from '../../knowledge/schema.service';
-import { callMcpSchemaSearchTool } from '../../routing/mcp-tools.service';
 import { routingExamplesFor } from '../../knowledge/resource-knowledge';
 
 const confidence = z.number().min(0).max(1);
@@ -42,9 +41,15 @@ function nativeDomains(scope: NativeScope) {
 
 /** The model selects an intent. Backend authority, literal values and available
  * executors determine whether the selected plan may ever reach a tool. */
-export function validateUnderstanding(raw: unknown, request: string, scope: NativeScope, contextQuestion?: string): MarbotUnderstanding | null {
+export type UnderstandingRejectReason = 'invalid_structure' | 'conversation_for_operational_request'
+  | 'guide_mismatch' | 'knowledge_module_unavailable' | 'native_domain_unavailable' | 'native_plan_invalid'
+  | 'hybrid_not_grounded' | 'resource_not_candidate' | 'resource_plan_invalid' | 'schema_table_unavailable';
+
+export function validateUnderstanding(raw: unknown, request: string, scope: NativeScope, contextQuestion?: string,
+  onReject?: (reason: UnderstandingRejectReason) => void): MarbotUnderstanding | null {
+  const reject = (reason: UnderstandingRejectReason) => { onReject?.(reason); return null; };
   const parsed = understandingSchema.safeParse(raw);
-  if (!parsed.success) return null;
+  if (!parsed.success) return reject('invalid_structure');
   const intent = parsed.data;
   if (intent.confidence < 0.75) return { route: 'clarify', reason: 'uncertain', confidence: intent.confidence };
   if (intent.route === 'conversation') {
@@ -56,53 +61,51 @@ export function validateUnderstanding(raw: unknown, request: string, scope: Nati
     const asksForErpKnowledge = mentionsErpDomain && /\b(?:jelaskan|apa itu|fitur|modul|workflow|alur|panduan)\b/i.test(request);
     if (isDataReadQuestion(request) || isProcedureQuestion(request) || isMutationCommand(request)
       || asksAboutLiveBusinessData || asksForErpKnowledge
-      || /\b(?:tampilkan|daftar|berapa|jumlah|total|cari|carikan|buat|ubah|edit|hapus|setujui|tolak)\b/i.test(request)) return null;
+      || /\b(?:tampilkan|daftar|berapa|jumlah|total|cari|carikan|buat|ubah|edit|hapus|setujui|tolak)\b/i.test(request)) return reject('conversation_for_operational_request');
   } else if (intent.route === 'guide') {
     // A lexical guard is secondary verification, never the semantic planner.
     // Do not accept a model changing a clearly stated delete into create/minutes.
-    if (isDataReadQuestion(request) || isNativeTaskReadQuestion(request)) return null;
+    if (isDataReadQuestion(request) || isNativeTaskReadQuestion(request)) return reject('guide_mismatch');
     const explicitOperation = procedureOperation(request), explicitTopic = procedureTopic(request);
-    if (explicitOperation && intent.operation !== explicitOperation || explicitTopic && intent.topic !== explicitTopic.id) return null;
+    if (explicitOperation && intent.operation !== explicitOperation || explicitTopic && intent.topic !== explicitTopic.id) return reject('guide_mismatch');
   } else if (intent.route === 'knowledge') {
-    if (isDataReadQuestion(request)) return null;
+    if (isDataReadQuestion(request)) return reject('knowledge_module_unavailable');
     const available = moduleKnowledge.filter(item => scope.enabledModules.includes(item.module)).map(item => item.module as string);
     if (!intent.modules.every(module => available.includes(module))) {
       // If the query asks about permissions, capabilities, or confirming lack of access to unauthorized modules (e.g. Staff asking about Finance)
       if (/\b(akses|izin|bisa|dapat|boleh|tidak ada|apakah|punya|gada|ga ada|tikda)\b/i.test(request)) {
         return { route: 'access', confidence: intent.confidence };
       }
-      return null;
+      return reject('knowledge_module_unavailable');
     }
   } else if (intent.route === 'native') {
     if (intent.plan.type === 'unsupported') return { route: 'clarify', reason: 'unsupported', confidence: intent.confidence };
-    if (intent.plan.type === 'read' && !intent.plan.domains.every(domain => nativeDomains(scope).includes(domain))) return null;
-    if (intent.plan.type === 'read' && isNativeTaskReadQuestion(request) && intent.plan.domains.join(',') !== 'tasks') return null;
+    if (intent.plan.type === 'read' && !intent.plan.domains.every(domain => nativeDomains(scope).includes(domain))) return reject('native_domain_unavailable');
+    if (intent.plan.type === 'read' && isNativeTaskReadQuestion(request) && intent.plan.domains.join(',') !== 'tasks') return reject('native_plan_invalid');
     if (intent.plan.type === 'read' && intent.plan.domains.includes('tasks') && /\b(saya|my|mine)\b/.test(intentText(request))) intent.plan.personal = true;
-    if (!validateNativePlan(intent.plan, request, intent.plan.type === 'read')) return null;
+    if (!validateNativePlan(intent.plan, request, intent.plan.type === 'read')) return reject('native_plan_invalid');
   } else if (intent.route === 'hybrid') {
     if (!isProcedureQuestion(request) || !isDataReadQuestion(request) || isMutationCommand(request)
-      || ['create', 'update'].includes(intent.plan.operation)) return null;
+      || ['create', 'update'].includes(intent.plan.operation)) return reject('hybrid_not_grounded');
     const explicitOperation = procedureOperation(request), explicitTopic = procedureTopic(request);
-    if (explicitTopic && explicitTopic.id !== intent.procedure.topic || explicitOperation && explicitOperation !== intent.procedure.operation) return null;
+    if (explicitTopic && explicitTopic.id !== intent.procedure.topic || explicitOperation && explicitOperation !== intent.procedure.operation) return reject('hybrid_not_grounded');
     const resourceIntent = resolveResourceIntent([request, contextQuestion].filter(Boolean).join(' '), resourceCatalog(scope));
     if (resourceIntent.status !== 'matched' || !resourceIntent.candidates.some(candidate => candidate.key === intent.plan.resource)) {
       return { route: 'clarify', reason: 'entity', confidence: intent.confidence };
     }
-    try { if (!validateGroundedResourcePlan(intent.plan, scope, request)) return null; }
-    catch { return null; }
+    try { if (!validateGroundedResourcePlan(intent.plan, scope, request)) return reject('resource_plan_invalid'); }
+    catch { return reject('resource_plan_invalid'); }
   } else if (intent.route === 'resource') {
-    if (isProcedureQuestion(request) && procedureOperation(request)) return null;
+    if (isProcedureQuestion(request) && procedureOperation(request)) return reject('resource_plan_invalid');
     const resourceIntent = resolveResourceIntent([request, contextQuestion].filter(Boolean).join(' '), resourceCatalog(scope));
     if (resourceIntent.status === 'ambiguous' || resourceIntent.status === 'unresolved') {
       return { route: 'clarify', reason: 'entity', confidence: intent.confidence };
     }
-    if (!resourceIntent.candidates.some(candidate => candidate.key === intent.plan.resource)) {
-      return { route: 'clarify', reason: 'entity', confidence: intent.confidence };
-    }
-    try { if (!validateGroundedResourcePlan(intent.plan, scope, request)) return null; }
-    catch { return null; }
+    if (!resourceIntent.candidates.some(candidate => candidate.key === intent.plan.resource)) return reject('resource_not_candidate');
+    try { if (!validateGroundedResourcePlan(intent.plan, scope, request)) return reject('resource_plan_invalid'); }
+    catch { return reject('resource_plan_invalid'); }
   } else if (intent.route === 'schema') {
-    if (!intent.tables.every(table => readableTables(scope).includes(table))) return null;
+    if (!intent.tables.every(table => readableTables(scope).includes(table))) return reject('schema_table_unavailable');
   }
   return intent;
 }
@@ -127,15 +130,13 @@ For list query plans, use select?:[Prisma/API field names], orderBy?:{field,dire
 No SQL, endpoints, facts, final answers, arbitrary tool names, invented values, permissions, successful mutations or chain-of-thought. For resource reads, select only a primaryCandidates key; relationTargetOnly entries can only be used through declared relationshipPaths. Use relatedFilter only for a literal equality predicate on the final resource along one listed shortest path. related is display enrichment, not a filter. If primaryCandidates are empty, ambiguous, unreachableEntities are needed, or the requested relationship is absent, clarify. Treat the catalogue as capabilities, not proof of access to a specific record. Every plan is validated outside the model.`;
 
 /** One bounded LLM understanding call; no business rows, credentials, or writes. */
-export async function understandMarbotQuestion(request: string, scope: NativeScope, signal: AbortSignal, previousQuestion?: string): Promise<UnderstandingResult> {
+export async function understandMarbotQuestion(request: string, scope: NativeScope, signal: AbortSignal, previousQuestion?: string,
+  requestId?: string): Promise<UnderstandingResult> {
   if (!env.MARBOT_AI_API_KEY || !env.MARBOT_AI_MODEL) return { status: 'unconfigured' };
   if (signal.aborted) return { status: 'unavailable' };
   try {
     const availableResources = resourceCatalog(scope);
     const semanticQuestion = [request, previousQuestion].filter(Boolean).join(' ');
-    const mcpSchemaSearch = semanticQuestion.trim().length >= 2
-      ? callMcpSchemaSearchTool(scope, { query: semanticQuestion.slice(0, 200), limit: 3 })
-      : { candidates: [], relationshipPaths: [], ambiguous: false };
     const resourceIntent = resolveResourceIntent(semanticQuestion, availableResources);
     const primaryCandidates = resourceIntent.status === 'matched' || resourceIntent.status === 'ambiguous'
       ? resourceIntent.candidates.map(item => item.key) : [];
@@ -143,8 +144,7 @@ export async function understandMarbotQuestion(request: string, scope: NativeSco
     const namedEntities = rankResourceCandidates(semanticQuestion, availableResources).filter(item => item.score >= 4.4 && !primarySet.has(item.key)).slice(0, 3);
     const relationshipPaths = availableResources.filter(item => primarySet.has(item.key)).flatMap(source => namedEntities.flatMap(target =>
       shortestResourcePaths(source.key, target.key, availableResources, 3, 3).map(path => ({ from: source.key, to: target.key, ...path }))));
-    const relatedSet = new Set(availableResources.filter(item => primarySet.has(item.key))
-      .flatMap(item => item.relationships.map((relation: { resource: string }) => relation.resource)));
+    const relatedSet = new Set<string>();
     for (const path of relationshipPaths) for (const key of path.resources) relatedSet.add(key);
     const resources = availableResources.filter(item => primarySet.has(item.key) || relatedSet.has(item.key));
     const schemaTables = [...new Set(resources.map(item => item.tableName))].slice(0, 20);
@@ -160,13 +160,13 @@ export async function understandMarbotQuestion(request: string, scope: NativeSco
         return visibleTables.has(constraint.table_name) && Boolean(target && visibleTables.has(target));
       }),
     };
+    const requestsSchema = /\b(?:schema|skema|struktur database|struktur tabel|nama tabel|kolom database|database columns?)\b/i.test(semanticQuestion);
     const messages = [
       { role: 'system' as const, content: prompt },
       { role: 'user' as const, content: JSON.stringify({ capabilities: { nativeReads: nativeDomains(scope),
         knowledgeBase: { hierarchy: 'business intent → authorized resource → database schema/table → typed columns/code values',
           routingExamples: routingExamplesFor(resources), physicalSchema },
         referenceModules: [...new Set(moduleKnowledge.filter(item => scope.enabledModules.includes(item.module)).map(item => item.module))],
-        mcpTools: ['search_erp_schema', 'erp.query'], mcpSchemaSearch,
         primaryCandidates, relationshipPaths, unreachableEntities: namedEntities.filter(target => !relationshipPaths.some(path => path.to === target.key)).map(target => target.key),
         resources: resources.map(item => ({ key: item.key, module: item.module, databaseSchema: item.databaseSchema, tableName: item.tableName,
           meaning: item.meaning, relationTargetOnly: !primarySet.has(item.key), intentTerms: [...item.intentTerms, ...item.meaning.terms],
@@ -175,11 +175,15 @@ export async function understandMarbotQuestion(request: string, scope: NativeSco
             label: field.label, description: field.description, intentTerms: field.terms, codebook: field.codebook,
             allowedCodes: field.allowedCodes, primaryKey: field.isId, unique: field.isUnique, foreignKey: field.isForeignKey,
             required: field.isRequired && !field.hasDefaultValue })) })),
-        tables: readableTables(scope),
+        ...(requestsSchema ? { tables: readableTables(scope) } : {}),
       } }) },
       { role: 'user' as const, content: JSON.stringify({ request: request.trim(), previousQuestion: previousQuestion?.slice(0, 2000) }) },
     ];
+    const startedAt = Date.now();
+    let attempts = 0;
+    let failureReason: UnderstandingRejectReason | 'invalid_json' | 'empty_response' | 'provider_http_error' | 'provider_timeout' | 'provider_network_error' | undefined;
     const requestIntent = async (turns: Array<{ role: 'system' | 'user'; content: string }>) => {
+      attempts++;
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
         headers: {
@@ -191,30 +195,58 @@ export async function understandMarbotQuestion(request: string, scope: NativeSco
         body: JSON.stringify({ model: env.MARBOT_AI_MODEL, temperature: 0, max_tokens: 1400,
           response_format: { type: 'json_object' }, messages: turns }),
       });
-      if (!response.ok) return { status: 'unavailable' as const };
-      const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      if (!response.ok) {
+        failureReason = 'provider_http_error';
+        console.warn('[Marbot understanding] provider returned non-success status', JSON.stringify({ requestId, model: env.MARBOT_AI_MODEL, httpStatus: response.status, attempt: attempts }));
+        return { status: 'unavailable' as const };
+      }
+      let body: { choices?: Array<{ message?: { content?: string } }> };
+      try { body = await response.json() as typeof body; }
+      catch {
+        failureReason = 'invalid_json';
+        return { status: 'invalid' as const };
+      }
       const content = body.choices?.[0]?.message?.content;
-      if (!content || content.length > 16000) return { status: 'invalid' as const };
+      if (!content || content.length > 16000) {
+        failureReason = 'empty_response';
+        return { status: 'invalid' as const };
+      }
       try { return { status: 'ready' as const, raw: JSON.parse(content) as unknown }; }
-      catch { return { status: 'invalid' as const }; }
+      catch {
+        failureReason = 'invalid_json';
+        return { status: 'invalid' as const };
+      }
     };
     let response = await requestIntent(messages);
     if (response.status === 'unavailable') return response;
+    let validationReject: UnderstandingRejectReason | undefined;
     let intent = response.status === 'ready'
-      ? validateUnderstanding(response.raw, request, scope, previousQuestion)
+      ? validateUnderstanding(response.raw, request, scope, previousQuestion, reason => { validationReject = reason; })
       : null;
     if (!intent) {
-      // Repair the structured route internally once. Validator details and
-      // resource catalogue instructions are never sent as user-facing text.
+      // Repair once using a safe failure category. Raw validator errors and
+      // catalogue details are never copied into user-facing text.
+      const firstFailure = response.status === 'ready' ? validationReject ?? 'invalid_structure' : failureReason ?? 'invalid_json';
       response = await requestIntent([...messages, { role: 'user' as const, content: JSON.stringify({
-        retry: 'Your previous JSON did not pass backend validation. Re-read the original request and return a corrected JSON route using only the supplied capabilities. Do not ask the user to configure internal resources. For a clear request, do not choose clarify just because no optional filter was specified. When a user asks which records they can access, choose the matching list read with no inferred owner filter; the authenticated ERP API applies record access. Use only literal values from the request and exact fields from the supplied schema.',
+        retry: 'Previous attempt failed with category ' + firstFailure + '. Correct that category and return exactly one JSON object matching the supplied schema. For resource plans, select an exact primaryCandidates key and use only its listed fields and supported filters. Do not invent filters. For a clear access-list request, use a list read without an owner filter; the authenticated ERP API applies record visibility.',
         previousAttempt: response.status === 'ready' ? response.raw : undefined,
       }) }]);
       if (response.status === 'unavailable') return response;
       intent = response.status === 'ready'
-        ? validateUnderstanding(response.raw, request, scope, previousQuestion)
+        ? validateUnderstanding(response.raw, request, scope, previousQuestion, reason => { validationReject = reason; })
         : null;
     }
+    if (!intent) {
+      if (response.status === 'ready') failureReason = validationReject ?? 'invalid_structure';
+      console.warn('[Marbot understanding] no valid route produced', JSON.stringify({ requestId, model: env.MARBOT_AI_MODEL, attempts,
+        elapsedMs: Date.now() - startedAt, promptChars: messages.reduce((sum, message) => sum + message.content.length, 0),
+        resourceCount: availableResources.length, primaryCandidates, schemaTableCount: schemaTables.length,
+        reason: failureReason ?? 'unknown' }));
+    }
     return intent ? { status: 'ready', intent, model: env.MARBOT_AI_MODEL } : { status: 'invalid' };
-  } catch (error) { return { status: error instanceof SyntaxError ? 'invalid' : 'unavailable' }; }
+  } catch (error) {
+    const reason = error instanceof Error && error.name === 'TimeoutError' ? 'provider_timeout' : 'provider_network_error';
+    console.warn('[Marbot understanding] request failed', JSON.stringify({ requestId, model: env.MARBOT_AI_MODEL, reason }));
+    return { status: 'unavailable' };
+  }
 }

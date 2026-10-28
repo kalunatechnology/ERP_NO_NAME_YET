@@ -71,7 +71,7 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
   const explicit = /^\s*(?:data|resource)\s+\{/.test(message);
 
   const fallbackQuestion = followUpQuestion(message, previousQuestion);
-  const result = explicit ? null : await understandMarbotQuestion(message, scope, signal, previousQuestion);
+  const result = explicit ? null : await understandMarbotQuestion(message, scope, signal, previousQuestion, req.requestId);
   if (!explicit && result?.status !== 'ready') {
     if (result?.status === 'invalid') {
       return { understanding: { source: 'llm', route: 'plan-unavailable', status: 'invalid' },
