@@ -144,35 +144,52 @@ export async function understandMarbotQuestion(request: string, scope: NativeSco
       .flatMap(item => item.relationships.map((relation: { resource: string }) => relation.resource)));
     for (const path of relationshipPaths) for (const key of path.resources) relatedSet.add(key);
     const resources = availableResources.filter(item => primarySet.has(item.key) || relatedSet.has(item.key));
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
-      headers: {
-        Authorization: `Bearer ${env.MARBOT_AI_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://arsalynt.com',
-        'X-Title': 'Arsalynt ERP Knowledge Engine',
-      },
-      body: JSON.stringify({ model: env.MARBOT_AI_MODEL, temperature: 0, max_tokens: 1400,
-        response_format: { type: 'json_object' }, messages: [
-          { role: 'system', content: prompt },
-          { role: 'user', content: JSON.stringify({ capabilities: { nativeReads: nativeDomains(scope),
-            referenceModules: [...new Set(moduleKnowledge.filter(item => scope.enabledModules.includes(item.module)).map(item => item.module))],
-            mcpTools: ['search_erp_schema', 'erp.query'], mcpSchemaSearch,
-            primaryCandidates, relationshipPaths, unreachableEntities: namedEntities.filter(target => !relationshipPaths.some(path => path.to === target.key)).map(target => target.key),
-            resources: resources.map(item => ({ key: item.key, module: item.module, relationTargetOnly: !primarySet.has(item.key), intentTerms: item.intentTerms,
-              relationships: item.relationships, readOnly: item.writeBlocked, searchFields: item.searchFields,
-              fields: item.fields.map(field => ({ name: field.name, type: field.type, required: field.isRequired && !field.hasDefaultValue })) })),
-            tables: readableTables(scope),
-          } }) },
-          { role: 'user', content: JSON.stringify({ request: request.trim(), previousQuestion: previousQuestion?.slice(0, 2000) }) },
-        ],
-      }),
-    });
-    if (!response.ok) return { status: 'unavailable' };
-    const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const content = body.choices?.[0]?.message?.content;
-    if (!content || content.length > 16000) return { status: 'invalid' };
-    const intent = validateUnderstanding(JSON.parse(content), request, scope, previousQuestion);
+    const messages = [
+      { role: 'system' as const, content: prompt },
+      { role: 'user' as const, content: JSON.stringify({ capabilities: { nativeReads: nativeDomains(scope),
+        referenceModules: [...new Set(moduleKnowledge.filter(item => scope.enabledModules.includes(item.module)).map(item => item.module))],
+        mcpTools: ['search_erp_schema', 'erp.query'], mcpSchemaSearch,
+        primaryCandidates, relationshipPaths, unreachableEntities: namedEntities.filter(target => !relationshipPaths.some(path => path.to === target.key)).map(target => target.key),
+        resources: resources.map(item => ({ key: item.key, module: item.module, relationTargetOnly: !primarySet.has(item.key), intentTerms: item.intentTerms,
+          relationships: item.relationships, readOnly: item.writeBlocked, searchFields: item.searchFields,
+          fields: item.fields.map(field => ({ name: field.name, type: field.type, required: field.isRequired && !field.hasDefaultValue })) })),
+        tables: readableTables(scope),
+      } }) },
+      { role: 'user' as const, content: JSON.stringify({ request: request.trim(), previousQuestion: previousQuestion?.slice(0, 2000) }) },
+    ];
+    const requestIntent = async (turns: Array<{ role: 'system' | 'user'; content: string }>) => {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+        headers: {
+          Authorization: `Bearer ${env.MARBOT_AI_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://arsalynt.com',
+          'X-Title': 'Arsalynt ERP Knowledge Engine',
+        },
+        body: JSON.stringify({ model: env.MARBOT_AI_MODEL, temperature: 0, max_tokens: 1400,
+          response_format: { type: 'json_object' }, messages: turns }),
+      });
+      if (!response.ok) return { status: 'unavailable' as const };
+      const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const content = body.choices?.[0]?.message?.content;
+      if (!content || content.length > 16000) return { status: 'invalid' as const };
+      try { return { status: 'ready' as const, raw: JSON.parse(content) as unknown }; }
+      catch { return { status: 'invalid' as const }; }
+    };
+    let response = await requestIntent(messages);
+    if (response.status === 'unavailable') return response;
+    let intent = response.status === 'ready'
+      ? validateUnderstanding(response.raw, request, scope, previousQuestion)
+      : null;
+    if (!intent) {
+      // Repair the structured route internally once. Validator details and
+      // resource catalogue instructions are never sent as user-facing text.
+      response = await requestIntent([...messages, { role: 'user' as const, content: JSON.stringify({ retry: 'Re-read the original request and return a valid route using only the supplied capabilities. Do not ask the user to configure internal resources. If the request is clear, preserve its meaning and choose the matching read tool.' }) }]);
+      if (response.status === 'unavailable') return response;
+      intent = response.status === 'ready'
+        ? validateUnderstanding(response.raw, request, scope, previousQuestion)
+        : null;
+    }
     return intent ? { status: 'ready', intent, model: env.MARBOT_AI_MODEL } : { status: 'invalid' };
   } catch (error) { return { status: error instanceof SyntaxError ? 'invalid' : 'unavailable' }; }
 }

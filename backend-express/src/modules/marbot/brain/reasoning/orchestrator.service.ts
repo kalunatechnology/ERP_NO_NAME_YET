@@ -74,10 +74,8 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
   const result = explicit ? null : await understandMarbotQuestion(message, scope, signal, previousQuestion);
   if (!explicit && result?.status !== 'ready') {
     if (result?.status === 'invalid') {
-      const rendered = await renderClarificationAnswer(message,
-        'Rencana belum sesuai katalog resource atau aturan query yang diizinkan.', signal);
-      return { understanding: { source: 'llm', route: 'clarify', status: 'recovered', model: rendered.model },
-        answer: { content: rendered.content, tools: ['llm.clarification'], sources: [] } };
+      return { understanding: { source: 'llm', route: 'plan-unavailable', status: 'invalid' },
+        answer: { content: 'Maaf, saya belum berhasil menyiapkan pembacaan data untuk permintaan ini. Belum ada data yang diambil. Silakan coba lagi.', tools: ['intent.error'], sources: [] } };
     }
     const content = result?.status === 'unconfigured'
       ? 'Asisten AI belum aktif karena provider bahasa belum dikonfigurasi. Silakan atur MARBOT_AI_API_KEY dan MARBOT_AI_MODEL pada secret environment backend.'
@@ -201,9 +199,8 @@ export async function answerMarbotQuestion(req: Request, message: string, mode: 
     }
   }
   if (!explicit) {
-    const rendered = await renderClarificationAnswer(message, 'Rencana belum lolos validasi keamanan backend.', signal);
-    return { understanding: { source: 'llm', route: 'plan-rejected', status: 'invalid', model: rendered.model },
-      answer: { content: rendered.content, tools: ['llm.clarification'], sources: [] } };
+    return { understanding: { source: 'llm', route: 'plan-rejected', status: 'invalid' },
+      answer: { content: 'Maaf, saya belum berhasil menyiapkan pembacaan data untuk permintaan ini. Belum ada data yang diambil. Silakan coba lagi.', tools: ['intent.error'], sources: [] } };
   }
 
   const understanding = { source: 'explicit' as const, route: 'explicit', status: 'explicit' };
