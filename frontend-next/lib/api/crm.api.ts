@@ -298,8 +298,8 @@ export async function processDealWon(id: string | number) {
  * External dependency: calls `/api/v1/crm/opportunities/${id}/executive-override/`. Authentication, company scope, timeout, and idempotency are inherited only when the shared Axios client is used.
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
-export async function executiveOverrideCredit(id: string | number) {
-  const { data } = await api.post(`/api/v1/crm/opportunities/${id}/executive-override/`, {});
+export async function executiveOverrideCredit(id: string | number, remarks: string) {
+  const { data } = await api.post(`/api/v1/crm/opportunities/${id}/executive-override/`, { remarks });
   return data;
 }
 
@@ -460,48 +460,21 @@ export async function createCostEstimate(payload: {
   inquiry?: string | number | null;
   direct_cost: number;
   overhead_cost?: number;
+  contingency_amount?: number;
   markup_percent?: number;
+  tax_percent?: number;
   description?: string;
 }) {
-  const directCost   = Number(payload.direct_cost ?? 0);
-  const overheadCost = Number(payload.overhead_cost ?? 0);
-  const totalCost    = directCost + overheadCost;
-  const markupPct    = Number(payload.markup_percent ?? 30);
-  const offeredAmt   = totalCost * (1 + markupPct / 100);
-  const marginAmt    = offeredAmt - totalCost;
-  const marginPct    = offeredAmt > 0 ? (marginAmt / offeredAmt) * 100 : 0;
-
   const { data } = await api.post("/api/v1/crm/cost-estimates/", {
-    opportunity_id:  payload.opportunity || null,
-    inquiry_id:      payload.inquiry || null,
-    estimate_number: `EST-${Date.now().toString().slice(-6)}`,
-    version_number:  1,
-    direct_cost:     directCost,
-    overhead_cost:   overheadCost,
-    contingency_amount: 0,
-    total_cost:      totalCost,
-    markup_percent:  markupPct,
-    offered_amount:  offeredAmt,
-    margin_amount:   marginAmt,
-    margin_percent:  marginPct,
-    status:          "DRAFT",
+    opportunity_id: payload.opportunity || null,
+    inquiry_id: payload.inquiry || null,
+    direct_cost: Number(payload.direct_cost ?? 0),
+    overhead_cost: Number(payload.overhead_cost ?? 0),
+    contingency_amount: Number(payload.contingency_amount ?? 0),
+    markup_percent: Number(payload.markup_percent ?? 30),
+    tax_percent: Number(payload.tax_percent ?? 0),
+    description: payload.description || "",
   });
-
-  // Auto-create cost lines using the Prisma column names expected by Express.
-  if (data?.id) {
-    if (directCost > 0) await api.post("/api/v1/crm/cost-estimate-lines/", {
-        estimate_id: data.id, cost_element: "MATERIAL",
-        description: payload.description || "Biaya Langsung Pengadaan / Produksi",
-        quantity: 1, unit_cost: directCost, amount: directCost, calculation_source: "MANUAL",
-      });
-    if (overheadCost > 0) {
-      await api.post("/api/v1/crm/cost-estimate-lines/", {
-          estimate_id: data.id, cost_element: "OVERHEAD",
-          description: "Biaya Operasional & Overhead",
-          quantity: 1, unit_cost: overheadCost, amount: overheadCost, calculation_source: "MANUAL",
-        });
-    }
-  }
   return data;
 }
 
@@ -648,9 +621,7 @@ export async function rejectQuotation(id: string | number, reason = "Customer me
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function convertQuotationToOrder(id: string | number) {
-  const { data } = await api.post(`/api/v1/commands/sales/quotations/${id}/convert-to-order/`, {
-    fulfillment_method: "PROJECT",
-  });
+  const { data } = await api.post(`/api/v1/crm/quotations/${id}/convert-to-order/`, {});
   return data;
 }
 

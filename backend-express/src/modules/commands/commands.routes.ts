@@ -12,6 +12,7 @@ import prisma from '../../config/database';
 import { WorkflowRegistry, WorkflowTransitionError } from '../../workflows';
 import { ProjectsService } from '../projects/projects.service';
 import { FinanceService } from '../finance/finance.service';
+import { CRMService } from '../crm/crm.service';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
 import { requireRole } from '../../middlewares/rbac.middleware';
@@ -343,50 +344,17 @@ commandsRouter.get('/core/documents/:id/history', async (req: Request, res: Resp
 commandsRouter.post('/sales/quotations/:id/convert-to-order', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = activeCompanyId(req);
-    const order = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM sales_quotation WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
-      const quotation = await tx.sales_quotation.findFirst({
-        where: { id: req.params.id, company_id: companyId },
-      });
-      if (!quotation) throw new NotFoundError('Quotation');
-      if (quotation.status !== 'ACCEPTED') throw new ConflictError('Quotation harus berstatus ACCEPTED sebelum dikonversi menjadi Sales Order.');
-      const existingOrder = await tx.sales_order.findFirst({ where: { quotation_id: quotation.id, company_id: companyId } });
-      if (existingOrder) return existingOrder;
-
-      const opportunity = quotation.opportunity_id
-        ? await tx.crm_opportunity.findFirst({ where: { id: quotation.opportunity_id, company_id: companyId }, select: { customer_party_id: true } })
-        : null;
-      const customerPartyId = quotation.customer_party_id || opportunity?.customer_party_id;
-      if (!customerPartyId) throw new ValidationError('Lengkapi customer party pada opportunity sebelum mengonversi quotation.');
-      const customer = await tx.master_party.findFirst({
-        where: { id: customerPartyId, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
-        select: { id: true },
-      });
-      if (!customer) throw new ValidationError('Customer quotation tidak aktif atau bukan milik company ini.');
-      if (!quotation.customer_party_id) {
-        await tx.sales_quotation.update({ where: { id: quotation.id }, data: { customer_party_id: customer.id } });
-      }
-      const created = await tx.sales_order.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenant_id: quotation.tenant_id,
-          company_id: companyId,
-          created_by_id: req.user?.id,
-          quotation_id: quotation.id,
-          customer_party_id: customer.id,
-          currency_id: quotation.currency_id,
-          payment_term_id: quotation.payment_term_id,
-          order_date: new Date(),
-          subtotal: quotation.subtotal,
-          tax_amount: quotation.tax_amount,
-          total_amount: quotation.total_amount ?? 0,
-          status: 'CONFIRMED',
-        },
-      });
-      return created;
+    const quotation = await prisma.sales_quotation.findFirst({
+      where: { id: req.params.id, company_id: companyId },
+      select: { id: true, opportunity_id: true },
     });
+    if (!quotation) throw new NotFoundError('Quotation');
+    if (!quotation.opportunity_id) throw new ValidationError('Quotation belum terhubung ke Opportunity.');
 
-    res.status(201).json(order);
+    // Use the same credit, order, project, proforma, and idempotency workflow
+    // as the Deal Won action so quotation conversion cannot bypass credit control.
+    const result = await CRMService.processDealWon(quotation.opportunity_id, req.user, companyId);
+    res.status(result.handoff?.sales_order_id ? 200 : 202).json(result);
   } catch (err) {
     next(err);
   }

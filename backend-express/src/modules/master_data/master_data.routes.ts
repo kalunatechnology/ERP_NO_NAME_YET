@@ -9,7 +9,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { ForbiddenError, NotFoundError } from '../../utils/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 
 export const masterDataRouter = Router();
 
@@ -27,6 +27,18 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
     if (!req.companyId) throw new ForbiddenError('Pilih company sebelum mengakses master data.');
     const companyId = req.companyId;
     const { party_id, customer_profile_id, credit_limit, payment_term_id, credit_hold } = req.body;
+    let normalizedCreditLimit: number | undefined;
+    if (credit_limit !== undefined) {
+      normalizedCreditLimit = Number(credit_limit);
+      if (!Number.isFinite(normalizedCreditLimit) || normalizedCreditLimit < 0) {
+        throw new ValidationError('credit_limit harus berupa angka valid dan tidak boleh negatif.');
+      }
+    }
+    let normalizedCreditHold: boolean | undefined;
+    if (credit_hold !== undefined) {
+      if (typeof credit_hold !== 'boolean') throw new ValidationError('credit_hold harus bernilai true atau false.');
+      normalizedCreditHold = credit_hold;
+    }
     let profile = null;
 
     if (customer_profile_id) {
@@ -35,9 +47,9 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
       profile = await prisma.master_customer_profile.update({
         where: { id: existing.id },
         data: {
-          credit_limit: credit_limit !== undefined ? credit_limit : undefined,
+          credit_limit: normalizedCreditLimit,
           payment_term_id: payment_term_id !== undefined ? payment_term_id : undefined,
-          credit_hold: credit_hold !== undefined ? credit_hold : undefined,
+          credit_hold: normalizedCreditHold,
         },
       });
     } else if (party_id) {
@@ -50,9 +62,9 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
         profile = await prisma.master_customer_profile.update({
           where: { id: existing.id },
           data: {
-            credit_limit: credit_limit !== undefined ? credit_limit : undefined,
+            credit_limit: normalizedCreditLimit,
             payment_term_id: payment_term_id !== undefined ? payment_term_id : undefined,
-            credit_hold: credit_hold !== undefined ? credit_hold : undefined,
+            credit_hold: normalizedCreditHold,
           },
         });
       } else {
@@ -65,8 +77,8 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
             party_id,
             customer_code: `CUST-${String(party_id).slice(0, 6)}`,
             risk_category: 'LOW',
-            credit_limit: credit_limit ?? 0,
-            credit_hold: Boolean(credit_hold),
+            credit_limit: normalizedCreditLimit ?? 0,
+            credit_hold: normalizedCreditHold ?? false,
           },
         });
       }

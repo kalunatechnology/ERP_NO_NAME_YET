@@ -337,8 +337,8 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const pipeline = (data.opportunities || []).filter(o => 
-    !["WON","LOST","CANCELLED","CANCEL","BATAL"].includes(o.status?.toUpperCase() || "") &&
-    !["LOST","CANCELLED","CANCEL","BATAL"].includes(o.pipeline_stage?.toUpperCase() || "")
+    !["WON","CLOSED_WON","LOST","CLOSED_LOST","CANCELLED","CANCEL","BATAL"].includes(o.status?.toUpperCase() || "") &&
+    !["WON","CLOSED_WON","LOST","CLOSED_LOST","CANCELLED","CANCEL","BATAL"].includes(o.pipeline_stage?.toUpperCase() || "")
   );
 
   return (
@@ -438,7 +438,7 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
 function TabDeals({
   data, approvals, isNewOppOpen, setIsNewOppOpen, onRefresh,
   onOpportunityCreated, onOpportunityDeleted, onPartyCreated,
-  readOnly = false,
+  readOnly = false, canOverride = false,
 }: {
   data: CRMData; approvals: any[]; isNewOppOpen: boolean;
   setIsNewOppOpen: (v: boolean) => void; onRefresh: () => void;
@@ -446,6 +446,7 @@ function TabDeals({
   onOpportunityDeleted?: (id: string | number) => void;
   onPartyCreated?: (newParty: any) => void;
   readOnly?: boolean;
+  canOverride?: boolean;
 }) {
   const [form, setForm] = useState({ 
     opportunity_name: "", 
@@ -461,6 +462,13 @@ function TabDeals({
   const [savingCustomerOppId, setSavingCustomerOppId] = useState<string | null>(null);
   const [oppFilter, setOppFilter] = useState<"ACTIVE" | "CANCELLED" | "ALL">("ACTIVE");
   const [activityOpp, setActivityOpp] = useState<any>(null);
+  const [lostReasonOpp, setLostReasonOpp] = useState<any>(null);
+  const [lostReasonCode, setLostReasonCode] = useState("");
+  const [lostReasonDetail, setLostReasonDetail] = useState("");
+  const [savingLostReason, setSavingLostReason] = useState(false);
+  const [overrideOpp, setOverrideOpp] = useState<any>(null);
+  const [overrideRemarks, setOverrideRemarks] = useState("");
+  const [savingOverride, setSavingOverride] = useState(false);
   const [customer360, setCustomer360] = useState<any>(null);
   const [activityForm, setActivityForm] = useState({ activity_type: "CALL", subject: "", scheduled_at: "" });
 
@@ -482,12 +490,12 @@ function TabDeals({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
     const ps = (o.pipeline_stage || "").toUpperCase();
-    return !["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(st) && !["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(ps);
+    return !["CANCELLED", "CANCEL", "BATAL", "LOST", "CLOSED_LOST", "WON", "CLOSED_WON"].includes(st) && !["CANCELLED", "CANCEL", "BATAL", "LOST", "CLOSED_LOST", "WON", "CLOSED_WON"].includes(ps);
   });
   const cancelledOpps = allOpps.filter(o => {
     const st = (o.status || "").toUpperCase();
     const ps = (o.pipeline_stage || "").toUpperCase();
-    return ["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(st) || ["CANCELLED", "CANCEL", "BATAL", "LOST"].includes(ps);
+    return ["CANCELLED", "CANCEL", "BATAL", "LOST", "CLOSED_LOST"].includes(st) || ["CANCELLED", "CANCEL", "BATAL", "LOST", "CLOSED_LOST"].includes(ps);
   });
   const displayedOpps = oppFilter === "ACTIVE" 
     ? activeOpps 
@@ -521,12 +529,25 @@ function TabDeals({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const handleExecOverride = async (opp: any) => {
+    setOverrideOpp(opp);
+    setOverrideRemarks("");
+  };
+
+  const submitExecutiveOverride = async () => {
+    if (!overrideOpp || !overrideRemarks.trim()) {
+      toast.error("Alasan override wajib diisi.");
+      return;
+    }
+    setSavingOverride(true);
     try {
-      await executiveOverrideCredit(opp.id);
-      toast.success("Executive override berhasil!");
+      const result = await executiveOverrideCredit(overrideOpp.id, overrideRemarks.trim());
+      toast.success(result?.already_handled ? "Project untuk deal ini sudah ada." : "Override tercatat; project masuk antrean verifikasi.");
+      setOverrideOpp(null);
       onRefresh();
     } catch (e: any) { 
-      toast.error(e?.response?.data?.detail || "Gagal override"); 
+      toast.error(e?.response?.data?.detail || "Gagal mencatat override");
+    } finally {
+      setSavingOverride(false);
     }
   };
 
@@ -553,14 +574,33 @@ function TabDeals({
   };
 
   const handleMarkLost = async (id: string | number) => {
-    const reasons = ["PRICE_TOO_HIGH", "LOST_FEATURES", "BUDGET_CANCELLED", "COMPETITOR", "NO_RESPONSE", "OTHER"];
-    const reason = prompt(`Pilih alasan deal kalah:\n${reasons.map((item, index) => `${index + 1}. ${item}`).join("\n")}\nMasukkan nomor pilihan (1–6):`);
-    if (!reason) return;
-    const selected = reasons[Number(reason) - 1];
-    if (!selected) { toast.error("Pilihan alasan tidak valid."); return; }
-    const detail = selected === "OTHER" ? prompt("Jelaskan alasan deal kalah:") || "" : undefined;
-    try { await markOpportunityLost(id, selected, detail); toast.success("Opportunity ditandai kalah."); onRefresh(); }
-    catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal menyimpan alasan kalah."); }
+    const opportunity = allOpps.find((item) => String(item.id) === String(id));
+    if (!opportunity) return;
+    setLostReasonOpp(opportunity);
+    setLostReasonCode("");
+    setLostReasonDetail("");
+  };
+
+  const submitMarkLost = async () => {
+    if (!lostReasonOpp || !lostReasonCode) {
+      toast.error("Pilih alasan deal kalah.");
+      return;
+    }
+    if (lostReasonCode === "OTHER" && !lostReasonDetail.trim()) {
+      toast.error("Jelaskan alasan lain terlebih dahulu.");
+      return;
+    }
+    setSavingLostReason(true);
+    try {
+      await markOpportunityLost(lostReasonOpp.id, lostReasonCode, lostReasonDetail.trim());
+      toast.success("Opportunity ditandai kalah.");
+      setLostReasonOpp(null);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || "Gagal menyimpan alasan kalah.");
+    } finally {
+      setSavingLostReason(false);
+    }
   };
 
   const handleActivitySave = async () => {
@@ -662,9 +702,14 @@ function TabDeals({
  */
   const handleCreditLimit = async (partyId: string | number, currentLimit: number) => {
     const newLimit = prompt(`Credit limit baru untuk customer ini (saat ini: ${formatMoney(currentLimit)}):`, String(currentLimit));
-    if (!newLimit) return;
+    if (newLimit === null) return;
+    const parsedLimit = Number(newLimit.trim());
+    if (!newLimit.trim() || !Number.isFinite(parsedLimit) || parsedLimit < 0) {
+      toast.error("Credit limit harus berupa angka nol atau lebih.");
+      return;
+    }
     try {
-      await updateCustomerCreditLimit({ party_id: partyId, credit_limit: Number(newLimit) });
+      await updateCustomerCreditLimit({ party_id: partyId, credit_limit: parsedLimit });
       toast.success("Credit limit diperbarui!"); 
       onRefresh();
     } catch { 
@@ -689,6 +734,17 @@ function TabDeals({
             )}
           </div>
         </div>
+
+        <details className="mb-3 rounded-lg border border-text-tertiary/50 bg-bg-lighter px-3 py-2 text-xs">
+          <summary className="cursor-pointer font-semibold text-text-primary">Penjelasan tombol Opportunity</summary>
+          <div className="mt-2 grid gap-1.5 leading-5 text-text-secondary sm:grid-cols-2">
+            <p><b>Aktivitas:</b> simpan telepon, meeting, catatan, atau jadwal follow-up.</p>
+            <p><b>Customer 360:</b> lihat ringkasan riwayat transaksi, proyek, pengiriman, dan piutang customer.</p>
+            <p><b>Deal Won:</b> tandai peluang berhasil lalu jalankan pemeriksaan kredit. Hasil aman membuat order dan project incoming; jika tertahan kredit, sistem membuat proforma.</p>
+            <p><b>Executive override:</b> jalur pengecualian untuk meneruskan deal yang tertahan pemeriksaan kredit. Pakai hanya setelah keputusan eksekutif disetujui.</p>
+            <p className="sm:col-span-2"><b>Tandai kalah:</b> tutup peluang sebagai lost dan pilih alasan. Ini tidak menghapus riwayat opportunity.</p>
+          </div>
+        </details>
 
         {/* Filter Toggle Pills */}
         <div className="flex items-center gap-1.5 mb-3 bg-gray-100 p-1 rounded-xl w-fit">
@@ -759,8 +815,15 @@ function TabDeals({
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
               const cust = (data.parties||[]).find(p => String(p.id) === String(opportunityPartyId(o)));
-              const isWon = ["WON","CLOSED_WON"].includes((o.status||"").toUpperCase());
-              const isCancelled = ["CANCELLED","CANCEL","BATAL","LOST"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL","LOST"].includes((o.pipeline_stage||"").toUpperCase());
+              const terminalWon = ["WON","CLOSED_WON"].includes((o.status||"").toUpperCase()) || ["WON","CLOSED_WON"].includes((o.pipeline_stage||"").toUpperCase());
+              const terminalLost = ["LOST","CLOSED_LOST"].includes((o.status||"").toUpperCase()) || ["LOST","CLOSED_LOST"].includes((o.pipeline_stage||"").toUpperCase());
+              const terminalConflict = terminalWon && terminalLost;
+              const isWon = terminalWon && !terminalConflict;
+              const isLost = terminalLost && !terminalConflict;
+              const isHardCancelled = ["CANCELLED","CANCEL","BATAL"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL"].includes((o.pipeline_stage||"").toUpperCase());
+              const isCancelled = isLost || terminalConflict || isHardCancelled;
+              const lostReasonLabels: Record<string, string> = { PRICE_TOO_HIGH: "Harga tidak sesuai", LOST_FEATURES: "Fitur/kebutuhan tidak terpenuhi", BUDGET_CANCELLED: "Anggaran dibatalkan", COMPETITOR: "Memilih kompetitor", NO_RESPONSE: "Tidak ada respons", OTHER: "Lainnya" };
+              const lostReasonSummary = lostReasonLabels[String(o.lost_reason || "").toUpperCase()] || o.lost_reason || "Alasan belum tercatat";
 
               return (
                 <div 
@@ -807,27 +870,27 @@ function TabDeals({
                     </div>
                   )}
                   <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-text-tertiary/40 pt-3">
-                    {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); }} label="Aktivitas" small variant="ghost" />}
-                    {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" />}
+                    {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); }} label="Aktivitas" small variant="ghost" title="Catat telepon, meeting, catatan, atau follow-up untuk opportunity ini." />}
+                    {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" title="Lihat ringkasan customer: proyek, kontrak, pengiriman, nilai transaksi, serta piutang." />}
                     {!readOnly ? (
                       <>
-                        {!isCancelled && (
+                        {!isCancelled && !isWon && (
                           <ActionBtn
                             onClick={() => handleDealWon(o)}
                             label="Deal Won"
                             small
                             disabled={!cust}
-                            title={!cust ? "Lengkapi customer pada opportunity sebelum menjalankan Deal Won." : undefined}
+                            title={!cust ? "Lengkapi customer pada opportunity sebelum menjalankan Deal Won." : "Tandai deal berhasil dan periksa kredit. Jika kredit aman, sistem membuat Sales Order dan project berstatus incoming; jika tidak, sistem membuat proforma."}
                           />
                         )}
-                        {isWon && !isCancelled && (
-                          <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small />
+                        {isWon && !isCancelled && canOverride && (
+                          <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small title="Jalur pengecualian untuk Direktur saat pemeriksaan kredit menahan deal; wajib mencatat alasan." />
                         )}
-                        {isCancelled ? <button onClick={() => handleDelete(o.id)} title="Hapus permanen" className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={13} /></button> : <ActionBtn onClick={() => handleMarkLost(o.id)} label="Tandai kalah" small variant="ghost" />}
+                        {terminalConflict ? <span className="text-2xs font-medium text-red-700" title="Status terminal saling bertentangan; minta admin memperbaiki data sebelum melanjutkan.">Status konflik · periksa data</span> : isLost ? <span className="text-2xs text-text-secondary" title={o.lost_reason_detail ? `${lostReasonSummary}: ${o.lost_reason_detail}` : lostReasonSummary}>Kalah · {lostReasonSummary}</span> : isHardCancelled ? <button onClick={() => handleDelete(o.id)} title="Hapus permanen" className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={13} /></button> : isWon ? <span className="text-2xs text-emerald-700">Deal Won</span> : <ActionBtn onClick={() => handleMarkLost(o.id)} label="Tandai kalah" small variant="ghost" title="Tutup opportunity sebagai kalah. Sistem meminta alasan seperti harga, fitur, anggaran, kompetitor, atau tidak ada respons." />}
                       </>
                     ) : (
                       <span className="text-2xs text-text-secondary italic">
-                        {isCancelled ? "Dibatalkan" : isWon ? "Deal Closed Won" : o.pipeline_stage || "In Pipeline"}
+                        {terminalConflict ? "Status konflik" : isLost ? "Deal Closed Lost" : isHardCancelled ? "Dibatalkan" : isWon ? "Deal Closed Won" : o.pipeline_stage || "In Pipeline"}
                       </span>
                     )}
                   </div>
@@ -845,6 +908,7 @@ function TabDeals({
           <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-bold", (data.parties||[]).length >= 20 ? "bg-emerald-100 text-emerald-700" : (data.parties||[]).length >= 5 ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}><Users size={11} />{(data.parties||[]).length}</span>
         </div>
         <p className="text-xs text-text-secondary mb-3">Kontrol plafon kredit, outstanding AR, dan kelayakan approval transaksi klien.</p>
+        <p className="text-[11px] leading-5 text-text-secondary mb-3">NO_LIMIT berarti plafon kredit belum diatur. Untuk pemeriksaan Deal Won, plafon Rp0 dihitung sebagai kredit tersedia Rp0; atur limit sebelum mengandalkan jalur kredit.</p>
         {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada customer terdaftar." /> : (
           <div className="flex flex-col gap-2 max-h-[520px] overflow-y-auto">
             {(data.parties||[]).map((p, customerIndex) => {
@@ -854,7 +918,7 @@ function TabDeals({
               const overdue = snap?.overdue_amount || 0;
               const available = snap?.available_credit ?? limit;
               const status = snap?.credit_status || (limit > 0 ? "AVAILABLE" : "NO_LIMIT");
-              const isBlocked = status === "HOLD" || (limit > 0 && available < 0) || overdue > 0;
+              const isBlocked = status === "HOLD" || status === "NO_LIMIT" || (limit > 0 && available < 0) || overdue > 0;
               return (
                 <div key={p.id} className={cn("p-3 rounded-xl border", isBlocked ? "border-red-200 bg-red-50" : "border-text-tertiary/60")}>
                   <div className="flex justify-between items-center mb-2">
@@ -869,8 +933,8 @@ function TabDeals({
                   </div>
                   {!readOnly && (
                     <div className="flex gap-1.5">
-                      <ActionBtn onClick={() => handleCreditLimit(p.id, limit)} label="Atur Limit" small variant="ghost" />
-                      <ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" />
+                      <ActionBtn onClick={() => handleCreditLimit(p.id, limit)} label="Atur Limit" small variant="ghost" title="Tetapkan plafon kredit customer. Nilai ini dipakai untuk menentukan apakah Deal Won bisa diteruskan tanpa proforma." />
+                      <ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" title="Hitung ulang limit tersedia, piutang berjalan, dan overdue dari data invoice yang tercatat." />
                     </div>
                   )}
                 </div>
@@ -947,7 +1011,7 @@ function TabDeals({
               value={form.pipeline_stage} 
               onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}
             >
-              {["OPEN","QUALIFICATION","PROPOSAL","NEGOTIATION","WON","LOST"].map(s => <option key={s} value={s}>{s}</option>)}
+              {["OPEN","QUALIFICATION","PROPOSAL","NEGOTIATION"].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="flex gap-2 pt-2 justify-end">
@@ -981,12 +1045,58 @@ function TabDeals({
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="p-2 rounded-lg border border-text-tertiary/60"><div className="text-text-secondary">Credit Limit</div><div className="font-semibold">{formatMoney(resultModal.data.credit_evaluation.credit_limit)}</div></div>
                 <div className="p-2 rounded-lg border border-text-tertiary/60"><div className="text-text-secondary">Available</div><div className="font-semibold">{formatMoney(resultModal.data.credit_evaluation.available_credit)}</div></div>
+                <div className="p-2 rounded-lg border border-text-tertiary/60"><div className="text-text-secondary">Piutang berjalan</div><div className="font-semibold">{formatMoney(resultModal.data.credit_evaluation.outstanding_receivable)}</div></div>
+                <div className="p-2 rounded-lg border border-text-tertiary/60"><div className="text-text-secondary">Piutang jatuh tempo</div><div className="font-semibold">{formatMoney(resultModal.data.credit_evaluation.overdue_amount)}</div></div>
+              </div>
+            )}
+            {resultModal.data?.handoff && (
+              <div className="rounded-xl border border-text-tertiary/60 p-3 text-xs leading-5">
+                <div className="font-semibold">Langkah berikutnya</div>
+                {resultModal.data.handoff.project_id
+                  ? <p>Sales Order dan project incoming sudah dibuat. Tim project perlu membuka project tersebut dan melengkapi verifikasi sebelum pekerjaan dimulai.</p>
+                  : resultModal.data.handoff.proforma_invoice_id
+                    ? <p>Deal tertahan pemeriksaan kredit. Proforma sudah dibuat; minta tim Finance menindaklanjuti pembayaran. Setelah pembayaran lunas, jalankan Deal Won kembali untuk membuat Sales Order dan project.</p>
+                    : <p>{resultModal.data.handoff.note || "Periksa hasil handoff dan tindak lanjuti dengan tim terkait."}</p>}
               </div>
             )}
             <button onClick={() => setResultModal(null)} className="btn-primary self-end">Tutup</button>
           </div>
         </Modal>
       )}
+      <Modal isOpen={Boolean(lostReasonOpp)} onClose={() => { if (!savingLostReason) setLostReasonOpp(null); }} title={`Tandai kalah — ${lostReasonOpp?.opportunity_name || "Opportunity"}`} size="sm">
+        <div className="space-y-3 p-4">
+          <p className="text-xs leading-5 text-text-secondary">Pilih alasan utama. Catatan tambahan dapat disimpan untuk semua alasan; untuk “Lainnya”, catatan wajib diisi.</p>
+          <label className="block text-xs font-medium text-text-primary">Alasan utama *
+            <select className="input mt-1 w-full" value={lostReasonCode} onChange={(event) => setLostReasonCode(event.target.value)}>
+              <option value="">Pilih alasan</option>
+              <option value="PRICE_TOO_HIGH">Harga tidak sesuai</option>
+              <option value="LOST_FEATURES">Fitur/kebutuhan tidak terpenuhi</option>
+              <option value="BUDGET_CANCELLED">Anggaran dibatalkan</option>
+              <option value="COMPETITOR">Memilih kompetitor</option>
+              <option value="NO_RESPONSE">Tidak ada respons</option>
+              <option value="OTHER">Lainnya</option>
+            </select>
+          </label>
+          <label className="block text-xs font-medium text-text-primary">Catatan {lostReasonCode === "OTHER" ? "*" : "(opsional)"}
+            <textarea className="input mt-1 w-full min-h-24" value={lostReasonDetail} onChange={(event) => setLostReasonDetail(event.target.value)} maxLength={2000} placeholder="Contoh: alasan spesifik atau konteks percakapan dengan customer" />
+          </label>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setLostReasonOpp(null)} disabled={savingLostReason} className="btn-ghost">Batal</button>
+            <button type="button" onClick={() => void submitMarkLost()} disabled={savingLostReason || !lostReasonCode || (lostReasonCode === "OTHER" && !lostReasonDetail.trim())} className="btn-primary">{savingLostReason ? "Menyimpan…" : "Simpan alasan & tutup deal"}</button>
+          </div>
+        </div>
+      </Modal>
+      <Modal isOpen={Boolean(overrideOpp)} onClose={() => { if (!savingOverride) setOverrideOpp(null); }} title={`Executive override — ${overrideOpp?.opportunity_name || "Opportunity"}`} size="sm">
+        <div className="space-y-3 p-4">
+          <p className="text-xs leading-5 text-text-secondary">Tindakan ini melewati penahanan kredit dan membuat order serta project incoming. Keputusan dan alasan akan dicatat pada riwayat approval.</p>
+          <label className="block text-xs font-medium text-text-primary">Alasan dan dasar persetujuan *</label>
+          <textarea className="input -mt-2 w-full min-h-28" value={overrideRemarks} onChange={(event) => setOverrideRemarks(event.target.value)} maxLength={2000} placeholder="Tuliskan siapa yang menyetujui, dasar bisnis, dan rencana mitigasi risiko kredit." />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setOverrideOpp(null)} disabled={savingOverride} className="btn-ghost">Batal</button>
+            <button type="button" onClick={() => void submitExecutiveOverride()} disabled={savingOverride || !overrideRemarks.trim()} className="btn-primary">{savingOverride ? "Menyimpan…" : "Catat override"}</button>
+          </div>
+        </div>
+      </Modal>
       <Modal isOpen={Boolean(activityOpp)} onClose={() => setActivityOpp(null)} title={`Aktivitas — ${activityOpp?.opportunity_name || "Opportunity"}`} size="sm">
         <div className="space-y-3">
           <label className="block text-xs font-medium">Jenis aktivitas<select className="input mt-1 w-full" value={activityForm.activity_type} onChange={e => setActivityForm({ ...activityForm, activity_type: e.target.value })}><option value="CALL">Telepon</option><option value="MEETING">Meeting</option><option value="NOTE">Catatan</option><option value="FOLLOW_UP">Follow-up</option></select></label>
@@ -1016,7 +1126,8 @@ function TabDeals({
  */
 function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQuotation = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; readOnly?: boolean; canApproveQuotation?: boolean }) {
   const [isEstModal, setIsEstModal] = useState(false);
-  const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: "100000000", overhead_cost: "30000000", markup_percent: "30", description: "" });
+  const [calculatingEstimateId, setCalculatingEstimateId] = useState<string | null>(null);
+  const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: "100000000", overhead_cost: "30000000", contingency_amount: "0", markup_percent: "30", tax_percent: "0", description: "" });
   const [sendDialog, setSendDialog] = useState<{ quote: any; customerName: string; recipientEmail: string; subject: string; body: string } | null>(null);
   const [loadingRecipient, setLoadingRecipient] = useState(false);
   const [sendingQuotation, setSendingQuotation] = useState(false);
@@ -1033,15 +1144,17 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
     }
     const directCost = Number(estForm.direct_cost);
     const overheadCost = Number(estForm.overhead_cost);
+    const contingencyAmount = Number(estForm.contingency_amount);
     const markupPercent = Number(estForm.markup_percent);
-    if (![directCost, overheadCost, markupPercent].every(Number.isFinite)
-      || directCost < 0 || overheadCost < 0 || markupPercent < 0
-      || directCost + overheadCost <= 0) {
-      toast.error("Total biaya harus lebih dari nol dan seluruh nilai tidak boleh negatif.");
+    const taxPercent = Number(estForm.tax_percent);
+    if (![directCost, overheadCost, contingencyAmount, markupPercent, taxPercent].every(Number.isFinite)
+      || directCost < 0 || overheadCost < 0 || contingencyAmount < 0 || markupPercent < 0 || taxPercent < 0 || taxPercent > 100
+      || directCost + overheadCost + contingencyAmount <= 0) {
+      toast.error("Total biaya harus lebih dari nol; markup dan pajak harus berupa angka 0–100%.");
       return;
     }
     try {
-      await createCostEstimate({ ...estForm, direct_cost: directCost, overhead_cost: overheadCost, markup_percent: markupPercent, opportunity: estForm.opportunity || null });
+      await createCostEstimate({ ...estForm, direct_cost: directCost, overhead_cost: overheadCost, contingency_amount: contingencyAmount, markup_percent: markupPercent, tax_percent: taxPercent, opportunity: estForm.opportunity || null });
       toast.success("Cost Estimate dibuat!"); setIsEstModal(false); onRefresh();
     } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal buat estimate"); }
   };
@@ -1062,7 +1175,9 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
       "Terima kasih atas kesempatan yang diberikan kepada kami. Bersama email ini kami sampaikan penawaran harga berikut:",
       "",
       `Kode quotation: ${quotationCode}`,
-      `Nilai penawaran: ${formatMoney(quote.total_amount)}`,
+      `Nilai sebelum pajak: ${formatMoney(quote.subtotal ?? quote.total_amount)}`,
+      `Pajak: ${formatMoney(quote.tax_amount || 0)}`,
+      `Total quotation: ${formatMoney(quote.total_amount)}`,
       ...(quote.estimated_total_cost !== null && quote.estimated_total_cost !== undefined
         ? [`Estimasi HPP: ${formatMoney(quote.estimated_total_cost)}`]
         : []),
@@ -1168,7 +1283,17 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
       />;
     }
     if (s === "ACCEPTED") return <ActionBtn
-      onClick={async () => { await convertQuotationToOrder(q.id); toast.success("Quotation dikonversi menjadi Sales Order."); onRefresh(); }}
+      onClick={async () => {
+        const result = await convertQuotationToOrder(q.id);
+        if (result?.handoff?.sales_order_id) {
+          toast.success(result.handoff.project_id ? "Quotation menjadi Sales Order dan project incoming." : "Quotation berhasil menjadi Sales Order.");
+        } else {
+          toast.error(result?.handoff?.proforma_invoice_id
+            ? `Order/project ditahan oleh pemeriksaan kredit. Proforma ${result.handoff.proforma_invoice_id} perlu ditindaklanjuti.`
+            : result?.handoff?.note || "Konversi ditahan oleh pemeriksaan kredit.");
+        }
+        onRefresh();
+      }}
       label="📦 Convert to Order"
       small
       disabled={!quotationOpportunity || !quotationCustomerIsValid}
@@ -1181,7 +1306,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
       {/* Cost Estimates */}
       <div className="lg:col-span-3 card rounded-xl p-4">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-bold">Cost Estimating (HPP & Margin)</h3>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.estimates||[]).length} Estimate</span>
@@ -1190,28 +1315,103 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
             )}
           </div>
         </div>
+        <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3 text-xs leading-5 text-text-secondary">
+          <b className="text-text-primary">Apa itu HPP?</b> Harga Pokok Penjualan adalah perkiraan seluruh biaya untuk memenuhi pesanan: biaya langsung + overhead + contingency. Harga penawaran dihitung dari HPP ditambah markup. Hasil ini adalah estimasi biaya dan laba kotor, bukan bukti uang sudah diterima atau biaya aktual.
+        </div>
         {(data.estimates||[]).length === 0 ? <EmptyState msg="Belum ada kalkulasi biaya." /> : (
           <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto">
-            {(data.estimates||[]).map(e => (
-              <div key={e.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold">Cost Estimate {String(e.estimate_number || e.id).slice(0,12)}</div>
-                  <div className="text-xs text-text-secondary mt-0.5">
-                    Total HPP: <b>{formatMoney(e.total_cost)}</b> · Markup: <b>{e.markup_percent||0}%</b> · Penawaran: <b className="text-brand-green">{formatMoney(e.offered_amount || e.offered_price || 0)}</b>
+            {(data.estimates||[]).map(e => {
+              const lines = (data.estimateLines || []).filter((line: any) => String(line.estimate_id ?? line.estimate) === String(e.id));
+              const lineDirect = lines.filter((line: any) => String(line.cost_element || "").toUpperCase() !== "OVERHEAD").reduce((sum: number, line: any) => sum + Number(line.amount || 0), 0);
+              const lineOverhead = lines.filter((line: any) => String(line.cost_element || "").toUpperCase() === "OVERHEAD").reduce((sum: number, line: any) => sum + Number(line.amount || 0), 0);
+              const directCost = lines.length ? lineDirect : Number(e.direct_cost || 0);
+              const overheadCost = lines.length ? lineOverhead : Number(e.overhead_cost || 0);
+              const contingency = Number(e.contingency_amount || 0);
+              const totalCost = Number(e.total_cost ?? (directCost + overheadCost + contingency));
+              const markupPercent = Number(e.markup_percent || 0);
+              const offered = Number(e.offered_amount ?? e.offered_price ?? (totalCost * (1 + markupPercent / 100)));
+              const taxPercent = Number(e.tax_percent || 0);
+              const taxAmount = offered * taxPercent / 100;
+              const markupAmount = Number(e.margin_amount ?? (offered - totalCost));
+              const marginPercent = Number(e.margin_percent ?? (offered > 0 ? markupAmount / offered * 100 : 0));
+              const isCalculated = ["CALCULATED", "QUOTED"].includes(String(e.status || "").toUpperCase());
+              const isEstimateLocked = String(e.status || "").toUpperCase() === "QUOTED";
+              return (
+                <div key={e.id} className="flex flex-col p-3 rounded-xl border border-text-tertiary/60 gap-2">
+                  <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold">Cost Estimate {String(e.estimate_number || e.id).slice(0,12)}</div>
+                      <div className="text-xs text-text-secondary mt-0.5">
+                        HPP: <b>{formatMoney(totalCost)}</b> · Markup: <b>{markupPercent}%</b> · Sebelum pajak: <b className="text-brand-green">{formatMoney(offered)}</b> · Total: <b>{formatMoney(offered + taxAmount)}</b>
+                      </div>
+                      <StatusBadge status={e.status || "DRAFT"} />
+                    </div>
+                    {!readOnly && (
+                      <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
+                        <ActionBtn
+                          onClick={async () => {
+                            setCalculatingEstimateId(String(e.id));
+                            try {
+                              await calculateCostEstimate(e.id);
+                              toast.success("HPP dihitung. Rincian hasil tampil di bawah estimate.");
+                              onRefresh();
+                            } catch (error: any) {
+                              toast.error(error?.response?.data?.detail || error?.message || "HPP gagal dihitung. Periksa baris biaya dan coba lagi.");
+                            } finally {
+                              setCalculatingEstimateId(null);
+                            }
+                          }}
+                          label={calculatingEstimateId === String(e.id) ? "Menghitung…" : "Hitung HPP"}
+                          small
+                          variant="ghost"
+                          disabled={calculatingEstimateId === String(e.id) || isEstimateLocked}
+                          title={isEstimateLocked ? "Estimate sudah terikat quotation; hitung ulang tanpa revisi dapat membuat nilai dokumen berbeda." : "Jumlahkan seluruh biaya langsung, overhead, dan contingency; hitung harga penawaran dari markup."}
+                        />
+                        <ActionBtn onClick={async () => {
+                          const result = await createQuotationFromEstimate(e.id);
+                          toast.success(result?.created === false
+                            ? `Quotation sudah ada dengan status ${result.status}. Untuk mengubah nilai, buat revisi baru.`
+                            : "Quotation draft dibuat. Lanjutkan dengan approval, kirim ke customer, lalu catat keputusannya.");
+                          onRefresh();
+                        }} label="📄 Buat Quotation" small title="Buat dokumen penawaran dari hasil estimasi ini; quotation masih perlu approval dan keputusan customer." />
+                        <button onClick={async () => { if(!confirm("Hapus?")) return; await deleteCostEstimate(e.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors" title="Hapus estimate">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <StatusBadge status={e.status || "DRAFT"} />
+                  <div className={cn("rounded-lg border p-2.5", isCalculated ? "border-emerald-100 bg-emerald-50/50" : "border-amber-100 bg-amber-50/50")}>
+                    <div className="mb-1 text-[11px] font-semibold text-text-primary">{isCalculated ? "Rincian hasil HPP" : "Rincian biaya — belum dihitung"}</div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-text-secondary sm:grid-cols-4">
+                      <div>Biaya langsung <b className="block text-text-primary">{formatMoney(directCost)}</b></div>
+                      <div>Overhead <b className="block text-text-primary">{formatMoney(overheadCost)}</b></div>
+                      <div>Contingency <b className="block text-text-primary">{formatMoney(contingency)}</b></div>
+                      <div>HPP total <b className="block text-text-primary">{formatMoney(totalCost)}</b></div>
+                    </div>
+                    {lines.length > 0 && (
+                      <div className="mt-2 border-t border-black/5 pt-2">
+                        <div className="mb-1 text-[10px] font-semibold text-text-secondary">Baris pembentuk HPP</div>
+                        <div className="space-y-1">
+                          {lines.map((line: any) => (
+                            <div key={line.id} className="flex items-start justify-between gap-2 text-[10px] leading-4 text-text-secondary">
+                              <span className="min-w-0">{line.description || line.cost_element || "Biaya"} <span className="text-text-tertiary">· {line.cost_element || "DIRECT"}{line.quantity != null && line.unit_cost != null ? ` · ${line.quantity} × ${formatMoney(line.unit_cost)}` : ""}</span></span>
+                              <b className="shrink-0 text-text-primary">{formatMoney(line.amount || 0)}</b>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-2 border-t border-black/5 pt-2 text-[11px] leading-5 text-text-secondary">
+                      HPP = {formatMoney(directCost)} + {formatMoney(overheadCost)} + {formatMoney(contingency)} = <b className="text-text-primary">{formatMoney(totalCost)}</b><br />
+                      Penawaran sebelum pajak = HPP × (1 + {markupPercent}%) = <b className="text-brand-green">{formatMoney(offered)}</b><br />
+                      Pajak {taxPercent}% = <b className="text-text-primary">{formatMoney(taxAmount)}</b> · Total quotation = <b className="text-brand-green">{formatMoney(offered + taxAmount)}</b><br />
+                      Selisih kotor sebelum pajak: <b className="text-text-primary">{formatMoney(markupAmount)}</b> ({marginPercent.toFixed(1)}% dari harga penawaran)
+                    </div>
+                    {!isCalculated && <p className="mt-1 text-[10px] text-amber-800">Klik “Hitung HPP” untuk menyimpan hasil hitung. Pastikan biaya langsung atau baris biaya sudah diisi.</p>}
+                  </div>
                 </div>
-                {!readOnly && (
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <ActionBtn onClick={async () => { await calculateCostEstimate(e.id); toast.success("HPP dihitung."); onRefresh(); }} label="Hitung HPP" small variant="ghost" />
-                    <ActionBtn onClick={async () => { await createQuotationFromEstimate(e.id); toast.success("Quotation dibuat!"); onRefresh(); }} label="📄 Buat Quotation" small />
-                    <button onClick={async () => { if(!confirm("Hapus?")) return; await deleteCostEstimate(e.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1231,6 +1431,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
                     <div className="text-sm font-semibold truncate">{q.quotation_code || q.quotation_number || `Quote ${String(q.id).slice(0,8)}`}</div>
                     {(q.quotation_code || q.quotation_number) && <button type="button" title="Salin kode quotation untuk email klien" onClick={async () => { try { await navigator.clipboard.writeText(String(q.quotation_code || q.quotation_number)); toast.success("Kode quotation disalin."); } catch { toast.error("Kode quotation tidak dapat disalin."); } }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-text-tertiary/50 px-2 py-1 text-2xs text-text-secondary hover:text-brand-green"><Copy size={12}/>Salin kode</button>}
                   </div>
+                  <div className="text-xs text-text-secondary">Sebelum pajak: <b>{formatMoney(q.subtotal ?? q.total_amount)}</b> · Pajak: <b>{formatMoney(q.tax_amount || 0)}</b></div>
                   <div className="text-xs text-text-secondary">Total: <b>{formatMoney(q.total_amount)}</b></div>
                   <StatusBadge status={q.status || "DRAFT"} />
                 </div>
@@ -1275,16 +1476,30 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
             </div>
           </div>
           <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Contingency / cadangan biaya (Rp)</label>
+            <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.contingency_amount} onChange={e => setEstForm(f => ({...f, contingency_amount: e.target.value}))} />
+            <p className="mt-1 text-[10px] leading-4 text-text-secondary">Cadangan ini akan dimasukkan ke total quotation sebagai baris biaya tersendiri.</p>
+          </div>
+          <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Markup %</label>
             <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.markup_percent} onFocus={e => { if (e.currentTarget.value === "0") setEstForm(f => ({ ...f, markup_percent: "" })); }} onBlur={e => { if (e.currentTarget.value === "") setEstForm(f => ({ ...f, markup_percent: "0" })); }} onChange={e => setEstForm(f => ({...f, markup_percent: e.target.value}))} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Pajak penjualan % (0 bila tidak dikenakan)</label>
+            <input type="number" min="0" max="100" step="0.01" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.tax_percent} onChange={e => setEstForm(f => ({...f, tax_percent: e.target.value}))} />
+            <p className="mt-1 text-[10px] leading-4 text-text-secondary">Pastikan tarif sesuai kebijakan pajak perusahaan. Pajak dihitung dari nilai penawaran sebelum pajak.</p>
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Deskripsi biaya langsung</label>
             <input type="text" maxLength={255} className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.description} onChange={e => setEstForm(f => ({...f, description: e.target.value}))} placeholder="Biaya material / pekerjaan" />
           </div>
           <div className="p-3 rounded-xl bg-brand-light-green text-xs">
-            <b>Total HPP:</b> {formatMoney(Number(estForm.direct_cost || 0) + Number(estForm.overhead_cost || 0))} &nbsp;|&nbsp;
-            <b>Penawaran:</b> {formatMoney((Number(estForm.direct_cost || 0) + Number(estForm.overhead_cost || 0)) * (1 + Number(estForm.markup_percent || 0)/100))}
+            {(() => {
+              const totalHpp = Number(estForm.direct_cost || 0) + Number(estForm.overhead_cost || 0) + Number(estForm.contingency_amount || 0);
+              const offer = totalHpp * (1 + Number(estForm.markup_percent || 0) / 100);
+              const tax = offer * Number(estForm.tax_percent || 0) / 100;
+              return <><b>Total HPP:</b> {formatMoney(totalHpp)} &nbsp;|&nbsp; <b>Penawaran sebelum pajak:</b> {formatMoney(offer)} &nbsp;|&nbsp; <b>Pajak:</b> {formatMoney(tax)} &nbsp;|&nbsp; <b>Total quotation:</b> {formatMoney(offer + tax)}</>;
+            })()}
           </div>
           <div className="flex gap-2 justify-end pt-2">
             <button onClick={() => setIsEstModal(false)} className="btn-ghost">Batal</button>
@@ -2489,6 +2704,7 @@ export default function CrmClient() {
               onOpportunityDeleted={handleOpportunityDeleted}
               onPartyCreated={handlePartyCreated}
               readOnly={!canOperateCrm}
+              canOverride={userRole === "super_admin" || activeRoleCode === "DIRECTOR"}
             />
           )}
           {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} canApproveQuotation={canApproveCrmQuotation} />}

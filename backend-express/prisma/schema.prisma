@@ -1465,6 +1465,7 @@ model crm_opportunity {
   stage_id            String?   @map("stage_id")
   opportunity_name    String
   lost_reason         String
+  lost_reason_detail  String    @default("") @map("lost_reason_detail")
   opened_at           DateTime?
   closed_at           DateTime?
   probability_percent Decimal?
@@ -2140,6 +2141,7 @@ model crm_cost_estimate {
   contingency_amount Decimal
   total_cost         Decimal
   markup_percent     Decimal
+  tax_percent        Decimal   @default(0) @map("tax_percent")
   offered_amount     Decimal
   margin_amount      Decimal
   margin_percent     Decimal

@@ -246,6 +246,15 @@ crmRouter.post('/customer-inquiries/:id/qualify', async (req: Request, res: Resp
 // CUSTOM ACTIONS ON COST ESTIMATES
 // =============================================================================
 
+crmRouter.post('/cost-estimates', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await CRMService.createCostEstimate(req.body ?? {}, req.user?.id ?? 'system', activeCompanyId(req));
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 /**
  * POST route handler: `/cost-estimates/:id/calculate`.
  *
@@ -307,6 +316,22 @@ crmRouter.post('/credit-status-snapshots/calculate', async (req: Request, res: R
 // CUSTOM ACTIONS ON OPPORTUNITIES
 // =============================================================================
 
+crmRouter.post('/quotations/:id/convert-to-order', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const quotation = await prisma.sales_quotation.findFirst({
+      where: { id: req.params.id, company_id: companyId },
+      select: { id: true, opportunity_id: true },
+    });
+    if (!quotation) throw new NotFoundError('Quotation');
+    if (!quotation.opportunity_id) throw new ValidationError('Quotation belum terhubung ke Opportunity.');
+    const result = await CRMService.processDealWon(quotation.opportunity_id, req.user, companyId);
+    res.status(result.handoff?.sales_order_id ? 200 : 202).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 /**
  * POST route handler: `/opportunities/:id/process-deal-won`.
  *
@@ -334,7 +359,7 @@ crmRouter.post('/opportunities/:id/process-deal-won', async (req: Request, res: 
  */
 crmRouter.post('/opportunities/:id/executive-override', requireActiveRole(RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await CRMService.executiveOverride(req.params.id, req.user, activeCompanyId(req));
+    const result = await CRMService.executiveOverride(req.params.id, req.user, activeCompanyId(req), String(req.body.remarks ?? ''));
     res.json(result);
   } catch (err) {
     next(err);
@@ -362,7 +387,7 @@ crmRouter.get('/opportunities/:id/customer-360', async (req: Request, res: Respo
     const [quotationsCount, ordersCount, orderTotals, projectsCount, activeProjectsCount, contractsCount, deliveriesCount, outstandingDocs, overdueDocs] = await Promise.all([
       customer ? prisma.sales_quotation.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
       customer ? prisma.sales_order.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
-      customer ? prisma.sales_order.aggregate({ where: { customer_party_id: customer.id, company_id: companyId }, _sum: { total_amount: true } }) : { _sum: { total_amount: null } },
+      customer ? prisma.sales_order.aggregate({ where: { customer_party_id: customer.id, company_id: companyId, status: { in: ['CONFIRMED', 'ALLOCATED', 'FULFILLED'] } }, _sum: { total_amount: true } }) : { _sum: { total_amount: null } },
       customer ? prisma.project_project.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
       customer ? prisma.project_project.count({ where: { customer_party_id: customer.id, company_id: companyId, status: { notIn: ['CLOSED', 'COMPLETED', 'CANCELLED'] } } }) : 0,
       customer ? prisma.sales_contract.count({ where: { customer_party_id: customer.id, company_id: companyId } }) : 0,
@@ -825,20 +850,118 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
 
 crmRouter.use('/customer-inquiries', createCrudRouter({ modelName: 'crm_customer_inquiry', searchFields: ['inquiry_number', 'subject', 'customer_name'] }));
 crmRouter.use('/inquiry-requirements', createCrudRouter({ modelName: 'crm_inquiry_requirement', searchFields: ['description'] }));
-crmRouter.use('/cost-estimates', createCrudRouter({ modelName: 'crm_cost_estimate', searchFields: ['estimate_number'] }));
-crmRouter.use('/cost-estimate-lines', createCrudRouter({ modelName: 'crm_cost_estimate_line', searchFields: ['description', 'cost_element'] }));
+crmRouter.use('/cost-estimates', createCrudRouter({
+  modelName: 'crm_cost_estimate',
+  searchFields: ['estimate_number'],
+  beforeUpdate: async (_req, _data, existing) => {
+    if (String(existing.status || '').toUpperCase() === 'QUOTED') throw new ConflictError('Estimate yang sudah menjadi quotation tidak dapat diubah. Buat revisi baru.');
+  },
+  beforeDelete: async (_req, existing) => {
+    const version = await prisma.crm_quotation_version.findFirst({ where: { estimate_id: existing.id, company_id: existing.company_id }, select: { id: true } });
+    if (version) throw new ConflictError('Estimate sudah terhubung ke quotation dan tidak dapat dihapus.');
+  },
+  afterDelete: async (_req, existing) => {
+    await prisma.crm_cost_estimate_line.deleteMany({ where: { estimate_id: existing.id, company_id: existing.company_id } });
+  },
+}));
+crmRouter.use('/cost-estimate-lines', createCrudRouter({
+  modelName: 'crm_cost_estimate_line',
+  searchFields: ['description', 'cost_element'],
+  beforeCreate: async (req, data) => {
+    const companyId = activeCompanyId(req);
+    const estimate = await prisma.crm_cost_estimate.findFirst({ where: { id: data.estimate_id, company_id: companyId } });
+    if (!estimate) throw new NotFoundError('CostEstimate');
+    if (String(estimate.status || '').toUpperCase() !== 'DRAFT') throw new ConflictError('Baris biaya hanya dapat diubah saat estimate berstatus DRAFT.');
+    const quantity = Number(data.quantity);
+    const unitCost = Number(data.unit_cost);
+    const amount = Number(data.amount);
+    if (![quantity, unitCost, amount].every(Number.isFinite) || quantity <= 0 || unitCost < 0 || amount < 0) throw new ValidationError('Quantity harus lebih dari nol; biaya dan amount tidak boleh negatif.');
+    return data;
+  },
+  beforeUpdate: async (req, data, existing) => {
+    const estimate = await prisma.crm_cost_estimate.findFirst({ where: { id: existing.estimate_id, company_id: activeCompanyId(req) } });
+    if (!estimate) throw new NotFoundError('CostEstimate');
+    if (String(estimate.status || '').toUpperCase() !== 'DRAFT') throw new ConflictError('Baris biaya hanya dapat diubah saat estimate berstatus DRAFT.');
+    if (data.estimate_id && data.estimate_id !== existing.estimate_id) throw new ValidationError('Baris biaya tidak dapat dipindahkan ke estimate lain.');
+    const quantity = Number(data.quantity ?? existing.quantity);
+    const unitCost = Number(data.unit_cost ?? existing.unit_cost);
+    const amount = Number(data.amount ?? existing.amount);
+    if (![quantity, unitCost, amount].every(Number.isFinite) || quantity <= 0 || unitCost < 0 || amount < 0) throw new ValidationError('Quantity harus lebih dari nol; biaya dan amount tidak boleh negatif.');
+    return data;
+  },
+  beforeDelete: async (req, existing) => {
+    const estimate = await prisma.crm_cost_estimate.findFirst({ where: { id: existing.estimate_id, company_id: activeCompanyId(req) } });
+    if (!estimate) throw new NotFoundError('CostEstimate');
+    if (String(estimate.status || '').toUpperCase() !== 'DRAFT') throw new ConflictError('Baris biaya hanya dapat dihapus saat estimate berstatus DRAFT.');
+  },
+}));
 crmRouter.post('/opportunities/:id/mark-lost', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const reason = String(req.body.lost_reason ?? '').trim().toUpperCase();
     const allowed = ['PRICE_TOO_HIGH', 'LOST_FEATURES', 'BUDGET_CANCELLED', 'COMPETITOR', 'NO_RESPONSE', 'OTHER'];
     if (!allowed.includes(reason)) throw new ValidationError('Pilih alasan deal kalah yang tersedia.');
     const companyId = activeCompanyId(req);
-    const opportunity = await prisma.crm_opportunity.findFirst({ where: { id: req.params.id, company_id: companyId } });
-    if (!opportunity) throw new NotFoundError('Opportunity');
-    if (['WON', 'CLOSED_WON'].includes(opportunity.status.toUpperCase())) throw new ConflictError('Opportunity yang sudah menang tidak dapat ditandai kalah.');
-    const lostReason = reason === 'OTHER' ? String(req.body.lost_reason_detail ?? '').trim() : reason;
-    if (!lostReason) throw new ValidationError('Jelaskan alasan lain untuk deal kalah.');
-    const updated = await prisma.crm_opportunity.update({ where: { id: opportunity.id }, data: { lost_reason: lostReason, status: 'LOST', pipeline_stage: 'LOST', closed_at: new Date() } });
+    const detail = String(req.body.lost_reason_detail ?? '').trim();
+    if (detail.length > 2000) throw new ValidationError('Catatan alasan kalah maksimal 2.000 karakter.');
+    if (reason === 'OTHER' && !detail) throw new ValidationError('Jelaskan alasan lain untuk deal kalah.');
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM crm_opportunity WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
+      const opportunity = await tx.crm_opportunity.findFirst({ where: { id: req.params.id, company_id: companyId } });
+      if (!opportunity) throw new NotFoundError('Opportunity');
+      const status = String(opportunity.status || '').toUpperCase();
+      const stage = String(opportunity.pipeline_stage || '').toUpperCase();
+      if (['WON', 'CLOSED_WON'].includes(status) || ['WON', 'CLOSED_WON'].includes(stage)) {
+        throw new ConflictError('Opportunity yang sudah menang tidak dapat ditandai kalah.');
+      }
+      if (['LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(status) || ['LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(stage)) {
+        throw new ConflictError('Opportunity ini sudah ditutup.');
+      }
+
+      const quotations = await tx.sales_quotation.findMany({
+        where: { opportunity_id: opportunity.id, company_id: companyId },
+        select: { id: true, status: true },
+      });
+      const activeQuotationIds = quotations
+        .filter((quotation) => ['PENDING_APPROVAL', 'SENT', 'ACCEPTED', 'CONVERTED'].includes(String(quotation.status || '').toUpperCase()))
+        .map((quotation) => quotation.id);
+      if (activeQuotationIds.length) {
+        throw new ConflictError('Opportunity memiliki quotation yang sudah dikirim/diterima. Selesaikan atau batalkan quotation terlebih dahulu.');
+      }
+      const orders = await tx.sales_order.findMany({ where: { quotation_id: { in: quotations.map((quotation) => quotation.id) }, company_id: companyId }, select: { id: true } });
+      if (orders.length) throw new ConflictError('Opportunity sudah memiliki Sales Order dan tidak dapat ditandai kalah.');
+
+      const now = new Date();
+      const [fromStage, toStage] = await Promise.all([
+        opportunity.stage_id ? tx.crm_pipeline_stage.findFirst({ where: { id: opportunity.stage_id, company_id: companyId }, select: { id: true } }) : null,
+        tx.crm_pipeline_stage.findFirst({ where: { stage_code: 'LOST', company_id: companyId }, select: { id: true } }),
+      ]);
+      const result = await tx.crm_opportunity.update({
+        where: { id: opportunity.id },
+        data: {
+          lost_reason: reason,
+          lost_reason_detail: detail,
+          status: 'LOST',
+          pipeline_stage: 'LOST',
+          ...(toStage?.id ? { stage_id: toStage.id } : {}),
+          probability_percent: 0,
+          closed_at: now,
+        },
+      });
+      await tx.crm_opportunity_stage_history.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: opportunity.tenant_id,
+          company_id: companyId,
+          opportunity_id: opportunity.id,
+          from_stage_id: fromStage?.id ?? null,
+          to_stage_id: toStage?.id ?? null,
+          changed_by: req.user?.id ?? null,
+          changed_at: now,
+          change_reason: detail ? `${reason}: ${detail}` : reason,
+        },
+      });
+      return result;
+    });
     res.json(updated);
   } catch (error) { next(error); }
 });
@@ -847,6 +970,12 @@ crmRouter.use('/opportunities', createCrudRouter({
   searchFields: ['opportunity_name', 'pipeline_stage'],
   beforeCreate: async (req, data) => validateOpportunityCustomer(req, data),
   beforeUpdate: async (req, data, existing) => validateOpportunityCustomer(req, data, existing),
+  beforeDelete: async (_req, existing) => {
+    if (['WON', 'CLOSED_WON', 'LOST', 'CLOSED_LOST'].includes(String(existing.status || '').toUpperCase())
+      || ['WON', 'CLOSED_WON', 'LOST', 'CLOSED_LOST'].includes(String(existing.pipeline_stage || '').toUpperCase())) {
+      throw new ConflictError('Opportunity yang sudah ditutup tidak dapat dihapus.');
+    }
+  },
 }));
 crmRouter.use('/opportunity-products', createCrudRouter({ modelName: 'crm_opportunity_product' }));
 crmRouter.use('/activities', createCrudRouter({ modelName: 'crm_activity', searchFields: ['subject', 'activity_type'] }));

@@ -11,6 +11,7 @@ import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { queueWebhookEvent } from '../crm/crm-outbound-webhook.service';
+import { RoleCode } from '../../types/roles';
 
 export const salesRouter = Router();
 
@@ -118,9 +119,13 @@ salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, nex
       if (!current.opportunity_id) throw new ValidationError('Hubungkan quotation ke opportunity sebelum mengirim penawaran.');
       const opportunity = await tx.crm_opportunity.findFirst({
         where: { id: current.opportunity_id, company_id: companyId },
-        select: { customer_party_id: true },
+        select: { customer_party_id: true, status: true, pipeline_stage: true },
       });
       if (!opportunity?.customer_party_id) throw new ValidationError('Opportunity harus memiliki customer party sebelum quotation dikirim.');
+      if (['LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(String(opportunity.status || '').toUpperCase())
+        || ['LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(String(opportunity.pipeline_stage || '').toUpperCase())) {
+        throw new ConflictError('Quotation dari Opportunity yang sudah ditutup tidak dapat dikirim.');
+      }
       const customer = await tx.master_party.findFirst({
         where: { id: opportunity.customer_party_id, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
         select: { id: true },
@@ -175,9 +180,13 @@ salesRouter.post('/quotations/:id/customer-decision', async (req: Request, res: 
         if (!quotation.opportunity_id) throw new ValidationError('Quotation harus terhubung ke opportunity sebelum diterima.');
         const opportunity = await tx.crm_opportunity.findFirst({
           where: { id: quotation.opportunity_id, company_id: companyId },
-          select: { customer_party_id: true },
+          select: { customer_party_id: true, status: true, pipeline_stage: true },
         });
         if (!opportunity?.customer_party_id) throw new ValidationError('Opportunity harus memiliki customer party sebelum quotation diterima.');
+        if (['LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(String(opportunity.status || '').toUpperCase())
+          || ['LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(String(opportunity.pipeline_stage || '').toUpperCase())) {
+          throw new ConflictError('Quotation dari Opportunity yang sudah ditutup tidak dapat diterima.');
+        }
         const customer = await tx.master_party.findFirst({
           where: { id: opportunity.customer_party_id, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
           select: { id: true },
@@ -252,73 +261,65 @@ salesRouter.post('/orders/:id/allocate', async (req: Request, res: Response, nex
 salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = activeCompanyId(req);
-    const order = await prisma.sales_order.findFirst({ where: { id: req.params.id, company_id: companyId } });
-    if (!order) throw new NotFoundError('Order');
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM sales_order WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
+      const order = await tx.sales_order.findFirst({ where: { id: req.params.id, company_id: companyId } });
+      if (!order) throw new NotFoundError('Order');
+      const existing = await tx.project_project.findFirst({ where: { sales_order_id: order.id, company_id: companyId } });
+      if (existing) return { project: existing, created: false };
+      if (!['CONFIRMED', 'ALLOCATED'].includes(String(order.status || '').toUpperCase())) {
+        throw new ConflictError('Hanya Sales Order CONFIRMED atau ALLOCATED yang dapat ditransfer ke project.');
+      }
+      if (!order.tenant_id || !order.customer_party_id) throw new ValidationError('Sales Order harus memiliki tenant dan customer.');
+      const customer = await tx.master_party.findFirst({
+        where: { id: order.customer_party_id, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
+      });
+      if (!customer) throw new ValidationError('Customer pada Sales Order tidak aktif atau bukan milik company ini.');
 
-    const existing = await prisma.project_project.findFirst({ where: { sales_order_id: order.id, company_id: companyId } });
-    if (existing) {
-      res.json(existing);
-      return;
-    }
-    let customerName = '';
-    let projectName = `Project for Order #${order.id.slice(0, 6)}`;
-    let projectDescription = '';
-
-    if (order.customer_party_id) {
-      const party = await prisma.master_party.findFirst({ where: { id: order.customer_party_id, company_id: companyId } });
-      if (party) customerName = party.display_name || party.legal_name || '';
-    }
-
-    if (order.quotation_id) {
-      const quot = await prisma.sales_quotation.findFirst({ where: { id: order.quotation_id, company_id: companyId } });
-      if (quot?.opportunity_id) {
-        const opp = await prisma.crm_opportunity.findFirst({ where: { id: quot.opportunity_id, company_id: companyId } });
-        if (opp?.opportunity_name) projectName = opp.opportunity_name;
-        if (opp?.source_inquiry_id) {
-          const inq = await prisma.crm_customer_inquiry.findFirst({ where: { id: opp.source_inquiry_id, company_id: companyId } });
-          if (inq?.subject) projectName = inq.subject;
-          if (inq?.description) projectDescription = inq.description;
-          if (!customerName && inq?.customer_name) customerName = inq.customer_name;
+      let projectName = `Project Order ${order.id.slice(0, 8)}`;
+      let projectDescription = '';
+      if (order.quotation_id) {
+        const quotation = await tx.sales_quotation.findFirst({ where: { id: order.quotation_id, company_id: companyId } });
+        if (quotation?.opportunity_id) {
+          const opportunity = await tx.crm_opportunity.findFirst({ where: { id: quotation.opportunity_id, company_id: companyId } });
+          if (opportunity?.opportunity_name) projectName = opportunity.opportunity_name;
+          if (opportunity?.source_inquiry_id) {
+            const inquiry = await tx.crm_customer_inquiry.findFirst({ where: { id: opportunity.source_inquiry_id, company_id: companyId } });
+            if (inquiry?.subject) projectName = inquiry.subject;
+            if (inquiry?.description) projectDescription = inquiry.description;
+          }
         }
       }
-    }
 
-    const pmCandidate = await prisma.iam_user.findFirst({ where: { id: req.user?.id, is_active: true } })
-      ?? await prisma.iam_user.findFirst({ where: { username: 'pm', is_active: true } });
-    const pmMembership = pmCandidate ? await prisma.iam_user_company_membership.findFirst({
-      where: { user_id: pmCandidate.id, company_id: companyId, status: 'ACTIVE' },
-      select: { id: true },
-    }) : null;
-    const pmUser = pmMembership ? pmCandidate : null;
-    const project = await prisma.project_project.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenant_id: order.tenant_id,
-        company_id: companyId,
-        created_by_id: req.user?.id,
-        customer_party_id: order.customer_party_id,
-        customer_name: customerName,
-        description: projectDescription,
-        sales_order_id: order.id,
-        project_manager_id: pmUser?.id,
-        manager_name: pmUser?.full_name ?? pmUser?.username ?? '',
-        project_code: `PRJ-SO-${order.id.slice(0, 6).toUpperCase()}`,
-        project_name: projectName,
-        budget_amount: order.total_amount ?? 0,
-        contract_amount: order.total_amount ?? 0,
-        status: 'PLANNED',
-        // A confirmed Sales Order has passed commercial verification, but
-        // operational execution still waits for the explicit ACTIVE transition.
-        lifecycle_status: 'VERIFIED',
-        stage_entered_at: new Date(),
-        verified_at: new Date(),
-        verified_by: req.user?.id ?? null,
-        health_status: 'GOOD',
-        source_type: 'SALES_ORDER',
-      },
-    });
+      const pmRoles = await tx.iam_role.findMany({ where: { tenant_id: order.tenant_id, company_id: companyId, role_code: RoleCode.PROJECT_MANAGER }, select: { id: true } });
+      const pmAssignments = pmRoles.length ? await tx.iam_user_role.findMany({ where: { tenant_id: order.tenant_id, company_id: companyId, role_id: { in: pmRoles.map((role) => role.id) } }, select: { user_id: true } }) : [];
+      const pmIds = [...new Set(pmAssignments.flatMap((assignment) => assignment.user_id ? [assignment.user_id] : []))];
+      const pmUser = pmIds.length ? await tx.iam_user.findFirst({ where: { id: { in: pmIds }, tenant_id: order.tenant_id, status: 'ACTIVE', is_active: true }, orderBy: { date_joined: 'asc' } }) : null;
+      const created = await tx.project_project.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: order.tenant_id, company_id: companyId,
+          created_by_id: req.user?.id, customer_party_id: customer.id,
+          customer_name: customer.display_name || customer.legal_name || '', description: projectDescription,
+          sales_order_id: order.id, project_manager_id: pmUser?.id,
+          manager_name: pmUser?.full_name ?? pmUser?.username ?? '',
+          project_code: `PRJ-SO-${order.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`,
+          project_name: projectName, budget_amount: order.total_amount ?? 0,
+          contract_amount: order.total_amount ?? 0, status: 'PLANNED', lifecycle_status: 'INCOMING',
+          stage_entered_at: new Date(), verified_at: null, verified_by: null,
+          health_status: 'GOOD', source_type: 'SALES_ORDER',
+        },
+      });
+      if (pmUser) await tx.project_member.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: order.tenant_id, company_id: companyId,
+          created_by_id: req.user?.id, project_id: created.id, user_id: pmUser.id,
+          project_role: 'PROJECT_MANAGER', status: 'ACTIVE', permissions_json: '{}',
+        },
+      });
+      return { project: created, created: true };
+    }, { maxWait: 5_000, timeout: 30_000 });
 
-    res.status(201).json(project);
+    res.status(result.created ? 201 : 200).json(result.project);
   } catch (err) {
     next(err);
   }

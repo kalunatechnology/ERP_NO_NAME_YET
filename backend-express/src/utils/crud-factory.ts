@@ -500,6 +500,9 @@ export function assertRecordMutable(modelName: string, existing: any): void {
 }
 
 const LIFECYCLE_FIELDS_BY_MODEL: Record<string, Set<string>> = {
+  crm_opportunity: new Set(['status', 'pipeline_stage', 'stage_id', 'closed_at', 'lost_reason', 'lost_reason_detail']),
+  crm_cost_estimate: new Set(['direct_cost', 'overhead_cost', 'contingency_amount', 'total_cost', 'markup_percent', 'tax_percent', 'offered_amount', 'margin_amount', 'margin_percent', 'status', 'calculated_at', 'calculated_by_id']),
+  sales_quotation: new Set(['status']),
   inv_stock_move: new Set(['status', 'completed_at']),
   qa_inspection: new Set(['status', 'result', 'inspection_at']),
   mfg_production_order: new Set(['status', 'material_status', 'actual_start_at', 'actual_end_at']),
@@ -522,11 +525,22 @@ export function assertNoGenericLifecycleWrite(modelName: string, payload: any, c
   if (!protectedFields || !payload || typeof payload !== 'object') return;
   const attempted = Object.keys(payload).filter((field) => {
     if (!protectedFields.has(field)) return false;
-    return !(create && field === 'status' && String(payload[field] ?? '').toUpperCase() === 'DRAFT');
+    const draftCreateAllowed = create
+      && String(modelName).toLowerCase() !== 'crm_opportunity'
+      && field === 'status'
+      && String(payload[field] ?? '').toUpperCase() === 'DRAFT';
+    return !draftCreateAllowed;
   });
-  if (attempted.length) {
+  const guardedAttempts = attempted.filter((field) => {
+    if (!create || String(modelName).toLowerCase() !== 'crm_opportunity') return true;
+    const value = String(payload[field] ?? '').toUpperCase();
+    if (field === 'status') return value !== 'OPEN';
+    if (field === 'pipeline_stage') return !['OPEN', 'PROSPECT', 'QUALIFICATION', 'PROPOSAL', 'NEGOTIATION'].includes(value);
+    return true;
+  });
+  if (guardedAttempts.length) {
     throw new ValidationError(
-      `Field lifecycle ${attempted.join(', ')} tidak dapat diubah melalui generic CRUD. Gunakan command workflow resmi.`,
+      `Field lifecycle ${guardedAttempts.join(', ')} tidak dapat diubah melalui generic CRUD. Gunakan command workflow resmi.`,
     );
   }
 }
