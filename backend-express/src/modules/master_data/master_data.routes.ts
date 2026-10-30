@@ -9,7 +9,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
-import { ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
 
 export const masterDataRouter = Router();
 
@@ -100,9 +101,67 @@ masterDataRouter.use('/contacts', createCrudRouter({ modelName: 'master_contact'
 masterDataRouter.use('/addresses', createCrudRouter({ modelName: 'master_address', searchFields: ['address_line1', 'city'] }));
 masterDataRouter.use('/customer-profiles', createCrudRouter({ modelName: 'master_customer_profile' }));
 masterDataRouter.use('/supplier-profiles', createCrudRouter({ modelName: 'master_supplier_profile' }));
-masterDataRouter.use('/product-categories', createCrudRouter({ modelName: 'master_product_category', searchFields: ['category_name', 'category_code'] }));
+masterDataRouter.use('/product-categories', requireModuleAccess('INVENTORY'), createCrudRouter({
+  modelName: 'master_product_category', searchFields: ['category_name', 'category_code'],
+  beforeCreate: async (req, data) => {
+    const code = typeof data.category_code === 'string' ? data.category_code.trim() : '';
+    const name = typeof data.category_name === 'string' ? data.category_name.trim() : '';
+    if (!code || code.length > 100 || !name || name.length > 150) throw new ValidationError('Kode kategori wajib (maksimal 100 karakter) dan nama kategori wajib (maksimal 150 karakter).');
+    const duplicate = await prisma.master_product_category.findFirst({ where: { company_id: req.companyId, category_code: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+    if (duplicate) throw new ConflictError('Kode kategori sudah digunakan pada company ini.');
+    return { ...data, category_code: code, category_name: name, status: data.status || 'ACTIVE' };
+  },
+  beforeUpdate: async (req, data, existing) => {
+    const code = typeof data.category_code === 'string' ? data.category_code.trim() : existing.category_code;
+    const name = typeof data.category_name === 'string' ? data.category_name.trim() : existing.category_name;
+    if (!code || code.length > 100 || !name || name.length > 150) throw new ValidationError('Kode kategori wajib (maksimal 100 karakter) dan nama kategori wajib (maksimal 150 karakter).');
+    const duplicate = await prisma.master_product_category.findFirst({ where: { company_id: req.companyId, id: { not: existing.id }, category_code: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+    if (duplicate) throw new ConflictError('Kode kategori sudah digunakan pada company ini.');
+    return { ...data, category_code: code, category_name: name };
+  },
+  beforeDelete: async (req, existing) => {
+    const count = await prisma.master_product.count({ where: { company_id: req.companyId, category_id: existing.id } });
+    if (count) throw new ConflictError('Kategori masih digunakan produk. Ubah statusnya menjadi INACTIVE agar riwayat produk tetap utuh.');
+  },
+}));
 masterDataRouter.use('/uoms', createCrudRouter({ modelName: 'master_uom', searchFields: ['uom_name', 'uom_code'] }));
-masterDataRouter.use('/products', createCrudRouter({ modelName: 'master_product', searchFields: ['product_name', 'product_code', 'sku'] }));
+masterDataRouter.use('/products', requireModuleAccess('INVENTORY'), createCrudRouter({
+  modelName: 'master_product', searchFields: ['product_name', 'product_code'],
+  beforeCreate: async (req, data) => {
+    const code = typeof data.product_code === 'string' ? data.product_code.trim() : '';
+    const name = typeof data.product_name === 'string' ? data.product_name.trim() : '';
+    if (!code || code.length > 100 || !name || name.length > 200) throw new ValidationError('Kode produk wajib (maksimal 100 karakter) dan nama produk wajib (maksimal 200 karakter).');
+    for (const field of ['stock_item', 'purchase_item', 'sales_item', 'manufactured_item', 'lot_controlled', 'serial_controlled']) {
+      if (typeof data[field] !== 'boolean') throw new ValidationError(`Field ${field} harus bernilai true atau false.`);
+    }
+    const existing = await prisma.master_product.findFirst({ where: { company_id: req.companyId, product_code: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+    if (existing) throw new ConflictError('Kode produk sudah digunakan pada company ini.');
+    if (data.category_id) {
+      const category = await prisma.master_product_category.findFirst({ where: { id: data.category_id, company_id: req.companyId, status: 'ACTIVE' }, select: { id: true } });
+      if (!category) throw new ValidationError('Kategori produk tidak ditemukan atau tidak aktif pada company ini.');
+    }
+    return { ...data, product_code: code, product_name: name };
+  },
+  beforeUpdate: async (req, data, existing) => {
+    const code = typeof data.product_code === 'string' ? data.product_code.trim() : existing.product_code;
+    const name = typeof data.product_name === 'string' ? data.product_name.trim() : existing.product_name;
+    if (!code || code.length > 100 || !name || name.length > 200) throw new ValidationError('Kode produk wajib (maksimal 100 karakter) dan nama produk wajib (maksimal 200 karakter).');
+    const duplicate = await prisma.master_product.findFirst({ where: { company_id: req.companyId, id: { not: existing.id }, product_code: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+    if (duplicate) throw new ConflictError('Kode produk sudah digunakan pada company ini.');
+    if (data.category_id) {
+      const category = await prisma.master_product_category.findFirst({ where: { id: data.category_id, company_id: req.companyId, status: 'ACTIVE' }, select: { id: true } });
+      if (!category) throw new ValidationError('Kategori produk tidak ditemukan atau tidak aktif pada company ini.');
+    }
+    if (data.serial_controlled === false && existing.serial_controlled) {
+      const serialCount = await prisma.inv_serial_number.count({ where: { company_id: req.companyId, product_id: existing.id } });
+      if (serialCount) throw new ConflictError('Kontrol serial tidak dapat dinonaktifkan karena nomor seri sudah terdaftar.');
+    }
+    return { ...data, product_code: code, product_name: name };
+  },
+  beforeDelete: async () => {
+    throw new ConflictError('Produk master tidak dapat dihapus permanen. Ubah statusnya menjadi INACTIVE agar riwayat transaksi tetap utuh.');
+  },
+}));
 masterDataRouter.use('/currencies', createCrudRouter({ modelName: 'master_currency', searchFields: ['currency_code', 'currency_name'] }));
 masterDataRouter.use('/exchange-rates', createCrudRouter({ modelName: 'master_exchange_rate' }));
 masterDataRouter.use('/payment-terms', createCrudRouter({ modelName: 'master_payment_term', searchFields: ['term_name', 'term_code'] }));

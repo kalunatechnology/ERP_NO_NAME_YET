@@ -1189,6 +1189,7 @@ model master_product_category {
   parent_id     String?   @map("parent_id")
   category_code String
   category_name String
+  serial_controlled Boolean @default(false)
   status        String
 
   @@index([tenant_id, company_id])

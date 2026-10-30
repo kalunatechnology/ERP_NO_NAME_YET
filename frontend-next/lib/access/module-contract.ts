@@ -161,6 +161,8 @@ const API_ACCESS_CONTRACTS: readonly ApiAccessContract[] = [
   // personal Daily Task baseline shared by every company user.
   { prefix: "/api/v1/projects", module: "PROJECTS" },
   { prefix: "/api/v1/finance", module: "FINANCE", roles: FINANCE_ROLES, allowDelegation: false },
+  { prefix: "/api/v1/master-data/products", module: "INVENTORY" },
+  { prefix: "/api/v1/master-data/product-categories", module: "INVENTORY" },
   { prefix: "/api/v1/procurement", module: "PROCUREMENT" },
   { prefix: "/api/v1/inventory", module: "INVENTORY" },
   { prefix: "/api/v1/manufacturing", module: "MANUFACTURING" },

@@ -13,25 +13,28 @@ import {
   InventoryDocument,
   loadInventoryDocuments,
   loadInventoryProducts,
+  InventoryProductCategory,
+  loadInventoryProductCategories,
   loadSerialNumbers,
   saveInventoryProduct,
+  saveInventoryProductCategory,
   uploadInventoryDocument,
 } from "@/lib/api/inventory.api";
 
 type TabKey = "products" | "serials" | "documents";
 type ProductForm = {
-  product_code: string; product_name: string; product_type: string; costing_method: string;
+  product_code: string; product_name: string; product_type: string; category_id: string; costing_method: string;
   stock_item: boolean; purchase_item: boolean; sales_item: boolean; manufactured_item: boolean;
   lot_controlled: boolean; serial_controlled: boolean; status: string;
 };
 
 const blankProduct: ProductForm = {
-  product_code: "", product_name: "", product_type: "GOODS", costing_method: "FIFO",
+  product_code: "", product_name: "", product_type: "GOODS", category_id: "", costing_method: "FIFO",
   stock_item: true, purchase_item: true, sales_item: true, manufactured_item: false,
   lot_controlled: false, serial_controlled: false, status: "ACTIVE",
 };
 
-const PRODUCT_HEADERS = ["product_code", "product_name", "product_type", "costing_method", "stock_item", "purchase_item", "sales_item", "manufactured_item", "lot_controlled", "serial_controlled", "status"];
+const PRODUCT_HEADERS = ["product_code", "product_name", "category_code", "product_type", "costing_method", "stock_item", "purchase_item", "sales_item", "manufactured_item", "lot_controlled", "serial_controlled", "status"];
 
 function boolValue(value: unknown, fallback: boolean) {
   if (typeof value === "boolean") return value;
@@ -66,7 +69,7 @@ function inferMime(file: File) {
 }
 
 function downloadProductTemplate() {
-  const sheet = XLSX.utils.aoa_to_sheet([PRODUCT_HEADERS, ["PRD-001", "Contoh Produk", "GOODS", "FIFO", true, true, true, false, false, true, "ACTIVE"]]);
+  const sheet = XLSX.utils.aoa_to_sheet([PRODUCT_HEADERS, ["PRD-001", "Contoh Produk", "HARDWARE", "GOODS", "FIFO", true, true, true, false, false, true, "ACTIVE"]]);
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, "Products");
   XLSX.writeFile(book, "template-master-produk.xlsx");
@@ -81,10 +84,12 @@ export default function InventoryClient() {
   const [tab, setTab] = useState<TabKey>("products");
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<InventoryProductCategory[]>([]);
   const [serials, setSerials] = useState<any[]>([]);
   const [documents, setDocuments] = useState<InventoryDocument[]>([]);
   const [search, setSearch] = useState("");
   const [productForm, setProductForm] = useState<ProductForm>(blankProduct);
+  const [categoryForm, setCategoryForm] = useState({ category_code: "", category_name: "", serial_controlled: false });
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [serialForm, setSerialForm] = useState({ serial_number: "", product_id: "", status: "IN_STOCK" });
   const [documentForm, setDocumentForm] = useState({ title: "", category: "GENERAL", description: "" });
@@ -94,8 +99,8 @@ export default function InventoryClient() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [productRows, serialRows, documentRows] = await Promise.all([loadInventoryProducts(), loadSerialNumbers(), loadInventoryDocuments()]);
-      setProducts(productRows); setSerials(serialRows); setDocuments(documentRows);
+      const [productRows, serialRows, documentRows, categoryRows] = await Promise.all([loadInventoryProducts(), loadSerialNumbers(), loadInventoryDocuments(), loadInventoryProductCategories()]);
+      setProducts(productRows); setSerials(serialRows); setDocuments(documentRows); setCategories(categoryRows);
     } catch (error: any) {
       toast.error(error?.response?.data?.detail || "Data inventori tidak dapat dimuat. Periksa akses modul Inventory.");
     } finally { setLoading(false); }
@@ -125,9 +130,45 @@ export default function InventoryClient() {
     finally { setBusy(false); }
   };
 
+  const saveCategory = async () => {
+    const code = categoryForm.category_code.trim().toUpperCase();
+    const name = categoryForm.category_name.trim();
+    if (!code || !name) return toast.error("Kode dan nama kategori wajib diisi.");
+    setBusy(true);
+    try {
+      const category = await saveInventoryProductCategory({ ...categoryForm, category_code: code, category_name: name, status: "ACTIVE" });
+      setCategoryForm({ category_code: "", category_name: "", serial_controlled: false });
+      setProductForm((form) => ({ ...form, category_id: category.id, serial_controlled: category.serial_controlled }));
+      toast.success("Kategori produk ditambahkan."); await reload();
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Kategori tidak berhasil disimpan."); }
+    finally { setBusy(false); }
+  };
+
+  const addCommonCategories = async () => {
+    const presets = [
+      { category_code: "HARDWARE", category_name: "Hardware", serial_controlled: true },
+      { category_code: "SOFTWARE", category_name: "Software", serial_controlled: false },
+      { category_code: "SERVICE", category_name: "Jasa", serial_controlled: false },
+      { category_code: "GROCERIES", category_name: "Groceries", serial_controlled: false },
+    ];
+    const missing = presets.filter((preset) => !categories.some((category) => category.category_code.toLowerCase() === preset.category_code.toLowerCase()));
+    if (!missing.length) return toast("Kategori umum sudah tersedia.");
+    setBusy(true);
+    try {
+      for (const category of missing) await saveInventoryProductCategory({ ...category, status: "ACTIVE" });
+      toast.success(`${missing.length} kategori umum ditambahkan.`); await reload();
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Kategori umum tidak berhasil ditambahkan."); await reload(); }
+    finally { setBusy(false); }
+  };
+
+  const selectProductCategory = (categoryId: string) => {
+    const category = categories.find((item) => item.id === categoryId);
+    setProductForm((form) => ({ ...form, category_id: categoryId, serial_controlled: category ? category.serial_controlled : form.serial_controlled }));
+  };
+
   const startEditProduct = (product: any) => {
     setEditingProductId(String(product.id));
-    setProductForm({ ...blankProduct, ...product });
+    setProductForm({ ...blankProduct, ...product, category_id: String(product.category_id || "") });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -171,14 +212,17 @@ export default function InventoryClient() {
       const seenCodes = new Set<string>();
       const prepared = rows.map((row) => {
         const normalized = Object.fromEntries(Object.entries(row).map(([key, value]) => [key.toLowerCase().replace(/[\s-]+/g, "_").trim(), value]));
+        const categoryKey = String(normalized.category_code ?? normalized.category_name ?? "").trim().toLowerCase();
+        const category = categories.find((item) => item.category_code.toLowerCase() === categoryKey || item.category_name.toLowerCase() === categoryKey);
         const payload: ProductForm = {
           product_code: String(normalized.product_code ?? normalized.code ?? "").trim(),
           product_name: String(normalized.product_name ?? normalized.name ?? "").trim(),
+          category_id: category?.id || "",
           product_type: String(normalized.product_type ?? "GOODS").trim().toUpperCase(),
           costing_method: String(normalized.costing_method ?? "FIFO").trim().toUpperCase(),
           stock_item: boolValue(normalized.stock_item, true), purchase_item: boolValue(normalized.purchase_item, true),
           sales_item: boolValue(normalized.sales_item, true), manufactured_item: boolValue(normalized.manufactured_item, false),
-          lot_controlled: boolValue(normalized.lot_controlled, false), serial_controlled: boolValue(normalized.serial_controlled, false),
+          lot_controlled: boolValue(normalized.lot_controlled, false), serial_controlled: boolValue(normalized.serial_controlled, category?.serial_controlled ?? false),
           status: String(normalized.status ?? "ACTIVE").trim().toUpperCase(),
         };
         return payload;
@@ -228,10 +272,21 @@ export default function InventoryClient() {
 
       {tab === "products" && <>
         <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-bold">Kategori produk dinamis</h2><p className="mt-1 text-xs text-text-secondary">Gunakan kategori umum atau buat sendiri. Hardware memakai kontrol serial sebagai nilai awal; kategori lain dapat diatur sesuai kebutuhan.</p></div><button onClick={() => void addCommonCategories()} disabled={busy} className="btn-ghost text-xs">Tambah kategori umum</button></div>
+          <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto_auto] sm:items-end">
+            <label className="text-xs font-medium">Kode kategori<input className="input mt-1 w-full" maxLength={100} placeholder="HARDWARE" value={categoryForm.category_code} onChange={(e) => setCategoryForm({ ...categoryForm, category_code: e.target.value })} /></label>
+            <label className="text-xs font-medium">Nama kategori<input className="input mt-1 w-full" maxLength={150} placeholder="Hardware" value={categoryForm.category_name} onChange={(e) => setCategoryForm({ ...categoryForm, category_name: e.target.value })} /></label>
+            <label className="inline-flex items-center gap-2 pb-2 text-xs"><input type="checkbox" checked={categoryForm.serial_controlled} onChange={(e) => setCategoryForm({ ...categoryForm, serial_controlled: e.target.checked })} /> Serial aktif secara default</label>
+            <button onClick={() => void saveCategory()} disabled={busy} className="btn-primary flex items-center justify-center gap-1 text-xs"><Plus size={13} /> Tambah kategori</button>
+          </div>
+          {categories.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{categories.filter((category) => category.status === "ACTIVE").map((category) => <span key={category.id} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs">{category.category_name} <span className="text-text-secondary">({category.category_code}){category.serial_controlled ? " · serial default" : ""}</span></span>)}</div>}
+        </section>
+        <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-bold">{editingProductId ? "Ubah produk" : "Tambah produk"}</h2><p className="mt-1 text-xs text-text-secondary">Isi katalog satu per satu atau impor banyak produk dengan XLSX.</p></div><div className="flex flex-wrap gap-2"><button onClick={downloadProductTemplate} className="btn-ghost flex items-center gap-1 text-xs"><Download size={13} /> Template XLSX</button><label className={`btn-ghost flex cursor-pointer items-center gap-1 text-xs ${busy ? "pointer-events-none opacity-50" : ""}`}><Upload size={13} /> Impor XLSX<input className="hidden" type="file" accept=".xlsx,.xls" onChange={(event) => void importProducts(event)} /></label></div></div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <label className="text-xs font-medium">Kode produk *<input className="input mt-1 w-full" value={productForm.product_code} onChange={(e) => setProductForm({ ...productForm, product_code: e.target.value })} /></label>
             <label className="text-xs font-medium">Nama produk *<input className="input mt-1 w-full" value={productForm.product_name} onChange={(e) => setProductForm({ ...productForm, product_name: e.target.value })} /></label>
+            <label className="text-xs font-medium">Kategori<select className="input mt-1 w-full" value={productForm.category_id} onChange={(e) => selectProductCategory(e.target.value)}><option value="">Tanpa kategori</option>{categories.filter((category) => category.status === "ACTIVE").map((category) => <option key={category.id} value={category.id}>{category.category_name} ({category.category_code})</option>)}</select></label>
             <label className="text-xs font-medium">Tipe<select className="input mt-1 w-full" value={productForm.product_type} onChange={(e) => setProductForm({ ...productForm, product_type: e.target.value })}><option value="GOODS">Barang</option><option value="SERVICE">Jasa</option><option value="RAW_MATERIAL">Bahan baku</option><option value="FINISHED_GOOD">Barang jadi</option></select></label>
             <label className="text-xs font-medium">Metode biaya<select className="input mt-1 w-full" value={productForm.costing_method} onChange={(e) => setProductForm({ ...productForm, costing_method: e.target.value })}><option value="FIFO">FIFO</option><option value="WEIGHTED_AVERAGE">Rata-rata tertimbang</option><option value="STANDARD">Biaya standar</option></select></label>
             <label className="text-xs font-medium">Status<select className="input mt-1 w-full" value={productForm.status} onChange={(e) => setProductForm({ ...productForm, status: e.target.value })}><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></select></label>
@@ -241,7 +296,7 @@ export default function InventoryClient() {
         </section>
         <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold">Katalog produk</h2><label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input pl-8 text-xs" placeholder="Cari kode atau nama" value={search} onChange={(e) => setSearch(e.target.value)} /></label></div>
-          {loading ? <Loading /> : <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-slate-50 text-text-secondary"><tr>{["Kode", "Produk", "Tipe", "Kontrol", "Status", "Aksi"].map((label) => <th key={label} className="p-2.5 font-semibold">{label}</th>)}</tr></thead><tbody>{visibleProducts.map((product) => <tr key={product.id} className="border-t border-slate-100"><td className="p-2.5 font-mono">{product.product_code}</td><td className="p-2.5 font-semibold">{product.product_name}</td><td className="p-2.5">{product.product_type}</td><td className="p-2.5">{product.serial_controlled ? "Serial" : "—"}{product.lot_controlled ? " · Lot" : ""}</td><td className="p-2.5">{product.status}</td><td className="p-2.5"><button onClick={() => startEditProduct(product)} className="text-blue-700 hover:underline">Ubah</button></td></tr>)}</tbody></table>{!visibleProducts.length && <Empty>No product ditemukan.</Empty>}</div>}
+          {loading ? <Loading /> : <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-slate-50 text-text-secondary"><tr>{["Kode", "Produk", "Kategori", "Tipe", "Kontrol", "Status", "Aksi"].map((label) => <th key={label} className="p-2.5 font-semibold">{label}</th>)}</tr></thead><tbody>{visibleProducts.map((product) => <tr key={product.id} className="border-t border-slate-100"><td className="p-2.5 font-mono">{product.product_code}</td><td className="p-2.5 font-semibold">{product.product_name}</td><td className="p-2.5">{categories.find((category) => category.id === product.category_id)?.category_name || "—"}</td><td className="p-2.5">{product.product_type}</td><td className="p-2.5">{product.serial_controlled ? "Serial" : "—"}{product.lot_controlled ? " · Lot" : ""}</td><td className="p-2.5">{product.status}</td><td className="p-2.5"><button onClick={() => startEditProduct(product)} className="text-blue-700 hover:underline">Ubah</button></td></tr>)}</tbody></table>{!visibleProducts.length && <Empty>No product ditemukan.</Empty>}</div>}
         </section>
       </>}
 

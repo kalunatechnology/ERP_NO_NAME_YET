@@ -13,6 +13,23 @@ export interface InventoryDocument {
   created_at: string;
 }
 
+export interface InventoryProductCategory {
+  id: string;
+  category_code: string;
+  category_name: string;
+  serial_controlled: boolean;
+  status: string;
+}
+
+export async function loadInventoryProductCategories(): Promise<InventoryProductCategory[]> {
+  const response = await api.get("/api/v1/master-data/product-categories/?page_size=500");
+  return normalizeList<InventoryProductCategory>(response.data).rows;
+}
+
+export async function saveInventoryProductCategory(payload: Record<string, unknown>) {
+  return (await api.post("/api/v1/master-data/product-categories/", payload)).data as InventoryProductCategory;
+}
+
 export async function loadInventoryProducts() {
   const response = await api.get("/api/v1/master-data/products/?page_size=500");
   return normalizeList<any>(response.data).rows;
