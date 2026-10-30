@@ -196,6 +196,11 @@ export async function setCRMIntegrationSourceStatus(id: string, status: "ACTIVE"
   return data;
 }
 
+export async function deleteCRMIntegrationSource(id: string, companyId?: string) {
+  const { data } = await api.delete(`/api/v1/core/integration-sources/${id}/`, companyScopeHeaders(companyId));
+  return data as { id: string; status: "REVOKED" };
+}
+
 export async function updateCRMIntegrationSourceDomains(id: string, allowed_origin_domains: string[], companyId?: string) {
   const { data } = await api.patch(`/api/v1/core/integration-sources/${id}/origin-domains/`, { allowed_origin_domains }, companyScopeHeaders(companyId));
   return data as { id: string; allowed_origin_domains: string[] };

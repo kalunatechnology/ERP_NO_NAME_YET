@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import {
   createCRMIntegrationSource,
+  deleteCRMIntegrationSource,
   loadCRMIntegrationAssignees,
   loadCRMIntegrationSourceEvents,
   loadCRMIntegrationSources,
@@ -126,7 +127,7 @@ export default function LandingPageIntegrationSettings() {
     const source = pendingRemoval;
     setRemovingSourceId(source.id);
     try {
-      await setCRMIntegrationSourceStatus(source.id, "REVOKED", companyScope || undefined);
+      await deleteCRMIntegrationSource(source.id, companyScope || undefined);
       setSources((current) => current.filter((item) => item.id !== source.id));
       setPendingRemoval(null);
       toast.success("Integrasi dicabut dan dihapus dari daftar. Riwayat event tetap tersimpan.");

@@ -212,6 +212,17 @@ crmIntegrationAdminRouter.patch('/:id/status', requireCompanyContextForWrite, as
   } catch (error) { next(error); }
 });
 
+// Remove the integration from active use without deleting its event history.
+// Revocation invalidates the source credentials and is terminal, so the source
+// no longer appears in the registered integrations list after it is refreshed.
+crmIntegrationAdminRouter.delete('/:id', requireCompanyContextForWrite, async (req, res, next) => {
+  try {
+    const revoked = await CRMIntegrationService.setSourceStatus(req.params.id, companyId(req), 'REVOKED');
+    if (!revoked) { res.status(404).json({ error: { message: 'Integration source tidak ditemukan.' } }); return; }
+    res.json({ id: req.params.id, status: 'REVOKED' });
+  } catch (error) { next(error); }
+});
+
 crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) => {
   try {
     const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
