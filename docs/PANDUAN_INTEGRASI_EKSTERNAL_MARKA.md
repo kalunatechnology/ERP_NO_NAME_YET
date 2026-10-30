@@ -410,7 +410,7 @@ Prioritas yang didukung: `LOW`, `NORMAL`, `HIGH`, `URGENT`. Jika `priority` tida
 Gunakan untuk form review rating bintang (1-5) atau survei kepuasan pelanggan. Data otomatis masuk ke **CRM > Engagement**.
 
 ### Format Payload Event
-Anda dapat mengidentifikasi customer menggunakan **`customer_code`** (kode customer yang terdaftar di Marka) atau **`customer_party_id`** (UUID database Marka).
+Untuk reviewer eksternal, kirim **`reviewer_name`**; tidak perlu akun Marka atau kode customer. Anda juga dapat mengirim **`customer_code`** yang diketahui untuk tautan langsung. Nama yang cocok persis dengan satu customer aktif akan ditautkan otomatis; nama yang tidak cocok atau ambigu tetap tercatat sebagai ulasan eksternal tanpa tautan.
 
 ```json
 {
@@ -420,6 +420,8 @@ Anda dapat mengidentifikasi customer menggunakan **`customer_code`** (kode custo
   "occurred_at": "2026-10-23T10:00:00.000Z",
   "data": {
     "origin_domain": "arsalynk.com",
+    "reviewer_name": "Ilyas",
+    "reviewer_email": "ilyas@example.com",
     "customer_code": "CUST-001",
     "rating": 5,
     "feedback_text": "Pelayanan sangat cepat dan tim support sangat membantu.",
@@ -429,8 +431,8 @@ Anda dapat mengidentifikasi customer menggunakan **`customer_code`** (kode custo
 ```
 
 > ⚠️ **Aturan Penting Mengenai ID**:
-> 1. **Identifikasi Customer (`customer_code` vs `customer_party_id`)**:
->    - **Disarankan**: Gunakan `customer_code` (misal `"CUST-001"` atau kode klien Anda yang sesuai dengan `party_code` di Marka). Website Anda tidak perlu menyimpan atau mengetahui UUID internal database Marka.
+> 1. **Identifikasi Customer**:
+>    - `customer_code` opsional. Untuk reviewer yang tidak terdaftar di Marka, kirim `reviewer_name` (wajib) dan `reviewer_email` (opsional); review tersimpan tanpa akun. Nama hanya ditautkan bila cocok persis dengan satu customer aktif. Gunakan `customer_code` jika website memiliki pemetaan customer yang tepercaya.
 >    - Jika menggunakan `customer_party_id`, nilainya harus berupa string UUID yang valid.
 > 2. **Sales Order (`sales_order_id`)**:
 >    - Field ini **opsional**. Jika form website Anda tidak memiliki UUID internal Sales Order Marka, **kosongkan saja** (jangan dikirim / `undefined`).
@@ -446,11 +448,11 @@ import { sendMarkaEvent } from "@/lib/marka-crm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { customerCode, rating, feedbackText, salesOrderId } = await req.json();
+    const { reviewerName, reviewerEmail, customerCode, rating, feedbackText, salesOrderId } = await req.json();
 
-    if (!customerCode || rating === undefined || rating === null) {
+    if ((!reviewerName && !customerCode) || rating === undefined || rating === null) {
       return NextResponse.json(
-        { error: "Kode Customer (customerCode) dan rating wajib diisi" },
+        { error: "Nama pengulas, rating, dan ulasan wajib diisi" },
         { status: 400 }
       );
     }
@@ -469,7 +471,9 @@ export async function POST(req: NextRequest) {
 
     await sendMarkaEvent(eventId, "feedback.submitted", {
       ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
-      customer_code: String(customerCode).trim(), // Kode customer (party_code) di Marka
+      reviewer_name: String(reviewerName || "").trim(),
+      ...(reviewerEmail ? { reviewer_email: String(reviewerEmail).trim() } : {}),
+      ...(customerCode ? { customer_code: String(customerCode).trim() } : {}),
       rating: Number(rating),                     // Angka integer 1 sampai 5
       feedback_text: String(feedbackText).trim(),
       feedback_type: "CUSTOMER_REVIEW",
@@ -620,7 +624,7 @@ Saat server website Anda mengirim request ke `POST /api/v1/integrations/webhooks
 | Status Code | Arti | Solusi untuk Developer |
 |---|---|---|
 | **`202 Accepted`** | Payload diterima dan masuk antrean. Worker masih perlu memprosesnya. | Tampilkan “Permintaan diterima untuk diproses”. Untuk keputusan quotation, periksa Riwayat Integrasi sampai `COMPLETED` atau `DEAD_LETTER` sebelum menyatakan keputusan berhasil diterapkan. |
-| **`400 INVALID_FEEDBACK_EVENT`** | Payload feedback belum memenuhi kontrak. | Kirim `customer_code` (party_code customer Marka), rating integer 1–5, dan `feedback_text` (maksimal 2.000 karakter). Jika `sales_order_id` dikirim, harus format UUID. |
+| **`400 INVALID_FEEDBACK_EVENT`** | Payload feedback belum memenuhi kontrak. | Kirim `reviewer_name` (kecuali memakai `customer_code`/ID party), rating integer 1–5, dan `feedback_text` (maksimal 2.000 karakter). `customer_code` opsional; `sales_order_id` memerlukan customer yang sudah teridentifikasi dan harus berupa UUID order miliknya. |
 | **`400 CUSTOMER_PARTY_NOT_FOUND`** | Kode customer tidak ditemukan di Marka. | Pastikan `customer_code` sesuai dengan `party_code` customer aktif di company Marka terkait. |
 | **`400 FEEDBACK_SALES_ORDER_NOT_FOUND`** | Sales Order ID tidak cocok dengan customer. | Pastikan `sales_order_id` adalah UUID valid dari Sales Order milik customer tersebut. Jika tidak tahu UUID-nya, kosongkan field ini. |
 | **`400 Bad Request` (Umum)** | Data JSON tidak lengkap / schema salah. | Cek response body. Pastikan field wajib seperti `customer.name`, `customer.email`, `subject` terisi. |

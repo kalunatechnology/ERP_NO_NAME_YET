@@ -336,7 +336,7 @@ export async function updateOpportunityCustomer(id: string | number, customerPar
   return data;
 }
 
-export async function createCRMActivity(payload: { opportunity_id: string | number; party_id?: string | number | null; activity_type: string; subject: string; scheduled_at?: string | null }) {
+export async function createCRMActivity(payload: { opportunity_id: string | number; party_id?: string | number | null; activity_type: string; subject: string; scheduled_at?: string | null; meeting_minutes_id?: string | null }) {
   const { data } = await api.post('/api/v1/crm/activities/', { ...payload, status: payload.scheduled_at ? 'PLANNED' : 'COMPLETED', completed_at: payload.scheduled_at ? null : new Date().toISOString() });
   return data;
 }

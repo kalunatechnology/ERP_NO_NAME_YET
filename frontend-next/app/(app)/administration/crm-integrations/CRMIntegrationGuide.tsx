@@ -340,10 +340,12 @@ import { sendMarkaEvent } from "@/lib/marka-crm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { customerCode, rating, feedbackText, salesOrderId } = await req.json();
+    const { reviewerName, reviewerEmail, rating, feedbackText, salesOrderId } = await req.json();
+    // Isi hanya dari sesi terautentikasi atau pemetaan server tepercaya, bukan dari body browser.
+    const customerCode: string | undefined = undefined;
 
-    if (!customerCode || rating === undefined || rating === null) {
-      return NextResponse.json({ error: "Kode Customer (customerCode) dan rating wajib" }, { status: 400 });
+    if ((!reviewerName && !customerCode) || rating === undefined || rating === null || !String(feedbackText || "").trim()) {
+      return NextResponse.json({ error: "Nama pengulas, rating, dan ulasan wajib diisi" }, { status: 400 });
     }
 
     const eventId = \`fb-\${Date.now()}-\${randomUUID().slice(0, 8)}\`;
@@ -353,7 +355,9 @@ export async function POST(req: NextRequest) {
 
     await sendMarkaEvent(eventId, "feedback.submitted", {
       ...(process.env.PUBLIC_ORIGIN_DOMAIN?.trim() ? { origin_domain: process.env.PUBLIC_ORIGIN_DOMAIN.trim() } : {}),
-      customer_code: String(customerCode).trim(), // party_code customer di Marka
+      reviewer_name: String(reviewerName || "").trim(), // nama orang yang mengirim ulasan; boleh tidak terdaftar di Marka
+      ...(reviewerEmail ? { reviewer_email: String(reviewerEmail).trim() } : {}),
+      ...(customerCode ? { customer_code: String(customerCode).trim() } : {}), // opsional; gunakan hanya jika customer sudah diketahui
       rating: Number(rating),                     // 1 sampai 5
       feedback_text: String(feedbackText || "").trim(),
       feedback_type: "CUSTOMER_REVIEW",
@@ -768,17 +772,17 @@ export default function CRMIntegrationGuide() {
                   feedback.submitted
                 </span>
               </div>
-              <RequirementPanel status="partial" statusLabel="Butuh field kode klien pada formulir" groups={[
-                { title: "Wajib dari formulir", items: ["Kode klien customer_code yang sama dengan party_code customer aktif di company Marka.", "Rating bilangan bulat 1–5 dan feedback_text tidak kosong (maksimal 2.000 karakter)."] },
-                { title: "Opsional", items: ["feedback_type.", "sales_order_id hanya jika UUID Marka yang valid dan order tersebut milik klien yang sama."] },
-                { title: "Yang perlu disiapkan di Marka", items: ["Daftarkan klien di Master Rekanan sebagai Customer dan catat party_code-nya.", "Aktifkan feedback.submitted pada sumber integrasi."] },
-                { title: "Hasil di Marka", items: ["Feedback tercatat di CRM > Engagement dan terhubung ke klien berdasarkan kode.", "Nama/email saja tidak cukup untuk mencocokkan feedback ke data klien secara andal."] },
-              ]} limitation="Formulir pada gambar belum menampilkan field kode klien. Tambahkan input kode klien dan kirim nilainya sebagai customer_code; backend Marka sudah memvalidasi kode tersebut." />
+              <RequirementPanel status="ready" statusLabel="Kode customer tidak wajib" groups={[
+                { title: "Wajib dari formulir", items: ["Nama pengulas (hingga 200 karakter).", "Rating bilangan bulat 1–5 dan feedback_text tidak kosong (maksimal 2.000 karakter)."] },
+                { title: "Opsional", items: ["Email pengulas; customer_code jika ingin menghubungkan ke customer tertentu.", "sales_order_id hanya jika UUID Marka valid dan order milik customer yang terhubung."] },
+                { title: "Yang perlu disiapkan di Marka", items: ["Aktifkan feedback.submitted pada sumber integrasi.", "Nama yang cocok persis dengan satu customer atau contact aktif akan terhubung otomatis; nama ambigu/tidak dikenal tetap dicatat sebagai ulasan eksternal."] },
+                { title: "Reviewer dari luar sistem", items: ["Tidak memerlukan akun Marka. Website mengirim ulasan dari server menggunakan kredensial integrasi yang disimpan rahasia.", "Reviewer eksternal tersimpan dengan nama/email. Ulasan ini self-reported dan perlu ditinjau sebelum disebut terverifikasi."] },
+              ]} limitation="Jangan kirim secret integrasi dari browser. Ulasan tanpa identitas customer tetap diterima sebagai ulasan eksternal." />
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
                 <strong>Aturan Identifikasi Customer &amp; Order:</strong>
                 <ul className="mt-1 list-disc space-y-1 pl-4">
                   <li>
-                    <strong>Gunakan `customer_code`</strong> (misal <code>&quot;CUST-001&quot;</code>) yang sesuai dengan <code>party_code</code> di Marka. Website Anda tidak perlu mengetahui UUID internal database Marka!
+                    <strong>`customer_code` sekarang opsional.</strong> Kirim <code>reviewer_name</code> untuk menerima review dari orang luar sistem. Nama hanya dihubungkan otomatis jika sama persis dengan satu customer atau contact aktif; jika tidak, feedback tetap tersimpan tanpa tautan customer. Kode hanya berasal dari pemetaan server tepercaya, bukan input bebas dari browser.
                   </li>
                   <li>
                     <strong>`sales_order_id` adalah opsional</strong>: Hanya sertakan jika bernilai UUID Marka yang sah. <strong>JANGAN</strong> mengirimkan nomor dokumen (seperti <code>&quot;SO-2026-0042&quot;</code>); kosongkan saja jika tidak memiliki UUID.

@@ -301,20 +301,34 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
     } else if (envelope.event_type === 'feedback.submitted') {
       const customerCode = typeof data?.customer_code === 'string' ? data.customer_code.trim() : typeof data?.client_code === 'string' ? data.client_code.trim() : '';
       const partyId = String(data?.customer_party_id ?? '').trim();
+      const hasPartyId = /^[0-9a-f-]{36}$/i.test(partyId);
+      const reviewerName = typeof data?.reviewer_name === 'string' ? data.reviewer_name.trim() : '';
+      const reviewerEmail = typeof data?.reviewer_email === 'string' ? data.reviewer_email.trim() : '';
       const rating = Number(data?.rating);
       const feedbackText = String(data?.feedback_text ?? '').trim();
       const feedbackType = String(data?.feedback_type ?? 'CUSTOMER_REVIEW').trim();
-      if ((!customerCode && !partyId) || customerCode.length > 100 || !Number.isInteger(rating) || rating < 1 || rating > 5 || !feedbackText || feedbackText.length > 2000 || !feedbackType || feedbackType.length > 60) throw new Error('INVALID_FEEDBACK_EVENT');
-      const party = await tx.master_party.findFirst({ where: { ...(customerCode ? { party_code: customerCode } : { id: partyId }), tenant_id: source.tenant_id, company_id: source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true } });
-      if (!party) throw new Error('CUSTOMER_PARTY_NOT_FOUND');
+      if ((!customerCode && !hasPartyId && !reviewerName) || customerCode.length > 100 || reviewerName.length > 200 || reviewerEmail.length > 320 || (reviewerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reviewerEmail)) || !Number.isInteger(rating) || rating < 1 || rating > 5 || !feedbackText || feedbackText.length > 2000 || !feedbackType || feedbackType.length > 60) throw new Error('INVALID_FEEDBACK_EVENT');
+      const partyWhere = { tenant_id: source.tenant_id, company_id: source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' };
+      let party = customerCode || hasPartyId
+        ? await tx.master_party.findFirst({ where: { ...partyWhere, ...(customerCode ? { party_code: customerCode } : { id: partyId }) }, select: { id: true } })
+        : null;
+      if (!party && reviewerName && !customerCode && !hasPartyId) {
+        const nameMatches = await tx.master_party.findMany({ where: { ...partyWhere, OR: [{ display_name: { equals: reviewerName, mode: 'insensitive' } }, { legal_name: { equals: reviewerName, mode: 'insensitive' } }] }, select: { id: true }, take: 2 });
+        const contactMatches = await tx.master_contact.findMany({ where: { tenant_id: source.tenant_id, company_id: source.company_id, contact_name: { equals: reviewerName, mode: 'insensitive' }, party_id: { not: null } }, select: { party_id: true }, distinct: ['party_id'], take: 2 });
+        const candidateIds = [...new Set([...nameMatches.map((item) => item.id), ...contactMatches.map((item) => item.party_id).filter((id): id is string => Boolean(id))])];
+        const candidates = candidateIds.length ? await tx.master_party.findMany({ where: { ...partyWhere, id: { in: candidateIds } }, select: { id: true }, take: 2 }) : [];
+        if (candidates.length === 1) party = candidates[0];
+      }
+      if ((customerCode || hasPartyId) && !party) throw new Error('CUSTOMER_PARTY_NOT_FOUND');
       const salesOrderId = typeof data?.sales_order_id === 'string' ? data.sales_order_id.trim() : '';
       if (salesOrderId) {
+        if (!party) throw new Error('FEEDBACK_SALES_ORDER_REQUIRES_CUSTOMER');
         const order = await tx.sales_order.findFirst({ where: { id: salesOrderId, tenant_id: source.tenant_id, company_id: source.company_id, customer_party_id: party.id }, select: { id: true } });
         if (!order) throw new Error('FEEDBACK_SALES_ORDER_NOT_FOUND');
       }
       await tx.crm_feedback.create({ data: {
         id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
-        customer_party_id: party.id, sales_order_id: salesOrderId || null,
+        customer_party_id: party?.id ?? null, reviewer_name: reviewerName || null, reviewer_email: reviewerEmail || null, sales_order_id: salesOrderId || null,
         feedback_type: feedbackType, rating_value: rating, feedback_text: feedbackText,
         submitted_at: isoDate(envelope.occurred_at), status: 'SUBMITTED', origin_domain: originDomain,
       } });

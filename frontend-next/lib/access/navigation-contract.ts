@@ -86,6 +86,7 @@ const DELEGATED_NAVIGATION: Partial<Record<string, readonly NavigationEntry[]>> 
   PROJECTS: [{ href: "/projects", label: "Projects" }],
   REPORTING: [{ href: "/reporting", label: "Reports" }],
   ANALYTICS: [{ href: "/resources", label: "Data Explorer" }],
+  INVENTORY: [{ href: "/inventory", label: "Inventory & Internal Data" }],
 };
 
 /** Keeps navigation discoverability aligned with the active route contract. */
@@ -94,7 +95,9 @@ export function getNavigationEntries(access: FrontendAccessContext): NavigationE
   const base = ROLE_NAVIGATION[role] ?? [{ href: "/dashboard", label: "Dashboard" }];
   const delegated = Array.from(normalizeModuleCodes(access.delegatedModules))
     .flatMap((module) => DELEGATED_NAVIGATION[module] ?? []);
-  const unique = [...base, ...delegated]
+  const inventoryEnabled = normalizeModuleCodes(access.enabledModules).has("INVENTORY");
+  const inventoryEntry = inventoryEnabled ? [{ href: "/inventory", label: "Inventory & Internal Data" }] : [];
+  const unique = [...base, ...delegated, ...inventoryEntry]
     .filter((entry, index, entries) => entries.findIndex((item) => item.href === entry.href) === index);
   return unique.filter((entry) => canAccessRoute({ pathname: entry.href, ...access })).map((entry) => {
     if (role === ROLE_CODES.director && entry.href === "/finance" && canPerform("finance:operate", role, access)) {

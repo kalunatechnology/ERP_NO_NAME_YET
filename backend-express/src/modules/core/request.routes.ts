@@ -108,6 +108,25 @@ requestRouter.get('/meetings', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+requestRouter.get('/meeting-minutes/references', async (req, res, next) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const meetings = await MeetingRequestService.list(companyId, activeUserId(req), activeRoleCode(req), {});
+    const meetingIds = meetings.map((meeting) => meeting.id);
+    if (!meetingIds.length) return sendSuccess(res, []);
+    const minutes = await prisma.request_meeting_minutes.findMany({
+      where: { company_id: companyId, meeting_id: { in: meetingIds } },
+      orderBy: [{ occurrence_date: 'desc' }, { updated_at: 'desc' }],
+      select: { id: true, meeting_id: true, occurrence_date: true, summary: true, status: true },
+    });
+    const meetingById = new Map(meetings.map((meeting) => [meeting.id, meeting]));
+    return sendSuccess(res, minutes.map((minute) => ({
+      ...minute,
+      meeting_title: meetingById.get(minute.meeting_id)?.request?.title ?? 'Meeting',
+    })));
+  } catch (error) { next(error); }
+});
+
 requestRouter.post('/meetings', async (req, res, next) => {
   try {
     const result = await RequestService.createRequest({ ...req.body, request_type: 'MEETING' }, activeUserId(req), activeCompanyId(req), req.user?.tenant_id);

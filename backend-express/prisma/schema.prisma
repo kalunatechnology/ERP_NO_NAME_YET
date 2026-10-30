@@ -1748,6 +1748,7 @@ model crm_activity {
   id               String    @id @default(uuid())
   opportunity_id   String?   @map("opportunity_id")
   party_id         String?   @map("party_id")
+  meeting_minutes_id String?  @map("meeting_minutes_id")
   assigned_user_id String?   @map("assigned_user_id")
   activity_type    String
   subject          String
@@ -1991,6 +1992,8 @@ model crm_feedback {
   sales_order_id    String?   @map("sales_order_id")
   delivery_id       String?   @map("delivery_id")
   service_case_id   String?   @map("service_case_id")
+  reviewer_name     String?   @map("reviewer_name")
+  reviewer_email    String?   @map("reviewer_email")
   feedback_type     String
   rating_value      Int?
   nps_score         Decimal?
@@ -3784,6 +3787,26 @@ model inv_serial_number {
 
   @@index([tenant_id, company_id])
   @@map("inv_serial_number")
+}
+
+model inv_internal_document {
+  id            String   @id @default(uuid())
+  tenant_id     String?  @map("tenant_id")
+  company_id    String   @map("company_id")
+  created_by_id String?  @map("created_by_id")
+  title         String
+  category      String   @default("GENERAL")
+  description   String   @default("")
+  file_name     String   @map("file_name")
+  mime_type     String   @map("mime_type")
+  file_size     Int      @map("file_size")
+  checksum      String
+  content       Bytes    @db.ByteA
+  created_at    DateTime @default(now()) @map("created_at")
+  updated_at    DateTime @updatedAt @map("updated_at")
+
+  @@index([company_id, category, created_at])
+  @@map("inv_internal_document")
 }
 
 model inv_stock_move {

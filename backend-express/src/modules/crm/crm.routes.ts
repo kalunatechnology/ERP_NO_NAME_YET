@@ -978,7 +978,22 @@ crmRouter.use('/opportunities', createCrudRouter({
   },
 }));
 crmRouter.use('/opportunity-products', createCrudRouter({ modelName: 'crm_opportunity_product' }));
-crmRouter.use('/activities', createCrudRouter({ modelName: 'crm_activity', searchFields: ['subject', 'activity_type'] }));
+crmRouter.use('/activities', createCrudRouter({ modelName: 'crm_activity', searchFields: ['subject', 'activity_type'],
+  beforeCreate: async (req, data) => {
+    if (data.meeting_minutes_id) {
+      const minutes = await prisma.request_meeting_minutes.findFirst({ where: { id: String(data.meeting_minutes_id), company_id: activeCompanyId(req) }, select: { id: true } });
+      if (!minutes) throw new ValidationError('Notulensi tidak ditemukan pada company aktif.');
+    }
+    return data;
+  },
+  beforeUpdate: async (req, data) => {
+    if (data.meeting_minutes_id) {
+      const minutes = await prisma.request_meeting_minutes.findFirst({ where: { id: String(data.meeting_minutes_id), company_id: activeCompanyId(req) }, select: { id: true } });
+      if (!minutes) throw new ValidationError('Notulensi tidak ditemukan pada company aktif.');
+    }
+    return data;
+  },
+}));
 crmRouter.use('/pipelines', createCrudRouter({ modelName: 'crm_pipeline', searchFields: ['pipeline_name', 'pipeline_code'] }));
 crmRouter.use('/pipeline-stages', createCrudRouter({ modelName: 'crm_pipeline_stage', searchFields: ['stage_name', 'stage_code'] }));
 crmRouter.use('/opportunity-stage-histories', createCrudRouter({ modelName: 'crm_opportunity_stage_history' }));

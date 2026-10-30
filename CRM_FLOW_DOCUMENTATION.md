@@ -133,7 +133,7 @@ Masukkan hostname saja (misalnya `promo.arsalynk.com`) dalam allowlist; payload 
 
 ### 3.2 Feedback dan survei CSAT
 
-Tab Engagement memisahkan ulasan umum (`crm_feedback`) dari CSAT yang terkait transaksi (`crm_survey_response` dan `crm_survey_answer`). Feedback umum memerlukan customer, rating 1–5, dan catatan. CSAT dipilih dari Sales Order berstatus `FULFILLED`, memiliki rating 1–5 serta komentar opsional, dan dibatasi satu respons per order. Respons ditautkan ke customer dari Sales Order dan dapat menampilkan domain asal jika tersedia.
+Tab Engagement memisahkan ulasan umum (`crm_feedback`) dari CSAT yang terkait transaksi (`crm_survey_response` dan `crm_survey_answer`). Feedback yang dicatat staf internal tetap memilih customer. Integrasi eksternal dapat menerima reviewer tanpa akun dengan `reviewer_name`, rating 1–5, dan catatan; `customer_code` opsional. Nama hanya ditautkan otomatis jika cocok persis dengan tepat satu customer aktif, sedangkan nama ambigu/tidak dikenal tetap tersimpan tanpa tautan customer. CSAT dipilih dari Sales Order berstatus `FULFILLED`, memiliki rating 1–5 serta komentar opsional, dan dibatasi satu respons per order. Respons ditautkan ke customer dari Sales Order dan dapat menampilkan domain asal jika tersedia.
 
 Pada implementasi saat ini, tombol **Catat CSAT Transaksi** merupakan input staf berdasarkan jawaban pelanggan. Sistem belum mengirim undangan atau menyediakan form publik untuk pelanggan; untuk itu diperlukan kanal pengiriman, tautan survei bertoken, dan kontrol autentikasi/anti-spam tersendiri.
 

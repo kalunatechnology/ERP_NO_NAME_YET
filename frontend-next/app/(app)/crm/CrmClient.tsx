@@ -38,6 +38,7 @@ import {
   type CRMInboxConversation,
 } from "@/lib/api/crm.api";
 import api from "@/lib/api/axios";
+import { requestApi, type MeetingMinutesReference } from "@/lib/api/request.api";
 import { feedApi } from "@/lib/api/feed.api";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
 import { canAccessRoute } from "@/lib/access/module-contract";
@@ -470,7 +471,19 @@ function TabDeals({
   const [overrideRemarks, setOverrideRemarks] = useState("");
   const [savingOverride, setSavingOverride] = useState(false);
   const [customer360, setCustomer360] = useState<any>(null);
-  const [activityForm, setActivityForm] = useState({ activity_type: "CALL", subject: "", scheduled_at: "" });
+  const [activityForm, setActivityForm] = useState({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" });
+  const [meetingMinutesReferences, setMeetingMinutesReferences] = useState<MeetingMinutesReference[]>([]);
+
+  useEffect(() => {
+    if (!activityOpp) return;
+    let active = true;
+    requestApi.listMeetingMinutesReferences().then((rows) => {
+      if (active) setMeetingMinutesReferences(rows || []);
+    }).catch(() => {
+      if (active) setMeetingMinutesReferences([]);
+    });
+    return () => { active = false; };
+  }, [activityOpp]);
 
   const allOpps = data.opportunities || [];
   const activeOpps = allOpps.filter(o => {
@@ -606,8 +619,8 @@ function TabDeals({
   const handleActivitySave = async () => {
     if (!activityOpp || !activityForm.subject.trim()) { toast.error("Isi catatan aktivitas terlebih dahulu."); return; }
     try {
-      await createCRMActivity({ opportunity_id: activityOpp.id, party_id: opportunityPartyId(activityOpp), activity_type: activityForm.activity_type, subject: activityForm.subject.trim(), scheduled_at: activityForm.scheduled_at ? new Date(activityForm.scheduled_at).toISOString() : null });
-      toast.success("Aktivitas tersimpan."); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); onRefresh();
+      await createCRMActivity({ opportunity_id: activityOpp.id, party_id: opportunityPartyId(activityOpp), activity_type: activityForm.activity_type, subject: activityForm.subject.trim(), scheduled_at: activityForm.scheduled_at ? new Date(activityForm.scheduled_at).toISOString() : null, meeting_minutes_id: activityForm.meeting_minutes_id || null });
+      toast.success("Aktivitas tersimpan."); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" }); onRefresh();
     } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal menyimpan aktivitas."); }
   };
 
@@ -870,7 +883,7 @@ function TabDeals({
                     </div>
                   )}
                   <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-text-tertiary/40 pt-3">
-                    {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "" }); }} label="Aktivitas" small variant="ghost" title="Catat telepon, meeting, catatan, atau follow-up untuk opportunity ini." />}
+                    {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" }); }} label="Aktivitas" small variant="ghost" title="Catat telepon, meeting, catatan, atau follow-up untuk opportunity ini." />}
                     {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" title="Lihat ringkasan customer: proyek, kontrak, pengiriman, nilai transaksi, serta piutang." />}
                     {!readOnly ? (
                       <>
@@ -1101,9 +1114,10 @@ function TabDeals({
         <div className="space-y-3">
           <label className="block text-xs font-medium">Jenis aktivitas<select className="input mt-1 w-full" value={activityForm.activity_type} onChange={e => setActivityForm({ ...activityForm, activity_type: e.target.value })}><option value="CALL">Telepon</option><option value="MEETING">Meeting</option><option value="NOTE">Catatan</option><option value="FOLLOW_UP">Follow-up</option></select></label>
           <label className="block text-xs font-medium">Catatan<textarea className="input mt-1 w-full min-h-20" value={activityForm.subject} onChange={e => setActivityForm({ ...activityForm, subject: e.target.value })} placeholder="Ringkasan percakapan atau tindak lanjut" /></label>
+          <label className="block text-xs font-medium">Tautkan ke notulensi (opsional)<select className="input mt-1 w-full" value={activityForm.meeting_minutes_id} onChange={e => setActivityForm({ ...activityForm, meeting_minutes_id: e.target.value })}><option value="">Tidak ditautkan</option>{meetingMinutesReferences.map((minutes) => <option key={minutes.id} value={minutes.id}>{minutes.meeting_title} · {formatDate(minutes.occurrence_date)}{minutes.status === "PUBLISHED" ? " · Dipublikasikan" : " · Draft"}</option>)}</select><span className="mt-1 block text-2xs text-text-secondary">Daftar hanya memuat notulensi meeting yang dapat Anda akses.</span></label>
           <label className="block text-xs font-medium">Jadwalkan follow-up (opsional)<input className="input mt-1 w-full" type="datetime-local" value={activityForm.scheduled_at} onChange={e => setActivityForm({ ...activityForm, scheduled_at: e.target.value })} /></label>
           <div className="text-xs text-text-secondary">Riwayat: {(data.activities || []).filter(a => String(a.opportunity_id) === String(activityOpp?.id)).length} aktivitas</div>
-          <div className="max-h-32 overflow-y-auto space-y-1">{(data.activities || []).filter(a => String(a.opportunity_id) === String(activityOpp?.id)).map(a => <div key={a.id} className="border rounded p-2 text-xs"><b>{a.activity_type}</b> · {a.subject}<div className="text-text-secondary">{a.scheduled_at ? formatDate(a.scheduled_at) : "Selesai"}</div></div>)}</div>
+          <div className="max-h-32 overflow-y-auto space-y-1">{(data.activities || []).filter(a => String(a.opportunity_id) === String(activityOpp?.id)).map(a => { const linkedMinutes = meetingMinutesReferences.find((minutes) => String(minutes.id) === String(a.meeting_minutes_id)); return <div key={a.id} className="border rounded p-2 text-xs"><b>{a.activity_type}</b> · {a.subject}<div className="mt-1 flex flex-wrap items-center gap-1.5 text-text-secondary">{a.scheduled_at ? <><span>{formatDate(a.scheduled_at)}</span><span className="rounded bg-amber-100 px-1.5 py-0.5 text-2xs font-semibold text-amber-800">Jadwal follow-up</span></> : <span>Selesai</span>}</div>{linkedMinutes && <div className="mt-1 text-2xs text-blue-700">Notulensi: {linkedMinutes.meeting_title} · {formatDate(linkedMinutes.occurrence_date)}</div>}</div>; })}</div>
           <button onClick={handleActivitySave} className="btn-primary w-full">Simpan aktivitas</button>
         </div>
       </Modal>
@@ -1773,7 +1787,14 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [domainFilter, setDomainFilter] = useState("");
   const inquiryDomains = Array.from(new Set((data.inquiries || []).map((item) => item.origin_domain).filter((value): value is string => Boolean(value)))).sort();
-  const visibleInquiries = (data.inquiries || []).filter((item) => !domainFilter || item.origin_domain === domainFilter);
+  const visibleInquiries = (data.inquiries || [])
+    .filter((item) => !domainFilter || item.origin_domain === domainFilter)
+    .slice()
+    .sort((a, b) => {
+      const dateA = new Date(a.created_at || a.submitted_at || a.updated_at || 0).getTime();
+      const dateB = new Date(b.created_at || b.submitted_at || b.updated_at || 0).getTime();
+      return dateB - dateA;
+    });
 
   /**
    * Creates a customer inquiry from the validated intake form.
@@ -2284,7 +2305,7 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(data.feedback||[]).map(f => (
             <div key={f.id} className="p-3 rounded-xl border border-text-tertiary/60">
-              <div className="flex items-center justify-between gap-2"><div className="text-xs font-semibold mb-1">{f.customer_party_name || f.customer_party_display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.legal_name || "Pelanggan"}</div><OriginDomainBadge domain={f.origin_domain} /></div>
+              <div className="flex items-center justify-between gap-2"><div className="text-xs font-semibold mb-1">{f.customer_party_name || f.customer_party_display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.legal_name || f.reviewer_name || "Pengulas eksternal"}{f.reviewer_email ? <span className="ml-1 font-normal text-text-secondary">· {f.reviewer_email}</span> : null}</div><OriginDomainBadge domain={f.origin_domain} /></div>
               <div className="flex items-center gap-1 mb-1">
                 {[...Array(5)].map((_, i) => (
                   <Star key={i} size={13} className={i < (Number(f.rating_value ?? f.rating_score) || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />
@@ -2299,7 +2320,7 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
       <Modal isOpen={isOpen} onClose={() => !isSubmitting && setIsOpen(false)} title="Tambah Feedback Pelanggan" size="sm">
         <div className="flex flex-col gap-3 p-4">
           <label className="text-xs font-medium text-text-secondary">Pelanggan *<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyId} onChange={e => setPartyId(e.target.value)}><option value="">Pilih pelanggan...</option>{data.parties.filter(p => !p.party_type || String(p.party_type).toUpperCase() === "CUSTOMER").map(p => <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name}</option>)}</select></label>
-          <div><span className="text-xs font-medium text-text-secondary block mb-1">Rating *</span><div className="flex items-center gap-1" role="group" aria-label="Pilih rating pelanggan">{[1, 2, 3, 4, 5].map(value => <button key={value} type="button" onClick={() => setRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={rating === value} className="p-1"><Star size={22} className={value <= rating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}<span className="ml-2 text-xs text-text-secondary">{rating ? `${rating}/5` : "Pilih rating"}</span></div></div>
+          <div><span className="text-xs font-medium text-text-secondary block mb-1">Rating *</span><div className="flex items-center gap-1" role="group" aria-label="Pilih rating pelanggan">{[1, 2, 3, 4, 5].map(value => <button key={value} type="button" onClick={() => setRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={rating === value} className="p-1"><Star size={22} className={value <= rating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}<span className="ml-2 text-xs text-text-secondary">{rating ? `${rating}/5` : "Pilih rating"}</span></div><p className="mt-1 text-2xs text-text-secondary">1 = Sangat tidak puas · 5 = Sangat puas</p></div>
           <label className="text-xs font-medium text-text-secondary">Catatan Feedback *<textarea rows={4} maxLength={2000} className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={comments} onChange={e => setComments(e.target.value)} placeholder="Tulis ulasan atau masukan pelanggan..." /></label>
           <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setIsOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button><button type="button" onClick={submitFeedback} disabled={isSubmitting || !partyId || rating < 1 || !comments.trim()} className="btn-primary">{isSubmitting ? "Menyimpan..." : "Simpan Feedback"}</button></div>
         </div>
@@ -2307,7 +2328,7 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
       <Modal isOpen={isCsatOpen} onClose={() => !isCsatSubmitting && setIsCsatOpen(false)} title="Catat Survei CSAT Pasca Transaksi" size="sm">
         <div className="flex flex-col gap-3 p-4">
           <label className="text-xs font-medium text-text-secondary">Sales Order selesai *<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={csatOrderId} onChange={(event) => setCsatOrderId(event.target.value)}><option value="">Pilih transaksi...</option>{completedOrders.map((order) => { const partyId = order.customer_party || order.customer_party_id; const party = data.parties.find((item) => String(item.id) === String(partyId)); return <option key={order.id} value={String(order.id)}>{order.order_number || String(order.id).slice(0, 8)} · {party?.display_name || party?.legal_name || "Pelanggan"}</option>; })}</select></label>
-          <div><span className="text-xs font-medium text-text-secondary block mb-1">Seberapa puas pelanggan? *</span><div className="flex items-center gap-1" role="group" aria-label="Pilih rating CSAT">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => setCsatRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={csatRating === value} className="p-1"><Star size={22} className={value <= csatRating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}<span className="ml-2 text-xs text-text-secondary">{csatRating ? `${csatRating}/5` : "Pilih rating"}</span></div></div>
+          <div><span className="text-xs font-medium text-text-secondary block mb-1">Seberapa puas pelanggan? *</span><div className="flex items-center gap-1" role="group" aria-label="Pilih rating CSAT">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => setCsatRating(value)} aria-label={`${value} dari 5 bintang`} aria-pressed={csatRating === value} className="p-1"><Star size={22} className={value <= csatRating ? "text-amber-400 fill-amber-400" : "text-gray-300"} /></button>)}<span className="ml-2 text-xs text-text-secondary">{csatRating ? `${csatRating}/5` : "Pilih rating"}</span></div><p className="mt-1 text-2xs text-text-secondary">1 = Sangat tidak puas · 5 = Sangat puas</p></div>
           <label className="text-xs font-medium text-text-secondary">Masukan tambahan (opsional)<textarea rows={4} maxLength={2000} className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={csatComments} onChange={(event) => setCsatComments(event.target.value)} placeholder="Catatan atau saran dari pelanggan..." /></label>
           <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setIsCsatOpen(false)} disabled={isCsatSubmitting} className="btn-ghost">Batal</button><button type="button" onClick={submitCsat} disabled={isCsatSubmitting || !csatOrderId || csatRating < 1} className="btn-primary">{isCsatSubmitting ? "Menyimpan..." : "Simpan Respons CSAT"}</button></div>
         </div>

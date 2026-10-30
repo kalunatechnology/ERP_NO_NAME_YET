@@ -83,6 +83,7 @@ export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   // capabilities elsewhere and must never remove this personal workspace.
   { prefix: "/tasks", module: "PROJECTS", roles: null, allowDelegation: false },
   { prefix: "/finance", module: "FINANCE", roles: [ROLE_CODES.finance, ROLE_CODES.director], allowDelegation: false },
+  { prefix: "/inventory", module: "INVENTORY", roles: null },
   { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.companyAdmin, ROLE_CODES.projectManager, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/dashboard", module: null, roles: null },
 ] as const;

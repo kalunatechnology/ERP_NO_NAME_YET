@@ -273,11 +273,26 @@ crmIntegrationWebhookRouter.post('/events', async (req: Request, res: Response) 
     } else if (eventType === 'feedback.submitted') {
       const customerCode = typeof data.customer_code === 'string' ? data.customer_code.trim() : typeof data.client_code === 'string' ? data.client_code.trim() : '';
       const customerPartyId = typeof data.customer_party_id === 'string' ? data.customer_party_id.trim() : '';
-      const hasCustomerReference = customerCode.length > 0 || /^[0-9a-f-]{36}$/i.test(customerPartyId);
-      if (!hasCustomerReference || (customerCode.length > 100) || !Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5 || typeof data.feedback_text !== 'string' || !data.feedback_text.trim() || data.feedback_text.length > 2000 || (data.feedback_type !== undefined && (typeof data.feedback_type !== 'string' || !data.feedback_type.trim() || data.feedback_type.length > 60)) || (data.sales_order_id !== undefined && (typeof data.sales_order_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.sales_order_id)))) return res.status(400).json({ error: 'INVALID_FEEDBACK_EVENT' });
-      const party = await prisma.master_party.findFirst({ where: { ...(customerCode ? { party_code: customerCode } : { id: customerPartyId }), tenant_id: signatureConfig.source.tenant_id, company_id: signatureConfig.source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true } });
-      if (!party) return res.status(400).json({ error: 'CUSTOMER_PARTY_NOT_FOUND' });
+      const hasCustomerId = /^[0-9a-f-]{36}$/i.test(customerPartyId);
+      const reviewerName = typeof data.reviewer_name === 'string' ? data.reviewer_name.trim() : '';
+      const reviewerEmail = typeof data.reviewer_email === 'string' ? data.reviewer_email.trim() : '';
+      if ((!customerCode && !hasCustomerId && !reviewerName) || (customerCode.length > 100) || reviewerName.length > 200 || reviewerEmail.length > 320 || (reviewerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reviewerEmail)) || !Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5 || typeof data.feedback_text !== 'string' || !data.feedback_text.trim() || data.feedback_text.length > 2000 || (data.feedback_type !== undefined && (typeof data.feedback_type !== 'string' || !data.feedback_type.trim() || data.feedback_type.length > 60)) || (data.sales_order_id !== undefined && (typeof data.sales_order_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.sales_order_id)))) return res.status(400).json({ error: 'INVALID_FEEDBACK_EVENT' });
+      const partyWhere = { tenant_id: signatureConfig.source.tenant_id, company_id: signatureConfig.source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' };
+      let party = customerCode || hasCustomerId
+        ? await prisma.master_party.findFirst({ where: { ...partyWhere, ...(customerCode ? { party_code: customerCode } : { id: customerPartyId }) }, select: { id: true } })
+        : null;
+      // A name can link a review only when it exactly identifies one active customer.
+      // Ambiguous or unknown names remain valid external reviews without a party link.
+      if (!party && reviewerName && !customerCode && !hasCustomerId) {
+        const nameMatches = await prisma.master_party.findMany({ where: { ...partyWhere, OR: [{ display_name: { equals: reviewerName, mode: 'insensitive' } }, { legal_name: { equals: reviewerName, mode: 'insensitive' } }] }, select: { id: true }, take: 2 });
+        const contactMatches = await prisma.master_contact.findMany({ where: { tenant_id: signatureConfig.source.tenant_id, company_id: signatureConfig.source.company_id, contact_name: { equals: reviewerName, mode: 'insensitive' }, party_id: { not: null } }, select: { party_id: true }, distinct: ['party_id'], take: 2 });
+        const candidateIds = [...new Set([...nameMatches.map((item) => item.id), ...contactMatches.map((item) => item.party_id).filter((id): id is string => Boolean(id))])];
+        const candidates = candidateIds.length ? await prisma.master_party.findMany({ where: { ...partyWhere, id: { in: candidateIds } }, select: { id: true }, take: 2 }) : [];
+        if (candidates.length === 1) party = candidates[0];
+      }
+      if ((customerCode || hasCustomerId) && !party) return res.status(400).json({ error: 'CUSTOMER_PARTY_NOT_FOUND' });
       if (data.sales_order_id) {
+        if (!party) return res.status(400).json({ error: 'FEEDBACK_SALES_ORDER_REQUIRES_CUSTOMER' });
         const order = await prisma.sales_order.findFirst({ where: { id: data.sales_order_id, tenant_id: signatureConfig.source.tenant_id, company_id: signatureConfig.source.company_id, customer_party_id: party.id }, select: { id: true } });
         if (!order) return res.status(400).json({ error: 'FEEDBACK_SALES_ORDER_NOT_FOUND' });
       }
