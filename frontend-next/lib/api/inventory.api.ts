@@ -21,6 +21,45 @@ export interface InventoryProductCategory {
   status: string;
 }
 
+export interface InventoryWarehouse {
+  id: string;
+  warehouse_code: string;
+  warehouse_name: string;
+  warehouse_type: string;
+  status: string;
+}
+
+export interface InventoryWarehouseLocation {
+  id: string;
+  warehouse_id: string;
+  location_code: string;
+  location_name: string;
+  location_type: string;
+  quality_hold: boolean;
+  active: boolean;
+}
+
+export async function loadInventoryWarehouseLocations(): Promise<InventoryWarehouseLocation[]> {
+  const response = await api.get("/api/v1/master-data/warehouse-locations/?page_size=500");
+  return normalizeList<InventoryWarehouseLocation>(response.data).rows;
+}
+
+export async function saveInventoryWarehouseLocation(payload: Record<string, unknown>) {
+  return (await api.post("/api/v1/master-data/warehouse-locations/", payload)).data as InventoryWarehouseLocation;
+}
+
+export async function loadInventoryWarehouses(): Promise<InventoryWarehouse[]> {
+  const response = await api.get("/api/v1/master-data/warehouses/?page_size=500");
+  return normalizeList<InventoryWarehouse>(response.data).rows;
+}
+
+export async function saveInventoryWarehouse(payload: Record<string, unknown>, id?: string) {
+  const response = id
+    ? await api.patch(`/api/v1/master-data/warehouses/${id}/`, payload)
+    : await api.post("/api/v1/master-data/warehouses/", payload);
+  return response.data as InventoryWarehouse;
+}
+
 export async function loadInventoryProductCategories(): Promise<InventoryProductCategory[]> {
   const response = await api.get("/api/v1/master-data/product-categories/?page_size=500");
   return normalizeList<InventoryProductCategory>(response.data).rows;

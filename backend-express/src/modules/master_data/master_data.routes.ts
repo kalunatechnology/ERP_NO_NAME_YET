@@ -169,7 +169,52 @@ masterDataRouter.use('/tax-codes', createCrudRouter({ modelName: 'master_tax_cod
 masterDataRouter.use('/cost-centers', createCrudRouter({ modelName: 'master_cost_center', searchFields: ['cost_center_name', 'cost_center_code'] }));
 masterDataRouter.use('/departments', createCrudRouter({ modelName: 'master_department', searchFields: ['department_name', 'department_code'] }));
 masterDataRouter.use('/employees', createCrudRouter({ modelName: 'master_employee', searchFields: ['employee_name', 'employee_number', 'email'] }));
-masterDataRouter.use('/warehouses', createCrudRouter({ modelName: 'master_warehouse', searchFields: ['warehouse_name', 'warehouse_code'] }));
-masterDataRouter.use('/warehouse-locations', createCrudRouter({ modelName: 'master_warehouse_location', searchFields: ['location_name', 'location_code'] }));
+masterDataRouter.use('/warehouses', requireModuleAccess('INVENTORY'), createCrudRouter({
+  modelName: 'master_warehouse', searchFields: ['warehouse_name', 'warehouse_code'],
+  beforeCreate: async (req, data) => {
+    const code = typeof data.warehouse_code === 'string' ? data.warehouse_code.trim() : '';
+    const name = typeof data.warehouse_name === 'string' ? data.warehouse_name.trim() : '';
+    if (!code || !name) throw new ValidationError('Kode dan nama gudang wajib diisi.');
+    const duplicate = await prisma.master_warehouse.findFirst({ where: { company_id: req.companyId, warehouse_code: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+    if (duplicate) throw new ConflictError('Kode gudang sudah digunakan pada company ini.');
+    return { ...data, warehouse_code: code, warehouse_name: name, warehouse_type: data.warehouse_type || 'STANDARD', status: data.status || 'ACTIVE' };
+  },
+  beforeUpdate: async (req, data, existing) => {
+    const code = typeof data.warehouse_code === 'string' ? data.warehouse_code.trim() : existing.warehouse_code;
+    const name = typeof data.warehouse_name === 'string' ? data.warehouse_name.trim() : existing.warehouse_name;
+    const duplicate = await prisma.master_warehouse.findFirst({ where: { company_id: req.companyId, id: { not: existing.id }, warehouse_code: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+    if (duplicate) throw new ConflictError('Kode gudang sudah digunakan pada company ini.');
+    return { ...data, warehouse_code: code, warehouse_name: name };
+  },
+  beforeDelete: async () => { throw new ConflictError('Gudang tidak dapat dihapus permanen. Ubah statusnya menjadi INACTIVE.'); },
+}));
+masterDataRouter.use('/warehouse-locations', requireModuleAccess('INVENTORY'), createCrudRouter({
+  modelName: 'master_warehouse_location', searchFields: ['location_name', 'location_code'],
+  beforeCreate: async (req, data) => {
+    if (!data.warehouse_id) throw new ValidationError('Gudang wajib dipilih.');
+    const warehouse = await prisma.master_warehouse.findFirst({ where: { id: data.warehouse_id, company_id: req.companyId, status: 'ACTIVE' }, select: { id: true } });
+    if (!warehouse) throw new ValidationError('Gudang tidak ditemukan atau tidak aktif pada company ini.');
+    const code = typeof data.location_code === 'string' ? data.location_code.trim() : '';
+    const name = typeof data.location_name === 'string' ? data.location_name.trim() : '';
+    if (!code || !name) throw new ValidationError('Kode dan nama lokasi wajib diisi.');
+    if (typeof data.quality_hold !== 'boolean' || typeof data.active !== 'boolean') throw new ValidationError('Status quality_hold dan active harus bernilai true atau false.');
+    const duplicate = await prisma.master_warehouse_location.findFirst({ where: { company_id: req.companyId, warehouse_id: warehouse.id, location_code: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+    if (duplicate) throw new ConflictError('Kode lokasi sudah digunakan pada gudang ini.');
+    return { ...data, location_code: code, location_name: name, location_type: data.location_type || 'BIN' };
+  },
+  beforeUpdate: async (req, data, existing) => {
+    const warehouseId = data.warehouse_id || existing.warehouse_id;
+    const warehouse = await prisma.master_warehouse.findFirst({ where: { id: warehouseId, company_id: req.companyId }, select: { id: true } });
+    if (!warehouse) throw new ValidationError('Gudang lokasi tidak valid pada company ini.');
+    const code = typeof data.location_code === 'string' ? data.location_code.trim() : existing.location_code;
+    const duplicate = await prisma.master_warehouse_location.findFirst({ where: { company_id: req.companyId, warehouse_id: warehouse.id, id: { not: existing.id }, location_code: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+    if (duplicate) throw new ConflictError('Kode lokasi sudah digunakan pada gudang ini.');
+    return { ...data, location_code: code, warehouse_id: warehouse.id };
+  },
+  beforeDelete: async (req, existing) => {
+    const serialCount = await prisma.inv_serial_number.count({ where: { company_id: req.companyId, current_location_id: existing.id } });
+    if (serialCount) throw new ConflictError('Lokasi masih digunakan nomor seri. Nonaktifkan lokasi agar riwayat tetap utuh.');
+  },
+}));
 masterDataRouter.use('/work-centers', createCrudRouter({ modelName: 'master_work_center', searchFields: ['work_center_name', 'work_center_code'] }));
 masterDataRouter.use('/machines', createCrudRouter({ modelName: 'master_machine', searchFields: ['machine_name', 'machine_code'] }));

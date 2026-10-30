@@ -1270,6 +1270,11 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
     const s = (q.status || "").toUpperCase();
+    const linkedOrder = (data.orders || []).find((order: any) => String(order.quotation_id ?? order.quotation) === String(q.id));
+    if (s === "CONVERTED" || linkedOrder) {
+      const orderLabel = linkedOrder?.order_number || (linkedOrder?.id ? `Sales Order ${String(linkedOrder.id).slice(0, 8).toUpperCase()}` : "Sales Order sudah dibuat");
+      return <span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-semibold text-emerald-800" title="Quotation ini sudah dikonversi. Tidak perlu dikonversi ulang.">{orderLabel}</span>;
+    }
     const quotationOpportunity = (data.opportunities || []).find((opportunity: any) => String(opportunity.id) === String(q.opportunity_id));
     const quotationPartyId = quotationOpportunity ? opportunityPartyId(quotationOpportunity) : null;
     const quotationCustomerIsValid = Boolean(quotationPartyId && (data.parties || []).some((party: any) => String(party.id) === String(quotationPartyId) && party.party_type === "CUSTOMER" && party.status === "ACTIVE"));
@@ -1289,29 +1294,34 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
     if (s === "SENT") {
       const canAccept = Boolean(quotationOpportunity && quotationCustomerIsValid);
       return <ActionBtn
-        onClick={async () => { await acceptQuotation(q.id); toast.success("Keputusan quotation diterima."); onRefresh(); }}
-        label="Accept"
+        onClick={async () => { await acceptQuotation(q.id); toast.success("Keputusan customer dicatat: quotation diterima."); onRefresh(); }}
+        label="Catat Diterima"
         small
         disabled={!canAccept}
-        title={!canAccept ? "Hubungkan quotation ke opportunity dengan customer aktif sebelum menerima." : undefined}
+        title={!canAccept ? "Hubungkan quotation ke opportunity dengan customer aktif sebelum menerima." : "Catat keputusan customer bahwa quotation ini diterima."}
       />;
     }
     if (s === "ACCEPTED") return <ActionBtn
       onClick={async () => {
-        const result = await convertQuotationToOrder(q.id);
-        if (result?.handoff?.sales_order_id) {
-          toast.success(result.handoff.project_id ? "Quotation menjadi Sales Order dan project incoming." : "Quotation berhasil menjadi Sales Order.");
-        } else {
-          toast.error(result?.handoff?.proforma_invoice_id
-            ? `Order/project ditahan oleh pemeriksaan kredit. Proforma ${result.handoff.proforma_invoice_id} perlu ditindaklanjuti.`
-            : result?.handoff?.note || "Konversi ditahan oleh pemeriksaan kredit.");
+        try {
+          const result = await convertQuotationToOrder(q.id);
+          if (result?.handoff?.sales_order_id) {
+            toast.success(result.handoff.project_id ? "Quotation dikonversi menjadi Sales Order dan diteruskan ke Project." : "Quotation berhasil dikonversi menjadi Sales Order.");
+          } else {
+            toast.error(result?.handoff?.proforma_invoice_id
+              ? `Konversi order ditahan oleh pemeriksaan kredit. Proforma ${result.handoff.proforma_invoice_id} perlu ditindaklanjuti.`
+              : result?.handoff?.note || "Konversi ditahan oleh pemeriksaan kredit.");
+          }
+          onRefresh();
+        } catch (error: any) {
+          toast.error(error?.response?.data?.detail || error?.response?.data?.error?.message || "Quotation gagal dikonversi menjadi Sales Order.");
+          onRefresh();
         }
-        onRefresh();
       }}
-      label="📦 Convert to Order"
+      label="📦 Konversi ke Order"
       small
       disabled={!quotationOpportunity || !quotationCustomerIsValid}
-      title={!quotationOpportunity || !quotationCustomerIsValid ? "Lengkapi customer aktif pada opportunity sebelum konversi." : undefined}
+      title={!quotationOpportunity || !quotationCustomerIsValid ? "Lengkapi customer aktif pada opportunity sebelum konversi." : "Buat Sales Order dari quotation yang sudah diterima. Hasilnya mengikuti pemeriksaan kredit customer."}
     />;
     return <StatusBadge status={s} />;
   };
@@ -1447,10 +1457,16 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
                   </div>
                   <div className="text-xs text-text-secondary">Sebelum pajak: <b>{formatMoney(q.subtotal ?? q.total_amount)}</b> · Pajak: <b>{formatMoney(q.tax_amount || 0)}</b></div>
                   <div className="text-xs text-text-secondary">Total: <b>{formatMoney(q.total_amount)}</b></div>
-                  <StatusBadge status={q.status || "DRAFT"} />
+                  {String(q.status || "DRAFT").toUpperCase() === "CONVERTED" || (data.orders || []).some((order: any) => String(order.quotation_id ?? order.quotation) === String(q.id))
+                    ? <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-800" title="Quotation sudah menjadi Sales Order.">Sudah menjadi Order</span>
+                    : <StatusBadge status={q.status || "DRAFT"} />}
                 </div>
                 <div className="flex-shrink-0">
-                  {readOnly ? <StatusBadge status={q.status || "DRAFT"} /> : getQuotActions(q)}
+                  {readOnly
+                    ? (String(q.status || "").toUpperCase() === "CONVERTED" || (data.orders || []).some((order: any) => String(order.quotation_id ?? order.quotation) === String(q.id))
+                      ? <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-semibold text-emerald-800">{(data.orders || []).find((order: any) => String(order.quotation_id ?? order.quotation) === String(q.id))?.order_number || `Sales Order ${String((data.orders || []).find((order: any) => String(order.quotation_id ?? order.quotation) === String(q.id))?.id || "").slice(0, 8).toUpperCase() || "sudah dibuat"}`}</span>
+                      : <StatusBadge status={q.status || "DRAFT"} />)
+                    : getQuotActions(q)}
                 </div>
               </div>
             ))}

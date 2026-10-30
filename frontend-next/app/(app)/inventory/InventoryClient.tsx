@@ -2,7 +2,7 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { Archive, Barcode, Download, FileSpreadsheet, FileText, LoaderCircle, Package, Plus, RefreshCw, Save, Search, Upload } from "lucide-react";
+import { Archive, Barcode, Download, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, FolderOpen, LoaderCircle, Package, Plus, RefreshCw, Save, Search, Upload, Warehouse as WarehouseIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessRoute } from "@/lib/access/module-contract";
@@ -15,13 +15,19 @@ import {
   loadInventoryProducts,
   InventoryProductCategory,
   loadInventoryProductCategories,
+  InventoryWarehouse,
+  loadInventoryWarehouses,
+  InventoryWarehouseLocation,
+  loadInventoryWarehouseLocations,
   loadSerialNumbers,
   saveInventoryProduct,
   saveInventoryProductCategory,
+  saveInventoryWarehouse,
+  saveInventoryWarehouseLocation,
   uploadInventoryDocument,
 } from "@/lib/api/inventory.api";
 
-type TabKey = "products" | "serials" | "documents";
+type TabKey = "warehouse" | "files";
 type ProductForm = {
   product_code: string; product_name: string; product_type: string; category_id: string; costing_method: string;
   stock_item: boolean; purchase_item: boolean; sales_item: boolean; manufactured_item: boolean;
@@ -63,7 +69,9 @@ function inferMime(file: File) {
     xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     xls: "application/vnd.ms-excel", pdf: "application/pdf",
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    doc: "application/msword", csv: "text/csv", txt: "text/plain",
+    doc: "application/msword", csv: "text/csv", txt: "text/plain", zip: "application/zip",
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
+    mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg",
   };
   return mimeByExtension[extension || ""] || "";
 }
@@ -81,17 +89,22 @@ export default function InventoryClient() {
     pathname: "/inventory", enabledModules: user?.enabled_modules, delegatedModules: user?.delegated_modules,
     moduleAccess: user?.module_access, activeRoleCode: user?.active_role_code, isSuperAdmin: userRole === "super_admin",
   });
-  const [tab, setTab] = useState<TabKey>("products");
+  const [tab, setTab] = useState<TabKey>("warehouse");
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<InventoryProductCategory[]>([]);
+  const [warehouses, setWarehouses] = useState<InventoryWarehouse[]>([]);
+  const [warehouseLocations, setWarehouseLocations] = useState<InventoryWarehouseLocation[]>([]);
   const [serials, setSerials] = useState<any[]>([]);
   const [documents, setDocuments] = useState<InventoryDocument[]>([]);
   const [search, setSearch] = useState("");
   const [productForm, setProductForm] = useState<ProductForm>(blankProduct);
   const [categoryForm, setCategoryForm] = useState({ category_code: "", category_name: "", serial_controlled: false });
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
-  const [serialForm, setSerialForm] = useState({ serial_number: "", product_id: "", status: "IN_STOCK" });
+  const [editingWarehouseId, setEditingWarehouseId] = useState<string | null>(null);
+  const [warehouseForm, setWarehouseForm] = useState({ warehouse_code: "", warehouse_name: "", warehouse_type: "STANDARD", status: "ACTIVE" });
+  const [locationForm, setLocationForm] = useState({ warehouse_id: "", location_code: "", location_name: "", location_type: "BIN", quality_hold: false, active: true });
+  const [serialForm, setSerialForm] = useState({ serial_number: "", product_id: "", current_location_id: "", status: "IN_STOCK" });
   const [documentForm, setDocumentForm] = useState({ title: "", category: "GENERAL", description: "" });
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -99,8 +112,8 @@ export default function InventoryClient() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [productRows, serialRows, documentRows, categoryRows] = await Promise.all([loadInventoryProducts(), loadSerialNumbers(), loadInventoryDocuments(), loadInventoryProductCategories()]);
-      setProducts(productRows); setSerials(serialRows); setDocuments(documentRows); setCategories(categoryRows);
+      const [productRows, serialRows, documentRows, categoryRows, warehouseRows, locationRows] = await Promise.all([loadInventoryProducts(), loadSerialNumbers(), loadInventoryDocuments(), loadInventoryProductCategories(), loadInventoryWarehouses(), loadInventoryWarehouseLocations()]);
+      setProducts(productRows); setSerials(serialRows); setDocuments(documentRows); setCategories(categoryRows); setWarehouses(warehouseRows); setWarehouseLocations(locationRows);
     } catch (error: any) {
       toast.error(error?.response?.data?.detail || "Data inventori tidak dapat dimuat. Periksa akses modul Inventory.");
     } finally { setLoading(false); }
@@ -144,6 +157,27 @@ export default function InventoryClient() {
     finally { setBusy(false); }
   };
 
+  const saveWarehouse = async () => {
+    if (!warehouseForm.warehouse_code.trim() || !warehouseForm.warehouse_name.trim()) return toast.error("Kode dan nama gudang wajib diisi.");
+    setBusy(true);
+    try {
+      await saveInventoryWarehouse({ ...warehouseForm, warehouse_code: warehouseForm.warehouse_code.trim().toUpperCase(), warehouse_name: warehouseForm.warehouse_name.trim() }, editingWarehouseId || undefined);
+      setWarehouseForm({ warehouse_code: "", warehouse_name: "", warehouse_type: "STANDARD", status: "ACTIVE" }); setEditingWarehouseId(null);
+      toast.success(editingWarehouseId ? "Gudang diperbarui." : "Gudang ditambahkan."); await reload();
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Gudang tidak berhasil disimpan."); }
+    finally { setBusy(false); }
+  };
+
+  const saveWarehouseLocation = async () => {
+    if (!locationForm.warehouse_id || !locationForm.location_code.trim() || !locationForm.location_name.trim()) return toast.error("Gudang, kode, dan nama lokasi wajib diisi.");
+    setBusy(true);
+    try {
+      await saveInventoryWarehouseLocation({ ...locationForm, location_code: locationForm.location_code.trim().toUpperCase(), location_name: locationForm.location_name.trim() });
+      setLocationForm({ ...locationForm, location_code: "", location_name: "" }); toast.success("Lokasi gudang ditambahkan."); await reload();
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Lokasi gudang tidak berhasil disimpan."); }
+    finally { setBusy(false); }
+  };
+
   const addCommonCategories = async () => {
     const presets = [
       { category_code: "HARDWARE", category_name: "Hardware", serial_controlled: true },
@@ -177,7 +211,7 @@ export default function InventoryClient() {
     setBusy(true);
     try {
       await createSerialNumber({ ...serialForm, serial_number: serialForm.serial_number.trim() });
-      toast.success("Nomor seri tersimpan di inventori."); setSerialForm({ serial_number: "", product_id: "", status: "IN_STOCK" }); await reload();
+      toast.success("Nomor seri tersimpan di inventori."); setSerialForm({ serial_number: "", product_id: "", current_location_id: "", status: "IN_STOCK" }); await reload();
     } catch (error: any) { toast.error(error?.response?.data?.detail || "Nomor seri gagal disimpan. Pastikan nomor seri belum digunakan."); }
     finally { setBusy(false); }
   };
@@ -254,15 +288,14 @@ export default function InventoryClient() {
   };
 
   const tabs: Array<{ id: TabKey; label: string; icon: typeof Package }> = [
-    { id: "products", label: `Produk (${products.length})`, icon: Package },
-    { id: "serials", label: `Nomor Seri (${serials.length})`, icon: Barcode },
-    { id: "documents", label: `Dokumen Internal (${documents.length})`, icon: Archive },
+    { id: "warehouse", label: `Manajemen Gudang (${warehouses.length})`, icon: WarehouseIcon },
+    { id: "files", label: `Manajemen File (${documents.length})`, icon: FolderOpen },
   ];
 
   return (
     <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
       <div className="flex flex-col gap-3 rounded-2xl border border-[#DCE3EB] bg-white p-5 md:flex-row md:items-center md:justify-between">
-        <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Inventory & Internal Data</p><h1 className="mt-1 text-xl font-extrabold text-[#172033]">Produk, serial number & dokumen</h1><p className="mt-1 max-w-2xl text-sm text-text-secondary">Kelola katalog produk, catat serial untuk pemeriksaan garansi, dan simpan XLSX serta dokumen internal per company.</p></div>
+        <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Inventory</p><h1 className="mt-1 text-xl font-extrabold text-[#172033]">Manajemen Gudang & File</h1><p className="mt-1 max-w-2xl text-sm text-text-secondary">Kelola gudang, katalog produk, dan nomor seri secara terpisah dari ruang file internal untuk dokumen, gambar, video, serta audio.</p></div>
         <button onClick={() => void reload()} className="btn-ghost flex items-center gap-2 self-start text-xs md:self-auto"><RefreshCw size={14} /> Muat ulang</button>
       </div>
 
@@ -270,7 +303,28 @@ export default function InventoryClient() {
         {tabs.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => { setTab(id); setSearch(""); }} className={`inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-semibold ${tab === id ? "border-blue-700 text-blue-800" : "border-transparent text-text-secondary hover:text-text-primary"}`}><Icon size={15} />{label}</button>)}
       </div>
 
-      {tab === "products" && <>
+      {tab === "warehouse" && <>
+        <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
+          <div className="mb-3"><h2 className="text-sm font-bold">Data gudang</h2><p className="mt-1 text-xs text-text-secondary">Buat dan kelola gudang perusahaan. Produk, stok, dan nomor seri dikelola di bagian Manajemen Gudang.</p></div>
+          <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_1fr_auto] sm:items-end">
+            <label className="text-xs font-medium">Kode gudang *<input className="input mt-1 w-full" value={warehouseForm.warehouse_code} onChange={(e) => setWarehouseForm({ ...warehouseForm, warehouse_code: e.target.value })} placeholder="WH-JKT" /></label>
+            <label className="text-xs font-medium">Nama gudang *<input className="input mt-1 w-full" value={warehouseForm.warehouse_name} onChange={(e) => setWarehouseForm({ ...warehouseForm, warehouse_name: e.target.value })} placeholder="Gudang Jakarta" /></label>
+            <label className="text-xs font-medium">Jenis gudang<select className="input mt-1 w-full" value={warehouseForm.warehouse_type} onChange={(e) => setWarehouseForm({ ...warehouseForm, warehouse_type: e.target.value })}><option value="STANDARD">Standar</option><option value="RETAIL">Retail</option><option value="TRANSIT">Transit</option><option value="SERVICE">Service</option></select></label>
+            <button onClick={() => void saveWarehouse()} disabled={busy} className="btn-primary flex items-center justify-center gap-1 text-xs"><Save size={13} />{editingWarehouseId ? "Simpan" : "Tambah gudang"}</button>
+          </div>
+          {warehouses.length > 0 && <div className="mt-3 divide-y divide-slate-100">{warehouses.map((warehouse) => <div key={warehouse.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-xs"><div><span className="font-mono font-semibold">{warehouse.warehouse_code}</span><span className="ml-2">{warehouse.warehouse_name}</span><span className="ml-2 text-text-secondary">{warehouse.warehouse_type} · {warehouse.status}</span></div><button onClick={() => { setEditingWarehouseId(warehouse.id); setWarehouseForm({ warehouse_code: warehouse.warehouse_code, warehouse_name: warehouse.warehouse_name, warehouse_type: warehouse.warehouse_type, status: warehouse.status }); }} className="text-blue-700 hover:underline">Ubah</button></div>)}</div>}
+        </section>
+        <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
+          <div className="mb-3"><h2 className="text-sm font-bold">Lokasi / rak gudang</h2><p className="mt-1 text-xs text-text-secondary">Atur area atau bin untuk penempatan barang di dalam gudang.</p></div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr_auto] lg:items-end">
+            <label className="text-xs font-medium">Gudang *<select className="input mt-1 w-full" value={locationForm.warehouse_id} onChange={(e) => setLocationForm({ ...locationForm, warehouse_id: e.target.value })}><option value="">Pilih gudang</option>{warehouses.filter((warehouse) => warehouse.status === "ACTIVE").map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.warehouse_code} · {warehouse.warehouse_name}</option>)}</select></label>
+            <label className="text-xs font-medium">Kode lokasi *<input className="input mt-1 w-full" value={locationForm.location_code} onChange={(e) => setLocationForm({ ...locationForm, location_code: e.target.value })} placeholder="A-01-01" /></label>
+            <label className="text-xs font-medium">Nama lokasi *<input className="input mt-1 w-full" value={locationForm.location_name} onChange={(e) => setLocationForm({ ...locationForm, location_name: e.target.value })} placeholder="Rak A, tingkat 1" /></label>
+            <label className="text-xs font-medium">Jenis<select className="input mt-1 w-full" value={locationForm.location_type} onChange={(e) => setLocationForm({ ...locationForm, location_type: e.target.value })}><option value="BIN">Rak / Bin</option><option value="RECEIVING">Penerimaan</option><option value="SHIPPING">Pengiriman</option><option value="STAGING">Transit</option></select></label>
+            <button onClick={() => void saveWarehouseLocation()} disabled={busy || !warehouses.length} className="btn-primary flex items-center justify-center gap-1 text-xs"><Plus size={13} />Tambah lokasi</button>
+          </div>
+          {warehouseLocations.length > 0 && <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{warehouseLocations.map((location) => { const warehouse = warehouses.find((item) => item.id === location.warehouse_id); return <div key={location.id} className="rounded-lg border border-slate-100 px-3 py-2 text-xs"><p className="font-semibold">{location.location_code} · {location.location_name}</p><p className="mt-0.5 text-text-secondary">{warehouse?.warehouse_name || "Gudang"} · {location.location_type}{location.quality_hold ? " · Quality hold" : ""}</p></div>; })}</div>}
+        </section>
         <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-bold">Kategori produk dinamis</h2><p className="mt-1 text-xs text-text-secondary">Gunakan kategori umum atau buat sendiri. Hardware memakai kontrol serial sebagai nilai awal; kategori lain dapat diatur sesuai kebutuhan.</p></div><button onClick={() => void addCommonCategories()} disabled={busy} className="btn-ghost text-xs">Tambah kategori umum</button></div>
           <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto_auto] sm:items-end">
@@ -300,37 +354,42 @@ export default function InventoryClient() {
         </section>
       </>}
 
-      {tab === "serials" && <>
+      {tab === "warehouse" && <>
         <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-          <h2 className="text-sm font-bold">Catat nomor seri produk</h2><p className="mt-1 text-xs leading-5 text-text-secondary">Nomor seri dibuat dan dikelola di sini pada Inventory → Nomor Seri. Hubungkan dengan produk yang memiliki kontrol serial agar dapat dipakai saat tiket dan pemeriksaan garansi.</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <h2 className="text-sm font-bold">Nomor seri & garansi</h2><p className="mt-1 text-xs leading-5 text-text-secondary">Catat serial untuk produk dengan kontrol serial aktif agar bisa dipakai saat pemeriksaan garansi.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs font-medium">Produk *<select className="input mt-1 w-full" value={serialForm.product_id} onChange={(e) => setSerialForm({ ...serialForm, product_id: e.target.value })}><option value="">Pilih produk</option>{products.filter((product) => product.serial_controlled).map((product) => <option key={product.id} value={product.id}>{product.product_code} · {product.product_name}</option>)}</select></label>
             <label className="text-xs font-medium">Nomor seri *<input className="input mt-1 w-full" value={serialForm.serial_number} onChange={(e) => setSerialForm({ ...serialForm, serial_number: e.target.value })} placeholder="Contoh: SN-2026-0001" /></label>
+            <label className="text-xs font-medium">Lokasi gudang<select className="input mt-1 w-full" value={serialForm.current_location_id} onChange={(e) => setSerialForm({ ...serialForm, current_location_id: e.target.value })}><option value="">Belum ditempatkan</option>{warehouseLocations.filter((location) => location.active).map((location) => { const warehouse = warehouses.find((item) => item.id === location.warehouse_id); return <option key={location.id} value={location.id}>{warehouse?.warehouse_code || "WH"} · {location.location_code} · {location.location_name}</option>; })}</select></label>
             <button onClick={() => void saveSerial()} disabled={busy} className="btn-primary mt-auto flex items-center justify-center gap-1 text-xs"><Plus size={13} /> Simpan serial</button>
           </div>
         </section>
-        <section className="rounded-xl border border-[#DCE3EB] bg-white p-4"><div className="mb-3 flex items-center justify-between gap-2"><h2 className="text-sm font-bold">Daftar nomor seri</h2><label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input pl-8 text-xs" placeholder="Cari serial atau produk" value={search} onChange={(e) => setSearch(e.target.value)} /></label></div>{loading ? <Loading /> : <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-xs"><thead className="bg-slate-50 text-text-secondary"><tr><th className="p-2.5">Nomor seri</th><th className="p-2.5">Produk</th><th className="p-2.5">Status</th><th className="p-2.5">Lokasi</th></tr></thead><tbody>{visibleSerials.map((serial) => { const product = products.find((item) => String(item.id) === String(serial.product_id)); return <tr key={serial.id} className="border-t border-slate-100"><td className="p-2.5 font-mono font-semibold">{serial.serial_number}</td><td className="p-2.5">{product?.product_code || "—"} · {product?.product_name || "Produk tidak ditemukan"}</td><td className="p-2.5">{serial.status}</td><td className="p-2.5">{serial.current_location_id || "—"}</td></tr>; })}</tbody></table>{!visibleSerials.length && <Empty>Belum ada nomor seri.</Empty>}</div>}</section>
+        <section className="rounded-xl border border-[#DCE3EB] bg-white p-4"><div className="mb-3 flex items-center justify-between gap-2"><h2 className="text-sm font-bold">Daftar nomor seri</h2><label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input pl-8 text-xs" placeholder="Cari serial atau produk" value={search} onChange={(e) => setSearch(e.target.value)} /></label></div>{loading ? <Loading /> : <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-xs"><thead className="bg-slate-50 text-text-secondary"><tr><th className="p-2.5">Nomor seri</th><th className="p-2.5">Produk</th><th className="p-2.5">Status</th><th className="p-2.5">Lokasi</th></tr></thead><tbody>{visibleSerials.map((serial) => { const product = products.find((item) => String(item.id) === String(serial.product_id)); const location = warehouseLocations.find((item) => item.id === serial.current_location_id); return <tr key={serial.id} className="border-t border-slate-100"><td className="p-2.5 font-mono font-semibold">{serial.serial_number}</td><td className="p-2.5">{product?.product_code || "—"} · {product?.product_name || "Produk tidak ditemukan"}</td><td className="p-2.5">{serial.status}</td><td className="p-2.5">{location ? `${location.location_code} · ${location.location_name}` : "—"}</td></tr>; })}</tbody></table>{!visibleSerials.length && <Empty>Belum ada nomor seri.</Empty>}</div>}</section>
       </>}
 
-      {tab === "documents" && <>
+      {tab === "files" && <>
         <section className="rounded-xl border border-[#DCE3EB] bg-white p-4">
-          <h2 className="text-sm font-bold">Simpan dokumen internal</h2><p className="mt-1 text-xs leading-5 text-text-secondary">File disimpan pada company aktif dan hanya dapat diunduh oleh pengguna yang memiliki akses Inventory. Format: XLSX, XLS, PDF, DOCX, DOC, CSV, TXT. Maksimum 7 MB per file.</p>
+          <h2 className="text-sm font-bold">Unggah file internal</h2><p className="mt-1 text-xs leading-5 text-text-secondary">Kelola dokumen, spreadsheet, gambar, video, audio, dan ZIP dalam ruang file per company. Maksimum 7 MB per file.</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs font-medium">Judul *<input className="input mt-1 w-full" value={documentForm.title} onChange={(e) => setDocumentForm({ ...documentForm, title: e.target.value })} /></label>
-            <label className="text-xs font-medium">Kategori<select className="input mt-1 w-full" value={documentForm.category} onChange={(e) => setDocumentForm({ ...documentForm, category: e.target.value })}><option value="GENERAL">Umum</option><option value="PRODUCT_IMPORT">Impor produk</option><option value="PRODUCT_SPEC">Spesifikasi produk</option><option value="POLICY">Kebijakan / SOP</option><option value="CONTRACT">Kontrak / komersial</option><option value="WARRANTY">Garansi / manual</option></select></label>
-            <label className="text-xs font-medium">Pilih file *<input className="input mt-1 w-full" type="file" accept=".xlsx,.xls,.pdf,.docx,.doc,.csv,.txt" onChange={handleDocumentPick} /></label>
+            <label className="text-xs font-medium">Kategori<select className="input mt-1 w-full" value={documentForm.category} onChange={(e) => setDocumentForm({ ...documentForm, category: e.target.value })}><option value="GENERAL">Umum</option><option value="DOCUMENT">Dokumen</option><option value="PRODUCT_IMPORT">Impor produk</option><option value="PRODUCT_SPEC">Spesifikasi produk</option><option value="POLICY">Kebijakan / SOP</option><option value="CONTRACT">Kontrak / komersial</option><option value="WARRANTY">Garansi / manual</option><option value="IMAGE">Gambar</option><option value="VIDEO">Video</option><option value="AUDIO">Audio</option><option value="OTHER">Lainnya</option></select></label>
+            <label className="text-xs font-medium">Pilih file *<input className="input mt-1 w-full" type="file" accept=".xlsx,.xls,.pdf,.docx,.doc,.csv,.txt,.zip,.jpg,.jpeg,.png,.webp,.gif,.mp4,.webm,.mov,.mp3,.wav,.ogg" onChange={handleDocumentPick} /></label>
             <div className="flex items-end"><button onClick={() => void uploadDocument()} disabled={busy || !documentFile} className="btn-primary flex w-full items-center justify-center gap-1 text-xs"><Upload size={13} /> Unggah ke Data Internal</button></div>
             <label className="text-xs font-medium sm:col-span-2 lg:col-span-4">Keterangan<textarea className="input mt-1 w-full" rows={2} maxLength={2000} value={documentForm.description} onChange={(e) => setDocumentForm({ ...documentForm, description: e.target.value })} /></label>
           </div>
         </section>
-        <section className="rounded-xl border border-[#DCE3EB] bg-white p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold">Ruang dokumen internal</h2><label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input pl-8 text-xs" placeholder="Cari dokumen" value={search} onChange={(e) => setSearch(e.target.value)} /></label></div>{loading ? <Loading /> : visibleDocuments.length ? <div className="divide-y divide-slate-100">{visibleDocuments.map((document) => <DocumentRow key={document.id} document={document} onDownload={() => void downloadInventoryDocument(document.id, document.file_name).catch(() => toast.error("File tidak dapat diunduh."))} />)}</div> : <Empty>Belum ada dokumen yang diunggah.</Empty>}</section>
+        <section className="rounded-xl border border-[#DCE3EB] bg-white p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold">Ruang file internal</h2><label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input pl-8 text-xs" placeholder="Cari file" value={search} onChange={(e) => setSearch(e.target.value)} /></label></div>{loading ? <Loading /> : visibleDocuments.length ? <div className="divide-y divide-slate-100">{visibleDocuments.map((document) => <DocumentRow key={document.id} document={document} onDownload={() => void downloadInventoryDocument(document.id, document.file_name).catch(() => toast.error("File tidak dapat diunduh."))} />)}</div> : <Empty>Belum ada file yang diunggah.</Empty>}</section>
       </>}
     </div>
   );
 }
 
 function DocumentRow({ document, onDownload }: { document: InventoryDocument; onDownload: () => void }) {
-  const Icon = document.mime_type.includes("sheet") || document.mime_type.includes("excel") || document.mime_type.includes("csv") ? FileSpreadsheet : FileText;
+  const Icon = document.mime_type.startsWith("video/") ? FileVideo
+    : document.mime_type.startsWith("image/") ? FileImage
+      : document.mime_type.startsWith("audio/") ? FileAudio
+        : document.mime_type.includes("sheet") || document.mime_type.includes("excel") || document.mime_type.includes("csv") ? FileSpreadsheet
+          : document.category === "OTHER" ? Archive : FileText;
   return <div className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3"><span className="rounded-lg bg-blue-50 p-2 text-blue-700"><Icon size={16} /></span><div className="min-w-0"><p className="truncate text-xs font-semibold">{document.title}</p><p className="truncate text-2xs text-text-secondary">{document.file_name} · {document.category} · {Math.max(1, Math.round(Number(document.file_size) / 1024))} KB · {new Date(document.created_at).toLocaleDateString("id-ID")}</p>{document.description && <p className="mt-0.5 truncate text-2xs text-text-secondary">{document.description}</p>}</div></div><button onClick={onDownload} className="btn-ghost inline-flex items-center gap-1 text-xs"><Download size={13} /> Unduh</button></div>;
 }
 

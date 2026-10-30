@@ -34,8 +34,12 @@ inventoryRouter.post('/internal-documents', async (req, res, next) => {
     const { title, category, description, file_name, mime_type, content_base64 } = req.body ?? {};
     const safeName = typeof file_name === 'string' ? file_name.trim().replace(/[\\/\\r\\n\u0000]/g, '_') : '';
     const normalizedMime = typeof mime_type === 'string' ? mime_type.trim().toLowerCase() : '';
-    const allowedMime = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword', 'text/csv', 'text/plain']);
-    if (!safeName || safeName.length > 255 || !allowedMime.has(normalizedMime) || typeof content_base64 !== 'string' || !content_base64 || content_base64.length > 9_900_000) throw new ValidationError('File tidak valid. Format yang didukung: XLSX, XLS, PDF, DOCX, DOC, CSV, dan TXT; ukuran maksimum 7 MB.');
+    const allowedMime = new Set([
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword', 'text/csv', 'text/plain', 'application/zip',
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime', 'audio/mpeg', 'audio/wav', 'audio/ogg',
+    ]);
+    if (!safeName || safeName.length > 255 || !allowedMime.has(normalizedMime) || typeof content_base64 !== 'string' || !content_base64 || content_base64.length > 9_900_000) throw new ValidationError('File tidak valid. Format yang didukung: dokumen, spreadsheet, gambar, audio, video, dan ZIP; ukuran maksimum 7 MB.');
     const content = Buffer.from(content_base64, 'base64');
     if (!content.length || content.length > 7 * 1024 * 1024 || content.toString('base64') !== content_base64) throw new ValidationError('Konten file tidak valid atau ukuran melebihi 7 MB.');
     const normalizedTitle = typeof title === 'string' ? title.trim() : '';

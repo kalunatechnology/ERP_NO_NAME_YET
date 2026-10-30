@@ -163,6 +163,8 @@ const API_ACCESS_CONTRACTS: readonly ApiAccessContract[] = [
   { prefix: "/api/v1/finance", module: "FINANCE", roles: FINANCE_ROLES, allowDelegation: false },
   { prefix: "/api/v1/master-data/products", module: "INVENTORY" },
   { prefix: "/api/v1/master-data/product-categories", module: "INVENTORY" },
+  { prefix: "/api/v1/master-data/warehouses", module: "INVENTORY" },
+  { prefix: "/api/v1/master-data/warehouse-locations", module: "INVENTORY" },
   { prefix: "/api/v1/procurement", module: "PROCUREMENT" },
   { prefix: "/api/v1/inventory", module: "INVENTORY" },
   { prefix: "/api/v1/manufacturing", module: "MANUFACTURING" },
