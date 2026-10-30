@@ -3,7 +3,7 @@ import prisma from '../../../../config/database';
 import { ForbiddenError, ValidationError } from '../../../../utils/errors';
 import { MarbotRuntimeAuthority } from '../types';
 import { helperAnswer, systemKnowledgeAnswer } from '../../knowledge/knowledge';
-import { proposeAction } from '../actions/action.service';
+import { MarbotAction, proposeAction } from '../actions/action.service';
 import { proposeNamedTaskAction } from '../actions/named-action.service';
 import { isDataReadQuestion, isIntentCorrection, isProcedureQuestion, procedureOperation, procedureTopic } from './intent';
 import { RetrievalGatewayService } from '../../knowledge-engine/gateway/retrieval-gateway.service';
@@ -11,6 +11,17 @@ import { RetrievalGatewayService } from '../../knowledge-engine/gateway/retrieva
 export type NativeScope = MarbotRuntimeAuthority & { tenantId: string; companyId: string; userId: string; blockedReadModules?: string[]; blockedWriteModules?: string[] };
 export const dashboardRoles: RoleCode[] = [RoleCode.DIRECTOR, RoleCode.OPERATIONAL_MANAGER, RoleCode.PROJECT_MANAGER];
 export type AssistantMode = 'HELPER' | 'DASHBOARD';
+
+async function answerProcedureReference(message: string, scope: NativeScope) {
+  const topic = procedureTopic(message);
+  const operation = procedureOperation(message);
+  const rule = topic ? await RetrievalGatewayService.resolveProcedureRule(topic.id, operation) : undefined;
+  const content = helperAnswer(message, scope, topic ? { topic: topic.id, operation } : undefined, rule);
+  const source = rule?.provenance?.snapshotId
+    ? `ERP:procedure:${rule.topic}:${rule.operation ?? 'overview'}:v${rule.version ?? 'unknown'}:${rule.provenance.commitSha.slice(0, 7)}`
+    : `ERP:curated-procedure:${rule?.id ?? 'baseline'}:${rule?.version ?? 'baseline'}`;
+  return { content, tools: ['help.procedure'], sources: [source] };
+}
 const WEEKLY_TASK_ENTITY = /\b(?:weekly\s+(?:tasks?|targets?)|(?:tugas|target)\s+mingguan|(?:pengajuan|ajuan)\s+(?:(?:target|tugas|task)\s+)?mingguan|mingguan\s+(?:task|tugas))\b/i;
 export function isWeeklyTaskQuestion(message: string) { return WEEKLY_TASK_ENTITY.test(message); }
 export function canUseDashboard(scope: MarbotRuntimeAuthority) {
@@ -110,18 +121,18 @@ export function followUpQuestion(message: string, previous?: string): string {
   return `${message} ${topics.join(' ')} ${owner} ${project}`.trim();
 }
 
-export async function answerNative(message: string, mode: AssistantMode, scope: NativeScope, db = prisma) {
+export async function answerNative(message: string, mode: AssistantMode, scope: NativeScope, db = prisma): Promise<{ content: string; tools: string[]; sources: string[]; action?: MarbotAction }> {
   if (mode === 'DASHBOARD' && !canUseDashboard(scope)) throw new ForbiddenError('Dashboard Assistant hanya tersedia untuk pimpinan dengan akses data proyek.');
   if ((isProcedureQuestion(message) || (procedureTopic(message)?.id === 'weekly' && procedureOperation(message) === 'approve')) && !isNativeTaskReadQuestion(message)
       && (procedureOperation(message) || !/\b(fitur|modul|workflow|alur|fungsi|sistem|role|peran|permission|hak akses|izin akses)\b/i.test(message))) {
-    return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge:2026-10-07'] };
+    return answerProcedureReference(message, scope);
   }
   const namedProposal = await proposeNamedTaskAction(message, scope, db);
   if (namedProposal) return namedProposal;
   const proposal = proposeAction(message, scope);
   if (proposal) return proposal;
   if (/\b(fitur|modul|workflow|alur|fungsi|sistem)\b/i.test(message) && !/berapa|jumlah|total|tampilkan/i.test(message)) {
-    return { content: systemKnowledgeAnswer(message, scope.enabledModules), tools: ['help.procedure'], sources: ['ERP:code-knowledge:2026-10-07'] };
+    return { content: systemKnowledgeAnswer(message, scope.enabledModules), tools: ['help.procedure'], sources: ['ERP:curated-module-catalog:baseline'] };
   }
   if (/\b(role|peran|permission|hak akses|izin akses)\b/i.test(message)) {
     return { content: `Peran aktif: ${scope.roleCode}.\nModul aktif: ${scope.enabledModules.join(', ')}.\nPermission efektif untuk asisten: ${scope.permissions.join(', ')}.\nCakupan proyek: ${scope.projectScope.mode === 'ALL' ? 'seluruh proyek company aktif' : `${scope.projectScope.projectIds.length} proyek yang diizinkan`}.\nHak operasi tetap divalidasi backend pada setiap permintaan.`, tools: ['access.context'], sources: ['ERP:authority'] };
@@ -130,7 +141,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
     const topic = procedureTopic(message);
     const op = procedureOperation(message);
     if (topic || op) {
-      return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+      return answerProcedureReference(message, scope);
     }
 
     const mkieMatches = await RetrievalGatewayService.searchRelevantKnowledge(message, scope);
@@ -141,10 +152,10 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
 
     const modKnowledge = systemKnowledgeAnswer(message, scope.enabledModules);
     if (!modKnowledge.includes('belum tersedia')) {
-      return { content: modKnowledge, tools: ['help.procedure'], sources: ['ERP:code-knowledge'] };
+      return { content: modKnowledge, tools: ['help.procedure'], sources: ['ERP:curated-module-catalog:baseline'] };
     }
 
-    return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+    return answerProcedureReference(message, scope);
   }
   if (/^\s*(buatkan|buat|hapus|ubah|setujui|approve|delete|update|tambahkan)\b/i.test(message) && !/ringkasan|laporan|summary/i.test(message)) {
     return { content: `Operasi tersebut belum dapat dipetakan ke input yang valid. Saya dapat menyiapkan usulan Project, Main/Weekly/Daily Task, assignment, dan pembaruan task dengan field serta identitas yang jelas. Perubahan memerlukan konfirmasi dan verifikasi backend. Sebutkan record dan perubahan yang diminta.`, tools: [], sources: [] };
@@ -152,7 +163,7 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
   const tools = detectTools(message);
   if (!tools.length) {
     if (procedureTopic(message) || procedureOperation(message)) {
-      return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+      return answerProcedureReference(message, scope);
     }
     const mkieMatches = await RetrievalGatewayService.searchRelevantKnowledge(message, scope);
     if (mkieMatches.length > 0) {
@@ -161,9 +172,9 @@ export async function answerNative(message: string, mode: AssistantMode, scope: 
     }
     const modKnowledge = systemKnowledgeAnswer(message, scope.enabledModules);
     if (!modKnowledge.includes('belum tersedia')) {
-      return { content: modKnowledge, tools: ['help.procedure'], sources: ['ERP:code-knowledge'] };
+      return { content: modKnowledge, tools: ['help.procedure'], sources: ['ERP:curated-module-catalog:baseline'] };
     }
-    return { content: helperAnswer(message, scope), tools: ['help.procedure'], sources: ['ERP:procedure-knowledge'] };
+    return answerProcedureReference(message, scope);
   }
   const unquotedTaskIntent = message.replace(/["“][^"”]*["”]/g, '');
   if (isWeeklyTaskQuestion(unquotedTaskIntent) && /daily\s+tasks?|(?:tugas|task)\s+harian/i.test(unquotedTaskIntent) && isNativeTaskReadQuestion(message)) {

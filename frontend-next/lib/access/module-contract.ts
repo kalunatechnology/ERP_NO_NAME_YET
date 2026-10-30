@@ -83,7 +83,8 @@ export const ROUTE_ACCESS_CONTRACTS: readonly RouteAccessContract[] = [
   // capabilities elsewhere and must never remove this personal workspace.
   { prefix: "/tasks", module: "PROJECTS", roles: null, allowDelegation: false },
   { prefix: "/finance", module: "FINANCE", roles: [ROLE_CODES.finance, ROLE_CODES.director], allowDelegation: false },
-  { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.projectManager, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: false },
+  { prefix: "/inventory", module: "INVENTORY", roles: null },
+  { prefix: "/crm", module: "CRM", roles: [ROLE_CODES.companyAdmin, ROLE_CODES.projectManager, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.director], allowDelegation: false },
   { prefix: "/dashboard", module: null, roles: null },
 ] as const;
 
@@ -139,7 +140,7 @@ export interface ApiAccessContract {
   allowDelegation?: boolean;
 }
 
-const CRM_ROLES = [ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.projectManager, ROLE_CODES.director] as const;
+const CRM_ROLES = [ROLE_CODES.companyAdmin, ROLE_CODES.crmLead, ROLE_CODES.sales, ROLE_CODES.projectManager, ROLE_CODES.director] as const;
 const PROJECT_ROLES = [ROLE_CODES.companyAdmin, ROLE_CODES.projectManager, ROLE_CODES.operationalManager, ROLE_CODES.director, ROLE_CODES.supervisor, ROLE_CODES.staff] as const;
 const FINANCE_ROLES = [ROLE_CODES.finance, ROLE_CODES.director] as const;
 
@@ -160,6 +161,10 @@ const API_ACCESS_CONTRACTS: readonly ApiAccessContract[] = [
   // personal Daily Task baseline shared by every company user.
   { prefix: "/api/v1/projects", module: "PROJECTS" },
   { prefix: "/api/v1/finance", module: "FINANCE", roles: FINANCE_ROLES, allowDelegation: false },
+  { prefix: "/api/v1/master-data/products", module: "INVENTORY" },
+  { prefix: "/api/v1/master-data/product-categories", module: "INVENTORY" },
+  { prefix: "/api/v1/master-data/warehouses", module: "INVENTORY" },
+  { prefix: "/api/v1/master-data/warehouse-locations", module: "INVENTORY" },
   { prefix: "/api/v1/procurement", module: "PROCUREMENT" },
   { prefix: "/api/v1/inventory", module: "INVENTORY" },
   { prefix: "/api/v1/manufacturing", module: "MANUFACTURING" },

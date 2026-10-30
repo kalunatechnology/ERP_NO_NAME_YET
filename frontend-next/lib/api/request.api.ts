@@ -32,6 +32,15 @@ export interface MeetingDetail extends MeetingRequestSummary {
   };
 }
 
+export interface MeetingMinutesReference {
+  id: string;
+  meeting_id: string;
+  meeting_title: string;
+  occurrence_date: string;
+  summary: string;
+  status: string;
+}
+
 export interface CreateMeetingInput {
   title: string; description?: string; start_at: string; end_at: string; location?: string; meeting_url?: string;
   meeting_type?: string; notetaker_user_id?: string; tagged_users?: Array<{ id: string; name: string }>;
@@ -80,6 +89,7 @@ export interface CreateNonMeetingInput {
 export const requestApi = {
   listTeamMembers: async () => (await api.get<Array<{ id: string; name: string; email: string; role: string }>>("/api/v1/requests/team-members")).data,
   listMeetings: async () => (await api.get<MeetingRequestSummary[]>("/api/v1/requests/meetings")).data,
+  listMeetingMinutesReferences: async () => (await api.get<MeetingMinutesReference[]>("/api/v1/requests/meeting-minutes/references")).data,
   getMeeting: async (id: string, occurrenceDate?: string) => (await api.get<MeetingDetail>(`/api/v1/requests/meetings/${id}`, { params: occurrenceDate ? { date: occurrenceDate } : undefined })).data,
   createMeeting: async (input: CreateMeetingInput) => (await api.post("/api/v1/requests/meetings", input)).data,
   deleteMeeting: async (id: string) => { await api.delete(`/api/v1/requests/meetings/${id}`); },

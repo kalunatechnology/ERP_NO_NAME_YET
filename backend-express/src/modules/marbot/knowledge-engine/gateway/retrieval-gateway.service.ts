@@ -109,7 +109,8 @@ export class RetrievalGatewayService {
           where: {
             snapshot_id: activeSnapshot.id,
             topic,
-            ...(operation ? { operation } : {}),
+            operation: operation ?? null,
+            knowledge_category: 'USER_PROCEDURE',
             lifecycle_status: { in: ['ACTIVE', 'QUARANTINED', 'RETIRED'] },
           },
         });
@@ -1261,12 +1262,12 @@ Kembalikan HANYA JSON berformat: { "selectedIds": [nomor_id_yang_relevan] }`;
     const userFacingEntries = authorizedEntries.filter((e) =>
       !e.feature_id.startsWith('backend.api.') &&
       e.knowledge_category !== 'API_ENDPOINT' &&
-      !e.title.startsWith('GET ') &&
-      !e.title.startsWith('POST ') &&
-      !e.title.startsWith('PUT ') &&
-      !e.title.startsWith('DELETE ')
+      !/\b(?:GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s+\/api\/v\d+\//i.test(e.title) &&
+      !/\/api\/v\d+\//i.test(e.title)
     );
-    const candidateEntries = userFacingEntries.length > 0 ? userFacingEntries : authorizedEntries;
+    // Never reintroduce developer API route records when all retrieved facts
+    // were filtered. Empty user-facing evidence must abstain, not disclose APIs.
+    const candidateEntries = userFacingEntries;
 
     if (!candidateEntries.length) {
       this.lastTelemetry = {

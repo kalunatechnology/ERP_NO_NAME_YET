@@ -66,6 +66,7 @@ const statusColor = (s: string) => {
 
 const formatRp = (v: number) => `Rp ${v.toLocaleString('id-ID')}`;
 const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const hasEnded = (d?: string | null) => Boolean(d && new Date(d).getTime() <= Date.now());
 
 export default function PeriodClosingWorkspace() {
   const { user, userRole } = useAuth();
@@ -296,10 +297,11 @@ const executeYearEnd = async () => {
                         {p.status === 'OPEN' && canOperateFinance && (
                           <button
                             onClick={() => closePeriod(p.id)}
-                            disabled={closingLoading && closingPeriodId === p.id}
+                            disabled={!hasEnded(p.end_date) || (closingLoading && closingPeriodId === p.id)}
+                            title={!hasEnded(p.end_date) ? 'Penutupan tersedia setelah periode berakhir.' : undefined}
                             className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#EAF6FF] text-[#203D91] border border-[#BFDBFE] hover:bg-[#203D91] hover:text-white transition-all shadow-2xs disabled:opacity-50"
                           >
-                            {closingLoading && closingPeriodId === p.id ? 'Memproses…' : 'Ajukan Penutupan'}
+                            {closingLoading && closingPeriodId === p.id ? 'Memproses…' : hasEnded(p.end_date) ? 'Ajukan Penutupan' : 'Menunggu Akhir Periode'}
                           </button>
                         )}
                         {p.status === 'CLOSED' && (
@@ -369,8 +371,8 @@ const executeYearEnd = async () => {
             onChange={e => setSelectedYearId(e.target.value)}
             className="px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#203D91]/30"
           >
-            <option value="">— Pilih Tahun Fiskal —</option>
-            {fiscalYears.filter(y => y.status === 'OPEN').map(y => (
+            <option value="">— Pilih Tahun Fiskal yang Telah Berakhir —</option>
+            {fiscalYears.filter(y => y.status === 'OPEN' && hasEnded(y.end_date)).map(y => (
               <option key={y.id} value={y.id}>{y.fiscal_year_name}</option>
             ))}
           </select>

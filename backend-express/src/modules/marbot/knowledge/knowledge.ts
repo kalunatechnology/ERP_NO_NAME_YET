@@ -50,7 +50,7 @@ const selectedNames: Record<ProcedureTopic, string> = {
 };
 
 /** A validated semantic selection retrieves the exact local reference, without re-matching keywords. */
-export function helperAnswer(message: string, context?: HelpContext, selection?: ProcedureSelection): string {
+export function helperAnswer(message: string, context?: HelpContext, selection?: ProcedureSelection, ruleOverride?: import('./schemas/procedure.schema').ProcedureRule): string {
   if (
     !selection &&
     /\b(?:dan|atau|serta)\s+(?:hapus|menghapus|delete|edit|mengedit|ubah|update|buat|membuat|create|publikasikan|publish|approve|setujui|bayar|batalkan)\b/.test(
@@ -85,7 +85,9 @@ export function helperAnswer(message: string, context?: HelpContext, selection?:
     return formatUnavailable(topic.name, operation);
   }
 
-  const rule = findProcedureRule(topic.id, operation);
+  const rule = ruleOverride && ruleOverride.topic === topic.id && ruleOverride.operation === operation
+    ? ruleOverride
+    : findProcedureRule(topic.id, operation);
   if (!rule) {
     return formatUnavailable(topic.name, operation);
   }

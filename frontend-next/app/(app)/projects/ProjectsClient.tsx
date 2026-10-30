@@ -29,12 +29,14 @@ import {
   fetchProjectFundingRequests, submitProjectFundingRequest,
   updateProjectFinancials,
   fetchProjectCustomers, getApiErrorDetail,
+  fetchProjectPartyOptions, fetchProjectParties, updateProjectParties,
+  type ProjectParty, type ProjectPartyOption,
   getProjectAuthority, getProjectSupervisor, assignProjectSupervisor, revokeProjectSupervisor,
   ProjectResourceDocument, fetchProjectResources, createProjectResource, deleteProjectResource
 } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
-import { cn, localDateKey } from "@/lib/utils";
-import { creationWeeklyPeriod } from "@/lib/weekly-dashboard";
+import { cn, formatDate, localDateKey } from "@/lib/utils";
+import { creationWeeklyPeriod, resolveTargetCalendarWeek } from "@/lib/weekly-dashboard";
 import { Modal } from "@/components/ui/Modal";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
@@ -46,6 +48,7 @@ import { getCategoryStyle } from "@/lib/ui/semantic-styles";
 import { canPerform } from "@/lib/access/capability-contract";
 import { getModuleOverride, normalizeRoleCode, type ModulePermission } from "@/lib/access/module-contract";
 import { ProjectWbsTree } from "@/components/projects/ProjectWbsTree";
+import { useWeeklyPeriodFilter } from "@/components/tasks/useWeeklyPeriodFilter";
 import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
 import {
   PROJECT_LIFECYCLE_LABELS,
@@ -107,61 +110,25 @@ function projectClientName(project: Project): string {
   return String(row.customer_name || row.client_name || row.customer?.name || row.client?.name || "").trim();
 }
 
-function isoWeekKey(value?: string | null): string | null {
-  if (!value) return null;
-  const match = String(value).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  if (Number.isNaN(date.getTime())) return null;
-  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-}
-
-function projectActivityWeekKeys(project: Project): Set<string> {
-  const keys = new Set<string>();
-  const add = (date?: string | null) => {
-    const key = isoWeekKey(date);
-    if (key) keys.add(key);
+function projectHasActivityInPeriod(project: Project, period: { start: string; end: string; month: string; week: number }): boolean {
+  const inRange = (value?: string | null) => {
+    const date = String(value || "").slice(0, 10);
+    return Boolean(date && date >= period.start && date <= period.end);
   };
-  (project.main_tasks || []).forEach((main: any) => {
-    (main.weekly_tasks || main.weekly_plans || []).forEach((weekly: any) => {
-      add(weekly.start_date);
-      add(weekly.end_date);
-      if (weekly.start_date && weekly.end_date) {
-        const start = new Date(`${String(weekly.start_date).slice(0, 10)}T00:00:00Z`);
-        const end = new Date(`${String(weekly.end_date).slice(0, 10)}T00:00:00Z`);
-        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start <= end) {
-          for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 7)) {
-            add(cursor.toISOString().slice(0, 10));
-          }
-        }
-      }
-      (weekly.daily_tasks || []).forEach((daily: any) => add(daily.planned_date || daily.activity_date || daily.date));
-    });
-  });
-  (project.tasks || []).forEach((task: any) => add(task.planned_date || task.activity_date || task.due_date || task.date));
-  return keys;
-}
-
-function projectHasActivityInWeek(project: Project, selectedWeek: string): boolean {
-  if (projectActivityWeekKeys(project).has(selectedWeek)) return true;
-  const target = selectedWeek.match(/^(\d{4})-W(\d{2})$/);
-  if (!target) return false;
-  const start = new Date(Date.UTC(Number(target[1]), 0, 4));
-  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7) + (Number(target[2]) - 1) * 7);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 6);
-  const iso = (date: Date) => date.toISOString().slice(0, 10);
-  const weekStart = iso(start);
-  const weekEnd = iso(end);
   return (project.main_tasks || []).some((main: any) =>
     (main.weekly_tasks || main.weekly_plans || []).some((weekly: any) => {
+      const calendar = resolveTargetCalendarWeek({ start_date: weekly.start_date, weeklyTask: weekly });
       const from = String(weekly.start_date || "").slice(0, 10);
       const to = String(weekly.end_date || weekly.start_date || "").slice(0, 10);
-      return Boolean(from && to && from <= weekEnd && to >= weekStart);
+      const sameWeeklyPeriod = calendar.calendarMonth === period.month && calendar.calendarWeek === period.week;
+      const overlapsExecutionDates = Boolean(from && to && from <= period.end && to >= period.start);
+      const hasDailyActivity = (weekly.daily_tasks || []).some((daily: any) =>
+        inRange(daily.planned_date || daily.activity_date || daily.date),
+      );
+      return sameWeeklyPeriod || overlapsExecutionDates || hasDailyActivity;
     }),
+  ) || (project.tasks || []).some((task: any) =>
+    inRange(task.planned_date || task.activity_date || task.due_date || task.date),
   );
 }
 
@@ -209,24 +176,28 @@ export default function ProjectsClient() {
   const [projectSearch, setProjectSearch] = useState("");
   const [projectClientFilter, setProjectClientFilter] = useState("ALL");
   const [projectWeekFilter, setProjectWeekFilter] = useState("ALL");
+  const projectWeeklyCalendar = useWeeklyPeriodFilter(localDateKey());
+  const selectedProjectPeriod = projectWeekFilter === "ALL" ? null : projectWeeklyCalendar.period;
   const [projectPipelineView, setProjectPipelineView] = useState<"ALL" | "PRE_PITCHING" | "PITCHING" | "RUNNING">("ALL");
   const projectClients = useMemo(() => Array.from(new Set(projects.map(projectClientName).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, "id-ID")), [projects]);
-  const projectWeeks = useMemo(() => {
-    const weeks = new Set<string>();
-    projects.forEach((project) => projectActivityWeekKeys(project).forEach((week) => weeks.add(week)));
-    return Array.from(weeks).sort((a, b) => b.localeCompare(a));
-  }, [projects]);
-  const searchedProjects = useMemo(() => {
+  const baseSearchedProjects = useMemo(() => {
     const query = projectSearch.trim().toLocaleLowerCase("id-ID");
     return projects.filter((project) => {
       const client = projectClientName(project);
       if (projectClientFilter !== "ALL" && client !== projectClientFilter) return false;
-      if (projectWeekFilter !== "ALL" && !projectHasActivityInWeek(project, projectWeekFilter)) return false;
       return !query || [project.name, project.project_name, project.code, project.project_code, project.project_manager_name, project.pm_name, client]
         .some((value) => String(value || "").toLocaleLowerCase("id-ID").includes(query));
     });
-  }, [projects, projectSearch, projectClientFilter, projectWeekFilter]);
+  }, [projects, projectSearch, projectClientFilter]);
+  const searchedProjects = useMemo(() => {
+    if (projectWeekFilter === "ALL") return baseSearchedProjects;
+    if (!selectedProjectPeriod) return [];
+    return baseSearchedProjects.filter((project) => projectHasActivityInPeriod(project, selectedProjectPeriod));
+  }, [baseSearchedProjects, projectWeekFilter, selectedProjectPeriod]);
+  const projectWeekCounts = useMemo(() => Object.fromEntries(
+    projectWeeklyCalendar.periods.map((period) => [period.week, baseSearchedProjects.filter((project) => projectHasActivityInPeriod(project, period)).length]),
+  ), [baseSearchedProjects, projectWeeklyCalendar.periods]);
   const pipelineCounts = useMemo(() => ({
     all: searchedProjects.length,
     running: searchedProjects.filter((project) => normalizeProjectLifecycleStage(project.lifecycle_status) === "ACTIVE").length,
@@ -261,6 +232,12 @@ export default function ProjectsClient() {
   const [isLifecycleModalOpen, setIsLifecycleModalOpen] = useState(false);
   const [isEditFinancialsOpen, setIsEditFinancialsOpen] = useState(false);
   const [isFundingRequestOpen, setIsFundingRequestOpen] = useState(false);
+  const [isProjectPartiesOpen, setIsProjectPartiesOpen] = useState(false);
+  const [projectPartyOptions, setProjectPartyOptions] = useState<ProjectPartyOption[]>([]);
+  const [projectParties, setProjectParties] = useState<ProjectParty[]>([]);
+  const [projectPartiesLoading, setProjectPartiesLoading] = useState(false);
+  const [projectPartiesSaving, setProjectPartiesSaving] = useState(false);
+  const [projectPartySelection, setProjectPartySelection] = useState({ vendorSupplierIds: [] as string[], partnerIds: [] as string[] });
 
   /* Real-time Project Financial Performance & Budgeting */
   const [financialPerformance, setFinancialPerformance] = useState<any>(null);
@@ -299,7 +276,7 @@ export default function ProjectsClient() {
 
   /* Form states */
   const [newProjForm, setNewProjForm] = useState({
-    name: "", code: "", customer_name: "", budget_amount: "", description: "",
+    name: "", code: "", customer_name: "", vendorSupplierIds: [] as string[], partnerIds: [] as string[], budget_amount: "", description: "",
     planned_start_date: localDateKey(),
     planned_end_date: localDateKey(new Date(Date.now() + 30 * 86400000))
   });
@@ -420,6 +397,57 @@ export default function ProjectsClient() {
       .finally(() => { if (active) setResourceLoading(false); });
     return () => { active = false; };
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedProjectId) {
+      setProjectParties([]);
+      return () => { active = false; };
+    }
+    setProjectPartiesLoading(true);
+    fetchProjectParties(selectedProjectId)
+      .then((items) => { if (active) setProjectParties(items); })
+      .catch(() => { if (active) setProjectParties([]); })
+      .finally(() => { if (active) setProjectPartiesLoading(false); });
+    return () => { active = false; };
+  }, [selectedProjectId]);
+
+  const openProjectParties = async () => {
+    if (!selectedProject) return;
+    setIsProjectPartiesOpen(true);
+    setProjectPartiesLoading(true);
+    try {
+      const items = await fetchProjectParties(selectedProject.id);
+      setProjectParties(items);
+      setProjectPartySelection({
+        vendorSupplierIds: items.filter((item) => item.relationship_type === "VENDOR_SUPPLIER").map((item) => item.id),
+        partnerIds: items.filter((item) => item.relationship_type === "PARTNER").map((item) => item.id),
+      });
+    } catch (error) {
+      setProjectPartySelection({ vendorSupplierIds: [], partnerIds: [] });
+      toast.error(getApiErrorDetail(error, "Gagal memuat rekanan proyek."));
+    } finally {
+      setProjectPartiesLoading(false);
+    }
+  };
+
+  const saveProjectParties = async () => {
+    if (!selectedProject) return;
+    setProjectPartiesSaving(true);
+    try {
+      const items = await updateProjectParties(selectedProject.id, {
+        vendor_supplier_party_ids: projectPartySelection.vendorSupplierIds,
+        partner_party_ids: projectPartySelection.partnerIds,
+      });
+      setProjectParties(items);
+      setIsProjectPartiesOpen(false);
+      toast.success("Relasi vendor dan partner proyek berhasil diperbarui.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal menyimpan rekanan proyek."));
+    } finally {
+      setProjectPartiesSaving(false);
+    }
+  };
 
   const handleCreateProjectResource = async () => {
     if (!selectedProject || !resourceForm.name.trim() || !resourceForm.url.trim()) return;
@@ -590,7 +618,8 @@ export default function ProjectsClient() {
           return Array.isArray(rows)
             ? rows.filter((division: any) => String(division.status ?? '').toUpperCase() === 'ACTIVE')
             : [];
-        })
+        }),
+        fetchProjectPartyOptions(),
       ]);
       // Render the primary project/WBS dataset as soon as it is ready. Slow
       // supporting lookups must never hold the entire workspace behind a
@@ -617,6 +646,7 @@ export default function ProjectsClient() {
         const transferList = valueOrEmpty(auxiliary[0]);
         const custList = valueOrEmpty(auxiliary[2]);
         const divisions = valueOrEmpty(auxiliary[3]);
+        const relatedPartyOptions = valueOrEmpty(auxiliary[4]);
         const divisionNameById = new Map(
           (Array.isArray(divisions) ? divisions : []).map((division: any) => [
             String(division.id),
@@ -635,6 +665,7 @@ export default function ProjectsClient() {
         if (custList?.length) setCustomerOptions(custList);
         setTransfers(transferList);
         setDivisionOptions(Array.isArray(divisions) ? divisions : []);
+        setProjectPartyOptions(Array.isArray(relatedPartyOptions) ? relatedPartyOptions : []);
       });
     } catch {
       if (version === fetchVersionRef.current) {
@@ -1361,6 +1392,8 @@ export default function ProjectsClient() {
         name: newProjForm.name.trim(),
         code: newProjForm.code.trim(),
         customer_name: newProjForm.customer_name.trim(),
+        vendor_supplier_party_ids: newProjForm.vendorSupplierIds,
+        partner_party_ids: newProjForm.partnerIds,
         budget_amount: Number(newProjForm.budget_amount) || 0,
         planned_start_date: newProjForm.planned_start_date,
         planned_end_date: newProjForm.planned_end_date,
@@ -1369,7 +1402,7 @@ export default function ProjectsClient() {
       toast.success(`Proyek "${newProjForm.name}" berhasil dibuat.`);
       setIsCreateProjOpen(false);
       setNewProjForm({
-        name: "", code: "", customer_name: "", budget_amount: "", description: "",
+        name: "", code: "", customer_name: "", vendorSupplierIds: [], partnerIds: [], budget_amount: "", description: "",
         planned_start_date: localDateKey(),
         planned_end_date: localDateKey(new Date(Date.now() + 30 * 86400000))
       });
@@ -1534,21 +1567,59 @@ export default function ProjectsClient() {
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="project-week-filter" className="text-2xs font-semibold text-text-secondary">Aktivitas minggu:</label>
+            <label className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Bulan
+              <input
+                aria-label="Bulan filter Weekly proyek"
+                type="month"
+                value={projectWeeklyCalendar.month}
+                onChange={(event) => { projectWeeklyCalendar.changeMonth(event.target.value); setProjectWeekFilter("SELECTED"); }}
+                className="min-h-9 rounded-xl border border-text-tertiary bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:ring-2 focus:ring-brand-green/40"
+              />
+            </label>
+            <label htmlFor="project-week-filter" className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Weekly
             <select
               id="project-week-filter"
-              value={projectWeekFilter}
-              onChange={(event) => setProjectWeekFilter(event.target.value)}
+              value={projectWeekFilter === "ALL" ? "ALL" : String(projectWeeklyCalendar.week)}
+              disabled={projectWeeklyCalendar.loading || Boolean(projectWeeklyCalendar.error)}
+              onChange={(event) => {
+                if (event.target.value === "ALL") setProjectWeekFilter("ALL");
+                else { projectWeeklyCalendar.setWeek(Number(event.target.value)); setProjectWeekFilter("SELECTED"); }
+              }}
               className="min-h-9 rounded-xl border border-text-tertiary bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:ring-2 focus:ring-brand-green/40"
             >
               <option value="ALL">Semua minggu</option>
-              {projectWeeks.map((week) => {
-                const [year, number] = week.split("-W");
-                return <option key={week} value={week}>Minggu {Number(number)} · {year}</option>;
-              })}
+              {projectWeeklyCalendar.periods.map((period) => <option key={period.id} value={period.week}>Weekly {period.week} ({formatDate(period.start)} – {formatDate(period.end)})</option>)}
             </select>
-            <span className="text-2xs text-text-secondary">Berdasarkan tanggal Weekly dan Daily Task proyek.</span>
+            </label>
+            <span className="text-2xs text-text-secondary">Menampilkan proyek yang memiliki Weekly atau Daily Task pada periode terpilih.</span>
           </div>
+          {projectWeeklyCalendar.error ? (
+            <div role="alert" className="flex items-center gap-2 text-2xs text-red-700">
+              <span>{projectWeeklyCalendar.error}</span>
+              <button type="button" onClick={projectWeeklyCalendar.retry} className="font-semibold underline">Coba lagi</button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Navigasi cepat Weekly proyek">
+              <span className="text-2xs font-semibold text-text-secondary">Pilih Weekly proyek:</span>
+              {projectWeeklyCalendar.periods.map((period) => {
+                const isSelected = projectWeekFilter !== "ALL" && projectWeeklyCalendar.period?.id === period.id;
+                return <button
+                  key={period.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => { projectWeeklyCalendar.setWeek(period.week); setProjectWeekFilter("SELECTED"); }}
+                  className={cn(
+                    "flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
+                    isSelected ? "border-brand-green bg-brand-light-green text-brand-deep-green" : "border-text-tertiary bg-white text-text-secondary hover:bg-gray-50",
+                  )}
+                >
+                  <span>Weekly {period.week}</span>
+                  <span className="text-2xs opacity-75">({formatDate(period.start)} – {formatDate(period.end)})</span>
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-2xs font-bold", isSelected ? "bg-brand-deep-green text-white" : "bg-black/5")}>{projectWeekCounts[period.week] ?? 0}</span>
+                </button>;
+              })}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 border-t border-text-tertiary pt-3">
@@ -1716,6 +1787,14 @@ export default function ProjectsClient() {
                 <span>Mulai: <b>{selectedProject.planned_start_date || "-"}</b></span>
                 <span>Target selesai: <b>{selectedProject.planned_end_date || "-"}</b></span>
               </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-2xs text-white/80">
+                <span className="font-semibold">Vendor / Partner:</span>
+                {projectPartiesLoading ? <span>Memuat...</span> : projectParties.length ? projectParties.map((party) => (
+                  <span key={`${party.relationship_type}-${party.id}`} className="rounded-full bg-white/15 px-2 py-0.5">
+                    {party.display_name || party.legal_name} · {party.relationship_type === "PARTNER" ? "Partner" : "Vendor"}
+                  </span>
+                )) : <span>Belum ditautkan</span>}
+              </div>
             </div>
 
             {/* Rollup Progress */}
@@ -1736,6 +1815,15 @@ export default function ProjectsClient() {
                 <span className="mt-2 text-3xs font-medium text-white/80 bg-white/10 px-2.5 py-1 rounded-lg">
                   Wewenang PM
                 </span>
+              )}
+              {canManageSelectedProject && (
+                <button
+                  type="button"
+                  onClick={openProjectParties}
+                  className="w-full rounded-xl border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/20"
+                >
+                  Kelola Vendor / Partner
+                </button>
               )}
             </div>
           </div>
@@ -3290,7 +3378,7 @@ export default function ProjectsClient() {
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-text-secondary">Klien / Customer</label>
+                <label className="text-xs font-bold text-text-secondary">Klien / Customer *</label>
                 {newProjForm.customer_name.trim() && !customerOptions.includes(newProjForm.customer_name.trim()) && (
                   <span className="text-3xs font-extrabold text-brand-deep-green bg-brand-light-green border border-brand-primary-soft px-1.5 py-0.5 rounded-md">
                     + Klien Baru (Otomatis Disimpan)
@@ -3311,6 +3399,40 @@ export default function ProjectsClient() {
                 ))}
               </datalist>
             </div>
+          </div>
+          <p className="text-2xs text-text-secondary">Vendor/Supplier dan Partner opsional. Tambahkan rekanan terlebih dahulu di Master Rekanan jika belum tersedia.</p>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { label: "Vendor / Supplier (opsional)", key: "vendorSupplierIds" as const, types: ["SUPPLIER", "VENDOR"] },
+              { label: "Partner (opsional)", key: "partnerIds" as const, types: ["PARTNER"] },
+            ]).map((group) => {
+              const options = projectPartyOptions.filter((party) => group.types.includes(String(party.party_type).toUpperCase()));
+              return (
+                <fieldset key={group.key} className="rounded-lg border border-text-tertiary p-2">
+                  <legend className="px-1 text-xs font-bold text-text-secondary">{group.label}</legend>
+                  <div className="max-h-28 space-y-1 overflow-y-auto">
+                    {options.length ? options.map((party) => {
+                      const checked = newProjForm[group.key].includes(party.id);
+                      return (
+                        <label key={party.id} className="flex items-start gap-2 text-xs font-medium text-text-primary">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => setNewProjForm((form) => ({
+                              ...form,
+                              [group.key]: event.target.checked
+                                ? [...form[group.key], party.id]
+                                : form[group.key].filter((id) => id !== party.id),
+                            }))}
+                          />
+                          <span>{party.display_name || party.legal_name}{party.party_code ? ` · ${party.party_code}` : ""}</span>
+                        </label>
+                      );
+                    }) : <p className="text-2xs text-text-tertiary">Belum ada rekanan aktif bertipe ini.</p>}
+                  </div>
+                </fieldset>
+              );
+            })}
           </div>
           <div>
             <label htmlFor="new-project-budget" className="text-xs font-bold text-text-secondary block mb-1">Total Anggaran (Rp)</label>
@@ -3356,6 +3478,59 @@ export default function ProjectsClient() {
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={() => setIsCreateProjOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
             <button onClick={handleCreateProject} className="btn-primary py-1.5 px-4 text-xs">Simpan Proyek</button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isProjectPartiesOpen}
+        onClose={() => !projectPartiesSaving && setIsProjectPartiesOpen(false)}
+        title="Rekanan Tambahan Proyek"
+        subtitle={`Klien: ${selectedProject ? projectClientName(selectedProject) || "-" : "-"}. Vendor/Supplier dan Partner bersifat opsional.`}
+        size="md"
+      >
+        <div className="flex flex-col gap-4 p-1">
+          {projectPartiesLoading ? <p className="text-xs text-text-secondary">Memuat relasi rekanan proyek...</p> : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {([
+                { label: "Vendor / Supplier", key: "vendorSupplierIds" as const, types: ["SUPPLIER", "VENDOR"] },
+                { label: "Partner", key: "partnerIds" as const, types: ["PARTNER"] },
+              ]).map((group) => {
+                const options = projectPartyOptions.filter((party) => group.types.includes(String(party.party_type).toUpperCase()));
+                return (
+                  <fieldset key={group.key} className="rounded-xl border border-text-tertiary p-3">
+                    <legend className="px-1 text-xs font-bold text-text-primary">{group.label} (Opsional)</legend>
+                    <div className="max-h-56 space-y-2 overflow-y-auto">
+                      {options.length ? options.map((party) => {
+                        const checked = projectPartySelection[group.key].includes(party.id);
+                        return (
+                          <label key={party.id} className="flex items-start gap-2 text-xs text-text-primary">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => setProjectPartySelection((selection) => ({
+                                ...selection,
+                                [group.key]: event.target.checked
+                                  ? [...selection[group.key], party.id]
+                                  : selection[group.key].filter((id) => id !== party.id),
+                              }))}
+                            />
+                            <span>{party.display_name || party.legal_name}{party.party_code ? ` · ${party.party_code}` : ""}</span>
+                          </label>
+                        );
+                      }) : <p className="text-2xs text-text-tertiary">Belum ada rekanan aktif bertipe ini.</p>}
+                    </div>
+                  </fieldset>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-2xs text-text-secondary">Perubahan ini menambah atau melepas relasi Vendor/Supplier dan Partner. Data Klien proyek tidak berubah.</p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setIsProjectPartiesOpen(false)} disabled={projectPartiesSaving} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
+            <button type="button" onClick={saveProjectParties} disabled={projectPartiesLoading || projectPartiesSaving} className="btn-primary py-1.5 px-4 text-xs">
+              {projectPartiesSaving ? "Menyimpan..." : "Simpan Relasi"}
+            </button>
           </div>
         </div>
       </Modal>

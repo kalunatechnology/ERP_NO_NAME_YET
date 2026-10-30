@@ -243,6 +243,9 @@ export class PeriodClosingService {
     const period = await prisma.fin_fiscal_period.findFirst({ where: { id: periodId, company_id: companyId } });
     if (!period) throw new NotFoundError('FiscalPeriod');
     if (period.status !== 'OPEN') throw new ValidationError(`Periode sudah berstatus ${period.status}.`);
+    if (period.end_date && period.end_date.getTime() > Date.now()) {
+      throw new ValidationError('Periode belum berakhir. Tutup buku dapat dijalankan setelah tanggal akhir periode.');
+    }
 
     // Checklist: tidak ada jurnal DRAFT di periode ini
     const draftJournals = await prisma.fin_journal_entry.count({
@@ -362,6 +365,15 @@ export class PeriodClosingService {
     if (!fiscalYear) throw new NotFoundError('FiscalYear');
     if (fiscalYear.company_id && fiscalYear.company_id !== companyId) throw new ValidationError('Tahun fiskal berada di luar company aktif.');
     if (fiscalYear.status === 'CLOSED') throw new ValidationError('Tahun fiskal sudah pernah ditutup.');
+    if (fiscalYear.end_date && fiscalYear.end_date.getTime() > Date.now()) {
+      throw new ValidationError('Tahun fiskal belum berakhir. Tutup buku tahunan dapat dijalankan setelah tanggal akhir tahun fiskal.');
+    }
+    const openPeriods = await prisma.fin_fiscal_period.count({
+      where: { fiscal_year_id: fiscalYearId, company_id: companyId, status: { not: 'CLOSED' } },
+    });
+    if (openPeriods > 0) {
+      throw new ValidationError(`Masih ada ${openPeriods} periode bulanan yang belum ditutup. Tutup semua periode bulanan sebelum tutup buku tahunan.`);
+    }
 
     // Ambil akun nominal (Revenue 4xxx & Expense 5xxx/6xxx)
     const nominalAccounts = await prisma.fin_account.findMany({

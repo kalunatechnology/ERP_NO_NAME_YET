@@ -4,6 +4,7 @@ import prisma from '../../config/database';
 import { normalizeExternalIdentity, normalizeOriginDomain, retryDelayMs } from './crm-integration.service';
 import { processOutboundWebhookBatch, queueWebhookEvent } from './crm-outbound-webhook.service';
 import { CRMService } from './crm.service';
+import { normalizeServiceCasePriority } from '../service/service.constants';
 
 type ClaimedEvent = {
   id: string;
@@ -284,6 +285,8 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
       const subject = String(data?.subject ?? '').trim();
       const description = String(data?.description ?? '').trim();
       if (!subject || !description) throw new Error('INVALID_TICKET_EVENT');
+      const priority = normalizeServiceCasePriority(data?.priority);
+      if (!priority) throw new Error('INVALID_TICKET_PRIORITY');
       const serial = typeof data?.serial_number === 'string' ? data.serial_number.trim() : '';
       const serialRow = serial ? await tx.inv_serial_number.findFirst({ where: { serial_number: serial, company_id: source.company_id }, select: { id: true, product_id: true } }) : null;
       if (serial && !serialRow) throw new Error('SERIAL_NUMBER_NOT_FOUND');
@@ -291,42 +294,82 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
       await tx.service_case.create({ data: {
         id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
         assigned_user_id: source.default_assigned_user_id, product_id: serialRow?.product_id ?? null,
-        serial_number_id: serialRow?.id ?? null, priority: 'NORMAL', subject, description,
+        serial_number_id: serialRow?.id ?? null, priority, subject, description,
         status: 'OPEN', created_at: now, updated_at: now,
         origin_domain: originDomain,
       } });
     } else if (envelope.event_type === 'feedback.submitted') {
+      const customerCode = typeof data?.customer_code === 'string' ? data.customer_code.trim() : typeof data?.client_code === 'string' ? data.client_code.trim() : '';
       const partyId = String(data?.customer_party_id ?? '').trim();
+      const hasPartyId = /^[0-9a-f-]{36}$/i.test(partyId);
+      const reviewerName = typeof data?.reviewer_name === 'string' ? data.reviewer_name.trim() : '';
+      const reviewerEmail = typeof data?.reviewer_email === 'string' ? data.reviewer_email.trim() : '';
       const rating = Number(data?.rating);
       const feedbackText = String(data?.feedback_text ?? '').trim();
       const feedbackType = String(data?.feedback_type ?? 'CUSTOMER_REVIEW').trim();
-      if (!partyId || !Number.isInteger(rating) || rating < 1 || rating > 5 || !feedbackText || feedbackText.length > 2000 || !feedbackType || feedbackType.length > 60) throw new Error('INVALID_FEEDBACK_EVENT');
-      const party = await tx.master_party.findFirst({ where: { id: partyId, tenant_id: source.tenant_id, company_id: source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true } });
-      if (!party) throw new Error('CUSTOMER_PARTY_NOT_FOUND');
+      if ((!customerCode && !hasPartyId && !reviewerName) || customerCode.length > 100 || reviewerName.length > 200 || reviewerEmail.length > 320 || (reviewerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reviewerEmail)) || !Number.isInteger(rating) || rating < 1 || rating > 5 || !feedbackText || feedbackText.length > 2000 || !feedbackType || feedbackType.length > 60) throw new Error('INVALID_FEEDBACK_EVENT');
+      const partyWhere = { tenant_id: source.tenant_id, company_id: source.company_id, party_type: 'CUSTOMER', status: 'ACTIVE' };
+      let party = customerCode || hasPartyId
+        ? await tx.master_party.findFirst({ where: { ...partyWhere, ...(customerCode ? { party_code: customerCode } : { id: partyId }) }, select: { id: true } })
+        : null;
+      if (!party && reviewerName && !customerCode && !hasPartyId) {
+        const nameMatches = await tx.master_party.findMany({ where: { ...partyWhere, OR: [{ display_name: { equals: reviewerName, mode: 'insensitive' } }, { legal_name: { equals: reviewerName, mode: 'insensitive' } }] }, select: { id: true }, take: 2 });
+        const contactMatches = await tx.master_contact.findMany({ where: { tenant_id: source.tenant_id, company_id: source.company_id, contact_name: { equals: reviewerName, mode: 'insensitive' }, party_id: { not: null } }, select: { party_id: true }, distinct: ['party_id'], take: 2 });
+        const candidateIds = [...new Set([...nameMatches.map((item) => item.id), ...contactMatches.map((item) => item.party_id).filter((id): id is string => Boolean(id))])];
+        const candidates = candidateIds.length ? await tx.master_party.findMany({ where: { ...partyWhere, id: { in: candidateIds } }, select: { id: true }, take: 2 }) : [];
+        if (candidates.length === 1) party = candidates[0];
+      }
+      if ((customerCode || hasPartyId) && !party) throw new Error('CUSTOMER_PARTY_NOT_FOUND');
       const salesOrderId = typeof data?.sales_order_id === 'string' ? data.sales_order_id.trim() : '';
       if (salesOrderId) {
+        if (!party) throw new Error('FEEDBACK_SALES_ORDER_REQUIRES_CUSTOMER');
         const order = await tx.sales_order.findFirst({ where: { id: salesOrderId, tenant_id: source.tenant_id, company_id: source.company_id, customer_party_id: party.id }, select: { id: true } });
         if (!order) throw new Error('FEEDBACK_SALES_ORDER_NOT_FOUND');
       }
       await tx.crm_feedback.create({ data: {
         id: crypto.randomUUID(), tenant_id: source.tenant_id, company_id: source.company_id,
-        customer_party_id: party.id, sales_order_id: salesOrderId || null,
+        customer_party_id: party?.id ?? null, reviewer_name: reviewerName || null, reviewer_email: reviewerEmail || null, sales_order_id: salesOrderId || null,
         feedback_type: feedbackType, rating_value: rating, feedback_text: feedbackText,
         submitted_at: isoDate(envelope.occurred_at), status: 'SUBMITTED', origin_domain: originDomain,
       } });
     } else if (envelope.event_type === 'quotation.decision' || envelope.event_type === 'quotation.accepted') {
       const quotationId = String(data?.quotation_id ?? '').trim();
-      const decision = envelope.event_type === 'quotation.accepted' ? 'ACCEPTED' : String(data?.decision ?? '').toUpperCase();
-      if (!quotationId || !['ACCEPTED', 'REJECTED'].includes(decision)) throw new Error('INVALID_QUOTATION_DECISION');
-      const quotation = await tx.sales_quotation.findFirst({ where: { id: quotationId, company_id: source.company_id } });
+      const quotationCode = String(data?.quotation_code ?? '').trim();
+      const decision = envelope.event_type === 'quotation.accepted' ? 'ACCEPTED' : String(data?.decision ?? '').trim().toUpperCase();
+      if (Boolean(quotationId) === Boolean(quotationCode)
+        || (quotationId && !/^[0-9a-f-]{36}$/i.test(quotationId))
+        || !['ACCEPTED', 'REJECTED'].includes(decision)) throw new Error('INVALID_QUOTATION_DECISION');
+      let quotation: any = null;
+      if (quotationCode) {
+        const documents = await tx.core_business_document.findMany({
+          where: { company_id: source.company_id, document_type: 'SALES_QUOTATION', document_number: quotationCode },
+          select: { id: true }, take: 2,
+        });
+        if (documents.length > 1) throw new Error('QUOTATION_CODE_AMBIGUOUS');
+        if (documents[0]) quotation = await tx.sales_quotation.findFirst({ where: { document_id: documents[0].id, company_id: source.company_id } });
+      } else if (quotationId) quotation = await tx.sales_quotation.findFirst({ where: { id: quotationId, company_id: source.company_id } });
       if (!quotation) throw new Error('QUOTATION_NOT_FOUND');
-      if (quotation.status !== 'SENT') throw new Error('QUOTATION_NOT_DECIDABLE');
+      // A retry with a new event_id is harmless once the same decision is already applied.
+      // Do not repeat Deal Won or emit another outbound accepted/rejected event.
+      if (quotation.status === decision) {
+        // The common event completion below records this delivery as COMPLETED.
+      } else {
+        if (quotation.status === 'ACCEPTED' || quotation.status === 'REJECTED') {
+          throw new Error(`QUOTATION_ALREADY_DECIDED_${quotation.status}`);
+        }
+        if (quotation.status !== 'SENT') throw new Error(`QUOTATION_NOT_DECIDABLE_${quotation.status || 'UNKNOWN'}`);
+      const quotationDocument = quotation.document_id ? await tx.core_business_document.findFirst({
+        where: { id: quotation.document_id, company_id: source.company_id, document_type: 'SALES_QUOTATION' },
+        select: { document_number: true },
+      }) : null;
+      const resolvedQuotationCode = (quotationDocument?.document_number ?? quotationCode) || null;
       await tx.sales_quotation.update({ where: { id: quotation.id }, data: { status: decision } });
       if (decision === 'ACCEPTED') {
         if (!quotation.opportunity_id) throw new Error('QUOTATION_OPPORTUNITY_MISSING');
         await CRMService.processDealWon(quotation.opportunity_id, { id: source.default_assigned_user_id }, source.company_id, tx);
-        await queueWebhookEvent(tx, source.company_id, 'quotation.accepted', { quotation_id: quotation.id, opportunity_id: quotation.opportunity_id });
-      } else await queueWebhookEvent(tx, source.company_id, 'quotation.rejected', { quotation_id: quotation.id, decision });
+        await queueWebhookEvent(tx, source.company_id, 'quotation.accepted', { quotation_id: quotation.id, quotation_code: resolvedQuotationCode, opportunity_id: quotation.opportunity_id });
+      } else await queueWebhookEvent(tx, source.company_id, 'quotation.rejected', { quotation_id: quotation.id, quotation_code: resolvedQuotationCode, decision });
+      }
     } else {
       throw new Error('UNSUPPORTED_EVENT_CONTRACT');
     }
@@ -339,8 +382,23 @@ async function processOtherIntegrationEvent(event: ClaimedEvent) {
 
 async function failEvent(event: ClaimedEvent, error: unknown) {
   const errorCode = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
-  const code = (errorCode || (error instanceof Error ? error.name : 'PROCESSING_ERROR')).slice(0, 200);
-  const exhausted = event.attempt_count >= event.max_attempts;
+  const errorMessage = error instanceof Error ? error.message : '';
+  const statusCode = error && typeof error === 'object' && 'statusCode' in error
+    ? Number((error as { statusCode?: unknown }).statusCode)
+    : 0;
+  // Worker contract errors are thrown with their public error code as message
+  // (for example QUOTATION_NOT_DECIDABLE). Avoid recording arbitrary exception text.
+  const publicError = /^[A-Z][A-Z0-9_]{2,199}$/.test(errorMessage) ? errorMessage : '';
+  // AppError messages with 4xx status are safe, actionable business validation
+  // details (e.g. missing customer party). Keep them for admins and stop retrying.
+  const isTerminalClientError = Number.isInteger(statusCode) && statusCode >= 400 && statusCode < 500;
+  const safeDetail = isTerminalClientError && errorMessage && !publicError
+    ? errorMessage.replace(/[\r\n\t]+/g, ' ').slice(0, 300)
+    : '';
+  const code = (publicError || (errorCode
+    ? `${errorCode}${safeDetail ? `: ${safeDetail}` : ''}`
+    : 'PROCESSING_ERROR')).slice(0, 400);
+  const exhausted = Boolean(publicError) || isTerminalClientError || event.attempt_count >= event.max_attempts;
   const nextRetryAt = new Date(Date.now() + retryDelayMs(event.attempt_count));
   await prisma.crm_integration_event.updateMany({
     where: { id: event.id, lock_token: event.lock_token, status: 'PROCESSING' },

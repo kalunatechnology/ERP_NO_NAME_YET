@@ -16,8 +16,12 @@ const noDb = new Proxy({}, { get() { throw new Error('Static retrieval/proposal 
 const route = (topic: string, operation: string | null) => ({ route: 'guide', topic, operation, confidence: 0.96 });
 
 async function main() {
+  assert.equal(isDataReadQuestion('saya memiliki berapa opportunity'), true, 'first-person count phrasing is a live-data request');
+  const crmScope: NativeScope = { ...scope, roleCode: RoleCode.CRM_LEAD, enabledModules: [...scope.enabledModules, 'CRM'], permissions: [...scope.permissions, 'READ_CRM_DEALS'] };
+  assert.equal(validateUnderstanding({ route: 'knowledge', modules: ['CRM'], confidence: 0.99 }, 'saya memiliki berapa opportunity', crmScope), null,
+    'a live opportunity count cannot be routed to reference knowledge');
   const savedKey = env.MARBOT_AI_API_KEY, savedModel = env.MARBOT_AI_MODEL, savedFetch = global.fetch;
-  let modelCalls = 0, canonicalCalls = 0, businessReads = 0;
+  let modelCalls = 0, synthesisCalls = 0, canonicalCalls = 0, businessReads = 0, mcpOpportunityShortlistSeen = false;
   let modelOutput: unknown = route('meeting', 'delete');
   let lastPrompt: any;
   let mode: 'ok' | 'http-error' | 'malformed' | 'throw' = 'ok';
@@ -32,10 +36,25 @@ async function main() {
     global.fetch = async (url, options) => {
       if (String(url).startsWith('https://openrouter.ai/')) {
         modelCalls++; lastPrompt = JSON.parse(String(options?.body));
+        if (lastPrompt.messages[0].content.includes('AI agent untuk pengguna ERP')) {
+          synthesisCalls++;
+          const packet = JSON.parse(lastPrompt.messages[1].content);
+          const text = packet.evidence.resource === 'crm.opportunities'
+            ? `Anda memiliki ${packet.evidence.count} opportunity sesuai cakupan akses Anda.`
+            : packet.evidence.operation === 'count'
+              ? `Ada ${packet.evidence.count} record pekerjaan implementasi yang sesuai.`
+            : `Saya menemukan ${packet.evidence.count} record yang sesuai dengan permintaan Anda.`;
+          return new Response(JSON.stringify({ choices: [{ message: { content: text } }] }), { status: 200 });
+        }
         assert.equal(lastPrompt.response_format.type, 'json_object');
         assert.equal(lastPrompt.messages[0].role, 'system');
         assert.match(lastPrompt.messages[0].content, /interpret intent|BEFORE/);
         assert.doesNotMatch(lastPrompt.messages[1].content, /Bearer|fixture-only|company-fixture|tenant-fixture|user-fixture|Fixture verified task/);
+        const agentContext = JSON.parse(lastPrompt.messages[1].content);
+        assert(agentContext.capabilities.mcpTools.includes('search_erp_schema') && agentContext.capabilities.mcpTools.includes('erp.query'));
+        assert.doesNotMatch(lastPrompt.messages[1].content, /\/api\/v\d+\//, 'MCP metadata sent to model must not contain internal endpoint routes');
+        const asked = JSON.parse(lastPrompt.messages[2].content).request;
+        if (/opportunit/i.test(asked)) mcpOpportunityShortlistSeen = agentContext.capabilities.mcpSchemaSearch.candidates.some((candidate:any)=>candidate.key==='crm.opportunities');
         if (mode === 'http-error') return new Response('{}', { status: 503 });
         if (mode === 'throw') throw new Error('Provider timeout');
         return new Response(JSON.stringify({ choices: [{ message: { content: mode === 'malformed' ? '{invalid' : JSON.stringify(modelOutput) } }] }), { status: 200 });
@@ -43,10 +62,12 @@ async function main() {
       canonicalCalls++;
       const path = new URL(String(url));
       assert.equal(path.hostname, '127.0.0.1');
-      assert.match(path.pathname, /^\/api\/v1\/implementation\/work-items\//);
+      assert.match(path.pathname, /^\/api\/v1\/(?:implementation\/work-items|crm\/opportunities)\//);
       assert.equal(options?.method, 'GET', 'Reads never become POST/PATCH');
       assert.equal((options?.headers as any).authorization, 'Bearer fixture');
       assert.equal((options?.headers as any)['x-company-id'], scope.companyId);
+      if (path.pathname.includes('/crm/opportunities/')) assert.equal(path.searchParams.get('owner_user_id'), scope.userId,
+        'personal opportunity read must be forced to the authenticated owner even when the model omitted the filter');
       return new Response(JSON.stringify({ count: 7, results: [{ id: 'row-fixture', title: 'Evidence from canonical API' }] }), { status: 200 });
     };
     // The words do not match the local delete/meeting grammar. The LLM route
@@ -56,7 +77,7 @@ async function main() {
     assert.equal(result.understanding.source, 'llm');
     assert.match(result.answer.content, /Hapus Meeting/);
     assert.doesNotMatch(result.answer.content, /Tambah Notulensi/);
-    assert.match(result.answer.sources[0], /^ERP:procedure:meeting:delete:/);
+    assert.match(result.answer.sources[0], /^(?:ERP:procedure:meeting:delete:|ERP:curated-procedure:meeting\.delete:)/);
     assert.equal(result.answer.action, undefined);
     const guideCases = [
       ['aku yang nyatet diskusi tadi, boleh revisi rangkumannya?', 'minutes', 'edit', /Edit Notulensi[\s\S]*PUBLISHED/],
@@ -98,6 +119,13 @@ async function main() {
     assert.match(result.answer.content, /7 record/);
     assert.equal(canonicalCalls, 1);
     assert.equal(result.understanding.source, 'llm');
+    modelOutput = { route: 'resource', plan: { resource: 'crm.opportunities', operation: 'count', filters: {} }, confidence: 0.97 };
+    result = await answerMarbotQuestion(req, 'saya memiliki berapa opportunity', 'HELPER', crmScope, signal(), undefined, noDb);
+    assert.match(result.answer.content, /Anda memiliki 7 opportunity/);
+    assert.doesNotMatch(result.answer.content, /\`\`\`json|\/api\/v1|Data aktual/);
+    assert.equal(canonicalCalls, 2, 'first-person CRM count reads live CRM records');
+    assert.equal(synthesisCalls, 2, 'live resource answers are synthesized from verified MCP results');
+    assert.equal(mcpOpportunityShortlistSeen, true, 'MCP schema search must supply the opportunity candidate to the intent model');
     modelOutput = { route: 'native', plan: { type: 'read', domains: ['tasks'], personal: true, period: 'tomorrow' }, confidence: 0.98 };
     result = await answerMarbotQuestion(req, 'pekerjaan saya besok ada apa?', 'HELPER', scope, signal(), undefined, db);
     assert.match(result.answer.content, /Fixture verified task/);
@@ -119,14 +147,14 @@ async function main() {
     assert.match(result.answer.content, /belum disimpan/i);
     result = await answerMarbotQuestion(req, 'tolong buatkan proyek A untuk B dengan PM C', 'HELPER', scope, signal(), undefined, noDb);
     assert.equal(result.answer.action?.kind, 'project.create', 'Polite explicit intent uses the validated existing action tool');
-    assert.equal(canonicalCalls, 1, 'A proposal must not execute an ERP write');
+    assert.equal(canonicalCalls, 2, 'A proposal must not execute an ERP write');
     assert.equal(validateUnderstanding(modelOutput, 'apakah saya bisa buat proyek A untuk B dengan PM C?', scope), null);
     assert.equal(validateUnderstanding({ route: 'native', plan: { type: 'action', kind: 'project.create', payload: { project_name: 'invented' } }, confidence: 1 }, 'buat proyek A', scope), null);
     assert.equal(validateUnderstanding({ ...route('minutes', 'create') }, 'apakah saya bisa hapus meeting?', scope), null, 'Wrong meaning must not reach retrieval');
     assert.equal(validateUnderstanding({ ...route('meeting', 'delete'), sql: 'DROP TABLE' }, 'hapus meeting?', scope), null);
     assert.equal(validateUnderstanding({ route: 'native', plan: { type: 'read', domains: ['finance'] }, confidence: 1 }, 'total biaya', scope), null);
-    assert.equal(validateUnderstanding({ route: 'resource', plan: { resource: 'implementation.work-items', operation: 'list', filters: { title: 'invented' } }, confidence: 1 }, 'jumlah pekerjaan', scope), null);
-    assert.equal(validateUnderstanding({ route: 'resource', plan: { resource: 'finance.payments', operation: 'list' }, confidence: 1 }, 'daftar payments', scope), null);
+    assert.equal(validateUnderstanding({ route: 'resource', plan: { resource: 'implementation.work-items', operation: 'list', filters: { title: 'invented' } }, confidence: 1 }, 'jumlah pekerjaan implementasi', scope), null);
+    assert.equal(validateUnderstanding({ route: 'resource', plan: { resource: 'finance.payments', operation: 'list' }, confidence: 1 }, 'daftar payments', scope)?.route, 'clarify', 'Out-of-scope entity must not execute as a resource read');
     assert.equal(validateUnderstanding({ route: 'knowledge', modules: ['FINANCE'], confidence: 1 }, 'fitur finance', scope), null);
     assert.equal(validateUnderstanding({ route: 'schema', tables: ['iam_user'], confidence: 1 }, 'schema user', scope), null);
 
@@ -154,7 +182,7 @@ async function main() {
     mode = 'ok';
     const beforeExplicit = modelCalls;
     result = await answerMarbotQuestion(req, 'data {"resource":"implementation.work-items","operation":"count"}', 'HELPER', scope, signal(), undefined, noDb);
-    assert.equal(modelCalls, beforeExplicit, 'Explicit tool JSON is already unambiguous and validated');
+    assert.equal(modelCalls, beforeExplicit + 1, 'Explicit tool JSON skips intent planning but the verified result still receives a natural-language answer');
     assert.equal(result.understanding.source, 'explicit');
     assert.match(result.answer.content, /7 record/);
     env.MARBOT_AI_API_KEY = undefined;
@@ -164,7 +192,7 @@ async function main() {
     assert.equal(modelCalls, beforeMissing);
     assert.equal(result.understanding.status, 'unconfigured');
     assert.match(result.answer.content, /Hapus Meeting/);
-    assert.equal(canonicalCalls, 2, 'Only the two explicit read fixtures call ERP; all actions remain proposals');
+    assert.equal(canonicalCalls, 3, 'Only the three read fixtures call ERP; all actions remain proposals');
     let weeklySql: any;
     const weeklyDb = { $queryRaw: async (sql: any) => {
       weeklySql = sql;

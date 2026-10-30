@@ -21,6 +21,8 @@ export class ConfidenceEvaluator {
     const breakdown: Record<string, number> = {};
     let score = 0.3; // Base score
     breakdown['base'] = 0.3;
+    const aiGenerated = entry.source_priority === 'AI_INFERENCE'
+      || entry.provenance?.sourcePriority === 'AI_INFERENCE';
 
     // 1. Evidence existence
     if (validation.isValid && validation.matchedEvidences.length > 0) {
@@ -61,13 +63,18 @@ export class ConfidenceEvaluator {
 
     // Determine recommended priority
     let recommendedPriority: SourcePriority = 'CODE_FACT';
-    if (hasTestEvidence) {
+    if (aiGenerated) {
+      // Tests can verify code behavior, but do not independently verify the
+      // correctness of prose synthesized by a model from that code.
+      recommendedPriority = 'AI_INFERENCE';
+    } else if (hasTestEvidence) {
       recommendedPriority = 'TEST_VERIFIED';
     } else if (clampedScore < 0.6) {
       recommendedPriority = 'AI_INFERENCE';
     }
 
     const reviewRequired =
+      aiGenerated ||
       clampedScore < 0.8 ||
       !validation.isValid ||
       policyVerification.conflicts.length > 0;

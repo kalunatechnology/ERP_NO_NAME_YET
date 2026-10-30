@@ -17,6 +17,7 @@ export interface PublishPipelineOptions {
   runtimeConfigHash: string;
   deploymentTarget?: string;
   modeOverride?: 'observation' | 'auto_tier1' | 'auto_tier2';
+  previousActiveEntries?: KnowledgeEntry[];
 }
 
 export interface PublishPipelineResult {
@@ -27,6 +28,8 @@ export interface PublishPipelineResult {
   quarantinedCount: number;
   staleCount: number;
   regressionPassed: boolean;
+  regressionFailures: string[];
+  regressionWarnings: string[];
   issuesCount: number;
 }
 
@@ -68,7 +71,7 @@ export class IndexPublisher {
     const finalizedEntries = LifecycleManager.applyDecisions(rawEntries, evaluations);
 
     // 3. Regression Check
-    const regressionResult = RegressionChecker.check(finalizedEntries);
+    const regressionResult = RegressionChecker.check(finalizedEntries, options.previousActiveEntries ?? []);
 
     // 4. Create STAGING Snapshot
     const activeCount = finalizedEntries.filter(
@@ -89,6 +92,8 @@ export class IndexPublisher {
       staleCount,
       issuesCount: totalIssues,
       regressionPassed: regressionResult.passed,
+      regressionFailures: regressionResult.failures,
+      regressionWarnings: regressionResult.warnings,
     };
 
     const snapshotId = await SnapshotManager.createStagingSnapshot({
@@ -120,6 +125,8 @@ export class IndexPublisher {
       quarantinedCount,
       staleCount,
       regressionPassed: regressionResult.passed,
+      regressionFailures: regressionResult.failures,
+      regressionWarnings: regressionResult.warnings,
       issuesCount: totalIssues,
     };
   }

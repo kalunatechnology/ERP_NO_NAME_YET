@@ -68,6 +68,7 @@
     "reconcile:project-progress": "ts-node scripts/reconcile_project_progress.ts",
     "lint": "eslint src --ext .ts",
     "test:marbot-capabilities": "ts-node --files tests/marbot-capabilities.unit.ts && ts-node --files tests/marbot-resources.unit.ts && ts-node --files tests/marbot-planner.unit.ts && node tests/marbot-client.unit.js",
+    "test:marbot-schema-linking": "ts-node --files tests/marbot-schema-linking.unit.ts",
     "test:marbot-isolated": "ts-node --files tests/marbot-isolated.integration.ts",
     "test:marbot-live-read": "ts-node --files tests/marbot-live-read.smoke.ts",
     "audit:marbot-knowledge": "ts-node --files scripts/audit_marbot_knowledge.ts"

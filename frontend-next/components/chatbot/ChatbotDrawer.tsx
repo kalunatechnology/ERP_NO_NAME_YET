@@ -42,6 +42,8 @@ interface ChatbotDrawerProps {
 }
 
 const QUICK_ACTIONS = [
+  { label: "Panduan CRM", prompt: "Jelaskan modul CRM dan panduan yang tersedia untuk saya." },
+  { label: "Opportunity CRM", prompt: "Tampilkan opportunity CRM yang dapat saya akses." },
   { label: "Panduan laporan kerja", prompt: "Laporan kerja di mana?" },
   { label: "Panduan notulensi", prompt: "Bagaimana cara mengisi notulensi meeting?" },
   {
@@ -431,7 +433,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
                 </div>
 
                 <div className="rounded-2xl p-4 bg-[#F6F7F9] text-[#334155] text-[13px] leading-relaxed max-w-[95%]">
-                  {assistantMode === 'DASHBOARD' ? 'Saya membantu merangkum progres proyek, tugas, risiko, dan KPI yang tercatat sesuai hak akses Anda.' : 'Halo! Saya Marka Plus. Saya membantu panduan penggunaan ERP serta membaca data proyek, tugas, biaya proyek, dan tiket sesuai hak akses Anda.'}
+                  {assistantMode === 'DASHBOARD' ? 'Saya membantu merangkum progres proyek, tugas, risiko, dan KPI yang tercatat sesuai hak akses Anda.' : 'Halo! Saya Marka Plus. Saya bisa menjawab pertanyaan umum, mencari panduan dari referensi ERP, dan mengambil data ERP/CRM sesuai hak akses Anda. Untuk perubahan data, saya akan meminta konfirmasi sebelum menjalankannya.'}
                 </div>
 
               </div>
@@ -644,7 +646,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Tanyakan panduan atau data ERP…"
+              placeholder="Tanya apa saja, atau minta panduan dan data ERP/CRM…"
               maxLength={4000}
               disabled={isStreaming}
               className="flex-1 bg-transparent text-[13px] text-[#1E293B] placeholder:text-[#94A3B8] focus:outline-hidden disabled:opacity-60"
@@ -662,7 +664,7 @@ export function ChatbotDrawer({ isOpen, onClose, currentUser }: ChatbotDrawerPro
 
           <div className="text-center">
             <span className="text-[11px] text-[#64748B] font-normal leading-tight">
-              Periksa sumber dan periode data pada jawaban Marka Plus.
+              Jawaban umum tidak membaca database; data ERP/CRM mengikuti izin dan sumber yang tersedia.
             </span>
           </div>
         </div>

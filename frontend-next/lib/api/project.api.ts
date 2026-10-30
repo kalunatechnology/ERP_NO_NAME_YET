@@ -19,6 +19,7 @@ export interface Project {
   project_code?: string;
   customer_name?: string;
   customer_party_id?: string | null;
+  related_parties?: ProjectParty[];
   sales_order_id?: string | null;
   source_type?: string;
   code?: string;
@@ -51,6 +52,35 @@ export interface Project {
   billing_proposals?: BillingProposal[];
   fundings?: Funding[];
   authority?: ProjectAuthority;
+}
+
+export interface ProjectParty {
+  id: string;
+  party_code?: string;
+  party_type: string;
+  legal_name?: string;
+  display_name?: string;
+  relationship_type: "VENDOR_SUPPLIER" | "PARTNER";
+}
+
+export interface ProjectPartyOption extends Omit<ProjectParty, "relationship_type"> {}
+
+export async function fetchProjectPartyOptions(): Promise<ProjectPartyOption[]> {
+  const { data } = await api.get<ProjectPartyOption[]>("/api/v1/projects/projects/party-options");
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchProjectParties(projectId: string | number): Promise<ProjectParty[]> {
+  const { data } = await api.get<ProjectParty[]>(`/api/v1/projects/projects/${projectId}/parties`);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function updateProjectParties(projectId: string | number, payload: {
+  vendor_supplier_party_ids: string[];
+  partner_party_ids: string[];
+}): Promise<ProjectParty[]> {
+  const { data } = await api.put<ProjectParty[]>(`/api/v1/projects/projects/${projectId}/parties`, payload);
+  return Array.isArray(data) ? data : [];
 }
 
 export interface ProjectResourceDocument {
@@ -681,6 +711,8 @@ export async function createProject(payload: {
   planned_start_date?: string;
   planned_end_date?: string;
   description?: string;
+  vendor_supplier_party_ids?: string[];
+  partner_party_ids?: string[];
 }) {
   const { data } = await api.post("/api/v1/projects/projects/", {
     ...payload,

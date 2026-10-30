@@ -47,16 +47,15 @@ export class RegressionChecker {
         const current = proposedMap.get(prev.feature_id);
 
         if (!current) {
-          // Feature disappeared without being marked RETIRED
-          warnings.push(
-            `Previously active feature "${prev.feature_id}" (${prev.title}) is missing in the new snapshot without explicit retirement.`
+          failures.push(
+            `Previously active feature "${prev.feature_id}" (${prev.title}) is missing from the candidate snapshot; promotion requires an explicit retirement.`
           );
         } else if (
           prev.lifecycle_status === 'ACTIVE' &&
-          current.lifecycle_status === 'QUARANTINED'
+          current.lifecycle_status !== 'ACTIVE' && current.lifecycle_status !== 'RETIRED'
         ) {
-          warnings.push(
-            `Feature "${prev.feature_id}" was previously ACTIVE but has been demoted to QUARANTINED.`
+          failures.push(
+            `Previously active feature "${prev.feature_id}" (${prev.title}) would become ${current.lifecycle_status}; promotion is blocked until the changed knowledge is reviewed.`
           );
         }
       }

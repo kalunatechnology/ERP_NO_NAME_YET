@@ -8,13 +8,15 @@ import { type NativeScope } from '../brain/reasoning/native.service';
 import { answerMarbotQuestion } from '../brain/reasoning/orchestrator.service';
 import { isMutationCommand } from '../brain/reasoning/intent';
 import { discoverMarbotSchema, readableTables } from '../knowledge/schema.service';
-import { executeResourceRead, resourceCatalog } from '../knowledge/resource.service';
+import { resourceCatalog } from '../knowledge/resource.service';
 import { reserveMarbotRequest } from '../brain/security/rate-limit.service';
 import { marbotAuthorityKey } from '../brain/security/authority.service';
+import { callMcpErpQueryTool, callMcpSchemaSearchTool } from './mcp-tools.service';
 
 export function allowedMcpTools(scope: NativeScope): Set<string> {
   const tools = new Set(['erp.capabilities']);
   if (resourceCatalog(scope).length) {
+    tools.add('search_erp_schema');
     tools.add('erp.query');
   }
   if (readableTables(scope).length) tools.add('erp.schema');
@@ -57,18 +59,26 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
       if (method === 'tools/list') {
         const allowed = allowedMcpTools(scope);
         reply({ tools: [
-          { name: 'erp.capabilities', description: 'Discover canonical resources and typed fields in the current user module scope. Canonical API authorization is rechecked at execution.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
+          { name: 'erp.capabilities', description: 'Summarize readable modules in the active user scope. Call search_erp_schema for a small relevant schema shortlist.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
+          { name: 'search_erp_schema', description: 'Search permission-scoped Prisma resource and field metadata. Returns at most three candidates; no business row samples or SQL. Use the selected resource key and fields with erp.query.', inputSchema: { type: 'object', properties: { query: { type: 'string', minLength: 2, maxLength: 200 }, limit: { type: 'integer', minimum: 1, maximum: 3 } }, required: ['query'], additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
           { name: 'erp.schema', description: 'Read live database columns and physical primary/foreign/check constraints for permitted resources.', inputSchema: { type: 'object', properties: { tables: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
           { name: 'erp.query', description: 'Run a typed list/count/aggregate via canonical ERP APIs. No SQL. Uses actual fields and user scope. Mutation requests are rejected.', inputSchema: { type: 'object', properties: {
             resource: { type: 'string' }, operation: { enum: ['list', 'count', 'aggregate'] },
-            filters: { type: 'object', additionalProperties: { type: ['string', 'boolean'] } }, search: { type: 'string' }, groupBy: { type: 'string' }, sum: { type: 'string' },
+            select: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 40 },
+            orderBy: { type: 'object', properties: { field: { type: 'string' }, direction: { enum: ['asc', 'desc'] } }, required: ['field', 'direction'], additionalProperties: false },
+            limit: { type: 'integer', minimum: 1, maximum: 100 },
+            filters: { type: 'object', additionalProperties: { anyOf: [
+              { type: ['string', 'number', 'boolean'] },
+              { type: 'array', minItems: 1, maxItems: 100, items: { type: ['string', 'number', 'boolean'] } },
+            ] } }, search: { type: 'string' }, groupBy: { type: 'string' }, sum: { type: 'string' },
             related: { type: 'object', properties: { resource: { type: 'string' }, sourceField: { type: 'string' }, targetField: { type: 'string' } }, required: ['resource', 'sourceField', 'targetField'], additionalProperties: false },
+            relatedFilter: { type: 'object', properties: { path: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'string' } }, field: { type: 'string' }, value: { type: ['string', 'number', 'boolean'] } }, required: ['path', 'field', 'value'], additionalProperties: false },
           }, required: ['resource', 'operation'], additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
           { name: 'erp.readQuestion', description: 'Permission-scoped native project/task/finance/KPI/support reads and system knowledge. No mutations; requires a clear read question.', inputSchema: { type: 'object', properties: { question: { type: 'string', minLength: 1, maxLength: 2000 } }, required: ['question'], additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
         ].filter(tool => allowed.has(tool.name)) }); return;
       }
       if (method !== 'tools/call') { error(-32601, 'Method not found'); return; }
-      const call = z.object({ name: z.enum(['erp.capabilities', 'erp.schema', 'erp.query', 'erp.readQuestion']), arguments: z.record(z.unknown()).default({}), _meta: z.record(z.unknown()).optional() }).strict().safeParse(params);
+      const call = z.object({ name: z.enum(['erp.capabilities', 'search_erp_schema', 'erp.schema', 'erp.query', 'erp.readQuestion']), arguments: z.record(z.unknown()).default({}), _meta: z.record(z.unknown()).optional() }).strict().safeParse(params);
       if (!call.success) { error(-32602, 'Invalid tool or parameters'); return; }
       if (!allowedMcpTools(scope).has(call.data.name)) throw new ForbiddenError('Tool MCP tidak diizinkan untuk sesi aktif.');
       const boundary = { tenant_id: scope.tenantId, company_id: scope.companyId, user_id: scope.userId };
@@ -79,7 +89,11 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
         let result: unknown;
         if (call.data.name === 'erp.capabilities') {
           z.object({}).strict().parse(args);
-          result = { resources: resourceCatalog(scope) };
+          const resources = resourceCatalog(scope);
+          result = { modules: [...new Set(resources.map(item => item.module))].sort(), readableResourceCount: resources.length,
+            nextTool: 'search_erp_schema', note: 'Katalog lengkap tidak dimuat sekaligus. Cari entitas atau field yang dibutuhkan.' };
+        } else if (call.data.name === 'search_erp_schema') {
+          result = callMcpSchemaSearchTool(scope, args);
         } else if (call.data.name === 'erp.schema') {
           const schema = z.object({ tables: z.array(z.string()).max(20).optional() }).strict().parse(args);
           result = await discoverMarbotSchema(scope, prisma, schema.tables);
@@ -89,7 +103,7 @@ export function createMarbotMcpRouter(scopeFor: (req: Request) => Promise<Native
           const decision = await answerMarbotQuestion(req, question, 'HELPER', scope, AbortSignal.timeout(30000));
           if (decision.answer.action) throw new ValidationError('Tool baca tidak dapat menyiapkan atau menjalankan perubahan data.');
           result = decision.answer;
-        } else result = await executeResourceRead(req, args, scope);
+        } else result = await callMcpErpQueryTool(req, args, scope);
         if (marbotAuthorityKey(await scopeFor(req)) !== marbotAuthorityKey(scope)) throw new ForbiddenError('Hak akses berubah selama pemrosesan tool.');
         await prisma.marbot_request.update({ where: { nonce }, data: { outcome: 'COMPLETED' } });
         reply({ content: [{ type: 'text', text: JSON.stringify(result) }], isError: false });

@@ -157,6 +157,20 @@ async function runPhase4Tests() {
     assert.equal(interceptedPayload, null, 'No OpenRouter payload must be created when evidence is unauthorized');
     assert.match(staffAnswer, /tidak ditemukan dalam bukti kode/i, 'Honest abstention returned');
 
+    const internalOpportunityApi = {
+      feature_id: 'backend.api.crm.opportunity-products',
+      title: 'GET /api/v1/crm/opportunity-products',
+      module_code: 'CRM',
+      knowledge_category: 'API_ENDPOINT',
+      summary: 'Endpoint API GET /api/v1/crm/opportunity-products untuk mengakses data opportunity product.',
+      provenance: 'ERP:mkie:CRM:api:v1',
+    };
+    const apiOnlyAnswer = await RetrievalGatewayService.generateGroundedAnswer(
+      'saya memiliki berapa opportunity', [internalOpportunityApi] as any, crmLeadScope,
+    );
+    assert.match(apiOnlyAnswer, /tidak ditemukan dalam bukti kode/i, 'API-only evidence must abstain instead of becoming user guidance');
+    assert.doesNotMatch(apiOnlyAnswer, /\/api\/v1|Endpoint API|Buka GET/i, 'internal endpoint routes must never be shown to chat users');
+
     console.log('  ✓ Verified 4 distinct roles: STAFF, CRM_LEAD, FINANCE, DIRECTOR');
     console.log('  ✓ Proved ZERO unauthorized data passed to OpenRouter prompt payload (Defense-in-Depth)\n');
   } finally {

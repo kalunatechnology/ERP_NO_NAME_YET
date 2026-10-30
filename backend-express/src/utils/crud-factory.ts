@@ -165,6 +165,56 @@ export function getCrudModelMetadata(modelName: string): CrudModelMetadata | und
   };
 }
 
+/** Parses a scalar list filter using the actual Prisma field type. */
+function parseCrudReadFilter(field: CrudFieldMetadata, raw: string): unknown {
+  if (field.kind === 'enum') {
+    const values = Prisma.dmmf.datamodel.enums.find(item => item.name === field.type)?.values.map(item => item.name) ?? [];
+    if (!values.includes(raw)) throw new ValidationError(`Nilai filter ${field.name} tidak sesuai enum ${field.type}.`);
+    return raw;
+  }
+  if (field.type === 'String') return raw;
+  if (raw === 'null') {
+    if (field.isRequired) throw new ValidationError(`Filter ${field.name} tidak boleh null.`);
+    return null;
+  }
+  if (field.type === 'Boolean') {
+    if (raw !== 'true' && raw !== 'false') throw new ValidationError(`Filter ${field.name} harus true atau false.`);
+    return raw === 'true';
+  }
+  if (field.type === 'Int') {
+    const value = Number(raw);
+    if (!/^-?\d+$/.test(raw) || !Number.isSafeInteger(value)) throw new ValidationError(`Filter ${field.name} harus berupa bilangan bulat yang valid.`);
+    return value;
+  }
+  if (field.type === 'BigInt') {
+    if (!/^-?\d+$/.test(raw)) throw new ValidationError(`Filter ${field.name} harus berupa bilangan bulat yang valid.`);
+    try { return BigInt(raw); } catch { throw new ValidationError(`Filter ${field.name} harus berupa bilangan bulat yang valid.`); }
+  }
+  if (field.type === 'Float') {
+    const value = Number(raw);
+    if (!raw.trim() || !Number.isFinite(value)) throw new ValidationError(`Filter ${field.name} harus berupa angka yang valid.`);
+    return value;
+  }
+  if (field.type === 'Decimal') {
+    if (!/^-?(?:\d+\.?\d*|\.\d+)$/.test(raw)) throw new ValidationError(`Filter ${field.name} harus berupa angka desimal yang valid.`);
+    return new Prisma.Decimal(raw);
+  }
+  if (field.type === 'DateTime') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const start = new Date(`${raw}T00:00:00.000Z`);
+      if (!Number.isFinite(start.getTime()) || start.toISOString().slice(0, 10) !== raw) throw new ValidationError(`Tanggal filter ${field.name} tidak valid.`);
+      return { gte: start, lt: new Date(start.getTime() + 86400000) };
+    }
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i.test(raw)) {
+      throw new ValidationError(`Filter ${field.name} harus berupa tanggal ISO atau timestamp dengan zona waktu.`);
+    }
+    const value = new Date(raw);
+    if (!Number.isFinite(value.getTime())) throw new ValidationError(`Tanggal filter ${field.name} tidak valid.`);
+    return value;
+  }
+  throw new ValidationError(`Tipe filter ${field.type} pada ${field.name} belum didukung.`);
+}
+
 /**
  * getModelFields implements this file's named function contract.
  *
@@ -450,6 +500,9 @@ export function assertRecordMutable(modelName: string, existing: any): void {
 }
 
 const LIFECYCLE_FIELDS_BY_MODEL: Record<string, Set<string>> = {
+  crm_opportunity: new Set(['status', 'pipeline_stage', 'stage_id', 'closed_at', 'lost_reason', 'lost_reason_detail']),
+  crm_cost_estimate: new Set(['direct_cost', 'overhead_cost', 'contingency_amount', 'total_cost', 'markup_percent', 'tax_percent', 'offered_amount', 'margin_amount', 'margin_percent', 'status', 'calculated_at', 'calculated_by_id']),
+  sales_quotation: new Set(['status']),
   inv_stock_move: new Set(['status', 'completed_at']),
   qa_inspection: new Set(['status', 'result', 'inspection_at']),
   mfg_production_order: new Set(['status', 'material_status', 'actual_start_at', 'actual_end_at']),
@@ -472,11 +525,22 @@ export function assertNoGenericLifecycleWrite(modelName: string, payload: any, c
   if (!protectedFields || !payload || typeof payload !== 'object') return;
   const attempted = Object.keys(payload).filter((field) => {
     if (!protectedFields.has(field)) return false;
-    return !(create && field === 'status' && String(payload[field] ?? '').toUpperCase() === 'DRAFT');
+    const draftCreateAllowed = create
+      && String(modelName).toLowerCase() !== 'crm_opportunity'
+      && field === 'status'
+      && String(payload[field] ?? '').toUpperCase() === 'DRAFT';
+    return !draftCreateAllowed;
   });
-  if (attempted.length) {
+  const guardedAttempts = attempted.filter((field) => {
+    if (!create || String(modelName).toLowerCase() !== 'crm_opportunity') return true;
+    const value = String(payload[field] ?? '').toUpperCase();
+    if (field === 'status') return value !== 'OPEN';
+    if (field === 'pipeline_stage') return !['OPEN', 'PROSPECT', 'QUALIFICATION', 'PROPOSAL', 'NEGOTIATION'].includes(value);
+    return true;
+  });
+  if (guardedAttempts.length) {
     throw new ValidationError(
-      `Field lifecycle ${attempted.join(', ')} tidak dapat diubah melalui generic CRUD. Gunakan command workflow resmi.`,
+      `Field lifecycle ${guardedAttempts.join(', ')} tidak dapat diubah melalui generic CRUD. Gunakan command workflow resmi.`,
     );
   }
 }
@@ -600,10 +664,18 @@ export function createCrudRouter(options: CrudOptions): Router {
       const where: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(req.query)) {
         if (['group_by', 'sum', 'search'].includes(key)) continue;
-        const field = known(key);
-        if (!field || typeof value !== 'string' || !['String', 'Boolean'].includes(field.type) && field.kind !== 'enum') throw new ValidationError('Filter ringkasan tidak valid.');
-        if (field.type === 'Boolean' && !['true', 'false'].includes(value)) throw new ValidationError('Filter boolean harus true atau false.');
-        where[key] = field.type === 'Boolean' ? value === 'true' : value;
+        const isInFilter = key.endsWith('__in');
+        const fieldKey = isInFilter ? key.slice(0, -4) : key;
+        const field = known(fieldKey);
+        if (!field || typeof value !== 'string') throw new ValidationError('Filter ringkasan tidak valid.');
+        if (isInFilter) {
+          let values: unknown;
+          try { values = JSON.parse(value); } catch { throw new ValidationError(`Filter ${key} harus berupa array JSON.`); }
+          if (!Array.isArray(values) || values.length > 100 || values.some(item => item === null || !['string', 'number', 'boolean'].includes(typeof item))) {
+            throw new ValidationError(`Filter ${key} harus berupa array scalar maksimal 100 nilai.`);
+          }
+          where[fieldKey] = { in: values.map(item => parseCrudReadFilter(field, String(item))) };
+        } else where[key] = parseCrudReadFilter(field, value);
       }
       if (req.query.search !== undefined) {
         if (typeof req.query.search !== 'string' || !options.searchFields?.length) throw new ValidationError('Pencarian tidak tersedia.');
@@ -765,6 +837,7 @@ export function createCrudRouter(options: CrudOptions): Router {
         : null;
       let where: Record<string, any> = {};
       const validFields = getModelFields(modelNameStr);
+      const modelMetadata = getCrudModelMetadata(modelNameStr);
 
       // Multi-tenant & Company isolation filters
       const andConditions: any[] = [];
@@ -772,24 +845,32 @@ export function createCrudRouter(options: CrudOptions): Router {
       // Query param filters with FK alias mapping
       for (const [key, val] of Object.entries(req.query)) {
         if (['page', 'page_size', 'search', 'ordering', 'cursor'].includes(key)) continue;
-        if (typeof val === 'string' && val !== '') {
-          let resolvedKey = key;
-          if (key === 'project') resolvedKey = 'project_id';
-          else if (key === 'main_task') resolvedKey = 'main_task_id';
-          else if (key === 'weekly_task') resolvedKey = 'weekly_task_id';
-          else if (key === 'owner') resolvedKey = 'owner_id';
-          else if (key === 'assignee') resolvedKey = 'assignee_id';
-          else if (key === 'customer') resolvedKey = 'customer_party_id';
-          else if (key === 'vendor') resolvedKey = 'vendor_party_id';
-          else if (key === 'product') resolvedKey = 'product_id';
-          else if (key === 'warehouse') resolvedKey = 'warehouse_id';
+        if (val !== '') {
+          if (typeof val !== 'string') throw new ValidationError(`Filter ${key} harus berupa satu nilai scalar.`);
+          const isInFilter = key.endsWith('__in');
+          const fieldKey = isInFilter ? key.slice(0, -4) : key;
+          let resolvedKey = fieldKey;
+          if (fieldKey === 'project') resolvedKey = 'project_id';
+          else if (fieldKey === 'main_task') resolvedKey = 'main_task_id';
+          else if (fieldKey === 'weekly_task') resolvedKey = 'weekly_task_id';
+          else if (fieldKey === 'owner') resolvedKey = 'owner_id';
+          else if (fieldKey === 'assignee') resolvedKey = 'assignee_id';
+          else if (fieldKey === 'customer') resolvedKey = 'customer_party_id';
+          else if (fieldKey === 'vendor') resolvedKey = 'vendor_party_id';
+          else if (fieldKey === 'product') resolvedKey = 'product_id';
+          else if (fieldKey === 'warehouse') resolvedKey = 'warehouse_id';
 
-          // Only include filter if field exists on model (or if cache is empty fallback)
-          if (validFields.size === 0 || validFields.has(resolvedKey)) {
-            if (val === 'true') where[resolvedKey] = true;
-            else if (val === 'false') where[resolvedKey] = false;
-            else if (val === 'null') where[resolvedKey] = null;
-            else where[resolvedKey] = val;
+          const field = modelMetadata?.fields.find(item => item.name === resolvedKey);
+          if (!field || validFields.size > 0 && !validFields.has(resolvedKey)) throw new ValidationError(`Filter ${key} tidak tersedia pada model ${modelNameStr}.`);
+          if (isInFilter) {
+            let values: unknown;
+            try { values = JSON.parse(val); } catch { throw new ValidationError(`Filter ${key} harus berupa array JSON.`); }
+            if (!Array.isArray(values) || values.length > 100 || values.some(item => item === null || !['string', 'number', 'boolean'].includes(typeof item))) {
+              throw new ValidationError(`Filter ${key} harus berupa array scalar maksimal 100 nilai.`);
+            }
+            where[resolvedKey] = { in: values.map(item => parseCrudReadFilter(field, String(item))) };
+          } else {
+            where[resolvedKey] = parseCrudReadFilter(field, val);
           }
         }
       }
