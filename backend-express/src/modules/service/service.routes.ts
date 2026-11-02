@@ -39,7 +39,7 @@ serviceRouter.post('/cases/:id/check-warranty', async (req: Request, res: Respon
     let warrantyStatus = 'WARRANTY_VOID';
     let warrantyExpiresAt: Date | null = null;
     let warrantyContractId: string | null = null;
-    let warrantyPeriods: Array<{ id: string; start_date: Date | null; end_date: Date | null; status: string; current_status: string }> = [];
+    let warrantyPeriods: Array<{ id: string; start_date: Date | null; end_date: Date | null; status: string; current_status?: string }> = [];
     let workOrders: Array<{ id: string; work_order_type: string; description: string; status: string; created_at: Date; completed_at: Date | null }> = [];
     let resolutions: Array<{ id: string; resolution_type: string; resolution_notes: string; resolved_at: Date | null }> = [];
     if (delivery && (!record.customer_party_id || record.customer_party_id === delivery.customer_party_id)) {
