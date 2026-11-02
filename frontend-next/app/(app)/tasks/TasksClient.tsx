@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useDeferredValue, useRef } from "react";
-import Link from "next/link";
 import { cn, formatDate, getStatusColor, localDateKey, normalizeDateKey } from "@/lib/utils";
 import { loadAllProjects, Project, DailyTask, DailyTaskStatusValue, DailyTaskUpdatePayload, updateDailyTask, createDailyTask, deleteDailyTask, getApiErrorDetail } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckCircle2, Search, Check, Layers, RefreshCw,
   CalendarDays, AlertTriangle, ChevronDown, ChevronRight, Pencil, X, Save,
-  Plus, FileText, Trash2, Target, CheckSquare, Columns3,
+  Plus, FileText, Trash2, Target, CheckSquare, Columns3, Clock3,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
@@ -599,7 +598,7 @@ export default function TasksClient() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [workspaceTab, setWorkspaceTab] = useState<"weekly" | "daily">("daily");
+  const [workspaceTab, setWorkspaceTab] = useState<"weekly" | "daily" | "timesheet">("daily");
   const [dailyWeeklyId, setDailyWeeklyId] = useState("");
   const [dailyCreationContext, setDailyCreationContext] = useState({ projectId: "", weeklyId: "" });
   const [activeFilter, setActiveFilter] = useState("TODAY");
@@ -645,7 +644,7 @@ export default function TasksClient() {
         setRefreshing(false);
       }
     }
-  }, [company, user?.id, user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
+  }, [user?.active_role_code, user?.delegated_modules, user?.enabled_modules, userRole]);
 
   useEffect(() => {
     void fetchTasks();
@@ -693,13 +692,11 @@ export default function TasksClient() {
   }, [projects, user?.id]);
 
   const canCreateDailyTask = canOperateTasks && creatableProjects.length > 0;
-  const canOpenReporting = canAccessRoute({
-    pathname: "/reporting",
-    enabledModules: user?.enabled_modules,
-    delegatedModules: user?.delegated_modules,
-    activeRoleCode: user?.active_role_code,
-    isSuperAdmin: userRole === "super_admin",
-  });
+  const workspaceTabs = [
+    { id: "weekly", label: "Task Management", icon: Target },
+    { id: "daily", label: "Tugas Harian", icon: CheckSquare },
+    ...(userRole === "staff" ? [{ id: "timesheet" as const, label: "Timesheet & Lembur Saya", icon: Clock3 }] : []),
+  ] as const;
 
   /* Flatten all daily tasks */
   const allTasks = useMemo(() => personalDailyTaskRecords(projects, user?.id), [projects, user?.id]);
@@ -924,14 +921,6 @@ export default function TasksClient() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {canOpenReporting && <Link
-            href="/reporting?tab=periodic"
-            className="btn-ghost text-xs gap-1.5 flex-shrink-0 border border-gray-200"
-            title="Buka Laporan Berkala (Harian, Mingguan, Bulanan)"
-          >
-            <FileText size={13} />
-            <span>Laporan Berkala</span>
-          </Link>}
           {workspaceTab === "daily" && canCreateDailyTask && <button
             onClick={() => { setDailyCreationContext({ projectId: "", weeklyId: "" }); setIsNewTaskOpen(true); }}
             className="btn-primary text-xs gap-1.5 flex-shrink-0 font-semibold"
@@ -939,18 +928,26 @@ export default function TasksClient() {
             <Plus size={14} />
             <span>Buat Task Harian</span>
           </button>}
-          <button onClick={() => fetchTasks(true)} disabled={refreshing} className="btn-ghost text-xs gap-1.5 flex-shrink-0">
-            <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
-            {refreshing ? "Memuat..." : "Refresh"}
+          <button type="button" onClick={() => fetchTasks(true)} disabled={refreshing} className="btn-ghost inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-gray-200 p-0" aria-label={refreshing ? "Memuat tugas" : "Segarkan tugas"} title={refreshing ? "Memuat..." : "Refresh"}>
+            <RefreshCw size={15} className={cn(refreshing && "animate-spin")} aria-hidden="true" />
           </button>
         </div>
       </div>
 
       <div role="tablist" aria-label="Workspace task" className="flex gap-5 border-b border-gray-200">
-        {([{ id: "weekly", label: "Task Management", icon: Target }, { id: "daily", label: "Daily Task", icon: CheckSquare }] as const).map(({ id, label, icon: Icon }) => <button
+        {workspaceTabs.map(({ id, label, icon: Icon }) => <button
           key={id} id={`workspace-tab-${id}`} role="tab" type="button" aria-selected={workspaceTab === id} aria-controls={`workspace-panel-${id}`} tabIndex={workspaceTab === id ? 0 : -1}
           onClick={() => setWorkspaceTab(id)}
-          onKeyDown={event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? "weekly" : event.key === "End" ? "daily" : workspaceTab === "weekly" ? "daily" : "weekly"; setWorkspaceTab(next); document.getElementById(`workspace-tab-${next}`)?.focus(); } }}
+          onKeyDown={event => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const currentIndex = workspaceTabs.findIndex(tab => tab.id === id);
+            const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? workspaceTabs.length - 1 : (currentIndex + (event.key === "ArrowRight" ? 1 : workspaceTabs.length - 1)) % workspaceTabs.length;
+            const next = workspaceTabs[nextIndex]?.id;
+            if (!next) return;
+            setWorkspaceTab(next);
+            document.getElementById(`workspace-tab-${next}`)?.focus();
+          }}
           className={cn("flex items-center gap-2 border-b-[3px] px-1 pb-3 pt-1 text-sm font-semibold transition-colors", workspaceTab === id ? "border-brand-green text-brand-deep-green" : "border-transparent text-text-secondary hover:text-brand-green")}
         ><Icon size={17} />{label}</button>)}
       </div>
@@ -970,7 +967,7 @@ export default function TasksClient() {
         }}
         onOpenDaily={weeklyId => { setDailyWeeklyId(weeklyId); setActiveFilter("ALL"); setSearch(""); setWorkspaceTab("daily"); }}
         onCreateDaily={record => { setDailyCreationContext({ projectId: record.projectId, weeklyId: record.id }); setIsNewTaskOpen(true); }}
-      /></div> : <div id="workspace-panel-daily" role="tabpanel" aria-labelledby="workspace-tab-daily" className="flex min-w-0 flex-col gap-5">
+      /></div> : workspaceTab === "daily" || userRole !== "staff" ? <div id="workspace-panel-daily" role="tabpanel" aria-labelledby="workspace-tab-daily" className="flex min-w-0 flex-col gap-5">
       {loadError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-800">{loadError}</div>}
       {dailyWeeklyId && <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-brand-deep-green"><span>Menampilkan Daily Task Anda pada Weekly Target yang dipilih.</span><button type="button" onClick={() => setDailyWeeklyId("")} className="font-semibold hover:underline">Tampilkan semua target</button></div>}
       {/* ── KPI Summary Strip ──────────────── */}
@@ -1008,18 +1005,6 @@ export default function TasksClient() {
           </button>
         </div>
       </section>
-
-      {userRole === "staff" && (
-        <section className="flex flex-col gap-4" aria-labelledby="timesheet-workspace-title">
-          <div>
-            <h2 id="timesheet-workspace-title" className="text-base font-bold text-text-primary">Timesheet & Lembur Saya</h2>
-            <p className="mt-1 text-xs text-text-secondary">Catat jam aktual pada proyek yang ditugaskan dan pantau proses persetujuannya.</p>
-          </div>
-          <StaffOvertimeSummary refreshKey={timesheetRefreshKey} />
-          <StaffTimesheetForm projects={projects} userId={user?.id == null ? undefined : String(user.id)} onCreated={() => setTimesheetRefreshKey((value) => value + 1)} />
-          <StaffTimesheetTable projects={projects} refreshKey={timesheetRefreshKey} />
-        </section>
-      )}
 
       {/* ── Toolbar ────────────────────────── */}
       <div className="card rounded-xl p-3 flex items-center gap-3 flex-wrap">
@@ -1151,6 +1136,16 @@ export default function TasksClient() {
         </div>
       )}
 
+      </div> : <div id="workspace-panel-timesheet" role="tabpanel" aria-labelledby="workspace-tab-timesheet" className="flex min-w-0 flex-col gap-5">
+        <section className="flex min-w-0 flex-col gap-4" aria-labelledby="timesheet-workspace-title">
+          <div>
+            <h2 id="timesheet-workspace-title" className="text-base font-bold text-text-primary">Timesheet & Lembur Saya</h2>
+            <p className="mt-1 text-xs text-text-secondary">Catat jam aktual pada proyek yang ditugaskan dan pantau proses persetujuannya.</p>
+          </div>
+          <StaffOvertimeSummary refreshKey={timesheetRefreshKey} />
+          <StaffTimesheetForm projects={projects} userId={user?.id == null ? undefined : String(user.id)} onCreated={() => setTimesheetRefreshKey((value) => value + 1)} />
+          <StaffTimesheetTable projects={projects} refreshKey={timesheetRefreshKey} />
+        </section>
       </div>}
 
       {/* ── Quick Edit Modal ─────────────── */}
