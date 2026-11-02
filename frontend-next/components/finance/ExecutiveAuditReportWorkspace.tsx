@@ -15,10 +15,12 @@ import {
 } from "lucide-react";
 import { cn, formatRupiah, formatDate } from "@/lib/utils";
 import api from "@/lib/api/axios";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 
 export function ExecutiveAuditReportWorkspace() {
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
   const fetchReport = async () => {
@@ -28,8 +30,10 @@ export function ExecutiveAuditReportWorkspace() {
         params: { year: selectedYear },
       });
       setReportData(res.data?.data ?? res.data ?? null);
-    } catch {
+      setLoadError(null);
+    } catch (error) {
       setReportData(null);
+      setLoadError(getUserFacingApiError(error, "Laporan audit belum dapat dimuat. Periksa akses dan coba lagi."));
     } finally {
       setLoading(false);
     }
@@ -45,6 +49,8 @@ export function ExecutiveAuditReportWorkspace() {
 
   return (
     <div className="workspace-container min-w-0 space-y-5">
+      {loadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{loadError}</div>}
+
       {/* Header & Controls */}
       <div className="flex flex-col gap-4 p-4 sm:p-5 rounded-[22px] bg-white border border-[#D9D9D9] shadow-2xs">
         <div className="flex min-w-0 items-start gap-3">

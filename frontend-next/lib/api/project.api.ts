@@ -11,6 +11,7 @@ import { normalizeList } from "./auth.api";
 import { normalizeDateKey } from "@/lib/utils";
 import { weeklyProgress } from "../weekly-dashboard";
 import { normalizeProjectLifecycleStage, type ProjectLifecycleStage } from "@/lib/projects/lifecycle";
+import { getUserFacingApiError } from "./error-message";
 
 export interface Project {
   id: string | number;
@@ -235,19 +236,7 @@ const DAILY_TASK_STATUS_ALIASES: Record<string, DailyTaskStatus> = {
 
 /** Returns the backend's typed detail so mutation failures are actionable in the UI. */
 export function getApiErrorDetail(error: unknown, fallback: string): string {
-  const response = (error as { response?: { data?: { detail?: unknown; message?: unknown; error?: unknown; errors?: unknown } } })?.response?.data;
-  if (typeof response?.detail === "string" && response.detail.trim()) return response.detail;
-  if (typeof response?.message === "string" && response.message.trim()) return response.message;
-  if (typeof response?.error === "string" && response.error.trim()) return response.error;
-  if (response?.error && typeof response.error === "object" && "message" in response.error
-    && typeof response.error.message === "string" && response.error.message.trim()) return response.error.message;
-  if (response?.errors && typeof response.errors === "object") {
-    const firstFieldError = Object.values(response.errors as Record<string, unknown>)
-      .flatMap((value) => Array.isArray(value) ? value : [value])
-      .find((value): value is string => typeof value === "string" && Boolean(value.trim()));
-    if (firstFieldError) return firstFieldError;
-  }
-  return error instanceof Error && error.message ? error.message : fallback;
+  return getUserFacingApiError(error, fallback);
 }
 
 export interface Task {

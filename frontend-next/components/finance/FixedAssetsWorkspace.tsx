@@ -13,6 +13,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import api from "@/lib/api/axios";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 import { formatMoney, localDateKey, cn } from "@/lib/utils";
 import { normalizeList } from "@/lib/api/auth.api";
 import { Modal } from "@/components/ui/Modal";
@@ -166,8 +167,8 @@ export default function FixedAssetsWorkspace() {
         })
       );
       setBooks(bookMap);
-    } catch {
-      toast.error("Gagal memuat data aset tetap.");
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Data aset tetap belum dapat dimuat. Periksa akses modul Aset dan coba lagi."));
     } finally {
       setLoading(false);
     }
@@ -306,8 +307,8 @@ export default function FixedAssetsWorkspace() {
       if (created?.id) {
         setRegisterForm((prev) => ({ ...prev, category_id: created.id }));
       }
-    } catch {
-      toast.error("Gagal menambahkan kategori aset baru.");
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Kategori aset belum dapat ditambahkan. Periksa kode dan nama kategori, lalu coba lagi."));
     } finally {
       setIsSubmittingCategory(false);
     }

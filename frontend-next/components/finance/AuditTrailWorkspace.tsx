@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api/axios';
+import { getUserFacingApiError } from '@/lib/api/error-message';
 
 // =============================================================================
 // AUDIT TRAIL WORKSPACE
@@ -74,6 +75,7 @@ export default function AuditTrailWorkspace() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Filters
@@ -98,8 +100,9 @@ export default function AuditTrailWorkspace() {
       const { data: json } = await api.get(`/api/v1/finance/audit-trail?${params}`);
       setEvents(json.data?.rows ?? []);
       setTotal(json.data?.total ?? 0);
-    } catch {
-      // Silent fail
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(getUserFacingApiError(error, 'Riwayat audit belum dapat dimuat. Periksa akses, lalu coba lagi.'));
     } finally {
       setLoading(false);
     }
@@ -118,6 +121,8 @@ export default function AuditTrailWorkspace() {
           Field-level delta logger · Before/After diff viewer · SoD maker-checker signature
         </p>
       </div>
+
+      {loadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{loadError}</div>}
 
       {/* Stats */}
       <div className="flex gap-3 items-center text-sm text-text-secondary">

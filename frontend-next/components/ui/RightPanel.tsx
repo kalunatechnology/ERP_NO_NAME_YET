@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 
 interface RightPanelProps {
   onToggleCollapse?: () => void;
@@ -50,7 +51,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
       if (version !== historyRequest.current) return;
       setNotificationHistory(previous => cursor ? Array.from(new Map([...previous, ...page.results].map(row => [row.id, row])).values()) : page.results);
       setNextNotificationCursor(page.nextCursor);
-    } catch { if (version === historyRequest.current) setHistoryError("Notifikasi belum dapat dimuat. Coba kembali atau segarkan daftar."); }
+    } catch (error) { if (version === historyRequest.current) setHistoryError(getUserFacingApiError(error, "Notifikasi belum dapat dimuat. Coba kembali atau segarkan daftar.")); }
     finally { if (version === historyRequest.current) setHistoryLoading(false); }
   };
 
@@ -88,8 +89,8 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
       setAlerts(realAlerts.slice(0, 3));
       setContacts(data.contacts || []);
       setLoadError(null);
-    } catch {
-      setLoadError("Data real-time belum dapat disinkronkan. Coba segarkan kembali.");
+    } catch (error) {
+      setLoadError(getUserFacingApiError(error, "Data real-time belum dapat disinkronkan. Coba segarkan kembali."));
     } finally {
       setLoading(false);
       setRefreshing(false);

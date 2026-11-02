@@ -16,6 +16,7 @@ import {
   ChevronRight, Building
 } from "lucide-react";
 import api from "@/lib/api/axios";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 import { useAuth } from "@/contexts/AuthContext";
 import { canPerform } from "@/lib/access/capability-contract";
 import { formatMoney, formatDate, cn } from "@/lib/utils";
@@ -190,9 +191,9 @@ export function CompanyMasterWorkspace() {
         })));
       }
       const failed = requests.filter((request) => request.status === "rejected").length;
-      if (failed > 0) toast.error(`${failed} sumber data master gagal dimuat; data contoh tidak digunakan.`);
-    } catch {
-      toast.error("Gagal memuat data master perusahaan.");
+      if (failed > 0) toast.error(`${failed} sumber data master belum dapat dimuat. Data contoh tidak digunakan; muat ulang untuk mencoba kembali.`);
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Data master perusahaan belum dapat dimuat. Periksa koneksi dan hak akses, lalu coba lagi."));
     } finally {
       setLoading(false);
     }
@@ -221,8 +222,8 @@ export function CompanyMasterWorkspace() {
         status: companyData.status,
       });
       toast.success("Data legalitas perusahaan berhasil disimpan.");
-    } catch {
-      toast.error("Gagal menyimpan data perusahaan");
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Data perusahaan belum dapat disimpan. Periksa kelengkapan data dan hak akses, lalu coba lagi."));
     } finally {
       setSavingCompany(false);
     }
@@ -248,8 +249,8 @@ export function CompanyMasterWorkspace() {
         account_name: created.account_name,
         status: created.status,
       }]);
-    } catch {
-      toast.error("Gagal menambahkan rekening bank");
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Rekening bank belum dapat ditambahkan. Periksa nomor rekening dan data wajib, lalu coba lagi."));
     }
   };
 
@@ -271,8 +272,8 @@ export function CompanyMasterWorkspace() {
         utilized_amount: Number(created.utilized_amount ?? 0),
         available_amount: Number(created.available_amount ?? 0),
       }]);
-    } catch {
-      toast.error("Gagal mencatat fasilitas kredit");
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Fasilitas kredit belum dapat dicatat. Periksa batas kredit dan nominal terpakai, lalu coba lagi."));
     }
   };
 
@@ -296,8 +297,8 @@ export function CompanyMasterWorkspace() {
         type: created.organization_type,
         status: created.status,
       }]);
-    } catch {
-      toast.error("Gagal menambahkan unit organisasi");
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Unit organisasi belum dapat ditambahkan. Periksa kode dan nama unit, lalu coba lagi."));
     }
   };
 

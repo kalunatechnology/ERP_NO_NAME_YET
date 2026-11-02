@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { MeetingDetail, MeetingRequestSummary, NonMeetingRequest, requestApi } from "@/lib/api/request.api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 
 type Member = { id: string; name: string; email: string; role: string };
 type CreateForm = { title:string; description:string; date:string; recurrenceEndDate:string; startTime:string; endTime:string; location:string; meetingUrl:string; meetingType:string; recurrenceType:"RECURRING"|"NON_RECURRING"; recurringDays:number[]; assigneeId:string; notetakerId:string; participantIds:string[]; agenda:string };
@@ -108,8 +109,8 @@ export default function RequestsClient(){
     });
   }, [nonMeetingRequests, searchQuery, nonMeetingTypeFilter]);
 
-  const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");const loadedMinutes={summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""};setMinutes(loadedMinutes);setSavedMinutes(loadedMinutes);return detail;}catch{toast.error("Detail meeting tidak dapat dimuat.");return null;}},[]);
-  const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);if(typeof window!=="undefined"){const params=new URLSearchParams(window.location.search);const id=params.get("meeting");const date=params.get("date")||params.get("occurrenceDate");const shouldOpenNotes=params.get("note")==="1"||params.get("openNotes")==="1"||params.get("openNotes")==="true";if(id){const detail=await openMeeting(id,date||undefined);if(detail&&shouldOpenNotes){setNotesOpen(true);}}}}catch{toast.error("Data tidak dapat dimuat.");}finally{setLoading(false);}},[openMeeting]);
+  const openMeeting=useCallback(async(id:string,occurrenceDate?:string)=>{try{const detail=await requestApi.getMeeting(id,occurrenceDate);setSelected(detail);setPersonInCharge(detail.request?.assignee_user_id??detail.notetaker_user_id??"");const loadedMinutes={summary:detail.minutes?.summary??"",opening_notes:detail.minutes?.opening_notes??"",general_discussion:markdownToRichText(detail.minutes?.general_discussion??""),conclusion:detail.minutes?.conclusion??"",decisions:detail.minutes?.decisions.map(item=>item.decision_text).join("\n")??"",action_items:detail.minutes?.action_items.map(item=>item.title).join("\n")??""};setMinutes(loadedMinutes);setSavedMinutes(loadedMinutes);return detail;}catch(error){toast.error(getUserFacingApiError(error,"Detail meeting belum dapat dimuat. Muat ulang halaman, lalu coba lagi."));return null;}},[]);
+  const load=useCallback(async()=>{setLoading(true);try{const [rows,team,nonMeet]=await Promise.all([requestApi.listMeetings(),requestApi.listTeamMembers(),requestApi.listNonMeetingRequests()]);setMeetings(rows);setMembers(team);setNonMeetingRequests(nonMeet.rows??[]);if(typeof window!=="undefined"){const params=new URLSearchParams(window.location.search);const id=params.get("meeting");const date=params.get("date")||params.get("occurrenceDate");const shouldOpenNotes=params.get("note")==="1"||params.get("openNotes")==="1"||params.get("openNotes")==="true";if(id){const detail=await openMeeting(id,date||undefined);if(detail&&shouldOpenNotes){setNotesOpen(true);}}}}catch(error){toast.error(getUserFacingApiError(error,"Data meeting dan request belum dapat dimuat. Periksa akses, lalu coba lagi."));}finally{setLoading(false);}},[openMeeting]);
   const searchParams = useSearchParams();
   const queryRequestId = searchParams?.get('requestId');
   const queryMeetingId = searchParams?.get('meeting') || searchParams?.get('meetingId');
@@ -137,8 +138,8 @@ export default function RequestsClient(){
     }
   }, [queryRequestId, queryMeetingId, queryMinuteId, queryNoteId, shouldOpenNotes, meetings, openMeeting]);
 
-  async function submitMeeting(event:FormEvent,draft:boolean){event.preventDefault();if(createForm.recurrenceType==="RECURRING"&&(!createForm.recurrenceEndDate||!createForm.recurringDays.length)){toast.error("Pilih tanggal akhir dan minimal satu hari recurring.");return;}setBusy(true);try{const ids=new Set(createForm.participantIds);if(createForm.notetakerId)ids.add(createForm.notetakerId);if(createForm.assigneeId)ids.add(createForm.assigneeId);await requestApi.createMeeting({title:createForm.title,description:createForm.description,start_at:localIso(createForm.date,createForm.startTime),end_at:localIso(createForm.date,createForm.endTime),recurrence_type:createForm.recurrenceType,recurrence_end_at:createForm.recurrenceType==="RECURRING"?localIso(createForm.recurrenceEndDate,"23:59"):undefined,recurrence_days:createForm.recurringDays,location:createForm.location,meeting_url:createForm.meetingUrl,meeting_type:"INTERNAL",assignee_user_id:createForm.assigneeId||undefined,notetaker_user_id:createForm.notetakerId||undefined,is_draft:draft,tagged_users:Array.from(ids).map(id=>({id,name:members.find(member=>member.id===id)?.name??id})),agenda_items:createForm.agenda.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title}))});toast.success(draft?"Draft request berhasil disimpan.":"Meeting berhasil dibuat dan seluruh peserta telah diberi notifikasi.");setCreateOpen(false);setCreateForm(initialCreate);await load();}catch{toast.error("Gagal menyimpan request. Periksa jadwal dan data wajib.");}finally{setBusy(false);}}
-  async function reassign(){if(!selected?.request||!personInCharge)return toast.error("Pilih person in charge.");setBusy(true);try{await requestApi.assignRequest(selected.request.id,personInCharge);toast.success("Person in charge diperbarui.");await openMeeting(selected.id);}catch{toast.error("Role aktif tidak memiliki izin reassign.");}finally{setBusy(false);}}
+  async function submitMeeting(event:FormEvent,draft:boolean){event.preventDefault();if(createForm.recurrenceType==="RECURRING"&&(!createForm.recurrenceEndDate||!createForm.recurringDays.length)){toast.error("Pilih tanggal akhir dan minimal satu hari recurring.");return;}setBusy(true);try{const ids=new Set(createForm.participantIds);if(createForm.notetakerId)ids.add(createForm.notetakerId);if(createForm.assigneeId)ids.add(createForm.assigneeId);await requestApi.createMeeting({title:createForm.title,description:createForm.description,start_at:localIso(createForm.date,createForm.startTime),end_at:localIso(createForm.date,createForm.endTime),recurrence_type:createForm.recurrenceType,recurrence_end_at:createForm.recurrenceType==="RECURRING"?localIso(createForm.recurrenceEndDate,"23:59"):undefined,recurrence_days:createForm.recurringDays,location:createForm.location,meeting_url:createForm.meetingUrl,meeting_type:"INTERNAL",assignee_user_id:createForm.assigneeId||undefined,notetaker_user_id:createForm.notetakerId||undefined,is_draft:draft,tagged_users:Array.from(ids).map(id=>({id,name:members.find(member=>member.id===id)?.name??id})),agenda_items:createForm.agenda.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title}))});toast.success(draft?"Draft request berhasil disimpan.":"Meeting berhasil dibuat dan seluruh peserta telah diberi notifikasi.");setCreateOpen(false);setCreateForm(initialCreate);await load();}catch(error){toast.error(getUserFacingApiError(error,"Meeting belum dapat disimpan. Periksa jadwal dan data wajib, lalu coba lagi."));}finally{setBusy(false);}}
+  async function reassign(){if(!selected?.request||!personInCharge)return toast.error("Pilih person in charge.");setBusy(true);try{await requestApi.assignRequest(selected.request.id,personInCharge);toast.success("Person in charge diperbarui.");await openMeeting(selected.id);}catch(error){toast.error(getUserFacingApiError(error,"Penanggung jawab belum dapat diperbarui. Periksa role aktif dan status meeting."));}finally{setBusy(false);}}
   const mentionedUserIds=useMemo(()=>{const text=`${minutes.general_discussion} ${minutes.summary} ${minutes.opening_notes}`;const matches=Array.from(text.matchAll(/data-user-id=["']([0-9a-f-]{36})["']/gi)).map(m=>m[1]);return Array.from(new Set(matches));},[minutes.general_discussion,minutes.summary,minutes.opening_notes]);
   const minutesPayload=useMemo(()=>({occurrence_date:selected?.selected_occurrence_date??"",summary:minutes.summary||richTextToPlainText(minutes.general_discussion).split("\n")[0]||"Notulensi meeting",opening_notes:minutes.opening_notes,general_discussion:minutes.general_discussion,conclusion:minutes.conclusion,decisions:minutes.decisions.split("\n").map(text=>text.trim()).filter(Boolean).map(text=>({text})),action_items:minutes.action_items.split("\n").map(title=>title.trim()).filter(Boolean).map(title=>({title})),mentioned_user_ids:mentionedUserIds}),[minutes,selected?.selected_occurrence_date,mentionedUserIds]);
   const hasUnsavedMinutes=useMemo(()=>JSON.stringify(minutes)!==JSON.stringify(savedMinutes),[minutes,savedMinutes]);
@@ -165,8 +166,8 @@ export default function RequestsClient(){
         toast.success("Notulensi dipublikasikan. Seluruh peserta meeting telah diberi notifikasi.");
         await load();
       }catch(err:unknown){
-        const msg=err instanceof Error?err.message:String(err);
-        toast.error(msg.includes('sudah dipublikasikan')?"Notulensi ini sudah dipublikasikan.":"Gagal mempublikasikan notulensi. Pastikan ringkasan sudah diisi.");
+        const msg=getUserFacingApiError(err,"Notulensi belum dapat dipublikasikan. Periksa ringkasan, status meeting, dan hak akses.");
+        toast.error(msg.includes('sudah dipublikasikan')?"Notulensi ini sudah dipublikasikan.":msg);
       }finally{setBusy(false);}
       return;
     }
@@ -180,8 +181,8 @@ export default function RequestsClient(){
       setSelected(detail);
       setSavedMinutes(minutes);
       toast.success("Draft notulensi disimpan. Belum dikirim notifikasi — publikasikan untuk memberi tahu peserta.");
-    }catch{
-      toast.error("Draft notulensi gagal disimpan. Pastikan data sudah lengkap.");
+    }catch(error){
+      toast.error(getUserFacingApiError(error,"Draft notulensi belum dapat disimpan. Periksa data wajib dan hak akses, lalu coba lagi."));
     }finally{setBusy(false);}
   }
   async function publishMeeting(meetingId:string){
@@ -1154,7 +1155,7 @@ function NewNonMeetingRequestModal({members,busy,onClose,onSuccess}:{members:Mem
       });
       toast.success(type==='LEAVE'?'Request cuti/izin berhasil dibuat.':'Request berhasil dibuat.');
       onSuccess();
-    }catch{toast.error('Gagal mengirim request. Silakan coba lagi.');}finally{setSubmitting(false);}
+    }catch(error){toast.error(getUserFacingApiError(error,'Request belum dapat dikirim. Periksa data wajib, jadwal, dan hak akses, lalu coba lagi.'));}finally{setSubmitting(false);}
   }
   return <ModalBackdrop>
     <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-5">

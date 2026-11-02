@@ -16,6 +16,7 @@ import { fetchRealAlertsList, RealAlertItem } from "@/lib/api/feed.api";
 import toast from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessRoute } from "@/lib/access/module-contract";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 
 export interface AlertItem {
   id: string | number;
@@ -53,6 +54,7 @@ export function AlertTimelineCard({
   const { user, userRole } = useAuth();
   const [liveAlerts, setLiveAlerts] = useState<AlertItem[]>(controlledAlerts || []);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
 /**
  * loadAlerts coordinates the UI behavior represented by this function.
@@ -75,8 +77,9 @@ export function AlertTimelineCard({
         isSuperAdmin: userRole === "super_admin",
       });
       setLiveAlerts(data);
-    } catch {
-      // ignore
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(getUserFacingApiError(error, "Peringatan belum dapat dimuat. Muat ulang untuk mencoba kembali."));
     } finally {
       setLoading(false);
     }
@@ -158,6 +161,8 @@ export function AlertTimelineCard({
           )}
         </div>
       </div>
+
+      {loadError && <div role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{loadError}</div>}
 
       {/* Vertical Timeline & Alert Feed */}
       <div className="relative pl-5 flex flex-col gap-3 max-h-[460px] overflow-y-auto no-scrollbar">

@@ -6,6 +6,7 @@
  */
 
 import axios from "axios";
+import { getUserFacingApiError } from "./error-message";
 
 // Express defaults to port 8001 in local development. Keeping this fallback
 // aligned with the backend prevents an otherwise valid login from waiting on
@@ -172,6 +173,16 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
     const status = error.response?.status;
+
+    const userMessage = getUserFacingApiError(error);
+    error.message = userMessage;
+    if (error.response?.data && typeof error.response.data === "object" && !Array.isArray(error.response.data)) {
+      error.response.data.detail = userMessage;
+      error.response.data.message = userMessage;
+      if (error.response.data.error && typeof error.response.data.error === "object") {
+        error.response.data.error.message = userMessage;
+      }
+    }
 
     if (
       status === 401 &&

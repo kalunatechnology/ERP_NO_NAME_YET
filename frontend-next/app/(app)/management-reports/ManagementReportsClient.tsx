@@ -19,6 +19,7 @@ import {
   Milestone,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 import {
   ManagementReport,
   getManagementReports,
@@ -79,8 +80,8 @@ export default function ManagementReportsClient() {
     try {
       const data = await getManagementReports();
       setReports(data);
-    } catch {
-      toast.error("Gagal memuat daftar laporan manajemen.");
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Daftar laporan belum dapat dimuat. Periksa akses dan coba lagi."));
     } finally {
       setLoading(false);
     }

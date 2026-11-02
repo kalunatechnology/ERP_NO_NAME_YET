@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 import { normalizeList } from "@/lib/api/auth.api";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
@@ -256,6 +257,7 @@ export function AccessAdministration() {
     }>;
   }>({ roles: [] });
   const [loadingUserRoles, setLoadingUserRoles] = useState(false);
+  const [userRolesError, setUserRolesError] = useState<string | null>(null);
   const [roleUpdatingKey, setRoleUpdatingKey] = useState<string | null>(null);
 
   const loadUserRoles = useCallback(async (userId: string) => {
@@ -266,8 +268,9 @@ export function AccessAdministration() {
         headers: { "X-Company-ID": contextCompany },
       });
       setUserRolesData(res.data || { roles: [] });
-    } catch {
-      setUserRolesData({ roles: [] });
+      setUserRolesError(null);
+    } catch (error) {
+      setUserRolesError(getUserFacingApiError(error, "Daftar peran belum dapat dimuat. Periksa akses company, lalu coba lagi."));
     } finally {
       setLoadingUserRoles(false);
     }
@@ -768,6 +771,8 @@ export function AccessAdministration() {
 
                   {loadingUserRoles ? (
                     <div className="py-4 text-center text-xs text-[#4F5050]">Memuat daftar peran...</div>
+                  ) : userRolesError ? (
+                    <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{userRolesError}</div>
                   ) : (
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
                       {ASSIGNABLE_ROLES.map((item) => {

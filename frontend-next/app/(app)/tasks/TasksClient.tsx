@@ -636,8 +636,9 @@ export default function TasksClient() {
       setLoadError("");
     } catch (error) {
       if (revision !== fetchRevision.current) return;
-      setLoadError(getApiErrorDetail(error, "Gagal memuat data task. Gunakan Refresh untuk mencoba kembali."));
-      toast.error("Gagal memuat data task");
+      const message = getApiErrorDetail(error, "Data task belum dapat dimuat. Gunakan Refresh untuk mencoba kembali.");
+      setLoadError(message);
+      toast.error(message);
     } finally {
       if (revision === fetchRevision.current) {
         setLoading(false);
@@ -802,10 +803,10 @@ export default function TasksClient() {
         status: updated.status,
         progress: Number(updated.progress ?? 0),
       });
-    } catch {
+    } catch (error) {
       // Rollback on error
       updateLocalDailyTask(task.id, { status: prevStatus, progress: prevProg });
-      toast.error("Gagal menyinkronkan status ke server. Perubahan dikembalikan.");
+      toast.error(`${getApiErrorDetail(error, "Status task belum dapat disimpan.")} Perubahan di layar sudah dikembalikan.`);
     }
   };
 

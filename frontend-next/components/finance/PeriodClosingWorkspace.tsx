@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api/axios';
+import { getUserFacingApiError } from '@/lib/api/error-message';
 import { useAuth } from '@/contexts/AuthContext';
 import { canPerform } from '@/lib/access/capability-contract';
 
@@ -110,8 +111,8 @@ export default function PeriodClosingWorkspace() {
       setPeriods(pJson.data ?? pJson.results ?? (Array.isArray(pJson) ? pJson : []));
       setFiscalYears(yJson.results ?? yJson.data?.rows ?? yJson.data ?? (Array.isArray(yJson) ? yJson : []));
       setClosingRequests(cJson.results ?? cJson.data?.rows ?? cJson.data ?? (Array.isArray(cJson) ? cJson : []));
-    } catch {
-      showToast('Gagal memuat data periode fiskal.', 'error');
+    } catch (error) {
+      showToast(getUserFacingApiError(error, 'Data periode fiskal belum dapat dimuat. Periksa akses, lalu coba lagi.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -123,7 +124,7 @@ export default function PeriodClosingWorkspace() {
       await api.post('/api/v1/finance/fiscal-periods/initialize');
       showToast('Inisialisasi periode fiskal berhasil.', 'success');
     } catch (err: any) {
-      showToast(err.response?.data?.message ?? err.message ?? 'Gagal inisialisasi periode.', 'error');
+      showToast(getUserFacingApiError(err, 'Periode fiskal belum dapat diinisialisasi. Periksa tahun buku dan data periode.'), 'error');
     } finally {
       await loadData();
     }
@@ -139,7 +140,7 @@ export default function PeriodClosingWorkspace() {
       showToast('Permintaan tutup periode tercatat dan menunggu persetujuan Finance.', 'success');
       loadData();
     } catch (err: any) {
-      showToast(err.response?.data?.message ?? err.message ?? 'Gagal menutup periode.', 'error');
+      showToast(getUserFacingApiError(err, 'Permintaan tutup periode belum dapat dibuat. Periksa status periode dan hak akses.'), 'error');
     } finally {
       setClosingLoading(false);
       setClosingPeriodId(null);
@@ -152,7 +153,7 @@ export default function PeriodClosingWorkspace() {
       showToast('Permintaan penutupan disetujui.', 'success');
       await loadData();
     } catch (err: any) {
-      showToast(err.response?.data?.message ?? err.message ?? 'Gagal menyetujui penutupan.', 'error');
+      showToast(getUserFacingApiError(err, 'Penutupan belum dapat disetujui. Pastikan Anda bukan pengaju dan memiliki hak akses.'), 'error');
     }
   };
 
@@ -165,7 +166,7 @@ export default function PeriodClosingWorkspace() {
       showToast('Penutupan periode berhasil dijalankan.', 'success');
       await loadData();
     } catch (err: any) {
-      showToast(err.response?.data?.message ?? err.message ?? 'Gagal menjalankan penutupan.', 'error');
+      showToast(getUserFacingApiError(err, 'Penutupan periode belum dapat dijalankan. Periksa persetujuan, checklist, dan status periode.'), 'error');
     }
   };
 
@@ -175,8 +176,7 @@ const reopenPeriod = async (periodId: string) => {
     showToast('Periode berhasil dibuka kembali.', 'success');
     loadData();
   } catch (err: any) {
-    // Ambil pesan error spesifik dari response backend jika ada
-    const errorMsg = err.response?.data?.message ?? err.message ?? 'Gagal membuka kembali periode.';
+    const errorMsg = getUserFacingApiError(err, 'Periode belum dapat dibuka kembali. Periksa status periode dan hak akses.');
     showToast(errorMsg, 'error');
   }
 };
@@ -194,7 +194,7 @@ const executeYearEnd = async () => {
     showToast('Permintaan tutup buku tahunan tercatat dan menunggu persetujuan Finance.', 'success');
     await loadData();
   } catch (err: any) {
-    showToast(err.response?.data?.message ?? err.message ?? 'Gagal menutup buku tahunan.', 'error');
+    showToast(getUserFacingApiError(err, 'Permintaan tutup buku tahunan belum dapat dibuat. Periksa tahun buku dan hak akses.'), 'error');
   } finally {
     setYearEndLoading(false);
   }
@@ -210,7 +210,7 @@ const executeYearEnd = async () => {
       setRollbackReason('');
       loadData();
     } catch (err: any) {
-      showToast(err.response?.data?.message ?? err.message ?? 'Gagal rollback tutup buku.', 'error');
+      showToast(getUserFacingApiError(err, 'Rollback tutup buku belum dapat dilakukan. Periksa alasan, status tahun buku, dan hak akses.'), 'error');
     } finally {
       setRollbackLoading(false);
     }

@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn, localDateKey, extractApiError, parseFormDateTime } from "@/lib/utils";
 import api from "@/lib/api/axios";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 
 export interface InvitedPerson {
   id: string;
@@ -87,6 +88,7 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
   const [searchResults, setSearchResults] = useState<InvitedPerson[]>([]);
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -103,11 +105,13 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
       const data = res.data?.data ?? res.data ?? [];
       const list = Array.isArray(data) ? data : [];
       setSearchResults(list);
+      setSearchError(null);
       if (!searchQuery.trim()) {
         setTeamMembers(list);
       }
-    } catch {
+    } catch (error) {
       setSearchResults([]);
+      setSearchError(getUserFacingApiError(error, "Daftar anggota belum dapat dimuat. Periksa akses dan coba cari kembali."));
     } finally {
       setIsSearching(false);
     }
@@ -690,7 +694,9 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                   {/* Dropdown list for search */}
                   {isSearchDropdownOpen && (
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl p-1.5 z-40 max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in duration-100">
-                      {selectableResults.length > 0 ? (
+                      {searchError ? (
+                        <div role="alert" className="p-3 text-center text-xs text-red-700">{searchError}</div>
+                      ) : selectableResults.length > 0 ? (
                         selectableResults.map(m => (
                           <button
                             key={m.id}

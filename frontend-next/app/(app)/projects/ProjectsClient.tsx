@@ -667,9 +667,9 @@ export default function ProjectsClient() {
         setDivisionOptions(Array.isArray(divisions) ? divisions : []);
         setProjectPartyOptions(Array.isArray(relatedPartyOptions) ? relatedPartyOptions : []);
       });
-    } catch {
+    } catch (error) {
       if (version === fetchVersionRef.current) {
-        toast.error("Gagal menyinkronkan data proyek");
+        toast.error(getApiErrorDetail(error, "Data proyek belum dapat disinkronkan. Periksa akses dan koneksi, lalu coba lagi."));
       }
     } finally {
       if (version === fetchVersionRef.current) {
@@ -876,8 +876,8 @@ export default function ProjectsClient() {
       toast.success("Target finansial dan anggaran proyek berhasil diperbarui.");
       setIsEditFinancialsOpen(false);
       await fetchProjects(true);
-    } catch {
-      toast.error("Gagal memperbarui target keuangan proyek");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Target keuangan proyek belum dapat diperbarui. Periksa status proyek dan hak akses."));
     }
   };
 
@@ -1325,7 +1325,7 @@ export default function ProjectsClient() {
       await updateDailyTask(daily.id, {
         status: nextStatus
       });
-    } catch {
+    } catch (error) {
       setProjects(prevProjects =>
         prevProjects.map(p => ({
           ...p,
@@ -1340,7 +1340,7 @@ export default function ProjectsClient() {
           }))
         }))
       );
-      toast.error("Gagal menyinkronkan status task ke server.");
+      toast.error(`${getApiErrorDetail(error, "Status task belum dapat disimpan.")} Perubahan di layar sudah dikembalikan.`);
     }
   };
 
@@ -1370,8 +1370,8 @@ export default function ProjectsClient() {
       setTransferReason("");
       setTransferTargetUserId("");
       await fetchProjects(true);
-    } catch {
-      toast.error("Gagal mengajukan alih tugas");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Alih tugas belum dapat diajukan. Periksa alasan, penerima, dan status tugas."));
     }
   };
 
@@ -1408,8 +1408,8 @@ export default function ProjectsClient() {
       });
       await fetchProjects(true);
       if (res?.id) navigateProject(res.id);
-    } catch {
-      toast.error("Gagal membuat proyek baru");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Proyek belum dapat dibuat. Periksa kode yang mungkin sudah digunakan, data pelanggan, dan hak akses."));
     }
   };
 
@@ -1427,8 +1427,8 @@ export default function ProjectsClient() {
       await deleteProject(selectedProject.id);
       toast.success("Proyek berhasil dihapus.");
       await fetchProjects(true);
-    } catch {
-      toast.error("Gagal menghapus proyek");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Proyek belum dapat dihapus. Periksa status proyek dan data pekerjaan yang masih terkait."));
     }
   };
 
@@ -1447,9 +1447,9 @@ export default function ProjectsClient() {
       setIsHealthModalOpen(true);
       toast.success("Kesehatan EVM proyek berhasil dihitung.");
       await fetchProjects(true);
-    } catch {
+    } catch (error) {
       setHealthData(null);
-      toast.error("Kesehatan proyek tidak dapat dihitung. Periksa data anggaran dan progres lalu coba lagi.");
+      toast.error(getApiErrorDetail(error, "Kesehatan proyek belum dapat dihitung. Periksa data anggaran dan progres, lalu coba lagi."));
     }
   };
 
@@ -2467,8 +2467,8 @@ export default function ProjectsClient() {
                               await approveTransfer(tr.id);
                               toast.success("Transfer tugas disetujui!");
                               await fetchProjects(true);
-                            } catch {
-                              toast.error("Transfer tidak dapat disetujui");
+                            } catch (error) {
+                              toast.error(getApiErrorDetail(error, "Alih tugas belum dapat disetujui. Periksa hak akses dan status terbaru."));
                             }
                           }}
                           className="btn-primary py-1 px-3 text-xs bg-brand-green"
@@ -2481,8 +2481,8 @@ export default function ProjectsClient() {
                               await rejectTransfer(tr.id);
                               toast.success("Transfer tugas ditolak");
                               await fetchProjects(true);
-                            } catch {
-                              toast.error("Transfer tidak dapat ditolak");
+                            } catch (error) {
+                              toast.error(getApiErrorDetail(error, "Alih tugas belum dapat ditolak. Periksa hak akses dan status terbaru."));
                             }
                           }}
                           className="btn-ghost py-1 px-3 text-xs text-red-600"

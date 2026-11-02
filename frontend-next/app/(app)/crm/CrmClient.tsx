@@ -38,6 +38,7 @@ import {
   type CRMInboxConversation,
 } from "@/lib/api/crm.api";
 import api from "@/lib/api/axios";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 import { requestApi, type MeetingMinutesReference } from "@/lib/api/request.api";
 import { feedApi } from "@/lib/api/feed.api";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
@@ -220,7 +221,7 @@ function QuickAddPartyModal({
       const res = await api.post("/api/v1/master-data/parties/", payload);
       const newParty = res.data;
       const contactEmail = partyForm.email.trim();
-      let contactSaveFailed = false;
+      let contactSaveMessage: string | null = null;
       if (contactEmail) {
         try {
           await api.post("/api/v1/master-data/contacts/", {
@@ -231,16 +232,18 @@ function QuickAddPartyModal({
             phone: "",
             primary_contact: true,
           });
-        } catch { contactSaveFailed = true; }
+        } catch (error) {
+          contactSaveMessage = getUserFacingApiError(error, "Email kontak belum dapat disimpan.");
+        }
       }
       const partyLabel = partyForm.party_type === "SUPPLIER" ? "Vendor / Supplier" : partyForm.party_type === "PARTNER" ? "Partner" : "Pelanggan";
-      if (contactSaveFailed) toast.error(`${partyLabel} tersimpan, tetapi email kontak gagal disimpan.`);
+      if (contactSaveMessage) toast.error(`${partyLabel} tersimpan, tetapi kontak email belum tersimpan. ${contactSaveMessage}`);
       else toast.success(`${partyLabel} baru berhasil ditambahkan!`);
       onSuccess(newParty);
       setPartyForm({ legal_name: "", display_name: "", email: "", party_code: "", party_type: "CUSTOMER" });
       onClose();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || "Gagal menambahkan rekanan.");
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Rekanan belum dapat ditambahkan. Periksa data wajib dan kemungkinan kode yang sudah digunakan."));
     } finally {
       setIsPartySubmitting(false);
     }
@@ -701,8 +704,8 @@ function TabDeals({
       toast.success("Credit snapshot diperbarui!"); 
       onRefresh(); 
     }
-    catch { 
-      toast.error("Gagal hitung credit."); 
+    catch (error) {
+      toast.error(getUserFacingApiError(error, "Perhitungan batas kredit belum berhasil. Periksa data customer, lalu coba lagi."));
     }
   };
 
@@ -725,8 +728,8 @@ function TabDeals({
       await updateCustomerCreditLimit({ party_id: partyId, credit_limit: parsedLimit });
       toast.success("Credit limit diperbarui!"); 
       onRefresh();
-    } catch { 
-      toast.error("Gagal update credit limit."); 
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Batas kredit belum berhasil diperbarui. Periksa data dan hak akses, lalu coba lagi."));
     }
   };
 
@@ -2600,9 +2603,9 @@ export default function CrmClient() {
       setCrmDash(dashboard);
     } catch (e) {
       console.error("CRM load error:", e);
-      const error = e as any;
-      setLoadError(error?.response?.data?.error?.message || error?.response?.data?.detail || error?.message || "Gagal memuat data CRM");
-      toast.error("Gagal memuat data CRM");
+      const message = getUserFacingApiError(e, "Data CRM belum dapat dimuat. Periksa akses dan koneksi, lalu coba lagi.");
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
       setRefreshing(false);

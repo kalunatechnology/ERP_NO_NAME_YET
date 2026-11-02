@@ -10,6 +10,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { fetchRealMonthlyStackedData } from "@/lib/api/finance.api";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 import { RefreshCw, SlidersHorizontal, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -115,8 +116,8 @@ export function MonthlyStackedBarChart({
       } else {
         setRealData(DEFAULT_DATA);
       }
-    } catch {
-      toast.error("Data finansial bulanan gagal dimuat; grafik tidak menampilkan data contoh.");
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Data finansial bulanan belum dapat dimuat. Grafik tidak menampilkan data contoh; coba muat ulang."));
     } finally {
       setLoading(false);
       setRefreshing(false);

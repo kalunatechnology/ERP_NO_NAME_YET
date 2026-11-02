@@ -16,6 +16,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import { fetchNotifications } from "@/lib/api/feed.api";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 import toast from "react-hot-toast";
 
 interface TopbarProps {
@@ -395,8 +396,8 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
                                 await setActiveRole(code);
                                 setIsUserMenuOpen(false);
                                 toast.success(`Akses aktif: ${role.role_name || code}`);
-                              } catch {
-                                toast.error("Gagal mengganti akses aktif.");
+                              } catch (error) {
+                                toast.error(getUserFacingApiError(error, "Role aktif belum dapat diganti. Periksa hak akses dan coba lagi."));
                               } finally {
                                 setSwitchingRole(false);
                               }

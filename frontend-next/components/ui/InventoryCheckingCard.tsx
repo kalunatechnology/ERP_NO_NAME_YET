@@ -11,6 +11,7 @@ import React, { useState, useEffect } from "react";
 import { CheckCircle2, AlertTriangle, PackageCheck, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchRealInventoryCheckingData } from "@/lib/api/feed.api";
+import { getUserFacingApiError } from "@/lib/api/error-message";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface InventoryCheckProps {
@@ -42,6 +43,7 @@ export function InventoryCheckingCard({
   const { user, userRole } = useAuth();
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchRealInventoryCheckingData>>>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
 /**
  * loadData implements the local UI interaction represented by its typed signature.
@@ -62,6 +64,7 @@ export function InventoryCheckingCard({
       });
       if (!real) {
         setData(null);
+        setLoadError(null);
         return;
       }
       setData({
@@ -72,8 +75,10 @@ export function InventoryCheckingCard({
         stockNeeded: controlledStockNeeded !== undefined ? controlledStockNeeded : real.stockNeeded,
         unit: controlledUnit || real.unit,
       });
-    } catch {
-      // fallback
+      setLoadError(null);
+    } catch (error) {
+      setData(null);
+      setLoadError(getUserFacingApiError(error, "Data stok belum dapat dimuat. Periksa akses Inventory dan koneksi, lalu coba lagi."));
     } finally {
       setLoading(false);
     }
@@ -97,7 +102,7 @@ export function InventoryCheckingCard({
     return (
       <div className={cn("w-full bg-white border border-[#EFEFEF] rounded-2xl p-5 shadow-xs h-full", className)}>
         <div className="flex items-center gap-2 text-sm font-bold text-text-primary"><PackageCheck size={17} /> Pemeriksaan Inventory</div>
-        <p className="mt-3 text-xs text-text-secondary">Data inventory tidak tersedia untuk module dan role aktif Anda.</p>
+        <p role={loadError ? "alert" : undefined} className={cn("mt-3 text-xs", loadError ? "text-red-700" : "text-text-secondary")}>{loadError || "Data inventory tidak tersedia untuk modul dan role aktif Anda."}</p>
       </div>
     );
   }

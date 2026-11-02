@@ -25,6 +25,17 @@ export class AppError extends Error {
 
 /** Converts common API field names and workflow codes into words users recognize. */
 export function userFacingMessage(message: string): string {
+  const sodAction = message.match(/aksi\s+["“]([^"”]+)["”]/i)?.[1]?.toLowerCase();
+  if (/SoD Violation|maker\s*(?:dan|&|-)\s*checker|pengguna yang membuat dokumen/i.test(message)) {
+    const actions: Record<string, string> = {
+      approve: 'disetujui', verify: 'diverifikasi', reject: 'ditolak', post: 'dibukukan', execute: 'diproses',
+    };
+    const actionText = sodAction ? actions[sodAction] : undefined;
+    return actionText
+      ? `Dokumen ini tidak dapat ${actionText} oleh pembuatnya. Silakan minta pengguna lain yang berwenang untuk melanjutkan.`
+      : 'Pembuat dokumen tidak dapat melanjutkan tindakan pada dokumen yang sama. Silakan minta pengguna lain yang berwenang.';
+  }
+
   const replacements: Array<[RegExp, string]> = [
     [/from_bank_account_id/gi, 'rekening asal'],
     [/to_bank_account_id/gi, 'rekening tujuan'],
@@ -110,7 +121,7 @@ export function userFacingMessage(message: string): string {
     [/\bFINANCE\b/g, 'Finance'],
     [/\bSTAFF\b/g, 'Staf'],
   ];
-  let readable = message;
+  let readable = message.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, 'data terkait');
   for (const [pattern, replacement] of replacements) readable = readable.replace(pattern, replacement);
   return /^[A-Z]/.test(message) ? readable.charAt(0).toLocaleUpperCase('id-ID') + readable.slice(1) : readable;
 }

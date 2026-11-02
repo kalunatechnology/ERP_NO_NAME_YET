@@ -386,8 +386,8 @@ export default function FinanceClient() {
         name: division.organization_name ?? division.name ?? division.organization_code,
       })));
       setCostCreditAccountId((current) => current || String(accountRows.find((account) => account.status === "ACTIVE" && account.account_code !== "1150")?.id || ""));
-    } catch {
-      toast.error("Gagal memuat data keuangan");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Data keuangan belum dapat dimuat. Periksa koneksi dan akses perusahaan, lalu coba lagi."));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -451,8 +451,8 @@ export default function FinanceClient() {
       setIsReversalModalOpen(false);
       setReversalReason("");
       await loadFinanceData(true);
-    } catch {
-      toast.error("Gagal melakukan reversal jurnal");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Jurnal belum dapat dibalik. Periksa status jurnal dan periode keuangan, lalu coba lagi."));
     }
   };
 
@@ -543,8 +543,8 @@ export default function FinanceClient() {
       await api.post(`/api/v1/finance/billing-proposals/${proposal.id}/post-billing-document`, {});
       toast.success("Faktur tagihan klien berhasil diposting. Jurnal GL & Pajak PPN telah terbentuk.");
       await loadFinanceData(true);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.error?.message || e?.response?.data?.detail || "Gagal memposting faktur.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Faktur belum dapat diposting. Periksa status proposal dan data invoice, lalu coba lagi."));
     } finally {
       setPostingProposalId(null);
     }
@@ -558,8 +558,8 @@ export default function FinanceClient() {
       else return;
       await loadFinanceData(true);
       toast.success("Lifecycle billing proposal berhasil diperbarui.");
-    } catch {
-      toast.error("Lifecycle billing proposal gagal diproses.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Status proposal tagihan belum dapat diperbarui. Periksa status dokumen dan hak akses, lalu coba lagi."));
     }
   };
 
@@ -575,8 +575,8 @@ export default function FinanceClient() {
         toast.success("Pembayaran dieksekusi dan jurnal AP dibuat.");
       }
       await loadFinanceData(true);
-    } catch {
-      toast.error("Lifecycle pembayaran gagal. Periksa role aktif, pemisahan tugas, dan periode fiskal.");
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Pembayaran belum dapat diproses. Periksa status pembayaran, hak akses, dan periode keuangan."));
     }
   };
 
@@ -2257,8 +2257,8 @@ export default function FinanceClient() {
               setIsCostModalOpen(false);
               setCostForm({ project: "", category: "MATERIAL", division_id: "", amount: "", description: "" });
               await loadFinanceData(true);
-            } catch {
-              toast.error("Gagal mencatat biaya");
+            } catch (error) {
+              toast.error(getApiErrorDetail(error, "Biaya belum dapat dicatat. Periksa proyek, nominal, dan hak akses, lalu coba lagi."));
             }
           }}
           className="flex flex-col gap-4"
@@ -2358,8 +2358,8 @@ export default function FinanceClient() {
               setIsFundingModalOpen(false);
               setFundingForm({ amount: "", need_type: "", purpose: "" });
               await loadFinanceData(true);
-            } catch {
-              toast.error("Gagal mengajukan funding");
+            } catch (error) {
+              toast.error(getApiErrorDetail(error, "Permintaan dana belum dapat diajukan. Periksa nominal dan data kebutuhan, lalu coba lagi."));
             }
           }}
           className="flex flex-col gap-4"
@@ -2627,8 +2627,8 @@ export default function FinanceClient() {
               toast.success("Tagihan vendor berhasil disimpan sebagai DRAFT.");
               setIsAPModalOpen(false);
               setAPForm({ supplier_id: "", invoice_number: "", amount: "", due_date: "" });
-            } catch {
-              toast.error("Gagal mendaftarkan tagihan vendor");
+            } catch (error) {
+              toast.error(getApiErrorDetail(error, "Tagihan vendor belum dapat didaftarkan. Periksa vendor, nomor invoice, nominal, dan kemungkinan invoice duplikat."));
             }
           }}
           className="flex flex-col gap-4"
