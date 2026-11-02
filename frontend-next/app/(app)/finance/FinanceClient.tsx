@@ -228,7 +228,7 @@ export default function FinanceClient() {
     description: "",
     tax_scheme: "PROPORTIONAL" as "PROPORTIONAL" | "FINAL_SETTLEMENT",
   });
-  const [apForm, setAPForm] = useState({ supplier_id: "", invoice_number: "", amount: 0, due_date: "" });
+  const [apForm, setAPForm] = useState({ supplier_id: "", invoice_number: "", amount: "", due_date: "" });
   const [paymentForm, setPaymentForm] = useState({
     bank_account: "",
     payment_method: "BANK_TRANSFER",
@@ -2623,7 +2623,7 @@ export default function FinanceClient() {
               await loadFinanceData(true);
               toast.success("Tagihan vendor berhasil disimpan sebagai DRAFT.");
               setIsAPModalOpen(false);
-              setAPForm({ supplier_id: "", invoice_number: "", amount: 0, due_date: "" });
+              setAPForm({ supplier_id: "", invoice_number: "", amount: "", due_date: "" });
             } catch {
               toast.error("Gagal mendaftarkan tagihan vendor");
             }
@@ -2659,8 +2659,11 @@ export default function FinanceClient() {
               <input
                 type="number"
                 required
+                min={1}
+                step={1}
+                placeholder="Contoh: 15000000"
                 value={apForm.amount}
-                onChange={e => setAPForm({ ...apForm, amount: Number(e.target.value) })}
+                onChange={e => setAPForm({ ...apForm, amount: e.target.value })}
                 className="input"
               />
             </div>
