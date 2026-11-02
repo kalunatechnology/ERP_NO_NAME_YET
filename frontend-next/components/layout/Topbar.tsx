@@ -15,7 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { canAccessRoute } from "@/lib/access/module-contract";
-import { fetchNotifications } from "@/lib/api/feed.api";
+import { fetchNotifications, subscribeToNotificationStateChange } from "@/lib/api/feed.api";
 import { getUserFacingApiError } from "@/lib/api/error-message";
 import toast from "react-hot-toast";
 
@@ -81,8 +81,9 @@ export function Topbar({ onMenuToggle, onNotificationClick, onAiChatToggle }: To
       } catch { /* ignore */ }
     };
     checkUnread();
+    const unsubscribe = subscribeToNotificationStateChange(() => { void checkUnread(); });
     const interval = setInterval(checkUnread, 30000);
-    return () => { active = false; clearInterval(interval); };
+    return () => { active = false; clearInterval(interval); unsubscribe(); };
   }, [company, user?.id]);
 
   const menuRef = useRef<HTMLDivElement>(null);

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/api/feed.api';
+import { fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead, publishNotificationStateChange } from '@/lib/api/feed.api';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import toast from 'react-hot-toast';
+import { getUserFacingApiError } from '@/lib/api/error-message';
 
 export function NotificationList({ onItemClick }: { onItemClick?: () => void }) {
   const router = useRouter();
@@ -13,7 +15,7 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetchNotifications(filter);
@@ -24,11 +26,11 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
 
   useEffect(() => {
-    loadData();
-  }, [filter]);
+    void loadData();
+  }, [loadData]);
 
   const handleItemClick = async (notif: any) => {
     // 1. Jika belum dibuka, langsung ubah state secara optimistik & panggil API
@@ -37,10 +39,14 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
         prev.map(n => (n.id === notif.id ? { ...n, is_read: true } : n))
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
+      publishNotificationStateChange(String(notif.id));
       try {
         await markNotificationAsRead(notif.id);
-      } catch (err) {
-        console.warn('Mark as read failed:', err);
+      } catch (error) {
+        toast.error(getUserFacingApiError(error, "Notifikasi belum dapat ditandai sudah dibuka. Coba segarkan daftar."));
+        setNotifications(prev => prev.map(n => (n.id === notif.id ? { ...n, is_read: false } : n)));
+        setUnreadCount(prev => prev + 1);
+        publishNotificationStateChange(undefined, "refresh");
       }
     }
 
@@ -56,10 +62,14 @@ export function NotificationList({ onItemClick }: { onItemClick?: () => void }) 
   const handleMarkAllRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
+    publishNotificationStateChange();
     try {
       await markAllNotificationsAsRead();
-    } catch (err) {
-      console.warn('Mark all read failed:', err);
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Notifikasi belum dapat ditandai sudah dibuka. Coba segarkan daftar."));
+      publishNotificationStateChange(undefined, "refresh");
+      await loadData();
+      return;
     }
     loadData();
   };

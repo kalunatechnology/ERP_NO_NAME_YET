@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Check, Copy, Mail, PanelRightClose, RefreshCw, Users, X } from "lucide-react";
-import { DynamicContact, RealAlertItem, fetchAppNotifications, fetchDynamicRightPanelData, fetchRealAlertsList, markNotificationAsRead } from "@/lib/api/feed.api";
+import { DynamicContact, RealAlertItem, fetchDynamicRightPanelData, fetchRealAlertsList, markNotificationAsRead, publishNotificationStateChange, subscribeToNotificationStateChange } from "@/lib/api/feed.api";
 import { NotificationList } from "@/components/notifications/NotificationList";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,29 +31,10 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationHistory, setNotificationHistory] = useState<RealAlertItem[]>([]);
-  const [nextNotificationCursor, setNextNotificationCursor] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const historyRequest = useRef(0);
-  const invalidateHistory = useCallback(() => { historyRequest.current++; }, []);
-  const closeNotifications = useCallback(() => { historyRequest.current++; setShowNotifications(false); setHistoryLoading(false); }, []);
+  const closeNotifications = useCallback(() => setShowNotifications(false), []);
   useEffect(() => {
-    closeNotifications(); setNotificationHistory([]); setNextNotificationCursor(null);
-    return invalidateHistory;
-  }, [company, user?.id, user?.active_role_code, closeNotifications, invalidateHistory]);
-
-  const loadNotificationHistory = async (cursor?: string) => {
-    const version = ++historyRequest.current;
-    setHistoryLoading(true); setHistoryError(null);
-    try {
-      const page = await fetchAppNotifications(cursor);
-      if (version !== historyRequest.current) return;
-      setNotificationHistory(previous => cursor ? Array.from(new Map([...previous, ...page.results].map(row => [row.id, row])).values()) : page.results);
-      setNextNotificationCursor(page.nextCursor);
-    } catch (error) { if (version === historyRequest.current) setHistoryError(getUserFacingApiError(error, "Notifikasi belum dapat dimuat. Coba kembali atau segarkan daftar.")); }
-    finally { if (version === historyRequest.current) setHistoryLoading(false); }
-  };
+    closeNotifications();
+  }, [company, user?.id, user?.active_role_code, closeNotifications]);
 
   const checkCanAccess = useCallback((href?: string): boolean => {
     if (!href) return true;
@@ -103,14 +84,28 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
     return () => clearInterval(timer);
   }, [loadFeed]);
 
+  useEffect(() => subscribeToNotificationStateChange(({ notificationId, action }) => {
+    if (action === "refresh") {
+      void loadFeed(true);
+      return;
+    }
+    const markRead = (item: RealAlertItem) => action === "all_read" || String(item.id) === notificationId
+      ? { ...item, isHighlighted: false }
+      : item;
+    setAlerts(previous => previous.map(markRead));
+  }), [loadFeed]);
+
   const openAlert = async (item: RealAlertItem) => {
     if (!item.href || !checkCanAccess(item.href)) return;
     if (item.isHighlighted) {
       setAlerts(prev => prev.map(a => a.id === item.id ? { ...a, isHighlighted: false } : a));
-      setNotificationHistory(prev => prev.map(n => n.id === item.id ? { ...n, isHighlighted: false } : n));
+      publishNotificationStateChange(String(item.id));
       try {
         await markNotificationAsRead(String(item.id));
-      } catch { /* ignore */ }
+      } catch (error) {
+        publishNotificationStateChange(undefined, "refresh");
+        toast.error(getUserFacingApiError(error, "Notifikasi belum dapat ditandai sudah dibuka. Coba segarkan daftar."));
+      }
     }
     closeNotifications();
     router.push(item.href);
@@ -200,9 +195,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
           {loadError && <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-[10px] leading-relaxed text-amber-900" role="status">{loadError}</div>}
 
           <div className="relative mt-4 pl-2.5">
-            <div className="absolute bottom-0 left-0 top-0 w-1 overflow-hidden rounded-full bg-[#D9D9D9]" aria-hidden="true">
-              <div className="h-[45%] w-full rounded-full bg-[#2649B3]" />
-            </div>
+            <div className={cn("absolute bottom-0 left-0 top-0 w-1 rounded-full", alerts.some(item => item.isHighlighted) ? "bg-[#2649B3]" : "bg-[#D9D9D9]")} aria-hidden="true" />
             <div className="flex flex-col gap-2.5">
               {loading ? [1, 2, 3].map((item) => (
                 <div key={item} className="h-[70px] animate-pulse rounded-md border border-[#E5E5E5] bg-white p-3">
@@ -227,7 +220,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
                     onClick={() => void openAlert(item)}
                     className={cn(
                       "flex min-h-[72px] w-full flex-col justify-center rounded-[10px] border px-3.5 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-[#9FD6FF] hover:shadow-xs",
-                      item.isHighlighted ? "border-blue-200 bg-blue-50/70" : "border-[#E5E7EB] bg-white"
+                      item.isHighlighted ? "border-blue-200 border-l-4 border-l-[#2649B3] bg-blue-50/70" : "border-[#E5E7EB] border-l-4 border-l-transparent bg-white"
                     )}
                     title={item.title}
                   >
@@ -250,7 +243,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
               })}
             </div>
           </div>
-          <button type="button" onClick={() => { setNotificationHistory([]); setNextNotificationCursor(null); setShowNotifications(true); void loadNotificationHistory(); }} className="mt-3 w-full rounded-lg border border-[#D9E5FF] px-3 py-2 text-xs font-bold text-[#294BB2] hover:bg-[#EAF6FF]">
+          <button type="button" onClick={() => setShowNotifications(true)} className="mt-3 w-full rounded-lg border border-[#D9E5FF] px-3 py-2 text-xs font-bold text-[#294BB2] hover:bg-[#EAF6FF]">
             Lihat semua notifikasi
           </button>
           <p className="mt-2 text-center text-[10px] text-[#6B7280]">Notifikasi tersimpan selama 3 hari.</p>

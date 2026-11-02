@@ -311,6 +311,22 @@ export const fetchNotifications = feedApi.fetchNotifications;
 export const markNotificationAsRead = feedApi.markNotificationAsRead;
 export const markAllNotificationsAsRead = feedApi.markAllNotificationsAsRead;
 
+const NOTIFICATION_STATE_CHANGED_EVENT = "app:notification-state-changed";
+
+export function publishNotificationStateChange(notificationId?: string, action: "read" | "all_read" | "refresh" = notificationId ? "read" : "all_read"): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(NOTIFICATION_STATE_CHANGED_EVENT, { detail: { notificationId, action } }));
+}
+
+export function subscribeToNotificationStateChange(listener: (change: { notificationId?: string; action?: "read" | "all_read" | "refresh" }) => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  const handleChange = (event: Event) => {
+    listener((event as CustomEvent<{ notificationId?: string; action?: "read" | "all_read" | "refresh" }>).detail || {});
+  };
+  window.addEventListener(NOTIFICATION_STATE_CHANGED_EVENT, handleChange);
+  return () => window.removeEventListener(NOTIFICATION_STATE_CHANGED_EVENT, handleChange);
+}
+
 /**
  * fetchDynamicRightPanelData adapts a frontend operation to its HTTP API contract.
  *
@@ -608,7 +624,7 @@ export interface RealAlertItem {
   href?: string;
 }
 
-function appNotificationAlert(n: any, index: number): RealAlertItem {
+function appNotificationAlert(n: any): RealAlertItem {
   let category = "Notifikasi Sistem";
   if (n.category === "ACCESS_REQUEST") category = "Otorisasi WBS";
   else if (n.category === "STATUS_UPDATE") category = "Pembaruan Proyek";
@@ -616,12 +632,12 @@ function appNotificationAlert(n: any, index: number): RealAlertItem {
   else if (String(n.category).startsWith("WEEKLY_TARGET_")) category = "Target Mingguan";
   else if (n.category) category = n.category;
   return { id: n.id, category, time: n.created_at ? timeAgo(n.created_at) : "Baru saja", title: n.title || "Notifikasi Baru",
-    snippet: n.description || n.title, isHighlighted: index === 0 && !n.is_read, categoryColor: index === 0 ? "#294BB2" : "#9CA3AF", href: n.target_url || "/projects" };
+    snippet: n.description || n.title, isHighlighted: !n.is_read, categoryColor: n.is_read ? "#9CA3AF" : "#294BB2", href: n.target_url || "/projects" };
 }
 
 export async function fetchAppNotifications(cursor?: string): Promise<{ results: RealAlertItem[]; nextCursor: string | null }> {
   const response = await api.get('/api/v1/core/app-notifications', { params: cursor ? { cursor } : undefined });
-  return { results: response.data.results.map((row: any, index: number) => ({ ...appNotificationAlert(row, index), isHighlighted: !row.is_read })), nextCursor: response.data.next_cursor };
+  return { results: response.data.results.map((row: any) => appNotificationAlert(row)), nextCursor: response.data.next_cursor };
 }
 
 export interface RealInventoryCheckData {
@@ -674,7 +690,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
 
     // 1. Prioritize real database app notifications
     if (Array.isArray(notifs) && notifs.length > 0) {
-      notifs.slice(0, 4).forEach((n: any, idx: number) => alerts.push(appNotificationAlert(n, idx)));
+      notifs.slice(0, 4).forEach((n: any) => alerts.push(appNotificationAlert(n)));
     }
 
     // 2. Add real active project alerts if needed
