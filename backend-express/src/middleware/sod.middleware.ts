@@ -88,13 +88,19 @@ export function enforceSoD(options: {
       // revocation fields for a trustworthy DoA grant. Fail closed until a
       // dedicated delegation model exists; an arbitrary DELEGATED approval may
       // never authorize maker === checker.
-      return next(
-        new ForbiddenError(
-          `[SoD Violation] Pengguna yang membuat dokumen ini (${currentUserId}) ` +
-          `tidak dapat melakukan aksi "${options.action ?? 'approve'}" pada dokumen yang sama. ` +
-          `Diperlukan Maker dan Checker yang berbeda.`,
-        ),
-      );
+      const actionMessages: Record<string, string> = {
+        approve: 'disetujui',
+        verify: 'diverifikasi',
+        reject: 'ditolak',
+        execute: 'diproses',
+        post: 'dibukukan',
+      };
+      const action = String(options.action ?? 'approve').toLowerCase();
+      const actionMessage = actionMessages[action];
+      const message = actionMessage
+        ? `Dokumen ini tidak dapat ${actionMessage} oleh pembuatnya. Silakan minta pengguna lain yang berwenang untuk melanjutkan.`
+        : 'Pembuat dokumen tidak dapat melanjutkan tindakan pada dokumen yang sama. Silakan minta pengguna lain yang berwenang.';
+      return next(new ForbiddenError(message));
     } catch (err) {
       return next(err);
     }

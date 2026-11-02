@@ -659,8 +659,11 @@ export default function FinanceClient() {
       await loadFinanceData(true);
       toast.success("Dokumen tagihan berhasil diverifikasi melalui lifecycle backend.");
       setIsMatchModalOpen(false);
-    } catch {
-      toast.error("Gagal memverifikasi 3-way match");
+    } catch (error) {
+      const detail = getApiErrorDetail(error, "Dokumen gagal diverifikasi. Silakan coba kembali.");
+      toast.error(/\[SoD Violation\]|Maker dan Checker/i.test(detail)
+        ? "Dokumen ini tidak dapat diverifikasi oleh pembuatnya. Silakan minta pengguna lain yang berwenang untuk melanjutkan."
+        : detail);
     }
   };
 
