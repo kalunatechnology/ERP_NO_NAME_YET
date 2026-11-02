@@ -27,6 +27,8 @@ export function validate(
       res.status(400).json({
         success: false,
         status_code: 400,
+        error: 'VALIDATION_ERROR',
+        detail: 'Beberapa isian belum sesuai. Periksa isian yang ditandai, lalu coba lagi.',
         errors: fieldErrors,
       });
       return;
@@ -67,6 +69,8 @@ export function validateRequest(schemas: {
       res.status(400).json({
         success: false,
         status_code: 400,
+        error: 'VALIDATION_ERROR',
+        detail: 'Beberapa isian belum sesuai. Periksa isian yang ditandai, lalu coba lagi.',
         errors: allErrors,
       });
       return;

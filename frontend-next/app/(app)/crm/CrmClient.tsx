@@ -1392,13 +1392,32 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
                           title={isEstimateLocked ? "Estimate sudah terikat quotation; hitung ulang tanpa revisi dapat membuat nilai dokumen berbeda." : "Jumlahkan seluruh biaya langsung, overhead, dan contingency; hitung harga penawaran dari markup."}
                         />
                         <ActionBtn onClick={async () => {
-                          const result = await createQuotationFromEstimate(e.id);
-                          toast.success(result?.created === false
-                            ? `Quotation sudah ada dengan status ${result.status}. Untuk mengubah nilai, buat revisi baru.`
-                            : "Quotation draft dibuat. Lanjutkan dengan approval, kirim ke customer, lalu catat keputusannya.");
-                          onRefresh();
+                          try {
+                            const result = await createQuotationFromEstimate(e.id);
+                            toast.success(result?.created === false
+                              ? `Quotation sudah ada dengan status ${result.status}. Untuk mengubah nilai, buat revisi baru.`
+                              : "Draft quotation berhasil dibuat. Lanjutkan dengan persetujuan, kirim ke pelanggan, lalu catat keputusannya.");
+                            onRefresh();
+                          } catch (error: any) {
+                            toast.error(error?.response?.data?.detail || error?.response?.data?.message || "Quotation belum berhasil dibuat. Periksa status estimasi dan data pelanggan, lalu coba lagi.");
+                          }
                         }} label="📄 Buat Quotation" small title="Buat dokumen penawaran dari hasil estimasi ini; quotation masih perlu approval dan keputusan customer." />
-                        <button onClick={async () => { if(!confirm("Hapus?")) return; await deleteCostEstimate(e.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors" title="Hapus estimate">
+                        <button
+                          onClick={async () => {
+                            if (isEstimateLocked) return;
+                            if (!confirm("Hapus estimasi biaya ini?")) return;
+                            try {
+                              await deleteCostEstimate(e.id);
+                              toast.success("Estimasi biaya berhasil dihapus.");
+                              onRefresh();
+                            } catch (error: any) {
+                              toast.error(error?.response?.data?.detail || error?.response?.data?.message || "Estimasi biaya belum terhapus. Muat ulang data dan coba lagi.");
+                            }
+                          }}
+                          disabled={isEstimateLocked}
+                          className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+                          title={isEstimateLocked ? "Estimasi ini sudah digunakan pada quotation dan tidak dapat dihapus." : "Hapus estimasi biaya"}
+                        >
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -1424,6 +1443,11 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
                           ))}
                         </div>
                       </div>
+                    )}
+                    {isEstimateLocked && (
+                      <p className="mt-2 text-[11px] leading-4 text-amber-800">
+                        Estimasi ini sudah digunakan pada quotation, jadi penghapusan dikunci agar riwayat penawaran tetap utuh. Buat revisi estimasi baru jika nilainya perlu diubah.
+                      </p>
                     )}
                     <div className="mt-2 border-t border-black/5 pt-2 text-[11px] leading-5 text-text-secondary">
                       HPP = {formatMoney(directCost)} + {formatMoney(overheadCost)} + {formatMoney(contingency)} = <b className="text-text-primary">{formatMoney(totalCost)}</b><br />
@@ -1630,6 +1654,7 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [domainFilter, setDomainFilter] = useState("");
+  const [warrantyDetails, setWarrantyDetails] = useState<Record<string, any>>({});
   const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", description: "", serial_number: "" });
   const ticketDomains = Array.from(new Set((data.cases || []).map((item) => item.origin_domain).filter((value): value is string => Boolean(value)))).sort();
   const visibleCases = (data.cases || []).filter((item) => !domainFilter || item.origin_domain === domainFilter);
@@ -1673,7 +1698,8 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
  */
               const cust = (data.parties||[]).find(p => String(p.id) === String(c.customer_party));
               return (
-                <div key={c.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 gap-3">
+                <div key={c.id} className="flex flex-col p-3 rounded-xl border border-text-tertiary/60 gap-3">
+                  <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold truncate">{c.subject || `Tiket ${String(c.id).slice(0,8)}`}</div>
                     <div className="text-xs text-text-secondary mt-0.5">
@@ -1686,7 +1712,7 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {!readOnly ? (
                       <>
-                        {!resolved && <ActionBtn onClick={async () => { try { const result = await checkTicketWarrantyStatus(c.id); toast.success(`Garansi: ${result.warranty_status}`); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Pemeriksaan garansi gagal."); } }} label="Periksa garansi" small variant="ghost" />}
+                        {!resolved && <ActionBtn onClick={async () => { try { const result = await checkTicketWarrantyStatus(c.id); setWarrantyDetails(current => ({ ...current, [String(c.id)]: result })); toast.success(`Status garansi: ${result.warranty_status}. Periode dan riwayat servis ditampilkan.`); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Pemeriksaan garansi gagal."); } }} label="Periksa garansi" small variant="ghost" />}
                         {c.warranty_status === "WARRANTY_ACTIVE" && !resolved && <ActionBtn onClick={async () => { try { await createServiceWorkOrder(c.id); toast.success("Work Order teknisi dibuat."); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal membuat Work Order."); } }} label="Buat Work Order" small />}
                         {resolved && (
                           <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">RESOLVED</span>
@@ -1701,6 +1727,16 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
                       </span>
                     )}
                   </div>
+                  </div>
+                  {warrantyDetails[String(c.id)] && <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs text-slate-700 space-y-2">
+                    <div className="font-semibold">Riwayat garansi & servis</div>
+                    <div>Pengiriman produk: {warrantyDetails[String(c.id)].delivered_at ? new Date(warrantyDetails[String(c.id)].delivered_at).toLocaleDateString("id-ID") : "Belum ditemukan"}</div>
+                    <div className="font-medium">Periode garansi</div>
+                    {(warrantyDetails[String(c.id)].warranty_periods || []).length ? warrantyDetails[String(c.id)].warranty_periods.map((period: any) => <div key={period.id} className="flex justify-between gap-3"><span>{period.start_date ? new Date(period.start_date).toLocaleDateString("id-ID") : "Awal tidak tercatat"} – {period.end_date ? new Date(period.end_date).toLocaleDateString("id-ID") : "Tanpa tanggal akhir"}</span><span className="font-medium">{period.current_status === "ACTIVE" ? "Aktif" : period.current_status === "UPCOMING" ? "Belum mulai" : period.current_status === "EXPIRED" ? "Berakhir" : "Tidak aktif"}</span></div>) : <div>Belum ada periode garansi yang tercatat untuk produk ini.</div>}
+                    <div className="font-medium pt-1">Riwayat perbaikan</div>
+                    {(warrantyDetails[String(c.id)].repair_history || []).length ? warrantyDetails[String(c.id)].repair_history.map((work: any) => <div key={work.id}>{new Date(work.created_at).toLocaleDateString("id-ID")} · {work.work_order_type} · {work.status} — {work.description}</div>) : <div>Belum ada work order perbaikan.</div>}
+                    {(warrantyDetails[String(c.id)].resolutions || []).map((resolution: any) => <div key={resolution.id}>Penyelesaian: {resolution.resolution_type} — {resolution.resolution_notes}</div>)}
+                  </div>}
                 </div>
               );
             })}

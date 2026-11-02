@@ -200,7 +200,7 @@ reportingRouter.get('/periodic-project-summary', async (req: Request, res: Respo
   try {
     const periodType = String(req.query.period_type ?? 'DAILY').toUpperCase();
     if (!['DAILY', 'WEEKLY', 'MONTHLY'].includes(periodType)) {
-      return res.status(400).json({ success: false, code: 'INVALID_PERIOD_TYPE', message: 'period_type harus DAILY, WEEKLY, atau MONTHLY.' });
+      return res.status(400).json({ success: false, code: 'INVALID_PERIOD_TYPE', message: 'Pilih periode harian, mingguan, atau bulanan.' });
     }
 
     const now = new Date();

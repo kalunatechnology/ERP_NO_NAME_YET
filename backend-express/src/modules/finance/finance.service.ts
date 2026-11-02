@@ -576,29 +576,65 @@ export class FinanceService {
     companyId: string;
   }) {
     const { statementLineId, paymentId, journalLineId, matchedAmount, matchType, reconciledByUserId, companyId } = payload;
+    if (!Number.isFinite(matchedAmount) || matchedAmount <= 0) {
+      throw new ValidationError('Nominal yang dicocokkan harus lebih dari nol.');
+    }
+    if (Boolean(paymentId) === Boolean(journalLineId)) {
+      throw new ValidationError('Pilih satu transaksi pembayaran atau satu baris jurnal untuk dicocokkan.');
+    }
 
-    const statementLine = await prisma.fin_bank_statement_line.findFirst({ where: { id: statementLineId, company_id: companyId } });
-    if (!statementLine) throw new NotFoundError('BankStatementLine');
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM fin_bank_statement_line WHERE id = ${statementLineId} AND company_id = ${companyId} FOR UPDATE`;
+      const statementLine = await tx.fin_bank_statement_line.findFirst({ where: { id: statementLineId, company_id: companyId } });
+      if (!statementLine) throw new NotFoundError('BankStatementLine');
 
-    const existing = await prisma.fin_bank_reconciliation.findFirst({
-      where: { bank_statement_line_id: statementLineId, company_id: companyId },
-    });
-    if (existing) throw new ValidationError('Baris mutasi ini sudah direkonsiliasi sebelumnya.');
+      const existing = await tx.fin_bank_reconciliation.findFirst({
+        where: { bank_statement_line_id: statementLineId, company_id: companyId },
+        select: { id: true },
+      });
+      if (existing) throw new ValidationError('Mutasi ini sudah dicocokkan sebelumnya. Muat ulang daftar untuk melihat status terbaru.');
 
-    return prisma.fin_bank_reconciliation.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenant_id: statementLine.tenant_id,
-        company_id: companyId,
-        created_by_id: reconciledByUserId,
-        bank_statement_line_id: statementLineId,
-        payment_id: paymentId ?? null,
-        journal_line_id: journalLineId ?? null,
-        matched_amount: matchedAmount,
-        match_type: matchType,
-        status: 'MATCHED',
-      },
-    });
+      if (paymentId) {
+        const payment = await tx.fin_payment.findFirst({
+          where: { id: paymentId, company_id: companyId, status: 'POSTED', payment_type: { in: ['OUTGOING', 'CUSTOMER_RECEIPT'] } },
+          select: { amount: true, bank_account_id: true },
+        });
+        if (!payment) {
+          throw new ValidationError('Pilih pembayaran atau penerimaan yang sudah dibukukan pada perusahaan ini.');
+        }
+
+        const statement = statementLine.bank_statement_id
+          ? await tx.fin_bank_statement.findFirst({
+            where: { id: statementLine.bank_statement_id, company_id: companyId },
+            select: { bank_account_id: true },
+          })
+          : null;
+        if (!statement) throw new ValidationError('Rekening pada mutasi tidak ditemukan. Impor ulang mutasi dari rekening yang benar.');
+        if (payment.bank_account_id !== statement.bank_account_id) {
+          throw new ValidationError('Transaksi dan mutasi berasal dari rekening yang berbeda. Pilih transaksi dari rekening yang sama.');
+        }
+
+        const transactionAmount = Number(payment.amount ?? 0);
+        if (matchedAmount > transactionAmount + 0.01) {
+          throw new ValidationError('Nominal yang dicocokkan melebihi nominal transaksi yang dipilih.');
+        }
+      }
+
+      return tx.fin_bank_reconciliation.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: statementLine.tenant_id,
+          company_id: companyId,
+          created_by_id: reconciledByUserId,
+          bank_statement_line_id: statementLineId,
+          payment_id: paymentId ?? null,
+          journal_line_id: journalLineId ?? null,
+          matched_amount: matchedAmount,
+          match_type: matchType,
+          status: 'MATCHED',
+        },
+      });
+    }, { isolationLevel: 'Serializable' });
   }
 
   // ---------------------------------------------------------------------------

@@ -858,7 +858,7 @@ crmRouter.use('/cost-estimates', createCrudRouter({
   },
   beforeDelete: async (_req, existing) => {
     const version = await prisma.crm_quotation_version.findFirst({ where: { estimate_id: existing.id, company_id: existing.company_id }, select: { id: true } });
-    if (version) throw new ConflictError('Estimate sudah terhubung ke quotation dan tidak dapat dihapus.');
+    if (version) throw new ConflictError('Estimasi biaya ini sudah digunakan pada quotation, jadi tidak dapat dihapus. Jika nilainya perlu diubah, buat revisi estimasi baru agar riwayat penawaran tetap tercatat.');
   },
   afterDelete: async (_req, existing) => {
     await prisma.crm_cost_estimate_line.deleteMany({ where: { estimate_id: existing.id, company_id: existing.company_id } });

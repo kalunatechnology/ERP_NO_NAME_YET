@@ -116,7 +116,7 @@ crmWhatsAppAdminRouter.post('/connections/:id/test', async (req, res, next) => {
     const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(12_000) });
     const payload = await response.json().catch(() => ({})) as any;
     if (!response.ok) {
-      res.status(422).json({ connected: false, message: String(payload?.error?.message || 'Meta menolak pemeriksaan koneksi; periksa token dan Phone Number ID.') });
+      res.status(422).json({ connected: false, message: 'Koneksi WhatsApp belum dapat diverifikasi. Periksa token akses dan ID nomor telepon, lalu coba lagi.' });
       return;
     }
     const updated = await prisma.crm_whatsapp_connection.update({ where: { id: connection.id }, data: { display_phone_number: payload.display_phone_number || connection.display_phone_number, last_verified_at: new Date() } });

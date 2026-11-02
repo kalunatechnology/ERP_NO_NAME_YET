@@ -39,26 +39,45 @@ serviceRouter.post('/cases/:id/check-warranty', async (req: Request, res: Respon
     let warrantyStatus = 'WARRANTY_VOID';
     let warrantyExpiresAt: Date | null = null;
     let warrantyContractId: string | null = null;
+    let warrantyPeriods: Array<{ id: string; start_date: Date | null; end_date: Date | null; status: string; current_status: string }> = [];
+    let workOrders: Array<{ id: string; work_order_type: string; description: string; status: string; created_at: Date; completed_at: Date | null }> = [];
+    let resolutions: Array<{ id: string; resolution_type: string; resolution_notes: string; resolved_at: Date | null }> = [];
     if (delivery && (!record.customer_party_id || record.customer_party_id === delivery.customer_party_id)) {
-      const warranties = delivery.customer_party_id && delivery.product_id ? await prisma.$queryRaw<Array<{ id: string; end_date: Date | null }>>`
-        SELECT c.id, c.end_date
+      warrantyPeriods = delivery.customer_party_id && delivery.product_id ? await prisma.$queryRaw<Array<{ id: string; start_date: Date | null; end_date: Date | null; status: string }>>`
+        SELECT c.id, c.start_date, c.end_date, c.status
         FROM sales_contract c
         JOIN sales_contract_line cl ON cl.contract_id = c.id AND cl.company_id = c.company_id
         WHERE c.company_id = ${req.companyId} AND c.customer_party_id = ${delivery.customer_party_id}
           AND cl.product_id = ${delivery.product_id} AND UPPER(c.contract_type) LIKE '%WARRANTY%'
-          AND UPPER(c.status) = 'ACTIVE'
-          AND (c.start_date IS NULL OR c.start_date <= NOW())
-          AND (c.end_date IS NULL OR c.end_date >= NOW())
-        ORDER BY c.end_date DESC NULLS LAST
-        LIMIT 1
+        ORDER BY c.start_date DESC NULLS LAST, c.end_date DESC NULLS LAST
       ` : [];
-      const warranty = warranties[0];
+      const now = new Date();
+      const periods = warrantyPeriods.map(period => ({
+        ...period,
+        current_status: (period.status || '').toUpperCase() === 'EXPIRED' || (period.end_date && period.end_date < now) ? 'EXPIRED'
+          : period.start_date && period.start_date > now ? 'UPCOMING'
+            : (period.status || '').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE',
+      }));
+      warrantyPeriods = periods;
+      const warranty = periods.find(period => period.current_status === 'ACTIVE');
       if (warranty) {
         warrantyStatus = 'WARRANTY_ACTIVE';
         warrantyExpiresAt = warranty.end_date;
         warrantyContractId = warranty.id;
       } else warrantyStatus = 'WARRANTY_EXPIRED';
     }
+    [workOrders, resolutions] = await Promise.all([
+      prisma.service_work_order.findMany({
+        where: { company_id: req.companyId, service_case_id: record.id },
+        select: { id: true, work_order_type: true, description: true, status: true, created_at: true, completed_at: true },
+        orderBy: { created_at: 'desc' },
+      }),
+      prisma.service_resolution.findMany({
+        where: { company_id: req.companyId, service_case_id: record.id },
+        select: { id: true, resolution_type: true, resolution_notes: true, resolved_at: true },
+        orderBy: { resolved_at: 'desc' },
+      }),
+    ]);
     const checkedAt = new Date();
     const updated = await prisma.service_case.update({
       where: { id: record.id },
@@ -69,6 +88,7 @@ serviceRouter.post('/cases/:id/check-warranty', async (req: Request, res: Respon
       warranty_checked_at: checkedAt, warranty_expires_at: warrantyExpiresAt,
       delivery_id: delivery?.delivery_id ?? null, delivered_at: delivery?.delivery_date ?? null,
       warranty_contract_id: warrantyContractId, ticket_status: updated.status,
+      warranty_periods: warrantyPeriods, repair_history: workOrders, resolutions,
     });
   } catch (err) { next(err); }
 });

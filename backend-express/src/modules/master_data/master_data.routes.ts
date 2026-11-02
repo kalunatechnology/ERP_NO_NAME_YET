@@ -84,7 +84,7 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
         });
       }
     } else {
-      res.status(400).json({ detail: 'party_id or customer_profile_id required.' });
+      res.status(400).json({ detail: 'Pilih pelanggan atau profil pelanggan sebelum melanjutkan.' });
       return;
     }
 

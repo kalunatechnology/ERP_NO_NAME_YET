@@ -669,6 +669,37 @@ export class FinanceHardeningService {
           );
         }
 
+        // An outstanding invoice amount does not include submitted payments until
+        // they are executed. Prevent another request against the same invoice
+        // while one is pending, approved, or already posted.
+        const existingAllocations = await tx.fin_payment_allocation.findMany({
+          where: {
+            billing_document_id: bill.id,
+            company_id: companyId,
+          },
+          select: { payment_id: true },
+        });
+        const existingPaymentIds = existingAllocations
+          .map((allocation) => allocation.payment_id)
+          .filter((paymentId): paymentId is string => Boolean(paymentId));
+
+        if (existingPaymentIds.length) {
+          const existingPayment = await tx.fin_payment.findFirst({
+            where: {
+              id: { in: existingPaymentIds },
+              company_id: companyId,
+              status: { in: ['SUBMITTED', 'APPROVED', 'POSTED'] },
+            },
+            select: { id: true },
+          });
+
+          if (existingPayment) {
+            throw new ConflictError(
+              'Invoice ini sudah memiliki permintaan pembayaran yang masih diproses atau sudah dibayar.',
+            );
+          }
+        }
+
         const outstanding = Number(
           bill.outstanding_amount ??
           bill.total_amount ??

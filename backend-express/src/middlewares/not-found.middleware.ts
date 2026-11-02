@@ -16,6 +16,6 @@ export function notFound(req: Request, res: Response): void {
   res.status(404).json({
     success: false,
     error: 'NOT_FOUND',
-    detail: `Endpoint ${req.method} ${req.originalUrl} tidak ditemukan.`,
+    detail: 'Halaman atau fitur yang Anda buka tidak tersedia. Kembali ke menu sebelumnya atau muat ulang halaman.',
   });
 }

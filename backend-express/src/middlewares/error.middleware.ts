@@ -9,7 +9,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
-import { AppError } from '../utils/errors';
+import { AppError, userFacingMessage } from '../utils/errors';
 
 type DriverAdapterErrorLike =
   Error & {
@@ -45,6 +45,37 @@ function getDriverAdapterErrorKind(
   return err.message || null;
 }
 
+function readableFieldName(field: string): string {
+  const labels: Record<string, string> = {
+    customer_party_id: 'pelanggan',
+    party_id: 'pelanggan atau rekanan',
+    project_id: 'proyek',
+    estimate_id: 'estimasi biaya',
+    quotation_id: 'quotation',
+    invoice_id: 'invoice',
+    company_id: 'perusahaan',
+    tenant_id: 'ruang kerja',
+    user_id: 'pengguna',
+    email: 'alamat email',
+    phone: 'nomor telepon',
+    quantity: 'jumlah',
+    amount: 'nominal',
+    due_date: 'tanggal jatuh tempo',
+    payment_date: 'tanggal pembayaran',
+    reference_number: 'nomor referensi',
+    invoice_number: 'nomor invoice',
+    estimate_number: 'nomor estimasi',
+    quotation_code: 'kode quotation',
+  };
+  if (labels[field]) return labels[field];
+  if (field.includes('_')) return 'data terkait';
+  return field
+    .replace(/_id$/i, '')
+    .replace(/_+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLocaleLowerCase('id-ID');
+}
+
 /**
  * Global Error Handler Middleware.
  *
@@ -70,7 +101,7 @@ export function errorHandler(
     res.status(err.statusCode).json({
       success: false,
       error: err.code,
-      detail: err.message,
+      detail: userFacingMessage(err.message),
       ...(err.errors !== undefined ? { errors: err.errors } : {}),
       request_id: req.requestId,
     });
@@ -105,11 +136,16 @@ export function errorHandler(
  * Security intent: The check runs before protected business handlers so unauthenticated, cross-company, unauthorized, or invalid requests cannot reach persistence mutations.
  * Data/side effects: May mutate request metadata or the response, as shown in the implementation.
  */
-        const fields = (err.meta?.['target'] as string[])?.join(', ') ?? 'field';
+        const target = err.meta?.['target'];
+        const fields = Array.isArray(target)
+          ? [...new Set(target.map((field) => readableFieldName(String(field))))].join(', ')
+          : '';
         res.status(409).json({
           success: false,
           error: 'UNIQUE_CONSTRAINT_ERROR',
-          detail: `Data dengan ${fields} yang sama sudah ada.`,
+          detail: fields
+            ? `Data dengan ${fields} yang sama sudah ada. Ubah nilainya atau buka data yang sudah tersedia.`
+            : 'Data serupa sudah ada. Periksa kembali nomor atau kode yang dimasukkan.',
           request_id: req.requestId,
         });
         return;
@@ -119,7 +155,7 @@ export function errorHandler(
         res.status(404).json({
           success: false,
           error: 'NOT_FOUND',
-          detail: 'Data tidak ditemukan.',
+          detail: 'Data tidak ditemukan atau sudah berubah. Muat ulang halaman, lalu periksa kembali.',
           request_id: req.requestId,
         });
         return;
@@ -129,7 +165,7 @@ export function errorHandler(
         res.status(400).json({
           success: false,
           error: 'FOREIGN_KEY_ERROR',
-          detail: 'Relasi foreign key tidak valid. Pastikan ID referensi yang diberikan sudah ada.',
+          detail: 'Data belum dapat disimpan karena salah satu pilihan terkait sudah tidak tersedia. Muat ulang halaman, pilih data yang masih tersedia, lalu coba lagi.',
           request_id: req.requestId,
         });
         return;
@@ -139,17 +175,17 @@ export function errorHandler(
         res.status(400).json({
           success: false,
           error: 'REQUIRED_RELATION_ERROR',
-          detail: 'Relasi yang diperlukan tidak ditemukan.',
+          detail: 'Lengkapi pilihan data terkait sebelum melanjutkan. Jika pilihan yang diperlukan tidak tersedia, muat ulang halaman.',
           request_id: req.requestId,
         });
         return;
       }
       default: {
         console.error('[prisma]', err.code, err.message);
-        res.status(400).json({
+        res.status(500).json({
           success: false,
           error: 'DATABASE_ERROR',
-          detail: err.message,
+          detail: 'Data belum dapat diproses. Periksa kembali isian Anda, lalu coba lagi. Jika masalah berulang, hubungi administrator dan sertakan nomor laporan.',
           request_id: req.requestId,
         });
         return;
@@ -161,7 +197,7 @@ export function errorHandler(
     res.status(400).json({
       success: false,
       error: 'VALIDATION_ERROR',
-      detail: 'Request data tidak valid untuk operasi database.',
+      detail: 'Sebagian data belum sesuai. Periksa kembali isian yang wajib diisi, lalu coba lagi.',
       request_id: req.requestId,
     });
     return;
@@ -175,6 +211,8 @@ export function errorHandler(
     res.status(400).json({
       success: false,
       status_code: 400,
+      error: 'VALIDATION_ERROR',
+      detail: 'Beberapa isian belum sesuai. Periksa isian yang ditandai, lalu coba lagi.',
       errors: fieldErrors,
       request_id: req.requestId,
     });
@@ -192,7 +230,7 @@ export function errorHandler(
       res.status(400).json({
         success: false,
         error: 'FOREIGN_KEY_ERROR',
-        detail: 'Relasi database tidak valid. Salah satu ID referensi tidak ditemukan pada tabel tujuan.',
+        detail: 'Data belum dapat disimpan karena salah satu pilihan terkait sudah tidak tersedia. Muat ulang halaman, pilih data yang masih tersedia, lalu coba lagi.',
         request_id: req.requestId,
       });
       return;
@@ -202,7 +240,7 @@ export function errorHandler(
       res.status(409).json({
         success: false,
         error: 'UNIQUE_CONSTRAINT_ERROR',
-        detail: 'Data dengan referensi yang sama sudah tersedia.',
+        detail: 'Data serupa sudah ada. Periksa kembali nomor atau kode yang dimasukkan.',
         request_id: req.requestId,
       });
       return;
@@ -211,7 +249,7 @@ export function errorHandler(
     res.status(400).json({
       success: false,
       error: 'DATABASE_DRIVER_ERROR',
-      detail: 'Operasi database gagal karena constraint database.',
+      detail: 'Data belum berhasil disimpan karena ada informasi terkait yang tidak cocok. Periksa kembali pilihan Anda, lalu coba lagi.',
       request_id: req.requestId,
     });
     return;
@@ -225,9 +263,7 @@ export function errorHandler(
     res.status(500).json({
       success: false,
       error: 'INTERNAL_SERVER_ERROR',
-      detail: process.env['NODE_ENV'] === 'production'
-        ? 'Terjadi kesalahan internal server.'
-        : err.message,
+      detail: 'Permintaan belum berhasil diproses karena kendala sementara. Coba lagi. Jika kendala berulang, hubungi administrator dan sertakan nomor laporan ini.',
       request_id: req.requestId,
     });
     return;
@@ -236,7 +272,7 @@ export function errorHandler(
   res.status(500).json({
     success: false,
     error: 'INTERNAL_SERVER_ERROR',
-    detail: 'Terjadi kesalahan internal server.',
+    detail: 'Permintaan belum berhasil diproses karena kendala sementara. Coba lagi. Jika kendala berulang, hubungi administrator dan sertakan nomor laporan ini.',
     request_id: req.requestId,
   });
 }

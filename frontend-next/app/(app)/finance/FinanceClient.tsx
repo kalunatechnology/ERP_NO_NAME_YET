@@ -18,7 +18,7 @@ import {
   ClipboardList, Receipt, RotateCcw, WalletCards, LibraryBig, FileBarChart,
   Link2, Calculator, CalendarRange, HardHat, Send, Info
 } from "lucide-react";
-import { cn, formatMoney, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
+import { cn, formatMoney, formatRupiah, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import { getApiErrorDetail } from "@/lib/api/project.api";
@@ -189,6 +189,7 @@ export default function FinanceClient() {
   const [journalEntries, setJournalEntries] = useState<any[]>([]);
   const [bankStatements, setBankStatements] = useState<any[]>([]);
   const [bankReconciliations, setBankReconciliations] = useState<any[]>([]);
+  const [bankMatchPayments, setBankMatchPayments] = useState<any[]>([]);
   const [bankAccounts, setBankAccounts] = useState<FinanceBankAccount[]>([]);
   const [bankImportAccountId, setBankImportAccountId] = useState("");
   const [bankImportFile, setBankImportFile] = useState<File | null>(null);
@@ -294,7 +295,7 @@ export default function FinanceClient() {
         }
       };
 
-      const [costRes, wipReadinessRes, fundRes, propRes, apRes, receiptRes, paymentRes, tbRes, jeRes, plRes, bsRes, stmtLinesRes, reconciliationRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
+      const [costRes, wipReadinessRes, fundRes, propRes, apRes, receiptRes, paymentRes, bankMatchPaymentRes, tbRes, jeRes, plRes, bsRes, stmtLinesRes, reconciliationRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
         safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
         canOperateFinance
           ? safeGet("/api/v1/finance/project-cost-entries/wip-readiness", "costing")
@@ -304,6 +305,7 @@ export default function FinanceClient() {
         safeGet("/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50", "ap"),
         safeGet("/api/v1/finance/customer-receipts/?page_size=50", "ar"),
         safeGet("/api/v1/finance/payments/?payment_type=OUTGOING&page_size=50", "ap"),
+        safeGet("/api/v1/finance/payments/?status=POSTED&page_size=200", "banking_hub"),
         safeGet("/api/v1/finance/trial-balance", "gl"),
         safeGet("/api/v1/finance/journal-entries/?page_size=30&ordering=-posting_date", "gl"),
         safeGet("/api/v1/finance/profit-and-loss", "lapkeu"),
@@ -326,6 +328,7 @@ export default function FinanceClient() {
 
       setVendorBills(normalizeList(apRes.data).rows);
       setPayments(normalizeList(paymentRes.data).rows);
+      setBankMatchPayments(normalizeList(bankMatchPaymentRes.data).rows.filter((payment: any) => payment.status === "POSTED"));
       setCustomerReceipts(normalizeList<any>(receiptRes.data).rows.map((receipt) => ({
         ...(typeof receipt.allocation_plan === "object" && receipt.allocation_plan ? receipt.allocation_plan : {}),
         ...receipt,
@@ -707,8 +710,8 @@ export default function FinanceClient() {
       await loadFinanceData(true);
       toast.success(`Permintaan pembayaran ${formatMoney(amount)} berhasil diajukan dan menunggu approval.`);
       setIsPaymentModalOpen(false);
-    } catch {
-      toast.error("Gagal memproses pembayaran");
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || err.response?.data?.message || "Permintaan pembayaran belum berhasil dibuat. Periksa data tagihan dan coba lagi.");
     }
   };
 
@@ -1711,8 +1714,8 @@ export default function FinanceClient() {
                       : "bg-red-50 border-red-200 text-red-800"
                   )}>
                     {trialBalance.is_balanced
-                      ? <><CheckCircle2 size={15} /> Trial Balance SEIMBANG — Total Debit = Total Kredit ({formatMoney(trialBalance.total_debit)})</>
-                      : <><AlertTriangle size={15} /> TIDAK SEIMBANG! Debit: {formatMoney(trialBalance.total_debit)} ≠ Kredit: {formatMoney(trialBalance.total_credit)}</>}
+                      ? <><CheckCircle2 size={15} /> Trial Balance SEIMBANG — Total Debit = Total Kredit ({formatRupiah(trialBalance.total_debit)})</>
+                      : <><AlertTriangle size={15} /> TIDAK SEIMBANG! Debit: {formatRupiah(trialBalance.total_debit)} ≠ Kredit: {formatRupiah(trialBalance.total_credit)}</>}
                   </div>
                 )}
                 <div className="table-scroll-wrapper">
@@ -1741,11 +1744,11 @@ export default function FinanceClient() {
                               "bg-purple-100 text-purple-700"
                             )}>{acc.account_type}</span>
                           </td>
-                          <td className="py-2.5 px-4 text-right font-mono">{acc.total_debit > 0 ? formatMoney(acc.total_debit) : "-"}</td>
-                          <td className="py-2.5 px-4 text-right font-mono">{acc.total_credit > 0 ? formatMoney(acc.total_credit) : "-"}</td>
+                          <td className="py-2.5 px-4 text-right font-mono">{acc.total_debit > 0 ? formatRupiah(acc.total_debit) : "-"}</td>
+                          <td className="py-2.5 px-4 text-right font-mono">{acc.total_credit > 0 ? formatRupiah(acc.total_credit) : "-"}</td>
                           <td className={cn("py-2.5 px-4 text-right font-bold font-mono",
                             acc.net_balance >= 0 ? "text-brand-deep-green" : "text-red-600"
-                          )}>{formatMoney(acc.net_balance)}</td>
+                          )}>{formatRupiah(acc.net_balance)}</td>
                         </tr>
                       ))}
                       {!trialBalance?.accounts?.length && (
@@ -1759,9 +1762,9 @@ export default function FinanceClient() {
                       <tfoot className="bg-gray-100 border-t-2 border-text-tertiary">
                         <tr>
                           <td colSpan={3} className="py-3 px-4 text-xs font-black text-text-primary uppercase">GRAND TOTAL</td>
-                          <td className="py-3 px-4 text-right font-black font-mono text-brand-deep-green">{formatMoney(trialBalance.total_debit)}</td>
-                          <td className="py-3 px-4 text-right font-black font-mono text-red-700">{formatMoney(trialBalance.total_credit)}</td>
-                          <td className="py-3 px-4 text-right font-black font-mono">{formatMoney(trialBalance.total_debit - trialBalance.total_credit)}</td>
+                          <td className="py-3 px-4 text-right font-black font-mono text-brand-deep-green">{formatRupiah(trialBalance.total_debit)}</td>
+                          <td className="py-3 px-4 text-right font-black font-mono text-red-700">{formatRupiah(trialBalance.total_credit)}</td>
+                          <td className="py-3 px-4 text-right font-black font-mono">{formatRupiah(trialBalance.total_debit - trialBalance.total_credit)}</td>
                         </tr>
                       </tfoot>
                     )}
@@ -1854,16 +1857,16 @@ export default function FinanceClient() {
                 <div className="lg:col-span-3 grid grid-cols-3 gap-3">
                   <div className={cn("card rounded-2xl p-4 border-l-4", profitLoss?.is_profit ? "border-brand-green" : "border-red-500")}>
                     <span className="text-xs text-text-secondary">Total Pendapatan</span>
-                    <p className="text-xl font-black text-brand-deep-green">{formatMoney(profitLoss?.total_revenue ?? 0)}</p>
+                    <p className="text-xl font-black text-brand-deep-green">{formatRupiah(profitLoss?.total_revenue ?? 0)}</p>
                   </div>
                   <div className="card rounded-2xl p-4 border-l-4 border-red-400">
                     <span className="text-xs text-text-secondary">Total Beban</span>
-                    <p className="text-xl font-black text-red-600">{formatMoney(profitLoss?.total_expense ?? 0)}</p>
+                    <p className="text-xl font-black text-red-600">{formatRupiah(profitLoss?.total_expense ?? 0)}</p>
                   </div>
                   <div className={cn("card rounded-2xl p-4 border-l-4", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "border-brand-green" : "border-red-600")}>
                     <span className="text-xs text-text-secondary">Laba / Rugi Bersih</span>
                     <p className={cn("text-xl font-black", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "text-brand-deep-green" : "text-red-700")}>
-                      {formatMoney(profitLoss?.net_profit_loss ?? 0)}
+                      {formatRupiah(profitLoss?.net_profit_loss ?? 0)}
                     </p>
                   </div>
                 </div>
@@ -1880,7 +1883,7 @@ export default function FinanceClient() {
                           <span className="font-mono text-brand-deep-green text-2xs">{r.account_code}</span>
                           <p className="font-medium text-text-primary">{r.account_name}</p>
                         </div>
-                        <span className="font-bold text-brand-deep-green">{formatMoney(r.amount)}</span>
+                        <span className="font-bold text-brand-deep-green">{formatRupiah(r.amount)}</span>
                       </div>
                     ))}
                     {!profitLoss?.revenues?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data pendapatan.</p>}
@@ -1888,7 +1891,7 @@ export default function FinanceClient() {
                   {profitLoss?.total_revenue > 0 && (
                     <div className="px-4 py-2.5 bg-brand-light-green border-t flex justify-between text-xs font-black text-brand-deep-green">
                       <span>TOTAL PENDAPATAN</span>
-                      <span>{formatMoney(profitLoss.total_revenue)}</span>
+                      <span>{formatRupiah(profitLoss.total_revenue)}</span>
                     </div>
                   )}
                 </div>
@@ -1905,7 +1908,7 @@ export default function FinanceClient() {
                           <span className="font-mono text-red-600 text-2xs">{e.account_code}</span>
                           <p className="font-medium text-text-primary">{e.account_name}</p>
                         </div>
-                        <span className="font-bold text-red-700">{formatMoney(e.amount)}</span>
+                        <span className="font-bold text-red-700">{formatRupiah(e.amount)}</span>
                       </div>
                     ))}
                     {!profitLoss?.expenses?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data beban.</p>}
@@ -1913,7 +1916,7 @@ export default function FinanceClient() {
                   {profitLoss?.total_expense > 0 && (
                     <div className="px-4 py-2.5 bg-red-50 border-t flex justify-between text-xs font-black text-red-800">
                       <span>TOTAL BEBAN</span>
-                      <span>{formatMoney(profitLoss.total_expense)}</span>
+                      <span>{formatRupiah(profitLoss.total_expense)}</span>
                     </div>
                   )}
                 </div>
@@ -1924,26 +1927,26 @@ export default function FinanceClient() {
                   <div className="space-y-3">
                     <div className="flex justify-between text-xs">
                       <span className="text-text-secondary">Pendapatan Kotor</span>
-                      <span className="font-bold text-brand-deep-green">{formatMoney(profitLoss?.total_revenue ?? 0)}</span>
+                      <span className="font-bold text-brand-deep-green">{formatRupiah(profitLoss?.total_revenue ?? 0)}</span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-text-secondary">HPP / COGS</span>
-                      <span className="font-bold text-red-700">{formatMoney(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
+                      <span className="font-bold text-red-700">{formatRupiah(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
                     </div>
                     <hr className="border-text-tertiary" />
                     <div className="flex justify-between text-xs">
                       <span className="font-semibold text-text-primary">Laba Kotor</span>
-                      <span className="font-bold text-brand-deep-green">{formatMoney(Number(profitLoss?.total_revenue ?? 0) - Number(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0))}</span>
+                      <span className="font-bold text-brand-deep-green">{formatRupiah(Number(profitLoss?.total_revenue ?? 0) - Number(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('5')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0))}</span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-text-secondary">Beban Operasional</span>
-                      <span className="font-bold text-orange-700">{formatMoney(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('6')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
+                      <span className="font-bold text-orange-700">{formatRupiah(profitLoss?.expenses?.filter((e: any) => e.account_code?.startsWith('6')).reduce((s: number, e: any) => s + e.amount, 0) ?? 0)}</span>
                     </div>
                     <hr className="border-text-tertiary" />
                     <div className="flex justify-between text-sm">
                       <span className="font-black text-text-primary">Laba / Rugi Bersih</span>
                       <span className={cn("font-black", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "text-brand-deep-green" : "text-red-700")}>
-                        {formatMoney(profitLoss?.net_profit_loss ?? 0)}
+                        {formatRupiah(profitLoss?.net_profit_loss ?? 0)}
                       </span>
                     </div>
                   </div>
@@ -1965,14 +1968,14 @@ export default function FinanceClient() {
                     {balanceSheet?.assets?.map((a: any, i: number) => (
                       <div key={i} className="px-4 py-3 flex justify-between text-xs">
                         <span className="text-text-primary">{a.account_code} — {a.account_name}</span>
-                        <span className="font-bold text-blue-700">{formatMoney(a.amount)}</span>
+                        <span className="font-bold text-blue-700">{formatRupiah(a.amount)}</span>
                       </div>
                     ))}
                     {!balanceSheet?.assets?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data aset.</p>}
                   </div>
                   <div className="px-4 py-2.5 bg-blue-50 border-t flex justify-between text-xs font-black text-blue-800">
                     <span>TOTAL ASET</span>
-                    <span>{formatMoney(balanceSheet?.total_assets ?? 0)}</span>
+                    <span>{formatRupiah(balanceSheet?.total_assets ?? 0)}</span>
                   </div>
                 </div>
 
@@ -1986,14 +1989,14 @@ export default function FinanceClient() {
                       {balanceSheet?.liabilities?.map((l: any, i: number) => (
                         <div key={i} className="px-4 py-3 flex justify-between text-xs">
                           <span className="text-text-primary">{l.account_code} — {l.account_name}</span>
-                          <span className="font-bold text-orange-700">{formatMoney(l.amount)}</span>
+                          <span className="font-bold text-orange-700">{formatRupiah(l.amount)}</span>
                         </div>
                       ))}
                       {!balanceSheet?.liabilities?.length && <p className="text-xs text-center py-4 text-text-secondary">Belum ada kewajiban.</p>}
                     </div>
                     <div className="px-4 py-2.5 bg-orange-50 border-t flex justify-between text-xs font-black text-orange-800">
                       <span>TOTAL KEWAJIBAN</span>
-                      <span>{formatMoney(balanceSheet?.total_liabilities ?? 0)}</span>
+                      <span>{formatRupiah(balanceSheet?.total_liabilities ?? 0)}</span>
                     </div>
                   </div>
                   <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
@@ -2004,14 +2007,14 @@ export default function FinanceClient() {
                       {balanceSheet?.equity?.map((e: any, i: number) => (
                         <div key={i} className="px-4 py-3 flex justify-between text-xs">
                           <span className="text-text-primary">{e.account_code} — {e.account_name}</span>
-                          <span className="font-bold text-purple-700">{formatMoney(e.amount)}</span>
+                          <span className="font-bold text-purple-700">{formatRupiah(e.amount)}</span>
                         </div>
                       ))}
                       {!balanceSheet?.equity?.length && <p className="text-xs text-center py-4 text-text-secondary">Belum ada data ekuitas.</p>}
                     </div>
                     <div className="px-4 py-2.5 bg-purple-50 border-t flex justify-between text-xs font-black text-purple-800">
                       <span>TOTAL EKUITAS</span>
-                      <span>{formatMoney(balanceSheet?.total_equity ?? 0)}</span>
+                      <span>{formatRupiah(balanceSheet?.total_equity ?? 0)}</span>
                     </div>
                   </div>
                   {/* Balance Check */}
@@ -2137,11 +2140,11 @@ export default function FinanceClient() {
                           <td className="py-2.5 px-4">
                             {isMatched ? <span className="text-2xs text-text-secondary">Sudah dicocokkan</span> : (
                               <div className="flex min-w-[250px] gap-2">
-                                <select value={bankMatchPaymentIds[String(stmt.id)] || ""} onChange={(event) => setBankMatchPaymentIds((current) => ({ ...current, [String(stmt.id)]: event.target.value }))} className="input min-w-0 flex-1 text-2xs">
-                                  <option value="">Pilih pembayaran</option>
-                                  {payments.map((payment: any) => <option key={payment.id} value={payment.id}>{payment.reference_number || payment.id.slice(0, 8)} · {formatMoney(Number(payment.amount || 0))}</option>)}
+                                <select value={bankMatchPaymentIds[String(stmt.id)] || ""} onChange={(event) => setBankMatchPaymentIds((current) => ({ ...current, [String(stmt.id)]: event.target.value }))} className="input min-w-0 flex-1 text-2xs" disabled={!bankMatchPayments.length || bankMatchingLineId === String(stmt.id)}>
+                                  <option value="">{bankMatchPayments.length ? "Pilih pembayaran atau penerimaan" : "Belum ada transaksi yang sudah dibukukan"}</option>
+                                  {bankMatchPayments.map((payment: any) => <option key={payment.id} value={payment.id}>{payment.payment_type === "CUSTOMER_RECEIPT" ? "Penerimaan pelanggan" : "Pembayaran vendor"} · {payment.reference_number || payment.id.slice(0, 8)} · {formatMoney(Number(payment.amount || 0))}</option>)}
                                 </select>
-                                <button type="button" onClick={() => matchBankStatementLine(stmt)} disabled={bankMatchingLineId === String(stmt.id)} className="btn-outline px-2 py-1 text-2xs disabled:opacity-50">
+                                <button type="button" onClick={() => matchBankStatementLine(stmt)} disabled={!bankMatchPaymentIds[String(stmt.id)] || bankMatchingLineId === String(stmt.id)} className="btn-outline px-2 py-1 text-2xs disabled:opacity-50">
                                   {bankMatchingLineId === String(stmt.id) ? "…" : "Cocokkan"}
                                 </button>
                               </div>
@@ -2778,7 +2781,7 @@ export default function FinanceClient() {
             const withholdingAmount = receiptForm.withholding_tax_amount ? Number(receiptForm.withholding_tax_amount) : 0;
             const bank = bankAccounts.find(account => account.id === receiptForm.bank_account);
             if (!receiptForm.project_name.trim()) errors.project_name = "Pilih proyek terkait dari daftar atau input manual.";
-            if (!receiptForm.customer_name.trim()) errors.customer_name = "Nama klien / perusahaan wajib diisi.";
+            if (!receiptForm.customer_name.trim()) errors.customer_name = "Pilih proyek atau faktur yang memiliki data klien tersimpan.";
             if (!receiptForm.amount || !Number.isFinite(amount) || amount < 1000) errors.amount = "Nominal uang masuk wajib diisi, minimal Rp 1.000.";
             if (!Number.isFinite(withholdingAmount) || withholdingAmount < 0) errors.withholding_tax_amount = "Nominal potongan pajak harus valid (>= 0).";
             if (!bank) errors.bank_account = bankAccounts.length ? "Pilih rekening kas / bank penerima dana." : "Belum ada rekening kas / bank. Tambahkan rekening penerima di menu Kas & Bank terlebih dahulu.";
@@ -2874,6 +2877,7 @@ export default function FinanceClient() {
                       ...current,
                       project_id: "__CUSTOM__",
                       project_name: "",
+                      customer_name: "",
                     }));
                   } else {
                     const selected = financeProjectOptions.find(p => String(p.id) === String(pId));
@@ -2881,7 +2885,7 @@ export default function FinanceClient() {
                       ...current,
                       project_id: pId,
                       project_name: selected?.project_name || selected?.name || "",
-                      customer_name: selected?.customer_name || selected?.client_name || current.customer_name,
+                      customer_name: selected?.customer_name || selected?.client_name || "",
                     }));
                   }
                   setReceiptErrors(current => ({ ...current, project_name: "" }));
@@ -2921,11 +2925,12 @@ export default function FinanceClient() {
                 aria-describedby={receiptErrors.customer_name ? "receipt-customer_name-error" : undefined}
                 type="text"
                 required
-                placeholder="Contoh: PT Global Inovasi Pratama"
+                readOnly
+                placeholder="Pilih proyek atau faktur untuk mengisi nama klien"
                 value={receiptForm.customer_name}
-                onChange={e => updateReceiptField("customer_name", e.target.value)}
-                className="input text-xs"
+                className="input text-xs bg-slate-50 read-only:cursor-not-allowed"
               />
+              <p className="text-2xs text-text-secondary mt-1">Nama diambil dari data klien pada proyek atau faktur yang dipilih.</p>
               {receiptError("customer_name")}
             </div>
           </div>

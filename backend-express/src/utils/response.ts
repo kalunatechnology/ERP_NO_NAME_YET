@@ -8,6 +8,7 @@
  */
 import { Request, Response } from 'express';
 import { env } from '../config/env';
+import { userFacingMessage } from './errors';
 
 /**
  * DRF-compatible pagination envelope.
@@ -118,7 +119,7 @@ export function sendError(
 ): void {
   const body: Record<string, unknown> = {
     success: false,
-    detail: message,
+    detail: userFacingMessage(message),
   };
   if (errors !== undefined) {
     body['errors'] = errors;
@@ -133,6 +134,8 @@ export function sendValidationError(res: Response, errors: unknown): void {
   res.status(400).json({
     success: false,
     status_code: 400,
+    error: 'VALIDATION_ERROR',
+    detail: 'Beberapa isian belum sesuai. Periksa kembali data yang ditandai, lalu coba lagi.',
     errors,
   });
 }
@@ -141,9 +144,19 @@ export function sendValidationError(res: Response, errors: unknown): void {
  * Protected relation error (matches Django ProtectedError handler).
  */
 export function sendProtectedError(res: Response, referencedEntities: string[]): void {
+  const labels: Record<string, string> = {
+    crm_quotation_version: 'quotation',
+    crm_cost_estimate: 'estimasi biaya',
+    fin_payment_allocation: 'alokasi pembayaran',
+    fin_payment: 'pembayaran',
+    fin_billing_document: 'dokumen tagihan',
+    project: 'proyek',
+    sales_order: 'pesanan penjualan',
+  };
+  const relatedRecords = [...new Set(referencedEntities.map((entity) => labels[entity] ?? 'data terkait'))];
   const detail =
-    `Data tidak dapat dihapus karena masih digunakan atau terikat dengan entitas lain ` +
-    `(${referencedEntities.join(', ')}). Harap selesaikan atau hapus relasi terkait terlebih dahulu.`;
+    `Data ini belum dapat dihapus karena masih digunakan oleh ${relatedRecords.join(', ')}. ` +
+    `Selesaikan atau hapus hubungan tersebut terlebih dahulu.`;
   res.status(400).json({
     success: false,
     error: 'PROTECTED_RELATION_ERROR',
