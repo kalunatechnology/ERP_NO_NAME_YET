@@ -148,9 +148,9 @@ export function ProjectWbsNode({
   const canCreateWeekly = canManageWeeklyTasks || (userRole !== "super_admin" && userRole !== "executive" && (main.assignments || []).some((a: any) => String(a.assignee_id || a.assignee || "") === String(currentUserId)));
 
   return (
-    <div className="card rounded-2xl border border-text-tertiary overflow-hidden shadow-xs bg-white transition-all duration-200 hover:border-gray-300">
+    <div className="card overflow-hidden rounded-2xl border border-[#E4E8F0] border-l-4 border-l-[#D7E2FF] bg-white shadow-xs transition-all duration-200 hover:border-[#B8C8F5] hover:shadow-sm">
       {/* Level 1 Header: Main Task */}
-      <div className="p-3.5 sm:p-4 bg-gray-50/90 border-b border-text-tertiary flex items-center justify-between flex-wrap gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8ECF3] bg-[#F8FAFF] p-3.5 sm:p-4">
         <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1">
           <button
             type="button"
@@ -166,7 +166,7 @@ export function ProjectWbsNode({
               )}
             />
           </button>
-          <div className="w-8 h-8 rounded-xl bg-brand-deep-green text-white flex items-center justify-center text-xs font-black shadow-2xs flex-shrink-0">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#294BB2] text-xs font-black text-white shadow-2xs">
             {main.weight || 10}%
           </div>
           <div className="min-w-0 flex-1">
@@ -240,7 +240,7 @@ export function ProjectWbsNode({
           {canCreateWeekly && (
             <button
               onClick={() => onCreateWeeklyClick(main)}
-              className="btn-outline py-1 px-2.5 text-2xs gap-1 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green"
+              className="btn-outline gap-1 border-[#B8C8F5] px-2.5 py-1 text-2xs text-[#294BB2] hover:bg-[#EEF3FF]"
             >
               <Plus size={12} /> {canManageWeeklyTasks ? "+ Target Mingguan" : "Ajukan Target Mingguan"}
             </button>
@@ -325,7 +325,7 @@ export function ProjectWbsNode({
                         {canCreateDaily && (
                           <button
                             onClick={() => onCreateDailyClick(weekly)}
-                            className="btn-primary py-0.5 px-2.5 text-2xs gap-1 bg-brand-green hover:bg-brand-deep-green"
+                            className="btn-primary gap-1 bg-[#294BB2] px-2.5 py-0.5 text-2xs hover:bg-[#203F9C]"
                           >
                             <Plus size={11} /> Daily Task
                           </button>

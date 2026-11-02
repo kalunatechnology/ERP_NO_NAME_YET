@@ -161,12 +161,12 @@ export function ProjectWbsTree({
 
   return (
     <div id="project-weekly-approval" tabIndex={-1} className="flex min-w-0 scroll-mt-24 flex-col gap-4 focus:outline-none">
-      <div className="rounded-2xl border border-text-tertiary bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-[#E4E8F0] bg-white p-4 shadow-sm sm:p-5">
         <label htmlFor="wbs-search" className="block text-sm font-bold text-text-primary">Cari dalam struktur pekerjaan</label>
         <p className="mt-1 mb-3 text-xs text-text-secondary">Cari tugas, target, divisi, atau anggota dalam paket kerja lengkap.</p>
         <div className="relative">
           <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
-          <input id="wbs-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari tugas, target, atau anggota…" className="h-10 w-full min-w-0 rounded-xl border border-text-tertiary bg-gray-50 pl-9 pr-3 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-green/40" />
+          <input id="wbs-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari tugas, target, atau anggota…" className="h-10 w-full min-w-0 rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#294BB2] focus:bg-white focus:ring-2 focus:ring-[#294BB2]/15" />
         </div>
         <p role="status" className="mt-2 text-xs text-text-secondary">{visibleMainTasks.length} dari {mainTasks.length} paket kerja{query ? " cocok · Hierarki hasil dibuka otomatis" : " · Main Task → Weekly Plan → Daily Task"}</p>
       </div>
@@ -210,7 +210,7 @@ export function ProjectWbsTree({
           {canManageWbs && (
             <button
               onClick={onCreateMainTaskClick}
-              className="btn-primary py-1.5 px-3 text-xs gap-1.5 shadow-xs"
+              className="btn-primary gap-1.5 bg-[#294BB2] px-3 py-1.5 text-xs shadow-xs hover:bg-[#203F9C]"
             >
               <Plus size={14} /> Tambah Main Task
             </button>
@@ -221,7 +221,7 @@ export function ProjectWbsTree({
       {/* Main Tasks List */}
       {mainTasks.length === 0 ? (
         <div className="card p-12 rounded-2xl text-center border-dashed border-2">
-          <Layers size={36} className="text-brand-green mx-auto mb-2 opacity-60" />
+          <Layers size={36} className="mx-auto mb-2 text-[#294BB2] opacity-70" />
           <h3 className="text-sm font-bold text-text-primary">Belum ada Paket Kerja (Main Task) pada proyek ini</h3>
           <p className="text-xs text-text-secondary mt-1 max-w-md mx-auto">
             {canManageWbs
