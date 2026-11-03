@@ -68,6 +68,12 @@ export function ProjectMilestoneCard({
   }), [pipelineView, projects]);
   const projectPageCount = Math.max(1, Math.ceil(filteredProjects.length / projectPageSize));
   const visibleProjects = filteredProjects.slice((projectPage - 1) * projectPageSize, projectPage * projectPageSize);
+  const pipelineOptions = [
+    { key: "PRE_PITCHING", label: "Belum Pitching" },
+    { key: "PITCHING", label: "Sedang Pitching" },
+    { key: "RUNNING", label: "Proyek Running" },
+    { key: "ALL", label: "Semua Proyek" },
+  ] as const;
 
   React.useEffect(() => {
     const selectedIndex = filteredProjects.findIndex((project) => String(project.id) === String(activeId));
@@ -122,18 +128,19 @@ export function ProjectMilestoneCard({
       )}
     >
       {/* Left Sidebar: Project Lists */}
-      <div className="bg-[#EAF6FF]/50 p-4 sm:p-5 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-[#EAF6FF]">
-        <div className="flex items-center gap-2 mb-1.5">
+      <div className="bg-[#EAF6FF]/50 p-3 sm:p-4 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-[#EAF6FF]">
+        <div className="flex items-center gap-2">
           <FolderKanban size={17} className="text-[#294BB2]" />
-          <h4 className="text-sm sm:text-base font-bold text-[#090909]">Daftar Proyek</h4>
+          <h4 className="text-sm font-bold text-[#090909]">Daftar Proyek</h4>
         </div>
-        <div className="grid grid-cols-1 gap-1.5" role="group" aria-label="Filter pipeline proyek">
-          {([
-            { key: "PRE_PITCHING", label: "Belum Pitching" },
-            { key: "PITCHING", label: "Sedang Pitching" },
-            { key: "RUNNING", label: "Proyek Running" },
-            { key: "ALL", label: "Semua Proyek" },
-          ] as const).map((view) => {
+        <label className="sr-only" htmlFor="project-milestone-status-filter">Filter status proyek</label>
+        <select
+          id="project-milestone-status-filter"
+          value={pipelineView}
+          onChange={(event) => changePipelineView(event.target.value as typeof pipelineView)}
+          className="h-9 w-full rounded-lg border border-[#D5E3F2] bg-white px-2.5 text-xs font-semibold text-[#2649B3] outline-none focus:border-[#294BB2] focus:ring-2 focus:ring-[#9FD6FF]/60"
+        >
+          {pipelineOptions.map((view) => {
             const count = view.key === "ALL"
               ? projects.length
               : projects.filter((project) => {
@@ -142,22 +149,9 @@ export function ProjectMilestoneCard({
                   ? stage === "INCOMING" || stage === "DISCOVERY"
                   : view.key === "PITCHING" ? stage === "PITCHING" : stage === "ACTIVE";
               }).length;
-            return (
-              <button
-                key={view.key}
-                type="button"
-                aria-pressed={pipelineView === view.key}
-                onClick={() => changePipelineView(view.key)}
-                className={cn(
-                  "flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-2xs font-semibold transition-colors",
-                  pipelineView === view.key ? "bg-white text-[#2649B3] shadow-xs" : "text-[#4F5050] hover:bg-white/70"
-                )}
-              >
-                <span>{view.label}</span><span>{count}</span>
-              </button>
-            );
+            return <option key={view.key} value={view.key}>{view.label} ({count})</option>;
           })}
-        </div>
+        </select>
         <div className="flex flex-col gap-1 overflow-y-auto max-h-[220px] md:max-h-[280px] pr-1 no-scrollbar">
           {filteredProjects.length === 0 ? (
             <div className="p-3 text-center text-xs text-gray-500">Tidak ada proyek pada filter lifecycle ini.</div>
@@ -169,18 +163,18 @@ export function ProjectMilestoneCard({
                   key={prj.id}
                   onClick={() => handleSelect(prj.id)}
                   className={cn(
-                    "group flex w-full cursor-pointer items-center justify-between rounded-[14px] px-3 py-2 text-left text-xs transition-all",
+                    "group flex w-full cursor-pointer items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs transition-all",
                     isSelected
                       ? "bg-white text-[#090909] shadow-xs font-bold border border-[#9FD6FF]"
                       : "text-[#4F5050] hover:bg-white/60 hover:text-[#090909]"
                   )}
                 >
-                  <div className="flex flex-col min-w-0 pr-1.5">
-                    <span className="truncate">{prj.name}</span>
+                  <div className="flex min-w-0 flex-1 flex-col pr-1.5">
+                    <span className="whitespace-normal break-words leading-snug" title={prj.name}>{prj.name}</span>
                     {prj.code && (
                       <span className="text-[10px] font-mono text-neutral-400">{prj.code}</span>
                     )}
-                    <span className="mt-1 w-fit rounded-full bg-[#EAF6FF] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#2649B3]">
+                    <span className="mt-0.5 w-fit rounded-full bg-[#EAF6FF] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#2649B3]">
                       {getProjectLifecycleLabel(prj.lifecycle_status)}
                     </span>
                   </div>

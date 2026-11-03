@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useDeferredValue, useRef } from "react";
-import { cn, formatDate, getStatusColor, localDateKey, normalizeDateKey } from "@/lib/utils";
+import { cn, getStatusColor, localDateKey, normalizeDateKey } from "@/lib/utils";
 import { loadAllProjects, Project, DailyTask, DailyTaskStatusValue, DailyTaskUpdatePayload, updateDailyTask, createDailyTask, deleteDailyTask, getApiErrorDetail } from "@/lib/api/project.api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -29,11 +29,25 @@ import { DailyTaskBoard } from "@/components/tasks/DailyTaskBoard";
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function StatusBadge({ status, progress }: { status: string; progress?: number }) {
+  const isComplete = ["COMPLETED", "DONE"].includes(String(status).toUpperCase());
   return (
     <span className={cn("inline-flex px-2 py-0.5 rounded-full text-2xs font-semibold", getStatusColor(status))}>
-      {status}{progress !== undefined ? ` (${progress}%)` : ""}
+      {status}{progress !== undefined && !isComplete ? ` (${progress}%)` : ""}
     </span>
   );
+}
+
+function formatTaskDate(value: string) {
+  const dateKey = normalizeDateKey(value);
+  if (!dateKey) return "-";
+  const [year, month, day] = dateKey.split("-").map(Number);
+  if (!year || !month || !day) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
 }
 
 /* ── Quick Edit Overlay ─────────────────────────── */
@@ -484,7 +498,7 @@ function TaskRow({
         <span className="text-2xs font-extrabold px-1.5 py-0.5 rounded bg-brand-light-green text-brand-deep-green mr-1.5">
           {projectCode}
         </span>
-        <strong className="text-xs text-text-primary block mt-0.5 truncate max-w-32">{projectName}</strong>
+        <strong className="text-xs text-text-primary block mt-0.5 whitespace-normal break-words" title={projectName}>{projectName}</strong>
         <span className="text-2xs text-text-secondary block mt-0.5">
           {mainTaskName} · <b className="text-indigo-600">W#{weekNumber}</b>
         </span>
@@ -493,7 +507,7 @@ function TaskRow({
       {/* Date & Time */}
       <td className="py-3 px-4 align-top whitespace-nowrap">
         <div className={cn("text-xs font-medium", isOverdue ? "text-red-600 font-bold" : "text-text-primary")}>
-          {taskDate || "-"}
+          {taskDate ? formatTaskDate(taskDate) : "-"}
           {isOverdue && <AlertTriangle size={12} className="ml-1 text-amber-600 inline" />}
         </div>
         <div className="text-2xs text-text-secondary">{task.time_slot || "-"}</div>
@@ -518,9 +532,6 @@ function TaskRow({
             <strong className={cn("text-xs font-semibold block", isDone && "line-through text-text-secondary")}>
               {task.title || task.activity_input || "-"}
             </strong>
-            {task.notes && (
-              <span className="text-2xs text-text-secondary italic block mt-0.5 truncate">{task.notes}</span>
-            )}
           </div>
         </div>
       </td>
@@ -532,19 +543,21 @@ function TaskRow({
         </span>
       </td>
 
-      {/* Output Hasil */}
+      {/* Output result stays in the record; this table shows its comparison score only. */}
       <td className="py-3 px-4 align-top max-w-40">
-        <span className={cn("text-xs", task.output_result ? "text-brand-deep-green" : "text-text-secondary italic text-2xs")}>
-          {task.output_result || "Belum diisi"}
-        </span>
-        {outputComparison.category !== "NOT_EVALUATED" && (
-          <span className={cn(
-            "mt-2 block w-fit rounded-md px-2 py-1 text-[10px] font-bold",
-            outputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-blue-100 text-[#2649B3]" :
-            outputComparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" :
-            "bg-red-100 text-red-800"
-          )}>
-            {outputReviewLabel(outputComparison.category)} · {outputComparison.score}%
+        {outputComparison.category === "NOT_EVALUATED" ? (
+          <span className="text-2xs italic text-text-secondary">Belum dinilai</span>
+        ) : (
+          <span
+            title={outputReviewLabel(outputComparison.category)}
+            className={cn(
+              "inline-flex rounded-lg px-2.5 py-1.5 text-xs font-extrabold",
+              outputComparison.category === "SUFFICIENTLY_ALIGNED" ? "bg-blue-100 text-[#2649B3]" :
+              outputComparison.category === "NEEDS_REVIEW" ? "bg-amber-100 text-amber-800" :
+              "bg-red-100 text-red-800"
+            )}
+          >
+            {outputComparison.score}%
           </span>
         )}
       </td>
@@ -880,7 +893,7 @@ export default function TasksClient() {
           <th className="py-3 px-4 font-bold">Tanggal & Waktu</th>
           <th className="py-3 px-4 font-bold">Aktivitas / Task</th>
           <th className="whitespace-nowrap px-4 py-3 font-bold">Output Target</th>
-          <th className="whitespace-nowrap px-4 py-3 font-bold">Output Hasil</th>
+          <th className="whitespace-nowrap px-4 py-3 font-bold">Progress Output</th>
           <th className="whitespace-nowrap px-4 py-3 font-bold">Status</th>
           <th className="py-3 px-4 font-bold"></th>
         </tr>
@@ -1109,11 +1122,11 @@ export default function TasksClient() {
                   <div className="flex items-center gap-2.5">
                     <CalendarDays size={14} className={cn(isToday ? "text-brand-green" : isPast ? "text-amber-500" : "text-text-secondary")} />
                     <span className={cn("text-sm font-bold", isToday ? "text-brand-deep-green" : "text-text-primary")}>
-                      {date === "Tanpa Tanggal" ? "Tanpa Tanggal" : formatDate(date)}
+                      {date === "Tanpa Tanggal" ? "Tanpa Tanggal" : formatTaskDate(date)}
                       {isToday && <span className="ml-2 px-2 py-0.5 rounded-full bg-brand-green text-white text-2xs font-bold">HARI INI</span>}
                       {isPast && date !== "Tanpa Tanggal" && <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-2xs font-bold">TERLAMBAT</span>}
                     </span>
-                    <span className="text-xs text-text-secondary">{items.length} task · {doneInGroup} selesai</span>
+                    <span className="text-xs text-text-secondary">{doneInGroup}/{items.length} Task Selesai</span>
                   </div>
                   {isCollapsed ? <ChevronRight size={14} className="text-text-secondary" /> : <ChevronDown size={14} className="text-text-secondary" />}
                 </button>

@@ -53,7 +53,7 @@ const config: Config = {
 
       /* ── Typography (Strictly Aligned with Implementation Guideline) ─ */
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "'Segoe UI'", "sans-serif"],
+        sans: ["Fira Sans", "ui-sans-serif", "system-ui", "-apple-system", "'Segoe UI'", "sans-serif"],
       },
       fontSize: {
         "3xs": ["9px", { lineHeight: "12px" }],

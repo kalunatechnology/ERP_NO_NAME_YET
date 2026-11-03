@@ -438,28 +438,75 @@ function TabPeriodic({ data }: { data: ReturnType<typeof createDefaultData> }) {
 }
 
 function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> }) {
+  const [selectedMember, setSelectedMember] = useState("all");
+  const [selectedWeek, setSelectedWeek] = useState("all");
   const attendance = data.attendance;
   if (data.sectionErrors.attendance) return <div role="alert" className="card rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">{data.sectionErrors.attendance}</div>;
   const entries = attendance?.entries ?? attendance?.rows ?? attendance?.timesheets ?? [];
+  const dateKeyOf = (entry: any) => String(entry.work_date ?? entry.date ?? "").slice(0, 10);
+  const memberKeyOf = (entry: any) => String(entry.employee_id ?? entry.user_id ?? entry.employee_name ?? entry.user_name ?? "unknown");
+  const members = Array.from(new Map<string, { id: string; name: string }>(entries.map((entry: any) => [
+    memberKeyOf(entry),
+    { id: memberKeyOf(entry), name: entry.employee_name ?? entry.user_name ?? entry.staff_name ?? "Staff" },
+  ] as const)).values()).sort((a, b) => a.name.localeCompare(b.name, "id"));
+  const weekStartOf = (dateKey: string) => {
+    const date = new Date(`${dateKey}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+    return date.toISOString().slice(0, 10);
+  };
+  const availableWeeks = Array.from(new Set(entries.map((entry: any) => dateKeyOf(entry)).filter(Boolean).map(weekStartOf))).sort();
+  const selectedEntries = entries.filter((entry: any) => {
+    const matchesMember = selectedMember === "all" || memberKeyOf(entry) === selectedMember;
+    const dateKey = dateKeyOf(entry);
+    const matchesWeek = selectedWeek === "all" || (dateKey && weekStartOf(dateKey) === selectedWeek);
+    return matchesMember && matchesWeek;
+  });
+  const dailyRows = Array.from(selectedEntries.reduce((groups: Map<string, any>, entry: any) => {
+    const dateKey = dateKeyOf(entry);
+    if (!dateKey) return groups;
+    const row = groups.get(dateKey) ?? { date: dateKey, started_at: null, ended_at: null, total_hours: 0 };
+    const startedAt = entry.started_at ?? entry.work_started_at;
+    const endedAt = entry.ended_at ?? entry.work_ended_at;
+    if (startedAt && (!row.started_at || new Date(startedAt).getTime() < new Date(row.started_at).getTime())) row.started_at = startedAt;
+    if (endedAt && (!row.ended_at || new Date(endedAt).getTime() > new Date(row.ended_at).getTime())) row.ended_at = endedAt;
+    row.total_hours += Number(entry.total_hours ?? entry.hours ?? 0) || 0;
+    groups.set(dateKey, row);
+    return groups;
+  }, new Map<string, any>()).values()).sort((a, b) => b.date.localeCompare(a.date));
+  const totalHours = dailyRows.reduce((sum, row) => sum + row.total_hours, 0);
+  const formatClock = (value: string | null) => value ? new Date(value).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-";
   return <div className="card rounded-xl p-5">
     <h2 className="font-bold text-text-primary">Laporan Kehadiran</h2>
-    <p className="text-xs text-text-secondary mt-1">Kehadiran dicatat melalui timer kerja di browser desktop maupun mobile. Jam selesai dan aktivitas terakhir tersimpan otomatis.</p>
-    <div className="grid grid-cols-3 gap-3 mt-4">
-      {[['Hari Kerja', attendance?.work_days ?? 0], ['Total Jam', attendance?.total_hours ?? 0], ['Entri', attendance?.entry_count ?? 0]].map(([label, value]) =>
-        <div key={String(label)} className="rounded-lg border border-text-tertiary/50 p-3"><div className="text-2xs text-text-secondary">{label}</div><div className="text-lg font-bold">{value}</div></div>)}
+    <p className="text-xs text-text-secondary mt-1">Kehadiran diringkas per hari dari seluruh aktivitas timer, tanpa pemisahan proyek.</p>
+    <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-stretch">
+      <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
+        {[["Hari Kerja", dailyRows.length], ["Total Jam", totalHours.toFixed(2)], ["Entri", selectedEntries.length]].map(([label, value]) =>
+          <div key={String(label)} className="rounded-lg border border-text-tertiary/50 p-3"><div className="text-2xs text-text-secondary">{label}</div><div className="text-lg font-bold">{value}</div></div>)}
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:w-[420px] xl:flex-shrink-0">
+        <label className="text-2xs font-semibold text-text-secondary">Nama / Anggota
+          <select value={selectedMember} onChange={(event) => setSelectedMember(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-text-tertiary bg-white px-3 text-xs text-text-primary">
+            <option value="all">Semua anggota</option>
+            {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+          </select>
+        </label>
+        <label className="text-2xs font-semibold text-text-secondary">Week
+          <select value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-text-tertiary bg-white px-3 text-xs text-text-primary">
+            <option value="all">Semua minggu</option>
+            {availableWeeks.map((weekStart, index) => <option key={weekStart} value={weekStart}>Week {index + 1} · {formatDate(weekStart)}</option>)}
+          </select>
+        </label>
+      </div>
     </div>
     <div className="table-scroll-wrapper mt-5">
-      <table className="data-table w-full min-w-[820px]">
-        <thead><tr><th>Tanggal</th><th>Nama</th><th>Proyek</th><th>Mulai</th><th>Selesai</th><th>Aktivitas Terakhir</th><th>Sumber</th><th>Total Jam</th></tr></thead>
+      <table className="data-table w-full min-w-[520px]">
+        <thead><tr><th>Hari / Tanggal</th><th>Durasi (Mulai / Selesai)</th><th>Total Jam</th></tr></thead>
         <tbody>
-          {entries.length === 0 ? <tr><td colSpan={8} className="py-8 text-center text-[#2649B3] bg-[#F8FBFF]">Belum ada aktivitas kerja tercatat pada periode ini.</td></tr> : entries.map((entry: any, index: number) => (
-            <tr key={entry.id ?? index}>
-              <td>{formatDate(entry.work_date ?? entry.date)}</td><td>{entry.user_name ?? entry.employee_name ?? entry.staff_name ?? "-"}</td>
-              <td>{entry.project_name ?? "-"}</td><td>{entry.started_at ? new Date(entry.started_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"}</td>
-              <td>{entry.ended_at ? new Date(entry.ended_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"}</td>
-              <td>{entry.last_activity_at ? new Date(entry.last_activity_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"}</td>
-              <td><span className="rounded-full bg-[#EAF6FF] px-2 py-1 text-3xs font-bold text-[#2649B3]">{entry.attendance_source === 'MOBILE_WEB' ? 'Mobile' : 'Web'}</span></td>
-              <td>{entry.total_hours ?? entry.hours ?? 0}</td>
+          {dailyRows.length === 0 ? <tr><td colSpan={3} className="py-8 text-center text-[#2649B3] bg-[#F8FBFF]">Belum ada aktivitas kerja pada filter ini.</td></tr> : dailyRows.map((row) => (
+            <tr key={row.date}>
+              <td>{formatDate(row.date)}</td>
+              <td>{formatClock(row.started_at)} / {formatClock(row.ended_at)}</td>
+              <td>{row.total_hours.toFixed(2)} jam</td>
             </tr>
           ))}
         </tbody>
@@ -614,7 +661,7 @@ export default function ReportingClient() {
               <title>Laporan Finansial & Observabilitas Proyek - Marka+ ERP</title>
               <style>
                 @page { size: A4; margin: 18mm; }
-                body { font-family: Georgia, 'Times New Roman', serif; color: #1E293B; line-height: 1.5; }
+                body { font-family: 'Fira Sans', sans-serif; color: #1E293B; line-height: 1.5; }
                 header { border-bottom: 3px solid #2649B3; padding-bottom: 16px; margin-bottom: 28px; }
                 h1 { color: #17358F; margin: 0; font-size: 26px; } h2 { color: #2649B3; margin-top: 28px; }
                 table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }

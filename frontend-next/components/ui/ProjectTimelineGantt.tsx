@@ -28,6 +28,7 @@ interface ProjectTimelineGanttProps {
   totalWeeks?: number;
   className?: string;
   projectName?: string;
+  scrollable?: boolean;
 }
 
 /**
@@ -43,6 +44,7 @@ export function ProjectTimelineGantt({
   totalWeeks = 8,
   className,
   projectName,
+  scrollable = false,
 }: ProjectTimelineGanttProps) {
   const [hoveredTask, setHoveredTask] = useState<GanttTaskItem | null>(null);
   const [pageSize, setPageSize] = useState(6);
@@ -51,7 +53,7 @@ export function ProjectTimelineGantt({
   const taskItems = tasks || [];
   const hasTasks = taskItems.length > 0;
   const totalPages = Math.max(1, Math.ceil(taskItems.length / pageSize));
-  const visibleTasks = taskItems.slice((page - 1) * pageSize, page * pageSize);
+  const visibleTasks = scrollable ? taskItems : taskItems.slice((page - 1) * pageSize, page * pageSize);
 
   useEffect(() => {
     setPage((current) => Math.min(Math.max(1, current), totalPages));
@@ -103,7 +105,7 @@ export function ProjectTimelineGantt({
           </p>
         </div>
       ) : (
-        <div className="w-full overflow-x-auto no-scrollbar">
+        <div className={cn("w-full overflow-x-auto", !scrollable && "no-scrollbar", scrollable && "min-h-0 flex-1 overflow-y-auto")}>
           <div className="min-w-[620px] sm:min-w-[700px] flex flex-col">
             {/* Header Scale Grid */}
             <div className="grid grid-cols-[minmax(140px,220px)_1fr] gap-4 sm:gap-6 items-center pb-2.5 border-b border-[#EFEFEF]">
@@ -213,7 +215,7 @@ export function ProjectTimelineGantt({
         </div>
       )}
 
-      {hasTasks && (
+      {hasTasks && !scrollable && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#EFEFEF] pt-3 text-xs">
           <label className="flex items-center gap-2 text-[#4F5050]">
             Tampilkan

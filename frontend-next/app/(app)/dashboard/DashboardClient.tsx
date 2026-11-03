@@ -56,6 +56,7 @@ interface KpiCardProps {
   iconColor?: string;
   trend?: { value: string; up: boolean } | null;
   onClick?: () => void;
+  largeValue?: boolean;
 }
 
 /**
@@ -74,6 +75,7 @@ function KpiCard({
   iconColor = "#2649B3",
   trend,
   onClick,
+  largeValue = false,
 }: KpiCardProps) {
   return (
     <div
@@ -86,8 +88,8 @@ function KpiCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5 min-w-0 flex-1">
           <span className="text-xs font-semibold text-[#4F5050] tracking-tight truncate">{label}</span>
-          <span className="text-2xl sm:text-[26px] font-extrabold text-[#090909] tracking-tight leading-tight mt-0.5">{value}</span>
-          {subLabel && <span className="text-2xs text-[#4F5050] font-medium mt-0.5">{subLabel}</span>}
+          <span className={cn("font-extrabold text-[#090909] tracking-tight leading-tight mt-1", largeValue ? "text-3xl sm:text-[32px]" : "text-2xl sm:text-[26px]")}>{value}</span>
+          {subLabel && <span className={cn("text-[#4F5050] font-medium mt-0.5", largeValue ? "text-xs" : "text-2xs")}>{subLabel}</span>}
         </div>
         <div
           className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-2xs"
@@ -271,36 +273,43 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
 
   return (
     <div className="flex flex-col gap-6 pb-8">
-      {/* ── KPI Row ───────────────────────── */}
-      <section>
-        <SectionHeader title="Overview Proyek Saya" actionLabel="Lihat semua" actionHref="/projects" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard label="Total Proyek" value={total} subLabel="semua status" icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" />
-          <KpiCard label="Aktif Berjalan" value={active} subLabel="in progress" icon={Activity} iconBg="#EAF6FF" iconColor="#294BB2" trend={active > 0 ? { value: `${active} proyek aktif`, up: true } : null} />
-          <KpiCard label="Terlambat" value={delayed} subLabel="melewati deadline" icon={AlertTriangle} iconBg="#FEF2F2" iconColor="#DC2626" trend={delayed > 0 ? { value: `${delayed} perlu perhatian`, up: false } : null} />
-          <KpiCard label="Rata-rata Progress" value={`${avgProgress}%`} subLabel="seluruh proyek" icon={Target} iconBg="#FAF5FF" iconColor="#7E22CE" />
+      <section aria-labelledby="pm-dashboard-summary" className="rounded-2xl border border-[#CBD5E1] bg-[#F4F8FD] p-4 sm:p-5 flex flex-col gap-4 shadow-xs">
+        <div className="flex items-center justify-between gap-3 border-b border-[#D5DCE8] pb-3">
+          <div>
+            <h2 id="pm-dashboard-summary" className="text-base sm:text-lg font-extrabold tracking-tight text-[#090909]">Summary</h2>
+            <p className="mt-0.5 text-xs text-[#4F5050]">Ringkasan proyek, kesehatan portofolio, dan tugas hari ini.</p>
+          </div>
+          <Link href="/projects" className="flex shrink-0 items-center gap-1 text-xs font-bold text-[#294BB2] hover:text-[#2649B3] transition-colors">
+            Lihat semua <ArrowRight size={13} strokeWidth={2.2} />
+          </Link>
         </div>
-      </section>
 
-      {/* ── Visual Analytics Row 1: Gauges & Distribusi Portofolio (2 Kolom) ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
-        <ProjectDistributionGauge
-          scorePercent={healthScore}
-          statusLabel={healthStatus}
-          onTrackCount={onTrackCount}
-          cautiousCount={delayed}
-          offTrackCount={0}
-        />
-        <ProjectDonutSummaryCard data={statusCounts} />
-      </div>
+        {/* ── Project Metrics ───────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <KpiCard label="Total Proyek" value={total} subLabel="semua status" icon={FolderKanban} iconBg="#EFF6FF" iconColor="#1D4ED8" largeValue />
+          <KpiCard label="Aktif Berjalan" value={active} subLabel="in progress" icon={Activity} iconBg="#EAF6FF" iconColor="#294BB2" trend={active > 0 ? { value: `${active} proyek aktif`, up: true } : null} largeValue />
+          <KpiCard label="Terlambat" value={delayed} subLabel="melewati deadline" icon={AlertTriangle} iconBg="#FEF2F2" iconColor="#DC2626" trend={delayed > 0 ? { value: `${delayed} perlu perhatian`, up: false } : null} largeValue />
+          <KpiCard label="Rata-rata Progress" value={`${avgProgress}%`} subLabel="seluruh proyek" icon={Target} iconBg="#FAF5FF" iconColor="#7E22CE" largeValue />
+        </div>
 
-      {/* ── Visual Analytics: Tugas Operasional Hari Ini (Personal / Team Tasks) ── */}
-      <section>
-        <div className="bg-white border border-[#C7C7C7] rounded-2xl p-6 shadow-xs flex flex-col gap-4">
-          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[#EAF6FF] flex items-center justify-center text-[#2649B3]">
-                <Clock size={16} />
+        {/* ── Portfolio Health ───────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 items-stretch">
+          <ProjectDistributionGauge
+            scorePercent={healthScore}
+            statusLabel={healthStatus}
+            onTrackCount={onTrackCount}
+            cautiousCount={delayed}
+            offTrackCount={0}
+          />
+          <ProjectDonutSummaryCard data={statusCounts} />
+        </div>
+
+        {/* ── Daily Task Summary ───────────────── */}
+        <div className="bg-white border border-[#D5DCE8] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 pb-3 border-b border-[#E2E8F0]">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-[#EAF6FF] flex items-center justify-center text-[#2649B3]">
+                <Clock size={17} />
               </div>
               <h3 className="text-sm font-bold text-[#090909]">Tugas Operasional Hari Ini</h3>
             </div>
@@ -309,24 +318,24 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
             </Link>
           </div>
 
-          <p className="text-xs text-[#4F5050]">Task milik Anda di perusahaan aktif, sesuai halaman Tugas Harian.</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="p-3.5 rounded-xl bg-[#FAFAFA] border border-gray-100 text-center flex flex-col justify-center">
-              <span className="text-2xl font-bold text-[#090909]">{todayCount}</span>
-              <span className="text-xs text-[#4F5050] mt-1 font-medium">Total Task Hari Ini</span>
+          <p className="text-xs leading-5 text-[#4F5050]">Task milik Anda di perusahaan aktif, sesuai halaman Tugas Harian.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="min-h-24 p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-center flex flex-col justify-center">
+              <span className="text-3xl font-extrabold leading-none text-[#090909]">{todayCount}</span>
+              <span className="text-xs text-[#4F5050] mt-2 font-medium">Total Task Hari Ini</span>
             </div>
-            <div className="p-3.5 rounded-xl bg-[#EAF6FF]/50 border border-[#9FD6FF] text-center flex flex-col justify-center">
-              <span className="text-2xl font-bold text-[#2649B3]">{doneToday}</span>
-              <span className="text-xs text-[#2649B3] mt-1 font-semibold">Selesai Hari Ini</span>
+            <div className="min-h-24 p-4 rounded-xl bg-[#EFF7FF] border border-[#9FD6FF] text-center flex flex-col justify-center">
+              <span className="text-3xl font-extrabold leading-none text-[#2649B3]">{doneToday}</span>
+              <span className="text-xs text-[#2649B3] mt-2 font-semibold">Selesai Hari Ini</span>
             </div>
             <div className={cn(
-              "p-3.5 rounded-xl text-center flex flex-col justify-center border col-span-2 sm:col-span-1",
-              overdueTasks.length > 0 ? "bg-red-50/70 border-red-200 text-red-700" : "bg-[#FAFAFA] border-gray-100"
+              "min-h-24 p-4 rounded-xl text-center flex flex-col justify-center border",
+              overdueTasks.length > 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-[#F8FAFC] border-[#E2E8F0]"
             )}>
-              <span className={cn("text-2xl font-bold", overdueTasks.length > 0 ? "text-red-600" : "text-[#090909]")}>
+              <span className={cn("text-3xl font-extrabold leading-none", overdueTasks.length > 0 ? "text-red-600" : "text-[#090909]")}>
                 {overdueTasks.length}
               </span>
-              <span className={cn("text-xs mt-1", overdueTasks.length > 0 ? "text-red-600 font-semibold" : "text-[#4F5050] font-medium")}>
+              <span className={cn("text-xs mt-2", overdueTasks.length > 0 ? "text-red-600 font-semibold" : "text-[#4F5050] font-medium")}>
                 Terlambat / Carry-over
               </span>
             </div>
@@ -334,14 +343,16 @@ function PMDashboard({ projects, loading, userId }: { projects: Project[]; loadi
         </div>
       </section>
 
-      {/* Guideline order: personal task highlight precedes completion roll-up. */}
-      <div className="w-full">
-        <CompletionRateCard rates={industryRates} />
-      </div>
-
-      {/* ── Visual Analytics Row 3: Gantt Timeline Mingguan Portofolio (W1-W8) ── */}
-      <div className="w-full">
-        <ProjectTimelineGantt tasks={timelineTasks} totalWeeks={8} />
+      {/* ── Project completion and timeline ── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-stretch">
+        <CompletionRateCard rates={industryRates} className="h-[520px] max-h-[72vh]" />
+        <ProjectTimelineGantt
+          title="Timeline Proyek"
+          tasks={timelineTasks}
+          totalWeeks={8}
+          scrollable
+          className="h-[520px] max-h-[72vh] flex flex-col !p-4 sm:!p-5"
+        />
       </div>
 
       {/* ── Visual Analytics Row 4: Milestones Stepper & Project Selector ── */}
@@ -1418,7 +1429,6 @@ export default function DashboardClient() {
       {canUseRequests && userRole !== "super_admin" && <section className="mt-2 pt-5 border-t border-[#D9D9D9]">
         <RequestCardFeed
           onRequestClick={(req) => setSelectedReviewRequest(req)}
-          onOpenNewModal={() => setIsNewRequestModalOpen(true)}
           refreshTrigger={refreshTrigger}
         />
       </section>}

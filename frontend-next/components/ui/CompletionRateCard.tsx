@@ -37,15 +37,15 @@ export function CompletionRateCard({
   return (
     <div
       className={cn(
-        "w-full bg-white border border-[#EFEFEF] rounded-[20px] p-5 shadow-xs flex flex-col justify-between h-full select-none transition-all hover:shadow-card-md",
+        "w-full bg-white border border-[#D9E2EE] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col h-full select-none transition-all hover:shadow-card-md",
         className
       )}
     >
       {/* Header */}
       <div className="flex items-center justify-between pb-3.5 border-b border-[#EFEFEF]">
         <div>
-          <h3 className="text-sm font-extrabold text-[#090909] whitespace-nowrap">Completion Rate</h3>
-          <p className="text-2xs text-[#4F5050] font-medium mt-0.5">by Project Cluster</p>
+          <h3 className="text-sm font-extrabold text-[#090909]">Tingkat Penyelesaian Proyek</h3>
+          <p className="text-2xs text-[#4F5050] font-medium mt-0.5">Progres aktual tiap proyek</p>
         </div>
         <div className="w-8 h-8 rounded-xl bg-[#EAF6FF] text-[#2649B3] border border-[#9FD6FF] flex items-center justify-center flex-shrink-0 shadow-2xs">
           <CheckCircle2 size={16} strokeWidth={2.2} />
@@ -53,58 +53,46 @@ export function CompletionRateCard({
       </div>
 
       {/* Progress Items */}
-      <div
-        className={cn(
-          "py-3.5 my-auto",
-          displayRates.length === 0
-            ? "flex flex-col"
-            : displayRates.length >= 3
-            ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-            : displayRates.length === 2
-            ? "grid grid-cols-1 md:grid-cols-2 gap-4"
-            : "flex flex-col gap-3.5"
-        )}
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto py-3">
         {displayRates.length === 0 ? (
           <div className="py-6 text-center text-xs text-[#4F5050]">
             Belum ada data progres klaster (Proyek baru diinisiasi)
           </div>
         ) : (
-          displayRates.map((item) => {
-            const val = Math.min(100, Math.max(0, item.percentage || 0));
-            return (
-              <div
-                key={item.id}
-                className="flex flex-col justify-between gap-2 w-full bg-[#FDFDFD] p-3 rounded-[14px] border border-[#EFEFEF] transition-all hover:bg-[#EAF6FF]/40 shadow-2xs"
-              >
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span
-                    className="font-bold text-[#090909] text-xs leading-snug line-clamp-1"
-                    title={item.industry}
-                  >
-                    {item.industry}
-                  </span>
-                  <span className="font-extrabold text-[#2649B3] bg-[#EAF6FF] border border-[#9FD6FF] px-2 py-0.5 rounded-full text-2xs tabular-nums flex-shrink-0 ml-1">
-                    {Math.round(val)}%
-                  </span>
-                </div>
-
-                {/* Progress Bar Track */}
-                <div className="w-full h-2.5 bg-[#EFEFEF] rounded-full overflow-hidden p-0.5 shadow-2xs my-0.5">
-                  <div
-                    className="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-[#2649B3] to-[#294BB2]"
-                    style={{ width: `${val}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })
+          <table className="w-full table-fixed border-collapse text-left">
+            <thead className="sticky top-0 z-10 bg-white">
+              <tr className="border-b border-[#E2E8F0] text-[10px] uppercase tracking-wide text-[#64748B]">
+                <th className="w-[48%] px-2 py-2 font-bold">Proyek</th>
+                <th className="px-2 py-2 font-bold">Tingkat Penyelesaian</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#EEF2F7]">
+              {displayRates.map((item) => {
+                const val = Math.min(100, Math.max(0, item.percentage || 0));
+                return (
+                  <tr key={item.id} className="group hover:bg-[#F8FBFF]">
+                    <td className="px-2 py-3 align-middle">
+                      <span className="block truncate text-xs font-semibold text-[#090909]" title={item.industry}>{item.industry}</span>
+                    </td>
+                    <td className="px-2 py-3 align-middle">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[#EAF6FF]">
+                          <div className="h-full rounded-full bg-[#2649B3] transition-all duration-700" style={{ width: `${val}%` }} />
+                        </div>
+                        <span className="w-10 shrink-0 text-right text-xs font-extrabold tabular-nums text-[#2649B3]">{Math.round(val)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
       {/* Footnote */}
       <p className="text-3xs text-[#4F5050] font-normal leading-tight pt-3 border-t border-[#EFEFEF]">
-        *Rasio penyelesaian proyek dihitung berdasarkan realisasi progres per klaster portofolio
+        *Progres dihitung berdasarkan realisasi terbaru tiap proyek.
       </p>
     </div>
   );

@@ -2530,23 +2530,23 @@ export default function ProjectsClient() {
          ══════════════════════════════════════════════════════════════ */}
       {activeTab === "FINANCIAL" && (
         <div className="flex flex-col gap-5">
-          <div className="card p-5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-card-lg border border-slate-700">
-            <div className="flex justify-between items-center flex-wrap gap-3 mb-4 pb-4 border-b border-white/10">
+          <div className="card rounded-2xl border border-slate-200 bg-white p-4 shadow-xs sm:p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-extrabold text-white tracking-wide flex items-center gap-2">
-                    <DollarSign size={18} className="text-brand-primary-soft" /> Analisis Laba Rugi (P&L) & Realisasi Finansial Proyek
+                  <h3 className="flex items-center gap-2 text-sm font-extrabold tracking-wide text-slate-900">
+                    <DollarSign size={18} className="text-[#2649B3]" /> Analisis Laba Rugi (P&L) & Realisasi Finansial Proyek
                   </h3>
                   <span className={cn(
                     "badge text-2xs font-extrabold px-2 py-0.5 rounded-full",
-                    financialPerformance?.financial_health_status === "PROFITABLE" ? "bg-brand-light-green0/20 text-brand-primary-soft border border-brand-green/40" :
-                    financialPerformance?.financial_health_status === "AT_RISK" ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" :
-                    "bg-red-500/20 text-red-300 border border-red-500/40"
+                    financialPerformance?.financial_health_status === "PROFITABLE" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                    financialPerformance?.financial_health_status === "AT_RISK" ? "bg-amber-50 text-amber-700 border border-amber-200" :
+                    "bg-red-50 text-red-700 border border-red-200"
                   )}>
                     {financialPerformance?.financial_health_status || "ANALYZING"}
                   </span>
                 </div>
-                <p className="text-2xs text-white/60 mt-0.5">
+                <p className="mt-1 text-xs text-slate-600">
                   Perhitungan real-time pendapatan kontrak, progres penagihan, beban biaya aktual terpakai, dan sisa margin keuntungan.
                 </p>
               </div>
@@ -2555,14 +2555,14 @@ export default function ProjectsClient() {
                 {isPM && (
                   <button
                     onClick={() => setIsEditFinancialsOpen(true)}
-                    className="btn-outline py-1 px-3 text-xs text-brand-primary-soft border-brand-green/50 hover:bg-brand-light-green0/10 gap-1.5"
+                    className="btn-outline gap-1.5 border-[#BFDBFE] px-3 py-1 text-xs text-[#2649B3] hover:bg-[#EFF6FF]"
                   >
                     <Edit size={12} /> Edit Target Finansial & Budget
                   </button>
                 )}
                 <button
                   onClick={() => setIsFundingRequestOpen(true)}
-                  className="btn-primary py-1 px-3 text-xs bg-brand-green hover:bg-brand-light-green0 gap-1.5 font-bold"
+                  className="btn-primary gap-1.5 bg-[#2649B3] px-3 py-1 text-xs font-bold hover:bg-[#203D91]"
                 >
                   <Plus size={12} /> + Ajukan Permintaan Dana (Budgeting)
                 </button>
@@ -2570,45 +2570,45 @@ export default function ProjectsClient() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
-                <span className="text-2xs text-white/60 block font-medium">Target Revenue (Nilai Kontrak)</span>
-                <span className="text-base font-extrabold text-white mt-1 block">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                <span className="block text-xs font-medium text-slate-600">Target Revenue (Nilai Kontrak)</span>
+                <span className="mt-1 block text-base font-extrabold text-slate-900">
                   {formatRupiah(Number(financialPerformance?.expected_revenue ?? selectedProject?.contract_amount ?? 0))}
                 </span>
-                <span className="text-3xs text-brand-primary-soft mt-0.5 block">
+                <span className="mt-1 block text-2xs font-medium text-[#2649B3]">
                   Invoiced: {formatRupiah(Number(financialPerformance?.invoiced_revenue ?? 0))}
                 </span>
               </div>
 
-              <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
-                <span className="text-2xs text-white/60 block font-medium">Total Anggaran (Budget Baseline)</span>
-                <span className="text-base font-extrabold text-white mt-1 block">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                <span className="block text-xs font-medium text-slate-600">Total Anggaran (Budget Baseline)</span>
+                <span className="mt-1 block text-base font-extrabold text-slate-900">
                   {formatRupiah(Number(financialPerformance?.planned_budget ?? selectedProject?.budget_amount ?? selectedProject?.budget ?? 0))}
                 </span>
-                <span className="text-3xs text-cyan-400 mt-0.5 block">
+                <span className="mt-1 block text-2xs font-medium text-cyan-700">
                   Utilisasi: {financialPerformance?.budget_utilization_percent ?? 0}%
                 </span>
               </div>
 
-              <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
-                <span className="text-2xs text-white/60 block font-medium">Actual Cost (Biaya Riil Terpakai)</span>
-                <span className="text-base font-extrabold text-amber-300 mt-1 block">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                <span className="block text-xs font-medium text-slate-600">Actual Cost (Biaya Riil Terpakai)</span>
+                <span className="mt-1 block text-base font-extrabold text-amber-700">
                   {formatRupiah(Number(financialPerformance?.actual_cost ?? selectedProject?.actual_cost ?? 0))}
                 </span>
-                <span className="text-3xs text-white/50 mt-0.5 block">
+                <span className="mt-1 block text-2xs text-slate-500">
                   Tenaga Kerja, Material & Alat
                 </span>
               </div>
 
-              <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
-                <span className="text-2xs text-white/60 block font-medium">Proyeksi Laba Bersih (Gross Margin)</span>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                <span className="block text-xs font-medium text-slate-600">Proyeksi Laba Bersih (Gross Margin)</span>
                 <span className={cn(
-                  "text-base font-extrabold mt-1 block",
-                  Number(financialPerformance?.actual_gross_profit ?? 0) >= 0 ? "text-brand-primary-soft" : "text-red-400"
+                  "mt-1 block text-base font-extrabold",
+                  Number(financialPerformance?.actual_gross_profit ?? 0) >= 0 ? "text-emerald-700" : "text-red-600"
                 )}>
                   {formatRupiah(Number(financialPerformance?.actual_gross_profit ?? 0))}
                 </span>
-                <span className="text-3xs text-white/70 mt-0.5 block">
+                <span className="mt-1 block text-2xs text-slate-600">
                   Margin: <b>{financialPerformance?.actual_margin_percent ?? 0}%</b> (Target: {financialPerformance?.target_margin_percent ?? 0}%)
                 </span>
               </div>

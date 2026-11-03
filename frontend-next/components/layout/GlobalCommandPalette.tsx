@@ -152,9 +152,15 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
               <X size={14} />
             </button>
           )}
-          <kbd className="px-2 py-0.5 text-2xs text-text-secondary bg-white rounded-lg border border-gray-200 font-mono shadow-2xs flex-shrink-0">
-            ESC
-          </kbd>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Tutup Quick Access"
+            title="Tutup"
+            className="ml-1 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-text-secondary shadow-2xs transition hover:bg-gray-100 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
         </div>
 
         {/* Results list */}
@@ -227,13 +233,8 @@ export function GlobalCommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           )}
         </div>
 
-        {/* Footer shortcuts */}
-        <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-3xs text-text-secondary">
-          <div className="flex items-center gap-3">
-            <span><b>↑↓</b> Navigasi</span>
-            <span><b>Enter</b> Buka</span>
-            <span><b>ESC</b> Tutup</span>
-          </div>
+        {/* Footer brand */}
+        <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 flex items-center justify-end text-3xs text-text-secondary">
           <span className="flex items-center gap-1.5 font-semibold text-brand-deep-green">
             <MarkaWordmark className="h-auto w-12 text-[#2649B3]" />
             <span>ERP Quick Access</span>

@@ -9,16 +9,15 @@
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
-  Clock, Users, Coffee, Briefcase,
-  Plus, Coins, RefreshCw, AlertTriangle
+  Clock, Users, ArrowRight, RefreshCw, AlertTriangle
 } from "lucide-react";
-import { cn, getStatusColor } from "@/lib/utils";
+import { localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
 
 interface RequestCardFeedProps {
   onRequestClick: (req: any) => void;
-  onOpenNewModal: () => void;
   refreshTrigger?: number;
 }
 
@@ -29,18 +28,17 @@ interface RequestCardFeedProps {
  * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
  * Integration/side effects: invokes the visible HTTP API and maps its result into UI state.
  */
-export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger }: RequestCardFeedProps) {
+export function RequestCardFeed({ onRequestClick, refreshTrigger }: RequestCardFeedProps) {
   const [requests, setRequests] = useState<any[]>([]);
   /**
-   * initialLoading = true only on the very first load or filter change (shows skeleton).
+   * initialLoading = true only on the first load (shows skeleton).
    * refreshing = true during silent background refresh (keeps existing cards visible, shows subtle indicator).
    */
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [filterType, setFilterType] = useState<string>("ALL");
 
-  // Track whether we've ever successfully loaded for this filter
+  // Track whether we've ever successfully loaded the meeting feed
   const hasLoadedRef = useRef(false);
   // Abort controller and request version to prevent stale responses from overwriting fresh data
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -78,8 +76,8 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
     try {
       const res = await api.get("/api/v1/requests", {
         params: {
-          page_size: 25,
-          ...(filterType !== "ALL" ? { type: filterType } : {}),
+          page_size: 50,
+          type: "MEETING",
         },
         signal: controller.signal,
       });
@@ -107,12 +105,12 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
     }
   };
 
-  // Filter change: full reload with skeleton
+  // Initial load of today's and upcoming meeting cards
   useEffect(() => {
     hasLoadedRef.current = false;
     fetchRequests(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterType]);
+  }, []);
 
   // refreshTrigger change (after action complete): silent refresh to avoid skeleton flicker
   useEffect(() => {
@@ -132,81 +130,98 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
     };
   }, []);
 
-/**
- * getStatusBadge owns the local UI behavior described by its typed signature.
- *
- * @param input - Uses the declared props, event, or value arguments.
- * @returns The rendered React value, computed presentation value, or Promise declared by the implementation.
- * Integration/side effects: updates only the visible React/browser state or invokes the callbacks below.
- */
-  const getStatusBadge = (status: string) => {
-    const labels: Record<string, string> = {
-      COMPLETED: "CLOSED",
-      PENDING_LPJ_VERIFICATION: "WAITING LPJ OM",
-      LPJ_REVISION: "RE-CHECKING",
-    };
-    return <span className={cn("px-2.5 py-0.5 rounded-full border text-3xs font-extrabold", getStatusColor(status))}>{labels[status] || status.replace(/_/g, " ") || "REGISTERED"}</span>;
+  const today = localDateKey();
+  const meetingDateKey = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   };
+  const meetings = requests.filter((request) => request.request_type === "MEETING" && request.start_at)
+    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+  const todayMeetings = meetings.filter((request) => meetingDateKey(request.start_at) === today);
+  const incomingMeetings = meetings.filter((request) => meetingDateKey(request.start_at) > today);
+
+  const renderMeetingCard = (req: any) => (
+    <button
+      key={req.id}
+      type="button"
+      onClick={() => onRequestClick(req)}
+      className="w-full rounded-xl border border-[#D9E2EE] bg-white p-3 text-left shadow-2xs transition-all hover:border-[#294BB2]/50 hover:shadow-sm"
+    >
+      <div className="flex items-start gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#D9E2EE] bg-[#EAF6FF] text-[#2649B3]">
+          <Users size={15} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[10px] font-mono text-[#64748B]">{req.request_number}</span>
+          <span className="block whitespace-normal break-words text-xs font-bold leading-snug text-[#090909]">{req.title}</span>
+        </span>
+      </div>
+      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-[#EEF2F7] pt-2 text-[11px] text-[#4F5050]">
+        <span className="inline-flex items-center gap-1.5 font-medium">
+          <Clock size={12} className="text-[#294BB2]" />
+          {req.start_at && <>
+            {meetingDateKey(req.start_at) !== today && `${new Date(req.start_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" })} · `}
+            {new Date(req.start_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+            {req.end_at && ` – ${new Date(req.end_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`}
+          </>}
+        </span>
+        {req.tagged_users?.length > 0 && (
+          <span className="flex shrink-0 items-center -space-x-1.5" aria-label={`${req.tagged_users.length} peserta`}>
+            {req.tagged_users.slice(0, 3).map((user: any, index: number) => (
+              <Image
+                key={user.id ?? index}
+                src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.id || index)}`}
+                alt={user.name || "Peserta"}
+                title={user.name || "Peserta"}
+                width={20}
+                height={20}
+                unoptimized
+                className="h-5 w-5 rounded-full border border-white object-cover"
+              />
+            ))}
+            {req.tagged_users.length > 3 && <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white bg-[#EAF6FF] text-[9px] font-bold text-[#2649B3]">+{req.tagged_users.length - 3}</span>}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+
+  const renderMeetingSection = (title: string, items: any[], emptyText: string) => (
+    <section className="flex min-w-0 flex-col gap-2 rounded-2xl border border-[#D9E2EE] bg-[#F8FBFF] p-3 sm:p-4">
+      <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2">
+        <h4 className="text-sm font-extrabold text-[#090909]">{title}</h4>
+        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-[#2649B3]">{items.length}</span>
+      </div>
+      {items.length ? <div className="flex max-h-[290px] flex-col gap-2 overflow-y-auto pr-1">{items.map(renderMeetingCard)}</div> : (
+        <p className="rounded-xl border border-dashed border-[#D5E3F2] bg-white px-3 py-5 text-center text-xs text-[#64748B]">{emptyText}</p>
+      )}
+    </section>
+  );
 
   return (
     <div className="space-y-3.5">
-      {/* Header & Filter Bar */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center justify-between gap-3 border-b border-[#D9D9D9] pb-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-extrabold text-[#090909] tracking-tight">Kartu Permintaan Aktif (Active Request Cards)</h3>
-          <span className="px-2 py-0.5 rounded-full bg-[#EAF6FF] text-3xs font-extrabold text-[#2649B3]">
-            {requests.length} Active
-          </span>
-          {/* Subtle refresh indicator: shown during silent background refresh */}
-          {refreshing && (
-            <RefreshCw size={12} className="text-[#2649B3] animate-spin ml-1" />
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Type Filter Buttons */}
-          <div className="flex items-center p-1 rounded-xl bg-[#EAF6FF] border border-[#D9D9D9] text-2xs font-bold text-[#4F5050]">
-            {[
-              { id: "ALL", label: "ALL" },
-              { id: "FUND_REQUEST", label: "FUND" },
-              { id: "MEETING", label: "MEETING" },
-              { id: "LEAVE", label: "LEAVE" },
-              { id: "OTHER", label: "OTHER" },
-            ].map(t => (
-              <button
-                key={t.id}
-                onClick={() => setFilterType(t.id)}
-                className={cn(
-                  "px-2.5 py-1 rounded-lg transition-all",
-                  filterType === t.id ? "bg-[#2649B3] text-white shadow-2xs font-extrabold" : "hover:text-[#090909]"
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
+          <div>
+            <h3 className="text-sm font-extrabold tracking-tight text-[#090909]">Today&apos;s &amp; Incoming Meeting</h3>
+            <p className="mt-0.5 text-xs text-[#64748B]">Jadwal rapat hari ini dan yang akan datang.</p>
           </div>
-
-          <button
-            onClick={onOpenNewModal}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#2649B3] hover:bg-[#2649B3] text-white text-2xs font-extrabold shadow-xs transition-all"
-          >
-            <Plus size={13} strokeWidth={2.5} />
-            <span>Tambahkan Kartu</span>
-          </button>
+          {refreshing && <RefreshCw size={13} className="text-[#2649B3] animate-spin" aria-label="Memperbarui" />}
         </div>
+        <Link href="/requests" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#D9E2EE] bg-white px-3 py-2 text-xs font-bold text-[#2649B3] transition-colors hover:bg-[#EAF6FF]">
+          Lihat detail <ArrowRight size={13} />
+        </Link>
       </div>
 
-      {/* Cards Grid */}
       {initialLoading ? (
-        /* Full skeleton on first load or filter change */
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-28 rounded-[20px] bg-[#EAF6FF]/50 border border-[#D9D9D9] animate-pulse" />
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {[1, 2].map(i => (
+            <div key={i} className="h-44 rounded-2xl border border-[#D9E2EE] bg-[#EAF6FF]/50 animate-pulse" />
           ))}
         </div>
       ) : fetchError ? (
-        /* Error state with retry */
-        <div className="p-8 rounded-[20px] bg-white border border-red-100 text-center space-y-3">
+        <div className="space-y-3 rounded-2xl border border-red-100 bg-white p-8 text-center">
           <AlertTriangle size={24} className="text-red-400 mx-auto" />
           <p className="text-xs text-red-600 font-semibold">{fetchError}</p>
           <button
@@ -217,91 +232,10 @@ export function RequestCardFeed({ onRequestClick, onOpenNewModal, refreshTrigger
             Coba Lagi
           </button>
         </div>
-      ) : requests.length === 0 ? (
-        <div className="p-8 rounded-[20px] bg-white border border-[#D9D9D9] text-center text-xs text-[#4F5050]">
-          Belum ada request aktif. Klik tombol <b>Tambahkan Kartu</b> untuk mengajukan dana, rapat, atau cuti baru.
-        </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {requests.map(req => (
-            <div
-              key={req.id}
-              onClick={() => onRequestClick(req)}
-              className="p-4.5 rounded-[20px] bg-white border border-[#D9D9D9] hover:border-[#294BB2]/60 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-150 cursor-pointer flex flex-col justify-between gap-3 shadow-2xs"
-            >
-              {/* Card Top */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-[#EAF6FF] border border-[#D9D9D9] flex items-center justify-center text-[#2649B3] shrink-0">
-                    {req.request_type === "FUND_REQUEST" ? <Coins size={16} /> : req.request_type === "MEETING" ? <Users size={16} /> : req.request_type === "LEAVE" ? <Coffee size={16} /> : <Briefcase size={16} />}
-                  </div>
-                  <div className="min-w-0 truncate">
-                    <span className="text-3xs font-mono text-[#4F5050] block">{req.request_number}</span>
-                    <h4 className="text-xs font-bold text-[#090909] truncate">{req.title}</h4>
-                  </div>
-                </div>
-                {req.request_type !== "MEETING" && getStatusBadge(req.status)}
-              </div>
-
-              {/* Fund Request Amount Display */}
-              {req.amount && (
-                <div className="px-3 py-1.5 rounded-xl bg-[#EAF6FF]/80 border border-[#D9D9D9] flex items-center justify-between">
-                  <span className="text-3xs font-bold text-[#2649B3]">Total Dana</span>
-                  <span className="text-xs font-black text-[#2649B3]">
-                    Rp {Number(req.amount).toLocaleString("id-ID")}
-                  </span>
-                </div>
-              )}
-
-              {/* Assignee Information */}
-              <div className="flex items-center justify-between text-2xs">
-                {req.assignee_user ? (
-                  <div className="flex items-center gap-1.5 text-3xs text-[#4F5050]">
-                    <span>Assigned to</span>
-                    <span className="font-bold text-[#2649B3] px-1.5 py-0.5 rounded-md bg-[#EAF6FF]">
-                      {req.assignee_user.name}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-3xs text-[#4F5050] italic">Belum di-assign</span>
-                )}
-              </div>
-
-              {/* Card Mid: Schedule & Tagged People */}
-              <div className="flex items-center justify-between text-2xs text-[#4F5050] pt-2 border-t border-[#D9D9D9]/60">
-                <div className="flex items-center gap-1.5 font-medium">
-                  <Clock size={12} className="text-[#294BB2]" />
-                  <span>
-                    {req.start_at ? new Date(req.start_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" }) : "Today"}
-                    {req.request_type === "MEETING" && req.start_at && ` • ${new Date(req.start_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}${req.end_at ? ` - ${new Date(req.end_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : ""}`}
-                  </span>
-                </div>
-
-                {/* Avatar Group */}
-                {req.tagged_users && req.tagged_users.length > 0 && (
-                  <div className="flex items-center -space-x-1.5">
-                    {req.tagged_users.slice(0, 3).map((u: any, idx: number) => (
-                      <Image
-                        key={idx}
-                        src={u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.id || idx)}`}
-                        alt={u.name}
-                        title={u.name}
-                        width={20}
-                        height={20}
-                        unoptimized
-                        className="w-5 h-5 rounded-full object-cover border border-white shadow-2xs"
-                      />
-                    ))}
-                    {req.tagged_users.length > 3 && (
-                      <span className="w-5 h-5 rounded-full bg-[#EAF6FF] text-3xs font-bold text-[#2649B3] flex items-center justify-center border border-white">
-                        +{req.tagged_users.length - 3}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+          {renderMeetingSection("Today's", todayMeetings, "Tidak ada meeting hari ini.")}
+          {renderMeetingSection("Incoming Meeting", incomingMeetings, "Belum ada meeting mendatang.")}
         </div>
       )}
     </div>
