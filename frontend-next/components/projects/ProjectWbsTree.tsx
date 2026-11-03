@@ -161,14 +161,15 @@ export function ProjectWbsTree({
 
   return (
     <div id="project-weekly-approval" tabIndex={-1} className="flex min-w-0 scroll-mt-24 flex-col gap-4 focus:outline-none">
-      <div className="rounded-2xl border border-[#E4E8F0] bg-white p-4 shadow-sm sm:p-5">
-        <label htmlFor="wbs-search" className="block text-sm font-bold text-text-primary">Cari dalam struktur pekerjaan</label>
-        <p className="mt-1 mb-3 text-xs text-text-secondary">Cari tugas, target, divisi, atau anggota dalam paket kerja lengkap.</p>
-        <div className="relative">
-          <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
-          <input id="wbs-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari tugas, target, atau anggota…" className="h-10 w-full min-w-0 rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#294BB2] focus:bg-white focus:ring-2 focus:ring-[#294BB2]/15" />
+      <div className="flex min-w-0 flex-col justify-between gap-3 rounded-2xl border border-[#D9D9D9] bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:px-4">
+        <div className="min-w-0">
+          <label htmlFor="wbs-search" className="block text-sm font-bold text-text-primary">Hierarki Task</label>
+          <p role="status" className="mt-0.5 text-xs text-text-secondary">{visibleMainTasks.length} dari {mainTasks.length} paket kerja{query ? " cocok · Hierarki hasil dibuka otomatis" : " · Main Task → Weekly Plan → Daily Task"}</p>
         </div>
-        <p role="status" className="mt-2 text-xs text-text-secondary">{visibleMainTasks.length} dari {mainTasks.length} paket kerja{query ? " cocok · Hierarki hasil dibuka otomatis" : " · Main Task → Weekly Plan → Daily Task"}</p>
+        <div className="relative min-w-0 sm:w-72">
+          <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
+          <input id="wbs-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari Task, Target, Anggota" className="h-10 w-full min-w-0 rounded-full border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#294BB2] focus:bg-white focus:ring-2 focus:ring-[#294BB2]/15" />
+        </div>
       </div>
       {/* WBS Action Toolbar & Global Expand/Collapse controls */}
       <div className="flex items-center justify-between flex-wrap gap-2.5 pb-1">

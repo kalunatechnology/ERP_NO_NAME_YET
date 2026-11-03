@@ -148,9 +148,9 @@ export function ProjectWbsNode({
   const canCreateWeekly = canManageWeeklyTasks || (userRole !== "super_admin" && userRole !== "executive" && (main.assignments || []).some((a: any) => String(a.assignee_id || a.assignee || "") === String(currentUserId)));
 
   return (
-    <div className="card overflow-hidden rounded-2xl border border-[#E4E8F0] border-l-4 border-l-[#D7E2FF] bg-white shadow-xs transition-all duration-200 hover:border-[#B8C8F5] hover:shadow-sm">
+    <div className="card overflow-hidden rounded-2xl border border-[#E3E3E3] bg-[#FAFAFA] shadow-xs transition-all duration-200 hover:border-[#C8D4F4] hover:shadow-sm">
       {/* Level 1 Header: Main Task */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8ECF3] bg-[#F8FAFF] p-3.5 sm:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8E8E8] bg-[#FAFAFA] p-3.5 sm:p-4">
         <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1">
           <button
             type="button"

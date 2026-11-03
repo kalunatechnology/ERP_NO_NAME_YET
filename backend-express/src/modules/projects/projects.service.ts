@@ -144,9 +144,19 @@ export class ProjectsService {
       activeRole === RoleCode.OPERATIONAL_MANAGER ||
       activeRole === RoleCode.PROJECT_MANAGER
     ) {
+      const memberships = activeRole === RoleCode.PROJECT_MANAGER
+        ? await db.project_member.findMany({
+          where: { company_id: companyId, user_id: user.id, status: 'ACTIVE', project_role: 'PROJECT_MANAGER',
+            ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) },
+          select: { project_id: true },
+        })
+        : [];
       const projects = await db.project_project.findMany({
         where: { company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
-          ...(activeRole === RoleCode.PROJECT_MANAGER ? { created_by_id: user.id } : {}) },
+          ...(activeRole === RoleCode.PROJECT_MANAGER ? { OR: [
+            { project_manager_id: user.id },
+            { id: { in: memberships.map((row: { project_id: string | null }) => row.project_id).filter(Boolean) } },
+          ] } : {}) },
         select: { id: true },
       });
       return projects.map((project: { id: string }) => project.id);
@@ -191,12 +201,19 @@ export class ProjectsService {
       activeRole === RoleCode.OPERATIONAL_MANAGER ||
       activeRole === RoleCode.PROJECT_MANAGER
     ) {
+      const isAssignedManager = activeRole === RoleCode.PROJECT_MANAGER
+        ? await db.project_member.findFirst({
+          where: { project_id: projectId, company_id: companyId, user_id: user.id, status: 'ACTIVE',
+            project_role: 'PROJECT_MANAGER', ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) },
+          select: { id: true },
+        })
+        : null;
       const project = await db.project_project.findFirst({
         where: { id: projectId, company_id: companyId, ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}),
-          ...(activeRole === RoleCode.PROJECT_MANAGER ? { created_by_id: user.id } : {}) },
+          ...(activeRole === RoleCode.PROJECT_MANAGER ? { project_manager_id: user.id } : {}) },
         select: { id: true },
       });
-      if (project) return;
+      if (project || isAssignedManager) return;
       throw new ForbiddenError('Anda tidak memiliki kewenangan pengelolaan pada project ini.');
     }
     if (this.isOperationalAssignee(user)) {
@@ -392,7 +409,7 @@ export class ProjectsService {
           user_id: user.id, status: 'ACTIVE', project_role: 'PROJECT_MANAGER' },
         select: { project_id: true },
       });
-      return { OR: [{ created_by_id: user.id }, { project_manager_id: user.id },
+      return { OR: [{ project_manager_id: user.id },
         { id: { in: memberships.map((row: { project_id: string }) => row.project_id) } }],
         ...(user.tenant_id ? { tenant_id: user.tenant_id } : {}) };
     }

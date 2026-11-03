@@ -1503,86 +1503,69 @@ export default function ProjectsClient() {
   return (
     <div className="workspace-container flex min-w-0 w-full max-w-full flex-col gap-5">
 
-      {/* ── Top Selector & Action Toolbar ── */}
-      <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-[#DCE5FA] bg-white p-4 shadow-sm sm:p-5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#294BB2]">Ruang kerja proyek</span>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#111827] sm:text-[28px]">My Workspace</h1>
-          <p className="mt-1 text-xs text-text-secondary">Kelola paket kerja hingga tugas harian dalam satu tempat.</p>
-        </div>
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row lg:w-auto lg:justify-end">
-          <label htmlFor="project-search" className="sr-only">Cari proyek berdasarkan nama, kode, atau PM</label>
-          <div className="relative min-w-0 sm:w-64 lg:w-72">
-            <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
-            <input id="project-search" type="search" value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Cari nama, kode, atau PM..." className="h-10 w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/15" />
-          </div>
-          <button type="button" onClick={() => router.push("/tasks#task-management")} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#294BB2] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#203F9C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#294BB2]/40 focus-visible:ring-offset-2">
-            Lihat Weekly Task <ArrowRight size={15} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-      <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="grid min-w-0 grid-cols-1 items-end gap-3 lg:grid-cols-[minmax(260px,1.2fr)_minmax(180px,0.8fr)_auto_auto]">
+      {/* ── Project Workspace Header, Selector & Filters ── */}
+      <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-[#D9D9D9] bg-white p-4 shadow-sm sm:p-5" aria-label="Filter dan navigasi proyek">
+        <div className="grid min-w-0 gap-3 border-b border-[#D9D9D9] pb-4 md:grid-cols-[minmax(0,1fr)_minmax(280px,1fr)] md:items-start">
           <div className="min-w-0">
-          <label htmlFor="project-selector" className="sr-only">Pilih Proyek</label>
-          <select
-            id="project-selector"
-            value={selectedId ?? ""}
-            onChange={(e) => navigateProject(e.target.value)}
-            className="block h-10 w-full min-w-0 max-w-full truncate rounded-xl border border-[#294BB2] bg-white px-3 text-xs font-semibold text-text-primary outline-none transition focus:ring-2 focus:ring-[#294BB2]/20"
-          >
-            {filteredProjects.length === 0 && <option disabled value="">Tidak ada proyek yang cocok</option>}
-            {selectedProject && !filteredProjects.some((project) => String(project.id) === String(selectedProject.id)) && (
-              <option value={selectedProject.id}>Aktif: [{selectedProject.project_code || selectedProject.code || "PRJ"}] {selectedProject.project_name || selectedProject.name}</option>
-            )}
-            {filteredProjects.map((proj) => {
-              const code = proj.project_code || proj.code || "PRJ";
-              const name = proj.project_name || proj.name || "Proyek";
-              return (
-                <option key={proj.id} value={proj.id}>
-                  [{code}] {name}
-                </option>
-              );
-            })}
-          </select>
-          <p className="mt-1.5 text-2xs text-text-secondary">Proyek aktif · Aksi sesuai kewenangan Anda</p>
+            <h1 className="text-2xl font-extrabold tracking-tight text-[#111827] sm:text-[28px]">My Workspace</h1>
+            <p className="mt-1 text-xs text-text-secondary">Kelola paket kerja hingga tugas harian dalam satu tempat.</p>
           </div>
-          <label className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Client
-            <select aria-label="Filter proyek berdasarkan client" value={projectClientFilter} onChange={(event) => setProjectClientFilter(event.target.value)} className="h-10 min-w-36 max-w-full rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-text-primary outline-none focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/15">
-              <option value="ALL">Semua Client</option>
-              {projectClients.map((client) => <option key={client} value={client}>{client}</option>)}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Bulan
-              <input
-                aria-label="Bulan filter Weekly proyek"
-                type="month"
-                value={projectWeeklyCalendar.month}
-                onChange={(event) => { projectWeeklyCalendar.changeMonth(event.target.value); setProjectWeekFilter("SELECTED"); }}
-                className="h-10 min-w-0 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/15"
-              />
-            </label>
-            <label htmlFor="project-week-filter" className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Weekly
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row md:justify-end">
+            <label htmlFor="project-search" className="sr-only">Cari proyek berdasarkan nama, kode, atau PM</label>
+            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+              <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
+              <input id="project-search" type="search" value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Cari nama, kode, atau PM..." className="h-10 w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#294BB2] focus:bg-white focus:ring-2 focus:ring-[#294BB2]/15" />
+            </div>
+            <button type="button" onClick={() => router.push("/tasks#task-management")} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-[#294BB2] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#203F9C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#294BB2]/40 focus-visible:ring-offset-2">
+              Lihat Weekly Task <ArrowRight size={15} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(260px,1fr)_minmax(0,1fr)] md:items-start">
+          <div className="min-w-0">
+            <label htmlFor="project-selector" className="sr-only">Pilih Proyek</label>
             <select
-              id="project-week-filter"
-              value={projectWeekFilter === "ALL" ? "ALL" : String(projectWeeklyCalendar.week)}
-              disabled={projectWeeklyCalendar.loading || Boolean(projectWeeklyCalendar.error)}
-              onChange={(event) => {
-                if (event.target.value === "ALL") setProjectWeekFilter("ALL");
-                else { projectWeeklyCalendar.setWeek(Number(event.target.value)); setProjectWeekFilter("SELECTED"); }
-              }}
-              className="h-10 min-w-0 max-w-full rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/15"
+              id="project-selector"
+              value={selectedId ?? ""}
+              onChange={(e) => navigateProject(e.target.value)}
+              className="block h-10 w-full min-w-0 max-w-full truncate rounded-full border border-gray-300 bg-white px-4 text-xs font-semibold text-text-primary outline-none transition focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/20"
             >
+              {filteredProjects.length === 0 && <option disabled value="">Tidak ada proyek yang cocok</option>}
+              {selectedProject && !filteredProjects.some((project) => String(project.id) === String(selectedProject.id)) && (
+                <option value={selectedProject.id}>Aktif: [{selectedProject.project_code || selectedProject.code || "PRJ"}] {selectedProject.project_name || selectedProject.name}</option>
+              )}
+              {filteredProjects.map((proj) => {
+                const code = proj.project_code || proj.code || "PRJ";
+                const name = proj.project_name || proj.name || "Proyek";
+                return <option key={proj.id} value={proj.id}>[{code}] {name}</option>;
+              })}
+            </select>
+            <p className="mt-1.5 text-2xs text-text-secondary">{filteredProjects.length} proyek pada tampilan ini dari {projects.length} total · Pencarian tidak mengubah proyek yang sedang dibuka</p>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
+            <span className="text-2xs font-semibold text-text-secondary">Client:</span>
+            {["ALL", ...projectClients].map((client) => {
+              const selected = projectClientFilter === client;
+              return <button key={client} type="button" aria-pressed={selected} onClick={() => setProjectClientFilter(client)} className={cn("inline-flex min-h-9 items-center rounded-full border px-3 py-1.5 text-xs font-semibold transition", selected ? "border-[#294BB2] bg-[#EEF3FF] text-[#294BB2]" : "border-gray-200 bg-white text-text-secondary hover:border-[#B8C8F5] hover:bg-gray-50 hover:text-text-primary")}>{client === "ALL" ? "Semua Client" : client}</button>;
+            })}
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-[#D9D9D9] pb-4">
+          <label className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Bulan
+            <input aria-label="Bulan filter Weekly proyek" type="month" value={projectWeeklyCalendar.month} onChange={(event) => { projectWeeklyCalendar.changeMonth(event.target.value); setProjectWeekFilter("SELECTED"); }} className="h-10 min-w-0 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/15" />
+          </label>
+          <label htmlFor="project-week-filter" className="flex items-center gap-2 text-2xs font-semibold text-text-secondary">Weekly
+            <select id="project-week-filter" value={projectWeekFilter === "ALL" ? "ALL" : String(projectWeeklyCalendar.week)} disabled={projectWeeklyCalendar.loading || Boolean(projectWeeklyCalendar.error)} onChange={(event) => { if (event.target.value === "ALL") setProjectWeekFilter("ALL"); else { projectWeeklyCalendar.setWeek(Number(event.target.value)); setProjectWeekFilter("SELECTED"); } }} className="h-10 min-w-0 max-w-full rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-text-primary outline-none focus:border-[#294BB2] focus:ring-2 focus:ring-[#294BB2]/15">
               <option value="ALL">Semua minggu</option>
               {projectWeeklyCalendar.periods.map((period) => <option key={period.id} value={period.week}>Weekly {period.week} ({formatDate(period.start)} – {formatDate(period.end)})</option>)}
             </select>
-            </label>
+          </label>
+          <span className="text-2xs text-text-secondary">Menampilkan proyek yang memiliki Weekly atau Daily Task pada periode terpilih.</span>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3">
-          <p role="status" className="text-2xs text-text-secondary">{filteredProjects.length} proyek dari {projects.length}{projectSearch.trim() && " · Pencarian berlaku pada nama, kode, atau PM"}</p>
-          <span className="text-2xs text-text-secondary">Menampilkan proyek dengan Weekly atau Daily Task pada periode terpilih.</span>
-        </div>
-        <div className="flex flex-col gap-2 border-t border-gray-100 pt-3">
+
+        <div className="flex flex-col gap-2">
           {projectWeeklyCalendar.error ? (
             <div role="alert" className="flex items-center gap-2 text-2xs text-red-700">
               <span>{projectWeeklyCalendar.error}</span>
@@ -1599,7 +1582,7 @@ export default function ProjectsClient() {
                   aria-pressed={isSelected}
                   onClick={() => { projectWeeklyCalendar.setWeek(period.week); setProjectWeekFilter("SELECTED"); }}
                   className={cn(
-                    "flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
+                    "flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
                     isSelected ? "border-[#294BB2] bg-[#EEF3FF] text-[#294BB2]" : "border-text-tertiary bg-white text-text-secondary hover:bg-gray-50",
                   )}
                 >
@@ -1612,7 +1595,7 @@ export default function ProjectsClient() {
           )}
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-text-tertiary pt-3">
+        <div className="flex flex-col gap-2 border-t border-[#D9D9D9] pt-3">
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter pipeline proyek">
             {([
               { key: "ALL", label: "Semua Proyek", count: pipelineCounts.all },
@@ -1626,7 +1609,7 @@ export default function ProjectsClient() {
                 aria-pressed={projectPipelineView === view.key}
                 onClick={() => setProjectPipelineView(view.key)}
                 className={cn(
-                  "inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors",
+                  "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
                   projectPipelineView === view.key
                     ? "border-[#294BB2] bg-[#EEF3FF] text-[#294BB2]"
                     : "border-text-tertiary bg-white text-text-secondary hover:bg-gray-50 hover:text-text-primary"
@@ -1640,11 +1623,11 @@ export default function ProjectsClient() {
           <p className="text-2xs text-text-secondary">Belum Pitching mencakup Incoming dan Discovery. Sedang Pitching hanya mencakup tahap Pitching. Proyek Running mencakup lifecycle ACTIVE; status operasional seperti ON_HOLD tetap ditampilkan terpisah. Filter ini memakai record proyek yang sama.</p>
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-text-tertiary pt-3 [&>button]:min-h-9 [&>button]:max-w-full [&>button]:whitespace-normal [&>button]:text-left [&>button>svg]:shrink-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-[#D9D9D9] pt-3 [&>button]:min-h-9 [&>button]:max-w-full [&>button]:whitespace-normal [&>button]:text-left [&>button>svg]:shrink-0">
           {canCreateProject && (
             <button
               onClick={() => setIsCreateProjOpen(true)}
-              className="btn-primary py-1.5 px-3 text-xs gap-1.5 whitespace-nowrap"
+              className="btn-primary py-1.5 px-3 text-xs gap-1.5 whitespace-nowrap bg-[#294BB2] hover:bg-[#203F9C]"
             >
               <Plus size={14} /> Proyek Baru
             </button>
@@ -1659,7 +1642,7 @@ export default function ProjectsClient() {
           {canUpdateSelectedProject && canViewFinancials && (
             <button
               onClick={() => setIsEditFinancialsOpen(true)}
-              className="btn-secondary text-xs gap-1.5 py-1.5 px-3 border border-brand-green/30 text-brand-green hover:bg-brand-green/10 whitespace-nowrap shadow-xs font-semibold"
+              className="btn-secondary text-xs gap-1.5 py-1.5 px-3 border border-[#B8C8F5] bg-[#EEF3FF] text-[#294BB2] hover:bg-[#E4ECFF] whitespace-nowrap shadow-xs font-semibold"
             >
               <TrendingUp size={14} /> Target Finansial Proyek
             </button>
@@ -1669,7 +1652,7 @@ export default function ProjectsClient() {
           {canUpdateSelectedProject && canViewFinancials && (
             <button
               onClick={() => setIsFundingRequestOpen(true)}
-              className="btn-primary text-xs gap-1.5 py-1.5 px-3 bg-brand-green text-white hover:opacity-90 whitespace-nowrap font-semibold shadow-xs"
+              className="btn-primary text-xs gap-1.5 py-1.5 px-3 bg-[#294BB2] text-white hover:bg-[#203F9C] whitespace-nowrap font-semibold shadow-xs"
             >
               <Wallet size={14} /> Pengajuan Dana
             </button>
@@ -1678,7 +1661,7 @@ export default function ProjectsClient() {
           {canUpdateSelectedProject && (
             <button
               onClick={handleRecalculateHealth}
-              className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-brand-deep-green border-brand-green/40 hover:bg-brand-light-green whitespace-nowrap"
+              className="btn-outline py-1.5 px-3 text-xs gap-1.5 text-[#294BB2] border-[#B8C8F5] hover:bg-[#EEF3FF] whitespace-nowrap"
             >
               <Zap size={14} className="text-amber-500 fill-amber-500" /> Hitung Health (EVM)
             </button>
@@ -1703,7 +1686,7 @@ export default function ProjectsClient() {
             </button>
           )}
         </div>
-      </div>
+      </section>
 
       {selectedProject && allowsProjectManagement && (selectedAuthority?.can_review_weekly_tasks ?? selectedAuthority?.can_manage_weekly_tasks) && (
         <section aria-labelledby="weekly-approval-title" className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 sm:p-5">
@@ -1734,6 +1717,38 @@ export default function ProjectsClient() {
           </div>
         </section>
       )}
+
+      {/* ── Workspace Navigation ── */}
+      <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#D9D9D9] bg-white p-1.5 shadow-sm no-scrollbar">
+        {(userRole === "staff" && !canManageSelectedProject ? [
+          { key: "TREE", label: "Task Terkait Saya", icon: Layers, count: mainTasks.length },
+          ...(selectedProject ? [{ key: "RESOURCES", label: "Resource Proyek", icon: FileText, count: projectResources.length }] : []),
+        ] : [
+          { key: "TREE", label: "Hierarki Task", icon: Layers, count: mainTasks.length },
+          { key: "WORKSPACE", label: "My Workplace", icon: Users, count: allPersonalTasks.length },
+          ...(selectedProject ? [{ key: "RESOURCES", label: "Resources", icon: FileText, count: projectResources.length }] : []),
+          { key: "TRANSFERS", label: "Requests", icon: RefreshCw, count: transfers.length },
+          { key: "MILESTONES", label: "Milestones", icon: ShieldCheck, count: selectedProject?.milestones?.length },
+          ...(canViewFinancials ? [{ key: "FINANCIAL", label: "Financials", icon: DollarSign }] : []),
+        ]).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => selectedId != null ? navigateProject(selectedId, tab.key) : setActiveTab(tab.key)}
+            className={cn(
+              "flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold transition-all sm:px-4",
+              activeTab === tab.key
+                ? "bg-[#294BB2] text-white shadow-sm"
+                : "text-text-secondary hover:bg-[#EEF3FF] hover:text-[#294BB2]"
+            )}
+          >
+            <tab.icon size={14} />
+            <span>{tab.label}</span>
+            {tab.count !== undefined && (
+              <span className={cn("rounded-full px-1.5 py-0.5 text-2xs", activeTab === tab.key ? "bg-white/20" : "bg-gray-200")}>{tab.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
 
       {/* ── Project Hero Banner & Financial KPIs ── */}
       {selectedProject && (userRole !== "staff" || canManageSelectedProject) && (
@@ -1797,7 +1812,7 @@ export default function ProjectsClient() {
               {selectedAuthority?.can_manage_wbs ? (
                 <button
                   onClick={() => setIsCreateMainTaskOpen(true)}
-                  className="mt-2 w-full py-1.5 px-3 bg-white text-brand-deep-green rounded-xl text-xs font-bold hover:bg-brand-light-green transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                  className="mt-2 w-full py-1.5 px-3 bg-white text-[#294BB2] rounded-xl text-xs font-bold hover:bg-[#EEF3FF] transition-all flex items-center justify-center gap-1.5 shadow-sm"
                 >
                   <Plus size={14} /> Tambah Main Task
                 </button>
@@ -2024,40 +2039,6 @@ export default function ProjectsClient() {
       </div>
         </div>
       </details>
-
-      {/* ── Navigation Tabs ── */}
-      <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#E4E8F0] bg-white p-1.5 shadow-sm no-scrollbar">
-        {(userRole === "staff" && !canManageSelectedProject ? [
-          { key: "TREE", label: "Task Terkait Saya", icon: Layers, count: mainTasks.length },
-          ...(selectedProject ? [{ key: "RESOURCES", label: "Resource Proyek", icon: FileText, count: projectResources.length }] : []),
-        ] : [
-          { key: "TREE", label: "Hierarki Task (Full WBS Plan)", icon: Layers, count: mainTasks.length },
-          { key: "WORKSPACE", label: "Workspace Personal Saya (Semua Proyek)", icon: Users, count: allPersonalTasks.length },
-          ...(selectedProject ? [{ key: "RESOURCES", label: "Resource Proyek", icon: FileText, count: projectResources.length }] : []),
-          { key: "TRANSFERS", label: "Transfer Requests", icon: RefreshCw, count: transfers.length },
-          { key: "MILESTONES", label: "Milestones & Gates", icon: ShieldCheck, count: selectedProject?.milestones?.length },
-          ...(canViewFinancials ? [{ key: "FINANCIAL", label: "Biaya, Dana & Billing", icon: DollarSign }] : []),
-        ]).map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => selectedId != null ? navigateProject(selectedId, tab.key) : setActiveTab(tab.key)}
-            className={cn(
-              "flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-bold transition-all",
-              activeTab === tab.key
-                ? "bg-[#294BB2] text-white shadow-sm"
-                : "text-text-secondary hover:bg-[#EEF3FF] hover:text-[#294BB2]"
-            )}
-          >
-            <tab.icon size={14} />
-            <span>{tab.label}</span>
-            {tab.count !== undefined && (
-              <span className={cn("text-2xs px-1.5 py-0.2 rounded-full", activeTab === tab.key ? "bg-white/20" : "bg-gray-200")}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
 
       {/* ══════════════════════════════════════════════════════════════
           TAB 1: HIERARKI TASK (FULL 3-TIER WBS TREE BREAKDOWN)
