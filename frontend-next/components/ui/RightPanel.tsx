@@ -67,7 +67,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
           isSuperAdmin: userRole === "super_admin",
         }),
       ]);
-      setAlerts(realAlerts);
+      setAlerts(realAlerts.slice(0, 3));
       setContacts(data.contacts || []);
       setLoadError(null);
     } catch (error) {
@@ -197,7 +197,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
           <div className="relative mt-4 pl-2.5">
             <div className={cn("absolute bottom-0 left-0 top-0 w-1 rounded-full", alerts.some(item => item.isHighlighted) ? "bg-[#2649B3]" : "bg-[#D9D9D9]")} aria-hidden="true" />
             <div
-              className="flex max-h-[min(45vh,420px)] flex-col gap-2.5 overflow-y-auto overscroll-contain pr-1"
+              className="right-panel-alert-scroll flex max-h-[min(38vh,220px)] flex-col gap-2.5 overflow-y-auto overscroll-contain pr-1"
               role="region"
               aria-label="Daftar alert terbaru"
               tabIndex={0}

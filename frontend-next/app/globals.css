@@ -266,6 +266,18 @@
     @apply bg-text-tertiary rounded-full hover:bg-text-secondary transition-colors;
   }
 
+  .right-panel-alert-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #C5D2ED transparent;
+  }
+  .right-panel-alert-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .right-panel-alert-scroll::-webkit-scrollbar-thumb {
+    background: #C5D2ED;
+    border-radius: 9999px;
+  }
+
   /* Mobile slide-in animation for sidebar drawer */
   .slide-in-left {
     animation: slideInLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1);
