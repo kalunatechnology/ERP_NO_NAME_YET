@@ -454,25 +454,27 @@ function TabAttendance({ data }: { data: ReturnType<typeof createDefaultData> })
     date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
     return date.toISOString().slice(0, 10);
   };
-  const availableWeeks = Array.from(new Set(entries.map((entry: any) => dateKeyOf(entry)).filter(Boolean).map(weekStartOf))).sort();
+  const availableWeeks: string[] = Array.from(new Set<string>(entries.map((entry: any) => dateKeyOf(entry)).filter((dateKey: string) => Boolean(dateKey)).map(weekStartOf))).sort();
   const selectedEntries = entries.filter((entry: any) => {
     const matchesMember = selectedMember === "all" || memberKeyOf(entry) === selectedMember;
     const dateKey = dateKeyOf(entry);
     const matchesWeek = selectedWeek === "all" || (dateKey && weekStartOf(dateKey) === selectedWeek);
     return matchesMember && matchesWeek;
   });
-  const dailyRows = Array.from(selectedEntries.reduce((groups: Map<string, any>, entry: any) => {
+  type DailyAttendanceRow = { date: string; started_at: string | null; ended_at: string | null; total_hours: number };
+  const dailyRowsByDate = new Map<string, DailyAttendanceRow>();
+  selectedEntries.forEach((entry: any) => {
     const dateKey = dateKeyOf(entry);
-    if (!dateKey) return groups;
-    const row = groups.get(dateKey) ?? { date: dateKey, started_at: null, ended_at: null, total_hours: 0 };
+    if (!dateKey) return;
+    const row: DailyAttendanceRow = dailyRowsByDate.get(dateKey) ?? { date: dateKey, started_at: null, ended_at: null, total_hours: 0 };
     const startedAt = entry.started_at ?? entry.work_started_at;
     const endedAt = entry.ended_at ?? entry.work_ended_at;
     if (startedAt && (!row.started_at || new Date(startedAt).getTime() < new Date(row.started_at).getTime())) row.started_at = startedAt;
     if (endedAt && (!row.ended_at || new Date(endedAt).getTime() > new Date(row.ended_at).getTime())) row.ended_at = endedAt;
     row.total_hours += Number(entry.total_hours ?? entry.hours ?? 0) || 0;
-    groups.set(dateKey, row);
-    return groups;
-  }, new Map<string, any>()).values()).sort((a, b) => b.date.localeCompare(a.date));
+    dailyRowsByDate.set(dateKey, row);
+  });
+  const dailyRows = Array.from(dailyRowsByDate.values()).sort((a, b) => b.date.localeCompare(a.date));
   const totalHours = dailyRows.reduce((sum, row) => sum + row.total_hours, 0);
   const formatClock = (value: string | null) => value ? new Date(value).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-";
   return <div className="card rounded-xl p-5">
