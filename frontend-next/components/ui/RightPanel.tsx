@@ -67,7 +67,7 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
           isSuperAdmin: userRole === "super_admin",
         }),
       ]);
-      setAlerts(realAlerts.slice(0, 3));
+      setAlerts(realAlerts.slice(0, 5));
       setContacts(data.contacts || []);
       setLoadError(null);
     } catch (error) {
@@ -194,15 +194,14 @@ export function RightPanel({ onToggleCollapse, isMobile = false, onClose }: Righ
 
           {loadError && <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-[10px] leading-relaxed text-amber-900" role="status">{loadError}</div>}
 
-          <div className="relative mt-4 pl-2.5">
-            <div className={cn("absolute bottom-0 left-0 top-0 w-1 rounded-full", alerts.some(item => item.isHighlighted) ? "bg-[#2649B3]" : "bg-[#D9D9D9]")} aria-hidden="true" />
+          <div className="mt-4">
             <div
-              className="right-panel-alert-scroll flex max-h-[min(38vh,220px)] flex-col gap-2.5 overflow-y-auto overscroll-contain pr-1"
+              className="right-panel-alert-scroll flex max-h-[min(45vh,360px)] flex-col gap-2.5 overflow-y-auto overscroll-contain pr-1"
               role="region"
               aria-label="Daftar alert terbaru"
               tabIndex={0}
             >
-              {loading ? [1, 2, 3].map((item) => (
+              {loading ? [1, 2, 3, 4, 5].map((item) => (
                 <div key={item} className="h-[70px] animate-pulse rounded-md border border-[#E5E5E5] bg-white p-3">
                   <div className="h-2.5 w-2/5 rounded bg-[#EAF6FF]" />
                   <div className="mt-3 h-2.5 w-4/5 rounded bg-[#EFEFEF]" />

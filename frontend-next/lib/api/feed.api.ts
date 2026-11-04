@@ -690,15 +690,16 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
 
     // 1. Prioritize real database app notifications
     if (Array.isArray(notifs) && notifs.length > 0) {
-      notifs.slice(0, 4).forEach((n: any) => alerts.push(appNotificationAlert(n)));
+      notifs.slice(0, 5).forEach((n: any) => alerts.push(appNotificationAlert(n)));
     }
 
     // 2. Add real active project alerts if needed
     // Exclude ghost/archived/test projects from dashboard alerts
     const EXCLUDED_STATUSES = ["GHOST_ARCHIVED", "GHOST_DRAFT", "GHOST_SUSPENDED", "ARCHIVED", "CANCELLED"];
     const activeProjects = projects.filter((p: any) => !EXCLUDED_STATUSES.includes(p.status));
-    if (alerts.length < 3 && activeProjects.length > 0) {
-      activeProjects.slice(0, 3 - alerts.length).forEach((p: any) => {
+    if (alerts.length < 5 && activeProjects.length > 0) {
+      const projectAlertSlots = Math.min(3, 5 - alerts.length);
+      activeProjects.slice(0, projectAlertSlots).forEach((p: any) => {
         const clientText = p.customer_name || p.client_name ? ` (${p.customer_name || p.client_name})` : "";
         alerts.push({
           id: `prj-alert-${p.id}`,
@@ -714,7 +715,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
     }
 
     // 3. Add real finance expense alert if needed
-    if (alerts.length < 3 && costs.length > 0) {
+    if (alerts.length < 5 && costs.length > 0) {
       const topCost = costs[0];
       alerts.push({
         id: `cost-alert-${topCost.id}`,
@@ -729,7 +730,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
     }
 
     // 4. Add real CRM opportunity alert if needed
-    if (alerts.length < 3 && opps.length > 0) {
+    if (alerts.length < 5 && opps.length > 0) {
       const topOpp = opps[0];
       alerts.push({
         id: `opp-alert-${topOpp.id}`,
@@ -744,7 +745,7 @@ export async function fetchRealAlertsList(access: FrontendAccessContext = {}): P
     }
 
     if (alerts.length > 0) {
-      return alerts;
+      return alerts.slice(0, 5);
     }
     return [];
   } catch (err) {

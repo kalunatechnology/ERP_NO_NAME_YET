@@ -143,6 +143,86 @@ function CategoryLabel({ label }: { label?: string | null }) {
   return <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-3xs font-bold uppercase tracking-wide", style)}>{label.replace(/_/g, " ")}</span>;
 }
 
+type DisplayProjectResource = ProjectResourceDocument & {
+  automatic?: boolean;
+  sourceLabel?: string;
+};
+
+const PROJECT_RESOURCE_URL_PATTERN = /(?:https?:\/\/|www\.)[^\s<>"')\]}]+/gi;
+
+function normalizeProjectResourceUrl(value: string): string | null {
+  const cleaned = value.trim().replace(/[.,;:!?]+$/, "");
+  const candidate = cleaned.toLowerCase().startsWith("www.") ? `https://${cleaned}` : cleaned;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function projectResourceUrlKey(value: string): string {
+  try {
+    const parsed = new URL(value);
+    const path = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, "") : parsed.pathname;
+    return `${parsed.origin.toLowerCase()}${path}${parsed.search}${parsed.hash}`;
+  } catch {
+    return value.trim();
+  }
+}
+
+function collectTaskProjectLinks(project: Project | null, savedResources: ProjectResourceDocument[]): DisplayProjectResource[] {
+  if (!project) return [];
+  const existingUrls = new Set(savedResources.map((resource) => projectResourceUrlKey(resource.url)));
+  const discovered = new Map<string, DisplayProjectResource>();
+  const collectFrom = (value: unknown, sourceLabel: string) => {
+    if (typeof value !== "string" || !value.trim()) return;
+    const matches = value.match(PROJECT_RESOURCE_URL_PATTERN) || [];
+    matches.forEach((match) => {
+      const url = normalizeProjectResourceUrl(match);
+      if (!url) return;
+      const key = projectResourceUrlKey(url);
+      if (existingUrls.has(key) || discovered.has(key)) return;
+      discovered.set(key, {
+        id: `auto:${encodeURIComponent(key)}`,
+        project_id: String(project.id),
+        name: `Tautan dari ${sourceLabel}`,
+        url,
+        description: `Ditemukan otomatis di ${sourceLabel}.`,
+        category: "OTHER",
+        automatic: true,
+        sourceLabel,
+      });
+    });
+  };
+
+  const mainTasks = project.main_tasks || [];
+  mainTasks.forEach((main) => {
+    const mainName = main.name || main.title || "Main Task";
+    collectFrom(main.name, `Main Task · ${mainName}`);
+    collectFrom(main.title, `Main Task · ${mainName}`);
+    collectFrom(main.description, `Main Task · ${mainName}`);
+    (main.weekly_tasks || main.weekly_plans || []).forEach((weekly) => {
+      const weeklyLabel = `Weekly ${weekly.week_number} · ${mainName}`;
+      collectFrom(weekly.target_description, weeklyLabel);
+      collectFrom(weekly.target_output, weeklyLabel);
+      (weekly.daily_tasks || []).forEach((daily) => {
+        const dailyName = daily.title || daily.activity_input || "Daily Task";
+        const dailyLabel = `Daily Task · ${dailyName}`;
+        collectFrom(daily.title, dailyLabel);
+        collectFrom(daily.activity_input, dailyLabel);
+        collectFrom(daily.description, dailyLabel);
+        collectFrom(daily.output_target, dailyLabel);
+        collectFrom(daily.output_result, dailyLabel);
+        collectFrom(daily.notes, dailyLabel);
+      });
+    });
+  });
+
+  return Array.from(discovered.values());
+}
+
 /**
  * ProjectsClient coordinates the UI behavior represented by this function.
  *
@@ -332,6 +412,12 @@ export default function ProjectsClient() {
   const [resourceForm, setResourceForm] = useState({ name: "", url: "", description: "", category: "DOCUMENT" });
 
   const selectedProject = projects.find(p => String(p.id) === String(selectedId)) || null;
+  const automaticTaskResources = useMemo(
+    () => collectTaskProjectLinks(selectedProject, projectResources),
+    [selectedProject, projectResources],
+  );
+  const totalProjectResourceCount = projectResources.length + automaticTaskResources.length;
+  const displayedProjectResources: DisplayProjectResource[] = [...automaticTaskResources, ...projectResources];
   const isSourceSynchronizedProject = Boolean(selectedProject && (
     ["CRM", "SALES_ORDER"].includes(String(selectedProject.source_type ?? "").toUpperCase())
     || selectedProject.sales_order_id
@@ -1717,11 +1803,11 @@ export default function ProjectsClient() {
       <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#D9D9D9] bg-white p-1.5 shadow-sm no-scrollbar">
         {(userRole === "staff" && !canManageSelectedProject ? [
           { key: "TREE", label: "Task Terkait Saya", icon: Layers, count: mainTasks.length },
-          ...(selectedProject ? [{ key: "RESOURCES", label: "Resource Proyek", icon: FileText, count: projectResources.length }] : []),
+          ...(selectedProject ? [{ key: "RESOURCES", label: "Resource Proyek", icon: FileText, count: totalProjectResourceCount }] : []),
         ] : [
           { key: "TREE", label: "Hierarki Task", icon: Layers, count: mainTasks.length },
           { key: "WORKSPACE", label: "My Workplace", icon: Users, count: allPersonalTasks.length },
-          ...(selectedProject ? [{ key: "RESOURCES", label: "Resources", icon: FileText, count: projectResources.length }] : []),
+          ...(selectedProject ? [{ key: "RESOURCES", label: "Resources", icon: FileText, count: totalProjectResourceCount }] : []),
           { key: "TRANSFERS", label: "Requests", icon: RefreshCw, count: transfers.length },
           { key: "MILESTONES", label: "Milestones", icon: ShieldCheck, count: selectedProject?.milestones?.length },
           ...(canViewFinancials ? [{ key: "FINANCIAL", label: "Financials", icon: DollarSign }] : []),
@@ -2700,8 +2786,9 @@ export default function ProjectsClient() {
               <h3 className="text-sm font-extrabold text-text-primary flex items-center gap-2"><FileText size={17} /> Resource Proyek</h3>
               <p className="mt-1 text-xs text-text-secondary">Dokumen dan tautan yang disimpan khusus untuk {selectedProject.project_name || selectedProject.name || "proyek ini"}.</p>
             </div>
-            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-2xs font-bold text-text-secondary">{projectResources.length} resource</span>
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-2xs font-bold text-text-secondary">{totalProjectResourceCount} resource</span>
           </div>
+          <p className="-mt-2 text-2xs text-text-secondary">Tautan pada deskripsi, target, dan output Main Task, Weekly Task, serta Daily Task akan muncul otomatis di sini.</p>
 
           {canManageSelectedProject && (
             <div className="rounded-xl border border-text-tertiary bg-gray-50/70 p-4">
@@ -2728,18 +2815,20 @@ export default function ProjectsClient() {
 
           {resourceLoading ? (
             <div className="py-8 text-center text-xs text-text-secondary">Memuat resource proyek...</div>
-          ) : projectResources.length === 0 ? (
+          ) : totalProjectResourceCount === 0 ? (
             <div className="rounded-xl border border-dashed border-text-tertiary py-10 text-center text-xs text-text-secondary">Belum ada dokumen atau tautan untuk proyek ini.</div>
           ) : (
             <div className="divide-y divide-gray-100 rounded-xl border border-text-tertiary">
-              {projectResources.map((resource) => (
+              {displayedProjectResources.map((resource) => (
                 <div key={resource.id} className="flex flex-wrap items-center justify-between gap-3 p-3.5">
                   <div className="flex min-w-0 items-start gap-3">
                     <span className="rounded-lg bg-brand-light-green p-2 text-brand-deep-green"><FileText size={16} /></span>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-bold text-text-primary">{resource.name}</span>
-                        <CategoryLabel label={resource.category || "DOCUMENT"} />
+                        {resource.automatic ? (
+                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-3xs font-bold uppercase tracking-wide text-blue-700">Otomatis dari task</span>
+                        ) : <CategoryLabel label={resource.category || "DOCUMENT"} />}
                       </div>
                       {resource.description && <p className="mt-1 text-2xs text-text-secondary">{resource.description}</p>}
                       <p className="mt-1 max-w-2xl truncate text-2xs text-text-tertiary">{resource.url}</p>
@@ -2747,7 +2836,7 @@ export default function ProjectsClient() {
                   </div>
                   <div className="flex items-center gap-2">
                     <a href={resource.url} target="_blank" rel="noopener noreferrer" className="btn-outline inline-flex items-center gap-1.5 py-1.5 px-2.5 text-xs"><ExternalLink size={12} /> Buka</a>
-                    {canManageSelectedProject && <button type="button" title="Hapus resource" onClick={() => handleDeleteProjectResource(resource)} className="btn-ghost p-2 text-red-600"><Trash2 size={14} /></button>}
+                    {canManageSelectedProject && !resource.automatic && <button type="button" title="Hapus resource" onClick={() => handleDeleteProjectResource(resource)} className="btn-ghost p-2 text-red-600"><Trash2 size={14} /></button>}
                   </div>
                 </div>
               ))}
