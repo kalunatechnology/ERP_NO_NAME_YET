@@ -148,7 +148,7 @@ export function ProjectWbsNode({
   const canCreateWeekly = canManageWeeklyTasks || (userRole !== "super_admin" && userRole !== "executive" && (main.assignments || []).some((a: any) => String(a.assignee_id || a.assignee || "") === String(currentUserId)));
 
   return (
-    <div className="card overflow-hidden rounded-2xl border border-[#E3E3E3] bg-[#FAFAFA] shadow-xs transition-all duration-200 hover:border-[#C8D4F4] hover:shadow-sm">
+    <div className="card overflow-hidden rounded-[20px] border border-[#E3E3E3] bg-[#FAFAFA] shadow-xs transition-all duration-200 hover:border-[#C8D4F4] hover:shadow-sm">
       {/* Level 1 Header: Main Task */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8E8E8] bg-[#FAFAFA] p-3.5 sm:p-4">
         <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1">
@@ -171,7 +171,7 @@ export function ProjectWbsNode({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm font-bold text-text-primary truncate">{main.name || main.title}</h3>
+              <h3 className="break-words text-sm font-bold leading-5 text-text-primary">{main.name || main.title}</h3>
               <span className="badge badge-info text-2xs">{main.status}</span>
               {pendingWeeklyCount > 0 && (
                 <span className="badge text-2xs bg-amber-50 text-amber-800 border border-amber-200">{pendingWeeklyCount} Menunggu Approval</span>

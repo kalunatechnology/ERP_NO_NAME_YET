@@ -1147,7 +1147,7 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
       </section>
 
       {/* ── Today's Tasks List ── */}
-      <section className="card rounded-xl p-4 flex flex-col gap-3 border border-[#D9D9D9]">
+      <section className="card rounded-[24px] p-4 flex flex-col gap-3 border border-[#D9D9D9]">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-sm font-bold text-text-primary">Daftar Aktivitas Terjadwal Hari Ini</h3>
           <div className="flex items-center gap-2">
@@ -1157,8 +1157,12 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
             >
               <CheckSquare size={13} /> Kirim Laporan Task
             </Link>
-            <Link href="/tasks" className="text-xs font-semibold text-brand-green hover:underline">
-              Buka Task Manager &rarr;
+            <Link
+              href="/tasks"
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold text-brand-green transition-colors hover:bg-brand-light-green/40"
+              title="Buka Task Manager"
+            >
+              Task Manager <ArrowRight size={13} />
             </Link>
           </div>
         </div>
@@ -1170,11 +1174,11 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
           </div>
         ) : (
           <div className="table-scroll-wrapper">
-            <table className="w-full text-xs min-w-[500px]">
+            <table className="w-full text-xs min-w-[620px]">
               <thead>
                 <tr className="border-b border-text-tertiary bg-gray-50/80 text-text-secondary font-semibold">
                   <th className="py-2 px-3 text-left">Proyek</th>
-                  <th className="py-2 px-3 text-left">Aktivitas / Sesi Kerja</th>
+                  <th className="py-2 px-3 text-left">Aktivitas</th>
                   <th className="py-2 px-3 text-left">Waktu</th>
                   <th className="py-2 px-3 text-left">Status</th>
                   <th className="py-2 px-3 text-right">Aksi</th>
@@ -1185,16 +1189,16 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
                   const isDone = ["COMPLETED", "DONE"].includes((d.status || "").toUpperCase());
                   return (
                     <tr key={d.id} className={cn("hover:bg-brand-light-green/20", isDone && "bg-brand-light-green/30")}>
-                      <td className="py-2 px-3">
-                        <span className="font-semibold text-brand-deep-green block">{d.projectCode}</span>
-                        <span className="text-2xs text-text-secondary truncate max-w-32 block">{d.projectName}</span>
+                      <td className="py-2 px-3 align-top">
+                        <span className="block max-w-[240px] whitespace-normal break-words font-semibold leading-4 text-text-primary">{d.projectName}</span>
+                        <span className="mt-0.5 block text-2xs text-text-secondary">{d.projectCode}</span>
                       </td>
-                      <td className="py-2 px-3">
-                        <span className={cn("font-medium block", isDone && "line-through text-text-secondary")}>
+                      <td className="py-2 px-3 align-top">
+                        <span className={cn("block whitespace-normal break-words font-medium leading-4", isDone && "line-through text-text-secondary")}>
                           {d.title || d.activity_input || "Aktivitas"}
                         </span>
                         {d.output_result && (
-                          <span className="text-2xs text-brand-deep-green block">Output: {d.output_result}</span>
+                          <span className="mt-0.5 block whitespace-normal break-words text-2xs leading-4 text-brand-deep-green">Output: {d.output_result}</span>
                         )}
                       </td>
                       <td className="py-2 px-3 text-text-secondary whitespace-nowrap">
@@ -1204,8 +1208,8 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
                         <StatusBadge status={d.status || "PENDING"} />
                       </td>
                       <td className="py-2 px-3 text-right whitespace-nowrap">
-                        <Link href="/tasks" className="btn-ghost text-xs py-1 px-2 text-brand-green">
-                          Kelola &rarr;
+                        <Link href="/tasks" className="btn-ghost inline-flex items-center gap-1 py-1 px-2 text-xs text-brand-green">
+                          Kelola <ArrowRight size={12} />
                         </Link>
                       </td>
                     </tr>
@@ -1216,14 +1220,16 @@ function StaffDashboard({ projects, loading, overtimeSummary }: { projects: Proj
           </div>
         )}
         <div className="flex items-center justify-between gap-4 flex-wrap border-t border-[#D9D9D9] pt-3">
-          <div>
-            <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
-              <FileText size={15} className="text-brand-green" /> Task Submission
-            </h3>
-            <p className="mt-1 text-xs text-text-secondary">Lengkapi output, status, dan kendala untuk membentuk laporan periodik.</p>
-          </div>
-          <Link href="/tasks#task-submission" className="btn-secondary px-3 py-1.5 text-xs">
-            {pendingSubmissions.length} perlu dilengkapi
+          <Link
+            href="/tasks#task-submission"
+            className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#D9E5FF] bg-[#F3F8FF] px-3 text-xs font-semibold text-[#294BB2] transition-colors hover:bg-[#EAF6FF]"
+            aria-label={`Pengajuan tugas, ${pendingSubmissions.length} perlu dilengkapi`}
+            title="Pengajuan tugas"
+          >
+            <FileText size={15} aria-hidden="true" />
+            <span className="sr-only">Pengajuan tugas</span>
+            <span>{pendingSubmissions.length}</span>
+            <span className="sr-only">perlu dilengkapi</span>
           </Link>
         </div>
       </section>

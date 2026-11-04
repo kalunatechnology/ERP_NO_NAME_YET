@@ -160,26 +160,26 @@ export function ProjectWbsTree({
   };
 
   return (
-    <div id="project-weekly-approval" tabIndex={-1} className="flex min-w-0 scroll-mt-24 flex-col gap-4 focus:outline-none">
-      <div className="flex min-w-0 flex-col justify-between gap-3 rounded-2xl border border-[#D9D9D9] bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:px-4">
+    <div id="project-weekly-approval" tabIndex={-1} className="flex min-w-0 scroll-mt-24 flex-col gap-3.5 focus:outline-none">
+      <div className="flex min-w-0 flex-col justify-between gap-3 rounded-t-[20px] border border-b-0 border-[#D9D9D9] bg-white p-3 sm:flex-row sm:items-center sm:px-4">
         <div className="min-w-0">
           <label htmlFor="wbs-search" className="block text-sm font-bold text-text-primary">Hierarki Task</label>
           <p role="status" className="mt-0.5 text-xs text-text-secondary">{visibleMainTasks.length} dari {mainTasks.length} paket kerja{query ? " cocok · Hierarki hasil dibuka otomatis" : " · Main Task → Weekly Plan → Daily Task"}</p>
         </div>
-        <div className="relative min-w-0 sm:w-72">
+        <div className="relative min-w-0 sm:w-80">
           <Search size={16} className="absolute left-3 top-3 text-text-secondary" aria-hidden="true" />
           <input id="wbs-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari Task, Target, Anggota" className="h-10 w-full min-w-0 rounded-full border border-gray-200 bg-gray-50 pl-9 pr-3 text-xs text-text-primary outline-none transition focus:border-[#294BB2] focus:bg-white focus:ring-2 focus:ring-[#294BB2]/15" />
         </div>
       </div>
       {/* WBS Action Toolbar & Global Expand/Collapse controls */}
-      <div className="flex items-center justify-between flex-wrap gap-2.5 pb-1">
+      <div className="-mt-3.5 flex items-center justify-between flex-wrap gap-2.5 rounded-b-[20px] border-x border-b border-[#D9D9D9] bg-white px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-xs font-bold text-text-primary">
             Main Task → Weekly Plan → Daily Task
           </span>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap ml-auto">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {canReviewWeeklyTasks && pendingWeeklyCount > 0 && (
             <button type="button" onClick={handleOpenPending} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100">
               {pendingWeeklyCount} Target Menunggu Approval
