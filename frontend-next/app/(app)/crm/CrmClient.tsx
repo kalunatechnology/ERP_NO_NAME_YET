@@ -14,11 +14,12 @@ import {
   Plus, RefreshCw, CheckCircle2, DollarSign, TrendingUp, Users,
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
   Calculator, ShieldCheck, Award, BarChart3, MessageSquare, FileCheck,
-  ChevronRight, AlertCircle, Star, UserPlus, Copy,
-  Inbox, MessageCircle, Globe2,
+  ChevronRight, ChevronDown, AlertCircle, Star, UserPlus, Copy,
+  Inbox, Globe2,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
+import { IDRInput } from "@/components/ui/IDRInput";
 import toast from "react-hot-toast";
 import {
   loadCRMData, CRMData, CRMDashboard,
@@ -62,6 +63,22 @@ const CRM_TABS = [
 function opportunityPartyId(opportunity: any): string | number | null {
   return opportunity?.customer_party_id ?? opportunity?.customer_party ?? opportunity?.customer ?? null;
 }
+
+const CRM_PIPELINE_STAGE_LABELS: Record<string, string> = {
+  OPEN: "Peluang baru",
+  PROSPECT: "Prospek",
+  QUALIFICATION: "Kualifikasi",
+  PROPOSAL: "Penyusunan proposal",
+  PROPOSAL_SENT: "Proposal dikirim",
+  NEGOTIATION: "Negosiasi",
+  WON: "Deal berhasil",
+  CLOSED_WON: "Deal berhasil",
+  LOST: "Deal tidak berhasil",
+  CLOSED_LOST: "Deal tidak berhasil",
+  CANCELLED: "Dibatalkan",
+  CANCEL: "Dibatalkan",
+  BATAL: "Dibatalkan",
+};
 
 /**
  * StatusBadge coordinates the UI behavior represented by this function.
@@ -385,45 +402,97 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="card rounded-xl p-4">
-          <h3 className="text-sm font-bold text-text-primary mb-3">Pipeline Aktif</h3>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
+        <section className="card rounded-2xl p-4 sm:p-5 border border-text-tertiary/60 shadow-sm">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700"><TrendingUp size={19} /></span>
+              <div>
+                <h3 className="text-base font-bold text-text-primary">Pipeline Aktif</h3>
+                <p className="mt-0.5 text-xs text-text-secondary">Peluang penjualan yang masih berjalan</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{pipeline.length} peluang</span>
+          </div>
           {pipeline.length === 0 ? <EmptyState msg="Belum ada opportunity aktif." /> : (
-            <div className="flex flex-col gap-2">
-              {pipeline.slice(0,8).map(o => (
-                <div key={o.id} className="flex items-center justify-between p-2.5 rounded-lg border border-text-tertiary/60 hover:bg-bg-lighter">
-                  <div>
-                    <div className="text-sm font-medium text-text-primary">{o.opportunity_name || `Opp #${String(o.id).slice(0,6)}`}</div>
-                    <div className="text-xs text-text-secondary">{o.pipeline_stage || o.status} · {formatMoney(o.expected_amount)}</div>
-                  </div>
-                  <span className="text-xs font-bold text-brand-green">{o.probability_percent||0}%</span>
-                </div>
-              ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {pipeline.slice(0,8).map(o => {
+                const probability = Math.max(0, Math.min(100, Number(o.probability_percent || 0)));
+                const customer = (data.parties || []).find((party) => String(party.id) === String(opportunityPartyId(o)));
+                const stageKey = String(o.pipeline_stage || o.status || "OPEN").toUpperCase();
+                const statusKey = String(o.status || "OPEN").toUpperCase();
+                const stageLabel = CRM_PIPELINE_STAGE_LABELS[stageKey] || stageKey.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+                const stageTone = ["NEGOTIATION"].includes(stageKey) ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : ["PROPOSAL", "PROPOSAL_SENT"].includes(stageKey) ? "border-violet-200 bg-violet-50 text-violet-800"
+                    : ["QUALIFICATION"].includes(stageKey) ? "border-blue-200 bg-blue-50 text-blue-800"
+                      : "border-slate-200 bg-slate-50 text-slate-700";
+                return (
+                  <article key={o.id} className="min-w-0 rounded-xl border border-text-tertiary/60 bg-white p-3.5 transition-all hover:border-blue-200 hover:shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-2xs font-semibold text-emerald-800">{["OPEN", "ACTIVE", "PROSPECT"].includes(statusKey) ? "Aktif" : statusKey.replace(/_/g, " ")}</span>
+                          <span className={cn("rounded-full border px-2 py-0.5 text-2xs font-semibold", stageTone)}>{stageLabel}</span>
+                        </div>
+                        <h4 className="break-words text-sm font-bold leading-5 text-text-primary">{o.opportunity_name || `Opp #${String(o.id).slice(0,6)}`}</h4>
+                        <p className="mt-1 truncate text-xs text-text-secondary">{customer?.display_name || customer?.legal_name || "Customer belum ditautkan"}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="block text-2xs font-medium text-text-secondary">Peluang menang</span>
+                        <span className="mt-0.5 block text-lg font-extrabold leading-5 text-blue-700">{probability}%</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label={`Peluang menang ${probability}%`} aria-valuenow={probability} aria-valuemin={0} aria-valuemax={100}>
+                      <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${probability}%` }} />
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-2.5 text-xs">
+                      <span className="font-medium text-text-secondary">Nilai estimasi</span>
+                      <span className="font-bold text-text-primary">{formatMoney(o.expected_amount)}</span>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
-        </div>
+        </section>
 
-        <div className="card rounded-xl p-4">
-          <h3 className="text-sm font-bold text-text-primary mb-3">Kontrol Komersial & Service</h3>
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between items-center p-2.5 rounded-lg border border-text-tertiary/60">
-              <span className="text-sm text-text-secondary">Approval Quotation</span>
-              <span className="font-semibold text-amber-600">{pendingApprovals} menunggu</span>
-            </div>
-            <div className="flex justify-between items-center p-2.5 rounded-lg border border-text-tertiary/60">
-              <span className="text-sm text-text-secondary">Tiket Support & Klaim</span>
-              <span className="font-semibold text-text-primary">{(data.cases||[]).length} kasus</span>
-            </div>
-            <div className="flex justify-between items-center p-2.5 rounded-lg border border-text-tertiary/60">
-              <span className="text-sm text-text-secondary">Quotation Resmi</span>
-              <span className="font-semibold text-text-primary">{(data.quotations||[]).length} dokumen</span>
-            </div>
-            <div className="flex justify-between items-center p-2.5 rounded-lg border border-text-tertiary/60">
-              <span className="text-sm text-text-secondary">Inquiry Masuk</span>
-              <span className="font-semibold text-text-primary">{(data.inquiries||[]).length} inquiry</span>
+        <section className="card rounded-2xl p-4 sm:p-5 border border-text-tertiary/60 shadow-sm">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-700"><ShieldCheck size={19} /></span>
+              <div>
+                <h3 className="text-base font-bold text-text-primary">Kontrol Komersial &amp; Service</h3>
+                <p className="mt-0.5 text-xs text-text-secondary">Ringkasan aktivitas dan tindak lanjut</p>
+              </div>
             </div>
           </div>
-        </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { label: "Approval Quotation", value: pendingApprovals, suffix: "menunggu", note: pendingApprovals > 0 ? "Perlu ditinjau" : "Tidak ada yang menunggu", icon: FileCheck, tone: "amber", alert: pendingApprovals > 0 },
+              { label: "Tiket Support & Klaim", value: (data.cases||[]).length, suffix: "kasus", note: "Tiket tercatat", icon: PhoneCall, tone: "rose" },
+              { label: "Quotation Resmi", value: (data.quotations||[]).length, suffix: "dokumen", note: "Dokumen penawaran", icon: FileText, tone: "blue" },
+              { label: "Inquiry Masuk", value: (data.inquiries||[]).length, suffix: "inquiry", note: "Permintaan pelanggan", icon: Inbox, tone: "violet" },
+            ].map(item => {
+              const Icon = item.icon;
+              const toneClasses = {
+                amber: "bg-amber-50 text-amber-700",
+                rose: "bg-rose-50 text-rose-700",
+                blue: "bg-blue-50 text-blue-700",
+                violet: "bg-violet-50 text-violet-700",
+              }[item.tone];
+              return (
+                <article key={item.label} className={cn("min-w-0 rounded-xl border bg-white p-3.5 transition-all hover:shadow-sm", item.alert ? "border-amber-200 hover:border-amber-300" : "border-text-tertiary/60 hover:border-blue-200")}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2"><span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", toneClasses)}><Icon size={17} /></span><span className="truncate text-xs font-semibold text-text-primary">{item.label}</span></span>
+                    {item.alert && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-label="Perlu perhatian" />}
+                  </div>
+                  <div className="mt-3 flex items-baseline gap-1.5"><span className="text-2xl font-extrabold leading-7 text-text-primary">{item.value}</span><span className="text-xs font-medium text-text-secondary">{item.suffix}</span></div>
+                  <p className={cn("mt-1.5 border-t border-slate-100 pt-2 text-xs", item.alert ? "font-semibold text-amber-700" : "text-text-secondary")}>{item.note}</p>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -455,7 +524,7 @@ function TabDeals({
   const [form, setForm] = useState({ 
     opportunity_name: "", 
     customer_party: "", 
-    expected_amount: 150000000, 
+    expected_amount: "150000000", 
     probability_percent: 50, 
     pipeline_stage: "OPEN" 
   });
@@ -476,6 +545,9 @@ function TabDeals({
   const [customer360, setCustomer360] = useState<any>(null);
   const [activityForm, setActivityForm] = useState({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" });
   const [meetingMinutesReferences, setMeetingMinutesReferences] = useState<MeetingMinutesReference[]>([]);
+  const [creditLimitParty, setCreditLimitParty] = useState<{ id: string | number; name: string; current: number } | null>(null);
+  const [creditLimitDraft, setCreditLimitDraft] = useState("");
+  const [savingCreditLimit, setSavingCreditLimit] = useState(false);
 
   useEffect(() => {
     if (!activityOpp) return;
@@ -651,6 +723,7 @@ function TabDeals({
     try {
       const payload = {
         ...form,
+        expected_amount: Number(form.expected_amount || 0),
         customer_party: form.customer_party ? form.customer_party.trim() : null,
       };
       const res = await createOpportunity(payload);
@@ -663,7 +736,7 @@ function TabDeals({
       }
       
       setIsNewOppOpen(false);
-      setForm({ opportunity_name: "", customer_party: "", expected_amount: 150000000, probability_percent: 50, pipeline_stage: "OPEN" });
+      setForm({ opportunity_name: "", customer_party: "", expected_amount: "150000000", probability_percent: 50, pipeline_stage: "OPEN" });
       onRefresh();
     } catch (e: any) { 
       toast.error(e?.response?.data?.detail || "Gagal buat opportunity"); 
@@ -716,20 +789,28 @@ function TabDeals({
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-  const handleCreditLimit = async (partyId: string | number, currentLimit: number) => {
-    const newLimit = prompt(`Credit limit baru untuk customer ini (saat ini: ${formatMoney(currentLimit)}):`, String(currentLimit));
-    if (newLimit === null) return;
-    const parsedLimit = Number(newLimit.trim());
-    if (!newLimit.trim() || !Number.isFinite(parsedLimit) || parsedLimit < 0) {
+  const handleCreditLimit = (party: any, currentLimit: number) => {
+    setCreditLimitParty({ id: party.id, name: party.display_name || party.legal_name || "Customer", current: currentLimit });
+    setCreditLimitDraft(String(currentLimit));
+  };
+
+  const saveCreditLimit = async () => {
+    if (!creditLimitParty) return;
+    const parsedLimit = Number(creditLimitDraft);
+    if (!creditLimitDraft || !Number.isFinite(parsedLimit) || parsedLimit < 0) {
       toast.error("Credit limit harus berupa angka nol atau lebih.");
       return;
     }
+    setSavingCreditLimit(true);
     try {
-      await updateCustomerCreditLimit({ party_id: partyId, credit_limit: parsedLimit });
-      toast.success("Credit limit diperbarui!"); 
+      await updateCustomerCreditLimit({ party_id: creditLimitParty.id, credit_limit: parsedLimit });
+      toast.success("Credit limit diperbarui!");
+      setCreditLimitParty(null);
       onRefresh();
     } catch (error) {
       toast.error(getUserFacingApiError(error, "Batas kredit belum berhasil diperbarui. Periksa data dan hak akses, lalu coba lagi."));
+    } finally {
+      setSavingCreditLimit(false);
     }
   };
 
@@ -821,8 +902,19 @@ function TabDeals({
             } 
           />
         ) : (
-          <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto pr-1">
-            {displayedOpps.map(o => {
+          <div className="max-h-[600px] overflow-auto rounded-xl border border-text-tertiary/60">
+            <table className="w-full min-w-[1040px] border-collapse text-left">
+              <thead className="sticky top-0 z-10 bg-slate-100 text-xs font-semibold text-text-secondary">
+                <tr>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">Opportunity</th>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">Customer</th>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 text-right last:border-r-0">Nilai</th>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">Pipeline / Status</th>
+                  <th className="border-b border-slate-200 px-3 py-3">Tindakan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-text-tertiary/40 bg-white">
+                {displayedOpps.map((o, rowIndex) => {
 /**
  * cust coordinates the UI behavior represented by this function.
  *
@@ -842,77 +934,46 @@ function TabDeals({
               const lostReasonSummary = lostReasonLabels[String(o.lost_reason || "").toUpperCase()] || o.lost_reason || "Alasan belum tercatat";
 
               return (
-                <div 
-                  key={o.id} 
-                  className={cn(
-                    "rounded-xl border p-3 transition-colors",
-                    isCancelled 
-                      ? "border-red-200 bg-red-50/40 opacity-75" 
-                      : "border-text-tertiary/60 hover:bg-bg-lighter"
-                  )}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={cn("text-sm font-semibold truncate", isCancelled ? "line-through text-gray-500" : "text-text-primary")}>
-                        {o.opportunity_name || `Opportunity ${String(o.id).slice(0,8)}`}
-                      </span>
-                      <StatusBadge status={o.status || "OPEN"} />
+                <tr key={o.id} className={cn("align-top transition-colors hover:bg-blue-50/70", rowIndex % 2 ? "bg-slate-50/70" : "bg-white", isCancelled && "bg-red-50/50 text-text-secondary")}>
+                  <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
+                    <div className={cn("max-w-[280px] break-words text-sm font-semibold leading-5", isCancelled ? "line-through text-gray-500" : "text-text-primary")}>{o.opportunity_name || `Opportunity ${String(o.id).slice(0,8)}`}</div>
+                    <div className="mt-1 text-2xs text-text-secondary">ID {String(o.id).slice(0, 8).toUpperCase()}</div>
+                  </td>
+                  <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
+                    {cust ? <span className="text-sm font-medium text-text-primary">{cust.display_name || cust.legal_name || "Pelanggan Umum"}</span> : !isCancelled && !readOnly ? (
+                      <div className="flex min-w-[250px] items-center gap-1.5">
+                        <select aria-label={`Pilih customer untuk ${o.opportunity_name || "opportunity"}`} className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs" value={customerFixByOpp[String(o.id)] || ""} onChange={(event) => setCustomerFixByOpp((current) => ({ ...current, [String(o.id)]: event.target.value }))}>
+                          <option value="">Pilih customer</option>
+                          {(data.parties || []).filter((party: any) => party.party_type === "CUSTOMER" && party.status === "ACTIVE").map((party: any) => <option key={party.id} value={String(party.id)}>{party.display_name || party.legal_name}</option>)}
+                        </select>
+                        <button type="button" onClick={() => void handleAssignOpportunityCustomer(o)} disabled={!customerFixByOpp[String(o.id)] || savingCustomerOppId === String(o.id)} className="shrink-0 rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-200 disabled:opacity-50">{savingCustomerOppId === String(o.id) ? "Menyimpan…" : "Simpan"}</button>
+                      </div>
+                    ) : <span className="text-sm text-text-secondary">Pelanggan Umum</span>}
+                  </td>
+                  <td className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold text-text-primary last:border-r-0">{formatMoney(o.expected_amount)}</td>
+                  <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
+                    <StatusBadge status={o.status || "OPEN"} />
+                    <div className="mt-1 text-xs text-text-secondary">{o.pipeline_stage || (isWon ? "Closed Won" : isLost ? "Closed Lost" : "In Pipeline")}</div>
+                    {isLost && <div className="mt-1 max-w-[190px] truncate text-2xs text-text-secondary" title={o.lost_reason_detail ? `${lostReasonSummary}: ${o.lost_reason_detail}` : lostReasonSummary}>{lostReasonSummary}</div>}
+                    {terminalConflict && <div className="mt-1 text-2xs font-medium text-red-700" title="Status terminal saling bertentangan; minta admin memperbaiki data sebelum melanjutkan.">Status konflik · periksa data</div>}
+                  </td>
+                  <td className="border-b border-slate-200 px-3 py-3">
+                    <div className="flex min-w-[270px] flex-wrap items-center gap-1.5">
+                      {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" }); }} label="Aktivitas" small variant="ghost" title="Catat telepon, meeting, catatan, atau follow-up untuk opportunity ini." />}
+                      {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" title="Lihat ringkasan customer: proyek, kontrak, pengiriman, nilai transaksi, serta piutang." />}
+                      {!readOnly && !isCancelled && !isWon && <ActionBtn onClick={() => handleDealWon(o)} label="Deal Won" small disabled={!cust} title={!cust ? "Lengkapi customer pada opportunity sebelum menjalankan Deal Won." : "Tandai deal berhasil dan jalankan pemeriksaan kredit."} />}
+                      {!readOnly && isWon && canOverride && <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small title="Jalur pengecualian untuk Direktur saat pemeriksaan kredit menahan deal; wajib mencatat alasan." />}
+                      {!readOnly && isHardCancelled && <button onClick={() => handleDelete(o.id)} title="Hapus permanen" className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>}
+                      {!readOnly && !isCancelled && !isWon && <ActionBtn onClick={() => handleMarkLost(o.id)} label="Tandai kalah" small variant="ghost" title="Tutup opportunity sebagai kalah dan catat alasannya." />}
+                      {isWon && !readOnly && !canOverride && <span className="text-xs font-medium text-emerald-700">Deal Won</span>}
+                      {readOnly && <span className="text-xs text-text-secondary">{terminalConflict ? "Status konflik" : isLost ? "Deal Closed Lost" : isHardCancelled ? "Dibatalkan" : isWon ? "Deal Closed Won" : o.pipeline_stage || "In Pipeline"}</span>}
                     </div>
-                    <div className="text-xs text-text-secondary mt-0.5">
-                      <span className="font-medium text-slate-700">{cust?.display_name || cust?.legal_name || "Pelanggan Umum"}</span> · <b>{formatMoney(o.expected_amount)}</b>
-                    </div>
-                  </div>
-                  {!cust && !isCancelled && !readOnly && (
-                    <div className="mt-3 grid w-full grid-cols-1 gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                      <select
-                        aria-label={`Pilih customer untuk ${o.opportunity_name || "opportunity"}`}
-                        className="w-full min-w-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm"
-                        value={customerFixByOpp[String(o.id)] || ""}
-                        onChange={(event) => setCustomerFixByOpp((current) => ({ ...current, [String(o.id)]: event.target.value }))}
-                      >
-                        <option value="">Pilih customer untuk melengkapi opportunity</option>
-                        {(data.parties || []).filter((party: any) => party.party_type === "CUSTOMER" && party.status === "ACTIVE").map((party: any) => (
-                          <option key={party.id} value={String(party.id)}>{party.display_name || party.legal_name}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => void handleAssignOpportunityCustomer(o)}
-                        disabled={!customerFixByOpp[String(o.id)] || savingCustomerOppId === String(o.id)}
-                        className="w-full rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-                      >
-                        {savingCustomerOppId === String(o.id) ? "Menyimpan…" : "Simpan customer"}
-                      </button>
-                    </div>
-                  )}
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-text-tertiary/40 pt-3">
-                    {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" }); }} label="Aktivitas" small variant="ghost" title="Catat telepon, meeting, catatan, atau follow-up untuk opportunity ini." />}
-                    {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" title="Lihat ringkasan customer: proyek, kontrak, pengiriman, nilai transaksi, serta piutang." />}
-                    {!readOnly ? (
-                      <>
-                        {!isCancelled && !isWon && (
-                          <ActionBtn
-                            onClick={() => handleDealWon(o)}
-                            label="Deal Won"
-                            small
-                            disabled={!cust}
-                            title={!cust ? "Lengkapi customer pada opportunity sebelum menjalankan Deal Won." : "Tandai deal berhasil dan periksa kredit. Jika kredit aman, sistem membuat Sales Order dan project berstatus incoming; jika tidak, sistem membuat proforma."}
-                          />
-                        )}
-                        {isWon && !isCancelled && canOverride && (
-                          <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small title="Jalur pengecualian untuk Direktur saat pemeriksaan kredit menahan deal; wajib mencatat alasan." />
-                        )}
-                        {terminalConflict ? <span className="text-2xs font-medium text-red-700" title="Status terminal saling bertentangan; minta admin memperbaiki data sebelum melanjutkan.">Status konflik · periksa data</span> : isLost ? <span className="text-2xs text-text-secondary" title={o.lost_reason_detail ? `${lostReasonSummary}: ${o.lost_reason_detail}` : lostReasonSummary}>Kalah · {lostReasonSummary}</span> : isHardCancelled ? <button onClick={() => handleDelete(o.id)} title="Hapus permanen" className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={13} /></button> : isWon ? <span className="text-2xs text-emerald-700">Deal Won</span> : <ActionBtn onClick={() => handleMarkLost(o.id)} label="Tandai kalah" small variant="ghost" title="Tutup opportunity sebagai kalah. Sistem meminta alasan seperti harga, fitur, anggaran, kompetitor, atau tidak ada respons." />}
-                      </>
-                    ) : (
-                      <span className="text-2xs text-text-secondary italic">
-                        {terminalConflict ? "Status konflik" : isLost ? "Deal Closed Lost" : isHardCancelled ? "Dibatalkan" : isWon ? "Deal Closed Won" : o.pipeline_stage || "In Pipeline"}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                  </td>
+                </tr>
               );
-            })}
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -926,8 +987,21 @@ function TabDeals({
         <p className="text-xs text-text-secondary mb-3">Kontrol plafon kredit, outstanding AR, dan kelayakan approval transaksi klien.</p>
         <p className="text-[11px] leading-5 text-text-secondary mb-3">NO_LIMIT berarti plafon kredit belum diatur. Untuk pemeriksaan Deal Won, plafon Rp0 dihitung sebagai kredit tersedia Rp0; atur limit sebelum mengandalkan jalur kredit.</p>
         {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada customer terdaftar." /> : (
-          <div className="flex flex-col gap-2 max-h-[520px] overflow-y-auto">
-            {(data.parties||[]).map((p, customerIndex) => {
+          <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
+            <table className="w-full min-w-[820px] border-collapse text-left">
+              <thead className="sticky top-0 z-10 bg-slate-100 text-xs font-semibold text-text-secondary">
+                <tr>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">Customer</th>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">Status</th>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 text-right last:border-r-0">Limit</th>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 text-right last:border-r-0">Outstanding</th>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 text-right last:border-r-0">Sisa</th>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 text-right last:border-r-0">Overdue</th>
+                  {!readOnly && <th className="border-b border-slate-200 px-3 py-3 text-right">Aksi</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-text-tertiary/40 bg-white">
+                {(data.parties||[]).map((p, customerIndex) => {
               const snap = (data.credit||[]).find(c => String(c.customer_party) === String(p.id));
               const limit = snap?.credit_limit || 0;
               const outstanding = snap?.outstanding_receivable || 0;
@@ -936,29 +1010,34 @@ function TabDeals({
               const status = snap?.credit_status || (limit > 0 ? "AVAILABLE" : "NO_LIMIT");
               const isBlocked = status === "HOLD" || status === "NO_LIMIT" || (limit > 0 && available < 0) || overdue > 0;
               return (
-                <div key={p.id} className={cn("p-3 rounded-xl border", isBlocked ? "border-red-200 bg-red-50" : "border-text-tertiary/60")}>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-text-primary"><span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-black", ["bg-blue-100 text-blue-700", "bg-violet-100 text-violet-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700"][customerIndex % 4])}>{String(p.display_name || p.legal_name || "C").slice(0, 2).toUpperCase()}</span><span className="truncate">{p.display_name || p.legal_name}</span></span>
-                    <StatusBadge status={status} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-1 text-xs text-text-secondary mb-2">
-                    <span>Limit: <b className="text-brand-green">{formatMoney(limit)}</b></span>
-                    <span>Outstanding: <b className={outstanding > 0 ? "text-amber-600" : ""}>{formatMoney(outstanding)}</b></span>
-                    <span>Sisa: <b className={available >= 0 ? "text-brand-green" : "text-red-600"}>{formatMoney(available)}</b></span>
-                    <span>Overdue: <b className={overdue > 0 ? "text-red-600" : ""}>{formatMoney(overdue)}</b></span>
-                  </div>
-                  {!readOnly && (
-                    <div className="flex gap-1.5">
-                      <ActionBtn onClick={() => handleCreditLimit(p.id, limit)} label="Atur Limit" small variant="ghost" title="Tetapkan plafon kredit customer. Nilai ini dipakai untuk menentukan apakah Deal Won bisa diteruskan tanpa proforma." />
-                      <ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" title="Hitung ulang limit tersedia, piutang berjalan, dan overdue dari data invoice yang tercatat." />
-                    </div>
-                  )}
-                </div>
+                <tr key={p.id} className={cn("transition-colors hover:bg-blue-50/70", customerIndex % 2 ? "bg-slate-50/70" : "bg-white", isBlocked && "bg-red-50/50")}>
+                  <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
+                    <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-text-primary"><span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-2xs font-black", ["bg-blue-100 text-blue-700", "bg-violet-100 text-violet-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700"][customerIndex % 4])}>{String(p.display_name || p.legal_name || "C").slice(0, 2).toUpperCase()}</span><span className="max-w-[190px] break-words">{p.display_name || p.legal_name}</span></span>
+                  </td>
+                  <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0"><StatusBadge status={status} /></td>
+                  <td className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold text-brand-green last:border-r-0">{formatMoney(limit)}</td>
+                  <td className={cn("whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-medium last:border-r-0", outstanding > 0 ? "text-amber-700" : "text-text-primary")}>{formatMoney(outstanding)}</td>
+                  <td className={cn("whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold last:border-r-0", available >= 0 ? "text-brand-green" : "text-red-600")}>{formatMoney(available)}</td>
+                  <td className={cn("whitespace-nowrap border-b border-slate-200 px-3 py-3 text-right text-sm font-medium", overdue > 0 ? "text-red-600" : "text-text-primary")}>{formatMoney(overdue)}</td>
+                  {!readOnly && <td className="border-b border-slate-200 px-3 py-3"><div className="flex min-w-[180px] justify-end gap-1.5"><ActionBtn onClick={async () => { handleCreditLimit(p, limit); }} label="Atur Limit" small variant="ghost" title="Tetapkan plafon kredit customer. Nilai ini dipakai untuk menentukan apakah Deal Won bisa diteruskan tanpa proforma." /><ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" title="Hitung ulang limit tersedia, piutang berjalan, dan overdue dari data invoice yang tercatat." /></div></td>}
+                </tr>
               );
-            })}
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
+
+      <Modal isOpen={Boolean(creditLimitParty)} onClose={() => !savingCreditLimit && setCreditLimitParty(null)} title={`Atur Limit Kredit — ${creditLimitParty?.name || "Customer"}`} size="sm">
+        <div className="space-y-3 p-4">
+          <p className="text-xs text-text-secondary">Limit saat ini: <b className="text-text-primary">{formatMoney(creditLimitParty?.current || 0)}</b></p>
+          <label className="block text-xs font-medium text-text-secondary">Limit kredit baru
+            <IDRInput aria-label="Limit kredit baru dalam rupiah" value={creditLimitDraft} onChange={setCreditLimitDraft} />
+          </label>
+          <div className="flex justify-end gap-2"><button type="button" onClick={() => setCreditLimitParty(null)} disabled={savingCreditLimit} className="btn-ghost">Batal</button><button type="button" onClick={() => void saveCreditLimit()} disabled={savingCreditLimit || !creditLimitDraft} className="btn-primary">{savingCreditLimit ? "Menyimpan…" : "Simpan limit"}</button></div>
+        </div>
+      </Modal>
 
       {/* Modal: Buat Opportunity Baru */}
       <Modal isOpen={isNewOppOpen} onClose={() => setIsNewOppOpen(false)} title="Buat Opportunity Baru" size="md">
@@ -1001,12 +1080,7 @@ function TabDeals({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Expected Amount (Rp)</label>
-              <input 
-                type="number" 
-                className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" 
-                value={form.expected_amount} 
-                onChange={e => setForm(f => ({ ...f, expected_amount: Number(e.target.value) }))} 
-              />
+              <IDRInput aria-label="Expected Amount dalam rupiah" value={form.expected_amount} onChange={(digits) => setForm((current) => ({ ...current, expected_amount: digits }))} />
             </div>
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Probabilitas (%)</label>
@@ -1145,9 +1219,67 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
   const [isEstModal, setIsEstModal] = useState(false);
   const [calculatingEstimateId, setCalculatingEstimateId] = useState<string | null>(null);
   const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: "100000000", overhead_cost: "30000000", contingency_amount: "0", markup_percent: "30", tax_percent: "0", description: "" });
+  const [quotationSearch, setQuotationSearch] = useState("");
+  const [quotationClientFilter, setQuotationClientFilter] = useState("");
+  const [quotationMonthFilter, setQuotationMonthFilter] = useState("");
+  const [quotationWeekFilter, setQuotationWeekFilter] = useState("");
   const [sendDialog, setSendDialog] = useState<{ quote: any; customerName: string; recipientEmail: string; subject: string; body: string } | null>(null);
   const [loadingRecipient, setLoadingRecipient] = useState(false);
   const [sendingQuotation, setSendingQuotation] = useState(false);
+
+  const quotationRows = (data.quotations || []).map((quote: any) => {
+    const opportunityId = quote.opportunity_id ?? quote.opportunity;
+    const opportunity = (data.opportunities || []).find((item) => String(item.id) === String(opportunityId));
+    const customerId = quote.customer_party_id ?? quote.customer_party ?? opportunityPartyId(opportunity);
+    const customer = (data.parties || []).find((item) => String(item.id) === String(customerId));
+    const linkedOrder = (data.orders || []).find((order: any) => String(order.quotation_id ?? order.quotation) === String(quote.id));
+    const documentId = quote.document_id ?? (typeof quote.document === "object" ? quote.document?.id : quote.document);
+    const linkedDocument = (data.businessDocuments || []).find((document: any) => String(document.id) === String(documentId));
+    const rawDate = quote.quotation_date || quote.issued_at || quote.created_at || quote.document?.created_at || quote.document?.document_date || quote.document_date || linkedDocument?.document_date || linkedDocument?.created_at || null;
+    const parsedDate = rawDate ? new Date(rawDate) : null;
+    const date = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null;
+    return {
+      quote,
+      opportunity,
+      customer,
+      customerId: customerId == null ? "" : String(customerId),
+      customerName: customer?.display_name || customer?.legal_name || quote.customer_name || "—",
+      linkedOrder,
+      date,
+      code: quote.quotation_code || quote.quotation_number || `Quote ${String(quote.id).slice(0,8)}`,
+    };
+  });
+  const quotationClients = Array.from(new Map(quotationRows
+    .filter((row) => row.customerId && row.customerName !== "—")
+    .map((row) => [row.customerId, row.customerName] as const)).entries())
+    .sort((a, b) => a[1].localeCompare(b[1], "id"));
+  const monthWeekCount = quotationMonthFilter
+    ? (() => {
+        const [year, month] = quotationMonthFilter.split("-").map(Number);
+        if (!year || !month) return 0;
+        const firstDayOffset = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+        return Math.ceil((new Date(year, month, 0).getDate() + firstDayOffset) / 7);
+      })()
+    : 0;
+  const filteredQuotationRows = quotationRows.filter((row) => {
+    if (quotationClientFilter && row.customerId !== quotationClientFilter) return false;
+    if (quotationMonthFilter) {
+      if (!row.date) return false;
+      const rowMonth = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, "0")}`;
+      if (rowMonth !== quotationMonthFilter) return false;
+      if (quotationWeekFilter) {
+        const firstDayOffset = (new Date(row.date.getFullYear(), row.date.getMonth(), 1).getDay() + 6) % 7;
+        const rowWeek = Math.floor((row.date.getDate() - 1 + firstDayOffset) / 7) + 1;
+        if (rowWeek !== Number(quotationWeekFilter)) return false;
+      }
+    }
+    const term = quotationSearch.trim().toLocaleLowerCase("id-ID");
+    if (!term) return true;
+    const status = String(row.quote.status || "DRAFT");
+    const orderNumber = row.linkedOrder?.order_number || row.linkedOrder?.id || "";
+    return [row.code, row.customerName, row.opportunity?.opportunity_name, status, orderNumber]
+      .some((value) => String(value || "").toLocaleLowerCase("id-ID").includes(term));
+  });
 
   /**
    * Creates a cost estimate attached to an opportunity with an active customer.
@@ -1333,8 +1465,8 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
       {/* Cost Estimates */}
       <div className="lg:col-span-3 card rounded-xl p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-bold">Cost Estimating (HPP & Margin)</h3>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-base font-bold text-text-primary">Cost Estimating (HPP & Margin)</h3>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.estimates||[]).length} Estimate</span>
             {!readOnly && (
@@ -1342,9 +1474,15 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
             )}
           </div>
         </div>
-        <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3 text-xs leading-5 text-text-secondary">
-          <b className="text-text-primary">Apa itu HPP?</b> Harga Pokok Penjualan adalah perkiraan seluruh biaya untuk memenuhi pesanan: biaya langsung + overhead + contingency. Harga penawaran dihitung dari HPP ditambah markup. Hasil ini adalah estimasi biaya dan laba kotor, bukan bukti uang sudah diterima atau biaya aktual.
-        </div>
+        <details className="group mb-3 rounded-lg border border-blue-100 bg-blue-50/60">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-text-primary marker:hidden">
+            <span>Apa itu HPP?</span>
+            <ChevronDown size={15} className="shrink-0 text-blue-700 transition-transform group-open:rotate-180" aria-hidden="true" />
+          </summary>
+          <p className="border-t border-blue-100 px-3 py-2.5 text-xs leading-5 text-text-secondary">
+            Harga Pokok Penjualan adalah perkiraan biaya untuk memenuhi pesanan: biaya langsung, overhead, dan contingency. Harga penawaran dihitung dari HPP ditambah markup. Angka ini merupakan estimasi, bukan bukti penerimaan uang atau biaya aktual.
+          </p>
+        </details>
         {(data.estimates||[]).length === 0 ? <EmptyState msg="Belum ada kalkulasi biaya." /> : (
           <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto">
             {(data.estimates||[]).map(e => {
@@ -1364,11 +1502,11 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
               const isCalculated = ["CALCULATED", "QUOTED"].includes(String(e.status || "").toUpperCase());
               const isEstimateLocked = String(e.status || "").toUpperCase() === "QUOTED";
               return (
-                <div key={e.id} className="flex flex-col p-3 rounded-xl border border-text-tertiary/60 gap-2">
+                <div key={e.id} className="flex flex-col gap-3 rounded-xl border border-text-tertiary/60 p-4">
                   <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold">Cost Estimate {String(e.estimate_number || e.id).slice(0,12)}</div>
-                      <div className="text-xs text-text-secondary mt-0.5">
+                      <div className="text-base font-semibold text-text-primary">Cost Estimate {String(e.estimate_number || e.id).slice(0,12)}</div>
+                      <div className="mt-1 text-sm leading-5 text-text-secondary">
                         HPP: <b>{formatMoney(totalCost)}</b> · Markup: <b>{markupPercent}%</b> · Sebelum pajak: <b className="text-brand-green">{formatMoney(offered)}</b> · Total: <b>{formatMoney(offered + taxAmount)}</b>
                       </div>
                       <StatusBadge status={e.status || "DRAFT"} />
@@ -1426,39 +1564,63 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
                       </div>
                     )}
                   </div>
-                  <div className={cn("rounded-lg border p-2.5", isCalculated ? "border-emerald-100 bg-emerald-50/50" : "border-amber-100 bg-amber-50/50")}>
-                    <div className="mb-1 text-[11px] font-semibold text-text-primary">{isCalculated ? "Rincian hasil HPP" : "Rincian biaya — belum dihitung"}</div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-text-secondary sm:grid-cols-4">
-                      <div>Biaya langsung <b className="block text-text-primary">{formatMoney(directCost)}</b></div>
-                      <div>Overhead <b className="block text-text-primary">{formatMoney(overheadCost)}</b></div>
-                      <div>Contingency <b className="block text-text-primary">{formatMoney(contingency)}</b></div>
-                      <div>HPP total <b className="block text-text-primary">{formatMoney(totalCost)}</b></div>
+                  <div className={cn("rounded-xl border p-4 sm:p-5", isCalculated ? "border-emerald-200 bg-emerald-50/50" : "border-amber-200 bg-amber-50/50")}>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-sm font-bold text-text-primary">{isCalculated ? "Rincian hasil HPP" : "Rincian biaya — belum dihitung"}</h4>
+                      <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-text-secondary">Markup {markupPercent}%</span>
                     </div>
-                    {lines.length > 0 && (
-                      <div className="mt-2 border-t border-black/5 pt-2">
-                        <div className="mb-1 text-[10px] font-semibold text-text-secondary">Baris pembentuk HPP</div>
-                        <div className="space-y-1">
-                          {lines.map((line: any) => (
-                            <div key={line.id} className="flex items-start justify-between gap-2 text-[10px] leading-4 text-text-secondary">
-                              <span className="min-w-0">{line.description || line.cost_element || "Biaya"} <span className="text-text-tertiary">· {line.cost_element || "DIRECT"}{line.quantity != null && line.unit_cost != null ? ` · ${line.quantity} × ${formatMoney(line.unit_cost)}` : ""}</span></span>
-                              <b className="shrink-0 text-text-primary">{formatMoney(line.amount || 0)}</b>
-                            </div>
-                          ))}
-                        </div>
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                      <div className="rounded-lg border border-white/80 bg-white/75 p-3">
+                        <span className="block text-xs font-medium text-text-secondary">Biaya langsung</span>
+                        <b className="mt-1 block text-base font-bold text-text-primary sm:text-lg">{formatMoney(directCost)}</b>
                       </div>
-                    )}
+                      <div className="rounded-lg border border-white/80 bg-white/75 p-3">
+                        <span className="block text-xs font-medium text-text-secondary">Overhead</span>
+                        <b className="mt-1 block text-base font-bold text-text-primary sm:text-lg">{formatMoney(overheadCost)}</b>
+                      </div>
+                      <div className="rounded-lg border border-white/80 bg-white/75 p-3">
+                        <span className="block text-xs font-medium text-text-secondary">Contingency</span>
+                        <b className="mt-1 block text-base font-bold text-text-primary sm:text-lg">{formatMoney(contingency)}</b>
+                      </div>
+                      <div className="rounded-lg border border-emerald-200 bg-white p-3">
+                        <span className="block text-xs font-semibold text-emerald-800">Total HPP</span>
+                        <b className="mt-1 block text-lg font-extrabold text-emerald-800 sm:text-xl">{formatMoney(totalCost)}</b>
+                      </div>
+                    </div>
                     {isEstimateLocked && (
-                      <p className="mt-2 text-[11px] leading-4 text-amber-800">
-                        Estimasi ini sudah digunakan pada quotation, jadi penghapusan dikunci agar riwayat penawaran tetap utuh. Buat revisi estimasi baru jika nilainya perlu diubah.
+                      <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                        Estimasi ini sudah digunakan pada quotation. Penghapusan dikunci untuk menjaga riwayat; buat revisi estimasi jika nilainya perlu diubah.
                       </p>
                     )}
-                    <div className="mt-2 border-t border-black/5 pt-2 text-[11px] leading-5 text-text-secondary">
-                      HPP = {formatMoney(directCost)} + {formatMoney(overheadCost)} + {formatMoney(contingency)} = <b className="text-text-primary">{formatMoney(totalCost)}</b><br />
-                      Penawaran sebelum pajak = HPP × (1 + {markupPercent}%) = <b className="text-brand-green">{formatMoney(offered)}</b><br />
-                      Pajak {taxPercent}% = <b className="text-text-primary">{formatMoney(taxAmount)}</b> · Total quotation = <b className="text-brand-green">{formatMoney(offered + taxAmount)}</b><br />
-                      Selisih kotor sebelum pajak: <b className="text-text-primary">{formatMoney(markupAmount)}</b> ({marginPercent.toFixed(1)}% dari harga penawaran)
-                    </div>
-                    {!isCalculated && <p className="mt-1 text-[10px] text-amber-800">Klik “Hitung HPP” untuk menyimpan hasil hitung. Pastikan biaya langsung atau baris biaya sudah diisi.</p>}
+                    {!isCalculated && <p className="mt-3 text-xs leading-5 text-amber-800">Klik “Hitung HPP” untuk menyimpan hasil hitung. Pastikan biaya langsung atau baris biaya sudah diisi.</p>}
+
+                    <details className="group mt-3 border-t border-black/5 pt-2.5">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-text-secondary marker:hidden">
+                        <span>Lihat rincian biaya dan perhitungan</span>
+                        <ChevronDown size={15} className="shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+                      </summary>
+                      <div className="mt-3 space-y-3 text-xs leading-5 text-text-secondary">
+                        {lines.length > 0 && (
+                          <div className="border-b border-black/5 pb-3">
+                            <div className="mb-1.5 text-xs font-semibold text-text-primary">Baris pembentuk HPP</div>
+                            <div className="space-y-1.5">
+                              {lines.map((line: any) => (
+                                <div key={line.id} className="flex items-start justify-between gap-3">
+                                  <span className="min-w-0">{line.description || line.cost_element || "Biaya"} <span className="text-text-tertiary">· {line.cost_element || "DIRECT"}{line.quantity != null && line.unit_cost != null ? ` · ${line.quantity} × ${formatMoney(line.unit_cost)}` : ""}</span></span>
+                                  <b className="shrink-0 text-text-primary">{formatMoney(line.amount || 0)}</b>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div>
+                          <p>HPP = {formatMoney(directCost)} + {formatMoney(overheadCost)} + {formatMoney(contingency)} = <b className="text-text-primary">{formatMoney(totalCost)}</b></p>
+                          <p>Penawaran sebelum pajak = HPP × (1 + {markupPercent}%) = <b className="text-brand-green">{formatMoney(offered)}</b></p>
+                          <p>Pajak {taxPercent}% = <b className="text-text-primary">{formatMoney(taxAmount)}</b> · Total quotation = <b className="text-brand-green">{formatMoney(offered + taxAmount)}</b></p>
+                          <p>Selisih kotor sebelum pajak: <b className="text-text-primary">{formatMoney(markupAmount)}</b> ({marginPercent.toFixed(1)}% dari harga penawaran)</p>
+                        </div>
+                      </div>
+                    </details>
                   </div>
                 </div>
               );
@@ -1469,35 +1631,83 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
 
       {/* Quotations */}
       <div className="lg:col-span-2 card rounded-xl p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold">Sales Quotations</h3>
-          <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-2xs font-bold">{(data.quotations||[]).length} Dok</span>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-text-primary">Sales Quotations</h3>
+            <p className="mt-0.5 text-xs text-text-secondary">Cari, saring, dan tinjau quotation dalam satu tabel.</p>
+          </div>
+          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{filteredQuotationRows.length} / {(data.quotations||[]).length} dokumen</span>
         </div>
         {(data.quotations||[]).length === 0 ? <EmptyState msg="Belum ada quotation." /> : (
-          <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto">
-            {(data.quotations||[]).map(q => (
-              <div key={q.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-semibold truncate">{q.quotation_code || q.quotation_number || `Quote ${String(q.id).slice(0,8)}`}</div>
-                    {(q.quotation_code || q.quotation_number) && <button type="button" title="Salin kode quotation untuk email klien" onClick={async () => { try { await navigator.clipboard.writeText(String(q.quotation_code || q.quotation_number)); toast.success("Kode quotation disalin."); } catch { toast.error("Kode quotation tidak dapat disalin."); } }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-text-tertiary/50 px-2 py-1 text-2xs text-text-secondary hover:text-brand-green"><Copy size={12}/>Salin kode</button>}
-                  </div>
-                  <div className="text-xs text-text-secondary">Sebelum pajak: <b>{formatMoney(q.subtotal ?? q.total_amount)}</b> · Pajak: <b>{formatMoney(q.tax_amount || 0)}</b></div>
-                  <div className="text-xs text-text-secondary">Total: <b>{formatMoney(q.total_amount)}</b></div>
-                  {String(q.status || "DRAFT").toUpperCase() === "CONVERTED" || (data.orders || []).some((order: any) => String(order.quotation_id ?? order.quotation) === String(q.id))
-                    ? <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-800" title="Quotation sudah menjadi Sales Order.">Sudah menjadi Order</span>
-                    : <StatusBadge status={q.status || "DRAFT"} />}
-                </div>
-                <div className="flex-shrink-0">
-                  {readOnly
-                    ? (String(q.status || "").toUpperCase() === "CONVERTED" || (data.orders || []).some((order: any) => String(order.quotation_id ?? order.quotation) === String(q.id))
-                      ? <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-semibold text-emerald-800">{(data.orders || []).find((order: any) => String(order.quotation_id ?? order.quotation) === String(q.id))?.order_number || `Sales Order ${String((data.orders || []).find((order: any) => String(order.quotation_id ?? order.quotation) === String(q.id))?.id || "").slice(0, 8).toUpperCase() || "sudah dibuat"}`}</span>
-                      : <StatusBadge status={q.status || "DRAFT"} />)
-                    : getQuotActions(q)}
-                </div>
+          <>
+            <div className="mb-4 grid grid-cols-1 gap-2 rounded-xl border border-text-tertiary/50 bg-slate-50/70 p-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(170px,1fr)_minmax(150px,.8fr)_minmax(145px,.8fr)_auto] sm:p-4">
+              <label className="min-w-0 text-xs font-medium text-text-secondary">Cari quotation
+                <input value={quotationSearch} onChange={(event) => setQuotationSearch(event.target.value)} className="input mt-1 w-full bg-white" placeholder="Kode, klien, status, Sales Order..." />
+              </label>
+              <label className="min-w-0 text-xs font-medium text-text-secondary">Klien
+                <select value={quotationClientFilter} onChange={(event) => setQuotationClientFilter(event.target.value)} className="input mt-1 w-full bg-white">
+                  <option value="">Semua klien</option>
+                  {quotationClients.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                </select>
+              </label>
+              <label className="min-w-0 text-xs font-medium text-text-secondary">Bulan
+                <input type="month" value={quotationMonthFilter} onChange={(event) => { setQuotationMonthFilter(event.target.value); setQuotationWeekFilter(""); }} className="input mt-1 w-full bg-white" />
+              </label>
+              <label className="min-w-0 text-xs font-medium text-text-secondary">Minggu
+                <select value={quotationWeekFilter} onChange={(event) => setQuotationWeekFilter(event.target.value)} disabled={!quotationMonthFilter} className="input mt-1 w-full bg-white disabled:cursor-not-allowed disabled:opacity-50">
+                  <option value="">Semua minggu</option>
+                  {Array.from({ length: monthWeekCount }, (_, index) => <option key={index + 1} value={index + 1}>Minggu {index + 1}</option>)}
+                </select>
+              </label>
+              <div className="flex items-end">
+                <button type="button" onClick={() => { setQuotationSearch(""); setQuotationClientFilter(""); setQuotationMonthFilter(""); setQuotationWeekFilter(""); }} className="btn-ghost w-full justify-center px-3 py-2 text-xs sm:w-auto">Reset filter</button>
               </div>
-            ))}
-          </div>
+            </div>
+            {filteredQuotationRows.length === 0 ? <EmptyState msg="Tidak ada quotation yang cocok dengan pencarian atau filter." /> : (
+              <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
+                <table className="w-full min-w-[920px] border-collapse text-left">
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary">
+                    <tr>
+                      <th className="px-4 py-3">Kode Quotation</th>
+                      <th className="px-4 py-3">Klien</th>
+                      <th className="px-4 py-3">Tanggal</th>
+                      <th className="px-4 py-3 text-right">Sebelum Pajak</th>
+                      <th className="px-4 py-3 text-right">Pajak</th>
+                      <th className="px-4 py-3 text-right">Total</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-text-tertiary/40 bg-white">
+                    {filteredQuotationRows.map(({ quote: q, customerName, date, linkedOrder, code }) => {
+                      const isConverted = String(q.status || "DRAFT").toUpperCase() === "CONVERTED" || Boolean(linkedOrder);
+                      const orderLabel = linkedOrder?.order_number || (linkedOrder?.id ? `Sales Order ${String(linkedOrder.id).slice(0, 8).toUpperCase()}` : "Sudah menjadi Order");
+                      return (
+                        <tr key={q.id} className="transition-colors hover:bg-blue-50/30">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-text-primary">{code}</span>
+                              {(q.quotation_code || q.quotation_number) && <button type="button" title="Salin kode quotation" onClick={async () => { try { await navigator.clipboard.writeText(String(q.quotation_code || q.quotation_number)); toast.success("Kode quotation disalin."); } catch { toast.error("Kode quotation tidak dapat disalin."); } }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-text-tertiary/50 px-2 py-1 text-2xs text-text-secondary hover:text-brand-green"><Copy size={12} />Salin</button>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-primary">{customerName}</td>
+                          <td className="px-4 py-3 text-sm text-text-secondary">{date ? date.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</td>
+                          <td className="px-4 py-3 text-right text-sm text-text-secondary">{formatMoney(q.subtotal ?? q.total_amount)}</td>
+                          <td className="px-4 py-3 text-right text-sm text-text-secondary">{formatMoney(q.tax_amount || 0)}</td>
+                          <td className="px-4 py-3 text-right text-sm font-semibold text-text-primary">{formatMoney(q.total_amount)}</td>
+                          <td className="px-4 py-3">{isConverted
+                            ? <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800" title="Quotation sudah menjadi Sales Order.">Sudah menjadi Order</span>
+                            : <StatusBadge status={q.status || "DRAFT"} />}</td>
+                          <td className="px-4 py-3 text-right">{!readOnly ? getQuotActions(q) : isConverted ? <span className="whitespace-nowrap text-xs font-medium text-emerald-700">{orderLabel}</span> : null}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {quotationMonthFilter && quotationRows.some((row) => !row.date) && <p className="mt-2 text-xs text-text-secondary">Sebagian quotation tidak memiliki tanggal, sehingga tidak ditampilkan saat filter bulan/minggu digunakan.</p>}
+          </>
         )}
       </div>
 
@@ -1525,16 +1735,16 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Biaya Langsung (Rp)</label>
-              <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.direct_cost} onFocus={e => { if (e.currentTarget.value === "0") setEstForm(f => ({ ...f, direct_cost: "" })); }} onBlur={e => { if (e.currentTarget.value === "") setEstForm(f => ({ ...f, direct_cost: "0" })); }} onChange={e => setEstForm(f => ({...f, direct_cost: e.target.value}))} />
+              <IDRInput aria-label="Biaya langsung dalam rupiah" value={estForm.direct_cost} onChange={(digits) => setEstForm((current) => ({ ...current, direct_cost: digits }))} />
             </div>
             <div>
               <label className="text-xs font-medium text-text-secondary mb-1 block">Biaya Overhead (Rp)</label>
-              <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.overhead_cost} onFocus={e => { if (e.currentTarget.value === "0") setEstForm(f => ({ ...f, overhead_cost: "" })); }} onBlur={e => { if (e.currentTarget.value === "") setEstForm(f => ({ ...f, overhead_cost: "0" })); }} onChange={e => setEstForm(f => ({...f, overhead_cost: e.target.value}))} />
+              <IDRInput aria-label="Biaya overhead dalam rupiah" value={estForm.overhead_cost} onChange={(digits) => setEstForm((current) => ({ ...current, overhead_cost: digits }))} />
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Contingency / cadangan biaya (Rp)</label>
-            <input type="number" min="0" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={estForm.contingency_amount} onChange={e => setEstForm(f => ({...f, contingency_amount: e.target.value}))} />
+            <IDRInput aria-label="Contingency dalam rupiah" value={estForm.contingency_amount} onChange={(digits) => setEstForm((current) => ({ ...current, contingency_amount: digits }))} />
             <p className="mt-1 text-[10px] leading-4 text-text-secondary">Cadangan ini akan dimasukkan ke total quotation sebagai baris biaya tersendiri.</p>
           </div>
           <div>
@@ -1689,8 +1899,18 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
           </div>
         </div>
         {visibleCases.length === 0 ? <EmptyState msg={domainFilter ? "Tidak ada tiket dari domain ini." : "Belum ada tiket support."} /> : (
-          <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto">
-            {visibleCases.map(c => {
+          <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
+            <table className="w-full min-w-[900px] border-collapse text-left">
+              <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary">
+                <tr>
+                  <th className="px-3 py-3">Tiket</th>
+                  <th className="px-3 py-3">Customer &amp; Prioritas</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Tindakan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-text-tertiary/40 bg-white">
+                {visibleCases.map(c => {
               const resolved = ["RESOLVED","CLOSED"].includes((c.status||"").toUpperCase());
 /**
  * cust coordinates the UI behavior represented by this function.
@@ -1701,48 +1921,43 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
  */
               const cust = (data.parties||[]).find(p => String(p.id) === String(c.customer_party));
               return (
-                <div key={c.id} className="flex flex-col p-3 rounded-xl border border-text-tertiary/60 gap-3">
-                  <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold truncate">{c.subject || `Tiket ${String(c.id).slice(0,8)}`}</div>
-                    <div className="text-xs text-text-secondary mt-0.5">
-                      {cust?.display_name || "Customer"} · Prioritas: <b>{c.priority || "NORMAL"}</b>
-                    </div>
-                    <div className="mt-1"><OriginDomainBadge domain={c.origin_domain} /></div>
+                <tr key={c.id} className="align-top transition-colors hover:bg-blue-50/30">
+                  <td className="px-3 py-3">
+                    <div className="max-w-[290px] break-words text-sm font-semibold leading-5 text-text-primary">{c.subject || `Tiket ${String(c.id).slice(0,8)}`}</div>
+                    <div className="mt-1 text-2xs text-text-secondary">ID {String(c.id).slice(0, 8).toUpperCase()}</div>
+                    {c.origin_domain && <div className="mt-1"><OriginDomainBadge domain={c.origin_domain} /></div>}
+                    {warrantyDetails[String(c.id)] && <details className="mt-2 max-w-[320px] rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-700">
+                      <summary className="cursor-pointer font-semibold">Riwayat garansi &amp; servis</summary>
+                      <div className="mt-2 space-y-2">
+                        <div>Pengiriman produk: {warrantyDetails[String(c.id)].delivered_at ? new Date(warrantyDetails[String(c.id)].delivered_at).toLocaleDateString("id-ID") : "Belum ditemukan"}</div>
+                        <div className="font-medium">Periode garansi</div>
+                        {(warrantyDetails[String(c.id)].warranty_periods || []).length ? warrantyDetails[String(c.id)].warranty_periods.map((period: any) => <div key={period.id} className="flex justify-between gap-3"><span>{period.start_date ? new Date(period.start_date).toLocaleDateString("id-ID") : "Awal tidak tercatat"} – {period.end_date ? new Date(period.end_date).toLocaleDateString("id-ID") : "Tanpa tanggal akhir"}</span><span className="font-medium">{period.current_status === "ACTIVE" ? "Aktif" : period.current_status === "UPCOMING" ? "Belum mulai" : period.current_status === "EXPIRED" ? "Berakhir" : "Tidak aktif"}</span></div>) : <div>Belum ada periode garansi yang tercatat untuk produk ini.</div>}
+                        <div className="font-medium pt-1">Riwayat perbaikan</div>
+                        {(warrantyDetails[String(c.id)].repair_history || []).length ? warrantyDetails[String(c.id)].repair_history.map((work: any) => <div key={work.id}>{new Date(work.created_at).toLocaleDateString("id-ID")} · {work.work_order_type} · {work.status} — {work.description}</div>) : <div>Belum ada work order perbaikan.</div>}
+                        {(warrantyDetails[String(c.id)].resolutions || []).map((resolution: any) => <div key={resolution.id}>Penyelesaian: {resolution.resolution_type} — {resolution.resolution_notes}</div>)}
+                      </div>
+                    </details>}
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="text-sm font-medium text-text-primary">{cust?.display_name || cust?.legal_name || "Customer"}</div>
+                    <div className="mt-1 text-xs text-text-secondary">Prioritas <b className="text-text-primary">{c.priority || "NORMAL"}</b></div>
+                  </td>
+                  <td className="px-3 py-3">
                     <StatusBadge status={c.status || "OPEN"} />
-                    {c.warranty_status && <span className={cn("ml-1 px-2 py-0.5 rounded-full text-2xs font-semibold", c.warranty_status === "WARRANTY_ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{c.warranty_status}</span>}
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {!readOnly ? (
-                      <>
-                        {!resolved && <ActionBtn onClick={async () => { try { const result = await checkTicketWarrantyStatus(c.id); setWarrantyDetails(current => ({ ...current, [String(c.id)]: result })); toast.success(`Status garansi: ${result.warranty_status}. Periode dan riwayat servis ditampilkan.`); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Pemeriksaan garansi gagal."); } }} label="Periksa garansi" small variant="ghost" />}
-                        {c.warranty_status === "WARRANTY_ACTIVE" && !resolved && <ActionBtn onClick={async () => { try { await createServiceWorkOrder(c.id); toast.success("Work Order teknisi dibuat."); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal membuat Work Order."); } }} label="Buat Work Order" small />}
-                        {resolved && (
-                          <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">RESOLVED</span>
-                        )}
-                        <button onClick={async () => { if(!confirm("Hapus tiket?")) return; await deleteSupportTicket(c.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
-                          <Trash2 size={13} />
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-2xs text-text-secondary italic">
-                        {resolved ? "RESOLVED" : c.status || "OPEN"}
-                      </span>
-                    )}
-                  </div>
-                  </div>
-                  {warrantyDetails[String(c.id)] && <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs text-slate-700 space-y-2">
-                    <div className="font-semibold">Riwayat garansi & servis</div>
-                    <div>Pengiriman produk: {warrantyDetails[String(c.id)].delivered_at ? new Date(warrantyDetails[String(c.id)].delivered_at).toLocaleDateString("id-ID") : "Belum ditemukan"}</div>
-                    <div className="font-medium">Periode garansi</div>
-                    {(warrantyDetails[String(c.id)].warranty_periods || []).length ? warrantyDetails[String(c.id)].warranty_periods.map((period: any) => <div key={period.id} className="flex justify-between gap-3"><span>{period.start_date ? new Date(period.start_date).toLocaleDateString("id-ID") : "Awal tidak tercatat"} – {period.end_date ? new Date(period.end_date).toLocaleDateString("id-ID") : "Tanpa tanggal akhir"}</span><span className="font-medium">{period.current_status === "ACTIVE" ? "Aktif" : period.current_status === "UPCOMING" ? "Belum mulai" : period.current_status === "EXPIRED" ? "Berakhir" : "Tidak aktif"}</span></div>) : <div>Belum ada periode garansi yang tercatat untuk produk ini.</div>}
-                    <div className="font-medium pt-1">Riwayat perbaikan</div>
-                    {(warrantyDetails[String(c.id)].repair_history || []).length ? warrantyDetails[String(c.id)].repair_history.map((work: any) => <div key={work.id}>{new Date(work.created_at).toLocaleDateString("id-ID")} · {work.work_order_type} · {work.status} — {work.description}</div>) : <div>Belum ada work order perbaikan.</div>}
-                    {(warrantyDetails[String(c.id)].resolutions || []).map((resolution: any) => <div key={resolution.id}>Penyelesaian: {resolution.resolution_type} — {resolution.resolution_notes}</div>)}
-                  </div>}
-                </div>
+                    {c.warranty_status && <div className="mt-1"><span className={cn("inline-flex rounded-full px-2 py-0.5 text-2xs font-semibold", c.warranty_status === "WARRANTY_ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{c.warranty_status}</span></div>}
+                  </td>
+                  <td className="px-3 py-3">
+                    {!readOnly ? <div className="flex min-w-[240px] flex-wrap items-center gap-1.5">
+                      {!resolved && <ActionBtn onClick={async () => { try { const result = await checkTicketWarrantyStatus(c.id); setWarrantyDetails(current => ({ ...current, [String(c.id)]: result })); toast.success(`Status garansi: ${result.warranty_status}. Periode dan riwayat servis ditampilkan.`); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Pemeriksaan garansi gagal."); } }} label="Periksa garansi" small variant="ghost" />}
+                      {c.warranty_status === "WARRANTY_ACTIVE" && !resolved && <ActionBtn onClick={async () => { try { await createServiceWorkOrder(c.id); toast.success("Work Order teknisi dibuat."); onRefresh(); } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal membuat Work Order."); } }} label="Buat Work Order" small />}
+                      <button onClick={async () => { if(!confirm("Hapus tiket?")) return; await deleteSupportTicket(c.id); toast.success("Dihapus."); onRefresh(); }} title="Hapus tiket" aria-label={`Hapus tiket ${c.subject || c.id}`} className="rounded-lg p-1.5 text-text-secondary hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>
+                    </div> : <span className="text-xs italic text-text-secondary">{resolved ? "RESOLVED" : c.status || "OPEN"}</span>}
+                  </td>
+                </tr>
               );
-            })}
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -1750,16 +1965,13 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
       <div className="lg:col-span-2 card rounded-xl p-4">
         <h3 className="text-sm font-bold mb-3">Riwayat Solusi & Garansi</h3>
         {(data.resolutions||[]).length === 0 ? <EmptyState msg="Belum ada resolusi tercatat." /> : (
-          <div className="flex flex-col gap-2">
-            {(data.resolutions||[]).slice(0,6).map(r => (
-              <div key={r.id} className="p-2.5 rounded-xl border border-text-tertiary/60">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">{r.resolution_type || "Solusi"}</span>
-                  <StatusBadge status={r.resolution_type || "RESOLVED"} />
-                </div>
-                <p className="text-xs text-text-secondary mt-1">{r.resolution_notes || "-"}</p>
-              </div>
-            ))}
+          <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
+            <table className="w-full min-w-[420px] border-collapse text-left">
+              <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary"><tr><th className="px-3 py-3">Jenis Solusi</th><th className="px-3 py-3">Rincian</th></tr></thead>
+              <tbody className="divide-y divide-text-tertiary/40 bg-white">
+                {(data.resolutions||[]).map(r => <tr key={r.id} className="align-top transition-colors hover:bg-blue-50/30"><td className="px-3 py-3"><StatusBadge status={r.resolution_type || "RESOLVED"} /></td><td className="max-w-[420px] whitespace-normal break-words px-3 py-3 text-sm leading-5 text-text-secondary">{r.resolution_notes || "—"}</td></tr>)}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -2121,29 +2333,41 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
     <div className="card rounded-xl p-4">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
         <div>
-          <h3 className="text-sm font-bold">Master Rekanan (Customer, Vendor & Partner)</h3>
+          <div className="flex flex-wrap items-center gap-2"><h3 className="text-base font-bold text-text-primary">Master Rekanan (Customer, Vendor &amp; Partner)</h3><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{(data.parties||[]).length} rekanan</span></div>
           <p className="text-xs text-text-secondary mt-1">Kelola nama, kode, tipe, dan status rekanan.</p>
         </div>
         {!readOnly && <button onClick={() => setIsQuickAddOpen(true)} className="btn-primary self-start text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Rekanan</button>}
       </div>
       {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada rekanan terdaftar." /> : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {(data.parties||[]).map(p => (
-            <div key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-xl border border-text-tertiary/60 hover:border-brand-green/40 hover:bg-bg-lighter transition-colors">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold break-words">{p.display_name || p.legal_name || p.id}</div>
-                {p.legal_name && p.display_name && p.legal_name !== p.display_name && <div className="text-xs text-text-secondary mt-0.5 break-words">{p.legal_name}</div>}
-                <div className="text-xs text-text-secondary mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span>Kode <code className="font-mono bg-gray-100 px-1 rounded text-2xs">{p.party_code || "-"}</code></span><span aria-hidden="true">·</span><span>Tipe <b>{p.party_type || "CUSTOMER"}</b></span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between sm:justify-end gap-2 sm:flex-shrink-0">
-                <StatusBadge status={p.status || "ACTIVE"} />
-                {!readOnly && (!p.status || String(p.status).toUpperCase() === "ACTIVE") && ["SUPPLIER", "VENDOR", "PARTNER"].includes(String(p.party_type || "").toUpperCase()) && <button type="button" onClick={() => void openProjectManager(p)} className="btn-ghost text-xs py-1 px-2">Proyek</button>}
-                {!readOnly && <button type="button" onClick={() => openEdit(p)} className="btn-ghost text-xs py-1 px-2">Edit</button>}
-              </div>
-            </div>
-          ))}
+        <div className="max-h-[620px] overflow-auto rounded-xl border border-text-tertiary/60">
+          <table className="w-full min-w-[760px] border-collapse text-left">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary">
+              <tr>
+                <th className="px-4 py-3">Nama Rekanan</th>
+                <th className="px-4 py-3">Kode</th>
+                <th className="px-4 py-3">Tipe</th>
+                <th className="px-4 py-3">Status</th>
+                {!readOnly && <th className="px-4 py-3 text-right">Aksi</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-text-tertiary/40 bg-white">
+              {(data.parties||[]).map(p => (
+                <tr key={p.id} className="transition-colors hover:bg-blue-50/30">
+                  <td className="px-4 py-3">
+                    <div className="break-words text-sm font-semibold text-text-primary">{p.display_name || p.legal_name || p.id}</div>
+                    {p.legal_name && p.display_name && p.legal_name !== p.display_name && <div className="mt-0.5 break-words text-xs text-text-secondary">{p.legal_name}</div>}
+                  </td>
+                  <td className="px-4 py-3"><code className="rounded bg-slate-100 px-1.5 py-1 font-mono text-xs text-text-secondary">{p.party_code || "—"}</code></td>
+                  <td className="px-4 py-3"><span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{p.party_type || "CUSTOMER"}</span></td>
+                  <td className="px-4 py-3"><StatusBadge status={p.status || "ACTIVE"} /></td>
+                  {!readOnly && <td className="px-4 py-3"><div className="flex justify-end gap-1.5">
+                    {(!p.status || String(p.status).toUpperCase() === "ACTIVE") && ["SUPPLIER", "VENDOR", "PARTNER"].includes(String(p.party_type || "").toUpperCase()) && <button type="button" onClick={() => void openProjectManager(p)} className="btn-ghost text-xs py-1 px-2">Proyek</button>}
+                    <button type="button" onClick={() => openEdit(p)} className="btn-ghost text-xs py-1 px-2">Edit</button>
+                  </div></td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
       <QuickAddPartyModal isOpen={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} onSuccess={(party) => { onPartyCreated(party); onRefresh(); }} allowTypeSelection />
@@ -2218,49 +2442,42 @@ function TabContracts({ data, onNavigate, onRefresh }: { data: CRMData; onNaviga
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className="card rounded-xl p-4">
-        <div className="flex items-center justify-between gap-2 mb-3"><h3 className="text-sm font-bold">Sales Orders</h3><span className="rounded-full bg-blue-50 px-2 py-0.5 text-2xs font-semibold text-blue-700">{(data.orders || []).length} order</span></div>
-        {(data.orders||[]).length === 0 ? <EmptyState msg="Belum ada sales order." /> : (
-          <div className="flex flex-col gap-2">
-            {(data.orders||[]).map(o => (
-              <div key={o.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-3 rounded-xl border border-text-tertiary/60">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold">{o.order_number || `Order ${String(o.id).slice(0,8)}`}</div>
-                  <div className="text-xs text-text-secondary">Nilai: <b>{formatMoney(o.total_amount)}</b></div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleConvertToProject(o.id)}
-                    disabled={convertingOrderId === o.id}
-                    className="btn-primary text-xs py-1.5 px-3 gap-1.5 bg-brand-deep-green hover:bg-brand-green text-white font-bold shadow-xs"
-                  >
-                    <Zap size={12} />
-                    {convertingOrderId === o.id ? "Mentransfer..." : "Transfer ke Proyek"}
-                  </button>
-                  <StatusBadge status={o.status || "CONFIRMED"} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="card rounded-xl p-4">
-        <div className="flex items-center justify-between gap-2 mb-3"><h3 className="text-sm font-bold">Contracts</h3><span className="rounded-full bg-violet-50 px-2 py-0.5 text-2xs font-semibold text-violet-700">{(data.contracts || []).length} kontrak</span></div>
-        {(data.contracts||[]).length === 0 ? <EmptyState msg="Belum ada kontrak." /> : (
-          <div className="flex flex-col gap-2">
-            {(data.contracts||[]).map(c => (
-              <div key={c.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-3 rounded-xl border border-text-tertiary/60">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold">{c.contract_number || `Contract ${String(c.id).slice(0,8)}`}</div>
-                  <div className="text-xs text-text-secondary">{formatDate(c.start_date)} – {formatDate(c.end_date)}</div>
-                </div>
-                <StatusBadge status={c.status || "ACTIVE"} />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        <div className="card rounded-xl p-4">
+          <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-primary">Sales Orders</h3><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{(data.orders || []).length} order</span></div>
+          {(data.orders||[]).length === 0 ? <EmptyState msg="Belum ada sales order." /> : (
+            <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
+              <table className="w-full min-w-[680px] border-collapse text-left">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary"><tr><th className="px-3 py-3">Nomor Order</th><th className="px-3 py-3 text-right">Nilai</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-right">Aksi</th></tr></thead>
+                <tbody className="divide-y divide-text-tertiary/40 bg-white">
+                  {(data.orders||[]).map(o => <tr key={o.id} className="transition-colors hover:bg-blue-50/30">
+                    <td className="px-3 py-3"><div className="break-all text-sm font-semibold text-text-primary">{o.order_number || `Order ${String(o.id).slice(0,8)}`}</div><div className="mt-0.5 text-2xs text-text-secondary">ID {String(o.id).slice(0, 8).toUpperCase()}</div></td>
+                    <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-semibold text-text-primary">{formatMoney(o.total_amount)}</td>
+                    <td className="px-3 py-3"><StatusBadge status={o.status || "CONFIRMED"} /></td>
+                    <td className="px-3 py-3 text-right"><button type="button" onClick={() => handleConvertToProject(o.id)} disabled={convertingOrderId === o.id} className="btn-primary whitespace-nowrap text-xs py-1.5 px-3 gap-1.5 bg-brand-deep-green hover:bg-brand-green text-white font-bold shadow-xs disabled:opacity-60"><Zap size={12} />{convertingOrderId === o.id ? "Mentransfer..." : "Transfer ke Proyek"}</button></td>
+                  </tr>)}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <div className="card rounded-xl p-4">
+          <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-primary">Contracts</h3><span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">{(data.contracts || []).length} kontrak</span></div>
+          {(data.contracts||[]).length === 0 ? <EmptyState msg="Belum ada kontrak." /> : (
+            <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
+              <table className="w-full min-w-[560px] border-collapse text-left">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary"><tr><th className="px-3 py-3">Nomor Kontrak</th><th className="px-3 py-3">Mulai</th><th className="px-3 py-3">Berakhir</th><th className="px-3 py-3">Status</th></tr></thead>
+                <tbody className="divide-y divide-text-tertiary/40 bg-white">
+                  {(data.contracts||[]).map(c => <tr key={c.id} className="transition-colors hover:bg-violet-50/30">
+                    <td className="px-3 py-3"><div className="break-all text-sm font-semibold text-text-primary">{c.contract_number || `Contract ${String(c.id).slice(0,8)}`}</div><div className="mt-0.5 text-2xs text-text-secondary">ID {String(c.id).slice(0, 8).toUpperCase()}</div></td>
+                    <td className="whitespace-nowrap px-3 py-3 text-sm text-text-secondary">{formatDate(c.start_date)}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-sm text-text-secondary">{formatDate(c.end_date)}</td>
+                    <td className="px-3 py-3"><StatusBadge status={c.status || "ACTIVE"} /></td>
+                  </tr>)}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2341,34 +2558,32 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
   return (
     <div className="card rounded-xl p-4">
       <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 mb-4">
-        <div><h3 className="text-sm font-bold">Customer Feedback & Review</h3><p className="text-xs text-text-secondary mt-1">Pantau ulasan pelanggan dan catat kepuasan setelah pesanan selesai.</p></div>
+        <div><h3 className="text-base font-bold text-text-primary">Customer Feedback &amp; Review</h3><p className="text-xs text-text-secondary mt-1">Pantau ulasan pelanggan dan catat kepuasan setelah pesanan selesai.</p></div>
         {!readOnly && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setIsCsatOpen(true)} disabled={!completedOrders.length} title={!completedOrders.length ? "Belum ada Sales Order berstatus FULFILLED" : undefined} className="btn-ghost text-xs py-1.5 px-3 gap-1 disabled:opacity-50"><Star size={12} /> Catat CSAT Transaksi</button><button type="button" onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Feedback</button></div>}
       </div>
       <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs leading-relaxed text-text-secondary">CSAT dicatat oleh tim internal setelah pelanggan memberikan penilaian. Form tersedia untuk Sales Order berstatus <b>FULFILLED</b>; satu respons dicatat per transaksi agar rating dan komentar terkait ke order yang tepat.</div>
       <div className="mb-5 rounded-xl border border-text-tertiary/60 p-3">
-        <div className="flex items-center justify-between gap-2 mb-3"><h4 className="text-xs font-bold">CSAT Pasca Transaksi</h4><span className="text-2xs text-text-secondary">{csatResponses.length} respons</span></div>
-        {csatResponses.length === 0 ? <p className="text-xs text-text-secondary">Belum ada respons CSAT transaksi.</p> : <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{csatResponses.map((response) => {
+        <div className="flex items-center justify-between gap-2 mb-3"><h4 className="text-sm font-bold text-text-primary">CSAT Pasca Transaksi</h4><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-text-secondary">{csatResponses.length} respons</span></div>
+        {csatResponses.length === 0 ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-text-secondary">Belum ada respons CSAT transaksi.</p> : <div className="space-y-2">{csatResponses.map((response) => {
           const ratingAnswer = data.surveyAnswers.find((answer) => String(answer.response_id) === String(response.id) && csatQuestionIds.has(String(answer.question_id)));
           const commentsAnswer = data.surveyAnswers.find((answer) => String(answer.response_id) === String(response.id) && answer.text_answer);
           const order = data.orders.find((item) => String(item.id) === String(response.sales_order_id));
           const partyId = response.customer_party || response.customer_party_id || order?.customer_party || order?.customer_party_id;
           const party = data.parties.find((item) => String(item.id) === String(partyId));
-          return <div key={response.id} className="rounded-lg bg-bg-lighter p-3"><div className="flex items-center justify-between gap-2"><b className="text-xs truncate">{party?.display_name || party?.legal_name || "Pelanggan"} · {order?.order_number || `Order ${String(response.sales_order_id || "").slice(0, 8)}`}</b><OriginDomainBadge domain={response.origin_domain} /></div><div className="mt-1 flex items-center gap-1">{[1,2,3,4,5].map((value) => <Star key={value} size={12} className={value <= Number(ratingAnswer?.numeric_answer || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />)}<span className="ml-1 text-2xs text-text-secondary">{Number(ratingAnswer?.numeric_answer || 0)}/5</span></div>{commentsAnswer?.text_answer && <p className="mt-1 text-xs text-text-secondary">{commentsAnswer.text_answer}</p>}</div>;
+          return <article key={response.id} className="rounded-xl border border-text-tertiary/50 bg-white p-3 transition-colors hover:bg-bg-lighter"><div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><h5 className="break-words text-sm font-semibold text-text-primary">{party?.display_name || party?.legal_name || "Pelanggan"}</h5><p className="mt-0.5 text-xs text-text-secondary">{order?.order_number || `Order ${String(response.sales_order_id || "").slice(0, 8)}`}</p></div><OriginDomainBadge domain={response.origin_domain} /></div><div className="mt-2 flex items-center gap-1" aria-label={`Rating ${Number(ratingAnswer?.numeric_answer || 0)} dari 5`}>{[1,2,3,4,5].map((value) => <Star key={value} size={14} className={value <= Number(ratingAnswer?.numeric_answer || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />)}<span className="ml-1 text-xs font-semibold text-text-primary">{Number(ratingAnswer?.numeric_answer || 0)}/5</span></div>{commentsAnswer?.text_answer && <p className="mt-2 border-t border-text-tertiary/40 pt-2 text-sm leading-5 text-text-secondary">{commentsAnswer.text_answer}</p>}</article>;
         })}</div>}
       </div>
       {(data.feedback||[]).length === 0 ? <EmptyState msg="Belum ada feedback customer." /> : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-2">
           {(data.feedback||[]).map(f => (
-            <div key={f.id} className="p-3 rounded-xl border border-text-tertiary/60">
-              <div className="flex items-center justify-between gap-2"><div className="text-xs font-semibold mb-1">{f.customer_party_name || f.customer_party_display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.legal_name || f.reviewer_name || "Pengulas eksternal"}{f.reviewer_email ? <span className="ml-1 font-normal text-text-secondary">· {f.reviewer_email}</span> : null}</div><OriginDomainBadge domain={f.origin_domain} /></div>
-              <div className="flex items-center gap-1 mb-1">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} size={13} className={i < (Number(f.rating_value ?? f.rating_score) || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />
-                ))}
-                <span className="text-xs text-text-secondary ml-1">{Number(f.rating_value ?? f.rating_score) || 0}/5</span>
+            <article key={f.id} className="rounded-xl border border-text-tertiary/50 bg-white p-3 transition-colors hover:bg-bg-lighter">
+              <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><h4 className="break-words text-sm font-semibold text-text-primary">{f.customer_party_name || f.customer_party_display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.legal_name || f.reviewer_name || "Pengulas eksternal"}</h4>{f.reviewer_email && <p className="mt-0.5 break-all text-xs text-text-secondary">{f.reviewer_email}</p>}</div><OriginDomainBadge domain={f.origin_domain} /></div>
+              <div className="mt-2 flex items-center gap-1" aria-label={`Rating ${Number(f.rating_value ?? f.rating_score) || 0} dari 5`}>
+                {[...Array(5)].map((_, i) => <Star key={i} size={14} className={i < (Number(f.rating_value ?? f.rating_score) || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />)}
+                <span className="ml-1 text-xs font-semibold text-text-primary">{Number(f.rating_value ?? f.rating_score) || 0}/5</span>
               </div>
-              <p className="text-xs text-text-secondary">{f.feedback_text || f.comments || "-"}</p>
-            </div>
+              <p className="mt-2 border-t border-text-tertiary/40 pt-2 text-sm leading-5 text-text-secondary">{f.feedback_text || f.comments || "-"}</p>
+            </article>
           ))}
         </div>
       )}
@@ -2400,6 +2615,9 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [replyRequestIds, setReplyRequestIds] = useState<Record<string, string>>({});
   const [domainFilter, setDomainFilter] = useState("");
+  const [searchFilter, setSearchFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
+  const [weekFilter, setWeekFilter] = useState("");
   const refreshInbox = useCallback(async () => {
     setLoadingInbox(true);
     try {
@@ -2413,7 +2631,33 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
 
   useEffect(() => { void refreshInbox(); }, [refreshInbox]);
   const inboxDomains = Array.from(new Set(rows.map((row) => row.origin_domain).filter((value): value is string => Boolean(value)))).sort();
-  const visibleRows = rows.filter((row) => !domainFilter || row.origin_domain === domainFilter);
+  const getInboxDate = (row: CRMInboxConversation) => {
+    const raw = row.latest_message?.received_at || row.latest_message?.sent_at || row.updated_at;
+    const date = raw ? new Date(raw) : null;
+    return date && !Number.isNaN(date.getTime()) ? date : null;
+  };
+  const monthWeekCount = monthFilter ? (() => {
+    const [year, month] = monthFilter.split("-").map(Number);
+    if (!year || !month) return 0;
+    const firstDayOffset = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+    return Math.ceil((new Date(year, month, 0).getDate() + firstDayOffset) / 7);
+  })() : 0;
+  const visibleRows = rows.filter((row) => {
+    if (domainFilter && row.origin_domain !== domainFilter) return false;
+    const date = getInboxDate(row);
+    if (monthFilter) {
+      if (!date) return false;
+      if (`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}` !== monthFilter) return false;
+      if (weekFilter) {
+        const offset = (new Date(date.getFullYear(), date.getMonth(), 1).getDay() + 6) % 7;
+        if (Math.floor((date.getDate() - 1 + offset) / 7) + 1 !== Number(weekFilter)) return false;
+      }
+    }
+    const term = searchFilter.trim().toLocaleLowerCase("id-ID");
+    if (!term) return true;
+    return [row.subject, row.latest_message?.message_text, ...(row.messages ?? []).map((message) => message.message_text), row.external_thread?.external_thread_id, row.business_unit_name, row.origin_domain, row.inquiry?.inquiry_number, row.assigned_user?.full_name]
+      .some((value) => String(value || "").toLocaleLowerCase("id-ID").includes(term));
+  });
 
   const assignToMe = async (row: CRMInboxConversation) => {
     if (!userId) return;
@@ -2480,71 +2724,114 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="card rounded-xl p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-bold">Inbox CRM</h3>
-          <p className="text-xs text-text-secondary mt-1">Pesan dari pipeline internal, dikelompokkan dan diarahkan berdasarkan konfigurasi unit bisnis Marka.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2"><select aria-label="Filter domain inbox" className="rounded-lg border border-text-tertiary bg-white px-2 py-1.5 text-xs" value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}><option value="">Semua domain</option>{inboxDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}</select><button className="btn-ghost text-xs" onClick={() => void refreshInbox()} disabled={loadingInbox}><RefreshCw size={13} className={cn("mr-1", loadingInbox && "animate-spin")} />Refresh</button></div>
-      </div>
-      {loadingInbox ? <div className="card rounded-xl p-5 text-xs text-text-secondary">Memuat conversation…</div> : visibleRows.length === 0 ? (
-        <div className="card rounded-xl p-5"><EmptyState msg={domainFilter ? "Tidak ada conversation dari domain ini." : "Belum ada conversation masuk. Conversation akan muncul setelah sumber integrasi mengirim event."} /></div>
-      ) : visibleRows.map((row) => (
-        <article key={row.id} className="card rounded-xl p-4 flex flex-col gap-3">
+      <section className="card rounded-2xl p-4 sm:p-5">
+        <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2"><MessageCircle size={15} className="text-brand-deep-green" /><h4 className="text-sm font-semibold truncate">{row.subject || "Percakapan masuk"}</h4><StatusBadge status={row.status} /></div>
-              <p className="text-[11px] text-text-secondary mt-1">{row.business_unit_name || row.business_unit_code ? `Unit ${row.business_unit_name || row.business_unit_code} · ` : ""}{row.external_thread?.external_thread_id ? `Thread ${row.external_thread.external_thread_id}` : `Conversation ${row.id.slice(0, 8)}`}{row.inquiry_id ? " · Sudah dieskalasi menjadi Inquiry" : ""}</p><div className="mt-1"><OriginDomainBadge domain={row.origin_domain} /></div>
+            <div>
+              <h3 className="text-base font-bold text-text-primary">Inbox CRM</h3>
+              <p className="mt-1 text-xs text-text-secondary">Pesan dari pipeline internal, dikelompokkan menurut konfigurasi unit bisnis Marka.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {!readOnly && row.assigned_user_id !== userId && <button className="btn-ghost text-xs" disabled={busyId === row.id || !userId} onClick={() => void assignToMe(row)}><UserPlus size={13} className="mr-1" />{row.assigned_user_id ? "Tugaskan ke saya" : "Ambil"}</button>}
-              {!readOnly && !row.inquiry_id && <button className="btn-primary text-xs" disabled={busyId === row.id} onClick={() => void makeInquiry(row)}><Plus size={13} className="mr-1" />Jadikan Inquiry</button>}
-              {!readOnly && !row.inquiry_id && row.status !== "IGNORED" && <button className="btn-ghost text-xs" disabled={busyId === row.id} onClick={() => void decideConversation(row, "IGNORE")}>Abaikan</button>}
-              {!readOnly && row.status === "IGNORED" && <button className="btn-ghost text-xs" disabled={busyId === row.id} onClick={() => void decideConversation(row, "REOPEN")}>Pulihkan</button>}
-              {row.inquiry && <span className="px-2 py-1 text-[11px] rounded-lg bg-emerald-50 text-emerald-800">Inquiry {row.inquiry.inquiry_number}</span>}
-            </div>
+            <button className="btn-ghost text-xs" onClick={() => void refreshInbox()} disabled={loadingInbox}><RefreshCw size={13} className={cn("mr-1", loadingInbox && "animate-spin")} />Refresh</button>
           </div>
-          <div className="rounded-lg bg-bg-lighter p-3 flex flex-col gap-2 max-h-72 overflow-y-auto">
-            {(row.messages ?? []).length ? row.messages!.map((message) => (
-              <div key={message.id} className={cn("max-w-[88%] rounded-lg px-3 py-2 text-xs", message.direction === "INBOUND" ? "self-start bg-white border border-text-tertiary/40" : "self-end bg-emerald-50")}>{message.message_text}</div>
-            )) : <p className="text-xs text-text-secondary">{row.latest_message?.message_text || "Belum ada pesan yang tersimpan."}</p>}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(160px,1fr)_minmax(150px,.8fr)_minmax(140px,.8fr)_auto]">
+            <label className="text-xs font-medium text-text-secondary">Cari pesan
+              <input className="input mt-1 w-full bg-white" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} placeholder="Nama, pesan, inquiry, domain..." />
+            </label>
+            <label className="text-xs font-medium text-text-secondary">Domain
+              <select aria-label="Filter domain inbox" className="input mt-1 w-full bg-white" value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}><option value="">Semua domain</option>{inboxDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}</select>
+            </label>
+            <label className="text-xs font-medium text-text-secondary">Bulan
+              <input type="month" className="input mt-1 w-full bg-white" value={monthFilter} onChange={(event) => { setMonthFilter(event.target.value); setWeekFilter(""); }} />
+            </label>
+            <label className="text-xs font-medium text-text-secondary">Minggu
+              <select className="input mt-1 w-full bg-white disabled:cursor-not-allowed disabled:opacity-50" value={weekFilter} disabled={!monthFilter} onChange={(event) => setWeekFilter(event.target.value)}><option value="">Semua minggu</option>{Array.from({ length: monthWeekCount }, (_, index) => <option key={index + 1} value={index + 1}>Minggu {index + 1}</option>)}</select>
+            </label>
+            <div className="flex items-end"><button type="button" className="btn-ghost w-full justify-center px-3 py-2 text-xs sm:w-auto" onClick={() => { setSearchFilter(""); setDomainFilter(""); setMonthFilter(""); setWeekFilter(""); }}>Reset filter</button></div>
           </div>
-          {!readOnly && row.external_thread && row.status !== "IGNORED" && (
-            <div className="flex flex-col sm:flex-row gap-2">
-              <textarea
-                className="input-field flex-1 min-h-16 text-xs"
-                maxLength={10000}
-                value={replyDrafts[row.id] || ""}
-                onChange={(event) => {
-                  setReplyDrafts((current) => ({ ...current, [row.id]: event.target.value }));
-                  setReplyRequestIds((current) => current[row.id] ? current : ({ ...current, [row.id]: crypto.randomUUID() }));
-                }}
-                placeholder="Tulis balasan untuk dikirim melalui adapter kanal..."
-              />
-              <button className="btn-primary text-xs self-end" disabled={busyId === row.id || !(replyDrafts[row.id] || "").trim()} onClick={() => void sendReply(row)}>
-                {busyId === row.id ? "Mengirim..." : "Kirim balasan"}
-              </button>
+        </div>
+      </section>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <h4 className="text-sm font-bold text-text-primary">Daftar Percakapan</h4>
+        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{visibleRows.length} pesan</span>
+      </div>
+      {loadingInbox && rows.length === 0 ? <div className="card rounded-xl p-5 text-xs text-text-secondary">Memuat conversation…</div> : visibleRows.length === 0 ? (
+        <div className="card rounded-xl p-5"><EmptyState msg={rows.length ? "Tidak ada conversation yang cocok dengan filter." : "Belum ada conversation masuk. Conversation muncul setelah sumber integrasi mengirim event."} /></div>
+      ) : <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 2xl:grid-cols-3">
+        {visibleRows.map((row) => {
+          const date = getInboxDate(row);
+          const previewMessages = (row.messages ?? []).slice(-2);
+          const preview = row.latest_message?.message_text || previewMessages[previewMessages.length - 1]?.message_text || "Belum ada pesan yang tersimpan.";
+          const unit = row.business_unit_name || row.business_unit_code;
+          const messageCount = row.messages?.length || (row.latest_message ? 1 : 0);
+          return <article key={row.id} className="flex min-w-0 flex-col gap-3 rounded-xl border border-text-tertiary/60 bg-white p-3.5 shadow-sm transition-all hover:border-blue-200 hover:shadow-md">
+            <header className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h5 className="break-words text-sm font-bold leading-5 text-text-primary">{row.subject || "Percakapan masuk"}</h5>
+                <p className="mt-1 text-2xs text-text-secondary">{date ? date.toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : `ID ${row.id.slice(0, 8)}`}</p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1.5"><span className="text-2xs font-medium text-text-secondary">Status</span><StatusBadge status={row.status} /></div>
+            </header>
+
+            <div className="flex flex-wrap gap-1.5 border-y border-slate-100 py-2">
+              {row.origin_domain && <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-2xs"><span className="font-semibold text-text-secondary">Domain</span><OriginDomainBadge domain={row.origin_domain} /></span>}
+              {unit && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-2xs text-blue-800"><b>Unit</b> · {unit}</span>}
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-2xs text-text-secondary"><b>Prioritas</b> · {row.priority || "NORMAL"}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-2xs text-text-secondary"><b>PIC</b> · {row.assigned_user?.full_name || (row.assigned_user_id ? "Ditentukan" : "Belum ada")}</span>
+              {row.inquiry && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-2xs font-medium text-emerald-800"><b>Inquiry</b> · {row.inquiry.inquiry_number}</span>}
             </div>
-          )}
-          {(row.external_identities ?? []).map((identity) => (
-            <div key={identity.id} className="flex flex-wrap items-center gap-2 text-[11px]">
-              <span className="text-text-secondary">Identitas {identity.type} {identity.masked_value} · verifikasi sumber {identity.channel_verification_status} · customer {identity.customer_match_status}</span>
-              {identity.customer_match_status === "CONFIRMED" && identity.party_id ? (
-                <span className="text-emerald-800">{parties.find((party) => String(party.id) === String(identity.party_id))?.display_name || parties.find((party) => String(party.id) === String(identity.party_id))?.legal_name || "Customer terverifikasi"}</span>
-              ) : canMatchIdentity && identity.channel_verification_status === "VERIFIED" ? (
-                <>
-                  <select className="input-field py-1 text-[11px]" value={partyChoice[identity.id] || ""} onChange={(event) => setPartyChoice((current) => ({ ...current, [identity.id]: event.target.value }))}>
-                    <option value="">Pilih customer untuk verifikasi</option>
-                    {parties.filter((party) => party.status === "ACTIVE").map((party) => <option key={party.id} value={party.id}>{party.display_name || party.legal_name || party.party_name}</option>)}
-                  </select>
-                  <button className="btn-ghost text-[11px]" disabled={busyId === identity.id} onClick={() => void matchIdentity(identity.id)}>Konfirmasi relasi</button>
-                </>
-              ) : null}
+
+            <div className="min-h-[96px] rounded-lg bg-slate-50 p-3">
+              <div className="mb-1.5 flex items-center justify-between gap-2"><span className="text-2xs font-semibold uppercase tracking-wide text-text-secondary">Pesan terakhir</span><span className="text-2xs text-text-secondary">{messageCount} pesan</span></div>
+              <p className="line-clamp-4 whitespace-pre-wrap break-words text-xs leading-5 text-text-primary">{preview}</p>
             </div>
-          ))}
-          <div className="text-[11px] text-text-secondary">{row.assigned_user?.full_name ? `PIC: ${row.assigned_user.full_name}` : row.assigned_user_id ? "PIC sudah ditentukan" : "Belum ada PIC"} · {row.priority || "NORMAL"}</div>
-        </article>
-      ))}
+
+            {!readOnly && <div className="flex flex-wrap gap-1.5">
+              {row.assigned_user_id !== userId && <button className="btn-ghost text-2xs px-2 py-1" disabled={busyId === row.id || !userId} onClick={() => void assignToMe(row)}><UserPlus size={12} className="mr-1" />{row.assigned_user_id ? "Tugaskan ke saya" : "Ambil"}</button>}
+              {!row.inquiry_id && <button className="btn-primary text-2xs px-2 py-1" disabled={busyId === row.id} onClick={() => void makeInquiry(row)}><Plus size={12} className="mr-1" />Jadikan Inquiry</button>}
+              {!row.inquiry_id && row.status !== "IGNORED" && <button className="btn-ghost text-2xs px-2 py-1" disabled={busyId === row.id} onClick={() => void decideConversation(row, "IGNORE")}>Abaikan</button>}
+              {row.status === "IGNORED" && <button className="btn-ghost text-2xs px-2 py-1" disabled={busyId === row.id} onClick={() => void decideConversation(row, "REOPEN")}>Pulihkan</button>}
+            </div>}
+
+            <details className="group border-t border-slate-100 pt-2">
+              <summary className="cursor-pointer list-none text-xs font-semibold text-blue-700 marker:hidden">Lihat percakapan &amp; detail <span className="ml-1 text-2xs font-normal text-text-secondary">({row.external_thread?.external_thread_id || `ID ${row.id.slice(0, 8)}`})</span></summary>
+              <div className="mt-3 space-y-3">
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg bg-slate-50 p-3">
+                  {(row.messages ?? []).length ? row.messages!.map((message) => {
+                    const isInbound = message.direction === "INBOUND";
+                    const timestamp = message.received_at || message.sent_at;
+                    const parsed = timestamp ? new Date(timestamp) : null;
+                    return <div key={message.id} className={cn("flex w-full", isInbound ? "justify-start" : "justify-end")}>
+                      <div className={cn("max-w-[90%] rounded-xl px-3 py-2 shadow-sm", isInbound ? "rounded-tl-sm border border-text-tertiary/40 bg-white text-text-primary" : "rounded-tr-sm bg-blue-600 text-white")}>
+                        <p className="whitespace-pre-wrap break-words text-xs leading-4">{message.message_text}</p>
+                        {parsed && !Number.isNaN(parsed.getTime()) && <p className={cn("mt-1 text-right text-2xs", isInbound ? "text-text-secondary" : "text-blue-100")}>{parsed.toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
+                      </div>
+                    </div>;
+                  }) : <p className="rounded-lg border border-text-tertiary/40 bg-white px-3 py-2 text-xs text-text-secondary">{row.latest_message?.message_text || "Belum ada pesan yang tersimpan."}</p>}
+                </div>
+                <div className="flex flex-wrap gap-2 text-2xs text-text-secondary">
+                  <span className="rounded bg-slate-100 px-2 py-1"><b>Thread</b> · {row.external_thread?.external_thread_id || `Conversation ${row.id.slice(0, 8)}`}</span>
+                  <span className="rounded bg-slate-100 px-2 py-1"><b>PIC</b> · {row.assigned_user?.full_name || (row.assigned_user_id ? "Sudah ditentukan" : "Belum ada")}</span>
+                  {row.inquiry_id && <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-800">Sudah dieskalasi menjadi Inquiry</span>}
+                </div>
+                {!readOnly && row.external_thread && row.status !== "IGNORED" && <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <textarea className="input-field min-h-16 flex-1 resize-y text-xs" maxLength={10000} value={replyDrafts[row.id] || ""} onChange={(event) => { setReplyDrafts((current) => ({ ...current, [row.id]: event.target.value })); setReplyRequestIds((current) => current[row.id] ? current : ({ ...current, [row.id]: crypto.randomUUID() })); }} placeholder="Tulis balasan..." />
+                  <button className="btn-primary text-xs sm:self-end" disabled={busyId === row.id || !(replyDrafts[row.id] || "").trim()} onClick={() => void sendReply(row)}>{busyId === row.id ? "Mengirim..." : "Kirim balasan"}</button>
+                </div>}
+                {(row.external_identities ?? []).length > 0 && <div className="space-y-2 border-t border-text-tertiary/40 pt-3">
+                  {row.external_identities!.map((identity) => <div key={identity.id} className="rounded-lg border border-slate-200 p-2.5 text-xs">
+                    <div className="flex flex-wrap gap-x-2 gap-y-1 text-text-secondary"><span><b>Identitas</b> · {identity.type} {identity.masked_value}</span><span><b>Verifikasi sumber</b> · {identity.channel_verification_status}</span><span><b>Status customer</b> · {identity.customer_match_status}</span></div>
+                    {identity.customer_match_status === "CONFIRMED" && identity.party_id ? <p className="mt-1 font-medium text-emerald-800">Customer · {parties.find((party) => String(party.id) === String(identity.party_id))?.display_name || parties.find((party) => String(party.id) === String(identity.party_id))?.legal_name || "Terverifikasi"}</p> : canMatchIdentity && identity.channel_verification_status === "VERIFIED" ? <div className="mt-2 flex flex-wrap gap-2">
+                      <select className="input-field py-1 text-xs" value={partyChoice[identity.id] || ""} onChange={(event) => setPartyChoice((current) => ({ ...current, [identity.id]: event.target.value }))}><option value="">Pilih customer untuk verifikasi</option>{parties.filter((party) => party.status === "ACTIVE").map((party) => <option key={party.id} value={party.id}>{party.display_name || party.legal_name || party.party_name}</option>)}</select>
+                      <button className="btn-ghost text-xs" disabled={busyId === identity.id} onClick={() => void matchIdentity(identity.id)}>Konfirmasi relasi</button>
+                    </div> : null}
+                  </div>)}
+                </div>}
+              </div>
+            </details>
+          </article>;
+        })}
+      </div>}
     </div>
   );
 }
@@ -2700,7 +2987,7 @@ export default function CrmClient() {
 
   const data: CRMData = crmData || {
     inquiries:[], requirements:[], opportunities:[], activities:[], stages:[], estimates:[], estimateLines:[],
-    quotations:[], approvals:[], deliveries:[], contracts:[], orders:[], conversations:[],
+    quotations:[], businessDocuments:[], approvals:[], deliveries:[], contracts:[], orders:[], conversations:[],
     feedback:[], surveyQuestions:[], surveyResponses:[], surveyAnswers:[], credit:[], cases:[], resolutions:[], products:[], parties:[],
   };
 
@@ -2737,23 +3024,23 @@ export default function CrmClient() {
       </div>
 
       {/* ── Tab Navigation ───────────────────── */}
-      <div className="flex gap-1.5 p-1.5 bg-bg-lighter rounded-xl border border-text-tertiary/50 overflow-x-auto">
+      <nav aria-label="Navigasi CRM" className="flex items-stretch gap-5 overflow-x-auto border-b border-slate-200">
         {visibleTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all",
+              "-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 border-transparent px-1 py-3 text-xs font-semibold whitespace-nowrap transition-colors",
               activeTab === id
-                ? "bg-white text-brand-deep-green shadow-sm border border-text-tertiary/30"
-                : "text-text-secondary hover:text-text-primary hover:bg-white/60"
+                ? "border-brand-primary text-brand-deep-green"
+                : "text-text-secondary hover:border-slate-300 hover:text-text-primary"
             )}
           >
             <Icon size={14} />
             {label}
           </button>
         ))}
-      </div>
+      </nav>
 
       {/* ── Tab Content ─────────────────────── */}
       {loading ? (
