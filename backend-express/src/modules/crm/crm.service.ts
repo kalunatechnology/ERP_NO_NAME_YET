@@ -15,6 +15,57 @@ import { queueWebhookEvent } from './crm-outbound-webhook.service';
 const CRM_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 30_000 } as const;
 
 export class CRMService {
+  static async updateInquiryLeadStatus(
+    inquiryId: string,
+    companyId: string,
+    userId: string,
+    payload: { status?: string; next_follow_up_at?: string; note?: string },
+  ) {
+    const target = String(payload.status ?? '').trim().toUpperCase();
+    if (!['CONTACTED', 'RESPONDED', 'FOLLOW_UP'].includes(target)) throw new ValidationError('Status lead tidak valid.');
+    const note = String(payload.note ?? '').trim();
+    if (note.length > 2000) throw new ValidationError('Catatan kontak maksimal 2.000 karakter.');
+    if (target === 'FOLLOW_UP' && !note) throw new ValidationError('Alasan tindak lanjut wajib diisi.');
+    const followUpAt = payload.next_follow_up_at ? new Date(payload.next_follow_up_at) : null;
+    if (target === 'FOLLOW_UP' && (!followUpAt || Number.isNaN(followUpAt.getTime()) || followUpAt <= new Date())) {
+      throw new ValidationError('Pilih tanggal tindak lanjut yang akan datang.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM crm_customer_inquiry WHERE id = ${inquiryId} AND company_id = ${companyId} FOR UPDATE`;
+      const inquiry = await tx.crm_customer_inquiry.findFirst({ where: { id: inquiryId, company_id: companyId } });
+      if (!inquiry) throw new NotFoundError('Lead / Inquiry');
+      const current = String(inquiry.status || 'NEW').toUpperCase();
+      const validFrom: Record<string, string[]> = {
+        CONTACTED: ['NEW', 'FOLLOW_UP'],
+        RESPONDED: ['CONTACTED'],
+        FOLLOW_UP: ['NEW', 'CONTACTED', 'RESPONDED', 'FOLLOW_UP'],
+      };
+      if (!validFrom[target].includes(current)) throw new ConflictError(`Lead tidak dapat berpindah dari ${current} ke ${target}.`);
+      const now = new Date();
+      const updated = await tx.crm_customer_inquiry.update({
+        where: { id: inquiry.id },
+        data: {
+          status: target,
+          ...(target === 'CONTACTED' ? { last_contacted_at: now, last_contact_note: note, next_follow_up_at: null } : {}),
+          ...(target === 'RESPONDED' ? { responded_at: now, next_follow_up_at: null } : {}),
+          ...(target === 'FOLLOW_UP' ? { next_follow_up_at: followUpAt, last_contact_note: note || inquiry.last_contact_note } : {}),
+          updated_at: now,
+        },
+      });
+      await tx.crm_workflow_event.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: inquiry.tenant_id, company_id: companyId,
+          inquiry_id: inquiry.id, event_type: 'LEAD_STATUS', from_status: current, to_status: target,
+          actor_id: userId, created_by_id: userId,
+          payload_json: { note, next_follow_up_at: followUpAt?.toISOString() ?? null },
+          created_at: now,
+        },
+      });
+      return updated;
+    }, CRM_TRANSACTION_OPTIONS);
+  }
+
 /**
  * qualifyInquiry implements a named method within this file's domain service boundary.
  *
@@ -38,6 +89,10 @@ export class CRMService {
         where: { id: inquiryId, company_id: companyId },
       });
       if (!inquiry) throw new NotFoundError('CustomerInquiry');
+      const inquiryStatus = String(inquiry.status || '').toUpperCase();
+      if (inquiryStatus !== 'RESPONDED' && !(inquiryStatus === 'QUALIFIED' && inquiry.opportunity_id)) {
+        throw new ConflictError('Lead harus ditandai Merespons sebelum dikualifikasi menjadi Opportunity.');
+      }
 
       let opportunityId = inquiry.opportunity_id;
       const opportunityFromSource = await tx.crm_opportunity.findUnique({
@@ -87,6 +142,14 @@ export class CRMService {
 
       const updatedInquiry = await tx.crm_customer_inquiry.findUnique({
         where: { id: inquiryId },
+      });
+      if (inquiryStatus !== 'QUALIFIED') await tx.crm_workflow_event.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: inquiry.tenant_id, company_id: companyId,
+          inquiry_id: inquiry.id, opportunity_id: opportunityId, event_type: 'QUALIFY',
+          from_status: 'RESPONDED', to_status: 'QUALIFIED', actor_id: userId, created_by_id: userId,
+          payload_json: {}, created_at: new Date(),
+        },
       });
 
       return {

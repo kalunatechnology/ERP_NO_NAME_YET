@@ -1,9 +1,8 @@
 /**
  * File: frontend-next/components/layout/AppShell.tsx
  *
- * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
- * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
- * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
+ * Purpose: Marka Logistik AppShell layout with Dark Slate collapsible sidebar and slate-100 canvas.
+ * Integration: Next.js app router shell with authentication and access boundary.
  */
 "use client";
 
@@ -22,16 +21,12 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-/**
- * AppShell implements the local UI interaction represented by its typed signature.
- *
- * @param input - The declared props/event/value arguments; caller identity and company state come only from imported context/API helpers.
- * @returns The rendered React value, synchronous result, or Promise declared by the implementation.
- * Side effects: updates the local React/browser state or invokes callbacks visible below.
- */
 export function AppShell({ children }: AppShellProps) {
   const { user, company, userRole, isLoading, isAuthenticated } = useAuth();
   const pathname = usePathname();
+
+  // Desktop sidebar expand state (persisted to localStorage)
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
 
   // Dock only when there is room for both navigation and the workspace.
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
@@ -42,10 +37,32 @@ export function AppShell({ children }: AppShellProps) {
   // AI Chatbot drawer state
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
 
-  /* Restore persisted right-panel collapse state */
+  /* Restore persisted states on mount */
   useEffect(() => {
-    const stored = localStorage.getItem("erp.rightPanel");
-    if (stored === "false") setRightPanelOpen(false);
+    const storedPanel = localStorage.getItem("erp.rightPanel");
+    if (storedPanel === "false") setRightPanelOpen(false);
+
+    const storedSidebar = localStorage.getItem("sidebar-expanded");
+    if (storedSidebar !== null) {
+      const isExp = storedSidebar === "true";
+      setSidebarExpanded(isExp);
+      if (typeof document !== "undefined") {
+        if (isExp) document.body.classList.add("sidebar-expanded");
+        else document.body.classList.remove("sidebar-expanded");
+      }
+    }
+  }, []);
+
+  const toggleSidebarExpand = useCallback(() => {
+    setSidebarExpanded((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebar-expanded", String(next));
+      if (typeof document !== "undefined") {
+        if (next) document.body.classList.add("sidebar-expanded");
+        else document.body.classList.remove("sidebar-expanded");
+      }
+      return next;
+    });
   }, []);
 
   /* Close mobile drawers on route change */
@@ -81,7 +98,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const toggleRightPanel = useCallback(() => {
     if (typeof window !== "undefined" && window.innerWidth < 1536) {
-      setMobileRightPanelOpen(prev => !prev);
+      setMobileRightPanelOpen((prev) => !prev);
     } else {
       const next = !rightPanelOpen;
       setRightPanelOpen(next);
@@ -93,7 +110,7 @@ export function AppShell({ children }: AppShellProps) {
   const closeMobileSidebar  = useCallback(() => setMobileSidebarOpen(false), []);
   const closeMobileRight    = useCallback(() => setMobileRightPanelOpen(false), []);
 
-  /* ── Access control ──────────────────────────────────── */
+  /* ── Access control ─────────────────────────────────────────────────── */
   const routeContract = getRouteAccessContract(pathname);
   const hasAccess = canAccessRoute({
     pathname,
@@ -109,16 +126,19 @@ export function AppShell({ children }: AppShellProps) {
   if (!isAuthenticated) {
     const loginHref = `/login?callbackUrl=${encodeURIComponent(pathname)}`;
     return (
-      <main className="flex min-h-screen items-center justify-center bg-bg-lighter p-6">
-        <section className="w-full max-w-md rounded-2xl border border-[#EAF6FF] bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EAF6FF] text-[#2649B3]">
-            <LogIn size={22} />
+      <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6 font-inter">
+        <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-lg">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-[#4F8CF6]">
+            <LogIn size={24} />
           </div>
-          <h1 className="mt-5 text-xl font-semibold text-[#2649B3]">Sesi Anda telah berakhir</h1>
-          <p className="mt-2 text-sm leading-6 text-[#4F5050]">
-            Silakan masuk kembali untuk melanjutkan. Alamat halaman ini tetap dipertahankan.
+          <h1 className="mt-5 text-xl font-bold text-slate-800">Sesi Anda telah berakhir</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Silakan masuk kembali untuk melanjutkan ke Marka Logistik ERP.
           </p>
-          <a href={loginHref} className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-[#2649B3] px-5 text-sm font-semibold text-white hover:bg-[#090909]">
+          <a
+            href={loginHref}
+            className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-[#4F8CF6] hover:bg-[#3F70C5] px-6 text-sm font-semibold text-white transition-colors shadow-xs"
+          >
             Masuk kembali
           </a>
         </section>
@@ -127,23 +147,24 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden bg-bg-lighter">
-
-      {/* ── Desktop Sidebar (hidden below lg) ── */}
-      <div className="hidden lg:flex flex-shrink-0">
-        <Sidebar onChatbotOpen={() => setIsChatbotOpen(true)} />
+    <div className="flex h-dvh w-full overflow-hidden bg-slate-100 font-inter">
+      {/* ── Desktop Sidebar ───────────────────────────────────────────────── */}
+      <div className="hidden lg:flex shrink-0">
+        <Sidebar
+          expanded={sidebarExpanded}
+          onToggleExpand={toggleSidebarExpand}
+          onChatbotOpen={() => setIsChatbotOpen(true)}
+        />
       </div>
 
-      {/* ── Mobile Left Sidebar Overlay (shown below lg) ── */}
+      {/* ── Mobile Sidebar Overlay ────────────────────────────────────────── */}
       {mobileSidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
-          {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
             onClick={closeMobileSidebar}
             aria-hidden="true"
           />
-          {/* Drawer */}
           <div className="relative z-10 flex animate-in slide-in-from-left-full duration-200 shadow-2xl">
             <Sidebar
               onClose={closeMobileSidebar}
@@ -157,24 +178,22 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       )}
 
-      {/* Notifications drawer below the desktop docking breakpoint. */}
+      {/* ── Mobile Right Drawer ───────────────────────────────────────────── */}
       {mobileRightPanelOpen && (
-        <div className="2xl:hidden fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Notifikasi dan kontak tim">
-          {/* Backdrop */}
+        <div className="2xl:hidden fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Notifikasi">
           <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
             onClick={closeMobileRight}
             aria-hidden="true"
           />
-          {/* Drawer */}
           <div className="relative z-10 flex h-full shadow-2xl animate-in slide-in-from-right-full duration-200">
             <RightPanel isMobile onClose={closeMobileRight} />
           </div>
         </div>
       )}
 
-      {/* ── Main Application Column ── */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      {/* ── Main Application Column ───────────────────────────────────────── */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100">
         {/* Topbar */}
         <Topbar
           onMenuToggle={openMobileSidebar}
@@ -186,11 +205,11 @@ export function AppShell({ children }: AppShellProps) {
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           {/* Main Scrollable Canvas */}
           <main
-            className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden relative"
+            className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden relative bg-slate-100"
             id="main-content"
             role="main"
           >
-            <div className="p-3.5 sm:p-5 lg:p-6 w-full max-w-[1600px] mx-auto animate-in fade-in-50 duration-500">
+            <div className="p-4 sm:p-6 lg:p-8 w-full max-w-[1600px] mx-auto animate-in fade-in-50 duration-300">
               {!hasAccess ? (
                 <AccessDeniedState
                   title="Akses Dibatasi"
@@ -205,9 +224,9 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           </main>
 
-          {/* Docked notifications on wide desktop screens. */}
+          {/* Docked notifications on wide desktop screens */}
           <div
-            className="hidden 2xl:flex flex-shrink-0 flex-col border-l border-text-tertiary bg-bg-light transition-[width] duration-200 overflow-hidden relative h-full"
+            className="hidden 2xl:flex shrink-0 flex-col border-l border-slate-200 bg-white transition-[width] duration-200 overflow-hidden relative h-full"
             style={{ width: rightPanelOpen ? "260px" : "36px" }}
           >
             {rightPanelOpen ? (
@@ -216,11 +235,11 @@ export function AppShell({ children }: AppShellProps) {
               <div className="w-full h-full flex flex-col items-center pt-3">
                 <button
                   onClick={toggleRightPanel}
-                  className="p-1.5 rounded-lg text-text-secondary hover:text-brand-green hover:bg-brand-light-green transition-colors cursor-pointer"
-                  title="Buka panel kanan"
-                  aria-label="Buka panel kanan"
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-[#4F8CF6] hover:bg-blue-50 transition-colors cursor-pointer"
+                  title="Buka panel notifikasi"
+                  aria-label="Buka panel notifikasi"
                 >
-                  <PanelRightOpen size={16} />
+                  <PanelRightOpen size={18} />
                 </button>
               </div>
             )}
@@ -228,7 +247,7 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </div>
 
-      {/* ── Slide-over Adaptive AI Chatbot Drawer ── */}
+      {/* ── Adaptive AI Chatbot Drawer ────────────────────────────────────── */}
       <ChatbotDrawer
         isOpen={isChatbotOpen}
         onClose={() => setIsChatbotOpen(false)}
@@ -238,9 +257,10 @@ export function AppShell({ children }: AppShellProps) {
           email: user?.email,
           companyName: (user as any)?.company?.name || "Company aktif",
           companyId: company || undefined,
-          authorityKey: JSON.stringify([company, user?.active_role_code, user?.enabled_modules]),
         }}
       />
     </div>
   );
 }
+
+export default AppShell;

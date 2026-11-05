@@ -24,9 +24,9 @@ import toast from "react-hot-toast";
 import {
   loadCRMData, CRMData, CRMDashboard,
   processDealWon, executiveOverrideCredit, qualifyInquiry,
-  createOpportunity, updateOpportunityCustomer, deleteOpportunity,
+  createOpportunity, updateOpportunityCustomer, moveCRMOpportunityStage, deleteOpportunity,
   createCRMActivity, getOpportunityCustomer360, markOpportunityLost, createServiceWorkOrder,
-  createCustomerInquiry, deleteCustomerInquiry,
+  createCustomerInquiry, updateCRMInquiryLeadStatus, deleteCustomerInquiry,
   createCostEstimate, calculateCostEstimate, createQuotationFromEstimate, deleteCostEstimate,
   submitQuotationApproval, approveQuotation, sendQuotation, acceptQuotation, rejectQuotation, convertQuotationToOrder,
   createSupportTicket, checkTicketWarrantyStatus, deleteSupportTicket,
@@ -53,7 +53,7 @@ const CRM_TABS = [
   { id: "deals",       label: "Deals & Credit",       icon: TrendingUp    },
   { id: "estimate",    label: "Estimating & Quoting", icon: Calculator, module: "SALES" },
   { id: "tickets",     label: "Support & Garansi",    icon: PhoneCall, module: "SERVICE" },
-  { id: "incoming",    label: "Incoming Inquiry",     icon: FileText      },
+  { id: "incoming",    label: "Leads & Inquiry",      icon: FileText      },
   { id: "accounts",    label: "Accounts",             icon: Building2     },
   { id: "contracts",   label: "Contracts & Orders",   icon: FileCheck, module: "SALES" },
   { id: "engagement",  label: "Engagement",           icon: MessageSquare },
@@ -65,12 +65,14 @@ function opportunityPartyId(opportunity: any): string | number | null {
 }
 
 const CRM_PIPELINE_STAGE_LABELS: Record<string, string> = {
-  OPEN: "Peluang baru",
+  OPEN: "Prospek",
   PROSPECT: "Prospek",
-  QUALIFICATION: "Kualifikasi",
-  PROPOSAL: "Penyusunan proposal",
+  QUALIFICATION: "Discovery / Meeting",
+  DISCOVERY: "Discovery / Meeting",
+  PROPOSAL: "Proposal dikirim",
   PROPOSAL_SENT: "Proposal dikirim",
   NEGOTIATION: "Negosiasi",
+  FOLLOW_UP: "Follow-up kembali",
   WON: "Deal berhasil",
   CLOSED_WON: "Deal berhasil",
   LOST: "Deal tidak berhasil",
@@ -79,6 +81,11 @@ const CRM_PIPELINE_STAGE_LABELS: Record<string, string> = {
   CANCEL: "Dibatalkan",
   BATAL: "Dibatalkan",
 };
+
+function normalizeOpportunityStage(value: unknown): string {
+  const stage = String(value || "PROSPECT").toUpperCase();
+  return ({ OPEN: "PROSPECT", QUALIFICATION: "DISCOVERY", PROPOSAL: "PROPOSAL_SENT" } as Record<string, string>)[stage] || stage;
+}
 
 /**
  * StatusBadge coordinates the UI behavior represented by this function.
@@ -424,7 +431,8 @@ function TabDashboard({ data, dash }: { data: CRMData; dash: CRMDashboard }) {
                 const stageLabel = CRM_PIPELINE_STAGE_LABELS[stageKey] || stageKey.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
                 const stageTone = ["NEGOTIATION"].includes(stageKey) ? "border-amber-200 bg-amber-50 text-amber-800"
                   : ["PROPOSAL", "PROPOSAL_SENT"].includes(stageKey) ? "border-violet-200 bg-violet-50 text-violet-800"
-                    : ["QUALIFICATION"].includes(stageKey) ? "border-blue-200 bg-blue-50 text-blue-800"
+                    : ["QUALIFICATION", "DISCOVERY"].includes(stageKey) ? "border-blue-200 bg-blue-50 text-blue-800"
+                      : ["FOLLOW_UP"].includes(stageKey) ? "border-orange-200 bg-orange-50 text-orange-800"
                       : "border-slate-200 bg-slate-50 text-slate-700";
                 return (
                   <article key={o.id} className="min-w-0 rounded-xl border border-text-tertiary/60 bg-white p-3.5 transition-all hover:border-blue-200 hover:shadow-sm">
@@ -521,12 +529,13 @@ function TabDeals({
   readOnly?: boolean;
   canOverride?: boolean;
 }) {
+  const router = useRouter();
   const [form, setForm] = useState({ 
     opportunity_name: "", 
     customer_party: "", 
     expected_amount: "150000000", 
     probability_percent: 50, 
-    pipeline_stage: "OPEN" 
+    pipeline_stage: "PROSPECT"
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resultModal, setResultModal] = useState<any>(null);
@@ -535,6 +544,13 @@ function TabDeals({
   const [savingCustomerOppId, setSavingCustomerOppId] = useState<string | null>(null);
   const [oppFilter, setOppFilter] = useState<"ACTIVE" | "CANCELLED" | "ALL">("ACTIVE");
   const [activityOpp, setActivityOpp] = useState<any>(null);
+  const [followUpOpp, setFollowUpOpp] = useState<any>(null);
+  const [followUpDraft, setFollowUpDraft] = useState({ date: "", reason: "" });
+  const [savingStage, setSavingStage] = useState(false);
+  const [meetingOpp, setMeetingOpp] = useState<any>(null);
+  const [meetingForm, setMeetingForm] = useState({ title: "", description: "", start_at: "", end_at: "", location: "", meeting_url: "", contact_name: "", contact_email: "" });
+  const [meetingSaving, setMeetingSaving] = useState(false);
+  const [crmLinkedMeetings, setCrmLinkedMeetings] = useState<any[]>([]);
   const [lostReasonOpp, setLostReasonOpp] = useState<any>(null);
   const [lostReasonCode, setLostReasonCode] = useState("");
   const [lostReasonDetail, setLostReasonDetail] = useState("");
@@ -552,10 +568,12 @@ function TabDeals({
   useEffect(() => {
     if (!activityOpp) return;
     let active = true;
-    requestApi.listMeetingMinutesReferences().then((rows) => {
-      if (active) setMeetingMinutesReferences(rows || []);
+    Promise.all([requestApi.listMeetingMinutesReferences(), requestApi.listMeetings(String(activityOpp.id))]).then(([minutes, meetings]) => {
+      if (!active) return;
+      setMeetingMinutesReferences(minutes || []);
+      setCrmLinkedMeetings(meetings || []);
     }).catch(() => {
-      if (active) setMeetingMinutesReferences([]);
+      if (active) { setMeetingMinutesReferences([]); setCrmLinkedMeetings([]); }
     });
     return () => { active = false; };
   }, [activityOpp]);
@@ -691,12 +709,71 @@ function TabDeals({
     }
   };
 
+  const handleOpportunityStageChange = async (opportunity: any, stage: string) => {
+    if (stage === "FOLLOW_UP") {
+      setFollowUpOpp(opportunity);
+      setFollowUpDraft({ date: "", reason: "" });
+      return;
+    }
+    setSavingStage(true);
+    try {
+      await moveCRMOpportunityStage(opportunity.id, stage, { reason: "Tahap diperbarui dari CRM" });
+      toast.success(`Tahap deal diperbarui ke ${CRM_PIPELINE_STAGE_LABELS[stage] || stage}.`);
+      onRefresh();
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Tahap Opportunity gagal diperbarui."); }
+    finally { setSavingStage(false); }
+  };
+
+  const submitOpportunityFollowUp = async () => {
+    if (!followUpOpp || !followUpDraft.date || !followUpDraft.reason.trim()) { toast.error("Tanggal dan alasan follow-up wajib diisi."); return; }
+    setSavingStage(true);
+    try {
+      await moveCRMOpportunityStage(followUpOpp.id, "FOLLOW_UP", {
+        next_follow_up_at: new Date(`${followUpDraft.date}T12:00:00`).toISOString(), reason: followUpDraft.reason.trim(),
+      });
+      setFollowUpOpp(null);
+      toast.success("Opportunity dijadwalkan untuk dipertimbangkan kembali.");
+      onRefresh();
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Follow-up Opportunity gagal dijadwalkan."); }
+    finally { setSavingStage(false); }
+  };
+
   const handleActivitySave = async () => {
     if (!activityOpp || !activityForm.subject.trim()) { toast.error("Isi catatan aktivitas terlebih dahulu."); return; }
     try {
       await createCRMActivity({ opportunity_id: activityOpp.id, party_id: opportunityPartyId(activityOpp), activity_type: activityForm.activity_type, subject: activityForm.subject.trim(), scheduled_at: activityForm.scheduled_at ? new Date(activityForm.scheduled_at).toISOString() : null, meeting_minutes_id: activityForm.meeting_minutes_id || null });
       toast.success("Aktivitas tersimpan."); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" }); onRefresh();
     } catch (e: any) { toast.error(e?.response?.data?.detail || "Gagal menyimpan aktivitas."); }
+  };
+
+  const openCrmMeetingForm = (opportunity: any) => {
+    const party = (data.parties || []).find((item: any) => String(item.id) === String(opportunityPartyId(opportunity)));
+    const customerName = party?.display_name || party?.legal_name || "";
+    setMeetingOpp(opportunity);
+    setMeetingForm({ title: `Meeting CRM — ${opportunity.opportunity_name || customerName || "Opportunity"}`, description: "", start_at: "", end_at: "", location: "", meeting_url: "", contact_name: customerName, contact_email: party?.email || "" });
+  };
+
+  const handleCrmMeetingCreate = async () => {
+    if (!meetingOpp || !meetingForm.title.trim() || !meetingForm.start_at || !meetingForm.end_at) {
+      toast.error("Isi judul, waktu mulai, dan waktu selesai meeting."); return;
+    }
+    setMeetingSaving(true);
+    try {
+      const created: any = await requestApi.createMeeting({
+        title: meetingForm.title.trim(), description: meetingForm.description.trim(),
+        start_at: new Date(meetingForm.start_at).toISOString(), end_at: new Date(meetingForm.end_at).toISOString(),
+        location: meetingForm.location.trim(), meeting_url: meetingForm.meeting_url.trim(), meeting_type: "CLIENT",
+        crm_opportunity_id: String(meetingOpp.id),
+        external_participants: meetingForm.contact_name.trim() ? [{ name: meetingForm.contact_name.trim(), email: meetingForm.contact_email.trim() || undefined }] : [],
+        agenda_items: meetingForm.description.trim() ? [{ title: meetingForm.description.trim() }] : [],
+      });
+      if (!created?.meeting_id) throw new Error("Meeting tersimpan, tetapi tautan detail meeting tidak diterima.");
+      setMeetingOpp(null);
+      toast.success("Meeting dijadwalkan dan ditautkan ke Opportunity.");
+      router.push(`/requests?meeting=${encodeURIComponent(created.meeting_id)}`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || error?.message || "Meeting belum dapat dijadwalkan.");
+    } finally { setMeetingSaving(false); }
   };
 
   const handleCustomer360 = async (id: string | number) => {
@@ -736,7 +813,7 @@ function TabDeals({
       }
       
       setIsNewOppOpen(false);
-      setForm({ opportunity_name: "", customer_party: "", expected_amount: "150000000", probability_percent: 50, pipeline_stage: "OPEN" });
+      setForm({ opportunity_name: "", customer_party: "", expected_amount: "150000000", probability_percent: 50, pipeline_stage: "PROSPECT" });
       onRefresh();
     } catch (e: any) { 
       toast.error(e?.response?.data?.detail || "Gagal buat opportunity"); 
@@ -953,13 +1030,16 @@ function TabDeals({
                   <td className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold text-text-primary last:border-r-0">{formatMoney(o.expected_amount)}</td>
                   <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
                     <StatusBadge status={o.status || "OPEN"} />
-                    <div className="mt-1 text-xs text-text-secondary">{o.pipeline_stage || (isWon ? "Closed Won" : isLost ? "Closed Lost" : "In Pipeline")}</div>
+                    {readOnly || isCancelled || isWon || isLost ? <div className="mt-1 text-xs text-text-secondary">{CRM_PIPELINE_STAGE_LABELS[String(o.pipeline_stage || (isWon ? "WON" : isLost ? "LOST" : "PROSPECT")).toUpperCase()] || o.pipeline_stage || "Prospek"}</div> : <select aria-label={`Tahap ${o.opportunity_name || "Opportunity"}`} className="input mt-1 max-w-[190px] px-2 py-1 text-xs" value={normalizeOpportunityStage(o.pipeline_stage)} disabled={savingStage} onChange={event => void handleOpportunityStageChange(o, event.target.value)}>{["PROSPECT", "DISCOVERY", "PROPOSAL_SENT", "NEGOTIATION", "FOLLOW_UP"].map(stage => <option key={stage} value={stage}>{CRM_PIPELINE_STAGE_LABELS[stage]}</option>)}</select>}
+                    {normalizeOpportunityStage(o.pipeline_stage) === "FOLLOW_UP" && o.next_follow_up_at && <div className="mt-1 text-2xs text-amber-700">Tindak lanjut: {formatDate(o.next_follow_up_at)}</div>}
+                    {normalizeOpportunityStage(o.pipeline_stage) === "FOLLOW_UP" && o.follow_up_reason && <div className="mt-1 max-w-[190px] truncate text-2xs text-text-secondary" title={o.follow_up_reason}>{o.follow_up_reason}</div>}
                     {isLost && <div className="mt-1 max-w-[190px] truncate text-2xs text-text-secondary" title={o.lost_reason_detail ? `${lostReasonSummary}: ${o.lost_reason_detail}` : lostReasonSummary}>{lostReasonSummary}</div>}
                     {terminalConflict && <div className="mt-1 text-2xs font-medium text-red-700" title="Status terminal saling bertentangan; minta admin memperbaiki data sebelum melanjutkan.">Status konflik · periksa data</div>}
                   </td>
                   <td className="border-b border-slate-200 px-3 py-3">
                     <div className="flex min-w-[270px] flex-wrap items-center gap-1.5">
                       {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" }); }} label="Aktivitas" small variant="ghost" title="Catat telepon, meeting, catatan, atau follow-up untuk opportunity ini." />}
+                      {!readOnly && !isCancelled && <ActionBtn onClick={async () => { openCrmMeetingForm(o); }} label="Jadwalkan meeting" small variant="ghost" title="Buat meeting pada modul Meeting & Request dan tautkan ke opportunity ini." />}
                       {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" title="Lihat ringkasan customer: proyek, kontrak, pengiriman, nilai transaksi, serta piutang." />}
                       {!readOnly && !isCancelled && !isWon && <ActionBtn onClick={() => handleDealWon(o)} label="Deal Won" small disabled={!cust} title={!cust ? "Lengkapi customer pada opportunity sebelum menjalankan Deal Won." : "Tandai deal berhasil dan jalankan pemeriksaan kredit."} />}
                       {!readOnly && isWon && canOverride && <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small title="Jalur pengecualian untuk Direktur saat pemeriksaan kredit menahan deal; wajib mencatat alasan." />}
@@ -1095,13 +1175,13 @@ function TabDeals({
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-text-secondary mb-1 block">Pipeline Stage</label>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Tahap Deal</label>
             <select 
               className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green bg-white" 
               value={form.pipeline_stage} 
               onChange={e => setForm(f => ({ ...f, pipeline_stage: e.target.value }))}
             >
-              {["OPEN","QUALIFICATION","PROPOSAL","NEGOTIATION"].map(s => <option key={s} value={s}>{s}</option>)}
+              {["PROSPECT","DISCOVERY","PROPOSAL_SENT","NEGOTIATION"].map(s => <option key={s} value={s}>{CRM_PIPELINE_STAGE_LABELS[s]}</option>)}
             </select>
           </div>
           <div className="flex gap-2 pt-2 justify-end">
@@ -1187,15 +1267,31 @@ function TabDeals({
           </div>
         </div>
       </Modal>
+      <Modal isOpen={Boolean(followUpOpp)} onClose={() => !savingStage && setFollowUpOpp(null)} title={`Follow-up kembali — ${followUpOpp?.opportunity_name || "Opportunity"}`} size="sm">
+        <div className="space-y-3 p-1"><p className="text-xs text-text-secondary">Opportunity tetap terbuka dan akan muncul sebagai Follow-up Kembali sampai tim menghubungi customer lagi.</p><label className="block text-xs font-medium">Tanggal tindak lanjut *<input className="input mt-1 w-full" type="date" min={new Date().toISOString().slice(0, 10)} value={followUpDraft.date} onChange={event => setFollowUpDraft({ ...followUpDraft, date: event.target.value })} /></label><label className="block text-xs font-medium">Alasan / rencana tindak lanjut *<textarea className="input mt-1 w-full min-h-20" maxLength={2000} value={followUpDraft.reason} onChange={event => setFollowUpDraft({ ...followUpDraft, reason: event.target.value })} /></label><div className="flex justify-end gap-2"><button type="button" onClick={() => setFollowUpOpp(null)} disabled={savingStage} className="btn-ghost">Batal</button><button type="button" onClick={() => void submitOpportunityFollowUp()} disabled={savingStage || !followUpDraft.date || !followUpDraft.reason.trim()} className="btn-primary">{savingStage ? "Menyimpan…" : "Simpan follow-up"}</button></div></div>
+      </Modal>
       <Modal isOpen={Boolean(activityOpp)} onClose={() => setActivityOpp(null)} title={`Aktivitas — ${activityOpp?.opportunity_name || "Opportunity"}`} size="sm">
         <div className="space-y-3">
-          <label className="block text-xs font-medium">Jenis aktivitas<select className="input mt-1 w-full" value={activityForm.activity_type} onChange={e => setActivityForm({ ...activityForm, activity_type: e.target.value })}><option value="CALL">Telepon</option><option value="MEETING">Meeting</option><option value="NOTE">Catatan</option><option value="FOLLOW_UP">Follow-up</option></select></label>
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">Untuk menjadwalkan meeting dengan agenda dan notulensi yang bisa menghasilkan keputusan serta action item, gunakan tombol <b>Jadwalkan meeting</b> pada Opportunity.</div>
+          <label className="block text-xs font-medium">Jenis aktivitas<select className="input mt-1 w-full" value={activityForm.activity_type} onChange={e => setActivityForm({ ...activityForm, activity_type: e.target.value })}><option value="CALL">Telepon</option><option value="MEETING">Catatan meeting yang sudah berlangsung</option><option value="NOTE">Catatan</option><option value="FOLLOW_UP">Follow-up</option></select></label>
           <label className="block text-xs font-medium">Catatan<textarea className="input mt-1 w-full min-h-20" value={activityForm.subject} onChange={e => setActivityForm({ ...activityForm, subject: e.target.value })} placeholder="Ringkasan percakapan atau tindak lanjut" /></label>
           <label className="block text-xs font-medium">Tautkan ke notulensi (opsional)<select className="input mt-1 w-full" value={activityForm.meeting_minutes_id} onChange={e => setActivityForm({ ...activityForm, meeting_minutes_id: e.target.value })}><option value="">Tidak ditautkan</option>{meetingMinutesReferences.map((minutes) => <option key={minutes.id} value={minutes.id}>{minutes.meeting_title} · {formatDate(minutes.occurrence_date)}{minutes.status === "PUBLISHED" ? " · Dipublikasikan" : " · Draft"}</option>)}</select><span className="mt-1 block text-2xs text-text-secondary">Daftar hanya memuat notulensi meeting yang dapat Anda akses.</span></label>
           <label className="block text-xs font-medium">Jadwalkan follow-up (opsional)<input className="input mt-1 w-full" type="datetime-local" value={activityForm.scheduled_at} onChange={e => setActivityForm({ ...activityForm, scheduled_at: e.target.value })} /></label>
           <div className="text-xs text-text-secondary">Riwayat: {(data.activities || []).filter(a => String(a.opportunity_id) === String(activityOpp?.id)).length} aktivitas</div>
           <div className="max-h-32 overflow-y-auto space-y-1">{(data.activities || []).filter(a => String(a.opportunity_id) === String(activityOpp?.id)).map(a => { const linkedMinutes = meetingMinutesReferences.find((minutes) => String(minutes.id) === String(a.meeting_minutes_id)); return <div key={a.id} className="border rounded p-2 text-xs"><b>{a.activity_type}</b> · {a.subject}<div className="mt-1 flex flex-wrap items-center gap-1.5 text-text-secondary">{a.scheduled_at ? <><span>{formatDate(a.scheduled_at)}</span><span className="rounded bg-amber-100 px-1.5 py-0.5 text-2xs font-semibold text-amber-800">Jadwal follow-up</span></> : <span>Selesai</span>}</div>{linkedMinutes && <div className="mt-1 text-2xs text-blue-700">Notulensi: {linkedMinutes.meeting_title} · {formatDate(linkedMinutes.occurrence_date)}</div>}</div>; })}</div>
+          <div className="border-t pt-3"><div className="mb-2 text-xs font-semibold">Meeting yang tertaut</div>{crmLinkedMeetings.length ? <div className="max-h-36 space-y-2 overflow-y-auto">{crmLinkedMeetings.map((meeting) => <div key={meeting.id} className="flex items-center justify-between gap-2 rounded-lg border p-2 text-xs"><div className="min-w-0"><div className="truncate font-semibold">{meeting.request?.title || "Meeting CRM"}</div><div className="text-text-secondary">{formatDate(meeting.start_at)} · {meeting.status}</div></div><button type="button" onClick={() => router.push(`/requests?meeting=${encodeURIComponent(meeting.id)}`)} className="shrink-0 rounded-lg bg-blue-50 px-2.5 py-1.5 font-semibold text-blue-800 hover:bg-blue-100">Buka meeting</button></div>)}</div> : <p className="text-xs text-text-secondary">Belum ada meeting yang dijadwalkan dari Opportunity ini.</p>}</div>
           <button onClick={handleActivitySave} className="btn-primary w-full">Simpan aktivitas</button>
+        </div>
+      </Modal>
+      <Modal isOpen={Boolean(meetingOpp)} onClose={() => !meetingSaving && setMeetingOpp(null)} title="Jadwalkan Meeting CRM" size="md">
+        <div className="space-y-3 p-1">
+          <p className="text-xs leading-5 text-text-secondary">Meeting dibuat melalui modul Meeting & Request. Notulensi, keputusan, dan action item dikelola di sana dan meeting tetap tertaut ke Opportunity ini.</p>
+          <label className="block text-xs font-medium">Judul meeting *<input className="input mt-1 w-full" value={meetingForm.title} onChange={event => setMeetingForm({ ...meetingForm, title: event.target.value })} maxLength={255} /></label>
+          <div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-medium">Mulai *<input className="input mt-1 w-full" type="datetime-local" value={meetingForm.start_at} onChange={event => setMeetingForm({ ...meetingForm, start_at: event.target.value })} /></label><label className="block text-xs font-medium">Selesai *<input className="input mt-1 w-full" type="datetime-local" value={meetingForm.end_at} onChange={event => setMeetingForm({ ...meetingForm, end_at: event.target.value })} /></label></div>
+          <label className="block text-xs font-medium">Agenda / konteks<textarea className="input mt-1 w-full min-h-16" value={meetingForm.description} onChange={event => setMeetingForm({ ...meetingForm, description: event.target.value })} placeholder="Topik yang akan dibahas dengan calon pelanggan" /></label>
+          <div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-medium">Lokasi<input className="input mt-1 w-full" value={meetingForm.location} onChange={event => setMeetingForm({ ...meetingForm, location: event.target.value })} /></label><label className="block text-xs font-medium">Tautan meeting<input className="input mt-1 w-full" type="url" value={meetingForm.meeting_url} onChange={event => setMeetingForm({ ...meetingForm, meeting_url: event.target.value })} placeholder="https://..." /></label></div>
+          <div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-medium">Nama kontak customer<input className="input mt-1 w-full" value={meetingForm.contact_name} onChange={event => setMeetingForm({ ...meetingForm, contact_name: event.target.value })} /></label><label className="block text-xs font-medium">Email kontak (opsional)<input className="input mt-1 w-full" type="email" value={meetingForm.contact_email} onChange={event => setMeetingForm({ ...meetingForm, contact_email: event.target.value })} /></label></div>
+          <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={() => setMeetingOpp(null)} disabled={meetingSaving} className="btn-ghost">Batal</button><button type="button" onClick={() => void handleCrmMeetingCreate()} disabled={meetingSaving || !meetingForm.title.trim() || !meetingForm.start_at || !meetingForm.end_at} className="btn-primary">{meetingSaving ? "Menjadwalkan…" : "Buat meeting"}</button></div>
         </div>
       </Modal>
       <Modal isOpen={Boolean(customer360)} onClose={() => setCustomer360(null)} title="Customer 360 View" size="sm">
@@ -2053,6 +2149,12 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
   const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_party: "", description: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [domainFilter, setDomainFilter] = useState("");
+  const [followUpLead, setFollowUpLead] = useState<any>(null);
+  const [followUpDraft, setFollowUpDraft] = useState({ date: "", note: "" });
+  const [contactLead, setContactLead] = useState<any>(null);
+  const [contactTarget, setContactTarget] = useState<"CONTACTED" | "RESPONDED">("CONTACTED");
+  const [contactNote, setContactNote] = useState("");
+  const [savingLeadId, setSavingLeadId] = useState<string | null>(null);
   const inquiryDomains = Array.from(new Set((data.inquiries || []).map((item) => item.origin_domain).filter((value): value is string => Boolean(value)))).sort();
   const visibleInquiries = (data.inquiries || [])
     .filter((item) => !domainFilter || item.origin_domain === domainFilter)
@@ -2095,12 +2197,44 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
     }
   };
 
+  const updateLeadStatus = (lead: any, status: "CONTACTED" | "RESPONDED") => {
+    setContactLead(lead);
+    setContactTarget(status);
+    setContactNote("");
+  };
+
+  const submitLeadContact = async () => {
+    if (!contactLead) return;
+    setSavingLeadId(String(contactLead.id));
+    try {
+      await updateCRMInquiryLeadStatus(contactLead.id, { status: contactTarget, note: contactNote.trim() });
+      setContactLead(null);
+      toast.success(contactTarget === "CONTACTED" ? "Kontak lead tercatat." : "Respons lead tercatat.");
+      onRefresh();
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Status lead gagal diperbarui."); }
+    finally { setSavingLeadId(null); }
+  };
+
+  const submitLeadFollowUp = async () => {
+    if (!followUpLead || !followUpDraft.date || !followUpDraft.note.trim()) { toast.error("Tanggal dan alasan tindak lanjut wajib diisi."); return; }
+    setSavingLeadId(String(followUpLead.id));
+    try {
+      await updateCRMInquiryLeadStatus(followUpLead.id, {
+        status: "FOLLOW_UP", next_follow_up_at: new Date(`${followUpDraft.date}T12:00:00`).toISOString(), note: followUpDraft.note.trim(),
+      });
+      setFollowUpLead(null);
+      toast.success("Lead dijadwalkan untuk dihubungi kembali.");
+      onRefresh();
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Follow-up lead gagal dijadwalkan."); }
+    finally { setSavingLeadId(null); }
+  };
+
   return (
     <div className="card rounded-xl p-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <h3 className="text-sm font-bold">Incoming Customer Inquiries</h3>
+        <h3 className="text-sm font-bold">Leads & Prospek Masuk</h3>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.inquiries||[]).length} Inquiry</span>
+          <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.inquiries||[]).filter(item => !["QUALIFIED", "CLOSED_LOST"].includes(String(item.status).toUpperCase())).length} Lead aktif</span>
           <select aria-label="Filter domain inquiry" className="rounded-lg border border-text-tertiary bg-white px-2 py-1.5 text-xs" value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}><option value="">Semua domain</option>{inquiryDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}</select>
           {!readOnly && (
             <button onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Inquiry Baru</button>
@@ -2117,7 +2251,8 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-            const isQual = (x.status||"").toUpperCase() === "QUALIFIED";
+            const leadStatus = String(x.status || "NEW").toUpperCase();
+            const isQual = leadStatus === "QUALIFIED";
 /**
  * reqs coordinates the UI behavior represented by this function.
  *
@@ -2134,14 +2269,18 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
                     <b>{x.customer_name || "-"}</b> ({x.customer_email || "-"}) · <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-2xs">{reqs.length} Spesifikasi</span>
                   </div>
                   <div className="mt-1"><OriginDomainBadge domain={x.origin_domain} /></div>
-                  <StatusBadge status={x.status || "NEW"} />
+                  <StatusBadge status={({ NEW: "Lead baru", CONTACTED: "Sudah dihubungi", RESPONDED: "Merespons", FOLLOW_UP: "Follow-up kembali", QUALIFIED: "Menjadi prospek", CLOSED_LOST: "Ditutup" } as Record<string, string>)[leadStatus] || leadStatus} />
+                  {x.next_follow_up_at && leadStatus === "FOLLOW_UP" && <div className="mt-1 text-2xs text-amber-700">Hubungi kembali: {formatDate(x.next_follow_up_at)}</div>}
+                  {x.last_contact_note && <div className="mt-1 max-w-xl truncate text-2xs text-text-secondary" title={x.last_contact_note}>Catatan kontak: {x.last_contact_note}</div>}
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   {!readOnly ? (
                     <>
-                      {!isQual ? (
-                        <ActionBtn onClick={async () => { await qualifyInquiry(x.id); toast.success("Inquiry berhasil dikualifikasi."); onRefresh(); }} label="Jadikan opportunity" small />
-                      ) : (
+                      {(leadStatus === "NEW" || leadStatus === "FOLLOW_UP") && <ActionBtn onClick={async () => updateLeadStatus(x, "CONTACTED")} label={leadStatus === "FOLLOW_UP" ? "Dihubungi lagi" : "Tandai dihubungi"} small disabled={savingLeadId === String(x.id)} />}
+                      {leadStatus === "CONTACTED" && <ActionBtn onClick={async () => updateLeadStatus(x, "RESPONDED")} label="Tandai merespons" small disabled={savingLeadId === String(x.id)} />}
+                      {leadStatus === "RESPONDED" && <ActionBtn onClick={async () => { try { await qualifyInquiry(x.id); toast.success("Lead lolos kualifikasi dan menjadi Opportunity."); onRefresh(); } catch (error: any) { toast.error(error?.response?.data?.detail || "Lead belum dapat dikualifikasi."); } }} label="Jadikan Opportunity" small />}
+                      {!isQual && !["CLOSED_LOST"].includes(leadStatus) && <ActionBtn onClick={async () => { setFollowUpLead(x); setFollowUpDraft({ date: "", note: "" }); }} label="Tindak lanjuti lagi" small variant="ghost" />}
+                      {isQual && (
                         <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">QUALIFIED</span>
                       )}
                       <button onClick={async () => { if(!confirm("Hapus inquiry?")) return; await deleteCustomerInquiry(x.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
@@ -2159,7 +2298,13 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
           })}
         </div>
       )}
-      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Buat Inquiry Baru" size="md">
+      <Modal isOpen={Boolean(contactLead)} onClose={() => !savingLeadId && setContactLead(null)} title={contactTarget === "CONTACTED" ? "Catat Lead Sudah Dihubungi" : "Catat Respons Lead"} size="sm">
+        <div className="space-y-3 p-1"><p className="text-xs text-text-secondary">{contactLead?.customer_name || "Lead"} · status dicatat sebagai {contactTarget === "CONTACTED" ? "Sudah Dihubungi" : "Merespons"}.</p><label className="block text-xs font-medium">Catatan kontak (opsional)<textarea className="input mt-1 w-full min-h-20" maxLength={2000} value={contactNote} onChange={event => setContactNote(event.target.value)} placeholder="Ringkasan panggilan, pesan, atau kebutuhan customer" /></label><div className="flex justify-end gap-2"><button type="button" onClick={() => setContactLead(null)} disabled={Boolean(savingLeadId)} className="btn-ghost">Batal</button><button type="button" onClick={() => void submitLeadContact()} disabled={Boolean(savingLeadId)} className="btn-primary">{savingLeadId ? "Menyimpan…" : "Simpan status"}</button></div></div>
+      </Modal>
+      <Modal isOpen={Boolean(followUpLead)} onClose={() => !savingLeadId && setFollowUpLead(null)} title={`Tindak lanjuti — ${followUpLead?.customer_name || "Lead"}`} size="sm">
+        <div className="space-y-3 p-1"><p className="text-xs text-text-secondary">Lead tetap berada pada daftar aktif dan akan ditampilkan sebagai Follow-up Kembali pada tanggal yang dipilih.</p><label className="block text-xs font-medium">Tanggal tindak lanjut *<input className="input mt-1 w-full" type="date" min={new Date().toISOString().slice(0, 10)} value={followUpDraft.date} onChange={event => setFollowUpDraft({ ...followUpDraft, date: event.target.value })} /></label><label className="block text-xs font-medium">Alasan / catatan *<textarea className="input mt-1 w-full min-h-20" maxLength={2000} value={followUpDraft.note} onChange={event => setFollowUpDraft({ ...followUpDraft, note: event.target.value })} placeholder="Menunggu budget, keputusan internal, atau waktu yang diminta customer" /></label><div className="flex justify-end gap-2"><button type="button" onClick={() => setFollowUpLead(null)} disabled={Boolean(savingLeadId)} className="btn-ghost">Batal</button><button type="button" onClick={() => void submitLeadFollowUp()} disabled={Boolean(savingLeadId) || !followUpDraft.date || !followUpDraft.note.trim()} className="btn-primary">Simpan follow-up</button></div></div>
+      </Modal>
+      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Tambah Lead / Inquiry" size="md">
         <div className="flex flex-col gap-3 p-4">
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Subject *</label>
@@ -2875,6 +3020,11 @@ export default function CrmClient() {
     isSuperAdmin: isSuper,
   });
   const visibleTabs = CRM_TABS.filter((tab) => !tab.module || isSuper || enabledModules.has(tab.module));
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    if (requestedTab && CRM_TABS.some((tab) => tab.id === requestedTab)) setActiveTab(requestedTab);
+  }, []);
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);

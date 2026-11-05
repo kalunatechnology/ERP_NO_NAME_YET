@@ -122,7 +122,7 @@ Sertakan `Authorization: Bearer <token>` atau `X-Api-Key: <token>`. Endpoint por
 
 ## Operasional CRM dan Service
 
-- Aktivitas sales dicatat melalui `/api/v1/crm/activities/` dan terhubung ke opportunity/customer. Antarmuka CRM mendukung telepon, meeting, catatan, dan follow-up terjadwal.
+- Aktivitas sales dicatat melalui `/api/v1/crm/activities/` dan terhubung ke opportunity/customer. Antarmuka CRM mendukung telepon, catatan, dan follow-up terjadwal. Untuk menjadwalkan meeting yang memiliki agenda, notulensi, keputusan, serta action item, gunakan modul Meeting & Request dari Opportunity CRM. Endpoint `POST /api/v1/requests/meetings` menerima `crm_opportunity_id` opsional dan `external_participants`; meeting terkait dapat dicari melalui `GET /api/v1/requests/meetings?crm_opportunity_id=<id>`. Detail meeting menyediakan tautan balik ke CRM, dan CRM menyediakan tautan untuk membuka meeting/notulensi.
 - Opportunity kalah ditutup lewat `POST /api/v1/crm/opportunities/:id/mark-lost` dengan alasan `PRICE_TOO_HIGH`, `LOST_FEATURES`, `BUDGET_CANCELLED`, `COMPETITOR`, `NO_RESPONSE`, atau `OTHER` (pilihan `OTHER` wajib dijelaskan).
 - Saat staf mengonfirmasi external identity, party ditautkan ke conversation dan inquiry yang telah dibuat. Jika identitas sudah dikonfirmasi sebelum conversation dieskalasi, inquiry baru mewarisi `customer_party_id` conversation.
 - Pemeriksaan garansi menggunakan `POST /api/v1/service/cases/:id/check-warranty`. Marka mencocokkan serial number ke pengiriman company dan kontrak garansi. Untuk status `WARRANTY_ACTIVE`, teknisi dapat dibuatkan Work Order melalui `POST /api/v1/service/cases/:id/work-orders`.

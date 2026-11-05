@@ -1,12 +1,11 @@
 /**
  * File: frontend-next/app/layout.tsx
  *
- * Purpose: Root layout with network-independent local Fira Sans typography and a
- * single Marka+ icon source shared by the browser tab and login page.
+ * Purpose: Root layout with official Marka typography (Inter) and Marka brand identity.
  */
 import type { Metadata } from "next";
 
-import "./fira-sans.css";
+import "./inter.css";
 import "./globals.css";
 
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -15,15 +14,15 @@ import { Toaster } from "react-hot-toast";
 
 export const metadata: Metadata = {
   title: {
-    template: "%s — Marka+ ERP",
-    default: "Marka+ ERP",
+    template: "%s · Marka Logistik ERP",
+    default: "Marka Logistik ERP",
   },
   description:
-    "Sistem ERP terintegrasi: Project Management, Finance, CRM — Marka+",
+    "Sistem ERP Terintegrasi Marka: Logistik, Project Management, Finance, CRM & Operasional",
   icons: {
-    icon: [{ url: "/brand/marka-logomark-blue.svg?v=legacy", type: "image/svg+xml" }],
-    shortcut: "/brand/marka-logomark-blue.svg?v=legacy",
-    apple: "/brand/marka-logomark-blue.png?v=legacy",
+    icon: [{ url: "/brand/marka-logomark-blue.svg", type: "image/svg+xml" }],
+    shortcut: "/brand/marka-logomark-blue.svg",
+    apple: "/brand/marka-logomark-blue.png",
   },
 };
 
@@ -35,11 +34,11 @@ export default function RootLayout({
   return (
     <html lang="id" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/brand/marka-logomark-blue.svg?v=legacy" type="image/svg+xml" />
-        <link rel="shortcut icon" href="/brand/marka-logomark-blue.svg?v=legacy" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/brand/marka-logomark-blue.png?v=legacy" />
+        <link rel="icon" href="/brand/marka-logomark-blue.svg" type="image/svg+xml" />
+        <link rel="shortcut icon" href="/brand/marka-logomark-blue.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/brand/marka-logomark-blue.png" />
       </head>
-      <body>
+      <body className="font-sans antialiased text-slate-800 bg-slate-100">
         <LanguageProvider>
           <AuthProvider>
             {children}
@@ -48,21 +47,21 @@ export default function RootLayout({
               toastOptions={{
                 duration: 4000,
                 style: {
-                  fontFamily:
-                    "var(--font-fira-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
+                  fontFamily: "var(--font-inter), 'Inter', sans-serif",
                   fontSize: "14px",
-                  borderRadius: "14px",
-                  border: "1px solid #E8E8E8",
+                  borderRadius: "10px",
+                  border: "1px solid #E2E8F0",
+                  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.08)",
                 },
                 success: {
                   iconTheme: {
-                    primary: "#294BB2",
-                    secondary: "#EAF6FF",
+                    primary: "#4F8CF6",
+                    secondary: "#EBF3FE",
                   },
                 },
                 error: {
                   iconTheme: {
-                    primary: "#EF4444",
+                    primary: "#F43F5E",
                     secondary: "#FEE2E2",
                   },
                 },

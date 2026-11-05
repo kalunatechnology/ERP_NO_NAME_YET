@@ -354,6 +354,7 @@ model request_meeting {
   company_id        String
   created_by_id     String
   request_id        String    @unique
+  crm_opportunity_id String?
   organizer_user_id String
   notetaker_user_id String?
   meeting_type      String    @default("INTERNAL")
@@ -374,6 +375,7 @@ model request_meeting {
 
   @@index([company_id, start_at])
   @@index([company_id, organizer_user_id])
+  @@index([company_id, crm_opportunity_id])
 }
 
 model request_meeting_participant {
@@ -1473,6 +1475,8 @@ model crm_opportunity {
   expected_amount     Decimal?
   expected_margin     Decimal?
   expected_close_date DateTime?
+  next_follow_up_at   DateTime? @map("next_follow_up_at")
+  follow_up_reason    String    @default("") @map("follow_up_reason")
   status              String
 
   @@index([tenant_id, company_id])
@@ -2099,6 +2103,10 @@ model crm_customer_inquiry {
   customer_name          String
   customer_email         String
   expected_delivery_date DateTime?
+  last_contacted_at      DateTime? @map("last_contacted_at")
+  last_contact_note      String    @default("") @map("last_contact_note")
+  responded_at           DateTime? @map("responded_at")
+  next_follow_up_at      DateTime? @map("next_follow_up_at")
   status                 String
   qualified_at           DateTime?
   quoted_at              DateTime?

@@ -11,6 +11,7 @@ import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { queueWebhookEvent } from '../crm/crm-outbound-webhook.service';
+import { moveOpportunityStage } from '../crm/crm-pipeline.service';
 import { RoleCode } from '../../types/roles';
 
 export const salesRouter = Router();
@@ -115,11 +116,10 @@ salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, nex
       await tx.$queryRaw`SELECT id FROM sales_quotation WHERE id = ${quotation.id} AND company_id = ${companyId} FOR UPDATE`;
       const current = await tx.sales_quotation.findFirst({ where: { id: quotation.id, company_id: companyId } });
       if (!current) throw new NotFoundError('Quotation');
-      if (current.status === 'SENT') return current;
       if (!current.opportunity_id) throw new ValidationError('Hubungkan quotation ke opportunity sebelum mengirim penawaran.');
       const opportunity = await tx.crm_opportunity.findFirst({
         where: { id: current.opportunity_id, company_id: companyId },
-        select: { customer_party_id: true, status: true, pipeline_stage: true },
+        select: { id: true, customer_party_id: true, status: true, pipeline_stage: true },
       });
       if (!opportunity?.customer_party_id) throw new ValidationError('Opportunity harus memiliki customer party sebelum quotation dikirim.');
       if (['LOST', 'CLOSED_LOST', 'CANCELLED', 'CANCEL', 'BATAL'].includes(String(opportunity.status || '').toUpperCase())
@@ -131,19 +131,21 @@ salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, nex
         select: { id: true },
       });
       if (!customer) throw new ValidationError('Customer pada opportunity tidak aktif atau bukan milik company ini.');
-      const row = await tx.sales_quotation.update({
-        where: { id: quotation.id },
-        data: { status: 'SENT' },
+      const row = current.status === 'SENT' ? current : await tx.sales_quotation.update({
+        where: { id: quotation.id }, data: { status: 'SENT' },
       });
       const document = row.document_id ? await tx.core_business_document.findFirst({
         where: { id: row.document_id, company_id: companyId, document_type: 'SALES_QUOTATION' },
         select: { document_number: true },
       }) : null;
-      await queueWebhookEvent(tx, companyId, 'quotation.ready', {
+      if (current.status !== 'SENT') await queueWebhookEvent(tx, companyId, 'quotation.ready', {
         quotation_id: row.id, quotation_code: document?.document_number ?? null, opportunity_id: row.opportunity_id,
         status: row.status, total_amount: row.total_amount?.toString() ?? null,
         currency_id: row.currency_id, valid_until: row.valid_until?.toISOString() ?? null,
       });
+      if (String(opportunity.pipeline_stage || '').toUpperCase() !== 'NEGOTIATION') {
+        await moveOpportunityStage(tx, { opportunityId: opportunity.id, companyId, stage: 'PROPOSAL_SENT', actorId: req.user?.id, reason: 'Quotation dikirim ke customer' });
+      }
       return row;
     });
     res.json(updated);
@@ -194,7 +196,14 @@ salesRouter.post('/quotations/:id/customer-decision', async (req: Request, res: 
         if (!customer) throw new ValidationError('Customer pada opportunity tidak aktif atau bukan milik company ini.');
       }
 
-      return tx.sales_quotation.update({ where: { id: quotation.id }, data: { status: decision } });
+      const updated = await tx.sales_quotation.update({ where: { id: quotation.id }, data: { status: decision } });
+      if (quotation.opportunity_id) {
+        await moveOpportunityStage(tx, {
+          opportunityId: quotation.opportunity_id, companyId, stage: 'NEGOTIATION', actorId: req.user?.id,
+          reason: decision === 'ACCEPTED' ? 'Customer menerima quotation; menunggu konfirmasi Deal Won' : 'Customer meminta perubahan atau menolak quotation',
+        });
+      }
+      return updated;
     });
     res.json(updated);
   } catch (err) {

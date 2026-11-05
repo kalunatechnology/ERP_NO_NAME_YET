@@ -15,6 +15,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { requireActiveRole, requireAdminForWrite } from '../../middlewares/rbac.middleware';
 import { isSuperAdmin, RoleCode } from '../../types/roles';
 import { queueWebhookEvent } from './crm-outbound-webhook.service';
+import { CRM_OPEN_STAGES, moveOpportunityStage, normalizeCrmStage } from './crm-pipeline.service';
 
 export const crmRouter = Router();
 
@@ -240,6 +241,16 @@ crmRouter.post('/customer-inquiries/:id/qualify', async (req: Request, res: Resp
   } catch (err) {
     next(err);
   }
+});
+
+crmRouter.post('/customer-inquiries/:id/lead-status', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await CRMService.updateInquiryLeadStatus(
+      req.params.id, activeCompanyId(req), req.user?.id ?? 'system',
+      { status: req.body.status, next_follow_up_at: req.body.next_follow_up_at, note: req.body.note },
+    );
+    res.json(result);
+  } catch (error) { next(error); }
 });
 
 // =============================================================================
@@ -848,7 +859,15 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
 // CRUD VIEWSETS
 // =============================================================================
 
-crmRouter.use('/customer-inquiries', createCrudRouter({ modelName: 'crm_customer_inquiry', searchFields: ['inquiry_number', 'subject', 'customer_name'] }));
+crmRouter.use('/customer-inquiries', createCrudRouter({
+  modelName: 'crm_customer_inquiry', searchFields: ['inquiry_number', 'subject', 'customer_name'],
+  beforeUpdate: async (_req, data, existing) => {
+    if (data.status && String(data.status).toUpperCase() !== String(existing.status || '').toUpperCase()) {
+      throw new ValidationError('Gunakan aksi status Lead untuk memperbarui tahapan kontak.');
+    }
+    return data;
+  },
+}));
 crmRouter.use('/inquiry-requirements', createCrudRouter({ modelName: 'crm_inquiry_requirement', searchFields: ['description'] }));
 crmRouter.use('/cost-estimates', createCrudRouter({
   modelName: 'crm_cost_estimate',
@@ -895,6 +914,24 @@ crmRouter.use('/cost-estimate-lines', createCrudRouter({
     if (String(estimate.status || '').toUpperCase() !== 'DRAFT') throw new ConflictError('Baris biaya hanya dapat dihapus saat estimate berstatus DRAFT.');
   },
 }));
+crmRouter.post('/opportunities/:id/stage', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const stage = normalizeCrmStage(req.body.stage);
+    if (!CRM_OPEN_STAGES.includes(stage as any)) throw new ValidationError('Gunakan tindakan Menang/Kalah untuk menutup Opportunity.');
+    const nextFollowUpAt = req.body.next_follow_up_at ? new Date(req.body.next_follow_up_at) : null;
+    if (stage === 'FOLLOW_UP' && (!nextFollowUpAt || Number.isNaN(nextFollowUpAt.getTime()) || nextFollowUpAt <= new Date())) {
+      throw new ValidationError('Pilih tanggal tindak lanjut yang akan datang.');
+    }
+    const reason = String(req.body.reason ?? '').trim();
+    if (reason.length > 2000 || (stage === 'FOLLOW_UP' && !reason)) throw new ValidationError('Isi alasan tindak lanjut maksimal 2.000 karakter.');
+    const result = await prisma.$transaction((tx) => moveOpportunityStage(tx, {
+      opportunityId: req.params.id, companyId: activeCompanyId(req), stage: stage as any,
+      actorId: req.user?.id, reason, nextFollowUpAt,
+    }));
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
 crmRouter.post('/opportunities/:id/mark-lost', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const reason = String(req.body.lost_reason ?? '').trim().toUpperCase();
@@ -969,7 +1006,15 @@ crmRouter.use('/opportunities', createCrudRouter({
   modelName: 'crm_opportunity',
   searchFields: ['opportunity_name', 'pipeline_stage'],
   beforeCreate: async (req, data) => validateOpportunityCustomer(req, data),
-  beforeUpdate: async (req, data, existing) => validateOpportunityCustomer(req, data, existing),
+  beforeUpdate: async (req, data, existing) => {
+    if (data.pipeline_stage && String(data.pipeline_stage).toUpperCase() !== String(existing.pipeline_stage || '').toUpperCase()) {
+      throw new ValidationError('Gunakan aksi tahap Opportunity untuk menjaga riwayat pipeline.');
+    }
+    if (data.status && String(data.status).toUpperCase() !== String(existing.status || '').toUpperCase()) {
+      throw new ValidationError('Status terminal Opportunity hanya dapat diubah melalui aksi workflow.');
+    }
+    return validateOpportunityCustomer(req, data, existing);
+  },
   beforeDelete: async (_req, existing) => {
     if (['WON', 'CLOSED_WON', 'LOST', 'CLOSED_LOST'].includes(String(existing.status || '').toUpperCase())
       || ['WON', 'CLOSED_WON', 'LOST', 'CLOSED_LOST'].includes(String(existing.pipeline_stage || '').toUpperCase())) {

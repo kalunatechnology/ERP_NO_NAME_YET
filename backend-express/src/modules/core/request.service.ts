@@ -15,6 +15,7 @@ import { Prisma } from '@prisma/client';
 import { postRequestDisbursement } from '../finance/request-disbursement.service';
 import { DEFAULT_RECURRING_DAYS, meetingOccurrenceDates, normalizeRecurringDays } from './meeting-occurrence.service';
 import { normalizeRequestStatus } from './request-status';
+import { moveOpportunityStage } from '../crm/crm-pipeline.service';
 
 export interface TaggedUser {
   id: string;
@@ -39,6 +40,8 @@ export interface CreateRequestPayload {
   budget_category?: string;
   bank_target?: string;
   project_id?: string;
+  crm_opportunity_id?: string;
+  external_participants?: Array<{ name: string; email?: string }>;
 
   /**
    * User yang ditugaskan menangani request.
@@ -92,6 +95,8 @@ static async createRequest(
     budget_category,
     bank_target,
     project_id,
+    crm_opportunity_id,
+    external_participants = [],
     assignee_user_id,
     start_at,
     end_at,
@@ -147,6 +152,21 @@ static async createRequest(
       meetingOccurrenceDates({ recurrence_type, recurrence_end_at: recurrenceEnd, recurrence_days: normalizedRecurringDays,
         start_at: meetingStart, timezone });
     }
+    if (crm_opportunity_id) {
+      const opportunity = await prisma.crm_opportunity.findFirst({
+        where: { id: crm_opportunity_id, company_id: companyId },
+        select: { id: true },
+      });
+      if (!opportunity) throw new ValidationError('Opportunity CRM tidak ditemukan pada company aktif.');
+    }
+    for (const participant of external_participants) {
+      if (!participant.name?.trim()) throw new ValidationError('Nama peserta eksternal meeting wajib diisi.');
+      if (participant.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(participant.email.trim())) {
+        throw new ValidationError('Email peserta eksternal meeting tidak valid.');
+      }
+    }
+  } else if (crm_opportunity_id || external_participants.length) {
+    throw new ValidationError('Tautan Opportunity dan peserta eksternal hanya berlaku untuk Meeting.');
   }
 
   // ---------------------------------------------------------------------------
@@ -280,6 +300,7 @@ static async createRequest(
         company_id: companyId,
         created_by_id: userId,
         request_id: instanceId,
+        crm_opportunity_id: crm_opportunity_id ?? null,
         organizer_user_id: organizer_user_id ?? userId,
         notetaker_user_id: notetaker_user_id ?? null,
         meeting_type,
@@ -295,6 +316,18 @@ static async createRequest(
         status: is_draft ? 'DRAFT' : 'SCHEDULED',
       } });
 
+      if (crm_opportunity_id && !is_draft) {
+        const linkedOpportunity = await tx.crm_opportunity.findFirst({
+          where: { id: crm_opportunity_id, company_id: companyId },
+          select: { id: true, pipeline_stage: true, status: true },
+        });
+        if (!linkedOpportunity) throw new ValidationError('Opportunity CRM tidak ditemukan pada company aktif.');
+        if (['PROSPECT', 'OPEN', 'FOLLOW_UP'].includes(String(linkedOpportunity.pipeline_stage || '').toUpperCase())) await moveOpportunityStage(tx, {
+          opportunityId: linkedOpportunity.id, companyId, stage: 'DISCOVERY', actorId: userId,
+          reason: 'Meeting discovery dijadwalkan dari CRM',
+        });
+      }
+
       const participantIds = Array.from(new Set([
         organizer_user_id ?? userId,
         notetaker_user_id,
@@ -306,6 +339,15 @@ static async createRequest(
           created_by_id: userId, meeting_id: meetingId, user_id: participantId,
           participant_role: participantId === (organizer_user_id ?? userId) ? 'ORGANIZER' : participantId === notetaker_user_id ? 'NOTETAKER' : 'ATTENDEE',
           invitation_status: participantId === userId ? 'ACCEPTED' : 'PENDING',
+        })) });
+      }
+      const cleanExternalParticipants = external_participants.filter((item) => item.name?.trim());
+      if (cleanExternalParticipants.length) {
+        await tx.request_meeting_participant.createMany({ data: cleanExternalParticipants.map((item) => ({
+          id: crypto.randomUUID(), tenant_id: tenantId ?? null, company_id: companyId,
+          created_by_id: userId, meeting_id: meetingId, user_id: null,
+          external_name: item.name.trim(), external_email: item.email?.trim() || null,
+          participant_role: 'ATTENDEE', invitation_status: 'PENDING',
         })) });
       }
       const cleanAgenda = agenda_items.filter((item) => item.title?.trim());
@@ -500,7 +542,10 @@ static async createRequest(
     }
   }
 
-  return requestData;
+  const createdMeeting = request_type === 'MEETING'
+    ? await prisma.request_meeting.findUnique({ where: { request_id: instanceId }, select: { id: true } })
+    : null;
+  return { ...requestData, ...(createdMeeting ? { meeting_id: createdMeeting.id } : {}) };
 }
 
   // ---------------------------------------------------------------------------

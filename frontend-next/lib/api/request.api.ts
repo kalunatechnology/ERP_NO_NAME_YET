@@ -3,6 +3,8 @@ import api from "./axios";
 export interface MeetingRequestSummary {
   id: string;
   request_id: string;
+  crm_opportunity_id?: string | null;
+  crm_opportunity?: { id: string; opportunity_name: string } | null;
   meeting_type: string;
   recurrence_type: "RECURRING" | "NON_RECURRING";
   recurrence_end_at?: string | null;
@@ -23,7 +25,7 @@ export interface MeetingDetail extends MeetingRequestSummary {
   permissions?: { can_edit_minutes: boolean; can_publish: boolean; can_delete?: boolean };
   selected_occurrence_date: string;
   notes: Array<{ occurrence_date: string; minutes_id: string | null; status: "NOT_CREATED" | "DRAFT" | "COMPLETED"; is_today?: boolean }>;
-  participants: Array<{ id: string; user_id?: string | null; participant_role: string; invitation_status: string; attendance_status: string; user?: { id: string; full_name: string; email: string } | null }>;
+  participants: Array<{ id: string; user_id?: string | null; external_name?: string | null; external_email?: string | null; participant_role: string; invitation_status: string; attendance_status: string; user?: { id: string; full_name: string; email: string } | null }>;
   agenda: Array<{ id: string; sequence_number: number; title: string; description?: string | null; status: string }>;
   minutes: null | {
     id: string; occurrence_date: string; status: string; summary: string; opening_notes: string; general_discussion: string; conclusion: string;
@@ -47,6 +49,8 @@ export interface CreateMeetingInput {
   recurrence_type?: "RECURRING" | "NON_RECURRING"; recurrence_end_at?: string; recurrence_days?: number[];
   assignee_user_id?: string;
   agenda_items?: Array<{ title: string }>;
+  crm_opportunity_id?: string;
+  external_participants?: Array<{ name: string; email?: string }>;
   is_draft?: boolean;
 }
 
@@ -88,7 +92,7 @@ export interface CreateNonMeetingInput {
 
 export const requestApi = {
   listTeamMembers: async () => (await api.get<Array<{ id: string; name: string; email: string; role: string }>>("/api/v1/requests/team-members")).data,
-  listMeetings: async () => (await api.get<MeetingRequestSummary[]>("/api/v1/requests/meetings")).data,
+  listMeetings: async (crmOpportunityId?: string) => (await api.get<MeetingRequestSummary[]>("/api/v1/requests/meetings", { params: crmOpportunityId ? { crm_opportunity_id: crmOpportunityId } : undefined })).data,
   listMeetingMinutesReferences: async () => (await api.get<MeetingMinutesReference[]>("/api/v1/requests/meeting-minutes/references")).data,
   getMeeting: async (id: string, occurrenceDate?: string) => (await api.get<MeetingDetail>(`/api/v1/requests/meetings/${id}`, { params: occurrenceDate ? { date: occurrenceDate } : undefined })).data,
   createMeeting: async (input: CreateMeetingInput) => (await api.post("/api/v1/requests/meetings", input)).data,

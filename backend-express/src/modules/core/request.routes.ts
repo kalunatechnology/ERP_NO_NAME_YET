@@ -103,6 +103,7 @@ requestRouter.get('/meetings', async (req, res, next) => {
     const data = await MeetingRequestService.list(activeCompanyId(req), activeUserId(req), activeRoleCode(req), {
       status: typeof req.query.status === 'string' ? req.query.status : undefined,
       search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      crm_opportunity_id: typeof req.query.crm_opportunity_id === 'string' ? req.query.crm_opportunity_id : undefined,
     });
     sendSuccess(res, data);
   } catch (error) { next(error); }

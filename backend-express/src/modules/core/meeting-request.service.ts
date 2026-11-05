@@ -43,6 +43,10 @@ const EXECUTIVE_ROLES = new Set([
   'ROLE-SUPER-ADMIN', 'ROLE-COMPANY-ADMIN', 'ROLE-DIRECTOR',
 ]);
 
+function normalizeMeetingRole(role: string): string {
+  return role.replace(/^ROLE-/, '').replace(/-/g, '_');
+}
+
 function canDeleteMeetingAsRole(role: string): boolean {
   return ['PROJECT_MANAGER', 'DIRECTOR'].includes(role.replace(/^ROLE-/, ''));
 }
@@ -353,18 +357,25 @@ async function notifyMeetingPublished(params: {
 
 
 export class MeetingRequestService {
-  static async list(companyId: string, userId: string, activeRole: string, query: { status?: string; search?: string }) {
+  static async list(companyId: string, userId: string, activeRole: string, query: { status?: string; search?: string; crm_opportunity_id?: string }) {
     // PM/Executive need company meeting visibility to exercise deletion rights.
     const isGlobalAuditor = canDeleteMeetingAsRole(activeRole) || activeRole === 'SUPER_ADMIN' || activeRole === 'ROLE-SUPER-ADMIN';
     const participantRows = isGlobalAuditor ? [] : await prisma.request_meeting_participant.findMany({
       where: { company_id: companyId, user_id: userId }, select: { meeting_id: true },
     });
     const accessibleMeetingIds = participantRows.map((row) => row.meeting_id);
+    const normalizedRole = normalizeMeetingRole(activeRole);
+    const isCrmReader = ['SUPER_ADMIN', 'COMPANY_ADMIN', 'DIRECTOR', 'CRM_LEAD', 'SALES', 'PROJECT_MANAGER'].includes(normalizedRole);
+    if (query.crm_opportunity_id) {
+      if (!isCrmReader) throw new ForbiddenError('Role aktif tidak dapat membuka meeting dari CRM.');
+      const opportunity = await prisma.crm_opportunity.findFirst({ where: { id: query.crm_opportunity_id, company_id: companyId }, select: { id: true } });
+      if (!opportunity) throw new NotFoundError('CRM Opportunity');
+    }
     const meetings = await prisma.request_meeting.findMany({
       where: {
         company_id: companyId,
         status: query.status ?? { not: 'CANCELLED' },
-        ...(isGlobalAuditor ? {} : { OR: [
+        ...(query.crm_opportunity_id ? { crm_opportunity_id: query.crm_opportunity_id } : isGlobalAuditor ? {} : { OR: [
           { organizer_user_id: userId }, { notetaker_user_id: userId }, { id: { in: accessibleMeetingIds } },
         ] }),
       },
@@ -386,14 +397,17 @@ export class MeetingRequestService {
       where: { meeting_id: meetingId, company_id: companyId, user_id: userId }, select: { id: true },
     });
     const isGlobalAuditor = canDeleteMeetingAsRole(activeRole) || activeRole === 'SUPER_ADMIN' || activeRole === 'ROLE-SUPER-ADMIN';
-    if (!isGlobalAuditor && meeting.organizer_user_id !== userId && meeting.notetaker_user_id !== userId && !participant) {
+    const normalizedRole = normalizeMeetingRole(activeRole);
+    const isCrmReader = Boolean(meeting.crm_opportunity_id) && ['SUPER_ADMIN', 'COMPANY_ADMIN', 'DIRECTOR', 'CRM_LEAD', 'SALES', 'PROJECT_MANAGER'].includes(normalizedRole);
+    if (!isGlobalAuditor && !isCrmReader && meeting.organizer_user_id !== userId && meeting.notetaker_user_id !== userId && !participant) {
       throw new ForbiddenError('Anda tidak terlibat dalam meeting ini.');
     }
-    const [request, participants, agenda, allMinutes] = await Promise.all([
+    const [request, participants, agenda, allMinutes, crmOpportunity] = await Promise.all([
       prisma.request_ticket.findFirst({ where: { id: meeting.request_id, company_id: companyId } }),
       prisma.request_meeting_participant.findMany({ where: { meeting_id: meetingId, company_id: companyId }, orderBy: { created_at: 'asc' } }),
       prisma.request_meeting_agenda.findMany({ where: { meeting_id: meetingId, company_id: companyId }, orderBy: { sequence_number: 'asc' } }),
       prisma.request_meeting_minutes.findMany({ where: { meeting_id: meetingId, company_id: companyId }, orderBy: { occurrence_date: 'desc' } }),
+      meeting.crm_opportunity_id ? prisma.crm_opportunity.findFirst({ where: { id: meeting.crm_opportunity_id, company_id: companyId }, select: { id: true, opportunity_name: true } }) : Promise.resolve(null),
     ]);
     const userIds = Array.from(new Set([
       ...participants.map((item) => item.user_id),
@@ -443,6 +457,7 @@ export class MeetingRequestService {
 
     return {
       ...meeting, request: request ? { ...request, status: normalizeRequestStatus(request.status) } : null,
+      crm_opportunity: crmOpportunity,
       participants: participants.map((item) => ({ ...item, user: item.user_id ? userById.get(item.user_id) ?? null : null })),
       notetaker: meeting.notetaker_user_id ? userById.get(meeting.notetaker_user_id) ?? null : null,
       permissions: {

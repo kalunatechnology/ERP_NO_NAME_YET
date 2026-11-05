@@ -332,7 +332,7 @@ export async function createOpportunity(payload: {
     expected_amount: payload.expected_amount ?? 0,
     expected_margin: payload.expected_margin ?? 0,
     probability_percent: payload.probability_percent ?? 50,
-    pipeline_stage: payload.pipeline_stage ?? "OPEN",
+    pipeline_stage: payload.pipeline_stage ?? "PROSPECT",
     status: "OPEN",
   });
   return data;
@@ -340,6 +340,11 @@ export async function createOpportunity(payload: {
 
 export async function updateOpportunityCustomer(id: string | number, customerPartyId: string | number) {
   const { data } = await api.patch(`/api/v1/crm/opportunities/${id}/`, { customer_party_id: customerPartyId });
+  return data;
+}
+
+export async function moveCRMOpportunityStage(id: string | number, stage: string, options: { next_follow_up_at?: string; reason?: string } = {}) {
+  const { data } = await api.post(`/api/v1/crm/opportunities/${id}/stage`, { stage, ...options });
   return data;
 }
 
@@ -382,6 +387,11 @@ export async function deleteOpportunity(id: string | number) {
  */
 export async function qualifyInquiry(id: string | number) {
   const { data } = await api.post(`/api/v1/crm/customer-inquiries/${id}/qualify/`, {});
+  return data;
+}
+
+export async function updateCRMInquiryLeadStatus(id: string | number, payload: { status: "CONTACTED" | "RESPONDED" | "FOLLOW_UP"; next_follow_up_at?: string; note?: string }) {
+  const { data } = await api.post(`/api/v1/crm/customer-inquiries/${id}/lead-status`, payload);
   return data;
 }
 
