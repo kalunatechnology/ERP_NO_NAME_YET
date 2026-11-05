@@ -892,9 +892,9 @@ function TabDeals({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-      {/* Opportunities (col span 3) */}
-      <div className="lg:col-span-3 card rounded-xl p-4">
+    <div className="grid min-w-0 grid-cols-1 gap-4">
+      {/* Opportunity table */}
+      <div className="card min-w-0 w-full rounded-xl p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
             <h3 className="text-sm font-bold text-text-primary">Deal Pipeline & Closed Won</h3>
@@ -1058,8 +1058,8 @@ function TabDeals({
         )}
       </div>
 
-      {/* Credit Management (col span 2) */}
-      <div className="lg:col-span-2 card rounded-xl p-4">
+      {/* Credit Management table */}
+      <div className="card min-w-0 w-full rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-text-primary">Credit Management</h3>
           <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-bold", (data.parties||[]).length >= 20 ? "bg-emerald-100 text-emerald-700" : (data.parties||[]).length >= 5 ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}><Users size={11} />{(data.parties||[]).length}</span>
@@ -1558,9 +1558,9 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+    <div className="grid min-w-0 grid-cols-1 gap-4">
       {/* Cost Estimates */}
-      <div className="lg:col-span-3 card rounded-xl p-4">
+      <div className="card min-w-0 w-full rounded-xl p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="text-base font-bold text-text-primary">Cost Estimating (HPP & Margin)</h3>
           <div className="flex items-center gap-2">
@@ -1726,7 +1726,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
       </div>
 
       {/* Quotations */}
-      <div className="lg:col-span-2 card rounded-xl p-4">
+      <div className="card min-w-0 w-full rounded-xl p-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-text-primary">Sales Quotations</h3>
@@ -1982,8 +1982,8 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-      <div className="lg:col-span-3 card rounded-xl p-4">
+    <div className="grid min-w-0 grid-cols-1 gap-4">
+      <div className="card min-w-0 w-full rounded-xl p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <h3 className="text-sm font-bold">Tiket Support & Klaim Garansi</h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -2058,7 +2058,7 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
         )}
       </div>
 
-      <div className="lg:col-span-2 card rounded-xl p-4">
+      <div className="card min-w-0 w-full rounded-xl p-4">
         <h3 className="text-sm font-bold mb-3">Riwayat Solusi & Garansi</h3>
         {(data.resolutions||[]).length === 0 ? <EmptyState msg="Belum ada resolusi tercatat." /> : (
           <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
