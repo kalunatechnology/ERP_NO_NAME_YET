@@ -2,37 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Base ────────────────────────────────────────────────────────────── */
+/* ── Base ────────────────────────────────────────── */
 @layer base {
   :root {
-    --sidebar-w: 240px;
-    --sidebar-collapsed-w: 72px;
+    --sidebar-w: 230px;
     --topbar-h: 64px;
     --right-panel-w: 260px;
-    --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-fira-sans: "Fira Sans", sans-serif;
+    --font-fira-sans-condensed: "Fira Sans", sans-serif;
   }
 
   html {
     @apply scroll-smooth;
-    font-family: var(--font-inter);
   }
 
   body {
-    @apply font-sans text-slate-800 bg-slate-100 antialiased;
+    @apply font-sans text-text-primary bg-bg-lighter antialiased;
   }
 
   * {
     @apply box-border;
   }
 
-  /* Custom scrollbar matching Marka style */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
-  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+  ::-webkit-scrollbar-thumb { @apply bg-text-tertiary rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-text-secondary; }
 }
 
-/* ── Components ──────────────────────────────────────────────────────── */
+/* ── Components ──────────────────────────────────── */
 @layer components {
   /* Use the available workspace width after both sidebars, not viewport width. */
   .workspace-container {
@@ -72,186 +71,245 @@
     }
   }
 
-  /* Marka Dark Sidebar nav item */
-  .marka-sidebar-item {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg w-full
-           text-sm font-medium text-slate-300
+  /* Sidebar nav item */
+  .nav-item {
+    @apply flex items-center gap-2.5 px-2.5 py-2.5 rounded-md w-full
+           text-sm font-medium text-text-primary
            transition-all duration-150 ease-out cursor-pointer
-           hover:bg-slate-700/60 hover:text-white select-none;
+           active:scale-[0.99] select-none;
   }
-  .marka-sidebar-item.active {
-    @apply bg-slate-900 text-white font-semibold shadow-xs;
-  }
+  .nav-item:hover   { @apply bg-brand-light-green text-brand-deep-green; }
+  .nav-item.active  { @apply bg-brand-light-green text-brand-deep-green font-semibold shadow-2xs; }
 
-  /* KPI Card - Marka style */
+  /* KPI Card */
   .kpi-card {
-    @apply flex flex-col gap-2.5 p-4 rounded-xl bg-white
-           border border-slate-200/80 shadow-xs;
+    @apply flex flex-col gap-2.5 p-4 rounded-lg bg-white
+           border border-text-tertiary shadow-2xs;
   }
 
-  /* Button variants - Marka Visual Identity */
+  /* Button variants with tactile micro-interactions */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg
-           bg-primary text-white text-sm font-medium
+    @apply inline-flex items-center justify-center gap-2 px-6 py-2 rounded-full
+           bg-brand-green text-white text-sm font-medium
            transition-all duration-150 ease-out
-           hover:bg-primary-hover active:bg-primary-active
-           active:scale-[0.98]
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1
-           disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100 shadow-xs;
+           hover:bg-brand-deep-green hover:shadow-sm
+           active:scale-[0.97]
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/50 focus-visible:ring-offset-1
+           disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-           bg-blue-50 text-primary text-sm font-medium
-           border border-blue-200
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full
+           bg-brand-light-green text-brand-deep-green text-sm font-medium
+           border border-brand-green/30
            transition-all duration-150 ease-out
-           hover:bg-blue-100 hover:border-blue-300
-           active:scale-[0.98]
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30
+           hover:bg-brand-green/20 hover:border-brand-green/50
+           active:scale-[0.97]
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40
            disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100;
   }
   .btn-outline {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg
-           border border-slate-300 bg-white text-slate-700 text-sm font-medium
+    @apply inline-flex items-center justify-center gap-2 px-6 py-2 rounded-full
+           border border-brand-green text-brand-green text-sm font-medium
            transition-all duration-150 ease-out
-           hover:bg-slate-50 hover:border-slate-400 hover:text-slate-900
-           active:scale-[0.98]
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30
-           disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100 shadow-2xs;
+           hover:bg-brand-light-green hover:border-brand-deep-green hover:text-brand-deep-green
+           active:scale-[0.97]
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40
+           disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg
-           text-slate-600 text-sm font-medium
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full
+           text-text-secondary text-sm font-medium
            transition-all duration-150 ease-out
-           hover:bg-slate-100 hover:text-slate-900
-           active:scale-[0.98]
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300
+           hover:bg-brand-light-green hover:text-brand-deep-green
+           active:scale-[0.97]
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/30
            disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg
-           bg-danger text-white text-sm font-medium
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full
+           bg-red-500 text-white text-sm font-medium
            transition-all duration-150 ease-out
-           hover:bg-danger-hover active:bg-danger-active
-           active:scale-[0.98]
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 focus-visible:ring-offset-1
-           disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100 shadow-xs;
+           hover:bg-red-600 hover:shadow-sm
+           active:scale-[0.97]
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1
+           disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100;
   }
 
   /* Badge */
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-2xs font-medium transition-colors duration-150;
   }
-  .badge-success { @apply bg-emerald-50 text-emerald-700 border border-emerald-200; }
-  .badge-warning { @apply bg-amber-50 text-amber-700 border border-amber-200; }
-  .badge-danger  { @apply bg-rose-50 text-rose-700 border border-rose-200; }
-  .badge-info    { @apply bg-blue-50 text-blue-700 border border-blue-200; }
-  .badge-neutral { @apply bg-slate-100 text-slate-600 border border-slate-200; }
+  .badge-success { @apply bg-brand-light-green text-brand-deep-green; }
+  .badge-warning { @apply bg-yellow-100 text-yellow-700; }
+  .badge-danger  { @apply bg-red-100 text-red-700; }
+  .badge-info    { @apply bg-blue-100 text-blue-700; }
+  .badge-neutral { @apply bg-gray-100 text-gray-600; }
 
   /* Card */
   .card {
-    @apply bg-white border border-slate-200/80 rounded-xl shadow-xs transition-shadow duration-200;
+    @apply bg-white border border-text-tertiary rounded-lg shadow-card transition-shadow duration-200;
   }
   .card-hover {
-    @apply hover:border-primary/40 hover:shadow-card transition-all duration-150 ease-out;
+    @apply hover:border-brand-green/30 transition-colors duration-150 ease-out;
   }
 
   /* Section title */
   .section-title {
-    @apply text-base font-semibold text-slate-800 tracking-tight;
+    @apply text-base font-medium text-black;
   }
 
   /* Tab button */
   .tab-btn {
-    @apply inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600
+    @apply inline-flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-text-secondary
            border-b-2 border-transparent whitespace-nowrap
            transition-all duration-150 ease-out cursor-pointer
            active:scale-[0.99] select-none;
   }
   .tab-btn.active {
-    @apply text-primary border-primary font-semibold;
+    @apply text-brand-deep-green border-brand-green font-semibold;
   }
   .tab-btn:hover:not(.active) {
-    @apply text-slate-900 border-slate-300 bg-slate-50;
+    @apply text-text-primary border-text-tertiary/70 bg-bg-light/40;
   }
 
-  /* Input standard */
+  /* Input standard (11px radius, light gray placeholder) */
   .input {
-    @apply w-full px-3.5 py-2 rounded-lg border border-slate-300
-           text-sm text-slate-800 bg-white
-           focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20
-           transition-all duration-150 ease-out placeholder:text-slate-400;
+    @apply w-full px-3 py-2 rounded-[11px] border border-text-tertiary
+           text-sm text-text-primary bg-white
+           focus:outline-none focus:border-brand-green focus:ring-2 focus:ring-brand-green/20
+           transition-all duration-150 ease-out placeholder:text-gray-400;
   }
 
   /* Form standards */
   .form-required {
-    @apply ml-0.5 text-danger font-semibold;
+    @apply ml-0.5 text-red-500 font-semibold;
   }
   .form-helper {
-    @apply mt-1 text-[11px] leading-relaxed text-slate-500;
+    @apply mt-1 text-[11px] leading-relaxed text-gray-400;
   }
   .form-optional {
-    @apply text-[11px] text-slate-400 font-normal;
+    @apply text-[11px] text-gray-400 font-normal;
   }
 
   /* Badges & Chips */
   .readonly-badge {
-    @apply inline-flex items-center whitespace-nowrap rounded-md
-           border border-slate-200 bg-slate-100
-           px-2 py-0.5 text-[10px] font-medium text-slate-600 select-none;
+    @apply inline-flex items-center whitespace-nowrap rounded-lg
+           border border-gray-200 bg-gray-100
+           px-2 py-1 text-[10px] font-medium text-gray-500 select-none;
   }
   .status-chip {
-    @apply inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full
+    @apply inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-[10px]
            text-xs font-medium border select-none;
   }
 
-  /* Segmented Controls */
+  /* Segmented Controls (outer 12-14px, inner 8-10px) */
   .segmented-control {
-    @apply inline-flex items-center p-1 bg-slate-100 rounded-xl
-           border border-slate-200 gap-1 select-none;
+    @apply inline-flex items-center p-1 bg-gray-100 rounded-[12px]
+           border border-gray-200 gap-1 select-none;
   }
   .segmented-control-item {
-    @apply px-3 py-1.5 text-xs font-medium rounded-lg
-           transition-all duration-150 text-slate-600 hover:text-slate-900;
+    @apply px-3 py-1.5 text-xs font-medium rounded-[8px]
+           transition-all duration-150 text-gray-600 hover:text-gray-900;
   }
   .segmented-control-item-active {
-    @apply bg-white text-slate-900 font-semibold shadow-xs;
+    @apply bg-white text-gray-900 font-semibold shadow-xs;
   }
 
-  /* Compact Cards */
+  /* Compact Cards (max 14px radius) */
   .compact-card {
-    @apply rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs;
+    @apply rounded-[14px] border border-text-tertiary bg-white p-3 shadow-2xs;
   }
 
   /* Table */
   .data-table th {
-    @apply px-3.5 py-2.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide bg-slate-50 whitespace-nowrap border-b border-slate-200;
+    @apply px-3 py-2.5 text-left text-xs font-semibold text-text-secondary uppercase tracking-wide bg-gray-50/80 whitespace-nowrap;
   }
   .data-table td {
-    @apply px-3.5 py-3 text-xs text-slate-700 border-t border-slate-100 whitespace-nowrap transition-colors duration-100;
+    @apply px-3 py-2.5 text-xs text-text-primary border-t border-text-tertiary whitespace-nowrap transition-colors duration-100;
   }
   .data-table tr:hover td {
-    @apply bg-slate-50/80;
+    @apply bg-brand-light-green/30;
   }
 
   .page-header {
-    @apply flex items-start justify-between gap-4 flex-wrap border-b border-slate-200 pb-4;
+    @apply flex items-start justify-between gap-4 flex-wrap border-b border-text-tertiary pb-4;
   }
   .page-title {
-    @apply text-xl font-bold tracking-tight text-slate-900;
+    @apply text-xl font-semibold tracking-tight text-text-primary;
   }
   .page-description {
-    @apply mt-1 text-xs text-slate-500;
+    @apply mt-1 text-xs text-text-secondary;
   }
   .section-panel {
-    @apply rounded-xl border border-slate-200/80 bg-white shadow-2xs;
+    @apply rounded-lg border border-text-tertiary bg-white shadow-2xs;
   }
   .section-header {
-    @apply flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3;
+    @apply flex items-center justify-between gap-3 border-b border-text-tertiary px-4 py-3;
   }
 }
 
-/* ── Utilities ───────────────────────────────────────────────────────── */
+/* ── Utilities ─────────────────────────────────── */
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Horizontal table scroll wrapper for responsive tables */
+  .table-scroll-wrapper {
+    @apply w-full overflow-x-auto -mx-0;
+    scrollbar-width: thin;
+    scrollbar-color: #E8E8E8 transparent;
+  }
+  .table-scroll-wrapper::-webkit-scrollbar {
+    height: 4px;
+  }
+  .table-scroll-wrapper::-webkit-scrollbar-thumb {
+    @apply bg-text-tertiary rounded-full hover:bg-text-secondary transition-colors;
+  }
+
+  .right-panel-alert-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #C5D2ED transparent;
+  }
+  .right-panel-alert-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .right-panel-alert-scroll::-webkit-scrollbar-thumb {
+    background: #C5D2ED;
+    border-radius: 9999px;
+  }
+
+  /* Mobile slide-in animation for sidebar drawer */
+  .slide-in-left {
+    animation: slideInLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes slideInLeft {
+    from { transform: translateX(-100%); opacity: 0; }
+    to   { transform: translateX(0);     opacity: 1; }
+  }
+
+  /* Smooth pulse shimmer for loading placeholders */
+  .skeleton-shimmer {
+    background: linear-gradient(90deg, #F3F4F6 0%, #E5E7EB 50%, #F3F4F6 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite ease-in-out;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Topbar right area compact on small screens */
+  .topbar-right-gap {
+    @apply gap-1.5 sm:gap-2 md:gap-3;
+  }
+}
+
+/* ── Accessibility: Reduced Motion Support ───────── */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

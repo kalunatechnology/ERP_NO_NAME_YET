@@ -1,20 +1,19 @@
 /**
  * File: frontend-next/components/layout/Sidebar.tsx
  *
- * Purpose: Marka Logistik official Sidebar navigation component.
- * Theme: Dark Slate (bg-slate-800) identical to Marka Logistik design system.
- * Features: Expandable/Collapsible (w-60 vs w-[72px]), RBAC modules, Marbot assistant, recent items, user badge.
+ * Purpose: Defines the React component and its user-facing responsibility in the Marka+/Arsalynk frontend.
+ * Integration: Called by Next routing or parent components; API and browser-state effects are documented on the responsible functions below.
+ * Boundary: This file owns presentation/orchestration only and relies on shared context/API modules for identity and persistence.
  */
 "use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import Image from "next/image";
 import {
   LayoutDashboard, FolderKanban, CheckSquare,
-  DollarSign, Users, BarChart3, Building2,
-  LogOut, ChevronRight, Clock, FileText, X, ClipboardList, Boxes, MessageSquare
+  DollarSign, Users, BarChart3, TrendingUp, Building2,
+  LogOut, ChevronRight, Clock, FileText, X, ClipboardList, Boxes
 } from "lucide-react";
 import { useAuth, getRoleLabel, getRoleBadgeStyle } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -24,13 +23,13 @@ import { canAccessRoute, canRequestApi } from "@/lib/access/module-contract";
 import { getResourceEntity } from "@/lib/access/resource-catalog";
 import { canOpenReportTab } from "@/lib/access/report-tab-access";
 import { getNavigationEntries } from "@/lib/access/navigation-contract";
+import { MarkaWordmark } from "@/components/brand/MarkaWordmark";
+import { MarkaPlusName } from "@/components/brand/MarkaPlusName";
 
 interface SidebarProps {
   isMobile?: boolean;
   onClose?: () => void;
   onChatbotOpen?: () => void;
-  expanded?: boolean;
-  onToggleExpand?: () => void;
 }
 
 const NAV_ICONS: Record<string, React.ElementType> = {
@@ -46,74 +45,17 @@ const NAV_ICONS: Record<string, React.ElementType> = {
   "/resources": FileText,
 };
 
-/* Official Marka Hamburger Icons */
-function HamburgerHalf({ className }: { className?: string }) {
-  return (
-    <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      <path d="M11.2 16H27.2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M5 8H27" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M16.8 24H27.2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function HamburgerFull({ className }: { className?: string }) {
-  return (
-    <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      <path d="M5 16L27 16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M5 8H27" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M5 24L27 24" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-export function Sidebar({
-  isMobile = false,
-  onClose,
-  onChatbotOpen,
-  expanded: parentExpanded,
-  onToggleExpand
-}: SidebarProps = {}) {
+export function Sidebar({ isMobile = false, onClose, onChatbotOpen }: SidebarProps = {}) {
   const pathname = usePathname();
   const { user, userRole, company, logout } = useAuth();
   const { t } = useLanguage();
   const [recentItems, setRecentItems] = useState<UserRecentItemDto[]>([]);
   const [recentCompany, setRecentCompany] = useState<string | null>(null);
 
-  // Local sidebar expand state when parent does not supply one
-  const [localExpanded, setLocalExpanded] = useState<boolean>(true);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("sidebar-expanded");
-    if (stored !== null) {
-      setLocalExpanded(stored === "true");
-    }
-  }, []);
-
-  const isExpanded = isMobile ? true : (parentExpanded !== undefined ? parentExpanded : localExpanded);
-
-  const toggleExpand = () => {
-    if (onToggleExpand) {
-      onToggleExpand();
-    } else {
-      const next = !localExpanded;
-      setLocalExpanded(next);
-      localStorage.setItem("sidebar-expanded", String(next));
-      if (typeof document !== "undefined") {
-        if (next) {
-          document.body.classList.add("sidebar-expanded");
-        } else {
-          document.body.classList.remove("sidebar-expanded");
-        }
-      }
-    }
-  };
-
   const initial = user?.full_name?.[0] ?? user?.email?.[0]?.toUpperCase() ?? "U";
   const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
   const roleLabel = getRoleLabel(userRole);
   const badgeStyle = getRoleBadgeStyle(userRole);
-
   const navItems = getNavigationEntries({
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
@@ -121,7 +63,6 @@ export function Sidebar({
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
   }).map((entry) => ({ ...entry, icon: NAV_ICONS[entry.href] ?? FileText }));
-
   const recentAccess = {
     enabledModules: user?.enabled_modules,
     delegatedModules: user?.delegated_modules,
@@ -129,7 +70,6 @@ export function Sidebar({
     activeRoleCode: user?.active_role_code,
     isSuperAdmin: userRole === "super_admin",
   };
-
   const visibleRecentItems = (recentCompany === company ? recentItems : []).filter((item) => {
     if (!canAccessRoute({ pathname: item.target_url || "/dashboard", ...recentAccess })) return false;
     if (item.item_type === "RESOURCE") {
@@ -156,161 +96,102 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "flex flex-col bg-slate-800 text-slate-200 border-r border-slate-700/60 select-none z-40 transition-all duration-200 ease-in-out shrink-0",
-        isMobile
-          ? "w-64 h-full shadow-2xl"
-          : isExpanded
-          ? "w-60 h-screen"
-          : "w-[72px] h-screen"
+        "flex flex-col bg-white border-r border-[#EFEFEF] flex-shrink-0 z-40 select-none",
+        isMobile ? "w-68 h-full shadow-2xl" : "w-68 h-screen"
       )}
     >
-      {/* ── Header: Marka Brand & Toggle ────────────────────────────────────── */}
-      <div className={cn(
-        "h-16 px-4 flex items-center border-b border-slate-700/70 shrink-0",
-        isExpanded ? "justify-between" : "justify-center"
-      )}>
-        {/* Brand Logo & Name */}
-        <Link
-          href="/dashboard"
-          className={cn("flex items-center gap-2.5 group overflow-hidden", !isExpanded && !isMobile && "hidden")}
-        >
-          <div className="w-8 h-8 rounded-lg bg-[#4F8CF6] flex items-center justify-center p-1.5 shadow-xs shrink-0 transition-transform group-hover:scale-105">
-            <img
-              src="/brand/marka-logomark-white.svg"
-              alt="Marka Logistik"
-              className="w-full h-full object-contain"
-            />
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-bold tracking-wider text-white leading-tight uppercase font-inter">
-              MARKA
-            </span>
-            <span className="text-[10px] text-slate-400 font-medium tracking-tight truncate">
-              Logistik & ERP
-            </span>
-          </div>
-        </Link>
-
-        {/* Collapsed Brand Icon */}
-        {!isExpanded && !isMobile && (
-          <Link
-            href="/dashboard"
-            className="w-8 h-8 rounded-lg bg-[#4F8CF6] flex items-center justify-center p-1.5 shadow-xs shrink-0 hover:scale-105 transition-transform"
-            title="Marka Logistik"
-          >
-            <img
-              src="/brand/marka-logomark-white.svg"
-              alt="Marka"
-              className="w-full h-full object-contain"
-            />
-          </Link>
-        )}
-
-        {/* Expand/Collapse Toggle Button for Desktop */}
-        {!isMobile && (
-          <button
-            type="button"
-            onClick={toggleExpand}
-            className={cn(
-              "p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors cursor-pointer",
-              !isExpanded && "mt-2 hidden" // when collapsed, clicking logo or hover expands or top bar toggles
-            )}
-            title={isExpanded ? "Perkecil menu" : "Perbesar menu"}
-            aria-label="Toggle sidebar"
-          >
-            {isExpanded ? (
-              <HamburgerHalf className="w-5 h-5" />
-            ) : (
-              <HamburgerFull className="w-5 h-5" />
-            )}
-          </button>
-        )}
-
+      {/* ── Fixed User Profile Header (Compact 68px) ── */}
+      <div className="h-[68px] px-3.5 pt-2.5 pb-2 flex flex-col justify-center border-b border-[#EFEFEF] flex-shrink-0 bg-white relative">
         {/* Mobile close button */}
         {isMobile && onClose && (
           <button
             onClick={onClose}
-            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-brand-light-green transition-colors"
             aria-label="Tutup menu"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         )}
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shadow-2xs"
+            style={{ background: "linear-gradient(135deg, #42ACFB 0%, #2649B3 100%)" }}
+          >
+            <span className="text-[11px] font-extrabold text-white leading-none">{initial}</span>
+          </div>
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="text-xs font-extrabold text-[#090909] truncate leading-tight">{displayName}</span>
+            <div className="mt-0.5 flex">
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold leading-none"
+                style={{ backgroundColor: badgeStyle.bg, color: badgeStyle.text }}
+              >
+                <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: badgeStyle.text }} />
+                <span className="truncate">{roleLabel}</span>
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ── Scrollable Menu Section ─────────────────────────────────────── */}
-      <div className="flex-1 px-3 py-4 flex flex-col gap-4 overflow-y-auto no-scrollbar">
-        {/* Navigation Category Label */}
-        {isExpanded && (
-          <div className="px-2">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-inter">
-              {t("Menu")}
-            </p>
-          </div>
-        )}
-
-        {/* Navigation Items */}
-        <nav className="flex flex-col gap-1.5" role="navigation">
-          {navItems.map(({ href, label, icon: Icon }) => {
-            const isActive = pathname === href || pathname.startsWith(href + "/");
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "group relative flex items-center rounded-lg transition-all duration-150 ease-out",
-                  isExpanded ? "px-3 py-2.5 gap-3" : "p-2.5 justify-center",
-                  isActive
-                    ? "bg-slate-900 text-white font-semibold shadow-xs"
-                    : "text-slate-300 hover:text-white hover:bg-slate-700/60"
-                )}
-                title={!isExpanded ? t(label) : undefined}
-                aria-current={isActive ? "page" : undefined}
-              >
-                {/* Active indicator bar */}
-                {isActive && (
-                  <span className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-[#4F8CF6] rounded-r" />
-                )}
-
-                <Icon
-                  size={18}
+      {/* ── Scrollable Menu Section ── */}
+      <div className="flex-1 px-2.5 py-2.5 flex flex-col gap-2.5 overflow-y-auto no-scrollbar">
+        {/* Navigation Section */}
+        <div className="flex flex-col gap-0.5">
+          <p className="text-[10px] font-extrabold text-[#4F5050] uppercase tracking-wider px-2 mb-1">
+            {t("Menu")}
+          </p>
+          <nav className="flex flex-col gap-0.5" role="navigation">
+            {navItems.map(({ href, label, icon: Icon }) => {
+              const isActive = pathname === href || pathname.startsWith(href + "/");
+              return (
+                <Link
+                  key={href}
+                  href={href}
                   className={cn(
-                    "shrink-0 transition-colors",
-                    isActive ? "text-[#4F8CF6]" : "text-slate-400 group-hover:text-slate-200"
+                    "flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 relative h-8",
+                    isActive
+                      ? "bg-[#EAF6FF] text-[#2649B3] font-bold shadow-2xs border border-[#9FD6FF]"
+                      : "text-[#4F5050] hover:bg-[#EAF6FF]/50 hover:text-[#2649B3]"
                   )}
-                  aria-hidden="true"
-                />
-
-                {isExpanded && (
-                  <>
-                    <span className="truncate text-xs font-medium font-inter flex-1">
-                      {t(label)}
-                    </span>
-                    {isActive && (
-                      <ChevronRight size={14} className="text-[#4F8CF6] opacity-70 shrink-0" />
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {isActive && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-3.5 bg-[#2649B3] rounded-r-full" />
+                  )}
+                  <Icon
+                    size={14}
+                    className={cn(
+                      "flex-shrink-0 transition-colors",
+                      isActive ? "text-[#2649B3]" : "text-[#4F5050]"
                     )}
-                  </>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
+                    aria-hidden="true"
+                  />
+                  <span className="flex-1 truncate text-xs">{t(label)}</span>
+                  {isActive && (
+                    <ChevronRight size={11} className="text-[#2649B3] opacity-60 flex-shrink-0 ml-auto" />
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
 
-        {/* Recently Opened Items (Visible when expanded) */}
-        {isExpanded && visibleRecentItems.length > 0 && (
-          <div className="flex flex-col gap-1.5 pt-3 border-t border-slate-700/60">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 flex items-center gap-1.5">
-              <Clock size={11} className="text-[#4F8CF6]" />
+        {/* Recently Opened Items */}
+        {visibleRecentItems.length > 0 && (
+          <div className="flex flex-col gap-1 pt-2 border-t border-[#EFEFEF]">
+            <p className="text-[10px] font-extrabold text-[#4F5050] uppercase tracking-wider px-2 flex items-center gap-1.5 mb-0.5">
+              <Clock size={10} className="text-[#294BB2]" />
               <span>{t("Recently Opened")}</span>
             </p>
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-0.5">
               {visibleRecentItems.map((item) => (
                 <Link
                   key={item.id}
                   href={item.target_url || "/dashboard"}
-                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-slate-400 hover:bg-slate-700/50 hover:text-white transition-colors truncate"
+                  className="flex items-center gap-2 px-2.5 py-1 rounded-md text-[11px] font-medium text-[#4F5050] hover:bg-[#EAF6FF]/40 hover:text-[#090909] transition-colors h-6"
                 >
-                  <FileText size={12} className="text-slate-400 shrink-0" />
+                  <FileText size={11} className="text-[#4F5050] flex-shrink-0" />
                   <span className="truncate flex-1">{item.title}</span>
                 </Link>
               ))}
@@ -319,79 +200,53 @@ export function Sidebar({
         )}
       </div>
 
-      {/* ── Footer / User & Brand Section ───────────────────────────────── */}
-      <div className="p-3 border-t border-slate-700/70 flex flex-col gap-2 shrink-0 bg-slate-800/90">
-        {/* Marbot Assistant Shortcut */}
-        {user?.enabled_modules?.includes("MARBOT") && userRole !== "super_admin" && (
-          <button
-            type="button"
-            onClick={onChatbotOpen}
-            className={cn(
-              "flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-700/70 hover:bg-slate-700 border border-slate-600/60 text-slate-200 font-medium text-xs transition-all shadow-xs cursor-pointer active:scale-98",
-              !isExpanded && "justify-center px-2"
-            )}
-            title="Chat dengan Marbot"
-          >
-            <div className="w-5 h-5 rounded-full bg-[#4F8CF6] flex items-center justify-center text-white shrink-0 shadow-2xs">
-              <MessageSquare size={12} />
-            </div>
-            {isExpanded && (
-              <span className="font-semibold truncate text-[11px]">Chat dengan Marbot</span>
-            )}
-          </button>
-        )}
-
-        {/* User Card when expanded */}
-        {isExpanded ? (
-          <div className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-900/60 border border-slate-700/40">
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 shadow-xs font-bold text-xs text-white"
-              style={{ background: "linear-gradient(135deg, #72A3F8 0%, #3F70C5 100%)" }}
+      {/* ── Fixed Footer Section matching Screenshot Design ── */}
+      <div className="px-3 pb-3 pt-2 border-t border-[#EFEFEF] flex flex-col gap-2.5 flex-shrink-0 bg-white">
+        {/* Marka+ assistant button */}
+        {user?.enabled_modules?.includes('MARBOT') && userRole !== 'super_admin' && <button
+          type="button"
+          onClick={onChatbotOpen}
+          className="flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#EAF6FF] hover:bg-[#EAF6FF] border border-[#9FD6FF] text-[#2649B3] font-semibold text-xs transition-all shadow-2xs cursor-pointer active:scale-98"
+          id="sidebar-marbot-btn"
+          title="Chat with Marka Plus"
+        >
+          <div className="w-5 h-5 rounded-full bg-[#294BB2] flex items-center justify-center text-white flex-shrink-0 shadow-2xs">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              {initial}
-            </div>
-            <div className="flex flex-col min-w-0 flex-1">
-              <span className="text-xs font-semibold text-white truncate leading-tight">
-                {displayName}
-              </span>
-              <div className="mt-0.5 flex">
-                <span
-                  className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold leading-none"
-                  style={{ backgroundColor: badgeStyle.bg, color: badgeStyle.text }}
-                >
-                  <span className="w-1 h-1 rounded-full shrink-0" style={{ background: badgeStyle.text }} />
-                  <span className="truncate">{roleLabel}</span>
-                </span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => logout()}
-              className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
-              title="Log Out"
-              aria-label="Log Out"
-            >
-              <LogOut size={14} />
-            </button>
+              <line x1="12" y1="2" x2="12" y2="22" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+              <line x1="4.93" y1="19.07" x2="19.07" y2="4.93" />
+            </svg>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => logout()}
-            className="flex items-center justify-center p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-700/60 transition-colors"
-            title={`Keluar (${displayName})`}
-          >
-            <LogOut size={16} />
-          </button>
-        )}
+          <span className="font-bold tracking-tight">Chat dengan <MarkaPlusName compact /></span>
+        </button>}
 
-        {/* Brand identity badge at bottom */}
-        {isExpanded && (
-          <div className="flex items-center justify-between px-1 pt-1 opacity-70">
-            <span className="text-[10px] text-slate-400 font-medium">Marka Logistik</span>
-            <span className="text-[9px] text-slate-500 font-mono">v1.0</span>
-          </div>
-        )}
+        {/* Log Out button */}
+        <button
+          type="button"
+          onClick={() => logout()}
+          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#2649B3] hover:bg-[#2649B3] text-white font-semibold text-xs transition-all shadow-2xs w-full cursor-pointer active:scale-98"
+          id="sidebar-logout-btn"
+          aria-label="Log Out"
+        >
+          <span className="font-bold">Log Out</span>
+          <LogOut size={13} aria-hidden="true" className="flex-shrink-0 rotate-180" />
+        </button>
+
+        {/* Brand ownership */}
+        <div className="flex flex-col items-center justify-center pt-1">
+          <MarkaWordmark className="h-auto w-[86px] text-[#2649B3]" />
+          <span className="text-[10px] text-[#4F5050] mt-0.5 font-medium">By Arsalynk® 2026</span>
+        </div>
       </div>
     </aside>
   );
