@@ -19,6 +19,7 @@ import {
   Terminal,
   Layers
 } from "lucide-react";
+import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
 
 // ==========================================
 // CODE SNIPPETS
@@ -726,9 +727,9 @@ export default function CRMIntegrationGuide() {
                 { title: "Identitas pengirim", items: ["sender dapat berisi tipe dan nilai identitas serta nama tampilan.", "Tanpa identitas terverifikasi, pesan tetap dapat masuk sebagai pengunjung eksternal dan belum tentu terhubung ke master klien."] },
                 { title: "Hasil di Marka", items: ["Masuk ke CRM > Customer Inbox; balasan dari Marka dapat dikirim balik memakai outbound webhook message.reply_requested."] },
               ]} />
-              <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs leading-5 text-blue-900">
-                <strong>Tips Chat:</strong> Simpan <code>visitorId</code> di browser session/localStorage agar <code>thread_id</code> tetap konsisten selama visitor yang sama mengobrol.
-              </div>
+              <CollapsibleGuideline title="Panduan menjaga sesi chat" tone="blue">
+                Simpan <code>visitorId</code> di browser session/localStorage agar <code>thread_id</code> tetap konsisten selama visitor yang sama mengobrol.
+              </CollapsibleGuideline>
               <CodeBlock title="app/api/chat/send/route.ts" code={chatCode} />
             </div>
           )}
@@ -778,8 +779,7 @@ export default function CRMIntegrationGuide() {
                 { title: "Yang perlu disiapkan di Marka", items: ["Aktifkan feedback.submitted pada sumber integrasi.", "Nama yang cocok persis dengan satu customer atau contact aktif akan terhubung otomatis; nama ambigu/tidak dikenal tetap dicatat sebagai ulasan eksternal."] },
                 { title: "Reviewer dari luar sistem", items: ["Tidak memerlukan akun Marka. Website mengirim ulasan dari server menggunakan kredensial integrasi yang disimpan rahasia.", "Reviewer eksternal tersimpan dengan nama/email. Ulasan ini self-reported dan perlu ditinjau sebelum disebut terverifikasi."] },
               ]} limitation="Jangan kirim secret integrasi dari browser. Ulasan tanpa identitas customer tetap diterima sebagai ulasan eksternal." />
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
-                <strong>Aturan Identifikasi Customer &amp; Order:</strong>
+              <CollapsibleGuideline title="Aturan identifikasi pelanggan dan pesanan">
                 <ul className="mt-1 list-disc space-y-1 pl-4">
                   <li>
                     <strong>`customer_code` sekarang opsional.</strong> Kirim <code>reviewer_name</code> untuk menerima review dari orang luar sistem. Nama hanya dihubungkan otomatis jika sama persis dengan satu customer atau contact aktif; jika tidak, feedback tetap tersimpan tanpa tautan customer. Kode hanya berasal dari pemetaan server tepercaya, bukan input bebas dari browser.
@@ -788,7 +788,7 @@ export default function CRMIntegrationGuide() {
                     <strong>`sales_order_id` adalah opsional</strong>: Hanya sertakan jika bernilai UUID Marka yang sah. <strong>JANGAN</strong> mengirimkan nomor dokumen (seperti <code>&quot;SO-2026-0042&quot;</code>); kosongkan saja jika tidak memiliki UUID.
                   </li>
                 </ul>
-              </div>
+              </CollapsibleGuideline>
               <CodeBlock title="app/api/feedback/route.ts" code={feedbackCode} />
             </div>
           )}

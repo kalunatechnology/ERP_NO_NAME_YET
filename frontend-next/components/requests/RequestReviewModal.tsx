@@ -16,6 +16,7 @@ import {
   Receipt, CheckCircle2, Loader2
 } from "lucide-react";
 import { cn, getStatusColor, extractApiError } from "@/lib/utils";
+import { IDRInput } from "@/components/ui/IDRInput";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
 import { assignRequest } from "@/lib/api/feed.api";
@@ -471,13 +472,13 @@ export function RequestReviewModal({ isOpen, onClose, request, onActionComplete 
                     <label className="block text-2xs font-bold text-[#4F5050] mb-1">
                       Total Realisasi Belanja Riil (Rp)
                     </label>
-                    <input
-                      type="text"
+                    <IDRInput
                       value={lpjRealization}
-                      onChange={e => setLpjRealization(e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, "."))}
+                      onChange={setLpjRealization}
                       placeholder="Contoh: 4.850.000"
                       disabled={editSaving}
-                      className="w-full px-3 py-2 rounded-xl border border-[#D9D9D9] text-xs font-bold text-[#4F5050] focus:outline-none focus:border-[#294BB2] disabled:opacity-60"
+                      className="text-xs font-bold text-[#4F5050] focus:border-[#294BB2] disabled:opacity-60"
+                      showPrefix={false}
                     />
                   </div>
                   <div>

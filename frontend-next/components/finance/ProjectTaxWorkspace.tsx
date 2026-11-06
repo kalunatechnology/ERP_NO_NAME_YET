@@ -23,9 +23,12 @@ import {
 } from "lucide-react";
 import { cn, formatMoney, formatDate, localDateKey } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
+import { IDRInput } from "@/components/ui/IDRInput";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { normalizeList } from "@/lib/api/auth.api";
+import { FinanceSummarySection } from "@/components/finance/FinanceSummarySection";
+import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
 
 export interface TaxTransaction {
   id: string;
@@ -51,7 +54,7 @@ export interface TaxTransaction {
 
 const INITIAL_TAX_TRANSACTIONS: TaxTransaction[] = [];
 
-export function ProjectTaxWorkspace() {
+export function ProjectTaxWorkspace({ startDate, endDate }: { startDate?: string; endDate?: string }) {
   const [transactions, setTransactions] = useState<TaxTransaction[]>(INITIAL_TAX_TRANSACTIONS);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -89,7 +92,8 @@ export function ProjectTaxWorkspace() {
 
   const loadTaxTransactions = () => {
     setLoading(true);
-    api.get("/api/v1/finance/tax-transactions/projection?page_size=200")
+    const dateFilters = startDate && endDate ? `&from_date=${encodeURIComponent(startDate)}&to_date=${encodeURIComponent(endDate)}` : "";
+    api.get(`/api/v1/finance/tax-transactions/projection?page_size=200${dateFilters}`)
       .then((response) => {
         const rows = normalizeList<any>(response.data).rows;
         setTransactions(rows.map((item) => ({
@@ -120,7 +124,7 @@ export function ProjectTaxWorkspace() {
 
   useEffect(() => {
     loadTaxTransactions();
-  }, []);
+  }, [startDate, endDate]);
 
   useEffect(() => {
     api.get('/api/v1/core/companies/?page_size=1').then((response) => {
@@ -300,90 +304,56 @@ export function ProjectTaxWorkspace() {
         </div>
       </div>
 
-      {/* ── 4 SUMMARY KPI CARDS (Monochrome Enterprise) ───────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-3xs font-bold text-text-secondary uppercase tracking-wider">Total DPP Proyek</span>
-            <Building2 size={16} className="text-gray-500" />
+      <FinanceSummarySection
+        title="Ringkasan Kepatuhan Pajak"
+        subtitle="Ringkasan nilai pajak dari billing proyek yang sudah terposting."
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="card rounded-2xl border-l-4 border-blue-600 p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Total DPP Proyek</span><Building2 size={16} className="shrink-0 text-blue-600" /></div>
+            <span className="mt-1.5 block break-words font-mono text-xl font-black tabular-nums text-blue-800">{formatMoney(totalDpp)}</span>
+            <span className="mt-1 block text-xs text-text-secondary">{transactions.length} faktur tagihan terbit</span>
           </div>
-          <span className="text-xl font-bold font-mono text-text-primary mt-1.5 block">
-            {formatMoney(totalDpp)}
-          </span>
-          <span className="text-3xs text-text-secondary mt-0.5 block">{transactions.length} Faktur Tagihan Terbit</span>
-        </div>
 
-        <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-3xs font-bold text-text-secondary uppercase tracking-wider">PPN Keluaran (11%)</span>
-            <FileText size={16} className="text-blue-600" />
+          <div className="card rounded-2xl border-l-4 border-brand-primary p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">PPN Keluaran (11%)</span><FileText size={16} className="shrink-0 text-brand-primary" /></div>
+            <span className="mt-1.5 block break-words font-mono text-xl font-black tabular-nums text-brand-deep-green">{formatMoney(totalPpnIssued)}</span>
+            <span className="mt-1 block text-xs text-text-secondary">Setor sendiri: <b className="text-text-primary">{formatMoney(totalPpnSelfPay)}</b></span>
           </div>
-          <span className="text-xl font-bold font-mono text-blue-700 mt-1.5 block">
-            {formatMoney(totalPpnIssued)}
-          </span>
-          <div className="flex items-center gap-2 text-3xs text-text-secondary mt-0.5 font-mono">
-            <span>Setor Sendiri: <b className="text-text-primary">{formatMoney(totalPpnSelfPay)}</b></span>
-          </div>
-        </div>
 
-        <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-3xs font-bold text-text-secondary uppercase tracking-wider">PPN Dipungut WAPU</span>
-            <ShieldCheck size={16} className="text-amber-600" />
+          <div className="card rounded-2xl border-l-4 border-amber-500 p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">PPN Dipungut WAPU</span><ShieldCheck size={16} className="shrink-0 text-amber-600" /></div>
+            <span className="mt-1.5 block break-words font-mono text-xl font-black tabular-nums text-amber-800">{formatMoney(totalPpnWapu)}</span>
+            <span className="mt-1 block text-xs text-text-secondary">Disetor langsung klien BUMN/Pemerintah</span>
           </div>
-          <span className="text-xl font-bold font-mono text-amber-800 mt-1.5 block">
-            {formatMoney(totalPpnWapu)}
-          </span>
-          <span className="text-3xs text-text-secondary mt-0.5 block">Disetor langsung Klien BUMN/Pemerintah</span>
-        </div>
 
-        <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-3xs font-bold text-text-secondary uppercase tracking-wider">Potongan PPh (Withholding)</span>
-            <TrendingUp size={16} className="text-purple-600" />
+          <div className="card rounded-2xl border-l-4 border-purple-600 p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Potongan PPh</span><TrendingUp size={16} className="shrink-0 text-purple-600" /></div>
+            <span className="mt-1.5 block break-words font-mono text-xl font-black tabular-nums text-purple-800">{formatMoney(totalPphWithheld)}</span>
+            <span className="mt-1 block text-xs text-text-secondary">Kredit pajak PPh 23 &amp; Final 4(2)</span>
           </div>
-          <span className="text-xl font-bold font-mono text-purple-800 mt-1.5 block">
-            {formatMoney(totalPphWithheld)}
-          </span>
-          <span className="text-3xs text-text-secondary mt-0.5 block">Kredit Pajak PPh 23 & Final 4(2)</span>
         </div>
-      </div>
+      </FinanceSummarySection>
 
       {/* ── TABEL TRANSAKSI PAJAK PROYEK ── */}
       <div className="card p-5 rounded-2xl border border-gray-200 bg-white shadow-xs flex flex-col gap-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
+        <div>
+          <div className="mb-3">
             <h4 className="text-sm font-bold text-text-primary">Buku Besar Faktur & Pajak Proyek</h4>
-            <p className="text-2xs text-text-secondary">Daftar transaksi pajak otomatis yang di-generate dari penagihan (billing) termin berstatus POSTED.</p>
+            <p className="text-xs text-text-secondary">Daftar transaksi pajak otomatis dari billing termin berstatus POSTED.</p>
           </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" size={13} />
-              <input
-                type="text"
-                placeholder="Cari no. faktur / klien..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="input pl-8 py-1.5 text-xs w-48 font-medium"
-              />
+          <div className="mb-1 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1.4fr)_minmax(190px,1fr)_minmax(170px,1fr)]">
+            <div className="relative min-w-0">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" size={14} />
+              <input type="text" placeholder="Cari no. faktur / klien..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="input w-full py-2 pl-9 text-sm font-medium" />
             </div>
-
-            <select
-              value={clientTypeFilter}
-              onChange={(e) => setClientTypeFilter(e.target.value)}
-              className="input py-1.5 text-xs font-semibold"
-            >
+            <select value={clientTypeFilter} onChange={(e) => setClientTypeFilter(e.target.value)} className="input w-full py-2 text-sm font-semibold">
               <option value="ALL">Semua Tipe Klien</option>
               <option value="NON_WAPU">Non-WAPU (Swasta)</option>
               <option value="WAPU">WAPU (BUMN/Pemerintah)</option>
             </select>
 
-            <select
-              value={schemeFilter}
-              onChange={(e) => setSchemeFilter(e.target.value)}
-              className="input py-1.5 text-xs font-semibold"
-            >
+            <select value={schemeFilter} onChange={(e) => setSchemeFilter(e.target.value)} className="input w-full py-2 text-sm font-semibold">
               <option value="ALL">Semua Skema</option>
               <option value="FULL_UPFRONT">Pajak Di Awal</option>
               <option value="PROPORTIONAL">Proporsional</option>
@@ -402,7 +372,7 @@ export function ProjectTaxWorkspace() {
                 <th className="py-2.5 px-3.5 font-bold text-right">PPN (11%)</th>
                 <th className="py-2.5 px-3.5 font-bold text-right">Potongan PPh</th>
                 <th className="py-2.5 px-3.5 font-bold text-right">Kas Bersih (Inflow)</th>
-                <th className="py-2.5 px-3.5 font-bold text-right">Kepatuhan & Aksi</th>
+                <th className="py-2.5 px-3.5 font-bold text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -522,16 +492,15 @@ export function ProjectTaxWorkspace() {
         size="md"
       >
         <form onSubmit={handleSaveBupot} className="flex flex-col gap-3.5 p-2 text-xs">
-          <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-900">
-            <span className="block font-bold">Informasi Pemotongan Pajak Klien:</span>
-            <div className="grid grid-cols-2 gap-1 mt-1 text-2xs">
+          <CollapsibleGuideline title="Informasi pemotongan pajak klien">
+            <div className="grid grid-cols-2 gap-1">
               <div>Nilai DPP: <b>{formatMoney(selectedTxForBupot?.dpp_amount || 0)}</b></div>
               <div>Potongan PPh: <b className="text-purple-700">{formatMoney(selectedTxForBupot?.pph_amount || 0)} ({selectedTxForBupot?.pph_rate}%)</b></div>
             </div>
-            <p className="mt-1 text-3xs text-purple-800 leading-relaxed">
+            <p className="mt-1 leading-relaxed">
               Catatan: Bukti Potong adalah bukti bahwa PPh Anda telah dipotong dan disetorkan oleh klien ke kas negara (Kredit Pajak Pasal 23 / Final 4(2)).
             </p>
-          </div>
+          </CollapsibleGuideline>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -607,16 +576,15 @@ export function ProjectTaxWorkspace() {
         size="md"
       >
         <form onSubmit={handleSaveNtpn} className="flex flex-col gap-3.5 p-2 text-xs">
-          <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900">
-            <span className="block font-bold">Informasi Pembayaran PPN ke Kas Negara:</span>
-            <div className="grid grid-cols-2 gap-1 mt-1 text-2xs">
+          <CollapsibleGuideline title="Informasi pembayaran PPN ke kas negara">
+            <div className="grid grid-cols-2 gap-1">
               <div>Jumlah PPN: <b className="text-blue-700">{formatMoney(selectedTxForNtpn?.ppn_amount || 0)}</b></div>
               <div>Kode Billing: <b>{selectedTxForNtpn?.tax_invoice_number || "-"}</b></div>
             </div>
-            <p className="mt-1 text-3xs text-blue-800 leading-relaxed">
+            <p className="mt-1 leading-relaxed">
               NTPN (Nomor Transaksi Penerimaan Negara) adalah bukti resmi 16 karakter setelah pembayaran kode billing via bank/ATM/portal DJP.
             </p>
-          </div>
+          </CollapsibleGuideline>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -687,12 +655,11 @@ export function ProjectTaxWorkspace() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs p-4 rounded-xl bg-gray-50 border border-gray-200">
             <div>
               <label className="font-semibold text-text-primary block mb-1">Nilai Kontrak Proyek (DPP)</label>
-              <input
-                type="number"
-                step="1000000"
+              <IDRInput
                 value={simContractValue}
-                onChange={(e) => setSimContractValue(Number(e.target.value))}
+                onChange={(amount) => setSimContractValue(Number(amount) || 0)}
                 className="input text-xs font-bold"
+                showPrefix={false}
               />
             </div>
 

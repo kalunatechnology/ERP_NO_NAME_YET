@@ -1181,10 +1181,11 @@ export class FinanceHardeningService {
     const pageSize = Math.min(Math.max(Number(query.page_size) || 50, 1), 200);
     const where: Prisma.fin_tax_transactionWhereInput = { company_id: companyId };
     if (query.status) where.status = String(query.status);
-    if (query.from_date || query.to_date) where.tax_date = {
-      ...(query.from_date ? { gte: new Date(String(query.from_date)) } : {}),
-      ...(query.to_date ? { lte: new Date(String(query.to_date)) } : {}),
-    };
+    if (query.from_date || query.to_date) {
+      const fromDate = query.from_date ? new Date(`${String(query.from_date).slice(0, 10)}T00:00:00.000Z`) : undefined;
+      const toDate = query.to_date ? new Date(`${String(query.to_date).slice(0, 10)}T23:59:59.999Z`) : undefined;
+      where.tax_date = { ...(fromDate ? { gte: fromDate } : {}), ...(toDate ? { lte: toDate } : {}) };
+    }
     const [rows, count] = await Promise.all([
       prisma.fin_tax_transaction.findMany({ where, orderBy: [{ tax_date: 'desc' }, { id: 'desc' }], skip: (page - 1) * pageSize, take: pageSize }),
       prisma.fin_tax_transaction.count({ where }),

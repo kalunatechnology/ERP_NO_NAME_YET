@@ -17,6 +17,9 @@ import { getUserFacingApiError } from "@/lib/api/error-message";
 import { formatMoney, localDateKey, cn } from "@/lib/utils";
 import { normalizeList } from "@/lib/api/auth.api";
 import { Modal } from "@/components/ui/Modal";
+import { IDRInput } from "@/components/ui/IDRInput";
+import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
+import { FinanceSummarySection } from "@/components/finance/FinanceSummarySection";
 import toast from "react-hot-toast";
 import {
   Package,
@@ -27,7 +30,6 @@ import {
   TrendingDown,
   Trash2,
   RefreshCw,
-  Info,
   CheckCircle2,
   AlertTriangle,
   ArrowUpRight,
@@ -428,6 +430,19 @@ export default function FixedAssetsWorkspace() {
   const disposeBook = selectedDisposeAsset ? books[selectedDisposeAsset.id] : null;
   const disposeNetBook = Number(disposeBook?.net_book_value ?? selectedDisposeAsset?.acquisition_cost ?? 0);
   const projectedGainLoss = Number(disposeProceeds || 0) - disposeNetBook;
+  const assetTabOrder: Array<typeof activeTab> = ["register", "schedule", "batch", "categories"];
+  const handleAssetTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const currentIndex = assetTabOrder.indexOf(activeTab);
+    const nextIndex = event.key === "ArrowRight" ? (currentIndex + 1) % assetTabOrder.length
+      : event.key === "ArrowLeft" ? (currentIndex - 1 + assetTabOrder.length) % assetTabOrder.length
+        : event.key === "Home" ? 0
+          : event.key === "End" ? assetTabOrder.length - 1 : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    const nextTab = assetTabOrder[nextIndex];
+    setActiveTab(nextTab);
+    requestAnimationFrame(() => document.getElementById(`fixed-assets-tab-${nextTab}`)?.focus());
+  };
 
   const renderStatusBadge = (status: string) => {
     const s = status.toUpperCase();
@@ -508,63 +523,52 @@ export default function FixedAssetsWorkspace() {
         </div>
       </div>
 
-      {/* ── EXECUTIVE KPI METRICS ─────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="card rounded-2xl border border-[#D9D9D9] bg-white p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-2xs font-extrabold uppercase tracking-wider text-[#6B7280]">
-            <span>Total Perolehan (Cost Basis)</span>
-            <Package size={15} className="text-[#2649B3]" />
+      <FinanceSummarySection
+        title="Ringkasan Aset Tetap"
+        subtitle="Nilai perolehan, nilai buku, penyusutan, dan jumlah aset terdaftar."
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="card rounded-2xl border-l-4 border-blue-600 p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Total Perolehan</span><Package size={16} className="shrink-0 text-blue-600" /></div>
+            <div className="mt-1.5 break-words font-mono text-xl font-black tabular-nums text-blue-800">{formatMoney(totalCostBasis)}</div>
+            <span className="mt-1 block text-xs text-text-secondary">Akumulasi nilai beli aset kapital</span>
           </div>
-          <div className="mt-2 text-xl font-black text-[#090909]">
-            {formatMoney(totalCostBasis)}
-          </div>
-          <span className="text-2xs text-[#6B7280]">Akumulasi nilai beli aset kapital</span>
-        </div>
 
-        <div className="card rounded-2xl border border-[#D9D9D9] bg-white p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-2xs font-extrabold uppercase tracking-wider text-[#6B7280]">
-            <span>Nilai Buku Bersih (NBV)</span>
-            <ArrowUpRight size={15} className="text-brand-deep-green" />
+          <div className="card rounded-2xl border-l-4 border-brand-primary p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Nilai Buku Bersih (NBV)</span><ArrowUpRight size={16} className="shrink-0 text-brand-primary" /></div>
+            <div className="mt-1.5 break-words font-mono text-xl font-black tabular-nums text-brand-deep-green">{formatMoney(totalNetBookValue)}</div>
+            <span className="mt-1 block text-xs text-text-secondary">Nilai aset bersih setelah penyusutan</span>
           </div>
-          <div className="mt-2 text-xl font-black text-brand-deep-green">
-            {formatMoney(totalNetBookValue)}
-          </div>
-          <span className="text-2xs text-[#6B7280]">Nilai aset bersih setelah penyusutan</span>
-        </div>
 
-        <div className="card rounded-2xl border border-[#D9D9D9] bg-white p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-2xs font-extrabold uppercase tracking-wider text-[#6B7280]">
-            <span>Akumulasi Penyusutan</span>
-            <TrendingDown size={15} className="text-amber-600" />
+          <div className="card rounded-2xl border-l-4 border-amber-500 p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Akumulasi Penyusutan</span><TrendingDown size={16} className="shrink-0 text-amber-600" /></div>
+            <div className="mt-1.5 break-words font-mono text-xl font-black tabular-nums text-amber-700">{formatMoney(totalAccumulatedDepr)}</div>
+            <span className="mt-1 block text-xs text-text-secondary">Akun kontra aset (COA 1210)</span>
           </div>
-          <div className="mt-2 text-xl font-black text-amber-600">
-            {formatMoney(totalAccumulatedDepr)}
-          </div>
-          <span className="text-2xs text-[#6B7280]">Akun kontra aset (COA 1210)</span>
-        </div>
 
-        <div className="card rounded-2xl border border-[#D9D9D9] bg-white p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-2xs font-extrabold uppercase tracking-wider text-[#6B7280]">
-            <span>Aset Aktif Terdaftar</span>
-            <Layers size={15} className="text-blue-600" />
+          <div className="card rounded-2xl border-l-4 border-violet-600 p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Aset Aktif Terdaftar</span><Layers size={16} className="shrink-0 text-violet-600" /></div>
+            <div className="mt-1.5 font-mono text-xl font-black tabular-nums text-text-primary">{activeAssetsCount} Unit</div>
+            <span className="mt-1 block text-xs text-text-secondary">Dari total {assets.length} inventaris</span>
           </div>
-          <div className="mt-2 text-xl font-black text-[#090909]">
-            {activeAssetsCount} Unit
-          </div>
-          <span className="text-2xs text-[#6B7280]">Dari total {assets.length} inventaris</span>
         </div>
-      </div>
+      </FinanceSummarySection>
 
       {/* ── TABS NAVIGATION ─────────────────────────── */}
-      <div className="flex items-center gap-2 border-b border-[#EFEFEF] pb-2">
+      <div role="tablist" aria-label="Bagian aset tetap" className="flex items-end gap-1 overflow-x-auto border-b border-slate-200">
         <button
           type="button"
+          id="fixed-assets-tab-register"
           onClick={() => setActiveTab("register")}
+          role="tab"
+          aria-selected={activeTab === "register"}
+          aria-controls="fixed-assets-panel-register"
+          onKeyDown={handleAssetTabKeyDown}
           className={cn(
-            "rounded-xl px-4 py-2 text-xs font-bold transition-all",
+            "-mb-px inline-flex shrink-0 items-center rounded-t-xl border px-4 py-2.5 text-xs font-semibold transition-colors",
             activeTab === "register"
-              ? "bg-[#EAF6FF] text-[#2649B3] shadow-2xs"
-              : "text-[#6B7280] hover:bg-slate-50 hover:text-[#090909]"
+              ? "border-slate-200 border-b-white bg-white text-[#203D91] shadow-sm"
+              : "border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
           )}
         >
           Daftar Aset ({assets.length})
@@ -572,12 +576,17 @@ export default function FixedAssetsWorkspace() {
 
         <button
           type="button"
+          id="fixed-assets-tab-schedule"
           onClick={() => setActiveTab("schedule")}
+          role="tab"
+          aria-selected={activeTab === "schedule"}
+          aria-controls="fixed-assets-panel-schedule"
+          onKeyDown={handleAssetTabKeyDown}
           className={cn(
-            "rounded-xl px-4 py-2 text-xs font-bold transition-all",
+            "-mb-px inline-flex shrink-0 items-center rounded-t-xl border px-4 py-2.5 text-xs font-semibold transition-colors",
             activeTab === "schedule"
-              ? "bg-[#EAF6FF] text-[#2649B3] shadow-2xs"
-              : "text-[#6B7280] hover:bg-slate-50 hover:text-[#090909]"
+              ? "border-slate-200 border-b-white bg-white text-[#203D91] shadow-sm"
+              : "border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
           )}
         >
           Jadwal Penyusutan {selectedScheduleAsset ? `— ${selectedScheduleAsset.asset_code}` : ""}
@@ -585,12 +594,17 @@ export default function FixedAssetsWorkspace() {
 
         <button
           type="button"
+          id="fixed-assets-tab-batch"
           onClick={() => setActiveTab("batch")}
+          role="tab"
+          aria-selected={activeTab === "batch"}
+          aria-controls="fixed-assets-panel-batch"
+          onKeyDown={handleAssetTabKeyDown}
           className={cn(
-            "rounded-xl px-4 py-2 text-xs font-bold transition-all",
+            "-mb-px inline-flex shrink-0 items-center rounded-t-xl border px-4 py-2.5 text-xs font-semibold transition-colors",
             activeTab === "batch"
-              ? "bg-[#EAF6FF] text-[#2649B3] shadow-2xs"
-              : "text-[#6B7280] hover:bg-slate-50 hover:text-[#090909]"
+              ? "border-slate-200 border-b-white bg-white text-[#203D91] shadow-sm"
+              : "border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
           )}
         >
           Hasil Batch {batchResult ? `(${batchResult.processed} Selesai)` : ""}
@@ -598,12 +612,17 @@ export default function FixedAssetsWorkspace() {
 
         <button
           type="button"
+          id="fixed-assets-tab-categories"
           onClick={() => setActiveTab("categories")}
+          role="tab"
+          aria-selected={activeTab === "categories"}
+          aria-controls="fixed-assets-panel-categories"
+          onKeyDown={handleAssetTabKeyDown}
           className={cn(
-            "rounded-xl px-4 py-2 text-xs font-bold transition-all",
+            "-mb-px inline-flex shrink-0 items-center rounded-t-xl border px-4 py-2.5 text-xs font-semibold transition-colors",
             activeTab === "categories"
-              ? "bg-[#EAF6FF] text-[#2649B3] shadow-2xs"
-              : "text-[#6B7280] hover:bg-slate-50 hover:text-[#090909]"
+              ? "border-slate-200 border-b-white bg-white text-[#203D91] shadow-sm"
+              : "border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
           )}
         >
           Kategori Aset ({categories.length})
@@ -612,7 +631,7 @@ export default function FixedAssetsWorkspace() {
 
       {/* ── TAB 1: ASSET REGISTER TABLE ──────────────── */}
       {activeTab === "register" && (
-        <div className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
+        <div role="tabpanel" id="fixed-assets-panel-register" aria-labelledby="fixed-assets-tab-register" className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
           {/* Search & Filter Toolbar */}
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative w-full sm:w-72">
@@ -644,7 +663,7 @@ export default function FixedAssetsWorkspace() {
           </div>
 
           {/* Data Table */}
-          <div className="overflow-x-auto">
+          <div className="table-scroll-wrapper overflow-x-auto rounded-xl border border-gray-200">
             {loading ? (
               <div className="py-12 text-center text-xs text-[#6B7280] animate-pulse">
                 Memuat data aset tetap dan saldo nilai buku...
@@ -654,7 +673,7 @@ export default function FixedAssetsWorkspace() {
                 {searchQuery ? "Tidak ada aset yang cocok dengan pencarian." : "Belum ada aset tetap terdaftar. Klik '+ Register Aset Baru' untuk memulai."}
               </div>
             ) : (
-              <table className="w-full text-left text-xs">
+              <table className="w-full data-table min-w-[1050px] text-left text-xs">
                 <thead>
                   <tr className="border-b border-[#EFEFEF] text-[11px] font-extrabold uppercase tracking-wider text-[#6B7280]">
                     <th className="py-2.5 px-3">Kode</th>
@@ -664,7 +683,7 @@ export default function FixedAssetsWorkspace() {
                     <th className="py-2.5 px-3 text-right">Nilai Buku (NBV)</th>
                     <th className="py-2.5 px-3 text-right">Akm. Penyusutan</th>
                     <th className="py-2.5 px-3 text-center">UE (Bulan)</th>
-                    <th className="py-2.5 px-3 text-center">Aksi Operasional</th>
+                    <th className="py-2.5 px-3 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EFEFEF]">
@@ -752,7 +771,7 @@ export default function FixedAssetsWorkspace() {
 
       {/* ── TAB 2: DEPRECIATION SCHEDULE ─────────────── */}
       {activeTab === "schedule" && (
-        <div className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
+        <div role="tabpanel" id="fixed-assets-panel-schedule" aria-labelledby="fixed-assets-tab-schedule" className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
           {!scheduleAssetId ? (
             <div className="py-12 text-center text-xs text-[#6B7280]">
               Silakan pilih salah satu aset dari tab <b>Daftar Aset</b> dan klik tombol <b>Jadwal</b> untuk melihat simulasi penyusutan.
@@ -787,8 +806,8 @@ export default function FixedAssetsWorkspace() {
                 </div>
               )}
 
-              <div className="overflow-x-auto max-h-[500px]">
-                <table className="w-full text-left text-xs">
+              <div className="table-scroll-wrapper max-h-[500px] overflow-auto rounded-xl border border-gray-200">
+                <table className="w-full data-table min-w-[800px] text-left text-xs">
                   <thead className="sticky top-0 bg-white shadow-2xs">
                     <tr className="border-b border-[#D9D9D9] text-[11px] font-extrabold uppercase tracking-wider text-[#6B7280]">
                       <th className="py-2 px-3 text-center">Bulan Ke-</th>
@@ -846,34 +865,24 @@ export default function FixedAssetsWorkspace() {
 
       {/* ── TAB 3: BATCH RESULT ─────────────────────── */}
       {activeTab === "batch" && (
-        <div className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
+        <div role="tabpanel" id="fixed-assets-panel-batch" aria-labelledby="fixed-assets-tab-batch" className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
           {!batchResult ? (
             <div className="py-12 text-center text-xs text-[#6B7280]">
               Pilih periode di kanan atas dan klik <b>Batch Susutkan</b> untuk menjalankan eksekusi massal.
             </div>
           ) : (
             <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-4 gap-3">
-                <div className="rounded-xl border border-[#D9D9D9] bg-slate-50 p-3">
-                  <span className="text-2xs font-extrabold uppercase text-[#6B7280]">Total Aset</span>
-                  <div className="text-xl font-black text-[#090909]">{batchResult.total_assets}</div>
+              <FinanceSummarySection title="Ringkasan Hasil Batch" subtitle={`Eksekusi penyusutan periode ${new Date(batchResult.period_date).toLocaleDateString("id-ID", { month: "long", year: "numeric" })}.`}>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="card rounded-2xl border-l-4 border-blue-600 p-4 shadow-xs"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Total Aset</span><div className="mt-1.5 font-mono text-xl font-black tabular-nums text-blue-800">{batchResult.total_assets}</div></div>
+                  <div className="card rounded-2xl border-l-4 border-emerald-600 p-4 shadow-xs"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Diproses</span><div className="mt-1.5 font-mono text-xl font-black tabular-nums text-emerald-700">{batchResult.processed}</div></div>
+                  <div className="card rounded-2xl border-l-4 border-amber-500 p-4 shadow-xs"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Dilewati</span><div className="mt-1.5 font-mono text-xl font-black tabular-nums text-amber-700">{batchResult.skipped}</div><span className="mt-1 block text-xs text-text-secondary">Aset sudah diproses</span></div>
+                  <div className="card rounded-2xl border-l-4 border-rose-600 p-4 shadow-xs"><span className="text-xs font-bold uppercase tracking-wide text-text-secondary">Gagal / Error</span><div className="mt-1.5 font-mono text-xl font-black tabular-nums text-rose-700">{batchResult.errors}</div></div>
                 </div>
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                  <span className="text-2xs font-extrabold uppercase text-emerald-800">Diproses</span>
-                  <div className="text-xl font-black text-emerald-700">{batchResult.processed}</div>
-                </div>
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <span className="text-2xs font-extrabold uppercase text-amber-800">Dilewati (Idempotent)</span>
-                  <div className="text-xl font-black text-amber-700">{batchResult.skipped}</div>
-                </div>
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
-                  <span className="text-2xs font-extrabold uppercase text-rose-800">Gagal / Error</span>
-                  <div className="text-xl font-black text-rose-700">{batchResult.errors}</div>
-                </div>
-              </div>
+              </FinanceSummarySection>
 
-              <div className="overflow-x-auto max-h-72">
-                <table className="w-full text-left text-xs">
+              <div className="table-scroll-wrapper max-h-72 overflow-auto rounded-xl border border-gray-200">
+                <table className="w-full data-table min-w-[580px] text-left text-xs">
                   <thead>
                     <tr className="border-b border-[#D9D9D9] text-[11px] font-extrabold uppercase tracking-wider text-[#6B7280]">
                       <th className="py-2 px-3">Nama Aset</th>
@@ -912,7 +921,7 @@ export default function FixedAssetsWorkspace() {
 
       {/* ── TAB 4: ASSET CATEGORIES ──────────────────── */}
       {activeTab === "categories" && (
-        <div className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
+        <div role="tabpanel" id="fixed-assets-panel-categories" aria-labelledby="fixed-assets-tab-categories" className="card rounded-2xl border border-[#D9D9D9] bg-white p-5 shadow-2xs">
           <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-gray-100 mb-4">
             <div>
               <h3 className="text-sm font-bold text-[#090909] flex items-center gap-2">
@@ -982,13 +991,10 @@ export default function FixedAssetsWorkspace() {
         size="lg"
       >
         <form onSubmit={handleCreateAsset} className="flex flex-col gap-4">
-          <div className="rounded-xl border border-blue-200 bg-[#EAF6FF] p-3 text-xs text-[#2649B3] flex items-start gap-2">
-            <Info size={16} className="shrink-0 mt-0.5" />
-            <span>
+          <CollapsibleGuideline title="Informasi pembentukan aset otomatis">
               Aset akan otomatis dibuatkan Commercial Asset Book dengan metode garis lurus (Straight-Line)
               dan terhubung ke akun COA Aset Tetap (1200) & Akumulasi Penyusutan (1210).
-            </span>
-          </div>
+          </CollapsibleGuideline>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -1085,47 +1091,37 @@ export default function FixedAssetsWorkspace() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-bold text-[#090909] block mb-1">
-                Harga Perolehan (Rp) *
+                Harga Perolehan *
               </label>
-              <input
-                type="number"
+              <IDRInput
                 required
-                min={1}
                 value={registerForm.acquisition_cost === 0 ? "" : registerForm.acquisition_cost}
-                onChange={(e) =>
+                onChange={(amount) =>
                   setRegisterForm({
                     ...registerForm,
-                    acquisition_cost: e.target.value === "" ? 0 : Number(e.target.value),
+                    acquisition_cost: amount === "" ? 0 : Number(amount),
                   })
                 }
-                placeholder="0"
+                placeholder="150.000.000"
                 className="input text-xs font-bold text-[#090909]"
               />
-              <span className="mt-1 block text-2xs text-[#2649B3] font-bold">
-                {formatMoney(registerForm.acquisition_cost)}
-              </span>
             </div>
 
             <div>
               <label className="text-xs font-bold text-[#090909] block mb-1">
-                Nilai Residu / Salvage (Rp)
+                Nilai Residu / Salvage
               </label>
-              <input
-                type="number"
-                min={0}
+              <IDRInput
                 value={registerForm.salvage_value === 0 ? "" : registerForm.salvage_value}
-                onChange={(e) =>
+                onChange={(amount) =>
                   setRegisterForm({
                     ...registerForm,
-                    salvage_value: e.target.value === "" ? 0 : Number(e.target.value),
+                    salvage_value: amount === "" ? 0 : Number(amount),
                   })
                 }
                 placeholder="0"
                 className="input text-xs font-bold text-[#090909]"
               />
-              <span className="mt-1 block text-2xs text-[#6B7280]">
-                {formatMoney(registerForm.salvage_value)}
-              </span>
             </div>
 
             <div>
@@ -1214,20 +1210,15 @@ export default function FixedAssetsWorkspace() {
 
             <div>
               <label className="text-xs font-bold text-[#090909] block mb-1">
-                Hasil Penjualan / Proceeds (Rp) *
+                Hasil Penjualan / Proceeds *
               </label>
-              <input
-                type="number"
-                min={0}
+              <IDRInput
                 required
                 value={disposeProceeds === 0 ? "" : disposeProceeds}
-                onChange={(e) => setDisposeProceeds(e.target.value === "" ? 0 : Number(e.target.value))}
-                placeholder="0"
+                onChange={(amount) => setDisposeProceeds(amount === "" ? 0 : Number(amount))}
+                placeholder="150.000.000"
                 className="input text-xs font-bold text-[#090909]"
               />
-              <span className="mt-1 block text-2xs text-[#2649B3] font-bold">
-                {formatMoney(disposeProceeds)}
-              </span>
             </div>
           </div>
 
@@ -1286,13 +1277,10 @@ export default function FixedAssetsWorkspace() {
         size="md"
       >
         <form onSubmit={handleCreateCategory} className="flex flex-col gap-4">
-          <div className="rounded-xl border border-blue-200 bg-[#EAF6FF] p-3 text-xs text-[#2649B3] flex items-start gap-2">
-            <Info size={16} className="shrink-0 mt-0.5" />
-            <span>
+          <CollapsibleGuideline title="Informasi akun untuk kategori aset">
               Kategori baru akan otomatis dihubungkan ke akun buku besar standar Aset Tetap (1200),
               Akumulasi Penyusutan (1210), dan Beban Operasional (6200).
-            </span>
-          </div>
+          </CollapsibleGuideline>
 
           <div>
             <label className="text-xs font-bold text-[#090909] block mb-1">

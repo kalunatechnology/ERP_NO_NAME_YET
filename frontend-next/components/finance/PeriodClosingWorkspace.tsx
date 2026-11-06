@@ -12,6 +12,7 @@ import api from '@/lib/api/axios';
 import { getUserFacingApiError } from '@/lib/api/error-message';
 import { useAuth } from '@/contexts/AuthContext';
 import { canPerform } from '@/lib/access/capability-contract';
+import { Modal } from '@/components/ui/Modal';
 
 // =============================================================================
 // PERIOD CLOSING WORKSPACE
@@ -25,6 +26,11 @@ interface FiscalPeriod {
   end_date: string | null;
   status: string;
   fiscal_year_id: string | null;
+}
+
+interface CalendarPeriodDraft {
+  start_date: string;
+  end_date: string;
 }
 
 interface FiscalYear {
@@ -68,6 +74,29 @@ const statusColor = (s: string) => {
 const formatRp = (v: number) => `Rp ${v.toLocaleString('id-ID')}`;
 const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 const hasEnded = (d?: string | null) => Boolean(d && new Date(d).getTime() <= Date.now());
+const addCalendarMonths = (dateValue: string, monthOffset: number) => {
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const targetMonth = month - 1 + monthOffset;
+  const targetYear = year + Math.floor(targetMonth / 12);
+  const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+  const finalDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
+  return `${targetYear}-${String(normalizedMonth + 1).padStart(2, '0')}-${String(Math.min(day, finalDay)).padStart(2, '0')}`;
+};
+const previousCalendarDay = (dateValue: string) => {
+  const date = new Date(`${dateValue}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+};
+const nextCalendarDay = (dateValue: string) => {
+  const date = new Date(`${dateValue}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+};
+const buildCalendarPeriods = (startDate: string, endDate: string): CalendarPeriodDraft[] => Array.from({ length: 12 }, (_, index) => {
+  const start = addCalendarMonths(startDate, index);
+  const nextStart = addCalendarMonths(startDate, index + 1);
+  return { start_date: start, end_date: index === 11 ? endDate : previousCalendarDay(nextStart) };
+});
 
 export default function PeriodClosingWorkspace() {
   const { user, userRole } = useAuth();
@@ -80,6 +109,16 @@ export default function PeriodClosingWorkspace() {
   const [closingRequests, setClosingRequests] = useState<PeriodClosingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [activeSection, setActiveSection] = useState<'periods' | 'requests' | 'yearEnd' | 'rollback'>('periods');
+  const currentYear = new Date().getFullYear();
+  const [selectedFiscalYearId, setSelectedFiscalYearId] = useState('');
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
+  const [calendarEditingYearId, setCalendarEditingYearId] = useState<string | null>(null);
+  const [calendarSaving, setCalendarSaving] = useState(false);
+  const [calendarName, setCalendarName] = useState(String(currentYear));
+  const [calendarStart, setCalendarStart] = useState(`${currentYear}-01-01`);
+  const [calendarEnd, setCalendarEnd] = useState(`${currentYear}-12-31`);
+  const [calendarPeriods, setCalendarPeriods] = useState<CalendarPeriodDraft[]>(() => buildCalendarPeriods(`${currentYear}-01-01`, `${currentYear}-12-31`));
 
   // Period close states
   const [closingPeriodId, setClosingPeriodId] = useState<string | null>(null);
@@ -105,28 +144,95 @@ export default function PeriodClosingWorkspace() {
     try {
       const [{ data: pJson }, { data: yJson }, { data: cJson }] = await Promise.all([
         api.get('/api/v1/finance/fiscal-periods/status'),
-        api.get('/api/v1/finance/fiscal-years?page_size=10'),
+        api.get('/api/v1/finance/fiscal-years?page_size=100'),
         api.get('/api/v1/finance/period-closings?page_size=100'),
       ]);
-      setPeriods(pJson.data ?? pJson.results ?? (Array.isArray(pJson) ? pJson : []));
-      setFiscalYears(yJson.results ?? yJson.data?.rows ?? yJson.data ?? (Array.isArray(yJson) ? yJson : []));
+      const loadedPeriods = pJson.data ?? pJson.results ?? (Array.isArray(pJson) ? pJson : []);
+      const loadedYears = yJson.results ?? yJson.data?.rows ?? yJson.data ?? (Array.isArray(yJson) ? yJson : []);
+      setPeriods(loadedPeriods);
+      setFiscalYears(loadedYears);
+      if (!selectedFiscalYearId && loadedYears.length) setSelectedFiscalYearId(loadedYears[0].id);
       setClosingRequests(cJson.results ?? cJson.data?.rows ?? cJson.data ?? (Array.isArray(cJson) ? cJson : []));
     } catch (error) {
       showToast(getUserFacingApiError(error, 'Data periode fiskal belum dapat dimuat. Periksa akses, lalu coba lagi.'), 'error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedFiscalYearId]);
 
-  const handleInitialize = async () => {
-    setLoading(true);
+  const changeCalendarStart = (startDate: string) => {
+    setCalendarStart(startDate);
+    if (!startDate) return;
+    const endDate = previousCalendarDay(addCalendarMonths(startDate, 12));
+    setCalendarEnd(endDate);
+    setCalendarPeriods(buildCalendarPeriods(startDate, endDate));
+    setCalendarName(startDate.slice(0, 4));
+  };
+
+  const changeCalendarEnd = (endDate: string) => {
+    setCalendarEnd(endDate);
+    setCalendarPeriods((current) => current.map((period, index) => index === 11 ? { ...period, end_date: endDate } : period));
+  };
+
+  const updateCalendarPeriod = (index: number, field: keyof CalendarPeriodDraft, value: string) => {
+    setCalendarPeriods((current) => current.map((period, periodIndex) => periodIndex === index ? { ...period, [field]: value } : period));
+  };
+
+  const openCalendarEditor = (yearId?: string) => {
+    const year = yearId ? fiscalYears.find((item) => item.id === yearId) : null;
+    if (year) {
+      const yearPeriods = periods.filter((period) => period.fiscal_year_id === year.id).sort((a, b) => Number(a.period_number || 0) - Number(b.period_number || 0));
+      if (yearPeriods.length !== 12) {
+        showToast('Kalender ini belum memiliki 12 periode lengkap dan belum dapat diedit.', 'error');
+        return;
+      }
+      setCalendarEditingYearId(year.id);
+      setCalendarName(year.fiscal_year_name);
+      setCalendarStart(String(year.start_date || '').slice(0, 10));
+      setCalendarEnd(String(year.end_date || '').slice(0, 10));
+      setCalendarPeriods(yearPeriods.map((period) => ({ start_date: String(period.start_date || '').slice(0, 10), end_date: String(period.end_date || '').slice(0, 10) })));
+    } else {
+      const latestEnd = fiscalYears.map((item) => String(item.end_date || '').slice(0, 10)).filter(Boolean).sort().at(-1);
+      const startDate = latestEnd ? nextCalendarDay(latestEnd) : `${currentYear}-01-01`;
+      const endDate = previousCalendarDay(addCalendarMonths(startDate, 12));
+      setCalendarEditingYearId(null);
+      setCalendarName(startDate.slice(0, 4));
+      setCalendarStart(startDate);
+      setCalendarEnd(endDate);
+      setCalendarPeriods(buildCalendarPeriods(startDate, endDate));
+    }
+    setCalendarModalOpen(true);
+  };
+
+  const saveCalendar = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!calendarStart || !calendarEnd || !calendarName.trim()) return;
+    const complete = calendarPeriods.length === 12
+      && calendarPeriods[0]?.start_date === calendarStart
+      && calendarPeriods[11]?.end_date === calendarEnd
+      && calendarPeriods.every((period, index) => period.start_date && period.end_date && period.start_date <= period.end_date
+        && (index === 0 || period.start_date === nextCalendarDay(calendarPeriods[index - 1].end_date)));
+    if (!complete) {
+      showToast('Periksa tanggal periode. Periode harus berurutan, tanpa tanggal terlewat atau bertumpuk, dan mencakup seluruh tahun buku.', 'error');
+      return;
+    }
+
+    setCalendarSaving(true);
     try {
-      await api.post('/api/v1/finance/fiscal-periods/initialize');
-      showToast('Inisialisasi periode fiskal berhasil.', 'success');
-    } catch (err: any) {
-      showToast(getUserFacingApiError(err, 'Periode fiskal belum dapat diinisialisasi. Periksa tahun buku dan data periode.'), 'error');
-    } finally {
+      const payload = { fiscal_year_name: calendarName.trim(), start_date: calendarStart, end_date: calendarEnd, periods: calendarPeriods };
+      const { data: response } = calendarEditingYearId
+        ? await api.put(`/api/v1/finance/fiscal-calendar/${calendarEditingYearId}`, payload)
+        : await api.post('/api/v1/finance/fiscal-calendar', payload);
+      const result = response?.data ?? response;
+      if (result?.fiscalYear?.id) setSelectedFiscalYearId(result.fiscalYear.id);
+      setCalendarModalOpen(false);
+      window.dispatchEvent(new CustomEvent('finance-calendar-updated', { detail: { fiscalYearId: result?.fiscalYear?.id } }));
+      showToast(calendarEditingYearId ? 'Kalender fiskal berhasil diperbarui.' : 'Kalender fiskal beserta 12 periodenya berhasil disimpan.', 'success');
       await loadData();
+    } catch (error) {
+      showToast(getUserFacingApiError(error, 'Kalender fiskal belum dapat disimpan. Periksa tanggal dan status tahun buku.'), 'error');
+    } finally {
+      setCalendarSaving(false);
     }
   };
 
@@ -206,6 +312,7 @@ const executeYearEnd = async () => {
     try {
       await api.post(`/api/v1/finance/fiscal-years/${rollbackYearId}/reopen-year-end`, { reason: rollbackReason });
       showToast('Rollback tutup buku tahunan berhasil. Jurnal Storno diterbitkan.', 'success');
+      setActiveSection('periods');
       setRollbackYearId(null);
       setRollbackReason('');
       loadData();
@@ -216,9 +323,19 @@ const executeYearEnd = async () => {
     }
   };
 
-  const openPeriods  = periods.filter(p => p.status === 'OPEN');
-  const closedPeriods = periods.filter(p => p.status !== 'OPEN');
+  const visiblePeriods = selectedFiscalYearId ? periods.filter((period) => period.fiscal_year_id === selectedFiscalYearId) : periods;
+  const openPeriods  = visiblePeriods.filter(p => p.status === 'OPEN');
+  const closedPeriods = visiblePeriods.filter(p => p.status !== 'OPEN');
   const closedYears  = fiscalYears.filter(y => y.status === 'CLOSED');
+  useEffect(() => {
+    if (!closedYears.length && activeSection === 'rollback') setActiveSection('periods');
+  }, [activeSection, closedYears.length]);
+  const sectionTabs: Array<{ id: typeof activeSection; label: string; count?: number }> = [
+    { id: 'periods', label: 'Periode Fiskal', count: visiblePeriods.length },
+    { id: 'requests', label: 'Permintaan Penutupan', count: closingRequests.length },
+    { id: 'yearEnd', label: 'Tutup Buku Tahunan' },
+    ...(closedYears.length ? [{ id: 'rollback' as const, label: 'Rollback Storno', count: closedYears.length }] : []),
+  ];
 
   return (
     <div className="space-y-8">
@@ -254,21 +371,49 @@ const executeYearEnd = async () => {
         </div>
       </div>
 
+      <div role="tablist" aria-label="Bagian tutup buku" className="flex items-end gap-1 overflow-x-auto border-b border-slate-200">
+        {sectionTabs.map((tab) => {
+          const selected = activeSection === tab.id;
+          return <button
+            key={tab.id}
+            id={`closing-tab-${tab.id}`}
+            aria-controls={`closing-panel-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => setActiveSection(tab.id)}
+            className={`-mb-px inline-flex shrink-0 items-center gap-2 rounded-t-xl border px-4 py-2.5 text-xs font-semibold transition-colors ${selected ? 'border-slate-200 border-b-white bg-white text-[#203D91] shadow-sm' : 'border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+          >
+            {tab.label}
+            {tab.count !== undefined && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selected ? 'bg-blue-50 text-[#203D91]' : 'bg-slate-200 text-slate-600'}`}>{tab.count}</span>}
+          </button>;
+        })}
+      </div>
+
       {/* Fiscal Periods Table */}
-      <div>
-        <h3 className="section-title mb-3">Status Periode Fiskal</h3>
+      {activeSection === 'periods' && <div role="tabpanel" id="closing-panel-periods" aria-labelledby="closing-tab-periods" className="min-w-0">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="section-title">Kalender Periode Fiskal</h3>
+            <p className="mt-1 text-sm text-slate-600">Atur sendiri batas tanggal 12 periode bulanan. Kuartal mengikuti tiga periode berurutan.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-sm font-medium text-slate-700">
+              Tahun buku
+              <select value={selectedFiscalYearId} onChange={(event) => setSelectedFiscalYearId(event.target.value)} className="ml-2 min-w-44 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                {fiscalYears.map((year) => <option key={year.id} value={year.id}>{year.fiscal_year_name} · {formatDate(year.start_date)}–{formatDate(year.end_date)}</option>)}
+                {!fiscalYears.length && <option value="">Belum dikonfigurasi</option>}
+              </select>
+            </label>
+            {canOperateFinance && <div className="flex gap-2"><button type="button" disabled={!selectedFiscalYearId || fiscalYears.find((year) => year.id === selectedFiscalYearId)?.status !== 'OPEN'} onClick={() => openCalendarEditor(selectedFiscalYearId)} title="Kalender hanya dapat diubah jika tahun buku masih OPEN dan belum ditutup." className="rounded-lg border border-[#203D91] px-4 py-2 text-sm font-semibold text-[#203D91] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50">Ubah Kalender</button><button type="button" onClick={() => openCalendarEditor()} className="rounded-lg bg-[#203D91] px-4 py-2 text-sm font-semibold text-white hover:bg-[#182E6E]">Tahun Baru</button></div>}
+          </div>
+        </div>
         {loading ? (
           <div className="text-center py-8 text-slate-500 text-sm animate-pulse">Memuat...</div>
-        ) : periods.length === 0 ? (
+        ) : !selectedFiscalYearId || visiblePeriods.length === 0 ? (
           <div className="text-center py-8 space-y-3">
-            <p className="text-slate-500 text-sm">Belum ada periode fiskal terdaftar untuk tahun ini.</p>
-            {/* Tombol aksi pemicu pembuatan periode */}
-            <button
-              onClick={handleInitialize}
-              className="px-4 py-2 text-xs font-semibold rounded-lg bg-[#EAF6FF] text-[#203D91] border border-[#BFDBFE] hover:bg-[#203D91] hover:text-white transition-all shadow-2xs"
-            >
-              Muat Ulang / Inisialisasi Periode
-            </button>
+            <p className="text-slate-500 text-sm">Belum ada kalender untuk perusahaan ini. Buat tahun buku dan atur batas tanggal setiap periode sebelum transaksi diposting.</p>
+            {canOperateFinance && <button type="button" onClick={() => openCalendarEditor()} className="rounded-lg bg-[#203D91] px-4 py-2 text-sm font-semibold text-white hover:bg-[#182E6E]">Buat Kalender Periode</button>}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
@@ -281,10 +426,10 @@ const executeYearEnd = async () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {periods.map(p => (
+                {visiblePeriods.map(p => (
                   <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-2.5 px-3 text-slate-500 font-mono text-xs">{p.period_number ?? '—'}</td>
-                    <td className="py-2.5 px-3 text-slate-900 font-semibold">Periode #{p.period_number ?? '—'}</td>
+                    <td className="py-2.5 px-3 text-slate-900 font-semibold">Periode #{p.period_number ?? '—'} <span className="ml-1 text-xs font-medium text-slate-500">Kuartal {Math.ceil(Number(p.period_number || 1) / 3)}</span></td>
                     <td className="py-2.5 px-3 text-slate-600 text-xs">{formatDate(p.start_date)}</td>
                     <td className="py-2.5 px-3 text-slate-600 text-xs">{formatDate(p.end_date)}</td>
                     <td className="py-2.5 px-3">
@@ -320,9 +465,9 @@ const executeYearEnd = async () => {
             </table>
           </div>
         )}
-      </div>
+      </div>}
 
-      <div>
+      {activeSection === 'requests' && <div role="tabpanel" id="closing-panel-requests" aria-labelledby="closing-tab-requests" className="min-w-0">
         <h3 className="section-title mb-3">Permintaan Penutupan</h3>
         {closingRequests.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">Belum ada permintaan penutupan periode.</div>
@@ -356,10 +501,10 @@ const executeYearEnd = async () => {
             </table>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Year-End Closing Section */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs">
+      {activeSection === 'yearEnd' && <div role="tabpanel" id="closing-panel-yearEnd" aria-labelledby="closing-tab-yearEnd" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs">
         <h3 className="section-title mb-1">Tutup Buku Tahunan</h3>
         <p className="text-xs text-slate-500 mb-4">
           Zero-out akun nominal (4xxx, 5xxx, 6xxx) → selisih laba/rugi masuk ke <span className="font-mono text-[#203D91] font-semibold">3200 Laba Ditahan</span>
@@ -411,11 +556,11 @@ const executeYearEnd = async () => {
             </p>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Year-End Rollback Section */}
-      {closedYears.length > 0 && (
-        <div className="bg-red-50/60 rounded-2xl border border-red-200 p-6 shadow-2xs">
+      {closedYears.length > 0 && activeSection === 'rollback' && (
+        <div role="tabpanel" id="closing-panel-rollback" aria-labelledby="closing-tab-rollback" className="bg-red-50/60 rounded-2xl border border-red-200 p-6 shadow-2xs">
           <h3 className="text-sm font-bold text-red-700 mb-1">Rollback Tutup Buku Tahunan (Storno)</h3>
           <p className="text-xs text-slate-500 mb-4">
             Hanya Superadmin / Direktur. Menerbitkan jurnal pembalik atas jurnal penutup tahunan.
@@ -453,6 +598,39 @@ const executeYearEnd = async () => {
           )}
         </div>
       )}
+
+      <Modal isOpen={calendarModalOpen} onClose={() => !calendarSaving && setCalendarModalOpen(false)} title={calendarEditingYearId ? 'Ubah Kalender Periode Fiskal' : 'Buat Kalender Periode Fiskal'} subtitle="Tetapkan rentang tahun buku dan tanggal untuk setiap periode. Kalender akan menjadi acuan posting transaksi." size="4xl">
+        <form onSubmit={saveCalendar} className="space-y-4 p-1">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="text-sm font-semibold text-slate-700">Nama tahun buku
+              <input required value={calendarName} onChange={(event) => setCalendarName(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal" placeholder="Contoh: FY 2026/2027" />
+            </label>
+            <label className="text-sm font-semibold text-slate-700">Tanggal mulai
+              <input required type="date" value={calendarStart} onChange={(event) => changeCalendarStart(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal" />
+            </label>
+            <label className="text-sm font-semibold text-slate-700">Tanggal akhir
+              <input required type="date" min={calendarStart || undefined} value={calendarEnd} onChange={(event) => changeCalendarEnd(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal" />
+            </label>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
+            Setiap periode harus tersambung tanpa tanggal yang terlewat atau tumpang tindih. Periode 1–3 membentuk Kuartal 1, 4–6 Kuartal 2, dan seterusnya.
+          </div>
+          <div className="max-h-[48vh] overflow-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[560px] border-collapse text-sm">
+              <thead className="sticky top-0 bg-slate-50 text-left text-slate-600"><tr><th className="px-3 py-2.5">Periode</th><th className="px-3 py-2.5">Tanggal mulai</th><th className="px-3 py-2.5">Tanggal akhir</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{calendarPeriods.map((period, index) => <tr key={index}>
+                <td className="px-3 py-2 font-semibold text-slate-800">Periode {String(index + 1).padStart(2, '0')} <span className="text-xs font-medium text-slate-500">· K{Math.floor(index / 3) + 1}</span></td>
+                <td className="px-3 py-2"><input required type="date" min={calendarStart || undefined} max={calendarEnd || undefined} value={period.start_date} onChange={(event) => updateCalendarPeriod(index, 'start_date', event.target.value)} className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm" /></td>
+                <td className="px-3 py-2"><input required type="date" min={period.start_date || calendarStart || undefined} max={calendarEnd || undefined} value={period.end_date} onChange={(event) => updateCalendarPeriod(index, 'end_date', event.target.value)} className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm" /></td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+            <button type="button" disabled={calendarSaving} onClick={() => setCalendarModalOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">Batal</button>
+            <button type="submit" disabled={calendarSaving} className="rounded-lg bg-[#203D91] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{calendarSaving ? 'Menyimpan…' : calendarEditingYearId ? 'Simpan Perubahan' : 'Simpan Kalender'}</button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

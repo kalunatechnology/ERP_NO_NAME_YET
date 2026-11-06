@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
+import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
 import {
   createCRMIntegrationSource,
   deleteCRMIntegrationSource,
@@ -188,7 +189,9 @@ export default function LandingPageIntegrationSettings() {
         <div className="rounded-lg bg-white p-3"><div className="text-[11px] font-semibold uppercase text-[#64748B]">Integration ID · Key ID</div><div className="mt-1 break-all text-sm">{createdSource.id}</div><div className="mt-1 text-sm">{createdSource.key_id}</div><button className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#2649B3]" onClick={() => void copy(`${createdSource.id}\n${createdSource.key_id}`)}><Copy size={13}/>Salin ID dan Key ID</button></div>
         <div className="rounded-lg bg-white p-3 md:col-span-2"><div className="text-[11px] font-semibold uppercase text-[#64748B]">Signing Secret · tampil sekali</div><div className="mt-1 break-all font-mono text-sm">{createdSecret}</div><button className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#2649B3]" onClick={() => void copy(createdSecret)}>{copied ? <Check size={13}/> : <Copy size={13}/>} {copied ? "Tersalin" : "Salin secret"}</button></div>
       </div>
-      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><strong>Langkah lanjutan:</strong> landing page perlu kode server-side untuk membentuk event standar dan menandatangani request HMAC ke URL di atas. Layar ini mendaftarkan koneksi di Marka; ia tidak mengubah kode landing page secara otomatis.</div>
+      <CollapsibleGuideline title="Langkah lanjutan" className="mt-4">
+        Landing page perlu kode server-side untuk membentuk event standar dan menandatangani request HMAC ke URL di atas. Layar ini mendaftarkan koneksi di Marka; ia tidak mengubah kode landing page secara otomatis.
+      </CollapsibleGuideline>
     </section>}
 
     <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">

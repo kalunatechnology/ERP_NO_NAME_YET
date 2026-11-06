@@ -90,16 +90,46 @@ export class CRMService {
       });
       if (!inquiry) throw new NotFoundError('CustomerInquiry');
       const inquiryStatus = String(inquiry.status || '').toUpperCase();
-      if (inquiryStatus !== 'RESPONDED' && !(inquiryStatus === 'QUALIFIED' && inquiry.opportunity_id)) {
+      if (!['RESPONDED', 'QUALIFIED'].includes(inquiryStatus)) {
         throw new ConflictError('Lead harus ditandai Merespons sebelum dikualifikasi menjadi Opportunity.');
       }
-
-      let opportunityId = inquiry.opportunity_id;
-      const opportunityFromSource = await tx.crm_opportunity.findUnique({
-        where: { source_inquiry_id: inquiry.id },
+      if (!inquiry.customer_party_id) {
+        throw new ValidationError('Hubungkan Inquiry ke customer aktif sebelum menjadikannya Opportunity.');
+      }
+      const customerParty = await tx.master_party.findFirst({
+        where: { id: inquiry.customer_party_id, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
         select: { id: true },
       });
-      if (opportunityFromSource) opportunityId = opportunityFromSource.id;
+      if (!customerParty) throw new ValidationError('Customer pada Inquiry tidak aktif atau bukan milik company ini. Perbarui relasi customer terlebih dahulu.');
+      if (inquiry.contact_id) {
+        const linkedContact = await tx.master_contact.findFirst({
+          where: { id: inquiry.contact_id, company_id: companyId, party_id: customerParty.id },
+          select: { id: true },
+        });
+        if (!linkedContact) throw new ValidationError('PIC pada Inquiry tidak lagi cocok dengan customer. Perbarui relasi customer/PIC sebelum kualifikasi.');
+      }
+
+      const [opportunityFromSource, linkedOpportunity] = await Promise.all([
+        tx.crm_opportunity.findFirst({
+          where: { source_inquiry_id: inquiry.id, company_id: companyId },
+          select: { id: true, customer_party_id: true },
+        }),
+        inquiry.opportunity_id ? tx.crm_opportunity.findFirst({
+          where: { id: inquiry.opportunity_id, company_id: companyId },
+          select: { id: true, source_inquiry_id: true, customer_party_id: true },
+        }) : null,
+      ]);
+      if (opportunityFromSource && linkedOpportunity && opportunityFromSource.id !== linkedOpportunity.id) {
+        throw new ConflictError('Inquiry dan Opportunity tertaut ke dua record berbeda. Periksa relasi sebelum kualifikasi.');
+      }
+      if (linkedOpportunity?.source_inquiry_id && linkedOpportunity.source_inquiry_id !== inquiry.id) {
+        throw new ConflictError('Opportunity yang tertaut sudah berasal dari Inquiry lain. Periksa relasi sebelum kualifikasi.');
+      }
+      const existingOpportunity = opportunityFromSource ?? linkedOpportunity;
+      if (existingOpportunity?.customer_party_id && existingOpportunity.customer_party_id !== customerParty.id) {
+        throw new ConflictError('Customer pada Inquiry berbeda dengan Opportunity. Samakan customer sebelum kualifikasi.');
+      }
+      let opportunityId = existingOpportunity?.id ?? null;
       if (!opportunityId) {
         const opp = await tx.crm_opportunity.create({
           data: {
@@ -130,10 +160,15 @@ export class CRMService {
           },
         });
       } else {
+        await tx.crm_opportunity.update({
+          where: { id: opportunityId },
+          data: { source_inquiry_id: inquiry.id, customer_party_id: existingOpportunity?.customer_party_id ?? customerParty.id },
+        });
         await tx.crm_customer_inquiry.update({
           where: { id: inquiryId },
           data: {
             status: 'QUALIFIED',
+            opportunity_id: opportunityId,
             qualified_at: new Date(),
             updated_at: new Date(),
           },
@@ -143,12 +178,13 @@ export class CRMService {
       const updatedInquiry = await tx.crm_customer_inquiry.findUnique({
         where: { id: inquiryId },
       });
-      if (inquiryStatus !== 'QUALIFIED') await tx.crm_workflow_event.create({
+      if (inquiryStatus !== 'QUALIFIED' || !inquiry.opportunity_id) await tx.crm_workflow_event.create({
         data: {
           id: crypto.randomUUID(), tenant_id: inquiry.tenant_id, company_id: companyId,
-          inquiry_id: inquiry.id, opportunity_id: opportunityId, event_type: 'QUALIFY',
-          from_status: 'RESPONDED', to_status: 'QUALIFIED', actor_id: userId, created_by_id: userId,
-          payload_json: {}, created_at: new Date(),
+          inquiry_id: inquiry.id, opportunity_id: opportunityId,
+          event_type: inquiryStatus === 'QUALIFIED' ? 'REPAIR_QUALIFIED_LINK' : 'QUALIFY',
+          from_status: inquiryStatus, to_status: 'QUALIFIED', actor_id: userId, created_by_id: userId,
+          payload_json: { repaired_missing_opportunity_link: inquiryStatus === 'QUALIFIED' && !inquiry.opportunity_id }, created_at: new Date(),
         },
       });
 

@@ -1,15 +1,17 @@
 @echo off
-title Menjalankan Marka Logistik ERP Frontend
+title Menjalankan Marka Logistik ERP Frontend (Next.js)
+color 0B
 echo ========================================================
-echo    Menjalankan Marka Logistik ERP (Frontend-Next)
+echo    MENJALANKAN SISTEM ERP MARKA LOGISTIK (Next.js)
 echo ========================================================
 echo.
-cd /d "%~dp0\frontend-next"
+cd /d "%~dp0frontend-next"
 
-echo Memeriksa dependensi dan menjalankan server Next.js...
-echo Tampilan aplikasi akan tersedia di: http://localhost:3000
+set "PATH=C:\nvm4w\nodejs;%PATH%"
+
+echo Membuka server Next.js di http://localhost:3000 ...
+echo Silakan buka browser Anda di: http://localhost:3000
 echo.
 npm run dev
 
 pause
-

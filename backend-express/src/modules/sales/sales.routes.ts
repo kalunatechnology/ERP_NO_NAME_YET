@@ -334,6 +334,24 @@ salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Res
   }
 });
 
+salesRouter.get('/orders/transferable', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const orders = await prisma.sales_order.findMany({
+      where: { company_id: companyId, status: { in: ['CONFIRMED', 'ALLOCATED'] } },
+      orderBy: [{ order_date: 'desc' }, { created_at: 'desc' }],
+      take: 500,
+    });
+    const orderIds = orders.map((order) => order.id);
+    const existingProjects = orderIds.length ? await prisma.project_project.findMany({
+      where: { company_id: companyId, sales_order_id: { in: orderIds } },
+      select: { sales_order_id: true },
+    }) : [];
+    const transferredIds = new Set(existingProjects.flatMap((project) => project.sales_order_id ? [project.sales_order_id] : []));
+    res.json({ results: orders.filter((order) => !transferredIds.has(order.id)) });
+  } catch (error) { next(error); }
+});
+
 // =============================================================================
 // DELIVERY ACTIONS
 // =============================================================================

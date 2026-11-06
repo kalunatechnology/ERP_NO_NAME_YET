@@ -215,6 +215,20 @@ function parseCrudReadFilter(field: CrudFieldMetadata, raw: string): unknown {
   throw new ValidationError(`Tipe filter ${field.type} pada ${field.name} belum didukung.`);
 }
 
+function parseCrudDateRangeFilter(field: CrudFieldMetadata, raw: string, operator: string): Date {
+  if (field.type !== 'DateTime') throw new ValidationError(`Filter rentang ${field.name} hanya mendukung tanggal.`);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const start = new Date(`${raw}T00:00:00.000Z`);
+    if (!Number.isFinite(start.getTime()) || start.toISOString().slice(0, 10) !== raw) throw new ValidationError(`Tanggal filter ${field.name} tidak valid.`);
+    if (operator === 'lte') return new Date(start.getTime() + 86_400_000);
+    if (operator === 'gt') return new Date(start.getTime() + 86_400_000);
+    return start;
+  }
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) throw new ValidationError(`Tanggal filter ${field.name} tidak valid.`);
+  return date;
+}
+
 /**
  * getModelFields implements this file's named function contract.
  *
@@ -847,8 +861,9 @@ export function createCrudRouter(options: CrudOptions): Router {
         if (['page', 'page_size', 'search', 'ordering', 'cursor'].includes(key)) continue;
         if (val !== '') {
           if (typeof val !== 'string') throw new ValidationError(`Filter ${key} harus berupa satu nilai scalar.`);
+          const rangeMatch = key.match(/__(gte|gt|lte|lt)$/);
           const isInFilter = key.endsWith('__in');
-          const fieldKey = isInFilter ? key.slice(0, -4) : key;
+          const fieldKey = rangeMatch ? key.slice(0, -rangeMatch[0].length) : isInFilter ? key.slice(0, -4) : key;
           let resolvedKey = fieldKey;
           if (fieldKey === 'project') resolvedKey = 'project_id';
           else if (fieldKey === 'main_task') resolvedKey = 'main_task_id';
@@ -862,7 +877,12 @@ export function createCrudRouter(options: CrudOptions): Router {
 
           const field = modelMetadata?.fields.find(item => item.name === resolvedKey);
           if (!field || validFields.size > 0 && !validFields.has(resolvedKey)) throw new ValidationError(`Filter ${key} tidak tersedia pada model ${modelNameStr}.`);
-          if (isInFilter) {
+          if (rangeMatch) {
+            const operator = rangeMatch[1];
+            const date = parseCrudDateRangeFilter(field, val, operator);
+            const prismaOperator = operator === 'lte' && /^\d{4}-\d{2}-\d{2}$/.test(val) ? 'lt' : operator === 'gt' && /^\d{4}-\d{2}-\d{2}$/.test(val) ? 'gte' : operator;
+            andConditions.push({ [resolvedKey]: { [prismaOperator]: date } });
+          } else if (isInFilter) {
             let values: unknown;
             try { values = JSON.parse(val); } catch { throw new ValidationError(`Filter ${key} harus berupa array JSON.`); }
             if (!Array.isArray(values) || values.length > 100 || values.some(item => item === null || !['string', 'number', 'boolean'].includes(typeof item))) {

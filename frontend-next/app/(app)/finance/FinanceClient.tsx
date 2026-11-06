@@ -16,7 +16,7 @@ import {
   BookOpen, BarChart3, Activity, Banknote, ArrowLeftRight, TrendingDown,
   AlertTriangle, CheckSquare, Clock, Eye, LayoutDashboard, Crown, BriefcaseBusiness,
   ClipboardList, Receipt, RotateCcw, WalletCards, LibraryBig, FileBarChart,
-  Link2, Calculator, CalendarRange, HardHat, Send, Info
+  Link2, Calculator, CalendarRange, HardHat, Send, Info, Search, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { cn, formatMoney, formatRupiah, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
@@ -27,9 +27,12 @@ import toast from "react-hot-toast";
 import { feedApi } from "@/lib/api/feed.api";
 import { InventoryCheckingCard } from "@/components/ui/InventoryCheckingCard";
 import { BudgetCheckStatusCard } from "@/components/ui/BudgetCheckStatusCard";
+import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
+import { IDRInput } from "@/components/ui/IDRInput";
 import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
 import { ProjectTaxWorkspace } from "@/components/finance/ProjectTaxWorkspace";
 import { CompanyMasterWorkspace } from "@/components/finance/CompanyMasterWorkspace";
+import { FinanceSummarySection } from "@/components/finance/FinanceSummarySection";
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 import { useAuth } from "@/contexts/AuthContext";
 import { canRequestApi } from "@/lib/access/module-contract";
@@ -63,12 +66,21 @@ const FINANCE_TABS = [
   { id: "audit_trail", label: "Audit Trail", icon: ShieldCheck },
 ];
 
+const GL_PAGE_SIZE = 10;
+
 function isCostEntryCreator(entry: { created_by_id?: string | number | null }, userId?: string | number) {
   return Boolean(entry.created_by_id && userId && String(entry.created_by_id) === String(userId));
 }
 
 function isWipPosted(status?: string) {
   return ["POSTED", "POSTED_TO_WIP"].includes(String(status || "").toUpperCase());
+}
+
+function formatJournalCode(value: unknown) {
+  const code = String(value ?? "-");
+  const prefixedUuid = code.match(/^(.+?)-([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  if (prefixedUuid) return `${prefixedUuid[1]}-${prefixedUuid[2]}`;
+  return code.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i, uuid => `${uuid.slice(0, 8)}…`);
 }
 
 type WipPostingReadiness = {
@@ -203,10 +215,37 @@ export default function FinanceClient() {
   const [divisionOptions, setDivisionOptions] = useState<any[]>([]);
   const [costCreditAccountId, setCostCreditAccountId] = useState("");
   const [glActiveTab, setGlActiveTab] = useState<"trial" | "entries">("trial");
+  const [trialBalanceSearch, setTrialBalanceSearch] = useState("");
+  const [trialBalanceTypeFilter, setTrialBalanceTypeFilter] = useState("ALL");
+  const [trialBalancePage, setTrialBalancePage] = useState(1);
+  const [journalSearch, setJournalSearch] = useState("");
+  const [journalStatusFilter, setJournalStatusFilter] = useState("ALL");
+  const [journalPage, setJournalPage] = useState(1);
+  const [financeFiscalYears, setFinanceFiscalYears] = useState<any[]>([]);
+  const [financeFiscalPeriods, setFinanceFiscalPeriods] = useState<any[]>([]);
+  const [financeCalendarReady, setFinanceCalendarReady] = useState(false);
+  const [selectedFinanceYearId, setSelectedFinanceYearId] = useState("");
+  const [financePeriodView, setFinancePeriodView] = useState<"YEAR" | "QUARTER" | "MONTH">("YEAR");
+  const [financeQuarter, setFinanceQuarter] = useState("1");
+  const [financePeriodId, setFinancePeriodId] = useState("");
   const [lapkeuActiveTab, setLapkeuActiveTab] = useState<"pl" | "bs">("pl");
   const [isReversalModalOpen, setIsReversalModalOpen] = useState(false);
   const [selectedJournalEntry, setSelectedJournalEntry] = useState<any>(null);
   const [reversalReason, setReversalReason] = useState("");
+
+  const periodsInSelectedYear = financeFiscalPeriods
+    .filter((period) => period.fiscal_year_id === selectedFinanceYearId)
+    .sort((a, b) => Number(a.period_number || 0) - Number(b.period_number || 0));
+  const selectedFinancePeriods = financePeriodView === "MONTH"
+    ? periodsInSelectedYear.filter((period) => period.id === financePeriodId)
+    : financePeriodView === "QUARTER"
+      ? periodsInSelectedYear.filter((period) => Number(period.period_number) >= (Number(financeQuarter) - 1) * 3 + 1 && Number(period.period_number) <= Number(financeQuarter) * 3)
+      : periodsInSelectedYear;
+  const financePeriodStart = selectedFinancePeriods.map((period) => String(period.start_date || "").slice(0, 10)).filter(Boolean).sort()[0] || "";
+  const financePeriodEnd = selectedFinancePeriods.map((period) => String(period.end_date || "").slice(0, 10)).filter(Boolean).sort().at(-1) || "";
+  const financeDateRangeQuery = (field: string) => financePeriodStart && financePeriodEnd
+    ? `&${field}__gte=${encodeURIComponent(financePeriodStart)}&${field}__lte=${encodeURIComponent(financePeriodEnd)}`
+    : "";
 
   /* Modals */
   const [isCostModalOpen, setIsCostModalOpen] = useState(false);
@@ -295,29 +334,45 @@ export default function FinanceClient() {
         }
       };
 
-      const [costRes, wipReadinessRes, fundRes, propRes, apRes, receiptRes, paymentRes, bankMatchPaymentRes, tbRes, jeRes, plRes, bsRes, stmtLinesRes, reconciliationRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes] = await Promise.all([
-        safeGet("/api/v1/finance/project-cost-entries/?page_size=50", "costing"),
+      const reportRangeQuery = financePeriodStart && financePeriodEnd
+        ? `?start_date=${encodeURIComponent(financePeriodStart)}&end_date=${encodeURIComponent(financePeriodEnd)}`
+        : "";
+      const balanceSheetDateQuery = financePeriodEnd ? `?as_of_date=${encodeURIComponent(financePeriodEnd)}` : "";
+      const [costRes, wipReadinessRes, fundRes, propRes, apRes, receiptRes, paymentRes, bankMatchPaymentRes, tbRes, jeRes, plRes, bsRes, stmtLinesRes, reconciliationRes, bankRes, accountRes, projectOptionRes, vendorOptionRes, divisionRes, fiscalPeriodRes, fiscalYearRes] = await Promise.all([
+        safeGet(`/api/v1/finance/project-cost-entries/?page_size=50${financeDateRangeQuery("transaction_date")}`, "costing"),
         canOperateFinance
           ? safeGet("/api/v1/finance/project-cost-entries/wip-readiness", "costing")
           : Promise.resolve({ data: [] }),
-        safeGet("/api/v1/finance/project-fundings/?page_size=50", "fundings"),
-        safeGet("/api/v1/finance/billing-proposals/?page_size=50", "billing"),
-        safeGet("/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50", "ap"),
-        safeGet("/api/v1/finance/customer-receipts/?page_size=50", "ar"),
-        safeGet("/api/v1/finance/payments/?payment_type=OUTGOING&page_size=50", "ap"),
-        safeGet("/api/v1/finance/payments/?status=POSTED&page_size=200", "banking_hub"),
-        safeGet("/api/v1/finance/trial-balance", "gl"),
-        safeGet("/api/v1/finance/journal-entries/?page_size=30&ordering=-posting_date", "gl"),
-        safeGet("/api/v1/finance/profit-and-loss", "lapkeu"),
-        safeGet("/api/v1/finance/balance-sheet", "lapkeu"),
-        safeGet("/api/v1/finance/bank-statement-lines/?page_size=200", "banking_hub"),
+        safeGet(`/api/v1/finance/project-fundings/?page_size=50${financeDateRangeQuery("start_date")}`, "fundings"),
+        safeGet(`/api/v1/finance/billing-proposals/?page_size=50${financeDateRangeQuery("created_at")}`, "billing"),
+        safeGet(`/api/v1/finance/billing-documents/?billing_type=SUPPLIER_INVOICE&page_size=50${financeDateRangeQuery("invoice_date")}`, "ap"),
+        safeGet(`/api/v1/finance/customer-receipts/?page_size=50${financeDateRangeQuery("payment_date")}`, "ar"),
+        safeGet(`/api/v1/finance/payments/?payment_type=OUTGOING&page_size=50${financeDateRangeQuery("payment_date")}`, "ap"),
+        safeGet(`/api/v1/finance/payments/?status=POSTED&page_size=200${financeDateRangeQuery("payment_date")}`, "banking_hub"),
+        safeGet(`/api/v1/finance/trial-balance${reportRangeQuery}`, "gl"),
+        safeGet(`/api/v1/finance/journal-entries/?page_size=500&ordering=-posting_date${financeDateRangeQuery("posting_date")}`, "gl"),
+        safeGet(`/api/v1/finance/profit-and-loss${reportRangeQuery}`, "lapkeu"),
+        safeGet(`/api/v1/finance/balance-sheet${balanceSheetDateQuery}`, "lapkeu"),
+        safeGet(`/api/v1/finance/bank-statement-lines/?page_size=200${financeDateRangeQuery("transaction_date")}`, "banking_hub"),
         safeGet("/api/v1/finance/bank-reconciliations/?page_size=200", "banking_hub"),
         safeGet("/api/v1/finance/bank-accounts/?page_size=100", "cashbank"),
         safeGet("/api/v1/finance/accounts/?page_size=300", "gl"),
         safeGet("/api/v1/finance/project-options", "costing"),
         safeGet("/api/v1/finance/party-options?role=VENDOR", "ap"),
         api.get("/api/v1/core/organizations/?organization_type=DIVISION&page_size=200").catch(() => ({ data: [] })),
+        safeGet("/api/v1/finance/fiscal-periods/status", "period_closing"),
+        safeGet("/api/v1/finance/fiscal-years?page_size=100", "period_closing"),
       ]);
+
+      const loadedFiscalPeriods = normalizeList<any>(fiscalPeriodRes.data).rows;
+      const loadedFiscalYears = normalizeList<any>(fiscalYearRes.data).rows;
+      setFinanceFiscalPeriods(loadedFiscalPeriods);
+      setFinanceFiscalYears(loadedFiscalYears);
+      if (!selectedFinanceYearId && loadedFiscalYears.length) {
+        setSelectedFinanceYearId(loadedFiscalYears[0].id);
+        const firstPeriod = loadedFiscalPeriods.find((period) => period.fiscal_year_id === loadedFiscalYears[0].id);
+        if (firstPeriod) setFinancePeriodId(firstPeriod.id);
+      }
 
       setCostEntries(normalizeList(costRes.data).rows);
       setWipPostingReadiness(Object.fromEntries(
@@ -336,8 +391,8 @@ export default function FinanceClient() {
       const receiptIds = normalizeList<any>(receiptRes.data).rows.map(receipt => receipt.id).join(",");
       const [readinessResponse, invoicesResponse, receiptSummaryResponse] = await Promise.all([
         receiptIds ? safeGet(`/api/v1/finance/customer-receipts/workflow-readiness?ids=${encodeURIComponent(receiptIds)}`, "ar") : Promise.resolve({ data: [] }),
-        safeGet("/api/v1/finance/billing-documents/?billing_type=CUSTOMER_INVOICE&page_size=200", "ar"),
-        safeGet("/api/v1/finance/customer-receipts/summary", "ar"),
+        safeGet(`/api/v1/finance/billing-documents/?billing_type=CUSTOMER_INVOICE&page_size=200${financeDateRangeQuery("invoice_date")}`, "ar"),
+        safeGet(`/api/v1/finance/customer-receipts/summary${reportRangeQuery}`, "ar"),
       ]);
       setReceiptReadiness(Object.fromEntries(normalizeList<any>(readinessResponse.data).rows.map(item => [item.receipt_id, item])));
       setCustomerInvoices(normalizeList<any>(invoicesResponse.data).rows);
@@ -348,7 +403,7 @@ export default function FinanceClient() {
       else if (tbRes.data?.accounts) setTrialBalance(tbRes.data);
 
       const jeList = normalizeList(jeRes.data).rows;
-      if (jeList.length > 0) setJournalEntries(jeList);
+      setJournalEntries(jeList);
 
       if (plRes.data?.data) setProfitLoss(plRes.data.data);
       else if (plRes.data?.revenues) setProfitLoss(plRes.data);
@@ -359,7 +414,8 @@ export default function FinanceClient() {
       const statementLines = normalizeList<any>(stmtLinesRes.data).rows;
       const reconciliationRows = normalizeList<any>(reconciliationRes.data).rows;
       setBankStatements(statementLines);
-      setBankReconciliations(reconciliationRows);
+      const visibleStatementLineIds = new Set(statementLines.map((line) => String(line.id)));
+      setBankReconciliations(reconciliationRows.filter((row) => visibleStatementLineIds.has(String(row.bank_statement_line_id))));
       const bankRows = normalizeList<any>(bankRes.data).rows;
       const bankBalances = await Promise.all(bankRows.map(async account => {
         if (!account.ledger_account_id) return undefined;
@@ -389,6 +445,7 @@ export default function FinanceClient() {
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Data keuangan belum dapat dimuat. Periksa koneksi dan akses perusahaan, lalu coba lagi."));
     } finally {
+      setFinanceCalendarReady(true);
       setLoading(false);
       setRefreshing(false);
     }
@@ -459,6 +516,22 @@ export default function FinanceClient() {
   useEffect(() => {
     loadFinanceData();
   }, []);
+
+  useEffect(() => {
+    const refreshCalendarData = (event: Event) => {
+      const fiscalYearId = (event as CustomEvent<{ fiscalYearId?: string }>).detail?.fiscalYearId;
+      if (fiscalYearId) setSelectedFinanceYearId(fiscalYearId);
+      setFinancePeriodView("YEAR");
+      void loadFinanceData(true);
+    };
+    window.addEventListener("finance-calendar-updated", refreshCalendarData);
+    return () => window.removeEventListener("finance-calendar-updated", refreshCalendarData);
+  });
+
+  useEffect(() => {
+    if (!financeCalendarReady || !selectedFinanceYearId || !financeFiscalPeriods.length) return;
+    loadFinanceData(true);
+  }, [financeCalendarReady, selectedFinanceYearId, financePeriodView, financeQuarter, financePeriodId, financeFiscalPeriods.length]);
 
   /* KPI Calculations */
   const totalCostEntries = costEntries.reduce(
@@ -718,6 +791,26 @@ export default function FinanceClient() {
     }
   };
 
+  const trialBalanceAccounts = (trialBalance?.accounts || []).filter((account: any) => {
+    const query = trialBalanceSearch.trim().toLowerCase();
+    const matchesSearch = !query || `${account.account_code || ""} ${account.account_name || ""} ${account.account_type || ""}`.toLowerCase().includes(query);
+    const matchesType = trialBalanceTypeFilter === "ALL" || account.account_type === trialBalanceTypeFilter;
+    return matchesSearch && matchesType;
+  });
+  const trialBalancePageCount = Math.max(1, Math.ceil(trialBalanceAccounts.length / GL_PAGE_SIZE));
+  const visibleTrialBalancePage = Math.min(trialBalancePage, trialBalancePageCount);
+  const visibleTrialBalanceAccounts = trialBalanceAccounts.slice((visibleTrialBalancePage - 1) * GL_PAGE_SIZE, visibleTrialBalancePage * GL_PAGE_SIZE);
+
+  const filteredJournalEntries = journalEntries.filter((entry: any) => {
+    const query = journalSearch.trim().toLowerCase();
+    const matchesSearch = !query || `${entry.entry_number || ""} ${entry.description || ""} ${entry.posting_date || ""} ${entry.status || ""}`.toLowerCase().includes(query);
+    const matchesStatus = journalStatusFilter === "ALL" || entry.status === journalStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+  const journalPageCount = Math.max(1, Math.ceil(filteredJournalEntries.length / GL_PAGE_SIZE));
+  const visibleJournalPage = Math.min(journalPage, journalPageCount);
+  const visibleJournalEntries = filteredJournalEntries.slice((visibleJournalPage - 1) * GL_PAGE_SIZE, visibleJournalPage * GL_PAGE_SIZE);
+
   if (loading) {
     return (
       <div className="flex flex-col gap-4">
@@ -770,6 +863,46 @@ export default function FinanceClient() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+        <div className="mr-auto min-w-[150px]">
+          <p className="text-sm font-semibold text-blue-950">Periode Finance</p>
+          <p className="text-xs text-blue-800">Batas tanggal mengikuti kalender perusahaan.</p>
+        </div>
+        <label className="min-w-[180px] text-xs font-semibold text-text-secondary">Tahun buku
+          <select value={selectedFinanceYearId} onChange={(event) => {
+            const yearId = event.target.value;
+            setSelectedFinanceYearId(yearId);
+            const nextYearPeriods = financeFiscalPeriods.filter((period) => period.fiscal_year_id === yearId).sort((a, b) => Number(a.period_number || 0) - Number(b.period_number || 0));
+            setFinancePeriodId(nextYearPeriods[0]?.id || "");
+            setJournalPage(1);
+          }} className="input mt-1 w-full text-sm">
+            {financeFiscalYears.map((year) => <option key={year.id} value={year.id}>{year.fiscal_year_name}</option>)}
+            {!financeFiscalYears.length && <option value="">Kalender belum diatur</option>}
+          </select>
+        </label>
+        <label className="min-w-[140px] text-xs font-semibold text-text-secondary">Rentang
+          <select value={financePeriodView} onChange={(event) => {
+            const nextView = event.target.value as "YEAR" | "QUARTER" | "MONTH";
+            setFinancePeriodView(nextView);
+            setJournalPage(1);
+            if (nextView === "MONTH" && !financePeriodId) setFinancePeriodId(periodsInSelectedYear[0]?.id || "");
+          }} className="input mt-1 w-full text-sm">
+            <option value="YEAR">Tahunan</option><option value="QUARTER">Kuartalan</option><option value="MONTH">Bulanan</option>
+          </select>
+        </label>
+        {financePeriodView === "QUARTER" && <label className="min-w-[125px] text-xs font-semibold text-text-secondary">Kuartal
+          <select value={financeQuarter} onChange={(event) => { setFinanceQuarter(event.target.value); setJournalPage(1); }} className="input mt-1 w-full text-sm">
+            {[1, 2, 3, 4].map((quarter) => <option key={quarter} value={quarter}>Kuartal {quarter}</option>)}
+          </select>
+        </label>}
+        {financePeriodView === "MONTH" && <label className="min-w-[200px] text-xs font-semibold text-text-secondary">Bulan / Periode
+          <select value={financePeriodId} onChange={(event) => { setFinancePeriodId(event.target.value); setJournalPage(1); }} className="input mt-1 w-full text-sm">
+            {periodsInSelectedYear.map((period) => <option key={period.id} value={period.id}>Periode {String(period.period_number).padStart(2, "0")} · {formatDate(period.start_date)}–{formatDate(period.end_date)}</option>)}
+          </select>
+        </label>}
+        <span className="pb-2 text-xs font-semibold text-blue-900">{financePeriodStart && financePeriodEnd ? `${formatDate(financePeriodStart)} – ${formatDate(financePeriodEnd)}` : "Belum ada kalender fiskal"}</span>
+      </div>
+
       {userRole === "executive" && !canOperateFinance && (
         <div className="p-3.5 rounded-2xl bg-[#FAF5FF] border border-[#E9D5FF] text-xs text-[#581C87] flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between shadow-2xs">
           <div className="flex min-w-0 flex-1 items-start gap-2">
@@ -791,6 +924,10 @@ export default function FinanceClient() {
       {/* ── TAB 1: OVERVIEW ────────────────────── */}
       {activeTab === "overview" && (
         <div className="flex flex-col gap-6">
+          <FinanceSummarySection
+            title="Ringkasan Keuangan"
+            subtitle="Indikator utama; rincian dan tindakan tersedia pada bagian di bawah."
+          >
           <div className="workspace-kpis grid gap-3">
             <div className="kpi-card">
               <span className="text-xs text-text-secondary">Total Revenue (Billing)</span>
@@ -809,6 +946,7 @@ export default function FinanceClient() {
               <span className="text-2xl font-bold text-brand-green">{formatMoney(totalFunding)}</span>
             </div>
           </div>
+          </FinanceSummarySection>
 
           {/* ── Live Control & Financial Monitoring (Inventory & Budget) ── */}
           <div className="flex flex-col gap-5">
@@ -835,7 +973,12 @@ export default function FinanceClient() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="card rounded-2xl p-5 flex flex-col gap-3">
-                <h3 className="text-sm font-semibold text-text-primary">Biaya Proyek Terkini (Cost Entries)</h3>
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
+                    <ClipboardList size={16} aria-hidden="true" />
+                  </span>
+                  <h3 className="text-sm font-semibold text-text-primary">Biaya Proyek Terkini (Cost Entries)</h3>
+                </div>
                 <div className="divide-y divide-text-tertiary">
                   {costEntries.slice(0, 4).map(c => (
                     <div key={c.id} className="py-2.5 flex items-center justify-between text-xs">
@@ -851,7 +994,12 @@ export default function FinanceClient() {
               </div>
 
               <div className="card rounded-2xl p-5 flex flex-col gap-3">
-                <h3 className="text-sm font-semibold text-text-primary">Billing Termin Klien (Proposals)</h3>
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-lg bg-brand-light-green text-brand-deep-green flex items-center justify-center">
+                    <Receipt size={16} aria-hidden="true" />
+                  </span>
+                  <h3 className="text-sm font-semibold text-text-primary">Billing Termin Klien (Proposals)</h3>
+                </div>
                 <div className="divide-y divide-text-tertiary">
                   {proposals.slice(0, 4).map(p => (
                     <div key={p.id} className="py-2.5 flex items-center justify-between text-xs">
@@ -874,23 +1022,23 @@ export default function FinanceClient() {
       {activeTab === "profit" && (
         <div className="flex flex-col gap-6">
           <MonthlyStackedBarChart
-            title="Tren Pendapatan & Biaya Bulanan (Monthly Stacked Run-Rate)"
-            subtitle="Distribusi pendapatan termin (Realized) vs alokasi biaya WIP/material per bulan fiskal"
-            primaryLabel="Realisasi Kas (Jt)"
-            secondaryLabel="Alokasi WIP / Biaya Proyek (Jt)"
+            title="Tren Pendapatan dan Biaya Bulanan"
+            subtitle="Perbandingan pendapatan termin yang terealisasi dan alokasi biaya proyek per bulan fiskal."
+            primaryLabel="Realisasi Kas"
+            secondaryLabel="Alokasi Biaya Proyek"
             autoFetch={true}
           />
 
           <div className="card rounded-2xl p-5 flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-text-primary">Analisis Profitabilitas & Margin Proyek (EVM)</h3>
+            <h3 className="text-sm font-semibold text-text-primary">Analisis Profitabilitas Proyek berbasis EVM</h3>
             <div className="table-scroll-wrapper">
               <table className="w-full data-table min-w-[560px]">
                 <thead>
                   <tr>
                     <th>Nama Proyek</th>
-                    <th>Nilai Kontrak (Revenue)</th>
-                    <th>Biaya Riil (Actual Cost)</th>
-                    <th>Laba Kotor (Gross Margin)</th>
+                    <th>Nilai Kontrak</th>
+                    <th>Biaya Aktual</th>
+                    <th>Laba Kotor</th>
                     <th>Margin (%)</th>
                     <th>Status EVM</th>
                   </tr>
@@ -946,9 +1094,9 @@ export default function FinanceClient() {
               </button>
             )}
           </div>
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-2xs text-amber-900">
+          <CollapsibleGuideline title="Panduan posting biaya WIP">
             Posting ke WIP membuat jurnal akuntansi. Untuk menjaga kontrol Maker–Checker, cost entry yang Anda buat sendiri harus diposting oleh user Finance lain.
-          </div>
+          </CollapsibleGuideline>
           {canOperateFinance && (
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-text-secondary">Akun sumber kredit posting WIP</label>
@@ -969,7 +1117,7 @@ export default function FinanceClient() {
                   <th>Divisi</th>
                   <th>Jumlah Biaya</th>
                   <th>Status Akuntansi</th>
-                  <th>{canOperateFinance ? "Aksi Posting" : "Status Posting"}</th>
+                  <th>{canOperateFinance ? "Action" : "Status Posting"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1049,7 +1197,7 @@ export default function FinanceClient() {
           <div className="flex justify-between items-center flex-wrap gap-2">
             <div>
               <h3 className="text-sm font-semibold text-text-primary">Accounts Payable & Verifikasi Dokumen</h3>
-              <p className="text-2xs text-text-secondary">Lifecycle invoice supplier dan pembayaran AP. Pencocokan PO/GRN hanya ditampilkan jika backend menyediakan referensinya.</p>
+              <p className="text-xs text-text-secondary">Lifecycle invoice supplier dan pembayaran AP. Pencocokan PO/GRN hanya ditampilkan jika backend menyediakan referensinya.</p>
             </div>
             {canOperateFinance && (
               <button onClick={() => setIsAPModalOpen(true)} className="btn-primary py-1.5 px-3 text-xs gap-1.5">
@@ -1061,12 +1209,12 @@ export default function FinanceClient() {
           <div className="table-scroll-wrapper">
             <table className="w-full data-table text-xs min-w-[580px]">
               <thead>
-              <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
+              <tr className="bg-gray-50 text-xs uppercase tracking-wide text-text-secondary">
                 <th className="py-2.5 px-3">Nama Vendor / Supplier</th>
                 <th className="py-2.5 px-3">Nomor Faktur</th>
                 <th className="py-2.5 px-3">Jumlah Tagihan</th>
                 <th className="py-2.5 px-3">Status Verifikasi</th>
-                <th className="py-2.5 px-3 text-right">{canOperateFinance ? "Aksi Workflow" : "Status Workflow"}</th>
+                <th className="py-2.5 px-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -1078,7 +1226,7 @@ export default function FinanceClient() {
                   <tr key={b.id} className={cn("hover:bg-brand-light-green/20 border-b border-gray-100", isPaid && "bg-brand-light-green/30")}>
                     <td className="py-3 px-3">
                       <strong className="text-text-primary block font-bold">{b.supplier_name || b.party_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.display_name || vendorOptions.find((vendor) => vendor.id === b.party_id)?.legal_name || "Vendor tidak tersedia"}</strong>
-                      <span className="text-2xs text-text-secondary">Jatuh Tempo: {b.due_date || "Belum ditentukan"}</span>
+                      <span className="text-xs text-text-secondary">Jatuh Tempo: {b.due_date || "Belum ditentukan"}</span>
                     </td>
                     <td className="py-3 px-3 font-mono font-semibold text-text-secondary">
                       {b.invoice_number || `INV-${b.id}`}
@@ -1090,65 +1238,67 @@ export default function FinanceClient() {
                     </td>
                     <td className="py-3 px-3">
                       {isPaid ? (
-                        <span className="badge badge-success text-2xs font-bold py-0.5 px-2">
+                        <span className="badge badge-success text-xs font-bold py-1 px-2">
                           ✓ Lunas Dibayar
                         </span>
                       ) : isMatched ? (
-                        <span className="badge text-2xs font-bold py-0.5 px-2 bg-brand-light-green text-brand-deep-green border border-brand-primary-soft">
+                        <span className="badge text-xs font-bold py-1 px-2 bg-brand-light-green text-brand-deep-green border border-brand-primary-soft">
                           ✓ Match (Siap Bayar)
                         </span>
                       ) : (
-                        <span className="badge badge-warning text-2xs font-bold py-0.5 px-2">
+                        <span className="badge badge-warning text-xs font-bold py-1 px-2">
                           {b.status || "DRAFT"}
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-right">
-                      {canOperateFinance ? (
-                        <>
+                    <td className="py-3 px-3">
+                      <div className="flex justify-end">
+                        {canOperateFinance ? (
+                          <>
                           {b.status === "DRAFT" && (
-                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/submit`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
+                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/submit`); await loadFinanceData(true); }} className="btn-outline py-1.5 px-3 text-xs font-semibold">
                               Submit
                             </button>
                           )}
                           {b.status === "SUBMITTED" && (
                             <button
                               onClick={() => handleVerifyThreeWayMatch(b)}
-                              className="btn-outline py-1 px-3 text-2xs gap-1 text-brand-deep-green border-brand-green/50 hover:bg-brand-light-green font-bold"
+                              className="btn-outline py-1.5 px-3 text-xs gap-1 font-semibold"
                             >
-                              <ShieldCheck size={12} /> Verifikasi Dokumen
+                              <ShieldCheck size={14} /> Verifikasi Dokumen
                             </button>
                           )}
                           {b.status === "VERIFIED" && (
-                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/approve`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
+                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/approve`); await loadFinanceData(true); }} className="btn-outline py-1.5 px-3 text-xs font-semibold">
                               Setujui
                             </button>
                           )}
                           {b.status === "APPROVED" && (
-                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/post`); await loadFinanceData(true); }} className="btn-outline py-1 px-3 text-2xs">
+                            <button onClick={async () => { await api.post(`/api/v1/finance/billing-documents/${b.id}/post`); await loadFinanceData(true); }} className="btn-outline py-1.5 px-3 text-xs font-semibold">
                               Posting
                             </button>
                           )}
                           {b.status === "POSTED" && !isPaid && (
                             <button
                               onClick={() => handleOpenPayModal(b)}
-                              className="btn-primary py-1 px-3 text-2xs gap-1 bg-brand-green hover:bg-brand-deep-green font-bold shadow-xs"
+                              className="btn-outline py-1.5 px-3 text-xs gap-1 font-semibold"
                             >
-                              <CreditCard size={12} /> Bayar tagihan
+                              <CreditCard size={14} /> Bayar tagihan
                             </button>
                           )}
 
                           {isPaid && (
-                            <span className="text-xs text-brand-deep-green font-bold flex items-center justify-end gap-1">
+                        <span className="text-xs text-brand-deep-green font-semibold inline-flex items-center gap-1">
                               <CheckCircle2 size={14} className="text-brand-green" /> Selesai Dibayar
                             </span>
                           )}
-                        </>
-                      ) : (
-                        <span className="text-2xs text-text-secondary font-medium">
-                          {isPaid ? "Lunas Dibayar" : isMatched ? "Match (Siap Bayar)" : b.status || "DRAFT"}
+                          </>
+                        ) : (
+                        <span className={cn("text-xs font-semibold", isPaid ? "text-brand-deep-green" : "text-text-secondary")}>
+                          {isPaid ? "Selesai Dibayar" : isMatched ? "Siap Bayar" : b.status || "DRAFT"}
                         </span>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1170,7 +1320,7 @@ export default function FinanceClient() {
                       <span className="ml-2 text-text-secondary">{formatMoney(payment.amount ?? 0)} · {payment.status}</span>
                     </div>
                     {canOperateFinance && ['SUBMITTED', 'APPROVED'].includes(payment.status) && (
-                      <button onClick={() => handlePaymentLifecycle(payment)} className="btn-outline py-1 px-3 text-2xs">
+                      <button onClick={() => handlePaymentLifecycle(payment)} className="btn-outline py-1.5 px-3 text-xs font-semibold">
                         {payment.status === 'SUBMITTED' ? 'Setujui Payment' : 'Eksekusi Payment'}
                       </button>
                     )}
@@ -1190,31 +1340,36 @@ export default function FinanceClient() {
             <AccessDeniedState compact section="Billing Termin" />
           </div>
         ) : (
-        <div className="flex flex-col gap-4">
-          {/* 3 Metrics Strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="card rounded-xl p-3.5 border border-gray-200 bg-white">
-              <span className="text-3xs font-semibold uppercase tracking-wider text-text-secondary">Total DPP Termin</span>
-              <div className="text-base font-bold font-mono text-text-primary mt-1">
-                {formatMoney(proposals.reduce((sum, p) => sum + Number(p.subtotal || 0), 0))}
+        <div className="flex flex-col gap-4 font-sans">
+          {/* Read-only billing summary */}
+          <FinanceSummarySection
+            title="Ringkasan Billing"
+            subtitle="Ringkasan nilai termin, pajak, dan tagihan klien."
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="card rounded-xl border border-blue-100 border-l-4 border-l-[#2649B3] bg-white p-4 shadow-xs">
+                <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total DPP Termin</span>
+                <div className="mt-1 font-sans text-lg font-bold tabular-nums text-text-primary">
+                  {formatMoney(proposals.reduce((sum, p) => sum + Number(p.subtotal || 0), 0))}
+                </div>
+                <span className="mt-1 block text-xs text-text-secondary">{proposals.length} termin diajukan</span>
               </div>
-              <span className="text-3xs text-text-secondary mt-0.5 block">{proposals.length} termin diajukan</span>
-            </div>
-            <div className="card rounded-xl p-3.5 border border-gray-200 bg-white">
-              <span className="text-3xs font-semibold uppercase tracking-wider text-text-secondary">Total PPN Terbit</span>
-              <div className="text-base font-bold font-mono text-blue-700 mt-1">
-                {formatMoney(proposals.reduce((sum, p) => sum + Number(p.tax_amount || 0), 0))}
+              <div className="card rounded-xl border border-blue-100 border-l-4 border-l-sky-500 bg-white p-4 shadow-xs">
+                <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total PPN Terbit</span>
+                <div className="mt-1 font-sans text-lg font-bold tabular-nums text-blue-700">
+                  {formatMoney(proposals.reduce((sum, p) => sum + Number(p.tax_amount || 0), 0))}
+                </div>
+                <span className="mt-1 block text-xs text-text-secondary">PPN Keluaran 11%</span>
               </div>
-              <span className="text-3xs text-text-secondary mt-0.5 block">PPN Keluaran 11%</span>
-            </div>
-            <div className="card rounded-xl p-3.5 border border-gray-200 bg-white">
-              <span className="text-3xs font-semibold uppercase tracking-wider text-text-secondary">Total Tagihan Bruto</span>
-              <div className="text-base font-bold font-mono text-brand-deep-green mt-1">
-                {formatMoney(proposals.reduce((sum, p) => sum + Number(p.total_amount || 0), 0))}
+              <div className="card rounded-xl border border-blue-100 border-l-4 border-l-brand-green bg-white p-4 shadow-xs">
+                <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total Tagihan Bruto</span>
+                <div className="mt-1 font-sans text-lg font-bold tabular-nums text-brand-deep-green">
+                  {formatMoney(proposals.reduce((sum, p) => sum + Number(p.total_amount || 0), 0))}
+                </div>
+                <span className="mt-1 block text-xs text-text-secondary">Nilai piutang klien</span>
               </div>
-              <span className="text-3xs text-text-secondary mt-0.5 block">Nilai piutang klien</span>
             </div>
-          </div>
+          </FinanceSummarySection>
 
           <div className="card rounded-2xl p-5 flex flex-col gap-4 border border-gray-200 bg-white shadow-xs">
             <div className="flex justify-between items-center flex-wrap gap-2">
@@ -1237,7 +1392,7 @@ export default function FinanceClient() {
                   <th className="py-2.5 px-3 text-right">PPN</th>
                   <th className="py-2.5 px-3 text-right">Total Tagihan</th>
                   <th className="py-2.5 px-3 text-center">Status Termin</th>
-                  <th className="py-2.5 px-3 text-right">{canOperateFinance ? "Aksi Workflow" : "Status Penagihan"}</th>
+                  <th className="py-2.5 px-3 text-right">{canOperateFinance ? "Action" : "Status Penagihan"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1251,18 +1406,18 @@ export default function FinanceClient() {
                       <td className="py-3 px-3">
                         <strong className="text-text-primary block font-semibold">{p.description || "Termin Invoice"}</strong>
                         {invoiceNum && (
-                          <span className="text-3xs font-mono text-text-secondary block mt-0.5">
+                          <span className="text-3xs font-sans text-text-secondary block mt-0.5">
                             Faktur: <span className="text-blue-700 font-bold">{invoiceNum}</span>
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono tabular-nums text-text-secondary">
+                      <td className="py-3 px-3 text-right font-sans tabular-nums text-text-secondary">
                         {formatMoney(p.subtotal ?? 0)}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono tabular-nums text-blue-700 font-medium">
+                      <td className="py-3 px-3 text-right font-sans tabular-nums text-blue-700 font-medium">
                         {formatMoney(p.tax_amount ?? 0)}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono tabular-nums font-bold text-text-primary">
+                      <td className="py-3 px-3 text-right font-sans tabular-nums font-bold text-text-primary">
                         {formatMoney(p.total_amount ?? p.subtotal ?? 0)}
                       </td>
                       <td className="py-3 px-3 text-center">
@@ -1279,7 +1434,7 @@ export default function FinanceClient() {
                           ) : p.status === "ISSUED" ? (
                             isPosted ? (
                               <span className="inline-flex items-center gap-1 text-2xs font-bold text-brand-deep-green bg-brand-light-green px-2.5 py-1 rounded-md border border-brand-green/30">
-                                <CheckCircle2 size={12} className="text-brand-green" /> POSTED · Masuk Pajak
+                                <CheckCircle2 size={12} className="text-brand-green" /> Masuk Pajak
                               </span>
                             ) : (
                               <button
@@ -1298,7 +1453,7 @@ export default function FinanceClient() {
                           )
                         ) : (
                           <span className="text-2xs text-text-secondary font-medium">
-                            {isPosted ? "Posting Selesai" : p.status}
+                            {isPosted ? "Masuk Pajak" : p.status}
                           </span>
                         )}
                       </td>
@@ -1338,67 +1493,72 @@ export default function FinanceClient() {
           </div>
 
           {/* KPI Summary Uang Masuk */}
+          <FinanceSummarySection
+            title="Ringkasan Penerimaan dan Piutang"
+            subtitle="Ringkasan penerimaan yang dibukukan, piutang tersisa, dan transaksi yang menunggu proses."
+          >
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="card p-4 rounded-2xl border border-brand-primary-soft bg-brand-light-green/50">
-              <span className="text-2xs font-bold text-brand-deep-green uppercase tracking-wider block">Total Penerimaan Dibukukan</span>
+            <div className="card p-4 rounded-xl border border-brand-primary-soft bg-white shadow-xs">
+              <span className="text-xs font-bold text-brand-deep-green uppercase tracking-wide block">Total Penerimaan Dibukukan</span>
               <span className="text-2xl font-black text-brand-deep-green mt-1 block">
                 {formatMoney(totalInflowRevenue)}
               </span>
-              <span className="text-2xs text-text-secondary mt-0.5 block">{receiptSummary?.posted_count ?? 0} transaksi POSTED; {receiptSummary?.pending_count ?? 0} belum dibukukan</span>
+              <span className="text-xs text-text-secondary mt-0.5 block">{receiptSummary?.posted_count ?? 0} transaksi POSTED; {receiptSummary?.pending_count ?? 0} belum dibukukan</span>
             </div>
 
-            <div className="card p-4 rounded-2xl border border-amber-200 bg-amber-50/50">
-              <span className="text-2xs font-bold text-amber-800 uppercase tracking-wider block">Sisa Piutang Berjalan (Outstanding AR)</span>
+            <div className="card p-4 rounded-xl border border-amber-200 bg-white shadow-xs">
+              <span className="text-xs font-bold text-amber-800 uppercase tracking-wide block">Sisa Piutang Berjalan</span>
               <span className="text-2xl font-black text-amber-700 mt-1 block">
                 {formatMoney(receiptSummary?.outstanding_amount ?? 0)}
               </span>
-              <span className="text-2xs text-text-secondary mt-0.5 block">Invoice termin proyek belum lunas</span>
+              <span className="text-xs text-text-secondary mt-0.5 block">Invoice termin proyek belum lunas</span>
             </div>
 
-            <div className="card p-4 rounded-2xl border border-text-tertiary bg-white">
-              <span className="text-2xs font-bold text-text-secondary uppercase tracking-wider block">Menunggu Diproses</span>
+            <div className="card p-4 rounded-xl border border-gray-200 bg-white shadow-xs">
+              <span className="text-xs font-bold text-text-secondary uppercase tracking-wide block">Menunggu Diproses</span>
               <span className="text-2xl font-black text-text-primary mt-1 block">{receiptSummary?.pending_count ?? 0} transaksi</span>
-              <span className="text-2xs text-text-secondary mt-0.5 block">Finance 1 mengajukan → Finance 2 menyetujui &amp; memposting</span>
+              <span className="text-xs text-text-secondary mt-0.5 block">Finance 1 mengajukan → Finance 2 menyetujui &amp; memposting</span>
             </div>
           </div>
+          </FinanceSummarySection>
 
           {/* Tabel Riwayat Uang Masuk */}
           <div className="card p-5 rounded-2xl border border-text-tertiary bg-white flex flex-col gap-3">
             <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Riwayat Penerimaan Pembayaran Klien</h4>
             <p className="text-xs text-text-secondary">Finance pertama mencatat dan mengajukan penerimaan. Finance kedua klik Setujui &amp; Posting untuk membukukan uang masuk. Penerimaan tanpa invoice dicatat sebagai uang muka pelanggan.</p>
             <div className="table-scroll-wrapper border border-text-tertiary/50 rounded-xl">
-              <table className="w-full data-table text-xs text-left min-w-[580px]">
+              <table className="w-full data-table font-sans text-xs text-left min-w-[580px]">
                 <thead>
-                  <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b">
+                  <tr className="bg-gray-50 text-text-secondary text-xs uppercase tracking-wide border-b">
                     <th className="py-3 px-4 font-bold">No. Bukti / Tanggal</th>
                     <th className="py-3 px-4 font-bold">Klien & Proyek</th>
                     <th className="py-3 px-4 font-bold">Rekening Penerima</th>
                     <th className="py-3 px-4 font-bold">Jumlah Uang Masuk</th>
                     <th className="py-3 px-4 font-bold">Status</th>
-                    <th className="py-3 px-4 font-bold">Tindakan</th>
+                    <th className="py-3 px-4 font-bold">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {customerReceipts.map((rec) => (
                     <tr key={rec.id} className="hover:bg-brand-light-green/30">
                       <td className="py-3 px-4">
-                        <strong className="text-text-primary block font-mono text-2xs">{rec.receipt_number || rec.reference_number}</strong>
-                        <span className="text-2xs text-text-secondary font-mono block">{rec.payment_date}</span>
+                        <strong className="text-text-primary block font-sans text-xs">{rec.receipt_number || rec.reference_number}</strong>
+                        <span className="text-xs text-text-secondary tabular-nums block">{rec.payment_date}</span>
                       </td>
                       <td className="py-3 px-4">
                         <strong className="text-text-primary block">{rec.customer_name}</strong>
-                        <span className="text-2xs text-text-secondary block mt-0.5">Proyek: {rec.project_name}</span>
-                        <span className="text-2xs text-brand-deep-green block mt-0.5">{rec.invoice_ref}</span>
+                        <span className="text-xs text-text-secondary block mt-0.5">Proyek: {rec.project_name}</span>
+                        <span className="text-xs text-brand-deep-green block mt-0.5">{rec.invoice_ref}</span>
                       </td>
                       <td className="py-3 px-4">
                         <span className="font-semibold text-text-primary block">{String(rec.bank_account || "Rekening belum ditentukan").split("—")[0]}</span>
-                        <span className="text-2xs text-text-secondary font-mono block">Ref: {rec.reference_number}</span>
+                        <span className="text-xs text-text-secondary block">Ref: {rec.reference_number}</span>
                       </td>
                       <td className="py-3 px-4 font-bold text-brand-deep-green text-sm">
                         +{formatMoney(rec.amount)}
                       </td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
+                        <span className="px-2 py-1 rounded-full text-xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
                           {String(rec.status || "DRAFT")}
                         </span>
                       </td>
@@ -1420,7 +1580,7 @@ export default function FinanceClient() {
                               type="button"
                               disabled={receiptActionId !== null || receiptDeletingId !== null}
                               onClick={() => handleDeleteReceipt(rec.id)}
-                              className="py-1 px-2.5 text-2xs font-bold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all flex items-center gap-1 whitespace-nowrap shadow-2xs"
+                              className="py-1.5 px-3 text-xs font-bold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-all flex items-center gap-1 whitespace-nowrap shadow-2xs"
                               title="Hapus Catatan Uang Masuk"
                             >
                               <Trash2 size={12} className="text-red-600" />
@@ -1428,7 +1588,7 @@ export default function FinanceClient() {
                             </button>
                           )}
                         </div>
-                        <p className="text-2xs text-text-secondary mt-1">{receiptReadiness[rec.id]?.message || (rec.status === "POSTED" ? "Sudah dibukukan." : "Memuat kewenangan…")}</p>
+                        <p className="text-xs text-text-secondary mt-1">{receiptReadiness[rec.id]?.message || (rec.status === "POSTED" ? "Sudah dibukukan." : "Memuat kewenangan…")}</p>
                         {receiptActionError[rec.id] && <p role="alert" className="text-xs text-red-600 mt-1">{receiptActionError[rec.id]}</p>}
                       </td>
                     </tr>
@@ -1444,12 +1604,12 @@ export default function FinanceClient() {
       {activeTab === "cashbank" && (
         <div className="flex flex-col gap-5">
           {/* Header */}
-          <div className="flex justify-between items-center flex-wrap gap-2">
+          <div className="flex items-start justify-between flex-wrap gap-2">
             <div>
               <h3 className="text-sm font-bold text-text-primary">Buku Kas & Bank Perusahaan (Cash & Bank Ledger)</h3>
               <p className="text-xs text-text-secondary">Pantau saldo real-time akun bank dan alur mutasi uang masuk vs uang keluar.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="ml-auto flex items-center justify-end gap-2">
               <button onClick={() => setIsReceiptModalOpen(true)} className="btn-secondary py-1.5 px-3 text-xs gap-1.5 border border-brand-green text-brand-deep-green hover:bg-brand-light-green">
                 <Plus size={13} /> Catat Uang Masuk
               </button>
@@ -1460,28 +1620,33 @@ export default function FinanceClient() {
           </div>
 
           {/* 4 Kartu Rekening Bank */}
+          <FinanceSummarySection
+            title="Ringkasan Rekening Kas & Bank"
+            subtitle="Saldo rekening yang tersedia untuk alur penerimaan dan pembayaran."
+          >
           <div className="workspace-kpis grid gap-3">
             {bankAccounts.map((b) => (
-              <div key={b.id} className="card p-4 rounded-[14px] border border-text-tertiary bg-white flex flex-col justify-between min-h-[120px] shadow-xs">
+              <div key={b.id} className="card p-4 rounded-xl border border-blue-200 border-l-4 border-l-[#2649B3] bg-white flex flex-col justify-between min-h-[120px] shadow-sm">
                 <div>
-                  <div className="flex items-center justify-between text-2xs font-bold text-text-secondary uppercase">
+                  <div className="flex items-center justify-between text-xs font-bold text-text-secondary uppercase tracking-wide">
                     <span>{b.type.replace("_", " ")}</span>
                     <Landmark size={14} className="text-brand-green" />
                   </div>
-                  <strong className="text-xs font-bold text-text-primary block mt-1">{b.name.split("—")[0]}</strong>
-                  <span className="text-2xs text-text-secondary font-mono block mt-0.5">{b.number}</span>
+                  <strong className="text-sm font-bold text-text-primary block mt-1">{b.name.split("—")[0]}</strong>
+                  <span className="text-xs text-text-secondary tabular-nums block mt-0.5">{b.number}</span>
                 </div>
                 <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex items-center justify-between gap-2">
-                  <span className="text-2xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Tersedia:"}</span>
+                  <span className="text-xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Tersedia:"}</span>
                   {b.balance == null ? (
                     <span className="status-chip whitespace-nowrap">Belum Tersedia</span>
                   ) : (
-                    <strong className="text-sm font-black text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
+                    <strong className="text-base font-black tabular-nums text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
                   )}
                 </div>
               </div>
             ))}
           </div>
+          </FinanceSummarySection>
 
           {/* Notice jika ada penerimaan uang masuk yang masih Draft / Butuh Approval */}
           {customerReceipts.filter(r => r.status !== "POSTED").length > 0 && (
@@ -1542,12 +1707,12 @@ export default function FinanceClient() {
               <table className="w-full data-table text-xs text-left min-w-[650px]">
                 <thead>
                   <tr className="bg-gray-50 text-text-secondary text-2xs uppercase tracking-wider border-b">
-                    <th className="py-3 px-4 font-bold">Tanggal</th>
+                    <th className="w-[112px] py-3 px-3 font-bold">Tanggal</th>
                     <th className="py-3 px-4 font-bold">Status & Tipe</th>
                     <th className="py-3 px-4 font-bold">Rekening Kas/Bank</th>
                     <th className="py-3 px-4 font-bold">Keterangan / Lawan Transaksi</th>
                     <th className="py-3 px-4 font-bold text-right">Nominal Mutasi</th>
-                    <th className="py-3 px-4 font-bold text-center">Aksi</th>
+                    <th className="py-3 px-4 font-bold text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1571,7 +1736,7 @@ export default function FinanceClient() {
                   {/* Penerimaan yang masih DRAFT / PENDING (tampil pada filter ALL dan PENDING) */}
                   {cashBankFilter !== "POSTED" && customerReceipts.filter(r => r.status !== "POSTED").map((rec) => (
                     <tr key={`pending-${rec.id}`} className="hover:bg-amber-50/30 bg-amber-50/10">
-                      <td className="py-3 px-4 font-mono text-2xs">{rec.payment_date}</td>
+                      <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(rec.payment_date)}</td>
                       <td className="py-3 px-4">
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-200">
                           🟡 {rec.status === "APPROVED" ? "Disetujui" : "Draft (Pending)"}
@@ -1586,7 +1751,7 @@ export default function FinanceClient() {
                         +{formatMoney(rec.amount)}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
                             disabled={receiptActionId !== null || receiptDeletingId !== null}
@@ -1614,7 +1779,7 @@ export default function FinanceClient() {
                   {/* Mutasi Uang Masuk yang sudah POSTED (tampil pada filter ALL dan POSTED) */}
                   {cashBankFilter !== "PENDING" && postedReceipts.map((rec) => (
                     <tr key={`in-${rec.id}`} className="hover:bg-brand-light-green/20">
-                      <td className="py-3 px-4 font-mono text-2xs">{rec.payment_date}</td>
+                      <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(rec.payment_date)}</td>
                       <td className="py-3 px-4">
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-brand-light-green text-brand-deep-green">
                           🟢 Masuk (POSTED)
@@ -1637,7 +1802,7 @@ export default function FinanceClient() {
                   {/* Mutasi Uang Keluar Tagihan Vendor (tampil pada filter ALL dan POSTED) */}
                   {cashBankFilter !== "PENDING" && vendorBills.filter(b => b.status === "PAID").map((b) => (
                     <tr key={`out-${b.id}`} className="hover:bg-red-50/20">
-                      <td className="py-3 px-4 font-mono text-2xs">{b.due_date || "-"}</td>
+                      <td className="whitespace-nowrap py-3 px-3 text-xs tabular-nums">{formatDate(b.due_date)}</td>
                       <td className="py-3 px-4">
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-extrabold uppercase bg-red-100 text-red-800">
                           🔴 Keluar (PAID)
@@ -1681,7 +1846,7 @@ export default function FinanceClient() {
             <AccessDeniedState compact section="Perpajakan" />
           </div>
         ) : (
-          <ProjectTaxWorkspace />
+          <ProjectTaxWorkspace startDate={financePeriodStart || undefined} endDate={financePeriodEnd || undefined} />
         )
       )}
 
@@ -1706,6 +1871,8 @@ export default function FinanceClient() {
               </div>
             </div>
 
+            <p className="text-xs text-text-secondary">Rentang aktif: {financePeriodStart && financePeriodEnd ? `${formatDate(financePeriodStart)} – ${formatDate(financePeriodEnd)}` : "kalender periode belum disiapkan"}</p>
+
             {glActiveTab === "trial" && (
               <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
                 {/* Summary Banner */}
@@ -1721,6 +1888,32 @@ export default function FinanceClient() {
                       : <><AlertTriangle size={15} /> TIDAK SEIMBANG! Debit: {formatRupiah(trialBalance.total_debit)} ≠ Kredit: {formatRupiah(trialBalance.total_credit)}</>}
                   </div>
                 )}
+                <div className="flex flex-col gap-2 border-b border-gray-100 bg-white p-4 sm:flex-row sm:items-center">
+                  <label className="relative min-w-0 flex-1">
+                    <span className="sr-only">Cari akun</span>
+                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
+                    <input
+                      type="search"
+                      value={trialBalanceSearch}
+                      onChange={event => { setTrialBalanceSearch(event.target.value); setTrialBalancePage(1); }}
+                      placeholder="Cari kode atau nama akun..."
+                      className="input w-full pl-9 text-xs"
+                    />
+                  </label>
+                  <label className="sr-only" htmlFor="trial-balance-type-filter">Filter tipe akun</label>
+                  <select
+                    id="trial-balance-type-filter"
+                    value={trialBalanceTypeFilter}
+                    onChange={event => { setTrialBalanceTypeFilter(event.target.value); setTrialBalancePage(1); }}
+                    className="input w-full text-xs sm:w-52"
+                  >
+                    <option value="ALL">Semua tipe akun</option>
+                    {Array.from(new Set((trialBalance?.accounts || []).map((account: any) => account.account_type).filter(Boolean))).sort().map((type: any) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                  <span className="whitespace-nowrap text-xs text-text-secondary">{trialBalanceAccounts.length} akun</span>
+                </div>
                 <div className="table-scroll-wrapper">
                   <table className="w-full data-table text-xs min-w-[700px]">
                     <thead>
@@ -1734,7 +1927,7 @@ export default function FinanceClient() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {trialBalance?.accounts?.map((acc: any) => (
+                      {visibleTrialBalanceAccounts.map((acc: any) => (
                         <tr key={acc.account_id} className="hover:bg-gray-50/50">
                           <td className="py-2.5 px-4 font-mono font-bold text-brand-deep-green">{acc.account_code}</td>
                           <td className="py-2.5 px-4 font-medium text-text-primary">{acc.account_name}</td>
@@ -1754,10 +1947,10 @@ export default function FinanceClient() {
                           )}>{formatRupiah(acc.net_balance)}</td>
                         </tr>
                       ))}
-                      {!trialBalance?.accounts?.length && (
+                      {!trialBalanceAccounts.length && (
                         <tr><td colSpan={6} className="text-center py-10 text-xs text-text-secondary">
                           <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
-                          Belum ada data jurnal yang diposting.
+                          {trialBalance?.accounts?.length ? "Tidak ada akun yang cocok dengan pencarian atau filter." : "Belum ada data jurnal yang diposting."}
                         </td></tr>
                       )}
                     </tbody>
@@ -1773,6 +1966,20 @@ export default function FinanceClient() {
                     )}
                   </table>
                 </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-3">
+                  <span className="text-xs text-text-secondary">
+                    {trialBalanceAccounts.length ? `Menampilkan ${(visibleTrialBalancePage - 1) * GL_PAGE_SIZE + 1}–${Math.min(visibleTrialBalancePage * GL_PAGE_SIZE, trialBalanceAccounts.length)} dari ${trialBalanceAccounts.length} akun` : "Tidak ada akun untuk ditampilkan"}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" disabled={visibleTrialBalancePage <= 1} onClick={() => setTrialBalancePage(visibleTrialBalancePage - 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
+                      <ChevronLeft size={14} /> Sebelumnya
+                    </button>
+                    <span className="text-xs font-semibold text-text-secondary">{visibleTrialBalancePage} / {trialBalancePageCount}</span>
+                    <button type="button" disabled={visibleTrialBalancePage >= trialBalancePageCount} onClick={() => setTrialBalancePage(visibleTrialBalancePage + 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
+                      Berikutnya <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1780,23 +1987,50 @@ export default function FinanceClient() {
               <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
                 <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
                   <h4 className="text-xs font-bold text-text-primary">Daftar Jurnal Umum (Journal Entries)</h4>
-                  <span className="text-2xs text-text-secondary">{journalEntries.length} jurnal terakhir</span>
+                  <span className="text-xs text-text-secondary">{filteredJournalEntries.length} dari {journalEntries.length} jurnal</span>
+                </div>
+                <div className="flex flex-col gap-2 border-b border-gray-100 bg-white p-4 sm:flex-row sm:items-center">
+                  <label className="relative min-w-0 flex-1">
+                    <span className="sr-only">Cari jurnal umum</span>
+                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
+                    <input
+                      type="search"
+                      value={journalSearch}
+                      onChange={event => { setJournalSearch(event.target.value); setJournalPage(1); }}
+                      placeholder="Cari nomor jurnal, tanggal, atau keterangan..."
+                      className="input w-full pl-9 text-xs"
+                    />
+                  </label>
+                  <label className="sr-only" htmlFor="journal-status-filter">Filter status jurnal</label>
+                  <select
+                    id="journal-status-filter"
+                    value={journalStatusFilter}
+                    onChange={event => { setJournalStatusFilter(event.target.value); setJournalPage(1); }}
+                    className="input w-full text-xs sm:w-52"
+                  >
+                    <option value="ALL">Semua status</option>
+                    {Array.from(new Set(journalEntries.map((entry: any) => entry.status).filter(Boolean))).sort().map((status: any) => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="table-scroll-wrapper">
                   <table className="w-full data-table text-xs min-w-[720px]">
                     <thead>
                       <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
-                        <th className="py-3 px-4 text-left">No. Jurnal</th>
+                        <th className="w-[145px] max-w-[145px] py-3 px-3 text-left">No. Jurnal</th>
                         <th className="py-3 px-4 text-left">Tanggal Posting</th>
                         <th className="py-3 px-4 text-left">Keterangan</th>
                         <th className="py-3 px-4 text-center">Status</th>
-                        <th className="py-3 px-4 text-center">Aksi</th>
+                        <th className="py-3 px-4 text-center">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {journalEntries.map((je: any) => (
+                      {visibleJournalEntries.map((je: any) => (
                         <tr key={je.id} className="hover:bg-gray-50/50">
-                          <td className="py-2.5 px-4 font-mono font-bold text-brand-deep-green text-2xs">{je.entry_number || je.id?.slice(0,8)}</td>
+                          <td className="max-w-[145px] truncate whitespace-nowrap py-2.5 px-3 font-mono text-xs font-bold text-brand-deep-green" title={je.entry_number || je.id}>
+                            {formatJournalCode(je.entry_number || je.id?.slice(0, 8))}
+                          </td>
                           <td className="py-2.5 px-4 font-mono text-2xs text-text-secondary">{je.posting_date ? new Date(je.posting_date).toLocaleDateString("id-ID") : "-"}</td>
                           <td className="py-2.5 px-4 text-text-primary max-w-xs truncate">{je.description || "Jurnal Umum"}</td>
                           <td className="py-2.5 px-4 text-center">
@@ -1818,14 +2052,28 @@ export default function FinanceClient() {
                           </td>
                         </tr>
                       ))}
-                      {!journalEntries.length && (
+                      {!filteredJournalEntries.length && (
                         <tr><td colSpan={5} className="text-center py-10 text-xs text-text-secondary">
                           <Activity size={32} className="mx-auto mb-2 opacity-30" />
-                          Belum ada jurnal entry.
+                          {journalEntries.length ? "Tidak ada jurnal yang cocok dengan pencarian atau filter." : "Belum ada jurnal entry."}
                         </td></tr>
                       )}
                     </tbody>
                   </table>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-3">
+                  <span className="text-xs text-text-secondary">
+                    {filteredJournalEntries.length ? `Menampilkan ${(visibleJournalPage - 1) * GL_PAGE_SIZE + 1}–${Math.min(visibleJournalPage * GL_PAGE_SIZE, filteredJournalEntries.length)} dari ${filteredJournalEntries.length} jurnal` : "Tidak ada jurnal untuk ditampilkan"}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" disabled={visibleJournalPage <= 1} onClick={() => setJournalPage(visibleJournalPage - 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
+                      <ChevronLeft size={14} /> Sebelumnya
+                    </button>
+                    <span className="text-xs font-semibold text-text-secondary">{visibleJournalPage} / {journalPageCount}</span>
+                    <button type="button" disabled={visibleJournalPage >= journalPageCount} onClick={() => setJournalPage(visibleJournalPage + 1)} className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50">
+                      Berikutnya <ChevronRight size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1855,16 +2103,21 @@ export default function FinanceClient() {
             </div>
 
             {lapkeuActiveTab === "pl" && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* KPI Summary */}
-                <div className="lg:col-span-3 grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start">
+                {/* Summary left, account detail right. */}
+                <div className="lg:col-span-4">
+                <FinanceSummarySection
+                  title="Ringkasan Laba Rugi"
+                  subtitle="Ikhtisar pendapatan, beban, dan hasil bersih sebelum rincian akun."
+                >
+                <div className="grid grid-cols-1 gap-3">
                   <div className={cn("card rounded-2xl p-4 border-l-4", profitLoss?.is_profit ? "border-brand-green" : "border-red-500")}>
                     <span className="text-xs text-text-secondary">Total Pendapatan</span>
-                    <p className="text-xl font-black text-brand-deep-green">{formatRupiah(profitLoss?.total_revenue ?? 0)}</p>
+                    <p className="break-words text-xl font-black tabular-nums text-brand-deep-green">{formatRupiah(profitLoss?.total_revenue ?? 0)}</p>
                   </div>
                   <div className="card rounded-2xl p-4 border-l-4 border-red-400">
                     <span className="text-xs text-text-secondary">Total Beban</span>
-                    <p className="text-xl font-black text-red-600">{formatRupiah(profitLoss?.total_expense ?? 0)}</p>
+                    <p className="break-words text-xl font-black tabular-nums text-red-600">{formatRupiah(profitLoss?.total_expense ?? 0)}</p>
                   </div>
                   <div className={cn("card rounded-2xl p-4 border-l-4", (profitLoss?.net_profit_loss ?? 0) >= 0 ? "border-brand-green" : "border-red-600")}>
                     <span className="text-xs text-text-secondary">Laba / Rugi Bersih</span>
@@ -1873,7 +2126,10 @@ export default function FinanceClient() {
                     </p>
                   </div>
                 </div>
+                </FinanceSummarySection>
+                </div>
 
+                <div className="grid min-w-0 grid-cols-1 gap-4 lg:col-span-8 xl:grid-cols-2">
                 {/* Revenue Table */}
                 <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
                   <div className="px-4 py-3 bg-brand-light-green border-b border-brand-primary-soft">
@@ -1881,12 +2137,12 @@ export default function FinanceClient() {
                   </div>
                   <div className="divide-y divide-gray-100">
                     {profitLoss?.revenues?.map((r: any, i: number) => (
-                      <div key={i} className="px-4 py-3 flex justify-between items-center text-xs">
-                        <div>
+                      <div key={i} className="flex items-center justify-between gap-3 px-4 py-3 text-xs">
+                        <div className="min-w-0">
                           <span className="font-mono text-brand-deep-green text-2xs">{r.account_code}</span>
                           <p className="font-medium text-text-primary">{r.account_name}</p>
                         </div>
-                        <span className="font-bold text-brand-deep-green">{formatRupiah(r.amount)}</span>
+                        <span className="shrink-0 whitespace-nowrap text-right font-bold tabular-nums text-brand-deep-green">{formatRupiah(r.amount)}</span>
                       </div>
                     ))}
                     {!profitLoss?.revenues?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data pendapatan.</p>}
@@ -1906,12 +2162,12 @@ export default function FinanceClient() {
                   </div>
                   <div className="divide-y divide-gray-100">
                     {profitLoss?.expenses?.map((e: any, i: number) => (
-                      <div key={i} className="px-4 py-3 flex justify-between items-center text-xs">
-                        <div>
+                      <div key={i} className="flex items-center justify-between gap-3 px-4 py-3 text-xs">
+                        <div className="min-w-0">
                           <span className="font-mono text-red-600 text-2xs">{e.account_code}</span>
                           <p className="font-medium text-text-primary">{e.account_name}</p>
                         </div>
-                        <span className="font-bold text-red-700">{formatRupiah(e.amount)}</span>
+                        <span className="shrink-0 whitespace-nowrap text-right font-bold tabular-nums text-red-700">{formatRupiah(e.amount)}</span>
                       </div>
                     ))}
                     {!profitLoss?.expenses?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data beban.</p>}
@@ -1925,7 +2181,7 @@ export default function FinanceClient() {
                 </div>
 
                 {/* Net P&L Summary */}
-                <div className="card rounded-2xl p-5 border border-text-tertiary flex flex-col gap-4">
+                <div className="card rounded-2xl p-5 border border-text-tertiary flex flex-col gap-4 xl:col-span-2">
                   <h4 className="text-xs font-bold text-text-primary">Ringkasan Laba Rugi</h4>
                   <div className="space-y-3">
                     <div className="flex justify-between text-xs">
@@ -1957,69 +2213,48 @@ export default function FinanceClient() {
                     Generated: {profitLoss?.generated_at ? new Date(profitLoss.generated_at).toLocaleString("id-ID") : "-"}
                   </p>
                 </div>
+                </div>
               </div>
             )}
 
             {lapkeuActiveTab === "bs" && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Assets */}
-                <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
-                  <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
-                    <h4 className="text-xs font-bold text-blue-800 flex items-center gap-1.5"><Building size={13} /> ASET (Assets)</h4>
+                <details className="card group rounded-2xl border border-text-tertiary bg-white">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-blue-50 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5 text-xs font-bold text-blue-800"><Building size={13} /> ASET (Assets)<span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-blue-700">{balanceSheet?.assets?.length || 0} akun</span></span>
+                      <span className="mt-1 block text-xs font-black tabular-nums text-blue-800">Total {formatRupiah(balanceSheet?.total_assets ?? 0)}</span>
+                    </span>
+                    <ChevronDown size={15} className="shrink-0 text-blue-700 transition-transform group-open:rotate-180" aria-hidden="true" />
+                  </summary>
+                  <div className="max-h-[480px] overflow-auto border-t border-blue-200">
+                    <table className="w-full min-w-[420px] border-collapse text-left text-xs">
+                      <thead className="sticky top-0 z-10 bg-blue-50 text-[10px] font-semibold uppercase tracking-wide text-blue-800"><tr><th className="px-4 py-2">Kode</th><th className="px-4 py-2">Nama Akun</th><th className="px-4 py-2 text-right">Saldo</th></tr></thead>
+                      <tbody className="divide-y divide-gray-100 bg-white">
+                        {balanceSheet?.assets?.map((a: any, i: number) => <tr key={i} className="hover:bg-blue-50/40"><td className="whitespace-nowrap px-4 py-2.5 font-mono text-[10px] text-text-secondary">{a.account_code}</td><td className="px-4 py-2.5 text-text-primary">{a.account_name}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-bold tabular-nums text-blue-700">{formatRupiah(a.amount)}</td></tr>)}
+                        {!balanceSheet?.assets?.length && <tr><td colSpan={3} className="px-4 py-6 text-center text-text-secondary">Belum ada data aset.</td></tr>}
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="divide-y divide-gray-100">
-                    {balanceSheet?.assets?.map((a: any, i: number) => (
-                      <div key={i} className="px-4 py-3 flex justify-between text-xs">
-                        <span className="text-text-primary">{a.account_code} — {a.account_name}</span>
-                        <span className="font-bold text-blue-700">{formatRupiah(a.amount)}</span>
-                      </div>
-                    ))}
-                    {!balanceSheet?.assets?.length && <p className="text-xs text-center py-6 text-text-secondary">Belum ada data aset.</p>}
-                  </div>
-                  <div className="px-4 py-2.5 bg-blue-50 border-t flex justify-between text-xs font-black text-blue-800">
-                    <span>TOTAL ASET</span>
-                    <span>{formatRupiah(balanceSheet?.total_assets ?? 0)}</span>
-                  </div>
-                </div>
+                </details>
 
                 {/* Liabilities + Equity */}
                 <div className="flex flex-col gap-4">
-                  <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
-                    <div className="px-4 py-3 bg-orange-50 border-b border-orange-200">
-                      <h4 className="text-xs font-bold text-orange-800 flex items-center gap-1.5"><Layers size={13} /> KEWAJIBAN (Liabilities)</h4>
-                    </div>
-                    <div className="divide-y divide-gray-100">
-                      {balanceSheet?.liabilities?.map((l: any, i: number) => (
-                        <div key={i} className="px-4 py-3 flex justify-between text-xs">
-                          <span className="text-text-primary">{l.account_code} — {l.account_name}</span>
-                          <span className="font-bold text-orange-700">{formatRupiah(l.amount)}</span>
-                        </div>
-                      ))}
-                      {!balanceSheet?.liabilities?.length && <p className="text-xs text-center py-4 text-text-secondary">Belum ada kewajiban.</p>}
-                    </div>
-                    <div className="px-4 py-2.5 bg-orange-50 border-t flex justify-between text-xs font-black text-orange-800">
-                      <span>TOTAL KEWAJIBAN</span>
-                      <span>{formatRupiah(balanceSheet?.total_liabilities ?? 0)}</span>
-                    </div>
-                  </div>
-                  <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
-                    <div className="px-4 py-3 bg-purple-50 border-b border-purple-200">
-                      <h4 className="text-xs font-bold text-purple-800 flex items-center gap-1.5"><ShieldCheck size={13} /> EKUITAS (Equity)</h4>
-                    </div>
-                    <div className="divide-y divide-gray-100">
-                      {balanceSheet?.equity?.map((e: any, i: number) => (
-                        <div key={i} className="px-4 py-3 flex justify-between text-xs">
-                          <span className="text-text-primary">{e.account_code} — {e.account_name}</span>
-                          <span className="font-bold text-purple-700">{formatRupiah(e.amount)}</span>
-                        </div>
-                      ))}
-                      {!balanceSheet?.equity?.length && <p className="text-xs text-center py-4 text-text-secondary">Belum ada data ekuitas.</p>}
-                    </div>
-                    <div className="px-4 py-2.5 bg-purple-50 border-t flex justify-between text-xs font-black text-purple-800">
-                      <span>TOTAL EKUITAS</span>
-                      <span>{formatRupiah(balanceSheet?.total_equity ?? 0)}</span>
-                    </div>
-                  </div>
+                  <details className="card group rounded-2xl border border-text-tertiary bg-white">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-orange-50 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+                      <span className="min-w-0"><span className="flex items-center gap-1.5 text-xs font-bold text-orange-800"><Layers size={13} /> KEWAJIBAN (Liabilities)<span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-orange-700">{balanceSheet?.liabilities?.length || 0} akun</span></span><span className="mt-1 block text-xs font-black tabular-nums text-orange-800">Total {formatRupiah(balanceSheet?.total_liabilities ?? 0)}</span></span>
+                      <ChevronDown size={15} className="shrink-0 text-orange-700 transition-transform group-open:rotate-180" aria-hidden="true" />
+                    </summary>
+                    <div className="max-h-[360px] overflow-auto border-t border-orange-200"><table className="w-full min-w-[420px] border-collapse text-left text-xs"><thead className="sticky top-0 z-10 bg-orange-50 text-[10px] font-semibold uppercase tracking-wide text-orange-800"><tr><th className="px-4 py-2">Kode</th><th className="px-4 py-2">Nama Akun</th><th className="px-4 py-2 text-right">Saldo</th></tr></thead><tbody className="divide-y divide-gray-100 bg-white">{balanceSheet?.liabilities?.map((l: any, i: number) => <tr key={i} className="hover:bg-orange-50/40"><td className="whitespace-nowrap px-4 py-2.5 font-mono text-[10px] text-text-secondary">{l.account_code}</td><td className="px-4 py-2.5 text-text-primary">{l.account_name}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-bold tabular-nums text-orange-700">{formatRupiah(l.amount)}</td></tr>)}{!balanceSheet?.liabilities?.length && <tr><td colSpan={3} className="px-4 py-5 text-center text-text-secondary">Belum ada kewajiban.</td></tr>}</tbody></table></div>
+                  </details>
+                  <details className="card group rounded-2xl border border-text-tertiary bg-white">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-purple-50 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+                      <span className="min-w-0"><span className="flex items-center gap-1.5 text-xs font-bold text-purple-800"><ShieldCheck size={13} /> EKUITAS (Equity)<span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-purple-700">{balanceSheet?.equity?.length || 0} akun</span></span><span className="mt-1 block text-xs font-black tabular-nums text-purple-800">Total {formatRupiah(balanceSheet?.total_equity ?? 0)}</span></span>
+                      <ChevronDown size={15} className="shrink-0 text-purple-700 transition-transform group-open:rotate-180" aria-hidden="true" />
+                    </summary>
+                    <div className="max-h-[360px] overflow-auto border-t border-purple-200"><table className="w-full min-w-[420px] border-collapse text-left text-xs"><thead className="sticky top-0 z-10 bg-purple-50 text-[10px] font-semibold uppercase tracking-wide text-purple-800"><tr><th className="px-4 py-2">Kode</th><th className="px-4 py-2">Nama Akun</th><th className="px-4 py-2 text-right">Saldo</th></tr></thead><tbody className="divide-y divide-gray-100 bg-white">{balanceSheet?.equity?.map((e: any, i: number) => <tr key={i} className="hover:bg-purple-50/40"><td className="whitespace-nowrap px-4 py-2.5 font-mono text-[10px] text-text-secondary">{e.account_code}</td><td className="px-4 py-2.5 text-text-primary">{e.account_name}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-bold tabular-nums text-purple-700">{formatRupiah(e.amount)}</td></tr>)}{!balanceSheet?.equity?.length && <tr><td colSpan={3} className="px-4 py-5 text-center text-text-secondary">Belum ada data ekuitas.</td></tr>}</tbody></table></div>
+                  </details>
                   {/* Balance Check */}
                   <div className={cn(
                     "card rounded-xl p-4 flex items-center gap-3 text-xs font-semibold border",
@@ -2046,50 +2281,50 @@ export default function FinanceClient() {
           <div className="flex flex-col gap-5">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                <h3 className="text-base font-bold text-text-primary flex items-center gap-2">
                   <Banknote size={16} className="text-brand-green" /> Banking Hub & Rekonsiliasi Bank
                 </h3>
-                <p className="text-xs text-text-secondary">Impor mutasi rekening bank dan cocokkan dengan transaksi di buku besar secara otomatis.</p>
+                <p className="text-sm text-text-secondary">Impor mutasi rekening bank dan cocokkan dengan transaksi di buku besar secara otomatis.</p>
               </div>
             </div>
 
             <div className="card rounded-2xl p-4 border border-text-tertiary bg-white flex flex-wrap items-end gap-3">
               <div className="min-w-[220px] flex-1">
-                <label className="block text-2xs font-semibold text-text-secondary mb-1">Rekening Bank</label>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">Rekening Bank</label>
                 <select value={bankImportAccountId} onChange={(event) => setBankImportAccountId(event.target.value)} className="input w-full">
                   <option value="">Pilih rekening</option>
                   {bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.bank} · {account.number}</option>)}
                 </select>
               </div>
               <div className="min-w-[220px] flex-1">
-                <label className="block text-2xs font-semibold text-text-secondary mb-1">File mutasi (CSV)</label>
-                <input type="file" accept=".csv,text/csv" onChange={(event) => setBankImportFile(event.target.files?.[0] ?? null)} className="block w-full text-xs text-text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-brand-light-green file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-deep-green" />
+                <label className="block text-xs font-semibold text-text-secondary mb-1">File mutasi (CSV)</label>
+                <input type="file" accept=".csv,text/csv" onChange={(event) => setBankImportFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-brand-light-green file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-deep-green" />
               </div>
-              <button type="button" onClick={importBankStatement} disabled={bankImporting || !bankImportAccountId || !bankImportFile} className="btn-primary px-4 py-2 text-xs disabled:opacity-50">
+              <button type="button" onClick={importBankStatement} disabled={bankImporting || !bankImportAccountId || !bankImportFile} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">
                 {bankImporting ? "Mengimpor…" : "Impor Mutasi CSV"}
               </button>
-              <p className="w-full text-2xs text-text-secondary">CSV: kolom tanggal, keterangan, nominal, dan tipe (DB/CR). Maksimal 5 MB.</p>
+              <p className="w-full text-xs text-text-secondary">CSV: kolom tanggal, keterangan, nominal, dan tipe (DB/CR). Maksimal 5 MB.</p>
             </div>
 
             {/* Ringkasan Saldo Real-Time */}
             <div className="workspace-kpis grid gap-3">
               {bankAccounts.map((b) => (
                 <div key={b.id} className={cn("card p-4 rounded-[14px] border bg-white flex flex-col justify-between shadow-xs", bankImportAccountId === b.id ? "border-brand-primary ring-2 ring-brand-primary/15" : "border-text-tertiary")}>
-                  <div className="flex items-center justify-between text-2xs font-bold text-text-secondary uppercase">
+                  <div className="flex items-center justify-between text-xs font-bold text-text-secondary uppercase">
                     <span>{b.type.replace(/_/g, " ")}</span>
                     <Landmark size={14} className="text-brand-green" />
                   </div>
-                  <strong className="text-xs font-bold text-text-primary block mt-1">{b.bank}</strong>
-                  <span className="text-2xs text-text-secondary font-mono mt-0.5">{b.number}</span>
+                  <strong className="text-sm font-bold text-text-primary block mt-1">{b.bank}</strong>
+                  <span className="text-xs text-text-secondary font-mono mt-0.5">{b.number}</span>
                   <div className="mt-3 pt-2 border-t border-text-tertiary/40 flex items-center justify-between gap-2">
-                    <span className="text-2xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Buku:"}</span>
+                    <span className="text-xs text-text-secondary whitespace-nowrap">{b.balance == null ? "Status Saldo:" : "Saldo Buku:"}</span>
                     {b.balance == null ? (
                       <span className="status-chip whitespace-nowrap">Belum Tersedia</span>
                     ) : (
                       <strong className="text-sm font-black text-brand-deep-green whitespace-nowrap">{formatMoney(b.balance)}</strong>
                     )}
                   </div>
-                  <button type="button" onClick={() => setBankImportAccountId(b.id)} aria-pressed={bankImportAccountId === b.id} className={cn("mt-3 w-full rounded-lg border px-3 py-2 text-xs font-semibold transition-colors", bankImportAccountId === b.id ? "border-brand-primary bg-brand-primary text-white" : "border-brand-primary/30 bg-brand-light-green text-brand-deep-green hover:border-brand-primary")}>
+                  <button type="button" onClick={() => setBankImportAccountId(b.id)} aria-pressed={bankImportAccountId === b.id} className={cn("mt-3 w-full rounded-lg border px-3 py-2 text-sm font-semibold transition-colors", bankImportAccountId === b.id ? "border-brand-primary bg-brand-primary text-white" : "border-brand-primary/30 bg-brand-light-green text-brand-deep-green hover:border-brand-primary")}>
                     {bankImportAccountId === b.id ? "Rekening Dipilih" : "Pilih untuk Rekonsiliasi"}
                   </button>
                 </div>
@@ -2099,22 +2334,22 @@ export default function FinanceClient() {
             {/* Rekonsiliasi Status */}
             <div className="card rounded-2xl overflow-hidden border border-text-tertiary">
               <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
-                <h4 className="text-xs font-bold text-text-primary">Status Rekonsiliasi Bank</h4>
-                <span className="text-2xs text-text-secondary">
+                <h4 className="text-sm font-bold text-text-primary">Status Rekonsiliasi Bank</h4>
+                <span className="text-xs text-text-secondary">
                   {new Set(bankStatements.map((line: any) => line.bank_statement_id).filter(Boolean)).size} statement | {bankReconciliations.filter((r: any) => r.status === "MATCHED").length} matched
                 </span>
               </div>
               {bankStatements.length === 0 ? (
                 <div className="py-12 flex flex-col items-center gap-3 text-center">
                   <ArrowLeftRight size={36} className="text-brand-green opacity-30" />
-                  <p className="text-xs text-text-secondary">Belum ada mutasi rekening yang diimpor.</p>
-                  <p className="text-2xs text-text-secondary">Pilih rekening dan unggah file CSV pada form di atas untuk memulai rekonsiliasi.</p>
+                  <p className="text-sm text-text-secondary">Belum ada mutasi rekening yang diimpor.</p>
+                  <p className="text-xs text-text-secondary">Pilih rekening dan unggah file CSV pada form di atas untuk memulai rekonsiliasi.</p>
                 </div>
               ) : (
                 <div className="table-scroll-wrapper">
-                  <table className="w-full data-table text-xs min-w-[640px]">
+                  <table className="w-full data-table text-sm min-w-[640px]">
                     <thead>
-                      <tr className="bg-gray-50 text-2xs uppercase tracking-wider text-text-secondary">
+                      <tr className="bg-gray-50 text-xs uppercase tracking-wider text-text-secondary">
                         <th className="py-3 px-4 text-left">Tanggal</th>
                         <th className="py-3 px-4 text-left">Referensi</th>
                         <th className="py-3 px-4 text-left">Keterangan</th>
@@ -2130,24 +2365,24 @@ export default function FinanceClient() {
                         const isMatched = reconciliation?.status === "MATCHED";
                         return (
                         <tr key={stmt.id} className="hover:bg-gray-50/50">
-                          <td className="py-2.5 px-4 font-mono text-2xs">{stmt.transaction_date ? new Date(stmt.transaction_date).toLocaleDateString("id-ID") : "-"}</td>
-                          <td className="py-2.5 px-4 font-mono text-2xs text-brand-deep-green">{stmt.reference_number || "-"}</td>
-                          <td className="py-2.5 px-4 text-text-primary">{stmt.description}</td>
-                          <td className="py-2.5 px-4 text-right text-brand-deep-green font-bold">{stmt.debit_amount > 0 ? formatMoney(stmt.debit_amount) : "-"}</td>
-                          <td className="py-2.5 px-4 text-right text-red-600 font-bold">{stmt.credit_amount > 0 ? formatMoney(stmt.credit_amount) : "-"}</td>
-                          <td className="py-2.5 px-4 text-center">
-                            <span className={cn("badge text-2xs",
+                          <td className="!text-sm py-2.5 px-4 font-mono">{stmt.transaction_date ? new Date(stmt.transaction_date).toLocaleDateString("id-ID") : "-"}</td>
+                          <td className="!text-sm py-2.5 px-4 font-mono text-brand-deep-green">{stmt.reference_number || "-"}</td>
+                          <td className="!text-sm py-2.5 px-4 text-text-primary">{stmt.description}</td>
+                          <td className="!text-sm py-2.5 px-4 text-right text-brand-deep-green font-bold">{stmt.debit_amount > 0 ? formatMoney(stmt.debit_amount) : "-"}</td>
+                          <td className="!text-sm py-2.5 px-4 text-right text-red-600 font-bold">{stmt.credit_amount > 0 ? formatMoney(stmt.credit_amount) : "-"}</td>
+                          <td className="!text-sm py-2.5 px-4 text-center">
+                            <span className={cn("badge text-xs",
                               isMatched ? "badge-success" : "badge-neutral"
                             )}>{isMatched ? "MATCHED" : "UNRECONCILED"}</span>
                           </td>
-                          <td className="py-2.5 px-4">
+                          <td className="!text-sm py-2.5 px-4">
                             {isMatched ? <span className="text-2xs text-text-secondary">Sudah dicocokkan</span> : (
                               <div className="flex min-w-[250px] gap-2">
-                                <select value={bankMatchPaymentIds[String(stmt.id)] || ""} onChange={(event) => setBankMatchPaymentIds((current) => ({ ...current, [String(stmt.id)]: event.target.value }))} className="input min-w-0 flex-1 text-2xs" disabled={!bankMatchPayments.length || bankMatchingLineId === String(stmt.id)}>
+                                <select value={bankMatchPaymentIds[String(stmt.id)] || ""} onChange={(event) => setBankMatchPaymentIds((current) => ({ ...current, [String(stmt.id)]: event.target.value }))} className="input min-w-0 flex-1 text-xs" disabled={!bankMatchPayments.length || bankMatchingLineId === String(stmt.id)}>
                                   <option value="">{bankMatchPayments.length ? "Pilih pembayaran atau penerimaan" : "Belum ada transaksi yang sudah dibukukan"}</option>
                                   {bankMatchPayments.map((payment: any) => <option key={payment.id} value={payment.id}>{payment.payment_type === "CUSTOMER_RECEIPT" ? "Penerimaan pelanggan" : "Pembayaran vendor"} · {payment.reference_number || payment.id.slice(0, 8)} · {formatMoney(Number(payment.amount || 0))}</option>)}
                                 </select>
-                                <button type="button" onClick={() => matchBankStatementLine(stmt)} disabled={!bankMatchPaymentIds[String(stmt.id)] || bankMatchingLineId === String(stmt.id)} className="btn-outline px-2 py-1 text-2xs disabled:opacity-50">
+                                <button type="button" onClick={() => matchBankStatementLine(stmt)} disabled={!bankMatchPaymentIds[String(stmt.id)] || bankMatchingLineId === String(stmt.id)} className="btn-outline px-2 py-1 text-xs disabled:opacity-50">
                                   {bankMatchingLineId === String(stmt.id) ? "…" : "Cocokkan"}
                                 </button>
                               </div>
@@ -2181,14 +2416,14 @@ export default function FinanceClient() {
       {/* ── TAB: AUDIT TRAIL ─────────────────────── */}
       {activeTab === "audit_trail" && (
         <div className="card rounded-2xl p-6">
-          <AuditTrailWorkspace />
+          <AuditTrailWorkspace startDate={financePeriodStart || undefined} endDate={financePeriodEnd || undefined} />
         </div>
       )}
 
       {/* ── TAB: EXECUTIVE AUDIT REPORT ───────────── */}
       {activeTab === "executive_report" && (
         <div className="card rounded-2xl p-3 sm:p-5 lg:p-6">
-          <ExecutiveAuditReportWorkspace />
+          <ExecutiveAuditReportWorkspace startDate={financePeriodStart || undefined} endDate={financePeriodEnd || undefined} />
         </div>
       )}
 
@@ -2301,14 +2536,13 @@ export default function FinanceClient() {
           </div>
           <div>
             <label htmlFor="cost-amount" className="text-xs font-semibold text-text-primary block mb-1">Jumlah Biaya (Rp) *</label>
-            <input
+            <IDRInput
               id="cost-amount"
-              type="number"
               required
-              min={1}
               value={costForm.amount}
-              onChange={e => setCostForm({ ...costForm, amount: e.target.value })}
+              onChange={amount => setCostForm({ ...costForm, amount })}
               className="input"
+              showPrefix={false}
             />
           </div>
           <div>
@@ -2366,20 +2600,19 @@ export default function FinanceClient() {
         >
           <div>
             <label htmlFor="funding-amount" className="text-xs font-semibold text-text-primary block mb-1">Jumlah Dana (Rp) *</label>
-            <input
+            <IDRInput
               id="funding-amount"
-              type="number"
               required
-              min={1}
               value={fundingForm.amount}
-              onChange={e =>
+              onChange={amount =>
                 setFundingForm({
                   ...fundingForm,
-                  amount: e.target.value,
+                  amount,
                 })
               }
               className="input"
               placeholder="Masukkan jumlah dana"
+              showPrefix={false}
             />
           </div>
           <div>
@@ -2513,19 +2746,18 @@ export default function FinanceClient() {
             <label className="text-xs font-bold text-slate-700 block mb-1">
               Nilai Termin Sebelum PPN (Rp) *
             </label>
-            <input
-              type="number"
+            <IDRInput
               required
-              min={1}
               value={billingForm.amount === 0 ? "" : billingForm.amount}
-              onChange={e =>
+              onChange={amount =>
                 setBillingForm({
                   ...billingForm,
-                  amount: e.target.value === "" ? 0 : Number(e.target.value),
+                  amount: amount === "" ? 0 : Number(amount),
                 })
               }
-              placeholder="Masukkan nilai termin"
+              placeholder="Contoh: 150.000.000"
               className="input text-xs font-bold text-slate-800"
+              showPrefix={false}
             />
             <p className="mt-1 text-[11px] text-text-secondary">
               Isi nilai pekerjaan/termin yang akan ditagihkan, belum termasuk PPN.
@@ -2591,10 +2823,10 @@ export default function FinanceClient() {
             );
           })()}
 
-          <div className="rounded-lg bg-blue-50 px-3 py-2 text-[11px] text-blue-800">
+          <CollapsibleGuideline title="Panduan PPh dan potongan pembayaran" tone="blue">
             PPh dan potongan pembayaran tidak ditentukan di tahap proposal tagihan ini.
             Pencatatannya dilakukan saat proses pembayaran/penerimaan agar nilai yang tersimpan sesuai bukti transaksi.
-          </div>
+          </CollapsibleGuideline>
 
           <button type="submit" className="btn-primary w-full justify-center py-2.5 mt-1">
             Simpan Proposal Tagihan
@@ -2659,15 +2891,13 @@ export default function FinanceClient() {
             </div>
             <div>
               <label className="text-xs font-semibold text-text-primary block mb-1">Jumlah Tagihan (Rp) *</label>
-              <input
-                type="number"
+              <IDRInput
                 required
-                min={1}
-                step={1}
-                placeholder="Contoh: 15000000"
+                placeholder="Contoh: 15.000.000"
                 value={apForm.amount}
-                onChange={e => setAPForm({ ...apForm, amount: e.target.value })}
+                onChange={amount => setAPForm({ ...apForm, amount })}
                 className="input"
+                showPrefix={false}
               />
             </div>
           </div>
@@ -2857,16 +3087,12 @@ export default function FinanceClient() {
           }}
           className="flex flex-col gap-4 p-1"
         >
-          {/* Executive info callout */}
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/90 text-xs text-slate-700">
-            <Info size={16} className="text-brand-deep-green shrink-0 mt-0.5" />
-            <div className="leading-relaxed">
-              <span className="font-semibold text-slate-900">Pencatatan Penerimaan:</span> Data disimpan sebagai <span className="badge badge-neutral text-2xs py-0.5 px-2 font-medium">Draft</span> untuk verifikasi. Saldo kas/bank dan kartu piutang terupdate otomatis setelah diverifikasi dan di-posting.
-            </div>
-          </div>
+          <CollapsibleGuideline title="Pencatatan penerimaan" tone="blue">
+            Data disimpan sebagai <span className="badge badge-neutral text-2xs py-0.5 px-2 font-medium">Draft</span> untuk verifikasi. Saldo kas/bank dan kartu piutang terupdate otomatis setelah diverifikasi dan di-posting.
+          </CollapsibleGuideline>
 
-          {/* Grid: Proyek Terkait & Nama Klien */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {/* Project and client are stacked to preserve long names. */}
+          <div className="grid grid-cols-1 gap-3.5">
             <div>
               <label htmlFor="receipt-project_id" className="text-xs font-bold text-text-primary block mb-1">
                 Nama Proyek Terkait <span className="text-red-500">*</span>
@@ -2980,37 +3206,25 @@ export default function FinanceClient() {
                     );
                   })}
               </select>
-              <p className="text-2xs text-text-secondary mt-1">
+              <CollapsibleGuideline title="Ketentuan pelunasan invoice" className="mt-2">
                 Hanya invoice berstatus <strong>POSTED</strong> (resmi diterbitkan) yang dapat dipilih untuk pelunasan piutang. Invoice DRAFT perlu di-posting terlebih dahulu di menu Termin Penagihan.
-              </p>
+              </CollapsibleGuideline>
             </div>
 
             <div>
               <label htmlFor="receipt-amount" className="text-xs font-bold text-text-primary block mb-1">
                 Nominal Uang Masuk Bersih (Rp) <span className="text-red-500">*</span>
               </label>
-              <div className="relative rounded-[11px] overflow-hidden focus-within:ring-2 focus-within:ring-brand-green/20 focus-within:border-brand-green">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-xs font-bold text-text-secondary select-none">
-                  Rp
-                </span>
-                <input
-                  id="receipt-amount"
-                  aria-invalid={!!receiptErrors.amount}
-                  aria-describedby={receiptErrors.amount ? "receipt-amount-error" : undefined}
-                  type="number"
-                  required
-                  min="1000"
-                  placeholder="0"
-                  value={receiptForm.amount}
-                  onChange={e => updateReceiptField("amount", e.target.value)}
-                  className="input pl-9 text-xs font-mono font-bold text-brand-deep-green"
-                />
-              </div>
-              {Number(receiptForm.amount) > 0 && (
-                <p className="text-2xs text-brand-deep-green font-semibold mt-1">
-                  Format: {formatMoney(Number(receiptForm.amount))}
-                </p>
-              )}
+              <IDRInput
+                id="receipt-amount"
+                aria-invalid={!!receiptErrors.amount}
+                aria-describedby={receiptErrors.amount ? "receipt-amount-error" : undefined}
+                required
+                placeholder="150.000.000"
+                value={receiptForm.amount}
+                onChange={amount => updateReceiptField("amount", amount)}
+                className="text-xs font-sans font-bold text-brand-deep-green"
+              />
               {receiptError("amount")}
             </div>
           </div>
@@ -3040,13 +3254,11 @@ export default function FinanceClient() {
               </div>
               <div>
                 <label htmlFor="receipt-withholding_tax_amount" className="text-2xs font-semibold text-text-secondary block mb-1">Nominal Potongan (Rp)</label>
-                <input
+                <IDRInput
                   id="receipt-withholding_tax_amount"
-                  type="number"
-                  min="0"
                   value={receiptForm.withholding_tax_amount}
-                  onChange={e => updateReceiptField("withholding_tax_amount", e.target.value)}
-                  className="input text-xs font-mono bg-white"
+                  onChange={amount => updateReceiptField("withholding_tax_amount", amount)}
+                  className="input text-xs font-sans bg-white"
                   placeholder="0"
                 />
               </div>
@@ -3191,11 +3403,8 @@ export default function FinanceClient() {
           </div>
 
           {/* Actions Footer */}
-          <div className="flex items-center justify-between pt-3 border-t border-slate-200/80 mt-1 flex-wrap gap-2">
-            <div className="text-2xs text-text-secondary">
-              Status tersimpan: <span className="font-semibold text-slate-800">Draft Customer Receipt</span>
-            </div>
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end pt-3 border-t border-slate-200/80 mt-1 flex-wrap gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 disabled={receiptSaving}
@@ -3204,6 +3413,9 @@ export default function FinanceClient() {
               >
                 Batal
               </button>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-2xs text-blue-800" aria-live="polite">
+                Status tersimpan: <span className="font-semibold">Draft Customer Receipt</span>
+              </div>
               <button
                 type="submit"
                 disabled={receiptSaving}
@@ -3381,7 +3593,7 @@ function TabFundingProyek({
               <th className="py-3 px-4 font-bold">Sumber Dana</th>
               <th className="py-3 px-4 font-bold">Jumlah Dana</th>
               <th className="py-3 px-4 font-bold">Status Approval</th>
-              <th className="py-3 px-4 font-bold text-right">{readOnly ? "Status Lifecycle" : "Keputusan Finance"}</th>
+              <th className="py-3 px-4 font-bold text-right">{readOnly ? "Status Lifecycle" : "Action"}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">

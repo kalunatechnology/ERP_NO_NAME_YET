@@ -30,6 +30,15 @@ function activeCompanyId(req: Request): string {
   return req.companyId;
 }
 
+function parseFinanceDateQuery(value: unknown, label: string, includeFullDay = false): Date | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ValidationError(`${label} tidak valid.`);
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new ValidationError(`${label} tidak valid.`);
+  if (includeFullDay) date.setUTCHours(23, 59, 59, 999);
+  return date;
+}
+
 function authenticatedFinanceUserId(req: Request): string {
   const userId = req.user?.id;
   if (!userId) {
@@ -357,7 +366,10 @@ financeRouter.post(
  */
 financeRouter.get('/trial-balance', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await FinanceService.getTrialBalance(activeCompanyId(req));
+    const startDate = parseFinanceDateQuery(req.query.start_date, 'Tanggal mulai laporan');
+    const endDate = parseFinanceDateQuery(req.query.end_date, 'Tanggal akhir laporan', true);
+    if (startDate && endDate && startDate > endDate) throw new ValidationError('Tanggal mulai laporan harus sebelum tanggal akhir.');
+    const result = await FinanceService.getTrialBalance(activeCompanyId(req), endDate);
     sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -374,8 +386,9 @@ financeRouter.get('/trial-balance', async (req: Request, res: Response, next: Ne
  */
 financeRouter.get('/profit-and-loss', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
-    const endDate = req.query.end_date ? new Date(req.query.end_date as string) : undefined;
+    const startDate = parseFinanceDateQuery(req.query.start_date, 'Tanggal mulai laporan');
+    const endDate = parseFinanceDateQuery(req.query.end_date, 'Tanggal akhir laporan', true);
+    if (startDate && endDate && startDate > endDate) throw new ValidationError('Tanggal mulai laporan harus sebelum tanggal akhir.');
     const result = await FinanceService.getProfitAndLoss(activeCompanyId(req), startDate, endDate);
     sendSuccess(res, result);
   } catch (err) {
@@ -393,7 +406,7 @@ financeRouter.get('/profit-and-loss', async (req: Request, res: Response, next: 
  */
 financeRouter.get('/balance-sheet', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const asOfDate = req.query.as_of_date ? new Date(req.query.as_of_date as string) : undefined;
+    const asOfDate = parseFinanceDateQuery(req.query.as_of_date, 'Tanggal laporan', true);
     const result = await FinanceService.getBalanceSheet(activeCompanyId(req), asOfDate);
     sendSuccess(res, result);
   } catch (err) {
@@ -999,10 +1012,14 @@ financeRouter.post(
 financeRouter.get('/customer-receipts/summary', async (req, res, next) => {
   try {
     const companyId = activeCompanyId(req);
+    const startDate = parseFinanceDateQuery(req.query.start_date, 'Tanggal mulai laporan');
+    const endDate = parseFinanceDateQuery(req.query.end_date, 'Tanggal akhir laporan', true);
+    if (startDate && endDate && startDate > endDate) throw new ValidationError('Tanggal mulai laporan harus sebelum tanggal akhir.');
+    const paymentDateFilter = startDate || endDate ? { payment_date: { ...(startDate ? { gte: startDate } : {}), ...(endDate ? { lte: endDate } : {}) } } : {};
     const [posted, pendingCount, invoices] = await Promise.all([
-      prisma.fin_payment.aggregate({ where: { company_id: companyId, payment_type: 'CUSTOMER_RECEIPT', status: 'POSTED' }, _sum: { amount: true }, _count: { id: true } }),
-      prisma.fin_payment.count({ where: { company_id: companyId, payment_type: 'CUSTOMER_RECEIPT', status: { in: ['DRAFT', 'SUBMITTED', 'APPROVED'] } } }),
-      prisma.fin_billing_document.aggregate({ where: { company_id: companyId, billing_type: 'CUSTOMER_INVOICE', status: 'POSTED' }, _sum: { outstanding_amount: true } }),
+      prisma.fin_payment.aggregate({ where: { company_id: companyId, payment_type: 'CUSTOMER_RECEIPT', status: 'POSTED', ...paymentDateFilter }, _sum: { amount: true }, _count: { id: true } }),
+      prisma.fin_payment.count({ where: { company_id: companyId, payment_type: 'CUSTOMER_RECEIPT', status: { in: ['DRAFT', 'SUBMITTED', 'APPROVED'] }, ...paymentDateFilter } }),
+      prisma.fin_billing_document.aggregate({ where: { company_id: companyId, billing_type: 'CUSTOMER_INVOICE', status: 'POSTED', ...(endDate ? { posting_date: { lte: endDate } } : {}) }, _sum: { outstanding_amount: true } }),
     ]);
     sendSuccess(res, { posted_amount: Number(posted._sum.amount ?? 0), posted_count: posted._count.id, pending_count: pendingCount, outstanding_amount: Number(invoices._sum.outstanding_amount ?? 0) });
   } catch (error) { next(error); }
@@ -1088,80 +1105,17 @@ financeRouter.post('/payments/:id/execute', requireFinanceRole([RoleCode.FINANCE
  * Data/side effects: Uses Prisma model(s) `fin_fiscal_period` in the handler path.
  * Errors: Expected failures are forwarded to the global error middleware through `next` or the route's explicit error response.
  */
-async function ensureFiscalPeriodsForCompany(companyId: string, userId?: string, tenantId?: string | null) {
-  let periods = await prisma.fin_fiscal_period.findMany({
+async function getFiscalPeriodsForCompany(companyId: string) {
+  return prisma.fin_fiscal_period.findMany({
     where: { company_id: companyId },
-    orderBy: { start_date: 'desc' },
-    take: 24,
+    orderBy: [{ start_date: 'desc' }, { period_number: 'desc' }],
   });
-
-  if (periods.length === 0 && companyId) {
-    const currentYear = new Date().getUTCFullYear();
-
-    let resolvedTenantId = tenantId;
-    if (!resolvedTenantId) {
-      const comp = await prisma.core_company.findFirst({
-        where: { id: companyId },
-        select: { tenant_id: true },
-      });
-      resolvedTenantId = comp?.tenant_id || null;
-    }
-
-    let fy = await prisma.fin_fiscal_year.findFirst({
-      where: { company_id: companyId, fiscal_year_name: String(currentYear) },
-    });
-
-    if (!fy) {
-      const yearStart = new Date(Date.UTC(currentYear, 0, 1, 0, 0, 0, 0));
-      const yearEnd = new Date(Date.UTC(currentYear + 1, 0, 1, 0, 0, 0, 0) - 1);
-      fy = await prisma.fin_fiscal_year.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenant_id: resolvedTenantId,
-          company_id: companyId,
-          created_by_id: userId || null,
-          fiscal_year_name: String(currentYear),
-          start_date: yearStart,
-          end_date: yearEnd,
-          status: 'OPEN',
-        },
-      });
-    }
-
-    const batch = [];
-    for (let month = 0; month < 12; month += 1) {
-      const startDate = new Date(Date.UTC(currentYear, month, 1, 0, 0, 0, 0));
-      const endDate = new Date(Date.UTC(currentYear, month + 1, 1, 0, 0, 0, 0) - 1);
-      batch.push({
-        id: crypto.randomUUID(),
-        tenant_id: resolvedTenantId,
-        company_id: companyId,
-        created_by_id: userId || null,
-        fiscal_year_id: fy.id,
-        period_number: month + 1,
-        start_date: startDate,
-        end_date: endDate,
-        status: 'OPEN',
-      });
-    }
-    await prisma.fin_fiscal_period.createMany({ data: batch });
-
-    periods = await prisma.fin_fiscal_period.findMany({
-      where: { company_id: companyId },
-      orderBy: { start_date: 'desc' },
-      take: 24,
-    });
-  }
-
-  return periods;
 }
 
 financeRouter.get('/fiscal-periods/status', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = activeCompanyId(req);
-    const userId = (req as any).user?.id;
-    const tenantId = (req as any).user?.tenant_id;
-    const periods = await ensureFiscalPeriodsForCompany(companyId, userId, tenantId);
+    const periods = await getFiscalPeriodsForCompany(companyId);
     sendSuccess(res, periods);
   } catch (err) { next(err); }
 });
@@ -1169,10 +1123,192 @@ financeRouter.get('/fiscal-periods/status', async (req: Request, res: Response, 
 financeRouter.post('/fiscal-periods/initialize', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = activeCompanyId(req);
-    const userId = (req as any).user?.id;
-    const tenantId = (req as any).user?.tenant_id;
-    const periods = await ensureFiscalPeriodsForCompany(companyId, userId, tenantId);
+    const periods = await getFiscalPeriodsForCompany(companyId);
     sendSuccess(res, periods);
+  } catch (err) { next(err); }
+});
+
+/** Create one company-specific fiscal year with its manually reviewed monthly boundaries. */
+financeRouter.post('/fiscal-calendar', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = authenticatedFinanceUserId(req);
+    const tenantId = req.user?.tenant_id ?? null;
+    const { fiscal_year_name, start_date, end_date, periods } = req.body ?? {};
+    const parseDate = (value: unknown, field: string) => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ValidationError(`${field} harus diisi dengan tanggal yang valid.`);
+      const parsed = new Date(`${value}T00:00:00.000Z`);
+      if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) throw new ValidationError(`${field} tidak valid.`);
+      return parsed;
+    };
+
+    const name = String(fiscal_year_name ?? '').trim();
+    if (!name) throw new ValidationError('Nama tahun buku wajib diisi.');
+    const yearStart = parseDate(start_date, 'Tanggal mulai tahun buku');
+    const yearEnd = parseDate(end_date, 'Tanggal akhir tahun buku');
+    if (yearStart > yearEnd) throw new ValidationError('Tanggal akhir tahun buku harus setelah tanggal mulai.');
+    if (!Array.isArray(periods) || periods.length !== 12) throw new ValidationError('Tahun buku harus memiliki tepat 12 periode bulanan.');
+
+    const normalizedPeriods = periods.map((period: any, index: number) => ({
+      period_number: index + 1,
+      start_date: parseDate(period?.start_date, `Tanggal mulai periode ${index + 1}`),
+      end_date: parseDate(period?.end_date, `Tanggal akhir periode ${index + 1}`),
+    }));
+    if (normalizedPeriods[0].start_date.getTime() !== yearStart.getTime() || normalizedPeriods[11].end_date.getTime() !== yearEnd.getTime()) {
+      throw new ValidationError('Periode pertama dan terakhir harus mencakup seluruh rentang tahun buku.');
+    }
+    for (let index = 0; index < normalizedPeriods.length; index += 1) {
+      const period = normalizedPeriods[index];
+      if (period.start_date > period.end_date) throw new ValidationError(`Rentang tanggal periode ${index + 1} tidak valid.`);
+      if (index > 0) {
+        const previous = normalizedPeriods[index - 1];
+        const expectedStart = new Date(previous.end_date.getTime() + 86_400_000);
+        if (period.start_date.getTime() !== expectedStart.getTime()) throw new ValidationError(`Periode ${index + 1} harus dimulai tepat sehari setelah periode ${index}. Pastikan tidak ada tanggal yang terlewat atau bertumpuk.`);
+      }
+    }
+
+    const overlap = await prisma.fin_fiscal_year.findFirst({
+      where: { company_id: companyId, start_date: { lte: yearEnd }, end_date: { gte: yearStart } },
+      select: { id: true, fiscal_year_name: true },
+    });
+    if (overlap) throw new ConflictError(`Rentang tahun buku bertumpuk dengan ${overlap.fiscal_year_name}.`);
+
+    const company = await prisma.core_company.findFirst({ where: { id: companyId }, select: { tenant_id: true, fiscal_year_start: true } });
+    const created = await prisma.$transaction(async (tx) => {
+      const fiscalYear = await tx.fin_fiscal_year.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: tenantId ?? company?.tenant_id ?? null,
+          company_id: companyId, created_by_id: userId, fiscal_year_name: name,
+          start_date: yearStart, end_date: yearEnd, status: 'OPEN',
+        },
+      });
+      const createdPeriods = await Promise.all(normalizedPeriods.map((period) => tx.fin_fiscal_period.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: tenantId ?? company?.tenant_id ?? null,
+          company_id: companyId, created_by_id: userId, fiscal_year_id: fiscalYear.id,
+          period_number: period.period_number, start_date: period.start_date,
+          end_date: period.end_date, status: 'OPEN',
+        },
+      })));
+      const legacyEntries = await tx.fin_journal_entry.findMany({
+        where: { company_id: companyId, posting_date: { gte: yearStart, lte: yearEnd } },
+        select: { id: true, posting_date: true },
+      });
+      for (const entry of legacyEntries) {
+        if (!entry.posting_date) continue;
+        const assignedPeriod = normalizedPeriods.find((period) => entry.posting_date! >= period.start_date && entry.posting_date! <= period.end_date);
+        if (assignedPeriod) {
+          await tx.fin_journal_entry.update({ where: { id: entry.id }, data: { fiscal_period_id: createdPeriods[assignedPeriod.period_number - 1].id } });
+        }
+      }
+      if (company && !company.fiscal_year_start) {
+        await tx.core_company.update({ where: { id: companyId }, data: { fiscal_year_start: yearStart } });
+      }
+      return { fiscalYear, periods: createdPeriods };
+    });
+
+    await AuditService.logDeltaEvent({
+      entity: 'fin_fiscal_year', entityId: created.fiscalYear.id, action: 'CREATE_FISCAL_CALENDAR',
+      before: {}, after: { fiscal_year_name: name, start_date: yearStart.toISOString(), end_date: yearEnd.toISOString(), period_boundaries: normalizedPeriods.map((period) => ({ start_date: period.start_date.toISOString(), end_date: period.end_date.toISOString() })) },
+      userId, companyId, tenantId: tenantId ?? undefined,
+      description: `Kalender fiskal ${name} dibuat dengan 12 batas periode yang ditentukan perusahaan.`,
+    });
+    sendSuccess(res, created, 201);
+  } catch (err) { next(err); }
+});
+
+financeRouter.put('/fiscal-calendar/:fiscalYearId', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const userId = authenticatedFinanceUserId(req);
+    const tenantId = req.user?.tenant_id ?? null;
+    const yearId = req.params.fiscalYearId;
+    const { fiscal_year_name, start_date, end_date, periods } = req.body ?? {};
+    const parseDate = (value: unknown, field: string) => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ValidationError(`${field} harus diisi dengan tanggal yang valid.`);
+      const parsed = new Date(`${value}T00:00:00.000Z`);
+      if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) throw new ValidationError(`${field} tidak valid.`);
+      return parsed;
+    };
+    const name = String(fiscal_year_name ?? '').trim();
+    if (!name) throw new ValidationError('Nama tahun buku wajib diisi.');
+    const yearStart = parseDate(start_date, 'Tanggal mulai tahun buku');
+    const yearEnd = parseDate(end_date, 'Tanggal akhir tahun buku');
+    if (yearStart > yearEnd) throw new ValidationError('Tanggal akhir tahun buku harus setelah tanggal mulai.');
+    if (!Array.isArray(periods) || periods.length !== 12) throw new ValidationError('Tahun buku harus memiliki tepat 12 periode bulanan.');
+    const normalizedPeriods = periods.map((period: any, index: number) => ({
+      period_number: index + 1,
+      start_date: parseDate(period?.start_date, `Tanggal mulai periode ${index + 1}`),
+      end_date: parseDate(period?.end_date, `Tanggal akhir periode ${index + 1}`),
+    }));
+    if (normalizedPeriods[0].start_date.getTime() !== yearStart.getTime() || normalizedPeriods[11].end_date.getTime() !== yearEnd.getTime()) {
+      throw new ValidationError('Periode pertama dan terakhir harus mencakup seluruh rentang tahun buku.');
+    }
+    for (let index = 0; index < normalizedPeriods.length; index += 1) {
+      const period = normalizedPeriods[index];
+      if (period.start_date > period.end_date) throw new ValidationError(`Rentang tanggal periode ${index + 1} tidak valid.`);
+      if (index > 0 && period.start_date.getTime() !== normalizedPeriods[index - 1].end_date.getTime() + 86_400_000) {
+        throw new ValidationError(`Periode ${index + 1} harus dimulai tepat sehari setelah periode ${index}. Pastikan tidak ada tanggal yang terlewat atau bertumpuk.`);
+      }
+    }
+
+    const existing = await prisma.fin_fiscal_year.findFirst({ where: { id: yearId, company_id: companyId } });
+    if (!existing) throw new NotFoundError('Tahun buku tidak ditemukan.');
+    if (existing.status !== 'OPEN') throw new ValidationError('Tahun buku hanya dapat diubah saat statusnya OPEN.');
+    const existingPeriods = await prisma.fin_fiscal_period.findMany({ where: { fiscal_year_id: yearId, company_id: companyId }, orderBy: { period_number: 'asc' } });
+    if (existingPeriods.length !== 12 || existingPeriods.some((period) => period.status !== 'OPEN')) {
+      throw new ValidationError('Kalender hanya dapat diubah jika memiliki 12 periode dan seluruhnya masih OPEN.');
+    }
+    const overlap = await prisma.fin_fiscal_year.findFirst({
+      where: { company_id: companyId, id: { not: yearId }, start_date: { lte: yearEnd }, end_date: { gte: yearStart } },
+      select: { fiscal_year_name: true },
+    });
+    if (overlap) throw new ConflictError(`Rentang tahun buku bertumpuk dengan ${overlap.fiscal_year_name}.`);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const fiscalYear = await tx.fin_fiscal_year.update({ where: { id: yearId }, data: { fiscal_year_name: name, start_date: yearStart, end_date: yearEnd } });
+      const firstFiscalYear = await tx.fin_fiscal_year.findFirst({ where: { company_id: companyId }, orderBy: { start_date: 'asc' }, select: { id: true } });
+      if (firstFiscalYear?.id === yearId) {
+        await tx.core_company.update({ where: { id: companyId }, data: { fiscal_year_start: yearStart } });
+      }
+      const savedPeriods = await Promise.all(normalizedPeriods.map((period, index) => tx.fin_fiscal_period.update({
+        where: { id: existingPeriods[index].id },
+        data: { period_number: period.period_number, start_date: period.start_date, end_date: period.end_date },
+      })));
+      const entries = await tx.fin_journal_entry.findMany({
+        where: {
+          company_id: companyId,
+          OR: [
+            { fiscal_period_id: { in: existingPeriods.map((period) => period.id) } },
+            { posting_date: { gte: existing.start_date, lte: existing.end_date } },
+          ],
+          posting_date: { not: null },
+        },
+        select: { id: true, posting_date: true },
+      });
+      for (const entry of entries) {
+        const postingDate = entry.posting_date!;
+        const assignedPeriod = normalizedPeriods.find((period) => postingDate >= period.start_date && postingDate <= period.end_date);
+        if (!assignedPeriod) throw new ValidationError(`Jurnal ${entry.id} memiliki tanggal di luar kalender tahun buku baru. Sesuaikan tanggal jurnal sebelum mengubah kalender.`);
+        await tx.fin_journal_entry.update({ where: { id: entry.id }, data: { fiscal_period_id: savedPeriods[assignedPeriod.period_number - 1].id } });
+      }
+      return { fiscalYear, periods: savedPeriods };
+    });
+
+    await AuditService.logDeltaEvent({
+      entity: 'fin_fiscal_year', entityId: yearId, action: 'UPDATE_FISCAL_CALENDAR',
+      before: {
+        fiscal_year_name: existing.fiscal_year_name, start_date: existing.start_date, end_date: existing.end_date,
+        period_boundaries: existingPeriods.map((period) => ({ start_date: period.start_date, end_date: period.end_date })),
+      },
+      after: {
+        fiscal_year_name: name, start_date: yearStart.toISOString(), end_date: yearEnd.toISOString(),
+        period_boundaries: normalizedPeriods.map((period) => ({ start_date: period.start_date, end_date: period.end_date })),
+      },
+      userId, companyId, tenantId: tenantId ?? undefined,
+      description: `Kalender fiskal ${name} diperbarui; jurnal dipetakan ulang berdasarkan tanggal posting.`,
+    });
+    sendSuccess(res, result);
   } catch (err) { next(err); }
 });
 
@@ -1355,8 +1491,8 @@ financeRouter.get('/audit-trail', async (req: Request, res: Response, next: Next
       entityId:  req.query.entity_id as string | undefined,
       userId:    req.query.user_id   as string | undefined,
       action:    req.query.action    as string | undefined,
-      fromDate:  req.query.from_date ? new Date(req.query.from_date as string) : undefined,
-      toDate:    req.query.to_date   ? new Date(req.query.to_date   as string) : undefined,
+      fromDate:  parseFinanceDateQuery(req.query.from_date, 'Tanggal mulai audit'),
+      toDate:    parseFinanceDateQuery(req.query.to_date, 'Tanggal akhir audit', true),
       companyId: activeCompanyId(req),
       page:      req.query.page      ? Number(req.query.page)      : 1,
       pageSize:  Math.min(100, Math.max(1, req.query.page_size ? Number(req.query.page_size) || 50 : 50)),
@@ -1376,7 +1512,10 @@ financeRouter.get('/audit-trail', async (req: Request, res: Response, next: Next
 financeRouter.get('/executive-audit-report', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const year = req.query.year ? Number(req.query.year) : undefined;
-    const result = await FinanceService.getExecutiveAuditReport(activeCompanyId(req), year);
+    const startDate = parseFinanceDateQuery(req.query.start_date, 'Tanggal mulai laporan');
+    const endDate = parseFinanceDateQuery(req.query.end_date, 'Tanggal akhir laporan', true);
+    if (startDate && endDate && startDate > endDate) throw new ValidationError('Tanggal mulai laporan harus sebelum tanggal akhir.');
+    const result = await FinanceService.getExecutiveAuditReport(activeCompanyId(req), year, startDate, endDate);
     sendSuccess(res, result);
   } catch (err) { next(err); }
 });
@@ -1417,8 +1556,24 @@ financeRouter.use('/accounts', createCrudRouter({ modelName: 'fin_account', sear
 financeRouter.use('/journals', createCrudRouter({ modelName: 'fin_journal', searchFields: ['journal_code', 'journal_name'] }));
 financeRouter.use('/journal-entries', createCrudRouter({
   modelName: 'fin_journal_entry', searchFields: ['entry_number', 'description'],
-  beforeCreate: async (req, data) => { await assertFinancialDateOpen(req, data.posting_date); return data; },
-  beforeUpdate: async (req, data, existing) => { await assertFinancialDateOpen(req, existing.posting_date); await assertFinancialDateOpen(req, data.posting_date); return data; },
+  beforeCreate: async (req, data) => {
+    await assertFinancialDateOpen(req, data.posting_date);
+    if (data.posting_date) {
+      const period = await prisma.fin_fiscal_period.findFirst({ where: { company_id: activeCompanyId(req), start_date: { lte: new Date(data.posting_date) }, end_date: { gte: new Date(data.posting_date) } }, select: { id: true } });
+      if (period) data.fiscal_period_id = period.id;
+    }
+    return data;
+  },
+  beforeUpdate: async (req, data, existing) => {
+    await assertFinancialDateOpen(req, existing.posting_date);
+    const postingDate = data.posting_date ?? existing.posting_date;
+    await assertFinancialDateOpen(req, postingDate);
+    if (postingDate) {
+      const period = await prisma.fin_fiscal_period.findFirst({ where: { company_id: activeCompanyId(req), start_date: { lte: new Date(postingDate) }, end_date: { gte: new Date(postingDate) } }, select: { id: true } });
+      if (period) data.fiscal_period_id = period.id;
+    }
+    return data;
+  },
   beforeDelete: async (req, existing) => { await assertFinancialDateOpen(req, existing.posting_date); },
 }));
 financeRouter.use('/journal-lines', createCrudRouter({

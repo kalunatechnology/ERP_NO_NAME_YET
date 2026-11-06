@@ -253,6 +253,161 @@ crmRouter.post('/customer-inquiries/:id/lead-status', async (req: Request, res: 
   } catch (error) { next(error); }
 });
 
+crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    const companyId = activeCompanyId(req);
+    const subject = String(req.body.subject ?? '').trim();
+    const customerPartyId = String(req.body.customer_party_id ?? req.body.customer_party ?? '').trim() || null;
+    const requestedCustomerName = String(req.body.customer_name ?? '').trim();
+    let customerEmail = String(req.body.customer_email ?? '').trim().toLowerCase();
+    const contactId = String(req.body.contact_id ?? '').trim() || null;
+    const description = String(req.body.description ?? '').trim();
+    if (!subject || subject.length > 240) throw new ValidationError('Subject inquiry wajib diisi dan maksimal 240 karakter.');
+    if (!requestedCustomerName || requestedCustomerName.length > 200) throw new ValidationError('Nama customer wajib diisi dan maksimal 200 karakter.');
+    if (description.length > 5000) throw new ValidationError('Deskripsi kebutuhan maksimal 5.000 karakter.');
+    if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) throw new ValidationError('Format email customer tidak valid.');
+    const expectedDeliveryDate = req.body.expected_delivery_date ? new Date(req.body.expected_delivery_date) : null;
+    if (expectedDeliveryDate && !Number.isFinite(expectedDeliveryDate.getTime())) throw new ValidationError('Tanggal kebutuhan pelanggan tidak valid.');
+
+    let customerName = requestedCustomerName;
+    if (customerPartyId) {
+      const party = await prisma.master_party.findFirst({
+        where: { id: customerPartyId, tenant_id: req.tenantId, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
+        select: { id: true, display_name: true, legal_name: true },
+      });
+      if (!party) throw new ValidationError('Pelanggan harus customer aktif pada company yang dipilih.');
+      customerName = party.display_name || party.legal_name || requestedCustomerName;
+    }
+
+    let contact: { id: string; email: string } | null = null;
+    if (contactId) {
+      if (!customerPartyId) throw new ValidationError('Pilih customer sebelum memilih kontak.');
+      contact = await prisma.master_contact.findFirst({
+        where: { id: contactId, tenant_id: req.tenantId, company_id: companyId, party_id: customerPartyId },
+        select: { id: true, email: true },
+      });
+      if (!contact) throw new ValidationError('Kontak tidak terdaftar pada customer yang dipilih.');
+      if (contact.email) customerEmail = contact.email.trim().toLowerCase();
+    }
+
+    const now = new Date();
+    const inquiry = await prisma.crm_customer_inquiry.create({
+      data: {
+        id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: companyId,
+        created_by_id: req.user.id, owner_user_id: req.user.id,
+        customer_party_id: customerPartyId, contact_id: contact?.id ?? null,
+        inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
+        source_channel: 'MANUAL', subject, customer_name: customerName,
+        customer_email: customerEmail, description,
+        expected_delivery_date: expectedDeliveryDate,
+        status: 'NEW', last_contact_note: '', created_at: now, updated_at: now,
+      },
+    });
+    res.status(201).json(inquiry);
+  } catch (error) { next(error); }
+});
+
+crmRouter.get('/won-contacts', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const opportunities = await prisma.crm_opportunity.findMany({
+      where: {
+        company_id: companyId,
+        OR: [
+          { status: { in: ['WON', 'CLOSED_WON'] } },
+          { pipeline_stage: { in: ['WON', 'CLOSED_WON'] } },
+        ],
+      },
+      orderBy: [{ closed_at: 'desc' }, { created_at: 'desc' }],
+      take: 500,
+      select: {
+        id: true, opportunity_name: true, customer_party_id: true, source_inquiry_id: true,
+        expected_amount: true, closed_at: true, created_at: true, status: true, pipeline_stage: true,
+      },
+    });
+    const partyIds = [...new Set(opportunities.flatMap((item) => item.customer_party_id ? [item.customer_party_id] : []))];
+    const inquiryIds = [...new Set(opportunities.flatMap((item) => item.source_inquiry_id ? [item.source_inquiry_id] : []))];
+    const [parties, contacts, inquiries] = await Promise.all([
+      partyIds.length ? prisma.master_party.findMany({ where: { company_id: companyId, id: { in: partyIds } }, select: { id: true, party_code: true, display_name: true, legal_name: true } }) : [],
+      partyIds.length ? prisma.master_contact.findMany({ where: { company_id: companyId, party_id: { in: partyIds } }, orderBy: [{ primary_contact: 'desc' }, { created_at: 'asc' }] }) : [],
+      inquiryIds.length ? prisma.crm_customer_inquiry.findMany({ where: { company_id: companyId, id: { in: inquiryIds } }, select: { id: true, contact_id: true, customer_name: true, customer_email: true } }) : [],
+    ]);
+    const partyById = new Map(parties.map((party) => [party.id, party]));
+    const contactsByParty = new Map<string, typeof contacts>();
+    for (const contact of contacts) {
+      if (!contact.party_id) continue;
+      contactsByParty.set(contact.party_id, [...(contactsByParty.get(contact.party_id) ?? []), contact]);
+    }
+    const inquiryById = new Map(inquiries.map((inquiry) => [inquiry.id, inquiry]));
+    res.json({ results: opportunities.map((opportunity) => {
+      const inquiry = opportunity.source_inquiry_id ? inquiryById.get(opportunity.source_inquiry_id) : undefined;
+      const partyContacts = opportunity.customer_party_id ? contactsByParty.get(opportunity.customer_party_id) ?? [] : [];
+      const inquiryContact = inquiry?.contact_id ? partyContacts.find((contact) => contact.id === inquiry.contact_id) : undefined;
+      const primaryContact = inquiryContact ?? partyContacts[0];
+      const party = opportunity.customer_party_id ? partyById.get(opportunity.customer_party_id) : undefined;
+      return {
+        opportunity_id: opportunity.id, opportunity_name: opportunity.opportunity_name,
+        status: opportunity.status, pipeline_stage: opportunity.pipeline_stage,
+        expected_amount: opportunity.expected_amount, closed_at: opportunity.closed_at, created_at: opportunity.created_at,
+        customer_party_id: opportunity.customer_party_id,
+        customer_name: party?.display_name || party?.legal_name || inquiry?.customer_name || 'Customer belum ditautkan',
+        party_code: party?.party_code ?? null,
+        contact_id: primaryContact?.id ?? inquiry?.contact_id ?? null,
+        contact_name: primaryContact?.contact_name ?? '',
+        job_title: primaryContact?.job_title ?? '',
+        email: primaryContact?.email ?? inquiry?.customer_email ?? '',
+        phone: primaryContact?.phone ?? '',
+        contact_source: primaryContact ? (primaryContact.primary_contact ? 'Kontak utama customer' : 'Kontak customer') : 'Data Inquiry',
+      };
+    }) });
+  } catch (error) { next(error); }
+});
+
+crmRouter.patch('/customer-inquiries/:id/customer', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    const companyId = activeCompanyId(req);
+    const inquiry = await prisma.crm_customer_inquiry.findFirst({ where: { id: req.params.id, tenant_id: req.tenantId, company_id: companyId } });
+    if (!inquiry) throw new NotFoundError('Lead / Inquiry');
+    if (inquiry.opportunity_id) throw new ConflictError('Customer pada Inquiry yang sudah menjadi Opportunity tidak dapat diganti.');
+    const partyId = String(req.body.customer_party_id ?? '').trim();
+    const party = await prisma.master_party.findFirst({
+      where: { id: partyId, tenant_id: req.tenantId, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
+      select: { id: true, display_name: true, legal_name: true },
+    });
+    if (!party) throw new ValidationError('Pilih customer aktif pada company ini.');
+    const contactId = String(req.body.contact_id ?? '').trim() || null;
+    let contact: { id: string; email: string } | null = null;
+    if (contactId) {
+      contact = await prisma.master_contact.findFirst({ where: { id: contactId, tenant_id: req.tenantId, company_id: companyId, party_id: party.id } });
+      if (!contact) throw new ValidationError('PIC harus berasal dari customer yang dipilih.');
+    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const row = await tx.crm_customer_inquiry.update({
+        where: { id: inquiry.id },
+        data: {
+          customer_party_id: party.id, contact_id: contact?.id ?? null,
+          customer_name: party.display_name || party.legal_name,
+          customer_email: contact?.email || inquiry.customer_email,
+          updated_at: now,
+        },
+      });
+      await tx.crm_workflow_event.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: inquiry.tenant_id, company_id: companyId,
+          inquiry_id: inquiry.id, event_type: 'CUSTOMER_LINK', from_status: inquiry.status,
+          to_status: inquiry.status, actor_id: req.user!.id, created_by_id: req.user!.id,
+          payload_json: { customer_party_id: party.id, contact_id: contact?.id ?? null }, created_at: now,
+        },
+      });
+      return row;
+    });
+    res.json(updated);
+  } catch (error) { next(error); }
+});
+
 // =============================================================================
 // CUSTOM ACTIONS ON COST ESTIMATES
 // =============================================================================
@@ -818,8 +973,13 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
         if (inquiry) return { inquiry, created: false };
       }
       const confirmedCustomer = conversation.customer_party_id
-        ? await tx.master_party.findFirst({ where: { id: conversation.customer_party_id, company_id: company, status: 'ACTIVE' }, select: { id: true, display_name: true, legal_name: true } })
+        ? await tx.master_party.findFirst({ where: { id: conversation.customer_party_id, company_id: company, party_type: 'CUSTOMER', status: 'ACTIVE' }, select: { id: true, display_name: true, legal_name: true } })
         : null;
+      const confirmedContact = confirmedCustomer ? await tx.master_contact.findFirst({
+        where: { company_id: company, party_id: confirmedCustomer.id },
+        orderBy: [{ primary_contact: 'desc' }, { created_at: 'asc' }],
+        select: { id: true, email: true },
+      }) : null;
       const messages = await tx.crm_message.findMany({
         where: { conversation_id: conversation.id, company_id: company },
         orderBy: [{ received_at: 'desc' }, { sent_at: 'desc' }],
@@ -834,14 +994,14 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
           company_id: company,
           created_by_id: req.user?.id,
           customer_party_id: confirmedCustomer?.id ?? null,
-          contact_id: null,
+          contact_id: confirmedContact?.id ?? null,
           owner_user_id: conversation.assigned_user_id ?? req.user?.id,
           inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
           source_channel: 'INTERNAL_PIPELINE',
           subject: conversation.subject || 'Inquiry dari Customer Inbox',
           description: description || `Dibuat dari conversation ${conversation.id}.`,
           customer_name: confirmedCustomer?.display_name || confirmedCustomer?.legal_name || conversation.subject || 'Belum teridentifikasi',
-          customer_email: '',
+          customer_email: confirmedContact?.email ?? '',
           origin_domain: conversation.origin_domain ?? null,
           status: 'NEW',
           created_at: now,
@@ -865,7 +1025,15 @@ crmRouter.use('/customer-inquiries', createCrudRouter({
     if (data.status && String(data.status).toUpperCase() !== String(existing.status || '').toUpperCase()) {
       throw new ValidationError('Gunakan aksi status Lead untuk memperbarui tahapan kontak.');
     }
+    if (data.customer_party_id !== undefined || data.contact_id !== undefined) {
+      throw new ValidationError('Gunakan aksi Hubungkan Customer agar relasi customer dan PIC divalidasi bersama.');
+    }
     return data;
+  },
+  beforeDelete: async (_req, existing) => {
+    if (existing.opportunity_id || String(existing.status || '').toUpperCase() === 'QUALIFIED') {
+      throw new ConflictError('Inquiry yang sudah menjadi Opportunity tidak dapat dihapus agar riwayat Deal tetap utuh.');
+    }
   },
 }));
 crmRouter.use('/inquiry-requirements', createCrudRouter({ modelName: 'crm_inquiry_requirement', searchFields: ['description'] }));

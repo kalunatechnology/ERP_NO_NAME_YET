@@ -27,18 +27,7 @@ import { AuditService } from '../core/audit.service';
 
 export class PeriodClosingService {
 
-  /**
-   * Resolve an OPEN fiscal period for a posting date.
-   *
-   * Bootstrap rule:
-   * - If a covering period already exists, it must be OPEN.
-   * - If no covering period exists, create/reuse the calendar fiscal year and
-   *   generate only missing monthly periods as OPEN.
-   * - CLOSED/LOCKED periods are never reopened automatically.
-   *
-   * This keeps first-time company setup usable without weakening period-close
-   * controls after accounting periods have been established.
-   */
+  /** Resolve a company-defined OPEN fiscal period for a posting date. */
   static async ensureOpenPostingPeriod(
     tx: Prisma.TransactionClient,
     postingDate: Date,
@@ -63,10 +52,7 @@ export class PeriodClosingService {
       return existing;
     }
 
-    const postingYear = postingDate.getUTCFullYear();
-    const postingMonth = postingDate.getUTCMonth();
-
-    let fiscalYear = await tx.fin_fiscal_year.findFirst({
+    const fiscalYear = await tx.fin_fiscal_year.findFirst({
       where: {
         company_id: companyId,
         start_date: { lte: postingDate },
@@ -79,119 +65,11 @@ export class PeriodClosingService {
         `Tahun fiskal ${fiscalYear.fiscal_year_name} berstatus ${fiscalYear.status} dan tidak dapat menerima posting.`,
       );
     }
-
-    const createdFiscalYear = !fiscalYear;
-
-    if (!fiscalYear) {
-      const yearStart = new Date(Date.UTC(postingYear, 0, 1, 0, 0, 0, 0));
-      const yearEnd = new Date(Date.UTC(postingYear + 1, 0, 1, 0, 0, 0, 0) - 1);
-
-      fiscalYear = await tx.fin_fiscal_year.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenant_id: tenantId,
-          company_id: companyId,
-          created_by_id: userId,
-          fiscal_year_name: String(postingYear),
-          start_date: yearStart,
-          end_date: yearEnd,
-          status: 'OPEN',
-        },
-      });
-    }
-
-    if (createdFiscalYear) {
-      // First-time bootstrap for a calendar fiscal year: prepare all 12 periods.
-      for (let month = 0; month < 12; month += 1) {
-        const startDate = new Date(Date.UTC(postingYear, month, 1, 0, 0, 0, 0));
-        const endDate = new Date(Date.UTC(postingYear, month + 1, 1, 0, 0, 0, 0) - 1);
-
-        await tx.fin_fiscal_period.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenant_id: tenantId,
-            company_id: companyId,
-            created_by_id: userId,
-            fiscal_year_id: fiscalYear.id,
-            period_number: month + 1,
-            start_date: startDate,
-            end_date: endDate,
-            status: 'OPEN',
-          },
-        });
-      }
-    } else {
-      // Existing/custom fiscal year with a missing month: create only the
-      // posting period and keep its boundaries inside that fiscal year.
-      const monthStart = new Date(Date.UTC(postingYear, postingMonth, 1, 0, 0, 0, 0));
-      const monthEnd = new Date(Date.UTC(postingYear, postingMonth + 1, 1, 0, 0, 0, 0) - 1);
-
-      const fiscalStart = fiscalYear.start_date ?? monthStart;
-      const fiscalEnd = fiscalYear.end_date ?? monthEnd;
-      const startDate = monthStart < fiscalStart ? fiscalStart : monthStart;
-      const endDate = monthEnd > fiscalEnd ? fiscalEnd : monthEnd;
-
-      const fiscalStartYear = fiscalStart.getUTCFullYear();
-      const fiscalStartMonth = fiscalStart.getUTCMonth();
-      const monthOffset =
-        (postingYear - fiscalStartYear) * 12 +
-        (postingMonth - fiscalStartMonth);
-
-      const periodNumber = Math.max(monthOffset + 1, 1);
-
-      const overlapping = await tx.fin_fiscal_period.findFirst({
-        where: {
-          company_id: companyId,
-          start_date: { lte: endDate },
-          end_date: { gte: startDate },
-        },
-      });
-
-      if (overlapping) {
-        if (overlapping.status !== 'OPEN') {
-          throw new AccountingError(
-            `Periode fiskal #${overlapping.period_number ?? 'N/A'} berstatus ${overlapping.status} dan tidak dapat menerima posting.`,
-          );
-        }
-        return overlapping;
-      }
-
-      await tx.fin_fiscal_period.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenant_id: tenantId,
-          company_id: companyId,
-          created_by_id: userId,
-          fiscal_year_id: fiscalYear.id,
-          period_number: periodNumber,
-          start_date: startDate,
-          end_date: endDate,
-          status: 'OPEN',
-        },
-      });
-    }
-
-    const resolved = await tx.fin_fiscal_period.findFirst({
-      where: {
-        company_id: companyId,
-        start_date: { lte: postingDate },
-        end_date: { gte: postingDate },
-      },
-    });
-
-    if (!resolved) {
-      throw new AccountingError(
-        'Periode fiskal untuk tanggal posting gagal disiapkan.',
-      );
-    }
-
-    if (resolved.status !== 'OPEN') {
-      throw new AccountingError(
-        `Periode fiskal #${resolved.period_number ?? 'N/A'} berstatus ${resolved.status} dan tidak dapat menerima posting.`,
-      );
-    }
-
-    return resolved;
+    throw new AccountingError(
+      fiscalYear
+        ? `Tanggal transaksi belum masuk ke periode yang dikonfigurasi pada tahun buku ${fiscalYear.fiscal_year_name}. Lengkapi kalender periode sebelum memposting.`
+        : 'Belum ada tahun buku yang mencakup tanggal transaksi. Finance harus mengatur kalender periode perusahaan sebelum memposting.',
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -216,7 +94,9 @@ export class PeriodClosingService {
       },
     });
 
-    if (!period) return; // Tidak ada periode terdaftar — biarkan lewat (data awal)
+    if (!period) {
+      throw new AccountingError('Tanggal transaksi belum tercakup dalam kalender fiskal perusahaan. Atur tahun buku dan periode terlebih dahulu.');
+    }
 
     if (period.status === 'CLOSED' || period.status === 'LOCKED') {
       throw new AccountingError(

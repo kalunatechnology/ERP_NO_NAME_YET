@@ -649,7 +649,7 @@ export class FinanceService {
  * Data/side effects: Reads or mutates Prisma model(s) `fin_account`, `fin_journal_entry`, `fin_journal_line`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async getTrialBalance(companyId?: string | null) {
+  static async getTrialBalance(companyId?: string | null, endDate?: Date) {
     type TrialBalanceRow = {
       id: string; account_code: string; account_name: string; account_type: string;
       normal_balance: string; total_debit: number; total_credit: number;
@@ -657,13 +657,18 @@ export class FinanceService {
     const companyPredicate = companyId
       ? Prisma.sql`a.company_id = ${companyId}::text`
       : Prisma.sql`a.company_id IS NULL`;
+    // Trial Balance is a point-in-time balance: include every posted movement
+    // through the selected period end so opening balances are not lost.
+    const postingDatePredicate = endDate
+      ? Prisma.sql`je.posting_date <= ${endDate}`
+      : Prisma.sql`TRUE`;
     // A financial report must remain read-only. COA setup belongs to an explicit
     // setup/write workflow, not to GET. Aggregate posted journal lines in SQL so
     // the database returns one row per account in a single round trip.
     const accounts = await prisma.$queryRaw<TrialBalanceRow[]>(Prisma.sql`
       SELECT a.id, a.account_code, a.account_name, a.account_type, a.normal_balance,
-             COALESCE(SUM(l.debit_base) FILTER (WHERE je.status = 'POSTED'), 0) AS total_debit,
-             COALESCE(SUM(l.credit_base) FILTER (WHERE je.status = 'POSTED'), 0) AS total_credit
+             COALESCE(SUM(l.debit_base) FILTER (WHERE je.status = 'POSTED' AND ${postingDatePredicate}), 0) AS total_debit,
+             COALESCE(SUM(l.credit_base) FILTER (WHERE je.status = 'POSTED' AND ${postingDatePredicate}), 0) AS total_credit
       FROM fin_account a
       LEFT JOIN fin_journal_line l ON l.account_id = a.id AND l.company_id IS NOT DISTINCT FROM a.company_id
       LEFT JOIN fin_journal_entry je ON je.id = l.journal_entry_id AND je.company_id IS NOT DISTINCT FROM a.company_id
@@ -1652,10 +1657,10 @@ export class FinanceService {
  * Data/side effects: Reads or mutates Prisma model(s) `core_audit_event`; transaction boundaries are exactly those visible in the body.
  * Failure behavior: Validation, authorization, persistence, or dependency errors are returned/thrown according to the existing caller contract.
  */
-  static async getExecutiveAuditReport(companyId?: string | null, year?: number) {
+  static async getExecutiveAuditReport(companyId?: string | null, year?: number, rangeStart?: Date, rangeEnd?: Date) {
     const targetYear = year || new Date().getFullYear();
-    const startDate = new Date(targetYear, 0, 1);
-    const endDate = new Date(targetYear, 11, 31, 23, 59, 59);
+    const startDate = rangeStart ?? new Date(Date.UTC(targetYear, 0, 1));
+    const endDate = rangeEnd ?? new Date(Date.UTC(targetYear, 11, 31, 23, 59, 59, 999));
 
     // 1. Agregat Fund Requests & LPJ
     const fundAuditLogs = await prisma.core_audit_event.findMany({
@@ -1731,6 +1736,8 @@ export class FinanceService {
     const closedPeriods = await prisma.fin_fiscal_period.findMany({
       where: {
         status: { in: ['CLOSED', 'LOCKED'] },
+        start_date: { lte: endDate },
+        end_date: { gte: startDate },
         ...(companyId ? { company_id: companyId } : { company_id: null }),
       },
       take: 12,
@@ -1738,6 +1745,8 @@ export class FinanceService {
 
     return {
       year:               targetYear,
+      start_date:         startDate,
+      end_date:           endDate,
       company_id:         companyId,
       generated_at:       new Date(),
       fund_summary: {

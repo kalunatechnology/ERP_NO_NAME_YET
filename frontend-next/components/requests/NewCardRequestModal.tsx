@@ -29,6 +29,7 @@ import {
   Paperclip,
 } from "lucide-react";
 import { cn, localDateKey, extractApiError, parseFormDateTime } from "@/lib/utils";
+import { IDRInput } from "@/components/ui/IDRInput";
 import api from "@/lib/api/axios";
 import { getUserFacingApiError } from "@/lib/api/error-message";
 
@@ -174,11 +175,6 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
   const handleRemoveFile = () => {
     setAttachedFileName(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const formatRupiahInput = (val: string) => {
-    const numbersOnly = val.replace(/\D/g, "");
-    return numbersOnly ? Number(numbersOnly).toLocaleString("id-ID") : "";
   };
 
   const handleRemovePerson = (id: string) => {
@@ -437,16 +433,12 @@ export function NewCardRequestModal({ isOpen, onClose, onSuccess }: NewCardReque
                     <label className="block text-2xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
                       Nominal Dana yang Diajukan (Rp) <span className="text-red-500">*</span>
                     </label>
-                    <div className="rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 flex items-center gap-2 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-600 transition-all">
-                      <span className="text-xs font-bold text-slate-500">Rp</span>
-                      <input
-                        type="text"
-                        value={formatRupiahInput(amountRaw)}
-                        onChange={e => setAmountRaw(e.target.value.replace(/\D/g, ""))}
-                        className="w-full bg-transparent focus:outline-none text-sm font-bold text-slate-900"
-                        placeholder="Contoh: 1.500.000"
-                      />
-                    </div>
+                    <IDRInput
+                      value={amountRaw}
+                      onChange={setAmountRaw}
+                      placeholder="Contoh: 1.500.000"
+                      className="font-bold text-slate-900"
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

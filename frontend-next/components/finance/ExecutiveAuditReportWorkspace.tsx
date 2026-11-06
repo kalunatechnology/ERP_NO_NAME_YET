@@ -17,7 +17,7 @@ import { cn, formatRupiah, formatDate } from "@/lib/utils";
 import api from "@/lib/api/axios";
 import { getUserFacingApiError } from "@/lib/api/error-message";
 
-export function ExecutiveAuditReportWorkspace() {
+export function ExecutiveAuditReportWorkspace({ startDate, endDate }: { startDate?: string; endDate?: string }) {
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function ExecutiveAuditReportWorkspace() {
     setLoading(true);
     try {
       const res = await api.get("/api/v1/finance/executive-audit-report", {
-        params: { year: selectedYear },
+        params: startDate && endDate ? { start_date: startDate, end_date: endDate } : { year: selectedYear },
       });
       setReportData(res.data?.data ?? res.data ?? null);
       setLoadError(null);
@@ -41,7 +41,7 @@ export function ExecutiveAuditReportWorkspace() {
 
   useEffect(() => {
     fetchReport();
-  }, [selectedYear]);
+  }, [selectedYear, startDate, endDate]);
 
   const handlePrint = () => {
     window.print();
@@ -69,7 +69,7 @@ export function ExecutiveAuditReportWorkspace() {
 
         <div className="workspace-actions flex items-center gap-2.5 flex-wrap">
           {/* Year Selector */}
-          <select
+          {startDate && endDate ? <span className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[#2649B3]">Periode {formatDate(startDate)} – {formatDate(endDate)}</span> : <select
             value={selectedYear}
             onChange={e => setSelectedYear(Number(e.target.value))}
             aria-label="Tahun buku laporan audit"
@@ -78,7 +78,7 @@ export function ExecutiveAuditReportWorkspace() {
             {[2024, 2025, 2026, 2027].map(y => (
               <option key={y} value={y}>Tahun Buku {y}</option>
             ))}
-          </select>
+          </select>}
 
           <button
             onClick={fetchReport}
@@ -110,9 +110,21 @@ export function ExecutiveAuditReportWorkspace() {
         </div>
       ) : (
         <div className="space-y-6 printable-report">
-          
-          {/* 1. TOP KPI STATS (Fund Request & LPJ Compliance) */}
-          <div className="workspace-kpis grid gap-4">
+
+          {/* Executive summary */}
+          <section className="space-y-3 rounded-[22px] border border-[#D9D9D9] bg-[#F8FAFF] p-4 sm:p-5">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EAF6FF] text-[#2649B3]">
+                <TrendingUp size={16} aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-sm font-extrabold tracking-tight text-[#090909]">Ringkasan Eksekutif</h3>
+                <p className="text-2xs text-[#4F5050]">Ikhtisar dana dan kepatuhan LPJ untuk tahun buku terpilih.</p>
+              </div>
+            </div>
+
+            {/* 1. TOP KPI STATS (Fund Request & LPJ Compliance) */}
+            <div className="workspace-kpis grid gap-4">
             
             {/* Total Dana Diajukan */}
             <div className="p-4 rounded-[20px] bg-white border border-[#D9D9D9] shadow-2xs flex flex-col justify-between">
@@ -173,10 +185,22 @@ export function ExecutiveAuditReportWorkspace() {
               </div>
             </div>
 
-          </div>
+            </div>
+          </section>
 
-          {/* 2. DUA KOLOM: Transaksi Kritis & Jurnal Koreksi */}
-          <div className="workspace-columns grid gap-5">
+          <section className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#FFF3E8] text-orange-700">
+                <FileText size={16} aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-sm font-extrabold tracking-tight text-[#090909]">Aktivitas & Pemeriksaan Audit</h3>
+                <p className="text-2xs text-[#4F5050]">Rincian transaksi dan jurnal koreksi yang perlu ditinjau.</p>
+              </div>
+            </div>
+
+            {/* 2. DUA KOLOM: Transaksi Kritis & Jurnal Koreksi */}
+            <div className="workspace-columns grid gap-5">
             
             {/* Jurnal Transaksi Signifikan */}
             <div className="p-5 rounded-[22px] bg-white border border-[#D9D9D9] shadow-2xs flex flex-col justify-between gap-4">
@@ -256,10 +280,10 @@ export function ExecutiveAuditReportWorkspace() {
               </div>
             </div>
 
-          </div>
+            </div>
 
-          {/* 3. STATUS TATA KELOLA & TUTUP BUKU */}
-          <div className="p-5 rounded-[22px] bg-[#FDFDFD] border border-[#D9D9D9] flex items-center justify-between flex-wrap gap-4">
+            {/* 3. STATUS TATA KELOLA & TUTUP BUKU */}
+            <div className="p-5 rounded-[22px] bg-[#FDFDFD] border border-[#D9D9D9] flex items-center justify-between flex-wrap gap-4">
             <div className="flex min-w-0 items-start gap-3">
               <div className="w-9 h-9 shrink-0 rounded-xl bg-[#EAF6FF] text-[#2649B3] flex items-center justify-center font-black">
                 ✓
@@ -280,7 +304,8 @@ export function ExecutiveAuditReportWorkspace() {
                 100% Immutable Ledger Compliant
               </span>
             </div>
-          </div>
+            </div>
+          </section>
 
         </div>
       )}

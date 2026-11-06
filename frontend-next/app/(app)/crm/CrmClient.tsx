@@ -15,7 +15,7 @@ import {
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
   Calculator, ShieldCheck, Award, BarChart3, MessageSquare, FileCheck,
   ChevronRight, ChevronDown, AlertCircle, Star, UserPlus, Copy,
-  Inbox, Globe2,
+  Inbox, Globe2, Search, Filter,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
@@ -27,13 +27,14 @@ import {
   createOpportunity, updateOpportunityCustomer, moveCRMOpportunityStage, deleteOpportunity,
   createCRMActivity, getOpportunityCustomer360, markOpportunityLost, createServiceWorkOrder,
   createCustomerInquiry, updateCRMInquiryLeadStatus, deleteCustomerInquiry,
+  linkInquiryCustomer,
   createCostEstimate, calculateCostEstimate, createQuotationFromEstimate, deleteCostEstimate,
   submitQuotationApproval, approveQuotation, sendQuotation, acceptQuotation, rejectQuotation, convertQuotationToOrder,
   createSupportTicket, checkTicketWarrantyStatus, deleteSupportTicket,
   updateCustomerCreditLimit, calculateCreditSnapshot,
   loadCRMInbox, createInquiryFromConversation, replyToCRMConversation, assignConversationToMe, setConversationDecision,
   confirmCRMIdentityCustomer,
-  loadCRMPartyContacts,
+  loadCRMPartyContacts, saveCRMPartyContact,
   loadCRMWhatsAppConnections, createCRMWhatsAppConnection, updateCRMWhatsAppConnection, testCRMWhatsAppConnection,
   type CRMWhatsAppConnection,
   type CRMInboxConversation,
@@ -43,6 +44,8 @@ import { getUserFacingApiError } from "@/lib/api/error-message";
 import { requestApi, type MeetingMinutesReference } from "@/lib/api/request.api";
 import { feedApi } from "@/lib/api/feed.api";
 import { AccessDeniedState } from "@/components/ui/AccessDeniedState";
+import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
+import { CRMPeriodToolbar, useCRMPeriodFilter } from "@/components/crm/CRMPeriodFilter";
 import { canAccessRoute } from "@/lib/access/module-contract";
 import { canPerform } from "@/lib/access/capability-contract";
 
@@ -564,6 +567,8 @@ function TabDeals({
   const [creditLimitParty, setCreditLimitParty] = useState<{ id: string | number; name: string; current: number } | null>(null);
   const [creditLimitDraft, setCreditLimitDraft] = useState("");
   const [savingCreditLimit, setSavingCreditLimit] = useState(false);
+  const [creditSearch, setCreditSearch] = useState("");
+  const [creditStatusFilter, setCreditStatusFilter] = useState("ALL");
 
   useEffect(() => {
     if (!activityOpp) return;
@@ -578,7 +583,28 @@ function TabDeals({
     return () => { active = false; };
   }, [activityOpp]);
 
-  const allOpps = data.opportunities || [];
+  const crmPeriod = useCRMPeriodFilter();
+  const allOpps = (data.opportunities || []).filter((item) => crmPeriod.matches(item.created_at || item.updated_at || item.closed_at));
+  const creditCustomers = (data.parties || []).filter((party: any) => !party.party_type || String(party.party_type).toUpperCase() === "CUSTOMER");
+  const latestCreditByCustomer = [...(data.credit || [])]
+    .sort((a: any, b: any) => new Date(b.snapshot_at || 0).getTime() - new Date(a.snapshot_at || 0).getTime())
+    .reduce((latest: Map<string, any>, snapshot: any) => {
+      const customerId = String(snapshot.customer_party || "");
+      if (customerId && !latest.has(customerId)) latest.set(customerId, snapshot);
+      return latest;
+    }, new Map<string, any>());
+  const filteredCreditCustomers = creditCustomers.filter((party: any) => {
+    const query = creditSearch.trim().toLowerCase();
+    const name = String(party.display_name || party.legal_name || "");
+    const code = String(party.party_code || "");
+    const matchesSearch = !query || `${name} ${code} ${party.id}`.toLowerCase().includes(query);
+    const snapshot = latestCreditByCustomer.get(String(party.id));
+    const limit = Number(snapshot?.credit_limit || 0);
+    const available = Number(snapshot?.available_credit ?? limit);
+    const overdue = Number(snapshot?.overdue_amount || 0);
+    const status = limit <= 0 ? "NO_LIMIT" : snapshot?.credit_status === "HOLD" || available < 0 || overdue > 0 ? "HOLD" : "AVAILABLE";
+    return matchesSearch && (creditStatusFilter === "ALL" || status === creditStatusFilter);
+  });
   const activeOpps = allOpps.filter(o => {
 /**
  * st coordinates the UI behavior represented by this function.
@@ -920,6 +946,8 @@ function TabDeals({
           </div>
         </details>
 
+        <div className="mb-3"><CRMPeriodToolbar filter={crmPeriod} /></div>
+
         {/* Filter Toggle Pills */}
         <div className="flex items-center gap-1.5 mb-3 bg-gray-100 p-1 rounded-xl w-fit">
           <button
@@ -1060,14 +1088,41 @@ function TabDeals({
 
       {/* Credit Management table */}
       <div className="card min-w-0 w-full rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-bold text-text-primary">Credit Management</h3>
-          <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-bold", (data.parties||[]).length >= 20 ? "bg-emerald-100 text-emerald-700" : (data.parties||[]).length >= 5 ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}><Users size={11} />{(data.parties||[]).length}</span>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-text-primary">Batas Kredit Pelanggan</h3>
+            <p className="mt-1 text-xs text-text-secondary">Periksa plafon, piutang berjalan, dan kelayakan kredit sebelum order diproses.</p>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800"><Users size={13} />{creditCustomers.length} pelanggan</span>
         </div>
-        <p className="text-xs text-text-secondary mb-3">Kontrol plafon kredit, outstanding AR, dan kelayakan approval transaksi klien.</p>
-        <p className="text-[11px] leading-5 text-text-secondary mb-3">NO_LIMIT berarti plafon kredit belum diatur. Untuk pemeriksaan Deal Won, plafon Rp0 dihitung sebagai kredit tersedia Rp0; atur limit sebelum mengandalkan jalur kredit.</p>
-        {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada customer terdaftar." /> : (
-          <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
+        <CollapsibleGuideline title="Cara membaca status kredit" className="mb-4" tone="blue">
+          <ul className="list-disc space-y-1 pl-4">
+            <li><strong>Limit belum diatur:</strong> plafon belum ditentukan; order tidak dapat lolos pemeriksaan kredit sampai limit ditetapkan.</li>
+            <li><strong>Tersedia:</strong> plafon sudah diatur dan sisa kredit dapat digunakan.</li>
+            <li><strong>Perlu ditinjau:</strong> status kredit ditahan, limit terlampaui, atau ada piutang yang jatuh tempo.</li>
+          </ul>
+          <p className="mt-2">Nilai <strong>Belum dihitung</strong> berarti snapshot kredit belum tersedia. Gunakan Hitung ulang untuk mengambil data piutang terbaru.</p>
+        </CollapsibleGuideline>
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Cari pelanggan</span>
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
+            <input type="search" value={creditSearch} onChange={event => setCreditSearch(event.target.value)} placeholder="Cari nama, kode, atau ID pelanggan..." className="input w-full pl-9 text-xs" />
+          </label>
+          <label className="relative">
+            <Filter size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
+            <span className="sr-only">Filter status kredit</span>
+            <select value={creditStatusFilter} onChange={event => setCreditStatusFilter(event.target.value)} className="input w-full pl-8 text-xs sm:w-52">
+              <option value="ALL">Semua status kredit</option>
+              <option value="NO_LIMIT">Limit belum diatur</option>
+              <option value="AVAILABLE">Tersedia</option>
+              <option value="HOLD">Perlu ditinjau</option>
+            </select>
+          </label>
+          <span className="whitespace-nowrap text-xs text-text-secondary">{filteredCreditCustomers.length} ditampilkan</span>
+        </div>
+        {creditCustomers.length === 0 ? <EmptyState msg="Belum ada data pelanggan untuk diperiksa." /> : filteredCreditCustomers.length === 0 ? <EmptyState msg="Tidak ada pelanggan yang cocok dengan pencarian atau status ini." /> : (
+          <div className="rounded-xl border border-text-tertiary/60">
             <table className="w-full min-w-[820px] border-collapse text-left">
               <thead className="sticky top-0 z-10 bg-slate-100 text-xs font-semibold text-text-secondary">
                 <tr>
@@ -1081,24 +1136,26 @@ function TabDeals({
                 </tr>
               </thead>
               <tbody className="divide-y divide-text-tertiary/40 bg-white">
-                {(data.parties||[]).map((p, customerIndex) => {
-              const snap = (data.credit||[]).find(c => String(c.customer_party) === String(p.id));
+                {filteredCreditCustomers.map((p: any, customerIndex: number) => {
+              const snap = latestCreditByCustomer.get(String(p.id));
               const limit = snap?.credit_limit || 0;
               const outstanding = snap?.outstanding_receivable || 0;
               const overdue = snap?.overdue_amount || 0;
               const available = snap?.available_credit ?? limit;
-              const status = snap?.credit_status || (limit > 0 ? "AVAILABLE" : "NO_LIMIT");
-              const isBlocked = status === "HOLD" || status === "NO_LIMIT" || (limit > 0 && available < 0) || overdue > 0;
+              const isNoLimit = limit <= 0;
+              const isHeld = !isNoLimit && (snap?.credit_status === "HOLD" || available < 0 || overdue > 0);
+              const status = isNoLimit ? "NO_LIMIT" : isHeld ? "HOLD" : "AVAILABLE";
+              const statusLabel = isNoLimit ? "Limit belum diatur" : isHeld ? "Perlu ditinjau" : "Tersedia";
               return (
-                <tr key={p.id} className={cn("transition-colors hover:bg-blue-50/70", customerIndex % 2 ? "bg-slate-50/70" : "bg-white", isBlocked && "bg-red-50/50")}>
+                <tr key={p.id} className={cn("transition-colors hover:bg-blue-50/70", isHeld ? "bg-red-50/60" : isNoLimit ? "bg-amber-50/50" : customerIndex % 2 ? "bg-slate-50/70" : "bg-white")}>
                   <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
-                    <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-text-primary"><span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-2xs font-black", ["bg-blue-100 text-blue-700", "bg-violet-100 text-violet-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700"][customerIndex % 4])}>{String(p.display_name || p.legal_name || "C").slice(0, 2).toUpperCase()}</span><span className="max-w-[190px] break-words">{p.display_name || p.legal_name}</span></span>
+                    <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-text-primary"><span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-2xs font-black", ["bg-blue-100 text-blue-700", "bg-violet-100 text-violet-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700"][customerIndex % 4])}>{String(p.display_name || p.legal_name || "C").slice(0, 2).toUpperCase()}</span><span className="min-w-0"><span className="block max-w-[190px] break-words">{p.display_name || p.legal_name}</span><span className="mt-0.5 block text-[10px] font-normal text-text-secondary">{p.party_code ? `Kode ${p.party_code} · ` : ""}ID {String(p.id).slice(0, 8).toUpperCase()}</span></span></span>
                   </td>
-                  <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0"><StatusBadge status={status} /></td>
-                  <td className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold text-brand-green last:border-r-0">{formatMoney(limit)}</td>
-                  <td className={cn("whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-medium last:border-r-0", outstanding > 0 ? "text-amber-700" : "text-text-primary")}>{formatMoney(outstanding)}</td>
-                  <td className={cn("whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold last:border-r-0", available >= 0 ? "text-brand-green" : "text-red-600")}>{formatMoney(available)}</td>
-                  <td className={cn("whitespace-nowrap border-b border-slate-200 px-3 py-3 text-right text-sm font-medium", overdue > 0 ? "text-red-600" : "text-text-primary")}>{formatMoney(overdue)}</td>
+                  <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0"><span className={cn("inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold", isHeld ? "bg-red-100 text-red-800" : isNoLimit ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800")}>{statusLabel}</span></td>
+                  <td className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold text-brand-green last:border-r-0">{limit > 0 ? formatMoney(limit) : <span className="text-xs font-medium text-amber-800">Belum diatur</span>}</td>
+                  <td className={cn("whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-medium last:border-r-0", outstanding > 0 ? "text-amber-700" : "text-text-primary")}>{snap ? formatMoney(outstanding) : <span className="text-xs text-text-secondary">Belum dihitung</span>}</td>
+                  <td className={cn("whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold last:border-r-0", isNoLimit ? "text-text-secondary" : available >= 0 ? "text-brand-green" : "text-red-600")}>{isNoLimit ? "—" : snap ? formatMoney(available) : <span className="text-xs font-medium text-text-secondary">Belum dihitung</span>}</td>
+                  <td className={cn("whitespace-nowrap border-b border-slate-200 px-3 py-3 text-right text-sm font-medium", overdue > 0 ? "text-red-600" : "text-text-primary")}>{snap ? formatMoney(overdue) : <span className="text-xs text-text-secondary">Belum dihitung</span>}</td>
                   {!readOnly && <td className="border-b border-slate-200 px-3 py-3"><div className="flex min-w-[180px] justify-end gap-1.5"><ActionBtn onClick={async () => { handleCreditLimit(p, limit); }} label="Atur Limit" small variant="ghost" title="Tetapkan plafon kredit customer. Nilai ini dipakai untuk menentukan apakah Deal Won bisa diteruskan tanpa proforma." /><ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" title="Hitung ulang limit tersedia, piutang berjalan, dan overdue dari data invoice yang tercatat." /></div></td>}
                 </tr>
               );
@@ -1272,7 +1329,7 @@ function TabDeals({
       </Modal>
       <Modal isOpen={Boolean(activityOpp)} onClose={() => setActivityOpp(null)} title={`Aktivitas — ${activityOpp?.opportunity_name || "Opportunity"}`} size="sm">
         <div className="space-y-3">
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">Untuk menjadwalkan meeting dengan agenda dan notulensi yang bisa menghasilkan keputusan serta action item, gunakan tombol <b>Jadwalkan meeting</b> pada Opportunity.</div>
+          <CollapsibleGuideline title="Panduan pencatatan meeting">Untuk menjadwalkan meeting dengan agenda dan notulensi yang bisa menghasilkan keputusan serta action item, gunakan tombol <b>Jadwalkan meeting</b> pada Opportunity.</CollapsibleGuideline>
           <label className="block text-xs font-medium">Jenis aktivitas<select className="input mt-1 w-full" value={activityForm.activity_type} onChange={e => setActivityForm({ ...activityForm, activity_type: e.target.value })}><option value="CALL">Telepon</option><option value="MEETING">Catatan meeting yang sudah berlangsung</option><option value="NOTE">Catatan</option><option value="FOLLOW_UP">Follow-up</option></select></label>
           <label className="block text-xs font-medium">Catatan<textarea className="input mt-1 w-full min-h-20" value={activityForm.subject} onChange={e => setActivityForm({ ...activityForm, subject: e.target.value })} placeholder="Ringkasan percakapan atau tindak lanjut" /></label>
           <label className="block text-xs font-medium">Tautkan ke notulensi (opsional)<select className="input mt-1 w-full" value={activityForm.meeting_minutes_id} onChange={e => setActivityForm({ ...activityForm, meeting_minutes_id: e.target.value })}><option value="">Tidak ditautkan</option>{meetingMinutesReferences.map((minutes) => <option key={minutes.id} value={minutes.id}>{minutes.meeting_title} · {formatDate(minutes.occurrence_date)}{minutes.status === "PUBLISHED" ? " · Dipublikasikan" : " · Draft"}</option>)}</select><span className="mt-1 block text-2xs text-text-secondary">Daftar hanya memuat notulensi meeting yang dapat Anda akses.</span></label>
@@ -1311,15 +1368,15 @@ function TabDeals({
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQuotation = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; readOnly?: boolean; canApproveQuotation?: boolean }) {
+function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false, canApproveQuotation = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; onNavigate: (tab: string) => void; readOnly?: boolean; canApproveQuotation?: boolean }) {
   const [isEstModal, setIsEstModal] = useState(false);
   const [calculatingEstimateId, setCalculatingEstimateId] = useState<string | null>(null);
   const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: "100000000", overhead_cost: "30000000", contingency_amount: "0", markup_percent: "30", tax_percent: "0", description: "" });
   const [quotationSearch, setQuotationSearch] = useState("");
   const [quotationClientFilter, setQuotationClientFilter] = useState("");
-  const [quotationMonthFilter, setQuotationMonthFilter] = useState("");
-  const [quotationWeekFilter, setQuotationWeekFilter] = useState("");
+  const crmPeriod = useCRMPeriodFilter();
   const [sendDialog, setSendDialog] = useState<{ quote: any; customerName: string; recipientEmail: string; subject: string; body: string } | null>(null);
+  const [creditHoldResult, setCreditHoldResult] = useState<{ result: any; customerName: string; quotation: any } | null>(null);
   const [loadingRecipient, setLoadingRecipient] = useState(false);
   const [sendingQuotation, setSendingQuotation] = useState(false);
 
@@ -1349,26 +1406,10 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
     .filter((row) => row.customerId && row.customerName !== "—")
     .map((row) => [row.customerId, row.customerName] as const)).entries())
     .sort((a, b) => a[1].localeCompare(b[1], "id"));
-  const monthWeekCount = quotationMonthFilter
-    ? (() => {
-        const [year, month] = quotationMonthFilter.split("-").map(Number);
-        if (!year || !month) return 0;
-        const firstDayOffset = (new Date(year, month - 1, 1).getDay() + 6) % 7;
-        return Math.ceil((new Date(year, month, 0).getDate() + firstDayOffset) / 7);
-      })()
-    : 0;
+  const visibleEstimates = (data.estimates || []).filter((estimate: any) => crmPeriod.matches(estimate.created_at || estimate.updated_at));
   const filteredQuotationRows = quotationRows.filter((row) => {
     if (quotationClientFilter && row.customerId !== quotationClientFilter) return false;
-    if (quotationMonthFilter) {
-      if (!row.date) return false;
-      const rowMonth = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, "0")}`;
-      if (rowMonth !== quotationMonthFilter) return false;
-      if (quotationWeekFilter) {
-        const firstDayOffset = (new Date(row.date.getFullYear(), row.date.getMonth(), 1).getDay() + 6) % 7;
-        const rowWeek = Math.floor((row.date.getDate() - 1 + firstDayOffset) / 7) + 1;
-        if (rowWeek !== Number(quotationWeekFilter)) return false;
-      }
-    }
+    if (!crmPeriod.matches(row.date)) return false;
     const term = quotationSearch.trim().toLocaleLowerCase("id-ID");
     if (!term) return true;
     const status = String(row.quote.status || "DRAFT");
@@ -1539,9 +1580,12 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
           if (result?.handoff?.sales_order_id) {
             toast.success(result.handoff.project_id ? "Quotation dikonversi menjadi Sales Order dan diteruskan ke Project." : "Quotation berhasil dikonversi menjadi Sales Order.");
           } else {
-            toast.error(result?.handoff?.proforma_invoice_id
-              ? `Konversi order ditahan oleh pemeriksaan kredit. Proforma ${result.handoff.proforma_invoice_id} perlu ditindaklanjuti.`
-              : result?.handoff?.note || "Konversi ditahan oleh pemeriksaan kredit.");
+            const customer = (data.parties || []).find((party: any) => String(party.id) === String(quotationPartyId));
+            setCreditHoldResult({
+              result,
+              quotation: q,
+              customerName: customer?.display_name || customer?.legal_name || "Pelanggan",
+            });
           }
           onRefresh();
         } catch (error: any) {
@@ -1564,24 +1608,19 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="text-base font-bold text-text-primary">Cost Estimating (HPP & Margin)</h3>
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.estimates||[]).length} Estimate</span>
+            <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{visibleEstimates.length} Estimate</span>
             {!readOnly && (
               <button onClick={() => setIsEstModal(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Estimasi HPP</button>
             )}
           </div>
         </div>
-        <details className="group mb-3 rounded-lg border border-blue-100 bg-blue-50/60">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-text-primary marker:hidden">
-            <span>Apa itu HPP?</span>
-            <ChevronDown size={15} className="shrink-0 text-blue-700 transition-transform group-open:rotate-180" aria-hidden="true" />
-          </summary>
-          <p className="border-t border-blue-100 px-3 py-2.5 text-xs leading-5 text-text-secondary">
+        <CollapsibleGuideline title="Apa itu HPP?" className="mb-3">
             Harga Pokok Penjualan adalah perkiraan biaya untuk memenuhi pesanan: biaya langsung, overhead, dan contingency. Harga penawaran dihitung dari HPP ditambah markup. Angka ini merupakan estimasi, bukan bukti penerimaan uang atau biaya aktual.
-          </p>
-        </details>
-        {(data.estimates||[]).length === 0 ? <EmptyState msg="Belum ada kalkulasi biaya." /> : (
+        </CollapsibleGuideline>
+        <div className="mb-3"><CRMPeriodToolbar filter={crmPeriod} /></div>
+        {visibleEstimates.length === 0 ? <EmptyState msg="Tidak ada kalkulasi biaya pada periode ini." /> : (
           <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto">
-            {(data.estimates||[]).map(e => {
+            {visibleEstimates.map(e => {
               const lines = (data.estimateLines || []).filter((line: any) => String(line.estimate_id ?? line.estimate) === String(e.id));
               const lineDirect = lines.filter((line: any) => String(line.cost_element || "").toUpperCase() !== "OVERHEAD").reduce((sum: number, line: any) => sum + Number(line.amount || 0), 0);
               const lineOverhead = lines.filter((line: any) => String(line.cost_element || "").toUpperCase() === "OVERHEAD").reduce((sum: number, line: any) => sum + Number(line.amount || 0), 0);
@@ -1746,17 +1785,9 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
                   {quotationClients.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                 </select>
               </label>
-              <label className="min-w-0 text-xs font-medium text-text-secondary">Bulan
-                <input type="month" value={quotationMonthFilter} onChange={(event) => { setQuotationMonthFilter(event.target.value); setQuotationWeekFilter(""); }} className="input mt-1 w-full bg-white" />
-              </label>
-              <label className="min-w-0 text-xs font-medium text-text-secondary">Minggu
-                <select value={quotationWeekFilter} onChange={(event) => setQuotationWeekFilter(event.target.value)} disabled={!quotationMonthFilter} className="input mt-1 w-full bg-white disabled:cursor-not-allowed disabled:opacity-50">
-                  <option value="">Semua minggu</option>
-                  {Array.from({ length: monthWeekCount }, (_, index) => <option key={index + 1} value={index + 1}>Minggu {index + 1}</option>)}
-                </select>
-              </label>
+              <div className="sm:col-span-2 xl:col-span-3"><CRMPeriodToolbar filter={crmPeriod} /></div>
               <div className="flex items-end">
-                <button type="button" onClick={() => { setQuotationSearch(""); setQuotationClientFilter(""); setQuotationMonthFilter(""); setQuotationWeekFilter(""); }} className="btn-ghost w-full justify-center px-3 py-2 text-xs sm:w-auto">Reset filter</button>
+                <button type="button" onClick={() => { setQuotationSearch(""); setQuotationClientFilter(""); crmPeriod.reset(); }} className="btn-ghost w-full justify-center px-3 py-2 text-xs sm:w-auto">Reset pencarian</button>
               </div>
             </div>
             {filteredQuotationRows.length === 0 ? <EmptyState msg="Tidak ada quotation yang cocok dengan pencarian atau filter." /> : (
@@ -1802,7 +1833,7 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
                 </table>
               </div>
             )}
-            {quotationMonthFilter && quotationRows.some((row) => !row.date) && <p className="mt-2 text-xs text-text-secondary">Sebagian quotation tidak memiliki tanggal, sehingga tidak ditampilkan saat filter bulan/minggu digunakan.</p>}
+            {quotationRows.some((row) => !row.date) && <p className="mt-2 text-xs text-text-secondary">Sebagian quotation tidak memiliki tanggal, sehingga tidak dapat dikelompokkan menurut periode.</p>}
           </>
         )}
       </div>
@@ -1879,9 +1910,9 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
         size="lg"
       >
         {sendDialog && <div className="space-y-4">
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+          <CollapsibleGuideline title="Sebelum menyalin draft quotation">
             Draft mencantumkan nilai penawaran dan estimasi HPP yang tersimpan pada quotation. Periksa isinya sebelum dikirim; CRM hanya menyiapkan dan menyalin draft.
-          </div>
+          </CollapsibleGuideline>
           <label className="block text-xs font-semibold text-text-secondary">
             Email pelanggan
             <input
@@ -1945,6 +1976,66 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
           <p className="text-right text-[11px] leading-5 text-text-secondary">Tombol lanjut mengubah status quotation menjadi SENT. Untuk opsi email, salin draft, kirim melalui aplikasi email, lalu pilih “Email sudah dikirim”.</p>
         </div>}
       </Modal>
+      <Modal
+        isOpen={Boolean(creditHoldResult)}
+        onClose={() => setCreditHoldResult(null)}
+        title="Sales Order belum dibuat"
+        subtitle={creditHoldResult ? `Pemeriksaan kredit untuk ${creditHoldResult.customerName}` : undefined}
+        size="md"
+      >
+        {creditHoldResult && (() => {
+          const evaluation = creditHoldResult.result?.credit_evaluation;
+          const proformaId = creditHoldResult.result?.handoff?.proforma_invoice_id;
+          const quotationAmount = Number(creditHoldResult.quotation?.total_amount ?? creditHoldResult.quotation?.subtotal ?? 0);
+          const reasons = [
+            (Number(evaluation?.credit_limit ?? 0) <= 0 || evaluation?.credit_status === "NO_LIMIT") && "Limit kredit customer belum diatur.",
+            evaluation?.credit_status === "HOLD" && "Status kredit customer sedang ditahan.",
+            evaluation && Number(evaluation.available_credit ?? 0) < quotationAmount && "Nilai quotation melebihi sisa limit kredit.",
+            Number(evaluation?.overdue_amount ?? 0) > 0 && "Customer masih memiliki piutang yang jatuh tempo.",
+          ].filter(Boolean) as string[];
+          return (
+            <div className="space-y-4 p-4">
+              <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-700" />
+                <div>
+                  <p className="font-semibold">Konversi dihentikan oleh pemeriksaan kredit.</p>
+                  <p className="mt-1 text-xs leading-5">Sales Order belum dibuat. Sistem menyiapkan proforma agar tim Finance dapat menindaklanjuti transaksi ini.</p>
+                </div>
+              </div>
+
+              {evaluation && (
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-text-tertiary/60 p-2.5"><span className="text-text-secondary">Nilai quotation</span><strong className="mt-1 block">{formatMoney(quotationAmount)}</strong></div>
+                  <div className="rounded-lg border border-text-tertiary/60 p-2.5"><span className="text-text-secondary">Limit kredit</span><strong className="mt-1 block">{formatMoney(evaluation.credit_limit)}</strong></div>
+                  <div className="rounded-lg border border-text-tertiary/60 p-2.5"><span className="text-text-secondary">Sisa kredit</span><strong className="mt-1 block">{formatMoney(evaluation.available_credit)}</strong></div>
+                  <div className="rounded-lg border border-text-tertiary/60 p-2.5"><span className="text-text-secondary">Piutang jatuh tempo</span><strong className="mt-1 block">{formatMoney(evaluation.overdue_amount)}</strong></div>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-slate-200 p-3 text-xs leading-5">
+                <p className="font-semibold text-text-primary">Langkah berikutnya</p>
+                {reasons.length ? (
+                  <ul className="mt-1 list-disc space-y-1 pl-4 text-text-secondary">{reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
+                ) : (
+                  <p className="mt-1 text-text-secondary">{creditHoldResult.result?.handoff?.note || "Buka Deals & Credit untuk memeriksa limit, status kredit, dan piutang customer; jalankan Hitung ulang jika datanya belum terbaru."}</p>
+                )}
+                <p className="mt-2 text-text-secondary">Setelah penyebab diperbaiki atau keputusan override disetujui, coba konversi kembali.</p>
+              </div>
+
+              {proformaId && (
+                <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-text-secondary">
+                  Referensi proforma: <span className="font-mono font-semibold text-text-primary" title={String(proformaId)}>{String(proformaId).slice(0, 8).toUpperCase()}</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap justify-end gap-2 border-t border-text-tertiary/50 pt-3">
+                <button type="button" onClick={() => setCreditHoldResult(null)} className="btn-ghost">Tutup</button>
+                <button type="button" onClick={() => { setCreditHoldResult(null); onNavigate("deals"); }} className="btn-primary">Buka Deals &amp; Credit</button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }
@@ -1960,13 +2051,14 @@ function TabEstimate({ data, approvals, onRefresh, readOnly = false, canApproveQ
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean }) {
+  const crmPeriod = useCRMPeriodFilter();
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
   const [domainFilter, setDomainFilter] = useState("");
   const [warrantyDetails, setWarrantyDetails] = useState<Record<string, any>>({});
   const [form, setForm] = useState({ subject: "", customer_party: "", priority: "NORMAL", description: "", serial_number: "" });
   const ticketDomains = Array.from(new Set((data.cases || []).map((item) => item.origin_domain).filter((value): value is string => Boolean(value)))).sort();
-  const visibleCases = (data.cases || []).filter((item) => !domainFilter || item.origin_domain === domainFilter);
+  const visibleCases = (data.cases || []).filter((item) => crmPeriod.matches(item.created_at || item.updated_at) && (!domainFilter || item.origin_domain === domainFilter));
 
   /**
    * Creates a support ticket after enforcing the required subject.
@@ -1987,13 +2079,14 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <h3 className="text-sm font-bold">Tiket Support & Klaim Garansi</h3>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-2xs font-bold">{(data.cases||[]).length} Tiket</span>
+            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-2xs font-bold">{visibleCases.length} Tiket</span>
             <select aria-label="Filter domain tiket" className="rounded-lg border border-text-tertiary bg-white px-2 py-1.5 text-xs" value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}><option value="">Semua domain</option>{ticketDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}</select>
             {!readOnly && (
               <button onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Tiket Baru</button>
             )}
           </div>
         </div>
+        <div className="mb-3"><CRMPeriodToolbar filter={crmPeriod} /></div>
         {visibleCases.length === 0 ? <EmptyState msg={domainFilter ? "Tidak ada tiket dari domain ini." : "Belum ada tiket support."} /> : (
           <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
             <table className="w-full min-w-[900px] border-collapse text-left">
@@ -2144,9 +2237,11 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean }) {
+  const crmPeriod = useCRMPeriodFilter();
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
-  const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_party: "", description: "" });
+  const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_party: "", contact_id: "", description: "" });
+  const [inquiryContactOptions, setInquiryContactOptions] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [domainFilter, setDomainFilter] = useState("");
   const [followUpLead, setFollowUpLead] = useState<any>(null);
@@ -2155,8 +2250,14 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
   const [contactTarget, setContactTarget] = useState<"CONTACTED" | "RESPONDED">("CONTACTED");
   const [contactNote, setContactNote] = useState("");
   const [savingLeadId, setSavingLeadId] = useState<string | null>(null);
+  const [linkingInquiry, setLinkingInquiry] = useState<any | null>(null);
+  const [linkCustomerId, setLinkCustomerId] = useState("");
+  const [linkContactId, setLinkContactId] = useState("");
+  const [linkContactOptions, setLinkContactOptions] = useState<any[]>([]);
+  const [linkCustomerSaving, setLinkCustomerSaving] = useState(false);
   const inquiryDomains = Array.from(new Set((data.inquiries || []).map((item) => item.origin_domain).filter((value): value is string => Boolean(value)))).sort();
   const visibleInquiries = (data.inquiries || [])
+    .filter((item) => crmPeriod.matches(item.created_at || item.submitted_at || item.updated_at))
     .filter((item) => !domainFilter || item.origin_domain === domainFilter)
     .slice()
     .sort((a, b) => {
@@ -2182,12 +2283,14 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
         customer_name: form.customer_name.trim(),
         customer_email: form.customer_email?.trim() || undefined,
         customer_party: form.customer_party ? form.customer_party : null,
+        contact_id: form.contact_id || null,
         description: form.description?.trim() || "",
       };
       await createCustomerInquiry(payload); 
       toast.success("Inquiry berhasil dibuat!"); 
       setIsOpen(false); 
-      setForm({ subject: "", customer_name: "", customer_email: "", customer_party: "", description: "" });
+      setForm({ subject: "", customer_name: "", customer_email: "", customer_party: "", contact_id: "", description: "" });
+      setInquiryContactOptions([]);
       onRefresh(); 
     }
     catch (e: any) { 
@@ -2229,18 +2332,65 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
     finally { setSavingLeadId(null); }
   };
 
+  const openLinkCustomer = (inquiry: any) => {
+    setLinkingInquiry(inquiry);
+    setLinkCustomerId("");
+    setLinkContactId("");
+    setLinkContactOptions([]);
+  };
+
+  const handleLinkCustomerChange = async (partyId: string) => {
+    setLinkCustomerId(partyId);
+    setLinkContactId("");
+    setLinkContactOptions([]);
+    if (!partyId) return;
+    try { setLinkContactOptions(await loadCRMPartyContacts(partyId)); }
+    catch { toast.error("PIC customer gagal dimuat."); }
+  };
+
+  const submitLinkCustomer = async () => {
+    if (!linkingInquiry || !linkCustomerId) return;
+    setLinkCustomerSaving(true);
+    try {
+      await linkInquiryCustomer(linkingInquiry.id, linkCustomerId, linkContactId || null);
+      toast.success("Customer dan PIC berhasil ditautkan ke Inquiry.");
+      setLinkingInquiry(null);
+      onRefresh();
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Customer tidak dapat ditautkan."); }
+    finally { setLinkCustomerSaving(false); }
+  };
+
+  const handleInquiryPartySelect = async (partyId: string) => {
+    const party = (data.parties || []).find((item) => String(item.id) === partyId);
+    setForm((current) => ({
+      ...current,
+      customer_party: partyId,
+      contact_id: "",
+      customer_name: party ? (party.display_name || party.legal_name || current.customer_name) : current.customer_name,
+      customer_email: party ? "" : current.customer_email,
+    }));
+    setInquiryContactOptions([]);
+    if (!partyId) return;
+    try {
+      setInquiryContactOptions(await loadCRMPartyContacts(partyId));
+    } catch {
+      toast.error("Kontak customer gagal dimuat. Inquiry tetap dapat disimpan tanpa memilih PIC.");
+    }
+  };
+
   return (
     <div className="card rounded-xl p-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <h3 className="text-sm font-bold">Leads & Prospek Masuk</h3>
+        <div><h3 className="text-sm font-bold">Lead & Inquiry</h3><p className="mt-0.5 text-xs text-text-secondary">Inquiry menjadi catatan awal lead; setelah dihubungi, customer ditautkan sebelum dikualifikasi ke Opportunity.</p></div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.inquiries||[]).filter(item => !["QUALIFIED", "CLOSED_LOST"].includes(String(item.status).toUpperCase())).length} Lead aktif</span>
+          <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-2xs font-bold">{(data.inquiries||[]).filter(item => crmPeriod.matches(item.created_at || item.submitted_at || item.updated_at) && ["NEW", "CONTACTED", "RESPONDED", "FOLLOW_UP"].includes(String(item.status || "NEW").toUpperCase())).length} Lead aktif</span>
           <select aria-label="Filter domain inquiry" className="rounded-lg border border-text-tertiary bg-white px-2 py-1.5 text-xs" value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}><option value="">Semua domain</option>{inquiryDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}</select>
           {!readOnly && (
             <button onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Buat Inquiry Baru</button>
           )}
         </div>
       </div>
+      <div className="mb-3"><CRMPeriodToolbar filter={crmPeriod} /></div>
       {visibleInquiries.length === 0 ? <EmptyState msg={domainFilter ? "Tidak ada inquiry dari domain ini." : "Belum ada incoming inquiry."} /> : (
         <div className="flex flex-col gap-2">
           {visibleInquiries.map(x => {
@@ -2253,6 +2403,8 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
  */
             const leadStatus = String(x.status || "NEW").toUpperCase();
             const isQual = leadStatus === "QUALIFIED";
+            const hasLinkedOpportunity = Boolean(x.opportunity_id);
+            const needsOpportunityRepair = isQual && !hasLinkedOpportunity;
 /**
  * reqs coordinates the UI behavior represented by this function.
  *
@@ -2269,23 +2421,25 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
                     <b>{x.customer_name || "-"}</b> ({x.customer_email || "-"}) · <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-2xs">{reqs.length} Spesifikasi</span>
                   </div>
                   <div className="mt-1"><OriginDomainBadge domain={x.origin_domain} /></div>
-                  <StatusBadge status={({ NEW: "Lead baru", CONTACTED: "Sudah dihubungi", RESPONDED: "Merespons", FOLLOW_UP: "Follow-up kembali", QUALIFIED: "Menjadi prospek", CLOSED_LOST: "Ditutup" } as Record<string, string>)[leadStatus] || leadStatus} />
+                  <StatusBadge status={needsOpportunityRepair ? "Opportunity belum tertaut" : ({ NEW: "Lead baru", CONTACTED: "Sudah dihubungi", RESPONDED: "Merespons", FOLLOW_UP: "Follow-up kembali", QUALIFIED: "Menjadi prospek", CLOSED_LOST: "Ditutup" } as Record<string, string>)[leadStatus] || leadStatus} />
                   {x.next_follow_up_at && leadStatus === "FOLLOW_UP" && <div className="mt-1 text-2xs text-amber-700">Hubungi kembali: {formatDate(x.next_follow_up_at)}</div>}
                   {x.last_contact_note && <div className="mt-1 max-w-xl truncate text-2xs text-text-secondary" title={x.last_contact_note}>Catatan kontak: {x.last_contact_note}</div>}
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   {!readOnly ? (
                     <>
+                      {!x.customer_party_id && <ActionBtn onClick={() => openLinkCustomer(x)} label="Hubungkan customer" small variant="ghost" />}
                       {(leadStatus === "NEW" || leadStatus === "FOLLOW_UP") && <ActionBtn onClick={async () => updateLeadStatus(x, "CONTACTED")} label={leadStatus === "FOLLOW_UP" ? "Dihubungi lagi" : "Tandai dihubungi"} small disabled={savingLeadId === String(x.id)} />}
                       {leadStatus === "CONTACTED" && <ActionBtn onClick={async () => updateLeadStatus(x, "RESPONDED")} label="Tandai merespons" small disabled={savingLeadId === String(x.id)} />}
-                      {leadStatus === "RESPONDED" && <ActionBtn onClick={async () => { try { await qualifyInquiry(x.id); toast.success("Lead lolos kualifikasi dan menjadi Opportunity."); onRefresh(); } catch (error: any) { toast.error(error?.response?.data?.detail || "Lead belum dapat dikualifikasi."); } }} label="Jadikan Opportunity" small />}
+                      {leadStatus === "RESPONDED" && (x.customer_party_id ? <ActionBtn onClick={async () => { try { await qualifyInquiry(x.id); toast.success("Lead lolos kualifikasi dan menjadi Opportunity."); onRefresh(); } catch (error: any) { toast.error(error?.response?.data?.detail || "Lead belum dapat dikualifikasi."); } }} label="Jadikan Opportunity" small /> : <span title="Hubungkan ke customer aktif terlebih dahulu" className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-2xs font-semibold text-amber-800">Hubungkan customer dulu</span>)}
+                      {needsOpportunityRepair && (x.customer_party_id ? <ActionBtn onClick={async () => { try { await qualifyInquiry(x.id); toast.success("Tautan Opportunity berhasil diperbaiki."); onRefresh(); } catch (error: any) { toast.error(error?.response?.data?.detail || "Tautan Opportunity belum dapat diperbaiki."); } }} label="Perbaiki Opportunity" small /> : <span title="Hubungkan ke customer aktif terlebih dahulu" className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-2xs font-semibold text-amber-800">Hubungkan customer dulu</span>)}
                       {!isQual && !["CLOSED_LOST"].includes(leadStatus) && <ActionBtn onClick={async () => { setFollowUpLead(x); setFollowUpDraft({ date: "", note: "" }); }} label="Tindak lanjuti lagi" small variant="ghost" />}
                       {isQual && (
                         <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">QUALIFIED</span>
                       )}
-                      <button onClick={async () => { if(!confirm("Hapus inquiry?")) return; await deleteCustomerInquiry(x.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
+                      {!isQual && <button onClick={async () => { if(!confirm("Hapus inquiry?")) return; await deleteCustomerInquiry(x.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
                         <Trash2 size={13} />
-                      </button>
+                      </button>}
                     </>
                   ) : (
                     <span className="text-2xs text-text-secondary italic">
@@ -2303,6 +2457,18 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
       </Modal>
       <Modal isOpen={Boolean(followUpLead)} onClose={() => !savingLeadId && setFollowUpLead(null)} title={`Tindak lanjuti — ${followUpLead?.customer_name || "Lead"}`} size="sm">
         <div className="space-y-3 p-1"><p className="text-xs text-text-secondary">Lead tetap berada pada daftar aktif dan akan ditampilkan sebagai Follow-up Kembali pada tanggal yang dipilih.</p><label className="block text-xs font-medium">Tanggal tindak lanjut *<input className="input mt-1 w-full" type="date" min={new Date().toISOString().slice(0, 10)} value={followUpDraft.date} onChange={event => setFollowUpDraft({ ...followUpDraft, date: event.target.value })} /></label><label className="block text-xs font-medium">Alasan / catatan *<textarea className="input mt-1 w-full min-h-20" maxLength={2000} value={followUpDraft.note} onChange={event => setFollowUpDraft({ ...followUpDraft, note: event.target.value })} placeholder="Menunggu budget, keputusan internal, atau waktu yang diminta customer" /></label><div className="flex justify-end gap-2"><button type="button" onClick={() => setFollowUpLead(null)} disabled={Boolean(savingLeadId)} className="btn-ghost">Batal</button><button type="button" onClick={() => void submitLeadFollowUp()} disabled={Boolean(savingLeadId) || !followUpDraft.date || !followUpDraft.note.trim()} className="btn-primary">Simpan follow-up</button></div></div>
+      </Modal>
+      <Modal isOpen={Boolean(linkingInquiry)} onClose={() => !linkCustomerSaving && setLinkingInquiry(null)} title="Hubungkan Customer ke Inquiry" size="sm">
+        <div className="space-y-3 p-4">
+          <p className="text-xs leading-5 text-text-secondary">Inquiry boleh dicatat sebelum customer terdaftar. Hubungkan customer aktif dan PIC sebelum Inquiry dikualifikasi menjadi Opportunity.</p>
+          <label className="block text-xs font-medium text-text-secondary">Customer aktif *
+            <select className="input mt-1 w-full" value={linkCustomerId} onChange={event => void handleLinkCustomerChange(event.target.value)}><option value="">Pilih customer</option>{(data.parties || []).filter((party: any) => String(party.party_type || "").toUpperCase() === "CUSTOMER" && String(party.status || "").toUpperCase() === "ACTIVE").map((party: any) => <option key={party.id} value={String(party.id)}>{party.display_name || party.legal_name}</option>)}</select>
+          </label>
+          {linkCustomerId && <label className="block text-xs font-medium text-text-secondary">PIC / Kontak (opsional)
+            <select className="input mt-1 w-full" value={linkContactId} onChange={event => setLinkContactId(event.target.value)}><option value="">Belum memilih PIC</option>{linkContactOptions.map((contact: any) => <option key={contact.id} value={String(contact.id)}>{contact.contact_name}{contact.job_title ? ` · ${contact.job_title}` : ""}{contact.primary_contact ? " · Utama" : ""}</option>)}</select>
+          </label>}
+          <div className="flex justify-end gap-2"><button type="button" onClick={() => setLinkingInquiry(null)} disabled={linkCustomerSaving} className="btn-ghost">Batal</button><button type="button" onClick={() => void submitLinkCustomer()} disabled={linkCustomerSaving || !linkCustomerId} className="btn-primary">{linkCustomerSaving ? "Menyimpan…" : "Simpan Customer"}</button></div>
+        </div>
       </Modal>
       <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Tambah Lead / Inquiry" size="md">
         <div className="flex flex-col gap-3 p-4">
@@ -2332,30 +2498,23 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
             <select
               className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-green"
               value={form.customer_party}
-              onChange={e => {
-                const selectedId = e.target.value;
-/**
- * party coordinates the UI behavior represented by this function.
- *
- * @param input - Uses the typed props/arguments declared by the signature; no additional implicit input contract is introduced.
- * @returns The rendered React node, callback result, or Promise declared by the implementation.
- * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
- */
-                const party = (data.parties || []).find(p => String(p.id) === String(selectedId));
-                setForm(f => ({
-                  ...f,
-                  customer_party: selectedId,
-                  customer_name: party ? (party.display_name || party.legal_name) : f.customer_name,
-                  customer_email: party?.email || f.customer_email,
-                }));
-              }}
+              onChange={e => void handleInquiryPartySelect(e.target.value)}
             >
               <option value="">-- Rekanan Bebas / Input Manual --</option>
-              {(data.parties || []).map(p => (
+              {(data.parties || []).filter(p => String(p.party_type || "").toUpperCase() === "CUSTOMER" && String(p.status || "").toUpperCase() === "ACTIVE").map(p => (
                 <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name}</option>
               ))}
             </select>
           </div>
+          {form.customer_party && <label className="block text-xs font-medium text-text-secondary">PIC / Kontak customer (opsional)
+            <select className="input mt-1 w-full" value={form.contact_id} onChange={event => {
+              const contact = inquiryContactOptions.find((item) => String(item.id) === event.target.value);
+              setForm((current) => ({ ...current, contact_id: event.target.value, customer_email: contact?.email || current.customer_email }));
+            }}>
+              <option value="">Pilih PIC bila tersedia</option>
+              {inquiryContactOptions.map((contact) => <option key={contact.id} value={String(contact.id)}>{contact.contact_name}{contact.job_title ? ` · ${contact.job_title}` : ""}{contact.primary_contact ? " · Utama" : ""}</option>)}
+            </select>
+          </label>}
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Deskripsi Kebutuhan</label>
             <textarea rows={3} className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} placeholder="Rincian kebutuhan klien..." />
@@ -2378,8 +2537,10 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
             ...f,
             customer_party: String(newParty.id),
             customer_name: newParty.display_name || newParty.legal_name,
-            customer_email: newParty.email || f.customer_email,
+            customer_email: "",
+            contact_id: "",
           }));
+          void loadCRMPartyContacts(String(newParty.id)).then(setInquiryContactOptions).catch(() => setInquiryContactOptions([]));
         }}
       />
     </div>
@@ -2397,6 +2558,12 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated: (party: any) => void; readOnly?: boolean }) {
+  const crmPeriod = useCRMPeriodFilter();
+  const [accountView, setAccountView] = useState<"PARTIES" | "WON_CONTACTS">("PARTIES");
+  const [wonContacts, setWonContacts] = useState<any[]>([]);
+  const [wonContactsLoading, setWonContactsLoading] = useState(false);
+  const [partySearch, setPartySearch] = useState("");
+  const [partyTypeFilter, setPartyTypeFilter] = useState("ALL");
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [editingParty, setEditingParty] = useState<any | null>(null);
   const [partyForm, setPartyForm] = useState({ display_name: "", legal_name: "", party_code: "", party_type: "CUSTOMER", status: "ACTIVE" });
@@ -2406,6 +2573,41 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsSaving, setProjectsSaving] = useState(false);
+  const [contactParty, setContactParty] = useState<any | null>(null);
+  const [partyContacts, setPartyContacts] = useState<any[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactSaving, setContactSaving] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [contactForm, setContactForm] = useState({ contact_name: "", job_title: "", email: "", phone: "", primary_contact: false });
+  const visibleParties = (data.parties || []).filter((party: any) => {
+    const type = String(party.party_type || "CUSTOMER").toUpperCase();
+    const query = partySearch.trim().toLocaleLowerCase("id-ID");
+    const matchesQuery = !query || [party.display_name, party.legal_name, party.party_code, party.id].some(value => String(value || "").toLocaleLowerCase("id-ID").includes(query));
+    return matchesQuery && (partyTypeFilter === "ALL" || type === partyTypeFilter);
+  });
+  useEffect(() => {
+    if (accountView !== "WON_CONTACTS") return;
+    let active = true;
+    setWonContactsLoading(true);
+    api.get("/api/v1/crm/won-contacts/?page_size=500")
+      .then(({ data: response }) => {
+        const payload = response?.data ?? response;
+        const rows = Array.isArray(payload?.results) ? payload.results : Array.isArray(payload?.rows) ? payload.rows : [];
+        if (active) setWonContacts(rows);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setWonContacts([]);
+        toast.error(error?.response?.data?.detail || "Kontak dari Opportunity berhasil menang gagal dimuat.");
+      })
+      .finally(() => { if (active) setWonContactsLoading(false); });
+    return () => { active = false; };
+  }, [accountView, data.opportunities]);
+  const visibleWonContacts = wonContacts.filter((contact) => {
+    const term = partySearch.trim().toLocaleLowerCase("id-ID");
+    return crmPeriod.matches(contact.closed_at || contact.created_at) && (!term || [contact.customer_name, contact.party_code, contact.opportunity_name, contact.contact_name, contact.email, contact.phone]
+      .some((value) => String(value || "").toLocaleLowerCase("id-ID").includes(term)));
+  });
 
   const openEdit = (party: any) => {
     setEditingParty(party);
@@ -2474,16 +2676,95 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
     }
   };
 
+  const openContacts = async (party: any) => {
+    setContactParty(party);
+    setPartyContacts([]);
+    setContactsLoading(true);
+    setEditingContactId(null);
+    setContactForm({ contact_name: "", job_title: "", email: "", phone: "", primary_contact: false });
+    try {
+      setPartyContacts(await loadCRMPartyContacts(party.id));
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Daftar kontak rekanan tidak berhasil dimuat.");
+    } finally {
+      setContactsLoading(false);
+    }
+  };
+
+  const editContact = (contact: any) => {
+    setEditingContactId(String(contact.id));
+    setContactForm({
+      contact_name: contact.contact_name || "",
+      job_title: contact.job_title || "",
+      email: contact.email || "",
+      phone: contact.phone || "",
+      primary_contact: Boolean(contact.primary_contact),
+    });
+  };
+
+  const saveContact = async () => {
+    if (!contactParty || !contactForm.contact_name.trim()) {
+      toast.error("Nama kontak wajib diisi.");
+      return;
+    }
+    setContactSaving(true);
+    try {
+      if (contactForm.primary_contact) {
+        await Promise.all(partyContacts
+          .filter(contact => contact.primary_contact && String(contact.id) !== editingContactId)
+          .map(contact => saveCRMPartyContact({ ...contact, primary_contact: false })));
+      }
+      await saveCRMPartyContact({
+        id: editingContactId || undefined,
+        party_id: String(contactParty.id),
+        ...contactForm,
+        contact_name: contactForm.contact_name.trim(),
+        job_title: contactForm.job_title.trim(),
+        email: contactForm.email.trim(),
+        phone: contactForm.phone.trim(),
+      });
+      toast.success(editingContactId ? "Kontak rekanan diperbarui." : "Kontak rekanan ditambahkan.");
+      setContactForm({ contact_name: "", job_title: "", email: "", phone: "", primary_contact: false });
+      setEditingContactId(null);
+      setPartyContacts(await loadCRMPartyContacts(contactParty.id));
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Perubahan kontak rekanan belum tersimpan. Coba kembali.");
+    } finally {
+      setContactSaving(false);
+    }
+  };
+
   return (
     <div className="card rounded-xl p-4">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
         <div>
-          <div className="flex flex-wrap items-center gap-2"><h3 className="text-base font-bold text-text-primary">Master Rekanan (Customer, Vendor &amp; Partner)</h3><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{(data.parties||[]).length} rekanan</span></div>
-          <p className="text-xs text-text-secondary mt-1">Kelola nama, kode, tipe, dan status rekanan.</p>
+          <div className="flex flex-wrap items-center gap-2"><h3 className="text-base font-bold text-text-primary">{accountView === "PARTIES" ? "Master Rekanan" : "Kontak dari Deal Berhasil"}</h3><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{accountView === "PARTIES" ? `${visibleParties.length} / ${(data.parties||[]).length} rekanan` : `${visibleWonContacts.length} kontak`}</span></div>
+          <p className="text-xs text-text-secondary mt-1">{accountView === "PARTIES" ? "Kelola nama, kode, tipe, dan status rekanan." : "Sumber data berasal dari Opportunity berstatus WON dan PIC terkait pada Inquiry atau data kontak customer."}</p>
         </div>
-        {!readOnly && <button onClick={() => setIsQuickAddOpen(true)} className="btn-primary self-start text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Rekanan</button>}
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input h-9 w-52 pl-8 text-xs" value={partySearch} onChange={event => setPartySearch(event.target.value)} placeholder={accountView === "PARTIES" ? "Cari nama, kode…" : "Cari deal atau kontak…"} aria-label={accountView === "PARTIES" ? "Cari rekanan" : "Cari kontak deal berhasil"} /></label>
+          {accountView === "PARTIES" && <><select className="input h-9 bg-white text-xs" value={partyTypeFilter} onChange={event => setPartyTypeFilter(event.target.value)} aria-label="Filter tipe rekanan"><option value="ALL">Semua tipe</option><option value="CUSTOMER">Customer</option><option value="SUPPLIER">Supplier</option><option value="PARTNER">Partner</option></select>{!readOnly && <button onClick={() => setIsQuickAddOpen(true)} className="btn-primary self-start text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Rekanan</button>}</>}
+        </div>
       </div>
-      {(data.parties||[]).length === 0 ? <EmptyState msg="Belum ada rekanan terdaftar." /> : (
+      <div role="tablist" aria-label="Data akun CRM" className="mb-4 flex gap-1 border-b border-slate-200">
+        <button type="button" role="tab" aria-selected={accountView === "PARTIES"} onClick={() => setAccountView("PARTIES")} className={cn("-mb-px border-b-2 px-3 py-2 text-xs font-semibold", accountView === "PARTIES" ? "border-brand-primary text-brand-primary" : "border-transparent text-text-secondary hover:text-text-primary")}>Master Rekanan</button>
+        <button type="button" role="tab" aria-selected={accountView === "WON_CONTACTS"} onClick={() => setAccountView("WON_CONTACTS")} className={cn("-mb-px border-b-2 px-3 py-2 text-xs font-semibold", accountView === "WON_CONTACTS" ? "border-brand-primary text-brand-primary" : "border-transparent text-text-secondary hover:text-text-primary")}>Kontak Deal Berhasil <span className="ml-1 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px]">{wonContacts.length}</span></button>
+      </div>
+      {accountView === "WON_CONTACTS" && <div className="mb-3"><CRMPeriodToolbar filter={crmPeriod} /></div>}
+      {accountView === "WON_CONTACTS" ? (wonContactsLoading ? <p className="py-8 text-center text-sm text-text-secondary">Memuat kontak dari Opportunity berhasil…</p> : visibleWonContacts.length === 0 ? <EmptyState msg={wonContacts.length ? "Tidak ada kontak yang sesuai pencarian." : "Belum ada kontak dari Opportunity berstatus Deal Berhasil."} /> : (
+        <div className="max-h-[620px] overflow-auto rounded-xl border border-text-tertiary/60">
+          <table className="w-full min-w-[980px] border-collapse text-left">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary"><tr><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Opportunity / Deal</th><th className="px-4 py-3">Kontak / PIC</th><th className="px-4 py-3">Email &amp; Telepon</th><th className="px-4 py-3">Tanggal Menang</th></tr></thead>
+            <tbody className="divide-y divide-text-tertiary/40 bg-white">{visibleWonContacts.map((contact) => <tr key={contact.opportunity_id} className="transition-colors hover:bg-blue-50/30">
+              <td className="px-4 py-3"><div className="text-sm font-semibold text-text-primary">{contact.customer_name || "Customer belum ditautkan"}</div><div className="mt-0.5 text-xs text-text-secondary">{contact.party_code || "—"}</div></td>
+              <td className="px-4 py-3"><div className="text-sm font-semibold text-text-primary">{contact.opportunity_name || "Opportunity"}</div><div className="mt-0.5 text-xs text-text-secondary">{formatMoney(contact.expected_amount)} · <StatusBadge status="WON" /></div></td>
+              <td className="px-4 py-3"><div className="text-sm font-medium text-text-primary">{contact.contact_name || "PIC belum tercatat"}</div><div className="mt-0.5 text-xs text-text-secondary">{contact.job_title || contact.contact_source || "Data Inquiry"}</div></td>
+              <td className="px-4 py-3"><div className="text-sm text-text-primary">{contact.email || "—"}</div><div className="mt-0.5 text-xs text-text-secondary">{contact.phone || "—"}</div></td>
+              <td className="whitespace-nowrap px-4 py-3 text-sm text-text-secondary">{contact.closed_at ? formatDate(contact.closed_at) : "—"}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      )) : visibleParties.length === 0 ? <EmptyState msg={data.parties.length ? "Tidak ada rekanan yang sesuai dengan pencarian atau tipe." : "Belum ada rekanan terdaftar."} /> : (
         <div className="max-h-[620px] overflow-auto rounded-xl border border-text-tertiary/60">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary">
@@ -2496,7 +2777,7 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
               </tr>
             </thead>
             <tbody className="divide-y divide-text-tertiary/40 bg-white">
-              {(data.parties||[]).map(p => (
+              {visibleParties.map(p => (
                 <tr key={p.id} className="transition-colors hover:bg-blue-50/30">
                   <td className="px-4 py-3">
                     <div className="break-words text-sm font-semibold text-text-primary">{p.display_name || p.legal_name || p.id}</div>
@@ -2507,6 +2788,7 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
                   <td className="px-4 py-3"><StatusBadge status={p.status || "ACTIVE"} /></td>
                   {!readOnly && <td className="px-4 py-3"><div className="flex justify-end gap-1.5">
                     {(!p.status || String(p.status).toUpperCase() === "ACTIVE") && ["SUPPLIER", "VENDOR", "PARTNER"].includes(String(p.party_type || "").toUpperCase()) && <button type="button" onClick={() => void openProjectManager(p)} className="btn-ghost text-xs py-1 px-2">Proyek</button>}
+                    <button type="button" onClick={() => void openContacts(p)} className="btn-ghost text-xs py-1 px-2">Kontak</button>
                     <button type="button" onClick={() => openEdit(p)} className="btn-ghost text-xs py-1 px-2">Edit</button>
                   </div></td>}
                 </tr>
@@ -2542,6 +2824,38 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
           <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={() => setProjectParty(null)} disabled={projectsSaving} className="btn-ghost">Batal</button><button type="button" onClick={() => void savePartyProjects()} disabled={projectsLoading || projectsSaving || projectOptions.length === 0} className="btn-primary">{projectsSaving ? "Menyimpan..." : "Simpan Relasi"}</button></div>
         </div>
       </Modal>
+      <Modal isOpen={Boolean(contactParty)} onClose={() => !contactSaving && setContactParty(null)} title={`Kontak Rekanan · ${contactParty?.display_name || contactParty?.legal_name || "Rekanan"}`} subtitle="Ubah data kontak pada rekanan ini. Kontak utama dipakai untuk draft quotation." size="md">
+        <div className="flex flex-col gap-4 p-4">
+          {contactsLoading ? <p className="py-5 text-center text-sm text-text-secondary">Memuat kontak rekanan…</p> : partyContacts.length ? (
+            <div className="max-h-52 divide-y overflow-y-auto rounded-xl border border-text-tertiary/60">
+              {partyContacts.map(contact => (
+                <div key={contact.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-text-primary">{contact.contact_name || "Kontak tanpa nama"}{contact.primary_contact && <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">Kontak utama</span>}</p>
+                    <p className="mt-0.5 text-xs text-text-secondary">{[contact.job_title, contact.email, contact.phone].filter(Boolean).join(" · ") || "Belum ada detail kontak"}</p>
+                  </div>
+                  <button type="button" onClick={() => editContact(contact)} className="btn-ghost text-xs">Ubah</button>
+                </div>
+              ))}
+            </div>
+          ) : !contactsLoading ? <p className="rounded-xl bg-slate-50 p-3 text-xs text-text-secondary">Belum ada kontak. Tambahkan kontak agar informasi PIC rekanan tersimpan dan dapat dipakai saat menyiapkan quotation.</p> : null}
+
+          <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+            <h4 className="mb-3 text-xs font-bold text-text-primary">{editingContactId ? "Ubah kontak" : "Tambah kontak"}</h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-medium text-text-secondary">Nama kontak *<input className="input mt-1 w-full" value={contactForm.contact_name} onChange={event => setContactForm({ ...contactForm, contact_name: event.target.value })} /></label>
+              <label className="text-xs font-medium text-text-secondary">Jabatan<input className="input mt-1 w-full" value={contactForm.job_title} onChange={event => setContactForm({ ...contactForm, job_title: event.target.value })} /></label>
+              <label className="text-xs font-medium text-text-secondary">Email<input className="input mt-1 w-full" type="email" value={contactForm.email} onChange={event => setContactForm({ ...contactForm, email: event.target.value })} /></label>
+              <label className="text-xs font-medium text-text-secondary">Telepon<input className="input mt-1 w-full" value={contactForm.phone} onChange={event => setContactForm({ ...contactForm, phone: event.target.value })} /></label>
+            </div>
+            <label className="mt-3 flex items-center gap-2 text-xs text-text-secondary"><input type="checkbox" checked={contactForm.primary_contact} onChange={event => setContactForm({ ...contactForm, primary_contact: event.target.checked })} />Jadikan kontak utama quotation</label>
+            <div className="mt-3 flex justify-end gap-2">
+              {editingContactId && <button type="button" onClick={() => { setEditingContactId(null); setContactForm({ contact_name: "", job_title: "", email: "", phone: "", primary_contact: false }); }} disabled={contactSaving} className="btn-ghost text-xs">Batal ubah</button>}
+              <button type="button" onClick={() => void saveContact()} disabled={contactSaving || contactsLoading || !contactForm.contact_name.trim()} className="btn-primary text-xs">{contactSaving ? "Menyimpan…" : editingContactId ? "Simpan perubahan" : "Tambah kontak"}</button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -2557,13 +2871,43 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function TabContracts({ data, onNavigate, onRefresh }: { data: CRMData; onNavigate: (tab: "estimate" | "deals") => void; onRefresh?: () => void }) {
+  const crmPeriod = useCRMPeriodFilter();
   const [convertingOrderId, setConvertingOrderId] = useState<string | null>(null);
+  const [transferredOrderIds, setTransferredOrderIds] = useState<Set<string>>(() => new Set());
+  const [serverTransferableOrders, setServerTransferableOrders] = useState<any[]>([]);
+  const [transferListLoading, setTransferListLoading] = useState(true);
+  const [transferListError, setTransferListError] = useState("");
+  useEffect(() => {
+    let active = true;
+    setTransferListLoading(true);
+    api.get("/api/v1/sales/orders/transferable/?page_size=500")
+      .then(({ data: response }) => {
+        const payload = response?.data ?? response;
+        const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.results) ? payload.results : Array.isArray(payload?.rows) ? payload.rows : [];
+        if (active) {
+          setServerTransferableOrders(rows);
+          setTransferredOrderIds(new Set());
+          setTransferListError("");
+        }
+      })
+      .catch((error) => {
+        if (!active) return;
+        setServerTransferableOrders([]);
+        setTransferListError(error?.response?.data?.detail || "Daftar order yang belum memiliki proyek gagal dimuat.");
+      })
+      .finally(() => { if (active) setTransferListLoading(false); });
+    return () => { active = false; };
+  }, [data.orders]);
+  const transferableOrders = serverTransferableOrders.filter((order: any) => !transferredOrderIds.has(String(order.id)) && crmPeriod.matches(order.order_date || order.created_at));
+  const periodContracts = (data.contracts || []).filter((contract: any) => crmPeriod.matches(contract.start_date || contract.created_at));
 
   const handleConvertToProject = async (orderId: string) => {
     setConvertingOrderId(orderId);
     try {
-      const res = await api.post(`/api/v1/sales/orders/${orderId}/convert-to-project`);
-      toast.success(`Sales Order berhasil ditransfer menjadi Proyek "${res.data?.project_name || 'Baru'}"!`);
+      const { data: response } = await api.post(`/api/v1/sales/orders/${orderId}/convert-to-project/`, {});
+      const project = response?.data ?? response;
+      setTransferredOrderIds(current => new Set(current).add(String(orderId)));
+      toast.success(`Sales Order berhasil menjadi Proyek "${project?.project_name || project?.project_code || "Baru"}".`);
       if (onRefresh) onRefresh();
     } catch (err: any) {
       toast.error(err?.response?.data?.error?.message || err?.response?.data?.detail || "Gagal mentransfer order ke proyek.");
@@ -2586,15 +2930,16 @@ function TabContracts({ data, onNavigate, onRefresh }: { data: CRMData; onNaviga
           </div>
         </div>
       </div>
+      <CRMPeriodToolbar filter={crmPeriod} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card rounded-xl p-4">
-          <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-primary">Sales Orders</h3><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{(data.orders || []).length} order</span></div>
-          {(data.orders||[]).length === 0 ? <EmptyState msg="Belum ada sales order." /> : (
+          <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-primary">Sales Order yang Siap Ditransfer</h3><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{transferableOrders.length} order</span></div>
+          {transferListLoading ? <p className="py-8 text-center text-sm text-text-secondary">Memeriksa order yang belum memiliki proyek…</p> : transferListError ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{transferListError}</div> : transferableOrders.length === 0 ? <EmptyState msg="Tidak ada Sales Order yang menunggu transfer. Order yang sudah memiliki proyek tidak ditampilkan kembali." /> : (
             <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
               <table className="w-full min-w-[680px] border-collapse text-left">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary"><tr><th className="px-3 py-3">Nomor Order</th><th className="px-3 py-3 text-right">Nilai</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-right">Aksi</th></tr></thead>
                 <tbody className="divide-y divide-text-tertiary/40 bg-white">
-                  {(data.orders||[]).map(o => <tr key={o.id} className="transition-colors hover:bg-blue-50/30">
+                  {transferableOrders.map(o => <tr key={o.id} className="transition-colors hover:bg-blue-50/30">
                     <td className="px-3 py-3"><div className="break-all text-sm font-semibold text-text-primary">{o.order_number || `Order ${String(o.id).slice(0,8)}`}</div><div className="mt-0.5 text-2xs text-text-secondary">ID {String(o.id).slice(0, 8).toUpperCase()}</div></td>
                     <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-semibold text-text-primary">{formatMoney(o.total_amount)}</td>
                     <td className="px-3 py-3"><StatusBadge status={o.status || "CONFIRMED"} /></td>
@@ -2606,13 +2951,13 @@ function TabContracts({ data, onNavigate, onRefresh }: { data: CRMData; onNaviga
           )}
         </div>
         <div className="card rounded-xl p-4">
-          <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-primary">Contracts</h3><span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">{(data.contracts || []).length} kontrak</span></div>
-          {(data.contracts||[]).length === 0 ? <EmptyState msg="Belum ada kontrak." /> : (
+          <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-text-primary">Contracts</h3><span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">{periodContracts.length} kontrak</span></div>
+          {periodContracts.length === 0 ? <EmptyState msg="Tidak ada kontrak pada periode ini." /> : (
             <div className="max-h-[520px] overflow-auto rounded-xl border border-text-tertiary/60">
               <table className="w-full min-w-[560px] border-collapse text-left">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-text-secondary"><tr><th className="px-3 py-3">Nomor Kontrak</th><th className="px-3 py-3">Mulai</th><th className="px-3 py-3">Berakhir</th><th className="px-3 py-3">Status</th></tr></thead>
                 <tbody className="divide-y divide-text-tertiary/40 bg-white">
-                  {(data.contracts||[]).map(c => <tr key={c.id} className="transition-colors hover:bg-violet-50/30">
+                  {periodContracts.map(c => <tr key={c.id} className="transition-colors hover:bg-violet-50/30">
                     <td className="px-3 py-3"><div className="break-all text-sm font-semibold text-text-primary">{c.contract_number || `Contract ${String(c.id).slice(0,8)}`}</div><div className="mt-0.5 text-2xs text-text-secondary">ID {String(c.id).slice(0, 8).toUpperCase()}</div></td>
                     <td className="whitespace-nowrap px-3 py-3 text-sm text-text-secondary">{formatDate(c.start_date)}</td>
                     <td className="whitespace-nowrap px-3 py-3 text-sm text-text-secondary">{formatDate(c.end_date)}</td>
@@ -2639,6 +2984,7 @@ function TabContracts({ data, onNavigate, onRefresh }: { data: CRMData; onNaviga
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; onRefresh: () => void; readOnly?: boolean }) {
+  const crmPeriod = useCRMPeriodFilter();
   const [isOpen, setIsOpen] = useState(false);
   const [partyId, setPartyId] = useState("");
   const [rating, setRating] = useState(0);
@@ -2650,8 +2996,10 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
   const [csatComments, setCsatComments] = useState("");
   const [isCsatSubmitting, setIsCsatSubmitting] = useState(false);
   const csatQuestionIds = new Set(data.surveyQuestions.filter((question) => question.answer_type === "RATING_1_5").map((question) => String(question.id)));
-  const csatResponses = data.surveyResponses.filter((response) => data.surveyAnswers.some((answer) => String(answer.response_id) === String(response.id) && csatQuestionIds.has(String(answer.question_id))));
-  const submittedOrderIds = new Set(csatResponses.map((response) => String(response.sales_order_id)).filter(Boolean));
+  const allCsatResponses = data.surveyResponses.filter((response) => data.surveyAnswers.some((answer) => String(answer.response_id) === String(response.id) && csatQuestionIds.has(String(answer.question_id))));
+  const csatResponses = allCsatResponses.filter((response) => crmPeriod.matches(response.submitted_at || response.created_at));
+  const visibleFeedback = data.feedback.filter((feedback: any) => crmPeriod.matches(feedback.submitted_at || feedback.created_at || feedback.updated_at));
+  const submittedOrderIds = new Set(allCsatResponses.map((response) => String(response.sales_order_id)).filter(Boolean));
   const completedOrders = data.orders.filter((order) => String(order.status || "").toUpperCase() === "FULFILLED" && !submittedOrderIds.has(String(order.id)));
 
   const submitFeedback = async () => {
@@ -2706,7 +3054,10 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
         <div><h3 className="text-base font-bold text-text-primary">Customer Feedback &amp; Review</h3><p className="text-xs text-text-secondary mt-1">Pantau ulasan pelanggan dan catat kepuasan setelah pesanan selesai.</p></div>
         {!readOnly && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setIsCsatOpen(true)} disabled={!completedOrders.length} title={!completedOrders.length ? "Belum ada Sales Order berstatus FULFILLED" : undefined} className="btn-ghost text-xs py-1.5 px-3 gap-1 disabled:opacity-50"><Star size={12} /> Catat CSAT Transaksi</button><button type="button" onClick={() => setIsOpen(true)} className="btn-primary text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Feedback</button></div>}
       </div>
-      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs leading-relaxed text-text-secondary">CSAT dicatat oleh tim internal setelah pelanggan memberikan penilaian. Form tersedia untuk Sales Order berstatus <b>FULFILLED</b>; satu respons dicatat per transaksi agar rating dan komentar terkait ke order yang tepat.</div>
+      <CollapsibleGuideline title="Panduan pencatatan kepuasan pelanggan" className="mb-4">
+        CSAT dicatat oleh tim internal setelah pelanggan memberikan penilaian. Form tersedia untuk Sales Order berstatus <b>FULFILLED</b>; satu respons dicatat per transaksi agar rating dan komentar terkait ke order yang tepat.
+      </CollapsibleGuideline>
+      <div className="mb-4"><CRMPeriodToolbar filter={crmPeriod} /></div>
       <div className="mb-5 rounded-xl border border-text-tertiary/60 p-3">
         <div className="flex items-center justify-between gap-2 mb-3"><h4 className="text-sm font-bold text-text-primary">CSAT Pasca Transaksi</h4><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-text-secondary">{csatResponses.length} respons</span></div>
         {csatResponses.length === 0 ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-text-secondary">Belum ada respons CSAT transaksi.</p> : <div className="space-y-2">{csatResponses.map((response) => {
@@ -2718,9 +3069,9 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
           return <article key={response.id} className="rounded-xl border border-text-tertiary/50 bg-white p-3 transition-colors hover:bg-bg-lighter"><div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><h5 className="break-words text-sm font-semibold text-text-primary">{party?.display_name || party?.legal_name || "Pelanggan"}</h5><p className="mt-0.5 text-xs text-text-secondary">{order?.order_number || `Order ${String(response.sales_order_id || "").slice(0, 8)}`}</p></div><OriginDomainBadge domain={response.origin_domain} /></div><div className="mt-2 flex items-center gap-1" aria-label={`Rating ${Number(ratingAnswer?.numeric_answer || 0)} dari 5`}>{[1,2,3,4,5].map((value) => <Star key={value} size={14} className={value <= Number(ratingAnswer?.numeric_answer || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300"} />)}<span className="ml-1 text-xs font-semibold text-text-primary">{Number(ratingAnswer?.numeric_answer || 0)}/5</span></div>{commentsAnswer?.text_answer && <p className="mt-2 border-t border-text-tertiary/40 pt-2 text-sm leading-5 text-text-secondary">{commentsAnswer.text_answer}</p>}</article>;
         })}</div>}
       </div>
-      {(data.feedback||[]).length === 0 ? <EmptyState msg="Belum ada feedback customer." /> : (
+      {visibleFeedback.length === 0 ? <EmptyState msg="Tidak ada feedback pada periode ini." /> : (
         <div className="space-y-2">
-          {(data.feedback||[]).map(f => (
+          {visibleFeedback.map(f => (
             <article key={f.id} className="rounded-xl border border-text-tertiary/50 bg-white p-3 transition-colors hover:bg-bg-lighter">
               <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><h4 className="break-words text-sm font-semibold text-text-primary">{f.customer_party_name || f.customer_party_display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.display_name || data.parties.find(p => String(p.id) === String(f.customer_party || f.customer_party_id))?.legal_name || f.reviewer_name || "Pengulas eksternal"}</h4>{f.reviewer_email && <p className="mt-0.5 break-all text-xs text-text-secondary">{f.reviewer_email}</p>}</div><OriginDomainBadge domain={f.origin_domain} /></div>
               <div className="mt-2 flex items-center gap-1" aria-label={`Rating ${Number(f.rating_value ?? f.rating_score) || 0} dari 5`}>
@@ -2753,6 +3104,7 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
 }
 
 function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefresh }: { userId?: string; readOnly: boolean; canMatchIdentity: boolean; parties: any[]; onRefresh: () => void }) {
+  const crmPeriod = useCRMPeriodFilter();
   const [rows, setRows] = useState<CRMInboxConversation[]>([]);
   const [loadingInbox, setLoadingInbox] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -2761,8 +3113,6 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
   const [replyRequestIds, setReplyRequestIds] = useState<Record<string, string>>({});
   const [domainFilter, setDomainFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
-  const [monthFilter, setMonthFilter] = useState("");
-  const [weekFilter, setWeekFilter] = useState("");
   const refreshInbox = useCallback(async () => {
     setLoadingInbox(true);
     try {
@@ -2781,23 +3131,10 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
     const date = raw ? new Date(raw) : null;
     return date && !Number.isNaN(date.getTime()) ? date : null;
   };
-  const monthWeekCount = monthFilter ? (() => {
-    const [year, month] = monthFilter.split("-").map(Number);
-    if (!year || !month) return 0;
-    const firstDayOffset = (new Date(year, month - 1, 1).getDay() + 6) % 7;
-    return Math.ceil((new Date(year, month, 0).getDate() + firstDayOffset) / 7);
-  })() : 0;
   const visibleRows = rows.filter((row) => {
     if (domainFilter && row.origin_domain !== domainFilter) return false;
     const date = getInboxDate(row);
-    if (monthFilter) {
-      if (!date) return false;
-      if (`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}` !== monthFilter) return false;
-      if (weekFilter) {
-        const offset = (new Date(date.getFullYear(), date.getMonth(), 1).getDay() + 6) % 7;
-        if (Math.floor((date.getDate() - 1 + offset) / 7) + 1 !== Number(weekFilter)) return false;
-      }
-    }
+    if (!crmPeriod.matches(date)) return false;
     const term = searchFilter.trim().toLocaleLowerCase("id-ID");
     if (!term) return true;
     return [row.subject, row.latest_message?.message_text, ...(row.messages ?? []).map((message) => message.message_text), row.external_thread?.external_thread_id, row.business_unit_name, row.origin_domain, row.inquiry?.inquiry_number, row.assigned_user?.full_name]
@@ -2878,21 +3215,16 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
             </div>
             <button className="btn-ghost text-xs" onClick={() => void refreshInbox()} disabled={loadingInbox}><RefreshCw size={13} className={cn("mr-1", loadingInbox && "animate-spin")} />Refresh</button>
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(160px,1fr)_minmax(150px,.8fr)_minmax(140px,.8fr)_auto]">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(160px,1fr)_auto]">
             <label className="text-xs font-medium text-text-secondary">Cari pesan
               <input className="input mt-1 w-full bg-white" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} placeholder="Nama, pesan, inquiry, domain..." />
             </label>
             <label className="text-xs font-medium text-text-secondary">Domain
               <select aria-label="Filter domain inbox" className="input mt-1 w-full bg-white" value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}><option value="">Semua domain</option>{inboxDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}</select>
             </label>
-            <label className="text-xs font-medium text-text-secondary">Bulan
-              <input type="month" className="input mt-1 w-full bg-white" value={monthFilter} onChange={(event) => { setMonthFilter(event.target.value); setWeekFilter(""); }} />
-            </label>
-            <label className="text-xs font-medium text-text-secondary">Minggu
-              <select className="input mt-1 w-full bg-white disabled:cursor-not-allowed disabled:opacity-50" value={weekFilter} disabled={!monthFilter} onChange={(event) => setWeekFilter(event.target.value)}><option value="">Semua minggu</option>{Array.from({ length: monthWeekCount }, (_, index) => <option key={index + 1} value={index + 1}>Minggu {index + 1}</option>)}</select>
-            </label>
-            <div className="flex items-end"><button type="button" className="btn-ghost w-full justify-center px-3 py-2 text-xs sm:w-auto" onClick={() => { setSearchFilter(""); setDomainFilter(""); setMonthFilter(""); setWeekFilter(""); }}>Reset filter</button></div>
+            <div className="flex items-end"><button type="button" className="btn-ghost w-full justify-center px-3 py-2 text-xs sm:w-auto" onClick={() => { setSearchFilter(""); setDomainFilter(""); crmPeriod.reset(); }}>Reset filter</button></div>
           </div>
+          <CRMPeriodToolbar filter={crmPeriod} />
         </div>
       </section>
 
@@ -3220,7 +3552,7 @@ export default function CrmClient() {
               canOverride={userRole === "super_admin" || activeRoleCode === "DIRECTOR"}
             />
           )}
-          {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} canApproveQuotation={canApproveCrmQuotation} />}
+          {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} onNavigate={setActiveTab} readOnly={!canOperateCrm} canApproveQuotation={canApproveCrmQuotation} />}
           {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "incoming"   && <TabIncoming data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "accounts"   && <TabAccounts data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}

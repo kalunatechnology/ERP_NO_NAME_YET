@@ -38,6 +38,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn, formatDate, localDateKey } from "@/lib/utils";
 import { creationWeeklyPeriod, resolveTargetCalendarWeek } from "@/lib/weekly-dashboard";
 import { Modal } from "@/components/ui/Modal";
+import { IDRInput } from "@/components/ui/IDRInput";
 import toast from "react-hot-toast";
 import api from "@/lib/api/axios";
 import { feedApi } from "@/lib/api/feed.api";
@@ -49,6 +50,7 @@ import { canPerform } from "@/lib/access/capability-contract";
 import { getModuleOverride, normalizeRoleCode, type ModulePermission } from "@/lib/access/module-contract";
 import { ProjectWbsTree } from "@/components/projects/ProjectWbsTree";
 import { useWeeklyPeriodFilter } from "@/components/tasks/useWeeklyPeriodFilter";
+import { CollapsibleGuideline } from "@/components/ui/CollapsibleGuideline";
 import { compareTaskOutput, outputReviewLabel } from "@/lib/tasks/output-comparison";
 import {
   PROJECT_LIFECYCLE_LABELS,
@@ -3496,14 +3498,13 @@ export default function ProjectsClient() {
           </div>
           <div>
             <label htmlFor="new-project-budget" className="text-xs font-bold text-text-secondary block mb-1">Total Anggaran (Rp)</label>
-            <input
+            <IDRInput
               id="new-project-budget"
-              type="number"
-              min="0"
               placeholder="Masukkan total anggaran"
               value={newProjForm.budget_amount}
-              onChange={e => setNewProjForm({ ...newProjForm, budget_amount: e.target.value })}
+              onChange={budget_amount => setNewProjForm({ ...newProjForm, budget_amount })}
               className="input text-xs"
+              showPrefix={false}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -3756,37 +3757,35 @@ export default function ProjectsClient() {
       >
         <div className="flex flex-col gap-3">
           {isSourceSynchronizedProject && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-2xs leading-5 text-blue-900">
+            <CollapsibleGuideline title="Panduan target finansial" tone="blue">
               Nilai anggaran dan kontrak berasal dari CRM / Sales Order dan hanya-baca. Perubahan nilai dilakukan di modul sumber; target margin tetap dapat dikelola di sini.
-            </div>
+            </CollapsibleGuideline>
           )}
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Target Pendapatan / Nilai Kontrak (Revenue Target Rp) *</label>
-            <input
-              type="number"
-              min="0"
+            <IDRInput
               placeholder="0"
               disabled={isSourceSynchronizedProject}
               value={financialTargetForm.contract_amount}
               onFocus={e => { if (e.currentTarget.value === "0") setFinancialTargetForm(prev => ({ ...prev, contract_amount: "" })); }}
               onBlur={e => { if (e.currentTarget.value === "") setFinancialTargetForm(prev => ({ ...prev, contract_amount: "0" })); }}
-              onChange={e => setFinancialTargetForm((prev) => ({ ...prev, contract_amount: e.target.value }))}
+              onChange={contract_amount => setFinancialTargetForm((prev) => ({ ...prev, contract_amount }))}
               className={cn("input text-xs", isSourceSynchronizedProject && "cursor-not-allowed bg-gray-100 text-text-secondary")}
+              showPrefix={false}
             />
           </div>
 
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Pagu Anggaran Disetujui (Planned Budget Baseline Rp) *</label>
-            <input
-              type="number"
-              min="0"
+            <IDRInput
               placeholder="0"
               disabled={isSourceSynchronizedProject}
               value={financialTargetForm.budget_amount}
               onFocus={e => { if (e.currentTarget.value === "0") setFinancialTargetForm(prev => ({ ...prev, budget_amount: "" })); }}
               onBlur={e => { if (e.currentTarget.value === "") setFinancialTargetForm(prev => ({ ...prev, budget_amount: "0" })); }}
-              onChange={e => setFinancialTargetForm((prev) => ({ ...prev, budget_amount: e.target.value }))}
+              onChange={budget_amount => setFinancialTargetForm((prev) => ({ ...prev, budget_amount }))}
               className={cn("input text-xs", isSourceSynchronizedProject && "cursor-not-allowed bg-gray-100 text-text-secondary")}
+              showPrefix={false}
             />
           </div>
 
@@ -3851,16 +3850,15 @@ export default function ProjectsClient() {
 
           <div>
             <label className="text-xs font-bold text-text-primary block mb-1">Jumlah Dana yang Diajukan (Rp) *</label>
-            <input
-              type="number"
-              min="0"
+            <IDRInput
               placeholder="0"
               value={fundingRequestForm.amount}
-              onChange={e => {
-                setFundingRequestForm({ ...fundingRequestForm, amount: e.target.value });
+              onChange={amount => {
+                setFundingRequestForm({ ...fundingRequestForm, amount });
                 setFundingRequestErrors((current) => ({ ...current, amount: "" }));
               }}
               className={cn("input text-xs", fundingRequestErrors.amount && "border-red-500 focus:border-red-500")}
+              showPrefix={false}
             />
             {fundingRequestErrors.amount && <p className="mt-1 text-2xs text-red-600">{fundingRequestErrors.amount}</p>}
           </div>

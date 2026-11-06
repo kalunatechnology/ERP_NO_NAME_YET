@@ -178,13 +178,23 @@ export interface CRMPartyContact {
   id: string;
   party_id: string | null;
   contact_name: string;
+  job_title?: string;
   email: string;
+  phone?: string;
   primary_contact: boolean;
 }
 
 export async function loadCRMPartyContacts(partyId: string | number): Promise<CRMPartyContact[]> {
   const { data } = await api.get(`/api/v1/master-data/contacts/?party_id=${encodeURIComponent(String(partyId))}&page_size=100`);
   return normalizeList<CRMPartyContact>(data).rows;
+}
+
+export async function saveCRMPartyContact(payload: Omit<CRMPartyContact, "id"> & { id?: string }) {
+  const { id, ...body } = payload;
+  const { data } = id
+    ? await api.patch(`/api/v1/master-data/contacts/${id}/`, body)
+    : await api.post("/api/v1/master-data/contacts/", body);
+  return data as CRMPartyContact;
 }
 
 export async function createCRMIntegrationSource(input: Record<string, unknown>, companyId?: string) {
@@ -395,6 +405,11 @@ export async function updateCRMInquiryLeadStatus(id: string | number, payload: {
   return data;
 }
 
+export async function linkInquiryCustomer(id: string | number, customer_party_id: string, contact_id?: string | null) {
+  const { data } = await api.patch(`/api/v1/crm/customer-inquiries/${id}/customer`, { customer_party_id, contact_id: contact_id || null });
+  return data;
+}
+
 /**
  * createCustomerInquiry adapts a frontend operation to its HTTP API contract.
  *
@@ -408,6 +423,7 @@ export async function createCustomerInquiry(payload: {
   customer_name: string;
   customer_email?: string;
   customer_party?: string | number | null;
+  contact_id?: string | null;
   description?: string;
   expected_delivery_date?: string | null;
 }) {
@@ -416,6 +432,7 @@ export async function createCustomerInquiry(payload: {
     customer_name: payload.customer_name,
     customer_email: payload.customer_email || "",
     customer_party_id: payload.customer_party || null,
+    contact_id: payload.contact_id || null,
     description: payload.description || "",
     expected_delivery_date: payload.expected_delivery_date || null,
     status: "NEW",
@@ -638,8 +655,20 @@ export async function rejectQuotation(id: string | number, reason = "Customer me
  * Failure behavior: rejects with the underlying HTTP/parsing error; the caller owns user-facing recovery unless handled here.
  */
 export async function convertQuotationToOrder(id: string | number) {
-  const { data } = await api.post(`/api/v1/crm/quotations/${id}/convert-to-order/`, {});
-  return data;
+  const { data: response } = await api.post(`/api/v1/commands/sales/quotations/${id}/convert-to-order/`, {
+    fulfillment_method: "PROJECT",
+  });
+  const order = response?.data ?? response;
+  const existingHandoff = order?.handoff ?? {};
+  return {
+    ...order,
+    handoff: {
+      ...existingHandoff,
+      sales_order_id: existingHandoff.sales_order_id ?? order?.id ?? order?.sales_order_id ?? null,
+      project_id: existingHandoff.project_id ?? order?.project_id ?? null,
+      proforma_invoice_id: existingHandoff.proforma_invoice_id ?? order?.proforma_invoice_id ?? null,
+    },
+  };
 }
 
 /* ── Support Tickets ─────────────────────────────── */

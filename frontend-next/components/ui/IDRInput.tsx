@@ -1,5 +1,6 @@
 "use client";
 
+import type { InputHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 function formatIDRInput(value: string | number) {
@@ -13,22 +14,16 @@ export function IDRInput({
   className,
   placeholder = "0",
   disabled,
+  showPrefix = true,
   ...inputProps
-}: {
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type" | "inputMode" | "autoComplete"> & {
   value: string | number;
   onChange: (digits: string) => void;
-  className?: string;
-  placeholder?: string;
-  disabled?: boolean;
-  id?: string;
-  name?: string;
-  required?: boolean;
-  "aria-label"?: string;
-  autoFocus?: boolean;
+  showPrefix?: boolean;
 }) {
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-xs font-medium text-text-secondary">Rp</span>
+      {showPrefix && <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-xs font-medium text-text-secondary">Rp</span>}
       <input
         {...inputProps}
         type="text"
@@ -38,7 +33,7 @@ export function IDRInput({
         value={formatIDRInput(value)}
         onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))}
         placeholder={placeholder}
-        className={cn("input w-full pl-9 tabular-nums", className)}
+        className={cn("input w-full tabular-nums", showPrefix && "pl-9", className)}
       />
     </div>
   );

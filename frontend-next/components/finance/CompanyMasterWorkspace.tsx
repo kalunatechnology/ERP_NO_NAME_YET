@@ -21,6 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canPerform } from "@/lib/access/capability-contract";
 import { formatMoney, formatDate, cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
+import { IDRInput } from "@/components/ui/IDRInput";
 import toast from "react-hot-toast";
 
 interface BankAccount {
@@ -315,7 +316,7 @@ export function CompanyMasterWorkspace() {
           <button
             onClick={() => setActiveSubTab("financial")}
             className={cn(
-              "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-2",
+              "px-3.5 py-1.5 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2",
               activeSubTab === "financial"
                 ? "bg-brand-deep-green text-white shadow-xs"
                 : "text-text-secondary hover:text-text-primary hover:bg-bg-light"
@@ -327,7 +328,7 @@ export function CompanyMasterWorkspace() {
           <button
             onClick={() => setActiveSubTab("operational")}
             className={cn(
-              "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-2",
+              "px-3.5 py-1.5 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2",
               activeSubTab === "operational"
                 ? "bg-brand-deep-green text-white shadow-xs"
                 : "text-text-secondary hover:text-text-primary hover:bg-bg-light"
@@ -339,7 +340,7 @@ export function CompanyMasterWorkspace() {
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
-          <span className="text-2xs text-text-secondary font-medium hidden md:inline">
+          <span className="text-xs text-text-secondary font-medium hidden md:inline">
             Status: <span className="text-brand-deep-green font-bold">Entitas Aktif</span>
           </span>
           <button
@@ -365,96 +366,96 @@ export function CompanyMasterWorkspace() {
                     <Building2 size={16} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">Profil Legal & Perpajakan Entitas</h3>
-                    <p className="text-2xs text-text-secondary">Identitas badan usaha dan administrasi pajak resmi</p>
+                <h3 className="text-base font-bold text-text-primary">Profil Legal & Perpajakan Entitas</h3>
+                <p className="text-xs text-text-secondary">Identitas badan usaha dan administrasi pajak resmi</p>
                   </div>
                 </div>
                 {!canEditCompany && (
-                  <span className="badge badge-neutral text-2xs gap-1">
-                    <Lock size={10} /> Read Only
+                  <span className="badge badge-neutral text-xs gap-1">
+                    <Lock size={12} /> Read Only
                   </span>
                 )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="text-xs font-semibold text-text-primary block mb-1">Nama Legal Perusahaan</label>
+                  <label className="text-sm font-semibold text-text-primary block mb-1">Nama Legal Perusahaan</label>
                   <input
                     type="text"
                     disabled={!canEditCompany}
                     value={companyData.legal_name}
                     onChange={e => setCompanyData({ ...companyData, legal_name: e.target.value })}
-                    className="input text-xs font-medium"
+                    className="input text-sm font-medium"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-text-primary block mb-1">Kode Singkat Entitas</label>
+                  <label className="text-sm font-semibold text-text-primary block mb-1">Kode Singkat Entitas</label>
                   <input
                     type="text"
                     disabled={!canEditCompany}
                     value={companyData.company_code}
                     onChange={e => setCompanyData({ ...companyData, company_code: e.target.value })}
-                    className="input text-xs font-semibold uppercase"
+                    className="input text-sm font-semibold uppercase"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-text-primary block mb-1">NPWP Perusahaan (16 Digit)</label>
+                  <label className="text-sm font-semibold text-text-primary block mb-1">NPWP Perusahaan (16 Digit)</label>
                   <input
                     type="text"
                     disabled={!canEditCompany}
                     value={companyData.tax_number}
                     onChange={e => setCompanyData({ ...companyData, tax_number: e.target.value })}
-                    className="input text-xs font-mono font-medium"
+                    className="input text-sm font-mono font-medium"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-text-primary block mb-1">Kategori Bisnis & Preset Pajak</label>
-                  <select disabled={!canEditCompany} value={companyData.business_category} onChange={e => setCompanyData({ ...companyData, business_category: e.target.value })} className="input text-xs font-medium">
+                  <label className="text-sm font-semibold text-text-primary block mb-1">Kategori Bisnis & Preset Pajak</label>
+                  <select disabled={!canEditCompany} value={companyData.business_category} onChange={e => setCompanyData({ ...companyData, business_category: e.target.value })} className="input text-sm font-medium">
                     <option value="CONSULTING_DIGITAL">Konsultansi, Riset & Layanan Digital</option>
                     <option value="CREATIVE_MEDIA">Media Kreatif & Produksi Konten</option>
                     <option value="CONSTRUCTION">Pelaksana Konstruksi</option>
                     <option value="GENERAL_SERVICES">Jasa Umum & Manajemen</option>
                   </select>
-                  <p className="mt-1 text-[10px] text-text-secondary">Digunakan otomatis untuk menentukan pilihan PPh awal.</p>
+                  <p className="mt-1 text-xs text-text-secondary">Digunakan otomatis untuk menentukan pilihan PPh awal.</p>
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-text-primary block mb-1">KPP Terdaftar</label>
+                  <label className="text-sm font-semibold text-text-primary block mb-1">KPP Terdaftar</label>
                   <input
                     type="text"
                     disabled={!canEditCompany}
                     value={companyData.kpp_name}
                     onChange={e => setCompanyData({ ...companyData, kpp_name: e.target.value })}
                     placeholder="Contoh: KPP Pratama Jakarta Setiabudi Satu"
-                    className="input text-xs"
+                    className="input text-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-text-primary block mb-1">Status Pengukuhan PKP</label>
+                  <label className="text-sm font-semibold text-text-primary block mb-1">Status Pengukuhan PKP</label>
                   <input
                     type="text"
                     disabled={!canEditCompany}
                     value={companyData.pkp_status}
                     onChange={e => setCompanyData({ ...companyData, pkp_status: e.target.value })}
                     placeholder="Contoh: PKP - Terdaftar sejak 2024"
-                    className="input text-xs"
+                    className="input text-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-text-primary block mb-1">Awal Tahun Fiskal</label>
+                  <label className="text-sm font-semibold text-text-primary block mb-1">Awal Tahun Fiskal</label>
                   <input
                     type="date"
                     disabled={!canEditCompany}
                     value={companyData.fiscal_year_start}
                     onChange={e => setCompanyData({ ...companyData, fiscal_year_start: e.target.value })}
-                    className="input text-xs"
+                    className="input text-sm"
                   />
                 </div>
               </div>
@@ -464,7 +465,7 @@ export function CompanyMasterWorkspace() {
                   <button
                     type="submit"
                     disabled={savingCompany}
-                    className="btn-primary py-2 px-4 text-xs gap-1.5"
+                    className="btn-primary py-2 px-4 text-sm gap-1.5"
                   >
                     <Save size={13} />
                     {savingCompany ? "Menyimpan..." : "Simpan Perubahan"}
@@ -481,15 +482,15 @@ export function CompanyMasterWorkspace() {
                     <Landmark size={16} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">Daftar Rekening Bank Perusahaan</h3>
-                    <p className="text-2xs text-text-secondary">Akun bank transaksi resmi untuk settlement AP/AR</p>
+                    <h3 className="text-base font-bold text-text-primary">Daftar Rekening Bank Perusahaan</h3>
+                    <p className="text-xs text-text-secondary">Akun bank transaksi resmi untuk settlement AP/AR</p>
                   </div>
                 </div>
                 {canEditFinancial && (
                   <button
                     type="button"
                     onClick={() => setIsBankModalOpen(true)}
-                    className="btn-primary py-1.5 px-3 text-xs gap-1"
+                    className="btn-primary py-1.5 px-3 text-sm gap-1"
                   >
                     <Plus size={13} /> Tambah Rekening
                   </button>
@@ -500,23 +501,23 @@ export function CompanyMasterWorkspace() {
                 <table className="w-full data-table text-xs min-w-[500px]">
                   <thead>
                     <tr>
-                      <th>Nama Bank & Deskripsi</th>
-                      <th>Nomor Rekening</th>
-                      <th>Atas Nama</th>
-                      <th className="text-right">Status</th>
+                      <th className="!text-sm">Nama Bank & Deskripsi</th>
+                      <th className="!text-sm">Nomor Rekening</th>
+                      <th className="!text-sm">Atas Nama</th>
+                      <th className="!text-sm text-right">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {bankAccounts.map((b) => (
                       <tr key={b.id}>
-                        <td>
+                        <td className="!text-sm">
                           <div className="font-semibold text-text-primary">{b.bank_name}</div>
-                          {b.type && <span className="text-3xs text-text-secondary">{b.type}</span>}
+                          {b.type && <span className="text-xs text-text-secondary">{b.type}</span>}
                         </td>
-                        <td className="font-mono font-bold text-brand-deep-green">{b.account_number}</td>
-                        <td className="text-text-secondary">{b.account_name}</td>
+                        <td className="!text-sm font-mono font-bold text-brand-deep-green">{b.account_number}</td>
+                        <td className="!text-sm text-text-secondary">{b.account_name}</td>
                         <td className="text-right">
-                          <span className="badge badge-success text-3xs">{b.status}</span>
+                          <span className="badge badge-success text-xs">{b.status}</span>
                         </td>
                       </tr>
                     ))}
@@ -535,15 +536,15 @@ export function CompanyMasterWorkspace() {
                     <CreditCard size={16} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">Fasilitas Kredit Bank & KMK</h3>
-                    <p className="text-2xs text-text-secondary">Plafon modal kerja dan bank garansi proyek</p>
+                    <h3 className="text-base font-bold text-text-primary">Fasilitas Kredit Bank & KMK</h3>
+                    <p className="text-xs text-text-secondary">Plafon modal kerja dan bank garansi proyek</p>
                   </div>
                 </div>
                 {canEditFinancial && (
                   <button
                     type="button"
                     onClick={() => setIsCreditModalOpen(true)}
-                    className="btn-outline py-1.5 px-2.5 text-xs gap-1"
+                    className="btn-outline py-1.5 px-2.5 text-sm gap-1"
                   >
                     <Plus size={13} /> Tambah
                   </button>
@@ -555,26 +556,26 @@ export function CompanyMasterWorkspace() {
                   <div key={cf.id} className="p-4 rounded-xl border border-text-tertiary bg-bg-light flex flex-col gap-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className="text-3xs font-bold uppercase tracking-wider text-text-secondary">
+                        <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
                           {cf.facility_type.replace(/_/g, " ")}
                         </span>
-                        <div className="text-xs font-mono font-bold text-text-primary mt-0.5">{cf.facility_number}</div>
+                        <div className="text-sm font-mono font-bold text-text-primary mt-0.5">{cf.facility_number}</div>
                       </div>
-                      <span className="badge badge-success text-3xs">{cf.status}</span>
+                        <span className="badge badge-success text-xs">{cf.status}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-text-tertiary/60 text-xs">
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-text-tertiary/60 text-sm">
                       <div>
-                        <span className="text-3xs text-text-secondary block">Plafon Total</span>
-                        <strong className="text-text-primary">{formatMoney(cf.credit_limit)}</strong>
+                        <span className="text-xs text-text-secondary block">Plafon Total</span>
+                        <strong className="text-sm text-text-primary">{formatMoney(cf.credit_limit)}</strong>
                       </div>
                       <div>
-                        <span className="text-3xs text-text-secondary block">Terpakai</span>
-                        <strong className="text-amber-700">{formatMoney(cf.utilized_amount)}</strong>
+                        <span className="text-xs text-text-secondary block">Terpakai</span>
+                        <strong className="text-sm text-amber-700">{formatMoney(cf.utilized_amount)}</strong>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between p-2 rounded-lg bg-brand-light-green/60 border border-brand-green/30 text-xs">
+                    <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-brand-light-green/60 border border-brand-green/30 text-sm">
                       <span className="text-brand-deep-green font-medium">Sisa Plafon Tersedia:</span>
                       <strong className="text-brand-deep-green font-bold">{formatMoney(cf.available_amount)}</strong>
                     </div>
@@ -835,21 +836,21 @@ export function CompanyMasterWorkspace() {
           </div>
           <div>
             <label className="font-bold text-text-primary block mb-1">Total Plafon Kredit (Rp) *</label>
-            <input
-              type="number"
+            <IDRInput
               value={creditForm.credit_limit}
-              onChange={e => setCreditForm({ ...creditForm, credit_limit: Number(e.target.value) })}
+              onChange={amount => setCreditForm({ ...creditForm, credit_limit: Number(amount) || 0 })}
               className="input text-xs font-bold"
               required
+              showPrefix={false}
             />
           </div>
           <div>
             <label className="font-bold text-text-primary block mb-1">Jumlah Terpakai Saat Ini (Rp)</label>
-            <input
-              type="number"
+            <IDRInput
               value={creditForm.utilized_amount}
-              onChange={e => setCreditForm({ ...creditForm, utilized_amount: Number(e.target.value) })}
+              onChange={amount => setCreditForm({ ...creditForm, utilized_amount: Number(amount) || 0 })}
               className="input text-xs"
+              showPrefix={false}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-text-tertiary">
@@ -958,11 +959,11 @@ export function CompanyMasterWorkspace() {
           </div>
           <div>
             <label className="font-bold text-text-primary block mb-1">Nilai / Biaya Perolehan (Rp)</label>
-            <input
-              type="number"
+            <IDRInput
               value={assetForm.cost}
-              onChange={e => setAssetForm({ ...assetForm, cost: Number(e.target.value) })}
+              onChange={amount => setAssetForm({ ...assetForm, cost: Number(amount) || 0 })}
               className="input text-xs"
+              showPrefix={false}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-text-tertiary">
