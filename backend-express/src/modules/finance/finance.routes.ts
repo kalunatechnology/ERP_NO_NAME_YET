@@ -1275,12 +1275,15 @@ financeRouter.put('/fiscal-calendar/:fiscalYearId', requireFinanceRole([RoleCode
         where: { id: existingPeriods[index].id },
         data: { period_number: period.period_number, start_date: period.start_date, end_date: period.end_date },
       })));
+      const journalDateRange = existing.start_date && existing.end_date
+        ? [{ posting_date: { gte: existing.start_date, lte: existing.end_date } }]
+        : [];
       const entries = await tx.fin_journal_entry.findMany({
         where: {
           company_id: companyId,
           OR: [
             { fiscal_period_id: { in: existingPeriods.map((period) => period.id) } },
-            { posting_date: { gte: existing.start_date, lte: existing.end_date } },
+            ...journalDateRange,
           ],
           posting_date: { not: null },
         },
