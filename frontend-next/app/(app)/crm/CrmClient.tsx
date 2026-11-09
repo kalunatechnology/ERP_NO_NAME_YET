@@ -1013,13 +1013,14 @@ function TabDeals({
                 <tr>
                   <th className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">Opportunity</th>
                   <th className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">Customer</th>
-                  <th className="border-b border-r border-slate-200 px-3 py-3 text-right last:border-r-0">Nilai</th>
+                  <th className="border-b border-r border-slate-200 px-3 py-3 text-right last:border-r-0">Estimasi & peluang</th>
                   <th className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">Pipeline / Status</th>
                   <th className="border-b border-slate-200 px-3 py-3">Tindakan</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-text-tertiary/40 bg-white">
                 {displayedOpps.map((o, rowIndex) => {
+              const probability = Math.max(0, Math.min(100, Number(o.probability_percent || 0)));
 /**
  * cust coordinates the UI behavior represented by this function.
  *
@@ -1041,6 +1042,7 @@ function TabDeals({
               return (
                 <tr key={o.id} className={cn("align-top transition-colors hover:bg-blue-50/70", rowIndex % 2 ? "bg-slate-50/70" : "bg-white", isCancelled && "bg-red-50/50 text-text-secondary")}>
                   <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
+                    <span className="mb-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-2xs font-bold text-emerald-800"><TrendingUp size={11} />Sales · Opportunity</span>
                     <div className={cn("max-w-[280px] break-words text-sm font-semibold leading-5", isCancelled ? "line-through text-gray-500" : "text-text-primary")}>{o.opportunity_name || `Opportunity ${String(o.id).slice(0,8)}`}</div>
                     <div className="mt-1 text-2xs text-text-secondary">ID {String(o.id).slice(0, 8).toUpperCase()}</div>
                   </td>
@@ -1055,7 +1057,11 @@ function TabDeals({
                       </div>
                     ) : <span className="text-sm text-text-secondary">Pelanggan Umum</span>}
                   </td>
-                  <td className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold text-text-primary last:border-r-0">{formatMoney(o.expected_amount)}</td>
+                  <td className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right last:border-r-0">
+                    <div className="text-sm font-bold text-text-primary">{formatMoney(o.expected_amount)}</div>
+                    <div className="mt-1 flex items-center justify-end gap-1.5 text-2xs font-medium text-emerald-800"><span>Peluang</span><span className="font-bold">{probability}%</span></div>
+                    <div className="ml-auto mt-1 h-1 w-20 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label={`Peluang menang ${probability}%`} aria-valuenow={probability} aria-valuemin={0} aria-valuemax={100}><div className="h-full rounded-full bg-emerald-500" style={{ width: `${probability}%` }} /></div>
+                  </td>
                   <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
                     <StatusBadge status={o.status || "OPEN"} />
                     {readOnly || isCancelled || isWon || isLost ? <div className="mt-1 text-xs text-text-secondary">{CRM_PIPELINE_STAGE_LABELS[String(o.pipeline_stage || (isWon ? "WON" : isLost ? "LOST" : "PROSPECT")).toUpperCase()] || o.pipeline_stage || "Prospek"}</div> : <select aria-label={`Tahap ${o.opportunity_name || "Opportunity"}`} className="input mt-1 max-w-[190px] px-2 py-1 text-xs" value={normalizeOpportunityStage(o.pipeline_stage)} disabled={savingStage} onChange={event => void handleOpportunityStageChange(o, event.target.value)}>{["PROSPECT", "DISCOVERY", "PROPOSAL_SENT", "NEGOTIATION", "FOLLOW_UP"].map(stage => <option key={stage} value={stage}>{CRM_PIPELINE_STAGE_LABELS[stage]}</option>)}</select>}
@@ -2414,13 +2420,14 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
  */
             const reqs = (data.requirements||[]).filter(r => String(r.inquiry) === String(x.id));
             return (
-              <div key={x.id} className="flex items-center justify-between p-3 rounded-xl border border-text-tertiary/60 gap-3">
+              <div key={x.id} className="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50/40 p-3 gap-3">
                 <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5"><span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-100 px-2 py-0.5 text-2xs font-bold text-sky-800"><Inbox size={11} />CRM Lead</span><span className="text-2xs text-text-secondary">Masuk {formatDate(x.created_at || x.submitted_at || x.updated_at)}</span></div>
                   <div className="text-sm font-semibold truncate">{x.subject || `Inquiry ${String(x.id).slice(0,8)}`}</div>
                   <div className="text-xs text-text-secondary mt-0.5">
                     <b>{x.customer_name || "-"}</b> ({x.customer_email || "-"}) · <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-2xs">{reqs.length} Spesifikasi</span>
                   </div>
-                  <div className="mt-1"><OriginDomainBadge domain={x.origin_domain} /></div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5"><OriginDomainBadge domain={x.origin_domain} />{!x.origin_domain && <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-2xs text-slate-600">Sumber manual</span>}</div>
                   <StatusBadge status={needsOpportunityRepair ? "Opportunity belum tertaut" : ({ NEW: "Lead baru", CONTACTED: "Sudah dihubungi", RESPONDED: "Merespons", FOLLOW_UP: "Follow-up kembali", QUALIFIED: "Menjadi prospek", CLOSED_LOST: "Ditutup" } as Record<string, string>)[leadStatus] || leadStatus} />
                   {x.next_follow_up_at && leadStatus === "FOLLOW_UP" && <div className="mt-1 text-2xs text-amber-700">Hubungi kembali: {formatDate(x.next_follow_up_at)}</div>}
                   {x.last_contact_note && <div className="mt-1 max-w-xl truncate text-2xs text-text-secondary" title={x.last_contact_note}>Catatan kontak: {x.last_contact_note}</div>}
