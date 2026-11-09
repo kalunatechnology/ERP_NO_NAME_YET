@@ -82,9 +82,8 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         );
       }
 
-      // A Company Admin can tailor access for one user, but never bypass the
-      // Super-Admin company entitlement checked above. No override means
-      // inheritance from the company setting; an override is authoritative.
+      // A Company Admin can tailor access for one user or via Department module
+      // delegation, but never bypass the Super-Admin company entitlement checked above.
       const userOverride = await prisma.iam_user_module_access.findUnique({
         where: { user_id_module_code: { user_id: req.user.id, module_code: normalizedModule } },
       });
@@ -100,7 +99,23 @@ export function requireModuleAccess(moduleCode: string, mode: 'read' | 'write' =
         }
         req.moduleAccess = { moduleCode: normalizedModule, delegated: true, allowRead: userOverride.allow_read, allowWrite: userOverride.allow_write };
       } else {
-        req.moduleAccess = { moduleCode: normalizedModule, delegated: false, allowRead: access.allow_read, allowWrite: access.allow_write };
+        const deptOrGmDelegation = req.user.module_access?.find((m) => m.module_code.toUpperCase() === normalizedModule);
+        if (deptOrGmDelegation) {
+          if (effectiveMode === 'read' && !deptOrGmDelegation.allow_read) {
+            return next(new ForbiddenError(`Akses baca departemen untuk modul ${normalizedModule} dinonaktifkan.`));
+          }
+          if (effectiveMode === 'write' && !deptOrGmDelegation.allow_write) {
+            return next(new ForbiddenError(`Akses tulis departemen untuk modul ${normalizedModule} dinonaktifkan.`));
+          }
+          req.moduleAccess = {
+            moduleCode: normalizedModule,
+            delegated: true,
+            allowRead: deptOrGmDelegation.allow_read,
+            allowWrite: deptOrGmDelegation.allow_write,
+          };
+        } else {
+          req.moduleAccess = { moduleCode: normalizedModule, delegated: false, allowRead: access.allow_read, allowWrite: access.allow_write };
+        }
       }
 
       next();

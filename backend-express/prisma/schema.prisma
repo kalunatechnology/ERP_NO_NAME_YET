@@ -30,6 +30,12 @@ enum RoleCode {
   @@map("iam_role_code")
 }
 
+enum DepartmentRoleLevel {
+  GM
+  SPV
+  STAFF
+}
+
 // =============================================================================
 // APP: CORE (22 models)
 // =============================================================================
@@ -264,6 +270,47 @@ model core_organization {
   @@map("core_organization")
 }
 
+model core_department {
+  id              String                        @id @default(uuid())
+  tenant_id       String?                       @map("tenant_id")
+  company_id      String                        @map("company_id")
+  parent_id       String?                       @map("parent_id")
+  unit_type       String                        @default("DEPARTMENT") @map("unit_type")
+  code            String
+  name            String
+  description     String                        @default("")
+  manager_user_id String?                       @map("manager_user_id")
+  is_cost_center  Boolean                       @default(true) @map("is_cost_center")
+  is_active       Boolean                       @default(true) @map("is_active")
+  created_at      DateTime                      @default(now()) @map("created_at")
+  updated_at      DateTime                      @updatedAt @map("updated_at")
+  parent          core_department?              @relation("CoreDepartmentHierarchy", fields: [parent_id], references: [id], onDelete: SetNull)
+  divisions       core_department[]             @relation("CoreDepartmentHierarchy")
+  module_access   core_department_module_access[]
+  users           iam_user[]
+
+  @@unique([company_id, code], map: "uq_core_department_code")
+  @@index([company_id, is_active], map: "idx_core_department_company_active")
+  @@index([company_id, parent_id], map: "idx_core_department_parent")
+  @@map("core_department")
+}
+
+model core_department_module_access {
+  id            String          @id @default(uuid())
+  company_id    String          @map("company_id")
+  department_id String          @map("department_id")
+  module_key    String          @map("module_key")
+  can_read      Boolean         @default(true) @map("can_read")
+  can_write     Boolean         @default(true) @map("can_write")
+  can_approve   Boolean         @default(false) @map("can_approve")
+  created_at    DateTime        @default(now()) @map("created_at")
+  department    core_department @relation(fields: [department_id], references: [id], onDelete: Cascade)
+
+  @@unique([department_id, module_key], map: "uq_dept_module_key")
+  @@index([company_id, department_id], map: "idx_dept_mod_company")
+  @@map("core_department_module_access")
+}
+
 model core_business_document {
   created_by_id   String?   @map("created_by_id")
   id              String    @id @default(uuid())
@@ -322,25 +369,29 @@ model core_workflow_instance {
 /// Canonical request record. The audit snapshot remains available for backward
 /// compatibility, while new request modules query this table directly.
 model request_ticket {
-  id                   String    @id @default(uuid())
-  tenant_id            String?
-  company_id           String
-  created_by_id        String
-  workflow_instance_id String    @unique
-  request_number       String
-  request_type         String
-  title                String
-  description          String    @default("")
-  requester_user_id    String
-  assignee_user_id     String?
-  project_id           String?
-  priority             String    @default("MEDIUM")
-  status               String    @default("PENDING_OM")
-  submitted_at         DateTime?
-  completed_at         DateTime?
-  cancelled_at         DateTime?
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
+  id                    String    @id @default(uuid())
+  tenant_id             String?
+  company_id            String
+  created_by_id         String
+  workflow_instance_id  String    @unique
+  request_number        String
+  request_type          String
+  title                 String
+  description           String    @default("")
+  requester_user_id     String
+  assignee_user_id      String?
+  project_id            String?
+  department_id         String?
+  cost_center_id        String?
+  budget_allocation_id  String?
+  budget_reservation_id String?
+  priority              String    @default("MEDIUM")
+  status                String    @default("PENDING_OM")
+  submitted_at          DateTime?
+  completed_at          DateTime?
+  cancelled_at          DateTime?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
 
   @@unique([company_id, request_number])
   @@index([company_id, request_type, status])
@@ -791,19 +842,23 @@ model core_team_contact {
 
 model iam_user {
   is_superuser   Boolean
-  id             String    @id @default(uuid())
-  tenant_id      String?   @map("tenant_id")
-  username       String    @unique
-  email          String    @unique
-  password_hash  String    @map("password_hash")
+  id             String              @id @default(uuid())
+  tenant_id      String?             @map("tenant_id")
+  username       String              @unique
+  email          String              @unique
+  password_hash  String              @map("password_hash")
   full_name      String
   status         String
-  last_login_at  DateTime? @map("last_login_at")
+  last_login_at  DateTime?           @map("last_login_at")
   is_staff       Boolean
   is_active      Boolean
   date_joined    DateTime
-  active_role_id String?   @map("active_role_id")
+  active_role_id String?             @map("active_role_id")
+  department_id  String?             @map("department_id")
+  role_level     DepartmentRoleLevel @default(STAFF) @map("role_level")
+  department     core_department?    @relation(fields: [department_id], references: [id], onDelete: SetNull)
 
+  @@index([department_id, role_level], map: "idx_iam_user_department_role")
   @@map("iam_user")
 }
 
@@ -1464,6 +1519,7 @@ model crm_opportunity {
   lead_id             String?   @map("lead_id")
   source_inquiry_id   String?   @unique @map("source_inquiry_id")
   owner_user_id       String?   @map("owner_user_id")
+  department_id       String?   @map("department_id")
   pipeline_stage      String
   stage_id            String?   @map("stage_id")
   opportunity_name    String
@@ -2094,6 +2150,7 @@ model crm_customer_inquiry {
   customer_party_id      String?   @map("customer_party_id")
   contact_id             String?   @map("contact_id")
   owner_user_id          String?   @map("owner_user_id")
+  department_id          String?   @map("department_id")
   opportunity_id         String?   @unique @map("opportunity_id")
   inquiry_number         String
   source_channel         String

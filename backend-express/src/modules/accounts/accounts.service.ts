@@ -210,16 +210,18 @@ export class AccountsService {
     });
 
     const activeRole = rolesList.find((role) => role.id === user.active_role_id) ?? rolesList[0] ?? null;
-    const overrideByModule = new Map(userModules.map((item) => [item.module_code.toUpperCase(), item]));
-    const enabledModules = companyModules
-      .map((item) => item.module_code.toUpperCase())
-      .filter((moduleCode) => overrideByModule.get(moduleCode)?.allow_read ?? true);
-    const delegatedModules = userModules
-      .filter((item) => item.allow_read)
-      .map((item) => item.module_code.toUpperCase());
-    if (snapshot.project_delegated && enabledModules.includes('PROJECTS') && !delegatedModules.includes('PROJECTS')) {
-      delegatedModules.push('PROJECTS');
-    }
+    const access = await loadUserAccessContext(
+      user.id,
+      { tenant_id: user.tenant_id, active_role_id: user.active_role_id },
+      {
+        assignments: userRoles as any,
+        membership: membership as any,
+        roleRecords: rolesList as any,
+        moduleAccess: companyModules,
+        userModuleAccess: userModules,
+        projectDelegated: snapshot.project_delegated,
+      },
+    );
     const primaryCompanyId = superAdmin ? null : membership?.company_id ?? null;
 
     const tokens = signTokenPair({
@@ -245,9 +247,15 @@ export class AccountsService {
       company: membership ? { id: membership.company_id, name: membership.legal_name, code: membership.company_code } : null,
       active_role_id: activeRole?.id ?? null,
       active_role_code: activeRole ? toExternalRoleCode(activeRole.role_code) : null,
-      enabled_modules: enabledModules,
-      delegated_modules: delegatedModules,
-      module_access: effectiveModuleOverrides(companyModules, userModules),
+      department_id: access.departmentId,
+      department_code: access.departmentCode,
+      department_name: access.departmentName,
+      role_level: access.roleLevel,
+      can_approve_division_scope: access.canApproveDivisionScope,
+      can_override_budget: access.canOverrideBudget,
+      enabled_modules: access.enabledModules,
+      delegated_modules: access.delegatedModules,
+      module_access: access.moduleAccess,
       roles: serializedRoles,
       last_login: user.last_login_at,
       date_joined: user.date_joined,
@@ -364,6 +372,12 @@ export class AccountsService {
       company: companyRows[0] ? { id: companyRows[0].id, name: companyRows[0].legal_name, code: companyRows[0].company_code } : null,
       active_role_id: access.activeRoleId,
       active_role_code: access.activeRoleCode ? toExternalRoleCode(access.activeRoleCode) : null,
+      department_id: access.departmentId,
+      department_code: access.departmentCode,
+      department_name: access.departmentName,
+      role_level: access.roleLevel,
+      can_approve_division_scope: access.canApproveDivisionScope,
+      can_override_budget: access.canOverrideBudget,
       enabled_modules: access.enabledModules,
       delegated_modules: access.delegatedModules,
       module_access: access.moduleAccess,
@@ -518,9 +532,11 @@ export class AccountsService {
     roleCodes: RoleCode[];
     companyId: string;
     tenantId: string;
+    departmentId?: string | null;
+    roleLevel?: 'GM' | 'SPV' | 'STAFF' | null;
     actorId?: string;
   }) {
-    const { name, email, password, roleCodes, companyId, tenantId, actorId } = input;
+    const { name, email, password, roleCodes, companyId, tenantId, departmentId, roleLevel, actorId } = input;
     const cleanEmail = email.trim().toLowerCase();
     const cleanUsername = cleanEmail.split('@')[0]!;
 
@@ -586,25 +602,40 @@ export class AccountsService {
     }
 
     const organization = await prisma.core_organization.findFirst({ where: { company_id: companyId } });
+    const normalizedRoleLevel: 'GM' | 'SPV' | 'STAFF' =
+      roleLevel && ['GM', 'SPV', 'STAFF'].includes(String(roleLevel).toUpperCase())
+        ? (String(roleLevel).toUpperCase() as 'GM' | 'SPV' | 'STAFF')
+        : 'STAFF';
+    const cleanDepartmentId = departmentId ? String(departmentId).trim() : null;
     const passwordHash = existing ? null : await hashPassword(password);
     const user = await prisma.$transaction(async (tx) => {
-      const created = existing ?? await tx.iam_user.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenant_id: tenantId,
-            email: cleanEmail,
-            username: cleanUsername,
-            full_name: name.trim(),
-            password_hash: passwordHash!,
-            is_active: true,
-            is_staff: false,
-            // The creator's privilege must never be copied to the invited user.
-            // SUPER_ADMIN is intentionally rejected by the route above.
-            is_superuser: false,
-            status: 'ACTIVE',
-            date_joined: new Date(),
-          },
-        });
+      const created = existing
+        ? await (tx.iam_user as any).update({
+            where: { id: existing.id },
+            data: {
+              ...(cleanDepartmentId !== null ? { department_id: cleanDepartmentId } : {}),
+              role_level: normalizedRoleLevel,
+            },
+          })
+        : await (tx.iam_user as any).create({
+            data: {
+              id: crypto.randomUUID(),
+              tenant_id: tenantId,
+              email: cleanEmail,
+              username: cleanUsername,
+              full_name: name.trim(),
+              password_hash: passwordHash!,
+              is_active: true,
+              is_staff: false,
+              // The creator's privilege must never be copied to the invited user.
+              // SUPER_ADMIN is intentionally rejected by the route above.
+              is_superuser: false,
+              status: 'ACTIVE',
+              date_joined: new Date(),
+              department_id: cleanDepartmentId,
+              role_level: normalizedRoleLevel,
+            },
+          });
 
       await tx.iam_user_role.createMany({
         data: roles.map((role) => ({

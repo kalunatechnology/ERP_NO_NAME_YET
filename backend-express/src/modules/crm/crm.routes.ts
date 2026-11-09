@@ -1016,11 +1016,103 @@ crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Re
 });
 
 // =============================================================================
+// DELEGASI / ASSIGN LEAD & OPPORTUNITY (SPV / GM / ADMIN / CRM LEAD)
+// =============================================================================
+
+async function handleAssignCrmRecord(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  recordType: 'INQUIRY' | 'OPPORTUNITY',
+) {
+  try {
+    const companyId = activeCompanyId(req);
+    const roleLevel = String(req.user?.role_level ?? req.accessContext?.roleLevel ?? 'STAFF').toUpperCase();
+    const userRoles = (req.user?.roles ?? []).map((r) => String(r).toUpperCase());
+    const canDelegate =
+      roleLevel === 'GM' ||
+      roleLevel === 'SPV' ||
+      isSuperAdmin(req.user?.roles) ||
+      userRoles.some((r) => ['COMPANY_ADMIN', 'DIRECTOR', 'CRM_LEAD', 'OPERATIONAL_MANAGER', 'PROJECT_MANAGER'].includes(r));
+
+    if (!canDelegate) {
+      throw new ForbiddenError('Hanya Supervisor (SPV), General Manager (GM), atau CRM Lead yang dapat mendelegasikan PIC Sales.');
+    }
+
+    const ownerUserId = req.body.owner_user_id ? String(req.body.owner_user_id).trim() : null;
+    const departmentId = req.body.department_id !== undefined
+      ? (req.body.department_id ? String(req.body.department_id).trim() : null)
+      : undefined;
+
+    if (!ownerUserId && departmentId === undefined) {
+      throw new ValidationError('Pilih PIC Sales (owner_user_id) atau Departemen tujuan delegasi.');
+    }
+
+    let resolvedDeptId = departmentId;
+    if (ownerUserId) {
+      const targetUser = await prisma.iam_user.findFirst({
+        where: { id: ownerUserId, is_active: true },
+        select: { id: true, full_name: true, email: true, department_id: true },
+      });
+      if (!targetUser) {
+        throw new ValidationError('User PIC Sales tidak ditemukan atau tidak aktif.');
+      }
+      if (resolvedDeptId === undefined && targetUser.department_id) {
+        resolvedDeptId = targetUser.department_id;
+      }
+    }
+
+    if (recordType === 'INQUIRY') {
+      const existing = await prisma.crm_customer_inquiry.findFirst({
+        where: { id: req.params.id, company_id: companyId },
+      });
+      if (!existing) throw new NotFoundError('Customer Inquiry / Lead');
+
+      const updated = await prisma.crm_customer_inquiry.update({
+        where: { id: existing.id },
+        data: {
+          ...(ownerUserId ? { owner_user_id: ownerUserId } : {}),
+          ...(resolvedDeptId !== undefined ? { department_id: resolvedDeptId } : {}),
+        },
+      });
+      res.json({ success: true, data: updated, ...updated });
+      return;
+    }
+
+    const existingOpp = await prisma.crm_opportunity.findFirst({
+      where: { id: req.params.id, company_id: companyId },
+    });
+    if (!existingOpp) throw new NotFoundError('Sales Opportunity');
+
+    const updatedOpp = await prisma.crm_opportunity.update({
+      where: { id: existingOpp.id },
+      data: {
+        ...(ownerUserId ? { owner_user_id: ownerUserId } : {}),
+        ...(resolvedDeptId !== undefined ? { department_id: resolvedDeptId } : {}),
+      },
+    });
+    res.json({ success: true, data: updatedOpp, ...updatedOpp });
+  } catch (error) {
+    next(error);
+  }
+}
+
+crmRouter.post('/customer-inquiries/:id/assign', (req, res, next) => handleAssignCrmRecord(req, res, next, 'INQUIRY'));
+crmRouter.patch('/customer-inquiries/:id/assign', (req, res, next) => handleAssignCrmRecord(req, res, next, 'INQUIRY'));
+crmRouter.post('/opportunities/:id/assign', (req, res, next) => handleAssignCrmRecord(req, res, next, 'OPPORTUNITY'));
+crmRouter.patch('/opportunities/:id/assign', (req, res, next) => handleAssignCrmRecord(req, res, next, 'OPPORTUNITY'));
+
+// =============================================================================
 // CRUD VIEWSETS
 // =============================================================================
 
 crmRouter.use('/customer-inquiries', createCrudRouter({
   modelName: 'crm_customer_inquiry', searchFields: ['inquiry_number', 'subject', 'customer_name'],
+  beforeCreate: async (req, data) => ({
+    ...data,
+    department_id: data.department_id ?? req.user?.department_id ?? null,
+    owner_user_id: data.owner_user_id ?? req.user?.id ?? null,
+  }),
   beforeUpdate: async (_req, data, existing) => {
     if (data.status && String(data.status).toUpperCase() !== String(existing.status || '').toUpperCase()) {
       throw new ValidationError('Gunakan aksi status Lead untuk memperbarui tahapan kontak.');
@@ -1173,7 +1265,14 @@ crmRouter.post('/opportunities/:id/mark-lost', async (req: Request, res: Respons
 crmRouter.use('/opportunities', createCrudRouter({
   modelName: 'crm_opportunity',
   searchFields: ['opportunity_name', 'pipeline_stage'],
-  beforeCreate: async (req, data) => validateOpportunityCustomer(req, data),
+  beforeCreate: async (req, data) => {
+    const validated = await validateOpportunityCustomer(req, data);
+    return {
+      ...validated,
+      department_id: validated.department_id ?? req.user?.department_id ?? null,
+      owner_user_id: validated.owner_user_id ?? req.user?.id ?? null,
+    };
+  },
   beforeUpdate: async (req, data, existing) => {
     if (data.pipeline_stage && String(data.pipeline_stage).toUpperCase() !== String(existing.pipeline_stage || '').toUpperCase()) {
       throw new ValidationError('Gunakan aksi tahap Opportunity untuk menjaga riwayat pipeline.');

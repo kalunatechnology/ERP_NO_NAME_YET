@@ -61,6 +61,12 @@ export async function authenticate(
     enabled_modules: access.enabledModules,
     delegated_modules: access.delegatedModules,
     module_access: access.moduleAccess,
+    department_id: access.departmentId,
+    department_code: access.departmentCode,
+    department_name: access.departmentName,
+    role_level: access.roleLevel,
+    can_approve_division_scope: access.canApproveDivisionScope,
+    can_override_budget: access.canOverrideBudget,
   };
   req.tenantId = user.tenant_id;
 
@@ -103,6 +109,12 @@ export async function optionalAuthenticate(
       enabled_modules: access.enabledModules,
       delegated_modules: access.delegatedModules,
       module_access: access.moduleAccess,
+      department_id: access.departmentId,
+      department_code: access.departmentCode,
+      department_name: access.departmentName,
+      role_level: access.roleLevel,
+      can_approve_division_scope: access.canApproveDivisionScope,
+      can_override_budget: access.canOverrideBudget,
     };
     req.tenantId = user.tenant_id;
   }

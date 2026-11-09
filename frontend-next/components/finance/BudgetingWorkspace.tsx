@@ -47,17 +47,54 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
   const load = useCallback(async (selectedYear = yearId) => {
     setLoading(true); setOptionsLoading(true); setError("");
     try {
-      const [optionRes, planRes, queueRes, reservationRes] = await Promise.all([
-        api.get(`${base}/budgeting/options`), api.get(`${base}/budgets`), api.get(`${base}/budgeting/workflow`), api.get(`${base}/budgeting/reservations`),
+      const [optionRes, deptRes, planRes, queueRes, reservationRes] = await Promise.all([
+        api.get(`${base}/budgeting/options`),
+        api.get("/api/v1/master-data/departments").catch(() => ({ data: { data: [] } })),
+        api.get(`${base}/budgets`),
+        api.get(`${base}/budgeting/workflow`),
+        api.get(`${base}/budgeting/reservations`),
       ]);
       const rawOptions = unwrap(optionRes.data) ?? {};
+      const dynDepts = optionRows(unwrap(deptRes.data));
+      const rawCostCenters = optionRows(rawOptions.cost_centers);
+      const rawDepartments = optionRows(rawOptions.departments);
+
+      const seenCcCodes = new Set(rawCostCenters.map((c: AnyRow) => String(c.cost_center_code || c.code || "").toUpperCase()));
+      const mergedCostCenters = [
+        ...rawCostCenters,
+        ...dynDepts
+          .filter((d: AnyRow) => d.is_cost_center !== false && !seenCcCodes.has(String(d.code || d.department_code || "").toUpperCase()))
+          .map((d: AnyRow) => ({
+            id: d.id,
+            cost_center_code: d.code || d.department_code,
+            cost_center_name: d.name || d.department_name,
+            code: d.code || d.department_code,
+            name: d.name || d.department_name,
+          })),
+      ];
+
+      const seenDeptCodes = new Set(rawDepartments.map((d: AnyRow) => String(d.department_code || d.code || "").toUpperCase()));
+      const mergedDepartments = [
+        ...rawDepartments,
+        ...dynDepts
+          .filter((d: AnyRow) => !seenDeptCodes.has(String(d.code || d.department_code || "").toUpperCase()))
+          .map((d: AnyRow) => ({
+            id: d.id,
+            department_code: d.code || d.department_code,
+            department_name: d.name || d.department_name,
+            code: d.code || d.department_code,
+            name: d.name || d.department_name,
+            is_cost_center: d.is_cost_center !== false,
+          })),
+      ];
+
       const nextOptions = {
         fiscal_years: optionRows(rawOptions.fiscal_years),
         fiscal_periods: optionRows(rawOptions.fiscal_periods),
         accounts: optionRows(rawOptions.accounts),
-        cost_centers: optionRows(rawOptions.cost_centers),
+        cost_centers: mergedCostCenters,
         projects: optionRows(rawOptions.projects),
-        departments: optionRows(rawOptions.departments),
+        departments: mergedDepartments,
       };
       const nextPlans = unwrap(planRes.data);
       setOptions(nextOptions);
@@ -213,9 +250,25 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
           {planForm.allocations.map((row, index) => <div key={index} className="rounded-xl border border-[#D9D9D9] p-3">
             <div className="grid gap-3 md:grid-cols-2">
               <Field label="Akun beban"><select required value={row.account_id} onChange={(event) => setAllocation(index, "account_id", event.target.value)} className={inputClass}><option value="">Pilih akun</option>{options.accounts.map((account) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></Field>
-              <Field label="Cost center"><select required disabled={optionsLoading} value={row.cost_center_id} onChange={(event) => setAllocation(index, "cost_center_id", event.target.value)} className={inputClass}><option value="">{optionsLoading ? "Memuat cost center…" : options.cost_centers.length ? "Pilih cost center" : "Belum ada cost center aktif"}</option>{options.cost_centers.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}</select></Field>
+              <Field label="Cost center"><select required disabled={optionsLoading} value={row.cost_center_id} onChange={(event) => {
+                const nextCcId = event.target.value;
+                setAllocation(index, "cost_center_id", nextCcId);
+                if (!row.department_id && nextCcId) {
+                  const selectedCc = options.cost_centers.find((c) => c.id === nextCcId);
+                  const matchingDept = selectedCc ? options.departments.find((d) => String(d.department_code || d.code || "").toUpperCase() === String(selectedCc.cost_center_code || selectedCc.code || "").toUpperCase()) : null;
+                  if (matchingDept) setAllocation(index, "department_id", matchingDept.id);
+                }
+              }} className={inputClass}><option value="">{optionsLoading ? "Memuat cost center…" : options.cost_centers.length ? "Pilih cost center" : "Belum ada cost center aktif"}</option>{options.cost_centers.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code || center.code} — {center.cost_center_name || center.name}</option>)}</select></Field>
               <Field label="Proyek (opsional)"><select value={row.project_id} onChange={(event) => setAllocation(index, "project_id", event.target.value)} className={inputClass}><option value="">Semua proyek</option>{options.projects.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}</select></Field>
-              <Field label="Departemen (opsional)"><select disabled={optionsLoading} value={row.department_id} onChange={(event) => setAllocation(index, "department_id", event.target.value)} className={inputClass}><option value="">{optionsLoading ? "Memuat departemen…" : options.departments.length ? "Semua departemen" : "Belum ada departemen aktif"}</option>{options.departments.map((department) => <option key={department.id} value={department.id}>{department.department_code} — {department.department_name}</option>)}</select></Field>
+              <Field label="Departemen / Divisi (opsional)"><select disabled={optionsLoading} value={row.department_id} onChange={(event) => {
+                const nextDeptId = event.target.value;
+                setAllocation(index, "department_id", nextDeptId);
+                if (!row.cost_center_id && nextDeptId) {
+                  const selectedDept = options.departments.find((d) => d.id === nextDeptId);
+                  const matchingCc = selectedDept ? options.cost_centers.find((c) => String(c.cost_center_code || c.code || "").toUpperCase() === String(selectedDept.department_code || selectedDept.code || "").toUpperCase()) : null;
+                  if (matchingCc) setAllocation(index, "cost_center_id", matchingCc.id);
+                }
+              }} className={inputClass}><option value="">{optionsLoading ? "Memuat departemen…" : options.departments.length ? "Semua departemen / divisi" : "Belum ada departemen aktif"}</option>{options.departments.map((department) => <option key={department.id} value={department.id}>{department.department_code || department.code} — {department.department_name || department.name}</option>)}</select></Field>
               <Field label="Nama alokasi"><input value={row.allocation_name} onChange={(event) => setAllocation(index, "allocation_name", event.target.value)} placeholder="Opsional, dibuat otomatis" className={inputClass} /></Field>
               <Field label="Total pagu"><input required min="0.01" step="0.01" type="number" value={row.amount} onChange={(event) => { setAllocation(index, "amount", event.target.value); if (planForm.period_mode !== "ANNUAL") setAllocation(index, "periods", autoSplit(event.target.value, selectedPeriods)); }} className={inputClass} /></Field>
             </div>

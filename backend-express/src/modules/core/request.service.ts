@@ -13,6 +13,7 @@ import { AuditService } from './audit.service';
 import { RoleCode } from '../../types/roles';
 import { Prisma } from '@prisma/client';
 import { postRequestDisbursement } from '../finance/request-disbursement.service';
+import { BudgetingService } from '../finance/budgeting.service';
 import { DEFAULT_RECURRING_DAYS, meetingOccurrenceDates, normalizeRecurringDays } from './meeting-occurrence.service';
 import { normalizeRequestStatus } from './request-status';
 import { moveOpportunityStage } from '../crm/crm-pipeline.service';
@@ -40,6 +41,9 @@ export interface CreateRequestPayload {
   budget_category?: string;
   bank_target?: string;
   project_id?: string;
+  department_id?: string;
+  cost_center_id?: string;
+  budget_allocation_id?: string;
   crm_opportunity_id?: string;
   external_participants?: Array<{ name: string; email?: string }>;
 
@@ -95,6 +99,9 @@ static async createRequest(
     budget_category,
     bank_target,
     project_id,
+    department_id,
+    cost_center_id,
+    budget_allocation_id,
     crm_opportunity_id,
     external_participants = [],
     assignee_user_id,
@@ -254,6 +261,11 @@ static async createRequest(
    * Workflow instance tetap menjadi status backplane.
    */
   const instanceId = crypto.randomUUID();
+  const requesterUser = await prisma.iam_user.findFirst({
+    where: { id: userId },
+    select: { department_id: true, role_level: true },
+  }).catch(() => null);
+  const resolvedDepartmentId = department_id ?? requesterUser?.department_id ?? null;
 
   await prisma.$transaction(async (tx) => {
     await tx.core_workflow_instance.create({ data: {
@@ -286,6 +298,9 @@ static async createRequest(
       requester_user_id: userId,
       assignee_user_id: effectiveAssigneeUserId,
       project_id: project_id ?? null,
+      department_id: resolvedDepartmentId,
+      cost_center_id: cost_center_id ?? null,
+      budget_allocation_id: budget_allocation_id ?? null,
       priority,
       status: initialStatus,
       submitted_at: is_draft ? null : new Date(),
@@ -391,6 +406,30 @@ static async createRequest(
     })));
   }
 
+  // Auto-commit budget reservation for FUND_REQUEST when active budget plan line matches
+  let budgetReservation: any = null;
+  if (request_type === 'FUND_REQUEST' && !is_draft && amount && Number(amount) > 0) {
+    try {
+      budgetReservation = await BudgetingService.autoCommitForFundRequest({
+        companyId,
+        tenantId: tenantId ?? null,
+        userId,
+        requestId: instanceId,
+        requestNumber,
+        amount: Number(amount),
+        departmentId: resolvedDepartmentId,
+        costCenterId: cost_center_id ?? null,
+        projectId: project_id ?? null,
+        allocationId: budget_allocation_id ?? null,
+        canOverrideBudget: String(requesterUser?.role_level ?? '').toUpperCase() === 'GM',
+      });
+    } catch (budgetErr) {
+      if (budget_allocation_id) {
+        throw budgetErr;
+      }
+    }
+  }
+
   /**
    * Persistent request payload.
    */
@@ -424,6 +463,18 @@ static async createRequest(
 
     project_id:
       project_id ?? null,
+
+    department_id:
+      resolvedDepartmentId,
+
+    cost_center_id:
+      cost_center_id ?? null,
+
+    budget_allocation_id:
+      budgetReservation?.allocation_id ?? budget_allocation_id ?? null,
+
+    budget_reservation_id:
+      budgetReservation?.id ?? null,
 
     /**
      * NEW
@@ -616,7 +667,15 @@ static async createRequest(
   }) {
     const { requestId, disburseAccountId, disburseReference, disburseUserId, companyId } = params;
 
-    return postRequestDisbursement(requestId, disburseAccountId ?? '', disburseReference ?? '', disburseUserId, companyId);
+    const result = await postRequestDisbursement(requestId, disburseAccountId ?? '', disburseReference ?? '', disburseUserId, companyId);
+    await BudgetingService.autoReleaseOrRecognizeForFundRequest({
+      companyId,
+      userId: disburseUserId,
+      requestId,
+      action: 'RECOGNIZE',
+      actualAmount: Number((result as any)?.disbursement?.amount ?? 0) || undefined,
+    }).catch(() => null);
+    return result;
   }
 
   // ---------------------------------------------------------------------------
@@ -774,6 +833,15 @@ static async createRequest(
       priority:           decision === 'APPROVE' ? 'LOW' : 'HIGH',
       company_id:         companyId,
     });
+
+    if (decision === 'APPROVE') {
+      await BudgetingService.autoReleaseOrRecognizeForFundRequest({
+        companyId,
+        userId: omUserId,
+        requestId,
+        action: 'RECOGNIZE',
+      }).catch(() => null);
+    }
 
     return {
       id:           requestId,

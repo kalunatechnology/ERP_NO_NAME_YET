@@ -39,6 +39,16 @@ function removeAuthCookie() {
 
 /* ── Role Type ───────────────────────────────── */
 export type UserRoleType = "super_admin" | "company_admin" | "executive" | "pm" | "om" | "finance" | "crm" | "staff";
+export type DepartmentRoleLevel = "GM" | "SPV" | "STAFF";
+
+export function detectDepartmentRoleLevel(user: any): DepartmentRoleLevel {
+  const explicit = String(user?.role_level || "").trim().toUpperCase();
+  if (explicit === "GM" || explicit === "SPV" || explicit === "STAFF") return explicit as DepartmentRoleLevel;
+  const roles = extractRoleCodes(user);
+  if (roles.some((r) => ["ROLE-SUPER-ADMIN", "ROLE-COMPANY-ADMIN", "ROLE-DIRECTOR"].includes(r))) return "GM";
+  if (roles.some((r) => ["ROLE-OM", "ROLE-PM", "ROLE-CRM-LEAD", "ROLE-FINANCE"].includes(r))) return "SPV";
+  return "STAFF";
+}
 
 /**
  * extractRoleCodes coordinates the UI behavior represented by this function.
@@ -179,6 +189,10 @@ function profileStateSignature(user: UserProfile | null): string {
     username: user.username || "",
     full_name: user.full_name || "",
     company_id: user.company_id || null,
+    department_id: user.department_id || null,
+    department_code: user.department_code || null,
+    department_name: user.department_name || null,
+    role_level: detectDepartmentRoleLevel(user),
     active_role_code: normalizeRoleCode(user.active_role_code || ""),
     enabled_modules: [...(user.enabled_modules || [])].map(String).sort(),
     delegated_modules: [...(user.delegated_modules || [])].map(String).sort(),
@@ -231,6 +245,12 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 
 /* ── Context ────────────────────────────────── */
 export interface AuthContextValue extends AuthState {
+  roleLevel: DepartmentRoleLevel;
+  departmentId: string | null;
+  departmentCode: string | null;
+  departmentName: string | null;
+  canApproveDivisionScope: boolean;
+  canOverrideBudget: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   setCompany: (id: string | null) => void;
@@ -519,11 +539,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearError = useCallback(() => dispatch({ type: "CLEAR_ERROR" }), []);
+  const roleLevel = detectDepartmentRoleLevel(state.user);
+  const departmentId = state.user?.department_id ?? null;
+  const departmentCode = state.user?.department_code ?? null;
+  const departmentName = state.user?.department_name ?? null;
+  const canApproveDivisionScope = Boolean(state.user?.can_approve_division_scope ?? (roleLevel === "GM" || roleLevel === "SPV"));
+  const canOverrideBudget = Boolean(state.user?.can_override_budget ?? roleLevel === "GM");
 
   return (
     <AuthContext.Provider
       value={{
         ...state,
+        roleLevel,
+        departmentId,
+        departmentCode,
+        departmentName,
+        canApproveDivisionScope,
+        canOverrideBudget,
         login,
         logout,
         setCompany,

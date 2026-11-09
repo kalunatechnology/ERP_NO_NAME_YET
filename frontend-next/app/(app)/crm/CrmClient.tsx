@@ -523,6 +523,7 @@ function TabDeals({
   data, approvals, isNewOppOpen, setIsNewOppOpen, onRefresh,
   onOpportunityCreated, onOpportunityDeleted, onPartyCreated,
   readOnly = false, canOverride = false,
+  canDelegate = false, onOpenDelegate, onOpenStageDetail, teamUsers = [],
 }: {
   data: CRMData; approvals: any[]; isNewOppOpen: boolean;
   setIsNewOppOpen: (v: boolean) => void; onRefresh: () => void;
@@ -531,6 +532,10 @@ function TabDeals({
   onPartyCreated?: (newParty: any) => void;
   readOnly?: boolean;
   canOverride?: boolean;
+  canDelegate?: boolean;
+  onOpenDelegate?: (record: any, recordType: "INQUIRY" | "OPPORTUNITY") => void;
+  onOpenStageDetail?: (record: any, recordType: "LEAD" | "OPPORTUNITY") => void;
+  teamUsers?: any[];
 }) {
   const router = useRouter();
   const [form, setForm] = useState({ 
@@ -1042,9 +1047,16 @@ function TabDeals({
               return (
                 <tr key={o.id} className={cn("align-top transition-colors hover:bg-blue-50/70", rowIndex % 2 ? "bg-slate-50/70" : "bg-white", isCancelled && "bg-red-50/50 text-text-secondary")}>
                   <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
-                    <span className="mb-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-2xs font-bold text-emerald-800"><TrendingUp size={11} />Sales · Opportunity</span>
+                    <span className="mb-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-2xs font-bold text-emerald-800"><TrendingUp size={11} />💼 Tahap Pipeline Sales</span>
                     <div className={cn("max-w-[280px] break-words text-sm font-semibold leading-5", isCancelled ? "line-through text-gray-500" : "text-text-primary")}>{o.opportunity_name || `Opportunity ${String(o.id).slice(0,8)}`}</div>
-                    <div className="mt-1 text-2xs text-text-secondary">ID {String(o.id).slice(0, 8).toUpperCase()}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-text-secondary">
+                      <span>ID {String(o.id).slice(0, 8).toUpperCase()}</span>
+                      {o.owner_user_id && (
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">
+                          PIC: {teamUsers.find((u: any) => String(u.id) === String(o.owner_user_id))?.full_name || String(o.owner_user_id).slice(0, 8)}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
                     {cust ? <span className="text-sm font-medium text-text-primary">{cust.display_name || cust.legal_name || "Pelanggan Umum"}</span> : !isCancelled && !readOnly ? (
@@ -1072,6 +1084,8 @@ function TabDeals({
                   </td>
                   <td className="border-b border-slate-200 px-3 py-3">
                     <div className="flex min-w-[270px] flex-wrap items-center gap-1.5">
+                      {onOpenStageDetail && <ActionBtn onClick={() => onOpenStageDetail(o, "OPPORTUNITY")} label="Detail Pipeline" small variant="ghost" title="Buka modal diferensiasi Sales Opportunity (Info, Follow-Up, Estimasi & Pajak, Notulensi)." />}
+                      {canDelegate && onOpenDelegate && !isCancelled && <ActionBtn onClick={() => onOpenDelegate(o, "OPPORTUNITY")} label="Delegasi PIC" small variant="ghost" title="Delegasikan atau alihkan PIC Sales untuk Opportunity ini (SPV/GM)." />}
                       {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" }); }} label="Aktivitas" small variant="ghost" title="Catat telepon, meeting, catatan, atau follow-up untuk opportunity ini." />}
                       {!readOnly && !isCancelled && <ActionBtn onClick={async () => { openCrmMeetingForm(o); }} label="Jadwalkan meeting" small variant="ghost" title="Buat meeting pada modul Meeting & Request dan tautkan ke opportunity ini." />}
                       {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" title="Lihat ringkasan customer: proyek, kontrak, pengiriman, nilai transaksi, serta piutang." />}
@@ -2242,7 +2256,16 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean }) {
+function TabIncoming({
+  data, onRefresh, onPartyCreated, readOnly = false,
+  canDelegate = false, onOpenDelegate, onOpenStageDetail, teamUsers = [],
+}: {
+  data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean;
+  canDelegate?: boolean;
+  onOpenDelegate?: (record: any, recordType: "INQUIRY" | "OPPORTUNITY") => void;
+  onOpenStageDetail?: (record: any, recordType: "LEAD" | "OPPORTUNITY") => void;
+  teamUsers?: any[];
+}) {
   const crmPeriod = useCRMPeriodFilter();
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
@@ -2422,7 +2445,15 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
             return (
               <div key={x.id} className="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50/40 p-3 gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex flex-wrap items-center gap-1.5"><span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-100 px-2 py-0.5 text-2xs font-bold text-sky-800"><Inbox size={11} />CRM Lead</span><span className="text-2xs text-text-secondary">Masuk {formatDate(x.created_at || x.submitted_at || x.updated_at)}</span></div>
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-100 px-2 py-0.5 text-2xs font-bold text-sky-800"><Inbox size={11} />🔍 Tahap Kualifikasi Lead</span>
+                    <span className="text-2xs text-text-secondary">Masuk {formatDate(x.created_at || x.submitted_at || x.updated_at)}</span>
+                    {x.owner_user_id && (
+                      <span className="rounded bg-white border border-sky-200 px-1.5 py-0.5 text-2xs font-semibold text-sky-900">
+                        PIC: {teamUsers.find((u: any) => String(u.id) === String(x.owner_user_id))?.full_name || String(x.owner_user_id).slice(0, 8)}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-sm font-semibold truncate">{x.subject || `Inquiry ${String(x.id).slice(0,8)}`}</div>
                   <div className="text-xs text-text-secondary mt-0.5">
                     <b>{x.customer_name || "-"}</b> ({x.customer_email || "-"}) · <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-2xs">{reqs.length} Spesifikasi</span>
@@ -2432,7 +2463,13 @@ function TabIncoming({ data, onRefresh, onPartyCreated, readOnly = false }: { da
                   {x.next_follow_up_at && leadStatus === "FOLLOW_UP" && <div className="mt-1 text-2xs text-amber-700">Hubungi kembali: {formatDate(x.next_follow_up_at)}</div>}
                   {x.last_contact_note && <div className="mt-1 max-w-xl truncate text-2xs text-text-secondary" title={x.last_contact_note}>Catatan kontak: {x.last_contact_note}</div>}
                 </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
+                <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+                  {onOpenStageDetail && (
+                    <ActionBtn onClick={() => onOpenStageDetail(x, "LEAD")} label="Detail Lead" small variant="ghost" title="Buka modal kualifikasi Lead (Info Kontak & Kebutuhan, Riwayat Follow-Up, dan Konversi)." />
+                  )}
+                  {canDelegate && onOpenDelegate && !isQual && (
+                    <ActionBtn onClick={() => onOpenDelegate(x, "INQUIRY")} label="Delegasi PIC" small variant="ghost" title="Delegasikan atau alihkan Lead ini ke Sales (SPV/GM)." />
+                  )}
                   {!readOnly ? (
                     <>
                       {!x.customer_party_id && <ActionBtn onClick={() => openLinkCustomer(x)} label="Hubungkan customer" small variant="ghost" />}
@@ -3331,9 +3368,10 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 export default function CrmClient() {
-  const { user, userRole, isLoading: authLoading } = useAuth();
+  const { user, userRole, roleLevel, departmentId, departmentName, departmentCode, canApproveDivisionScope, isLoading: authLoading } = useAuth();
   const activeRoleCode = String(user?.active_role_code ?? "").toUpperCase().replace(/^ROLE-/, "");
-  const canApproveCrmQuotation = userRole === "super_admin" || activeRoleCode === "DIRECTOR";
+  const canApproveCrmQuotation = userRole === "super_admin" || activeRoleCode === "DIRECTOR" || roleLevel === "GM";
+  const canDelegateCrm = roleLevel === "GM" || roleLevel === "SPV" || canApproveDivisionScope || userRole === "super_admin" || ["COMPANY_ADMIN", "DIRECTOR", "CRM_LEAD"].includes(activeRoleCode);
   const canOperateCrm = canPerform("crm:operate", userRole, {
     enabledModules: user?.enabled_modules,
     moduleAccess: user?.module_access,
@@ -3347,6 +3385,17 @@ export default function CrmClient() {
   const [crmDash, setCrmDash] = useState<CRMDashboard>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isNewOppOpen, setIsNewOppOpen] = useState(false);
+
+  // 3-Role Hierarchy (GM / SPV / STAFF) & Delegation state
+  const [scopeFilter, setScopeFilter] = useState<"MINE" | "TEAM" | "ALL">(roleLevel === "STAFF" ? "MINE" : "ALL");
+  const [ownerFilter, setOwnerFilter] = useState("");
+  const [teamUsers, setTeamUsers] = useState<any[]>([]);
+  const [departmentsList, setDepartmentsList] = useState<any[]>([]);
+  const [delegatingTarget, setDelegatingTarget] = useState<{ record: any; recordType: "INQUIRY" | "OPPORTUNITY" } | null>(null);
+  const [delegateUserId, setDelegateUserId] = useState("");
+  const [delegateDeptId, setDelegateDeptId] = useState("");
+  const [savingDelegate, setSavingDelegate] = useState(false);
+  const [stageDetailModal, setStageDetailModal] = useState<{ record: any; recordType: "LEAD" | "OPPORTUNITY"; activeTab: "info" | "followup" | "estimate" | "minutes" } | null>(null);
 
   // RBAC Access Control Check
   const enabledModules = new Set((user?.enabled_modules || []).map((code) => code.toUpperCase()));
@@ -3391,6 +3440,15 @@ export default function CrmClient() {
   useEffect(() => {
     if (isAllowed) {
       loadData();
+      Promise.all([
+        api.get("/api/v1/accounts/users/?page_size=100").catch(() => ({ data: { results: [] } })),
+        api.get("/api/v1/master-data/departments").catch(() => ({ data: { data: [] } })),
+      ]).then(([uRes, dRes]) => {
+        const uRows = uRes.data?.results || uRes.data?.data || [];
+        const dRows = dRes.data?.data || dRes.data?.results || [];
+        setTeamUsers(Array.isArray(uRows) ? uRows : []);
+        setDepartmentsList(Array.isArray(dRows) ? dRows : []);
+      });
     }
   }, [loadData, isAllowed]);
 
@@ -3474,10 +3532,64 @@ export default function CrmClient() {
     });
   };
 
-  const data: CRMData = crmData || {
+  const rawData: CRMData = crmData || {
     inquiries:[], requirements:[], opportunities:[], activities:[], stages:[], estimates:[], estimateLines:[],
     quotations:[], businessDocuments:[], approvals:[], deliveries:[], contracts:[], orders:[], conversations:[],
     feedback:[], surveyQuestions:[], surveyResponses:[], surveyAnswers:[], credit:[], cases:[], resolutions:[], products:[], parties:[],
+  };
+
+  const filterByRoleAndScope = useCallback((rows: any[]) => {
+    const myId = user?.id ? String(user.id) : "";
+    return (rows || []).filter((item) => {
+      if (ownerFilter && String(item.owner_user_id || "") !== ownerFilter) return false;
+      if (scopeFilter === "MINE" && myId) {
+        return !item.owner_user_id || String(item.owner_user_id) === myId || String(item.created_by_id || "") === myId;
+      }
+      if (scopeFilter === "TEAM" && departmentId) {
+        return !item.department_id || String(item.department_id) === String(departmentId);
+      }
+      return true;
+    });
+  }, [user?.id, ownerFilter, scopeFilter, departmentId]);
+
+  const data: CRMData = {
+    ...rawData,
+    inquiries: filterByRoleAndScope(rawData.inquiries),
+    opportunities: filterByRoleAndScope(rawData.opportunities),
+  };
+
+  const openDelegateModal = (record: any, recordType: "INQUIRY" | "OPPORTUNITY") => {
+    setDelegatingTarget({ record, recordType });
+    setDelegateUserId(record.owner_user_id ? String(record.owner_user_id) : "");
+    setDelegateDeptId(record.department_id ? String(record.department_id) : (departmentId || ""));
+  };
+
+  const submitDelegation = async () => {
+    if (!delegatingTarget || (!delegateUserId && !delegateDeptId)) {
+      toast.error("Pilih PIC Sales atau Departemen tujuan delegasi.");
+      return;
+    }
+    setSavingDelegate(true);
+    try {
+      const endpoint = delegatingTarget.recordType === "INQUIRY"
+        ? `/api/v1/crm/customer-inquiries/${delegatingTarget.record.id}/assign`
+        : `/api/v1/crm/opportunities/${delegatingTarget.record.id}/assign`;
+      await api.post(endpoint, {
+        owner_user_id: delegateUserId || null,
+        department_id: delegateDeptId || null,
+      });
+      toast.success("Delegasi PIC Sales & Departemen berhasil disimpan.");
+      setDelegatingTarget(null);
+      await loadData(true);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || error?.response?.data?.error?.message || "Gagal mendelegasikan PIC Sales.");
+    } finally {
+      setSavingDelegate(false);
+    }
+  };
+
+  const openStageDetailModal = (record: any, recordType: "LEAD" | "OPPORTUNITY") => {
+    setStageDetailModal({ record, recordType, activeTab: "info" });
   };
 
   return (
@@ -3495,7 +3607,22 @@ export default function CrmClient() {
             Inquiry → Opportunity → Quotation → Order & Service
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={cn(
+            "px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5",
+            roleLevel === "GM"
+              ? "bg-indigo-50 border-indigo-200 text-indigo-800"
+              : roleLevel === "SPV"
+              ? "bg-amber-50 border-amber-200 text-amber-800"
+              : "bg-sky-50 border-sky-200 text-sky-800"
+          )}>
+            <ShieldCheck size={13} />
+            {roleLevel === "GM"
+              ? "Hierarki GM · Visibilitas Lintas Divisi"
+              : roleLevel === "SPV"
+              ? `Hierarki SPV · Supervisor ${departmentName || departmentCode || "Divisi"}`
+              : `Hierarki STAFF · Eksekusi ${departmentName || departmentCode || "Sales"}`}
+          </span>
           {!canOperateCrm && (
             <span className="px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold flex items-center gap-1.5">
               <ShieldCheck size={13} /> CRM Overseer · View Only
@@ -3510,6 +3637,66 @@ export default function CrmClient() {
             {refreshing ? "Memuat..." : "Refresh Data CRM"}
           </button>
         </div>
+      </div>
+
+      {/* ── 3-Role Hierarchy Scope & Sales Delegation Filter Bar ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold text-text-secondary">Cakupan Visibilitas:</span>
+          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setScopeFilter("MINE")}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-2xs font-bold transition",
+                scopeFilter === "MINE" ? "bg-white text-blue-700 shadow-2xs" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              Lead & Deal Saya
+            </button>
+            {departmentId && (
+              <button
+                type="button"
+                onClick={() => setScopeFilter("TEAM")}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-2xs font-bold transition",
+                  scopeFilter === "TEAM" ? "bg-white text-blue-700 shadow-2xs" : "text-text-secondary hover:text-text-primary"
+                )}
+              >
+                Divisi {departmentCode || departmentName || "Saya"}
+              </button>
+            )}
+            {(roleLevel === "SPV" || roleLevel === "GM" || isSuper) && (
+              <button
+                type="button"
+                onClick={() => setScopeFilter("ALL")}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-2xs font-bold transition",
+                  scopeFilter === "ALL" ? "bg-white text-blue-700 shadow-2xs" : "text-text-secondary hover:text-text-primary"
+                )}
+              >
+                Seluruh Tim / Lintas Divisi
+              </button>
+            )}
+          </div>
+        </div>
+        {(roleLevel === "SPV" || roleLevel === "GM" || canDelegateCrm) && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-semibold text-text-secondary">Filter PIC Sales:</span>
+            <select
+              value={ownerFilter}
+              onChange={(e) => setOwnerFilter(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-text-primary"
+            >
+              <option value="">Semua PIC Sales ({teamUsers.length})</option>
+              {teamUsers.map((u: any) => (
+                <option key={u.id} value={String(u.id)}>
+                  {u.full_name || u.email} {u.role_level ? `(${u.role_level})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* ── Tab Navigation ───────────────────── */}
@@ -3556,17 +3743,359 @@ export default function CrmClient() {
               onOpportunityDeleted={handleOpportunityDeleted}
               onPartyCreated={handlePartyCreated}
               readOnly={!canOperateCrm}
-              canOverride={userRole === "super_admin" || activeRoleCode === "DIRECTOR"}
+              canOverride={userRole === "super_admin" || activeRoleCode === "DIRECTOR" || roleLevel === "GM"}
+              canDelegate={canDelegateCrm}
+              onOpenDelegate={openDelegateModal}
+              onOpenStageDetail={openStageDetailModal}
+              teamUsers={teamUsers}
             />
           )}
           {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} onNavigate={setActiveTab} readOnly={!canOperateCrm} canApproveQuotation={canApproveCrmQuotation} />}
           {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
-          {activeTab === "incoming"   && <TabIncoming data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
+          {activeTab === "incoming"   && (
+            <TabIncoming
+              data={data}
+              onRefresh={() => loadData(true)}
+              onPartyCreated={handlePartyCreated}
+              readOnly={!canOperateCrm}
+              canDelegate={canDelegateCrm}
+              onOpenDelegate={openDelegateModal}
+              onOpenStageDetail={openStageDetailModal}
+              teamUsers={teamUsers}
+            />
+          )}
           {activeTab === "accounts"   && <TabAccounts data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "contracts"  && <TabContracts data={data} onNavigate={setActiveTab} onRefresh={() => loadData(true)} />}
           {activeTab === "engagement" && <TabEngagement data={data} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} />}
         </>
       )}
+
+      {/* Modal Delegasi PIC Sales & Departemen (SPV / GM) */}
+      <Modal
+        isOpen={Boolean(delegatingTarget)}
+        onClose={() => !savingDelegate && setDelegatingTarget(null)}
+        title={`Delegasikan PIC Sales — ${delegatingTarget?.recordType === "INQUIRY" ? "Lead / Inquiry" : "Sales Opportunity"}`}
+        size="sm"
+      >
+        <div className="space-y-3 p-4">
+          <p className="text-xs text-text-secondary">
+            Sebagai <b>{roleLevel}</b>, Anda dapat menugaskan atau mengalihkan kepemilikan{" "}
+            <b>{delegatingTarget?.record?.subject || delegatingTarget?.record?.opportunity_name || "item ini"}</b> kepada anggota tim Sales.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-text-secondary">Pilih PIC Sales (Staff / SPV)</label>
+            <select
+              value={delegateUserId}
+              onChange={(e) => setDelegateUserId(e.target.value)}
+              className="input w-full text-xs"
+            >
+              <option value="">-- Pilih Anggota Tim Sales --</option>
+              {teamUsers.map((u: any) => (
+                <option key={u.id} value={String(u.id)}>
+                  {u.full_name || u.email} ({u.email}) {u.role_level ? `· ${u.role_level}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-text-secondary">Departemen / Divisi (Cost Center)</label>
+            <select
+              value={delegateDeptId}
+              onChange={(e) => setDelegateDeptId(e.target.value)}
+              className="input w-full text-xs"
+            >
+              <option value="">-- Pilih Departemen / Divisi --</option>
+              {departmentsList.map((d: any) => (
+                <option key={d.id} value={String(d.id)}>
+                  [{d.unit_type === "DIVISION" ? "DIVISI" : "DEPT"}] {d.code} — {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setDelegatingTarget(null)} disabled={savingDelegate} className="btn-ghost text-xs">
+              Batal
+            </button>
+            <button type="button" onClick={() => void submitDelegation()} disabled={savingDelegate} className="btn-primary text-xs">
+              {savingDelegate ? "Menyimpan…" : "Simpan Delegasi"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Diferensiasi Kontekstual: Lead Kualifikasi vs Sales Opportunity Pipeline */}
+      <Modal
+        isOpen={Boolean(stageDetailModal)}
+        onClose={() => setStageDetailModal(null)}
+        title={
+          stageDetailModal?.recordType === "LEAD"
+            ? `Kualifikasi Lead — ${stageDetailModal?.record?.subject || stageDetailModal?.record?.customer_name || "Lead"}`
+            : `Pipeline Sales Opportunity — ${stageDetailModal?.record?.opportunity_name || "Opportunity"}`
+        }
+        size="lg"
+      >
+        {stageDetailModal && (() => {
+          const rec = stageDetailModal.record;
+          const isLeadStage = stageDetailModal.recordType === "LEAD" || ["NEW", "CONTACTED", "QUALIFIED", "UNQUALIFIED", "RESPONDED"].includes(String(rec.status || "").toUpperCase());
+          const isOpportunityStage = stageDetailModal.recordType === "OPPORTUNITY";
+          const relatedActivities = (rawData.activities || []).filter(
+            (a: any) => String(a.opportunity_id || a.opportunity) === String(rec.id)
+          );
+          const relatedEstimates = (rawData.estimates || []).filter(
+            (e: any) => String(e.opportunity_id || e.opportunity) === String(rec.id)
+          );
+
+          return (
+            <div className="space-y-4 p-4">
+              {/* Header Badge Kontekstual */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {isLeadStage && !isOpportunityStage ? (
+                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 border border-blue-200">
+                      🔍 Tahap Kualifikasi Lead ({rec.status || "NEW"})
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
+                      💼 Tahap Pipeline Sales ({rec.pipeline_stage || rec.status || "PROSPECT"})
+                    </span>
+                  )}
+                  <span className="text-xs text-text-secondary">
+                    PIC: <b>{teamUsers.find((u: any) => String(u.id) === String(rec.owner_user_id))?.full_name || "Belum didelegasikan"}</b>
+                  </span>
+                </div>
+                {canDelegateCrm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetType = isOpportunityStage ? "OPPORTUNITY" : "INQUIRY";
+                      setStageDetailModal(null);
+                      openDelegateModal(rec, targetType);
+                    }}
+                    className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                  >
+                    Delegasikan PIC Sales
+                  </button>
+                )}
+              </div>
+
+              {/* Tab Navigasi Modal — Disembunyikan untuk Lead jika belum menjadi Sales Opportunity */}
+              <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setStageDetailModal({ ...stageDetailModal, activeTab: "info" })}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-xs font-semibold",
+                    stageDetailModal.activeTab === "info" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                  )}
+                >
+                  Info Kontak & Kebutuhan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStageDetailModal({ ...stageDetailModal, activeTab: "followup" })}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-xs font-semibold",
+                    stageDetailModal.activeTab === "followup" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                  )}
+                >
+                  Riwayat Follow-Up ({relatedActivities.length})
+                </button>
+                {isOpportunityStage && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setStageDetailModal({ ...stageDetailModal, activeTab: "estimate" })}
+                      className={cn(
+                        "rounded-lg px-3 py-1.5 text-xs font-semibold",
+                        stageDetailModal.activeTab === "estimate" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                      )}
+                    >
+                      Estimasi Biaya & Pajak ({relatedEstimates.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStageDetailModal({ ...stageDetailModal, activeTab: "minutes" })}
+                      className={cn(
+                        "rounded-lg px-3 py-1.5 text-xs font-semibold",
+                        stageDetailModal.activeTab === "minutes" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                      )}
+                    >
+                      Notulensi Rapat
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Isi Tab Modal */}
+              {stageDetailModal.activeTab === "info" && (
+                <div className="grid gap-3 rounded-xl bg-slate-50 p-3.5 text-xs sm:grid-cols-2">
+                  <div>
+                    <span className="text-text-secondary">Judul / Nama Prospek:</span>
+                    <div className="mt-0.5 font-bold text-text-primary">{rec.subject || rec.opportunity_name || "-"}</div>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">Pelanggan / Instansi:</span>
+                    <div className="mt-0.5 font-bold text-text-primary">
+                      {rec.customer_name || (rawData.parties || []).find((p: any) => String(p.id) === String(opportunityPartyId(rec)))?.display_name || "-"}
+                    </div>
+                  </div>
+                  {isOpportunityStage ? (
+                    <>
+                      <div>
+                        <span className="text-text-secondary">Estimasi Nilai Deal:</span>
+                        <div className="mt-0.5 font-bold text-emerald-700">{formatMoney(rec.expected_amount)}</div>
+                      </div>
+                      <div>
+                        <span className="text-text-secondary">Probabilitas Menang:</span>
+                        <div className="mt-0.5 font-bold text-blue-700">{rec.probability_percent ?? 50}%</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <span className="text-text-secondary">Email Kontak Lead:</span>
+                        <div className="mt-0.5 font-semibold text-text-primary">{rec.customer_email || "-"}</div>
+                      </div>
+                      <div>
+                        <span className="text-text-secondary">Catatan Kontak Terakhir:</span>
+                        <div className="mt-0.5 font-semibold text-text-primary">{rec.last_contact_note || "Belum ada catatan kontak"}</div>
+                      </div>
+                    </>
+                  )}
+                  <div className="sm:col-span-2">
+                    <span className="text-text-secondary">Deskripsi Kebutuhan Awal:</span>
+                    <div className="mt-1 whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-2.5 text-text-primary">
+                      {rec.description || rec.follow_up_reason || "Belum ada rincian deskripsi."}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {stageDetailModal.activeTab === "followup" && (
+                <div className="space-y-2 text-xs">
+                  {rec.next_follow_up_at && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-amber-900">
+                      Jadwal Tindak Lanjut Berikutnya: <b>{formatDate(rec.next_follow_up_at)}</b>
+                    </div>
+                  )}
+                  {relatedActivities.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-text-secondary">
+                      Belum ada riwayat aktivitas panggilan/follow-up tercatat.
+                    </div>
+                  ) : (
+                    relatedActivities.map((act: any) => (
+                      <div key={act.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                        <div className="font-bold text-text-primary">{act.activity_type} · {act.subject}</div>
+                        <div className="mt-0.5 text-2xs text-text-secondary">{formatDate(act.scheduled_at || act.created_at)}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {isOpportunityStage && stageDetailModal.activeTab === "estimate" && (
+                <div className="space-y-2 text-xs">
+                  {relatedEstimates.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-text-secondary">
+                      Belum ada Estimasi Biaya (RAB) untuk Opportunity ini. Klik tombol <b>Buat Estimasi / RAB</b> di bawah.
+                    </div>
+                  ) : (
+                    relatedEstimates.map((est: any) => (
+                      <div key={est.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3">
+                        <div>
+                          <div className="font-bold text-text-primary">{est.estimate_number || `EST-${String(est.id).slice(0, 6)}`}</div>
+                          <div className="text-2xs text-text-secondary">Status: {est.status || "DRAFT"}</div>
+                        </div>
+                        <div className="font-bold text-emerald-700">{formatMoney(est.grand_total || est.total_cost || 0)}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {isOpportunityStage && stageDetailModal.activeTab === "minutes" && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-text-secondary">
+                  Notulensi rapat klien terhubung otomatis dari modul <b>Meeting & Request</b> ketika rapat dijadwalkan dari Opportunity ini.
+                </div>
+              )}
+
+              {/* Footer Aksi Spesifik Berdasarkan Tahap (Lead vs Sales Opportunity) */}
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-3">
+                {!isOpportunityStage ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await updateCRMInquiryLeadStatus(rec.id, { status: "CONTACTED", note: "Dihubungi oleh tim CRM/Sales" });
+                          toast.success("Lead ditandai Sudah Dihubungi.");
+                          setStageDetailModal(null);
+                          await loadData(true);
+                        } catch (err: any) {
+                          toast.error(err?.response?.data?.detail || "Gagal memperbarui status Lead.");
+                        }
+                      }}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                    >
+                      Tandai Sudah Dihubungi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!rec.customer_party_id) {
+                          toast.error("Hubungkan customer aktif terlebih dahulu pada tab Lead & Inquiry sebelum konversi ke Opportunity.");
+                          return;
+                        }
+                        try {
+                          await qualifyInquiry(rec.id);
+                          toast.success("Lead berhasil dikonversi menjadi Sales Opportunity!");
+                          setStageDetailModal(null);
+                          setActiveTab("deals");
+                          await loadData(true);
+                        } catch (err: any) {
+                          toast.error(err?.response?.data?.detail || "Lead belum dapat dikonversi menjadi Opportunity.");
+                        }
+                      }}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                    >
+                      Konversi Jadi Opportunity →
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStageDetailModal(null);
+                        setActiveTab("estimate");
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Buat Estimasi / RAB
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await processDealWon(rec.id);
+                          toast.success("Deal Won berhasil diproses!");
+                          setStageDetailModal(null);
+                          await loadData(true);
+                        } catch (err: any) {
+                          toast.error(err?.response?.data?.detail || "Gagal memproses Deal Won.");
+                        }
+                      }}
+                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
+                    >
+                      Deal Won / Ajukan Kontrak
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }

@@ -12,6 +12,8 @@ import { ForbiddenError } from '../../utils/errors';
 import { isSuperAdmin, parseRoleCode, RoleCode } from '../../types/roles';
 import { effectiveModuleOverrides, ModulePermission } from '../../utils/module-permissions';
 
+export type DepartmentRoleLevelType = 'GM' | 'SPV' | 'STAFF';
+
 export interface UserAccessContext {
   roles: RoleCode[];
   activeRoleId: string | null;
@@ -22,6 +24,53 @@ export interface UserAccessContext {
   enabledModules: string[];
   delegatedModules: string[];
   moduleAccess: ModulePermission[];
+  departmentId: string | null;
+  departmentCode: string | null;
+  departmentName: string | null;
+  departmentUnitType: string | null;
+  roleLevel: DepartmentRoleLevelType;
+  canApproveDivisionScope: boolean;
+  canOverrideBudget: boolean;
+}
+
+export function resolveEffectiveRoleLevel(
+  explicitRoleLevel?: string | null,
+  activeRoleCode?: RoleCode | string | null,
+): DepartmentRoleLevelType {
+  const normalizedExplicit = String(explicitRoleLevel ?? '').trim().toUpperCase();
+  if (normalizedExplicit === 'GM' || normalizedExplicit === 'SPV') {
+    return normalizedExplicit;
+  }
+  const normalizedRole = String(activeRoleCode ?? '').trim().toUpperCase();
+  if (
+    [
+      RoleCode.SUPER_ADMIN,
+      RoleCode.COMPANY_ADMIN,
+      RoleCode.DIRECTOR,
+      RoleCode.OPERATIONAL_MANAGER,
+      'SUPER_ADMIN',
+      'COMPANY_ADMIN',
+      'DIRECTOR',
+      'OPERATIONAL_MANAGER',
+    ].includes(normalizedRole as any)
+  ) {
+    return 'GM';
+  }
+  if (
+    [
+      RoleCode.PROJECT_MANAGER,
+      RoleCode.SUPERVISOR,
+      RoleCode.CRM_LEAD,
+      RoleCode.FINANCE,
+      'PROJECT_MANAGER',
+      'SUPERVISOR',
+      'CRM_LEAD',
+      'FINANCE',
+    ].includes(normalizedRole as any)
+  ) {
+    return 'SPV';
+  }
+  return 'STAFF';
 }
 
 export interface KnownAccessRows {
@@ -249,6 +298,74 @@ export async function loadUserAccessContext(
       ])
     : [[], []];
   const overrideByModule = new Map(userModuleAccess.map((item) => [item.module_code.toUpperCase(), item]));
+
+  // Load user's department, parent department, and role_level hierarchy safely
+  const userWithDept = await (prisma.iam_user as any)
+    .findUnique({
+      where: { id: userId },
+      select: {
+        department_id: true,
+        role_level: true,
+        department: {
+          include: {
+            module_access: true,
+            parent: {
+              include: { module_access: true },
+            },
+          },
+        },
+      },
+    })
+    .catch(() => null);
+
+  const roleLevel = resolveEffectiveRoleLevel(userWithDept?.role_level, activeRoleCode);
+  const deptRecord = userWithDept?.department ?? null;
+  const rawDeptModules: Array<{ module_key: string; can_read: boolean; can_write: boolean; can_approve: boolean }> =
+    Array.isArray(deptRecord?.module_access) && deptRecord.module_access.length > 0
+      ? deptRecord.module_access
+      : Array.isArray(deptRecord?.parent?.module_access)
+        ? deptRecord.parent.module_access
+        : [];
+
+  // Merge department module access + GM cross-department access + explicit user overrides
+  const mergedOverridesMap = new Map<string, ModulePermission>();
+
+  // 1. Department module delegations
+  for (const dm of rawDeptModules) {
+    const code = String(dm.module_key || '').trim().toUpperCase();
+    if (!code) continue;
+    mergedOverridesMap.set(code, {
+      module_code: code,
+      allow_read: Boolean(dm.can_read),
+      allow_write: Boolean(dm.can_write),
+    });
+  }
+
+  // 2. GM role level cross-department visibility & access
+  if (roleLevel === 'GM') {
+    for (const gmMod of ['REPORTING', 'PROJECTS', 'FINANCE', 'CRM', 'SALES', 'REQUESTS']) {
+      if (!mergedOverridesMap.has(gmMod)) {
+        mergedOverridesMap.set(gmMod, {
+          module_code: gmMod,
+          allow_read: true,
+          allow_write: activeRoleCode !== RoleCode.DIRECTOR,
+        });
+      }
+    }
+  }
+
+  // 3. Explicit per-user overrides take highest precedence over department defaults
+  for (const uo of userModuleAccess) {
+    const code = uo.module_code.toUpperCase();
+    mergedOverridesMap.set(code, {
+      module_code: code,
+      allow_read: uo.allow_read,
+      allow_write: uo.allow_write,
+    });
+  }
+
+  const combinedUserAndDeptOverrides = Array.from(mergedOverridesMap.values());
+
   const enabledModules = moduleAccess
     .map((item) => item.module_code.toUpperCase())
     .filter((moduleCode) => overrideByModule.get(moduleCode)?.allow_read ?? true);
@@ -265,7 +382,9 @@ export async function loadUserAccessContext(
       select: { id: true },
     }));
   const delegatedModules = new Set(
-    userModuleAccess.filter((item) => item.allow_read).map((item) => item.module_code.toUpperCase()),
+    combinedUserAndDeptOverrides
+      .filter((item) => item.allow_read && enabledModules.includes(item.module_code.toUpperCase()))
+      .map((item) => item.module_code.toUpperCase()),
   );
   if (projectDelegated && enabledModules.includes('PROJECTS')) delegatedModules.add('PROJECTS');
 
@@ -278,6 +397,13 @@ export async function loadUserAccessContext(
     isSuperAdmin: superAdmin,
     enabledModules,
     delegatedModules: [...delegatedModules],
-    moduleAccess: effectiveModuleOverrides(moduleAccess, userModuleAccess),
+    moduleAccess: effectiveModuleOverrides(moduleAccess, combinedUserAndDeptOverrides),
+    departmentId: userWithDept?.department_id ?? null,
+    departmentCode: deptRecord?.code ?? null,
+    departmentName: deptRecord?.name ?? null,
+    departmentUnitType: deptRecord?.unit_type ?? null,
+    roleLevel,
+    canApproveDivisionScope: roleLevel === 'SPV' || roleLevel === 'GM',
+    canOverrideBudget: roleLevel === 'GM',
   };
 }

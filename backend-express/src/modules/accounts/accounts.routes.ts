@@ -395,7 +395,7 @@ const usersCrud = () => createCrudRouter({
     throw new ValidationError('Gunakan workflow invitation untuk membuat user baru.');
   },
   beforeUpdate: (_req, data) => {
-    const allowed = ['full_name', 'email', 'username', 'status', 'is_active'];
+    const allowed = ['full_name', 'email', 'username', 'status', 'is_active', 'department_id', 'role_level'];
     return Object.fromEntries(Object.entries(data).filter(([key]) => allowed.includes(key)));
   },
   beforeDelete: (req, existing) => {
@@ -459,6 +459,8 @@ async function inviteUser(req: Request, res: Response, next: NextFunction) {
       roleCodes: canonicalRoleCodes,
       companyId,
       tenantId,
+      departmentId: req.body.department_id ?? req.body.departmentId ?? null,
+      roleLevel: req.body.role_level ?? req.body.roleLevel ?? 'STAFF',
       actorId: req.user?.id,
     });
     res.status(201).json(result);
@@ -779,12 +781,95 @@ async function removeUserRole(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+async function updateUserDepartmentAndRoleLevel(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { userId } = req.params;
+    const companyId = req.companyId || String(req.header('X-Company-ID') || '');
+    if (!companyId) throw new ForbiddenError('Pilih company terlebih dahulu.');
+
+    const membership = await prisma.iam_user_company_membership.findUnique({ where: { user_id: userId } });
+    if (!membership || membership.company_id !== companyId) {
+      throw new ForbiddenError('User target tidak terdaftar pada company aktif.');
+    }
+
+    const departmentId =
+      req.body.department_id !== undefined
+        ? (req.body.department_id ? String(req.body.department_id).trim() : null)
+        : undefined;
+    const rawRoleLevel =
+      req.body.role_level !== undefined
+        ? String(req.body.role_level || 'STAFF').trim().toUpperCase()
+        : undefined;
+
+    if (rawRoleLevel !== undefined && !['GM', 'SPV', 'STAFF'].includes(rawRoleLevel)) {
+      throw new ValidationError('role_level harus bernilai GM, SPV, atau STAFF.');
+    }
+
+    if (departmentId) {
+      const dept = await (prisma as any).core_department.findFirst({
+        where: { id: departmentId, company_id: companyId },
+        select: { id: true, code: true, name: true },
+      });
+      if (!dept) {
+        throw new ValidationError('Departemen / Divisi tidak ditemukan pada company aktif.');
+      }
+    }
+
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const row = await (tx.iam_user as any).update({
+        where: { id: userId },
+        data: {
+          ...(departmentId !== undefined ? { department_id: departmentId } : {}),
+          ...(rawRoleLevel !== undefined ? { role_level: rawRoleLevel } : {}),
+        },
+        include: {
+          department: {
+            select: { id: true, code: true, name: true, unit_type: true },
+          },
+        },
+      });
+
+      if (departmentId !== undefined) {
+        await tx.master_employee.updateMany({
+          where: { user_id: userId, company_id: companyId },
+          data: {
+            department_id: departmentId,
+            cost_center_id: departmentId,
+          },
+        });
+      }
+
+      if (departmentId && (rawRoleLevel === 'GM' || rawRoleLevel === 'SPV')) {
+        await (tx as any).core_department.updateMany({
+          where: { id: departmentId, company_id: companyId, manager_user_id: null },
+          data: { manager_user_id: userId },
+        });
+      }
+
+      return row;
+    });
+
+    res.json({
+      success: true,
+      user: sanitizeUser(updatedUser),
+      department_id: updatedUser.department_id ?? null,
+      department_code: updatedUser.department?.code ?? null,
+      department_name: updatedUser.department?.name ?? null,
+      role_level: updatedUser.role_level ?? 'STAFF',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 function mountAccountResources(router: Router) {
   router.get('/users/:userId/roles', listUserRoles);
   router.put('/users/:userId/roles', requireCompanyAdmin, requireCompanyContextForWrite, assignUserRole);
   router.put('/users/:userId/roles/:roleCode', requireCompanyAdmin, requireCompanyContextForWrite, assignUserRole);
   router.delete('/users/:userId/roles/:roleCode', requireCompanyAdmin, requireCompanyContextForWrite, removeUserRole);
   router.delete('/users/:userId/roles', requireCompanyAdmin, requireCompanyContextForWrite, removeUserRole);
+  router.put('/users/:userId/department-role', requireCompanyAdmin, requireCompanyContextForWrite, updateUserDepartmentAndRoleLevel);
+  router.patch('/users/:userId/department-role', requireCompanyAdmin, requireCompanyContextForWrite, updateUserDepartmentAndRoleLevel);
   router.post('/users/invite', requireCompanyAdmin, inviteUser);
   router.get('/user-module-access', requireCompanyAdmin, listUserModuleAccess);
   router.put('/users/:userId/module-access/:moduleCode', requireCompanyAdmin, requireCompanyContextForWrite, setUserModuleAccess);

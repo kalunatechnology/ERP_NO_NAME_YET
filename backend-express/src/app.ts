@@ -230,6 +230,7 @@ export function createApp(): Express {
   apiV1.use('/requests', requireModuleAccess('REQUESTS'), requestRouter);
   apiV1.use('/request', requireModuleAccess('REQUESTS'), requestRouter);
   apiV1.use('/master-data', masterDataRouter);
+  apiV1.use('/master_data', masterDataRouter);
   apiV1.use(
     '/crm',
     requireModuleAccess('CRM'),

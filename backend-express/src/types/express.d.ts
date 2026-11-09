@@ -14,9 +14,15 @@ export interface AuthenticatedUser {
   roles: string[];
   active_role_code: string | null;
   enabled_modules: string[];
-  /** Module codes granted directly to this user by its Company Admin. */
+  /** Module codes granted directly to this user by its Company Admin or Department. */
   delegated_modules?: string[];
   module_access?: ModulePermission[];
+  department_id?: string | null;
+  department_code?: string | null;
+  department_name?: string | null;
+  role_level?: 'GM' | 'SPV' | 'STAFF';
+  can_approve_division_scope?: boolean;
+  can_override_budget?: boolean;
 }
 
 // Augment Express Request type globally

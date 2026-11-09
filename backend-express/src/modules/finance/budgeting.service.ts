@@ -1,6 +1,8 @@
+import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
+import { ensureCompanyDepartmentsAndCostCenters } from '../master_data/master_data.routes';
 
 const MONEY_EPSILON = 0.005;
 const CONTROL_POLICIES = new Set(['HARD_STOP', 'SOFT_WARNING', 'APPROVAL_ESCALATION']);
@@ -29,21 +31,75 @@ function deltaText(value: number): string {
 
 export class BudgetingService {
   static async getOptions(companyId: string) {
-    const [fiscalYears, fiscalPeriods, accounts, costCenters, projects, departments] = await Promise.all([
+    await ensureCompanyDepartmentsAndCostCenters(companyId);
+    const [fiscalYears, fiscalPeriods, accounts, costCenters, projects, departments, coreDepartments] = await Promise.all([
       prisma.fin_fiscal_year.findMany({ where: { company_id: companyId }, orderBy: { start_date: 'desc' } }),
       prisma.fin_fiscal_period.findMany({ where: { company_id: companyId }, orderBy: { period_number: 'asc' } }),
       prisma.fin_account.findMany({ where: { company_id: companyId, status: 'ACTIVE', account_type: 'EXPENSE' }, orderBy: { account_code: 'asc' } }),
       prisma.master_cost_center.findMany({ where: { company_id: companyId }, orderBy: { cost_center_code: 'asc' } }),
       prisma.project_project.findMany({ where: { company_id: companyId, lifecycle_status: { not: 'CANCELLED' } }, select: { id: true, project_code: true, project_name: true }, orderBy: { project_code: 'asc' } }),
       prisma.master_department.findMany({ where: { company_id: companyId }, orderBy: { department_code: 'asc' } }),
+      (prisma as any).core_department.findMany({ where: { company_id: companyId, is_active: true }, orderBy: { name: 'asc' } }).catch(() => []),
     ]);
+
+    const activeCostCentersMap = new Map<string, any>();
+    for (const row of costCenters.filter((r) => isActiveMasterStatus(r.status))) {
+      activeCostCentersMap.set(row.id, {
+        ...row,
+        code: row.cost_center_code,
+        name: row.cost_center_name,
+        is_cost_center: true,
+      });
+    }
+    for (const d of coreDepartments) {
+      if (d.is_cost_center !== false && !activeCostCentersMap.has(d.id)) {
+        activeCostCentersMap.set(d.id, {
+          id: d.id,
+          company_id: d.company_id,
+          parent_id: d.parent_id ?? null,
+          code: d.code,
+          name: d.name,
+          cost_center_code: d.code,
+          cost_center_name: d.name,
+          unit_type: d.unit_type ?? 'DEPARTMENT',
+          is_cost_center: true,
+          status: 'ACTIVE',
+        });
+      }
+    }
+
+    const activeDepartmentsMap = new Map<string, any>();
+    for (const row of departments.filter((r) => isActiveMasterStatus(r.status))) {
+      activeDepartmentsMap.set(row.id, {
+        ...row,
+        code: row.department_code,
+        name: row.department_name,
+      });
+    }
+    for (const d of coreDepartments) {
+      if (!activeDepartmentsMap.has(d.id)) {
+        activeDepartmentsMap.set(d.id, {
+          id: d.id,
+          company_id: d.company_id,
+          parent_id: d.parent_id ?? null,
+          code: d.code,
+          name: d.name,
+          department_code: d.code,
+          department_name: d.name,
+          unit_type: d.unit_type ?? 'DEPARTMENT',
+          is_cost_center: d.is_cost_center !== false,
+          status: 'ACTIVE',
+        });
+      }
+    }
+
     return {
       fiscal_years: fiscalYears,
       fiscal_periods: fiscalPeriods,
       accounts,
-      cost_centers: costCenters.filter((row) => isActiveMasterStatus(row.status)),
+      cost_centers: Array.from(activeCostCentersMap.values()),
       projects,
-      departments: departments.filter((row) => isActiveMasterStatus(row.status)),
+      departments: Array.from(activeDepartmentsMap.values()),
     };
   }
 
@@ -156,6 +212,7 @@ export class BudgetingService {
 
     const fiscalYear = await prisma.fin_fiscal_year.findFirst({ where: { id: fiscalYearId, company_id: companyId } });
     if (!fiscalYear) throw new NotFoundError('Tahun fiskal');
+    await ensureCompanyDepartmentsAndCostCenters(companyId, tenantId);
     const normalized = [] as Array<{ id: string; allocation_name: string; description: string | null; account_id: string; cost_center_id: string; project_id: string | null; department_id: string | null; budget_amount: number; periods: Array<{ fiscal_period_id: string; amount: number }> }>;
     for (const row of input.allocations) {
       const accountId = requiredText(row.account_id, 'Akun beban');
@@ -167,16 +224,24 @@ export class BudgetingService {
         (!existing.department_id || !departmentId || existing.department_id === departmentId));
       if (overlapping) throw new ValidationError('Dimensi alokasi Budget Plan tidak boleh bertumpang tindih; pilih proyek/departemen yang spesifik atau alokasi yang mencakup semua.');
       const amount = money(row.amount ?? row.budget_amount, 'Pagu alokasi');
-      const [account, center, project, department] = await Promise.all([
+      const [account, center, coreCenter, project, department, coreDept] = await Promise.all([
         prisma.fin_account.findFirst({ where: { id: accountId, company_id: companyId, status: 'ACTIVE', account_type: 'EXPENSE' }, select: { id: true, account_code: true, account_name: true } }),
         prisma.master_cost_center.findFirst({ where: { id: costCenterId, company_id: companyId }, select: { id: true, cost_center_code: true, cost_center_name: true, status: true } }),
+        (prisma as any).core_department.findFirst({ where: { id: costCenterId, company_id: companyId, is_active: true }, select: { id: true, code: true, name: true, is_cost_center: true } }).catch(() => null),
         projectId ? prisma.project_project.findFirst({ where: { id: projectId, company_id: companyId }, select: { id: true } }) : null,
         departmentId ? prisma.master_department.findFirst({ where: { id: departmentId, company_id: companyId }, select: { id: true, status: true } }) : null,
+        departmentId ? (prisma as any).core_department.findFirst({ where: { id: departmentId, company_id: companyId, is_active: true }, select: { id: true } }).catch(() => null) : null,
       ]);
+      const resolvedCenter = center && isActiveMasterStatus(center.status)
+        ? center
+        : coreCenter && coreCenter.is_cost_center !== false
+          ? { id: coreCenter.id, cost_center_code: coreCenter.code, cost_center_name: coreCenter.name, status: 'ACTIVE' }
+          : null;
+      const resolvedDepartmentValid = !departmentId || Boolean((department && isActiveMasterStatus(department.status)) || coreDept);
       if (!account) throw new ValidationError('Akun alokasi harus akun beban aktif pada perusahaan ini.');
-      if (!center || !isActiveMasterStatus(center.status)) throw new ValidationError('Cost center tidak ditemukan atau tidak aktif pada perusahaan ini.');
+      if (!resolvedCenter) throw new ValidationError('Cost center tidak ditemukan atau tidak aktif pada perusahaan ini.');
       if (projectId && !project) throw new ValidationError('Proyek alokasi tidak ditemukan pada perusahaan ini.');
-      if (departmentId && (!department || !isActiveMasterStatus(department.status))) throw new ValidationError('Departemen tidak ditemukan atau tidak aktif pada perusahaan ini.');
+      if (!resolvedDepartmentValid) throw new ValidationError('Departemen tidak ditemukan atau tidak aktif pada perusahaan ini.');
       const periods = Array.isArray(row.periods) ? row.periods.map((period: any) => ({ fiscal_period_id: requiredText(period.fiscal_period_id, 'Periode fiskal'), amount: money(period.amount, 'Pagu periode', true) })) : [];
       if (periodMode !== 'ANNUAL' && periods.length === 0) throw new ValidationError('Mode bulanan/kuartalan memerlukan pembagian pagu periode untuk setiap alokasi.');
       if (periods.length > 0) {
@@ -187,7 +252,7 @@ export class BudgetingService {
         if (Math.abs(periodTotal - amount) > MONEY_EPSILON) throw new ValidationError('Jumlah pembagian periode harus sama dengan pagu alokasi.');
         if (periods.length !== new Set(periods.map((period: any) => period.fiscal_period_id)).size) throw new ValidationError('Periode fiskal tidak boleh diduplikasi.');
       }
-      normalized.push({ id: crypto.randomUUID(), allocation_name: String(row.allocation_name ?? '').trim() || `${account!.account_code} ${account!.account_name} · ${center!.cost_center_code} ${center!.cost_center_name}`, description: row.description ? String(row.description).trim().slice(0, 1000) : null, account_id: accountId, cost_center_id: costCenterId, project_id: projectId, department_id: departmentId, budget_amount: amount, periods });
+      normalized.push({ id: crypto.randomUUID(), allocation_name: String(row.allocation_name ?? '').trim() || `${account!.account_code} ${account!.account_name} · ${resolvedCenter.cost_center_code} ${resolvedCenter.cost_center_name}`, description: row.description ? String(row.description).trim().slice(0, 1000) : null, account_id: accountId, cost_center_id: costCenterId, project_id: projectId, department_id: departmentId, budget_amount: amount, periods });
     }
     const total = normalized.reduce((sum, row) => sum + row.budget_amount, 0);
     return prisma.$transaction(async (tx) => {
@@ -291,6 +356,8 @@ export class BudgetingService {
         const source = await tx.fin_billing_document.findFirst({ where: { company_id: companyId, billing_type: 'SUPPLIER_INVOICE', OR: [{ id: sourceId }, { document_id: sourceId }] }, select: { status: true } });
         if (!source || ['DRAFT', 'REJECTED', 'CANCELLED'].includes(String(source.status).toUpperCase())) throw new ValidationError('Invoice pemasok tidak ditemukan atau tidak dapat dikomitmenkan.');
       }
+      // Pessimistic row-level lock on budget allocation line to prevent concurrent over-commitment
+      await tx.$queryRaw`SELECT id FROM fin_budget_line WHERE id = ${allocationId} AND company_id = ${companyId} FOR UPDATE`;
       const allocation = await tx.fin_budget_line.findFirst({ where: { id: allocationId, company_id: companyId, budget: { status: 'ACTIVE' } }, include: { budget: true, period_allocations: true } });
       if (!allocation || !allocation.budget || !allocation.budget_id) throw new NotFoundError('Alokasi anggaran aktif');
       const periodId = input.fiscal_period_id ? requiredText(input.fiscal_period_id, 'Periode fiskal') : null;
@@ -566,5 +633,185 @@ export class BudgetingService {
       entry_type: 'REVERSAL', actual_delta: -Number(row.actual_delta), description: reversalEntry.description,
       idempotency_key: `BUDGET_ACTUAL_REVERSAL:${reversalEntry.id}:${row.id}`, reversal_of_id: row.id, posted_by_id: reversedBy,
     } });
+  }
+
+  /**
+   * Automatically commits/reserves budget when a FUND_REQUEST is approved by SPV/OM/GM,
+   * matching either an explicit budget_allocation_id or the request's cost_center_id / department_id / project_id.
+   */
+  static async autoCommitForFundRequest(params: {
+    companyId: string;
+    tenantId?: string | null;
+    requestId: string;
+    userId: string;
+    amount: number;
+    allocationId?: string | null;
+    costCenterId?: string | null;
+    departmentId?: string | null;
+    projectId?: string | null;
+    description?: string | null;
+  }) {
+    const {
+      companyId,
+      tenantId = null,
+      requestId,
+      userId,
+      amount,
+      allocationId,
+      costCenterId,
+      departmentId,
+      projectId,
+      description,
+    } = params;
+
+    if (!companyId || !requestId || !Number.isFinite(amount) || amount <= 0) return null;
+
+    // Check if an active reservation already exists for this request
+    const existingReservation = await prisma.fin_budget_reservation.findFirst({
+      where: {
+        company_id: companyId,
+        source_type: 'REQUEST',
+        source_id: requestId,
+        status: { in: ['PENDING_APPROVAL', 'OPEN', 'PARTIALLY_RELEASED'] },
+      },
+    });
+    if (existingReservation) return { reservation: existingReservation, already_committed: true };
+
+    let targetAllocationId = allocationId ? String(allocationId).trim() : '';
+
+    if (!targetAllocationId) {
+      const candidateWhere: any = {
+        company_id: companyId,
+        budget: { status: 'ACTIVE' },
+      };
+      const dimensionFilters: any[] = [];
+      if (costCenterId) dimensionFilters.push({ cost_center_id: costCenterId });
+      if (departmentId) dimensionFilters.push({ department_id: departmentId }, { cost_center_id: departmentId });
+      if (projectId) dimensionFilters.push({ project_id: projectId });
+
+      if (dimensionFilters.length > 0) {
+        candidateWhere.OR = dimensionFilters;
+      } else {
+        return null;
+      }
+
+      const candidate = await prisma.fin_budget_line.findFirst({
+        where: candidateWhere,
+        include: { period_allocations: true },
+        orderBy: { created_at: 'desc' },
+      });
+      if (!candidate || candidate.period_allocations.length > 0) {
+        return null;
+      }
+      targetAllocationId = candidate.id;
+    }
+
+    const result = await this.createReservation(companyId, tenantId, userId, {
+      allocation_id: targetAllocationId,
+      source_type: 'REQUEST',
+      source_id: requestId,
+      amount,
+      description: description || `Komitmen otomatis Pengajuan Dana #${requestId.slice(0, 8)}`,
+    });
+
+    await (prisma.request_ticket as any)
+      .updateMany({
+        where: { id: requestId, company_id: companyId },
+        data: {
+          budget_allocation_id: targetAllocationId,
+          budget_reservation_id: result.reservation.id,
+          ...(costCenterId ? { cost_center_id: costCenterId } : {}),
+          ...(departmentId ? { department_id: departmentId } : {}),
+        },
+      })
+      .catch(() => undefined);
+
+    return result;
+  }
+
+  /**
+   * Automatically releases or recognizes budget commitment when a FUND_REQUEST is
+   * rejected/cancelled ('RELEASE') or disbursed/settled via LPJ ('RECOGNIZE').
+   */
+  static async autoReleaseOrRecognizeForFundRequest(params: {
+    companyId: string;
+    requestId: string;
+    userId: string;
+    action: 'RELEASE' | 'RECOGNIZE';
+    actualAmount?: number | null;
+    reason?: string;
+  }) {
+    const { companyId, requestId, userId, action, actualAmount, reason } = params;
+    if (!companyId || !requestId) return null;
+
+    const openReservations = await prisma.fin_budget_reservation.findMany({
+      where: {
+        company_id: companyId,
+        source_type: 'REQUEST',
+        source_id: requestId,
+        status: { in: ['OPEN', 'PARTIALLY_RELEASED', 'PENDING_APPROVAL'] },
+      },
+      orderBy: { created_at: 'asc' },
+    });
+
+    if (!openReservations.length) return null;
+
+    const results = [];
+    for (const resv of openReservations) {
+      const rem = Number(resv.remaining_amount ?? 0);
+      if (rem <= MONEY_EPSILON) continue;
+
+      if (resv.status === 'PENDING_APPROVAL') {
+        if (action === 'RELEASE') {
+          const rejected = await prisma.fin_budget_reservation.update({
+            where: { id: resv.id },
+            data: { status: 'REJECTED', description: `${resv.description ?? ''}\nDibebaskan: ${reason || 'Request ditolak/dibatalkan'}` },
+          });
+          results.push(rejected);
+        }
+        continue;
+      }
+
+      if (action === 'RELEASE') {
+        const released = await this.releaseReservation(
+          companyId,
+          resv.id,
+          userId,
+          { amount: rem, reason: reason || `Pelepasan otomatis komitmen Request #${requestId.slice(0, 8)}` },
+          false,
+        );
+        results.push(released);
+      } else {
+        const toRecognize =
+          actualAmount !== undefined && actualAmount !== null && Number.isFinite(Number(actualAmount)) && Number(actualAmount) > 0
+            ? Math.min(rem, Number(actualAmount))
+            : rem;
+
+        if (toRecognize > MONEY_EPSILON) {
+          const recognized = await this.releaseReservation(
+            companyId,
+            resv.id,
+            userId,
+            { amount: toRecognize, reason: reason || `Realisasi pencairan/LPJ Request #${requestId.slice(0, 8)}` },
+            true,
+          );
+          results.push(recognized);
+        }
+
+        const leftover = Math.round((rem - toRecognize) * 100) / 100;
+        if (leftover > MONEY_EPSILON) {
+          const releasedDiff = await this.releaseReservation(
+            companyId,
+            resv.id,
+            userId,
+            { amount: leftover, reason: `Pelepasan sisa pagu LPJ Request #${requestId.slice(0, 8)}` },
+            false,
+          );
+          results.push(releasedDiff);
+        }
+      }
+    }
+
+    return results;
   }
 }

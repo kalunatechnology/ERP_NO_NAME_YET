@@ -23,6 +23,12 @@ export interface UserProfile {
   is_staff?: boolean;
   company_id?: string | null;
   company?: { id: string | number; name?: string; legal_name?: string; code?: string; company_code?: string } | null;
+  department_id?: string | null;
+  department_code?: string | null;
+  department_name?: string | null;
+  role_level?: "GM" | "SPV" | "STAFF" | string;
+  can_approve_division_scope?: boolean;
+  can_override_budget?: boolean;
   active_role_code?: string | null;
   enabled_modules?: string[];
   delegated_modules?: string[];
@@ -100,6 +106,12 @@ export async function getMyProfile(): Promise<UserProfile> {
         ...raw.user,
         roles: raw.roles || raw.user.roles || [],
         active_role_code: raw.active_role_code || raw.user.active_role_code || null,
+        department_id: raw.department_id ?? raw.user.department_id ?? null,
+        department_code: raw.department_code ?? raw.user.department_code ?? null,
+        department_name: raw.department_name ?? raw.user.department_name ?? null,
+        role_level: raw.role_level ?? raw.user.role_level ?? "STAFF",
+        can_approve_division_scope: raw.can_approve_division_scope ?? raw.user.can_approve_division_scope ?? false,
+        can_override_budget: raw.can_override_budget ?? raw.user.can_override_budget ?? false,
         enabled_modules: raw.enabled_modules || raw.user.enabled_modules || [],
         delegated_modules: raw.delegated_modules || raw.user.delegated_modules || [],
         module_access: raw.module_access || raw.user.module_access || [],
