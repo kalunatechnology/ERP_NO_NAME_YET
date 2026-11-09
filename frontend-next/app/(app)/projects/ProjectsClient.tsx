@@ -826,6 +826,7 @@ export default function ProjectsClient() {
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
   const [assignDeptFilter, setAssignDeptFilter] = useState<"PROJECT_DEPT" | "ALL">("ALL");
+  const [assignUserSearch, setAssignUserSearch] = useState("");
 
   const openAssignModal = (main: MainTask) => {
     if (!selectedAuthority?.can_assign_team) {
@@ -833,6 +834,7 @@ export default function ProjectsClient() {
       return;
     }
     setActiveMainTask(main);
+    setAssignUserSearch("");
     const effectiveDeptId =
       projectSupervisor?.department_id ||
       selectedProject?.department_id ||
@@ -3183,6 +3185,17 @@ export default function ProjectsClient() {
                 )
               : sortedUsers;
 
+          const query = assignUserSearch.trim().toLowerCase();
+          const filteredVisibleUsers = query
+            ? visibleUsers.filter(
+                (u) =>
+                  String(u.full_name || "").toLowerCase().includes(query) ||
+                  String(u.email || "").toLowerCase().includes(query) ||
+                  String(u.department_name || "").toLowerCase().includes(query) ||
+                  String(u.role_in_project || "").toLowerCase().includes(query),
+              )
+            : visibleUsers;
+
           return (
             <div className="flex flex-col gap-3">
               <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 text-xs">
@@ -3228,18 +3241,33 @@ export default function ProjectsClient() {
                 </div>
               </div>
 
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-2.5 text-text-secondary" />
+                <input
+                  type="text"
+                  placeholder="Cari staff berdasarkan nama, email, atau divisi..."
+                  value={assignUserSearch}
+                  onChange={(e) => setAssignUserSearch(e.target.value)}
+                  className="input pl-8 py-1.5 text-xs w-full"
+                />
+              </div>
+
               <p className="text-xs text-text-secondary">
-                Pilih satu atau lebih anggota tim yang ditugaskan untuk mengeksekusi paket kerja ini:
+                Pilih satu atau lebih anggota tim yang ditugaskan untuk mengeksekusi paket kerja ini ({selectedAssigneeIds.length} dipilih):
               </p>
 
               <div className="max-h-60 overflow-y-auto border border-text-tertiary rounded-xl p-2 flex flex-col gap-2 bg-gray-50/60">
-                {visibleUsers.length === 0 && (
+                {filteredVisibleUsers.length === 0 && (
                   <div className="p-3 text-center text-xs text-text-secondary">
-                    <p>Tidak ada anggota pada filter departemen ini.</p>
+                    <p>
+                      {query
+                        ? `Tidak ada anggota yang cocok dengan kata kunci "${assignUserSearch}".`
+                        : "Tidak ada anggota pada filter departemen ini."}
+                    </p>
                     {assignDeptFilter === "PROJECT_DEPT" && companyUsers.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => setAssignDeptFilter("ALL")}
+                        onClick={() => { setAssignDeptFilter("ALL"); setAssignUserSearch(""); }}
                         className="mt-1.5 text-xs font-bold text-[#294BB2] underline"
                       >
                         Tampilkan semua anggota company ({companyUsers.length})
@@ -3247,7 +3275,7 @@ export default function ProjectsClient() {
                     )}
                   </div>
                 )}
-                {visibleUsers.map((u) => {
+                {filteredVisibleUsers.map((u) => {
                   const uId = String(u.id);
                   const isChecked = selectedAssigneeIds.map(String).includes(uId);
                   const isSameDept =
