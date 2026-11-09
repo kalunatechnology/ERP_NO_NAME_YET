@@ -660,7 +660,24 @@ async function resolveProjectDepartment(
     };
   }
 
-  throw new ValidationError('Departemen / Divisi tujuan tidak valid atau berada di luar company aktif.');
+  const userWithDept = await prisma.iam_user.findFirst({
+    where: { id: idOrCode },
+    select: {
+      department_id: true,
+      department: {
+        select: { id: true, code: true, name: true },
+      },
+    },
+  });
+  if (userWithDept?.department) {
+    return {
+      id: userWithDept.department.id,
+      code: userWithDept.department.code,
+      name: userWithDept.department.name,
+    };
+  }
+
+  return null;
 }
 
 const handleAssignProjectDepartment = async (req: Request, res: Response, next: NextFunction) => {
@@ -1709,8 +1726,7 @@ projectsRouter.use('/main-tasks', createCrudRouter({
         data.cost_owner_division_id = division.id;
       } else {
         const dept = await resolveProjectDepartment(project.company_id ?? companyId, costOwnerDivisionId);
-        if (!dept) throw new ValidationError('Divisi Pemilik Biaya tidak valid atau berada di luar company aktif.');
-        data.cost_owner_division_id = dept.id;
+        data.cost_owner_division_id = dept ? dept.id : null;
       }
     } else {
       data.cost_owner_division_id = null;
@@ -1761,8 +1777,7 @@ projectsRouter.use('/main-tasks', createCrudRouter({
           data.cost_owner_division_id = division.id;
         } else {
           const dept = await resolveProjectDepartment(activeCompanyId(req), divisionId);
-          if (!dept) throw new ValidationError('Divisi Pemilik Biaya tidak valid atau berada di luar company aktif.');
-          data.cost_owner_division_id = dept.id;
+          data.cost_owner_division_id = dept ? dept.id : null;
         }
       }
     }

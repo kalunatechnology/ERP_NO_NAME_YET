@@ -1148,10 +1148,10 @@ export class ProjectsService {
         orderBy: { assigned_at: 'desc' },
       });
       if (current?.user_id === userId) {
-        if ((project.cost_center_id ?? null) !== (candidate.department_id ?? null) && candidate.department_id) {
+        if ((project.cost_center_id ?? null) !== (candidate.department_id ?? null)) {
           await tx.project_project.update({
             where: { id: projectId },
-            data: { cost_center_id: candidate.department_id },
+            data: { cost_center_id: candidate.department_id ?? null },
           });
         }
         return;
@@ -1229,13 +1229,14 @@ export class ProjectsService {
         where: { project_id: projectId, company_id: companyId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE' },
       });
       if (!current) throw new NotFoundError('ProjectSupervisor');
+      const spvUserId = String(current.user_id ?? '').trim();
       const [project, currentSpvUser] = await Promise.all([
         tx.project_project.findFirst({
           where: { id: projectId, company_id: companyId },
           select: { id: true, cost_center_id: true },
         }),
         tx.iam_user.findFirst({
-          where: { id: current.user_id },
+          where: { id: spvUserId },
           select: { id: true, department_id: true },
         }),
       ]);
@@ -1243,7 +1244,7 @@ export class ProjectsService {
         where: { id: current.id },
         data: { status: 'INACTIVE', left_at: new Date() },
       });
-      if (project?.cost_center_id && project.cost_center_id === currentSpvUser?.department_id) {
+      if (!currentSpvUser?.department_id || project?.cost_center_id === currentSpvUser.department_id) {
         await tx.project_project.update({
           where: { id: projectId },
           data: { cost_center_id: null },

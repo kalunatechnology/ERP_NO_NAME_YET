@@ -781,23 +781,25 @@ export default function ProjectsClient() {
         ]);
         const deptById = new Map(normalizedDepts.map((d) => [d.id, d]));
 
-        setProjects(data.map((project) => {
-          const deptId = project.department_id || project.cost_center_id || null;
-          const matchedDept = deptId ? deptById.get(String(deptId)) : undefined;
-          return {
-            ...project,
-            department_id: deptId,
-            cost_center_id: deptId,
-            department_code: matchedDept?.code ?? project.department_code ?? null,
-            department_name: matchedDept?.name ?? project.department_name ?? null,
-            main_tasks: (project.main_tasks || []).map((mainTask) => ({
-              ...mainTask,
-              cost_owner_division_name: mainTask.cost_owner_division_id
-                ? divisionNameById.get(String(mainTask.cost_owner_division_id)) ?? String(mainTask.cost_owner_division_id)
-                : undefined,
-            })),
-          };
-        }));
+        setProjects((prev) =>
+          prev.map((project) => {
+            const deptId = project.department_id || project.cost_center_id || null;
+            const matchedDept = deptId ? deptById.get(String(deptId)) : undefined;
+            return {
+              ...project,
+              department_id: deptId,
+              cost_center_id: project.cost_center_id ?? null,
+              department_code: matchedDept?.code ?? project.department_code ?? null,
+              department_name: matchedDept?.name ?? project.department_name ?? null,
+              main_tasks: (project.main_tasks || []).map((mainTask) => ({
+                ...mainTask,
+                cost_owner_division_name: mainTask.cost_owner_division_id
+                  ? divisionNameById.get(String(mainTask.cost_owner_division_id)) ?? String(mainTask.cost_owner_division_id)
+                  : undefined,
+              })),
+            };
+          }),
+        );
         if (custList?.length) setCustomerOptions(custList);
         setTransfers(transferList);
         setDivisionOptions(mergedDivisions);
