@@ -6,6 +6,7 @@ const MONEY_EPSILON = 0.005;
 const CONTROL_POLICIES = new Set(['HARD_STOP', 'SOFT_WARNING', 'APPROVAL_ESCALATION']);
 const PERIOD_MODES = new Set(['ANNUAL', 'MONTHLY', 'QUARTERLY']);
 const RESERVATION_SOURCE_TYPES = new Set(['REQUEST', 'PURCHASE_ORDER', 'INVOICE', 'OTHER']);
+const isActiveMasterStatus = (status?: string | null) => !['INACTIVE', 'DISABLED', 'DELETED', 'ARCHIVED'].includes(String(status ?? '').trim().toUpperCase());
 
 function money(value: unknown, label: string, allowZero = false): number {
   const parsed = Number(value);
@@ -32,11 +33,18 @@ export class BudgetingService {
       prisma.fin_fiscal_year.findMany({ where: { company_id: companyId }, orderBy: { start_date: 'desc' } }),
       prisma.fin_fiscal_period.findMany({ where: { company_id: companyId }, orderBy: { period_number: 'asc' } }),
       prisma.fin_account.findMany({ where: { company_id: companyId, status: 'ACTIVE', account_type: 'EXPENSE' }, orderBy: { account_code: 'asc' } }),
-      prisma.master_cost_center.findMany({ where: { company_id: companyId, status: 'ACTIVE' }, orderBy: { cost_center_code: 'asc' } }),
+      prisma.master_cost_center.findMany({ where: { company_id: companyId }, orderBy: { cost_center_code: 'asc' } }),
       prisma.project_project.findMany({ where: { company_id: companyId, lifecycle_status: { not: 'CANCELLED' } }, select: { id: true, project_code: true, project_name: true }, orderBy: { project_code: 'asc' } }),
-      prisma.master_department.findMany({ where: { company_id: companyId, status: 'ACTIVE' }, orderBy: { department_code: 'asc' } }),
+      prisma.master_department.findMany({ where: { company_id: companyId }, orderBy: { department_code: 'asc' } }),
     ]);
-    return { fiscal_years: fiscalYears, fiscal_periods: fiscalPeriods, accounts, cost_centers: costCenters, projects, departments };
+    return {
+      fiscal_years: fiscalYears,
+      fiscal_periods: fiscalPeriods,
+      accounts,
+      cost_centers: costCenters.filter((row) => isActiveMasterStatus(row.status)),
+      projects,
+      departments: departments.filter((row) => isActiveMasterStatus(row.status)),
+    };
   }
 
   static async listPlans(companyId: string) {
@@ -161,14 +169,14 @@ export class BudgetingService {
       const amount = money(row.amount ?? row.budget_amount, 'Pagu alokasi');
       const [account, center, project, department] = await Promise.all([
         prisma.fin_account.findFirst({ where: { id: accountId, company_id: companyId, status: 'ACTIVE', account_type: 'EXPENSE' }, select: { id: true, account_code: true, account_name: true } }),
-        prisma.master_cost_center.findFirst({ where: { id: costCenterId, company_id: companyId, status: 'ACTIVE' }, select: { id: true, cost_center_code: true, cost_center_name: true } }),
+        prisma.master_cost_center.findFirst({ where: { id: costCenterId, company_id: companyId }, select: { id: true, cost_center_code: true, cost_center_name: true, status: true } }),
         projectId ? prisma.project_project.findFirst({ where: { id: projectId, company_id: companyId }, select: { id: true } }) : null,
-        departmentId ? prisma.master_department.findFirst({ where: { id: departmentId, company_id: companyId, status: 'ACTIVE' }, select: { id: true } }) : null,
+        departmentId ? prisma.master_department.findFirst({ where: { id: departmentId, company_id: companyId }, select: { id: true, status: true } }) : null,
       ]);
       if (!account) throw new ValidationError('Akun alokasi harus akun beban aktif pada perusahaan ini.');
-      if (!center) throw new ValidationError('Cost center tidak ditemukan atau tidak aktif pada perusahaan ini.');
+      if (!center || !isActiveMasterStatus(center.status)) throw new ValidationError('Cost center tidak ditemukan atau tidak aktif pada perusahaan ini.');
       if (projectId && !project) throw new ValidationError('Proyek alokasi tidak ditemukan pada perusahaan ini.');
-      if (departmentId && !department) throw new ValidationError('Departemen tidak ditemukan atau tidak aktif pada perusahaan ini.');
+      if (departmentId && (!department || !isActiveMasterStatus(department.status))) throw new ValidationError('Departemen tidak ditemukan atau tidak aktif pada perusahaan ini.');
       const periods = Array.isArray(row.periods) ? row.periods.map((period: any) => ({ fiscal_period_id: requiredText(period.fiscal_period_id, 'Periode fiskal'), amount: money(period.amount, 'Pagu periode', true) })) : [];
       if (periodMode !== 'ANNUAL' && periods.length === 0) throw new ValidationError('Mode bulanan/kuartalan memerlukan pembagian pagu periode untuk setiap alokasi.');
       if (periods.length > 0) {

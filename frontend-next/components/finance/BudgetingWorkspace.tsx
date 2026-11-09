@@ -11,6 +11,7 @@ type DraftAllocation = { account_id: string; cost_center_id: string; project_id:
 const blankAllocation = (): DraftAllocation => ({ account_id: "", cost_center_id: "", project_id: "", department_id: "", amount: "", allocation_name: "", description: "", periods: {} });
 const base = "/api/v1/finance";
 const unwrap = (value: any) => value?.data ?? value;
+const optionRows = (value: any) => Array.isArray(value) ? value : Array.isArray(value?.results) ? value.results : Array.isArray(value?.rows) ? value.rows : [];
 const fmt = (value: unknown) => formatMoney(Number(value ?? 0));
 const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
@@ -24,6 +25,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
   const [yearId, setYearId] = useState("");
   const [tab, setTab] = useState<"overview" | "plans" | "workflow" | "ledger">("overview");
   const [loading, setLoading] = useState(true);
+  const [optionsLoading, setOptionsLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -43,14 +45,23 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
   const allocationRows: AnyRow[] = dashboard?.allocations ?? [];
 
   const load = useCallback(async (selectedYear = yearId) => {
-    setLoading(true); setError("");
+    setLoading(true); setOptionsLoading(true); setError("");
     try {
       const [optionRes, planRes, queueRes, reservationRes] = await Promise.all([
         api.get(`${base}/budgeting/options`), api.get(`${base}/budgets`), api.get(`${base}/budgeting/workflow`), api.get(`${base}/budgeting/reservations`),
       ]);
-      const nextOptions = unwrap(optionRes.data);
+      const rawOptions = unwrap(optionRes.data) ?? {};
+      const nextOptions = {
+        fiscal_years: optionRows(rawOptions.fiscal_years),
+        fiscal_periods: optionRows(rawOptions.fiscal_periods),
+        accounts: optionRows(rawOptions.accounts),
+        cost_centers: optionRows(rawOptions.cost_centers),
+        projects: optionRows(rawOptions.projects),
+        departments: optionRows(rawOptions.departments),
+      };
       const nextPlans = unwrap(planRes.data);
       setOptions(nextOptions);
+      setOptionsLoading(false);
       setPlans(Array.isArray(nextPlans) ? nextPlans : nextPlans?.results ?? []);
       setQueue(unwrap(queueRes.data));
       setReservations(unwrap(reservationRes.data) ?? []);
@@ -64,7 +75,7 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
       setPlanForm((current) => ({ ...current, fiscal_year_id: current.fiscal_year_id || fiscalYear }));
     } catch (cause: any) {
       setError(cause?.response?.data?.detail || cause?.response?.data?.message || "Data budgeting gagal dimuat.");
-    } finally { setLoading(false); }
+    } finally { setLoading(false); setOptionsLoading(false); }
   }, [yearId, ledgerAllocationId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -202,9 +213,9 @@ export function BudgetingWorkspace({ canOperate = false }: { canOperate?: boolea
           {planForm.allocations.map((row, index) => <div key={index} className="rounded-xl border border-[#D9D9D9] p-3">
             <div className="grid gap-3 md:grid-cols-2">
               <Field label="Akun beban"><select required value={row.account_id} onChange={(event) => setAllocation(index, "account_id", event.target.value)} className={inputClass}><option value="">Pilih akun</option>{options.accounts.map((account) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></Field>
-              <Field label="Cost center"><select required value={row.cost_center_id} onChange={(event) => setAllocation(index, "cost_center_id", event.target.value)} className={inputClass}><option value="">Pilih cost center</option>{options.cost_centers.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}</select></Field>
+              <Field label="Cost center"><select required disabled={optionsLoading} value={row.cost_center_id} onChange={(event) => setAllocation(index, "cost_center_id", event.target.value)} className={inputClass}><option value="">{optionsLoading ? "Memuat cost center…" : options.cost_centers.length ? "Pilih cost center" : "Belum ada cost center aktif"}</option>{options.cost_centers.map((center) => <option key={center.id} value={center.id}>{center.cost_center_code} — {center.cost_center_name}</option>)}</select></Field>
               <Field label="Proyek (opsional)"><select value={row.project_id} onChange={(event) => setAllocation(index, "project_id", event.target.value)} className={inputClass}><option value="">Semua proyek</option>{options.projects.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}</select></Field>
-              <Field label="Departemen (opsional)"><select value={row.department_id} onChange={(event) => setAllocation(index, "department_id", event.target.value)} className={inputClass}><option value="">Semua departemen</option>{options.departments.map((department) => <option key={department.id} value={department.id}>{department.department_code} — {department.department_name}</option>)}</select></Field>
+              <Field label="Departemen (opsional)"><select disabled={optionsLoading} value={row.department_id} onChange={(event) => setAllocation(index, "department_id", event.target.value)} className={inputClass}><option value="">{optionsLoading ? "Memuat departemen…" : options.departments.length ? "Semua departemen" : "Belum ada departemen aktif"}</option>{options.departments.map((department) => <option key={department.id} value={department.id}>{department.department_code} — {department.department_name}</option>)}</select></Field>
               <Field label="Nama alokasi"><input value={row.allocation_name} onChange={(event) => setAllocation(index, "allocation_name", event.target.value)} placeholder="Opsional, dibuat otomatis" className={inputClass} /></Field>
               <Field label="Total pagu"><input required min="0.01" step="0.01" type="number" value={row.amount} onChange={(event) => { setAllocation(index, "amount", event.target.value); if (planForm.period_mode !== "ANNUAL") setAllocation(index, "periods", autoSplit(event.target.value, selectedPeriods)); }} className={inputClass} /></Field>
             </div>
