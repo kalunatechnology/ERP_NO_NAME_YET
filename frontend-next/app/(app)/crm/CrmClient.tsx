@@ -127,7 +127,7 @@ function EmptyState({ msg }: { msg: string }) {
 }
 
 interface ActionBtnProps {
-  onClick: () => Promise<void>;
+  onClick: () => void | Promise<void>;
   label: string;
   variant?: "primary" | "ghost" | "danger";
   icon?: React.ElementType;
