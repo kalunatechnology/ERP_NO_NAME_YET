@@ -7,7 +7,7 @@
  * Dependencies and side effects: See each documented function; database, browser storage, network, and response mutations are called out where present.
  */
 import { createPrismaClient } from './prisma_client';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
 const prisma = createPrismaClient();

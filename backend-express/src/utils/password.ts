@@ -7,7 +7,7 @@
  * Dependencies and side effects: Function-level documentation identifies HTTP, database, browser-state, and security effects where they occur.
  */
 import crypto from 'crypto';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const BCRYPT_PREFIX = /^\$2[aby]\$/;
 

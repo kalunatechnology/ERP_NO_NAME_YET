@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { parseRoleCode } from '../src/types/roles';
 import { postgresPoolConfig } from '../src/config/postgres';
 

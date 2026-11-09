@@ -1,7 +1,7 @@
 /** Read-only account/auth readiness probe. Never prints secrets, hashes or IDs. */
 require('dotenv').config();
 const { createPrismaClient } = require('./prisma_client');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 async function main() {
   const email = String(process.argv[2] || '').trim().toLowerCase();

@@ -1,5 +1,5 @@
 import { createPrismaClient } from '../scripts/prisma_client';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { parseRoleCode } from '../src/types/roles';
 
 const prisma = createPrismaClient();
