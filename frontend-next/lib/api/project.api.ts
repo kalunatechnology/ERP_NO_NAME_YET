@@ -44,6 +44,10 @@ export interface Project {
   description?: string;
   project_manager_name?: string;
   pm_name?: string;
+  cost_center_id?: string | null;
+  department_id?: string | null;
+  department_code?: string | null;
+  department_name?: string | null;
   health_score?: string;
   main_tasks?: MainTask[];
   tasks?: Task[];
@@ -134,6 +138,11 @@ export interface ProjectSupervisor {
   user_id: string;
   full_name: string;
   email: string;
+  department_id?: string | null;
+  department_code?: string | null;
+  department_name?: string | null;
+  department_unit_type?: string | null;
+  role_level?: string | null;
   project_role: 'ACTING_PROJECT_MANAGER';
   status: 'ACTIVE' | 'INACTIVE';
   assigned_at?: string | null;
@@ -654,6 +663,10 @@ export async function loadAllProjects(enabledModules: string[] = [], bundle?: Pr
       ...p,
       project_name: p.name || p.project_name || `Proyek ${p.id}`,
       project_code: p.code || p.project_code || `PRJ-${String(p.id).slice(0, 6)}`,
+      cost_center_id: p.cost_center_id ?? null,
+      department_id: p.department_id || p.cost_center_id || null,
+      department_code: p.department_code || null,
+      department_name: p.department_name || null,
       // The commercial lifecycle and operational execution state have distinct
       // meanings. Never overwrite status: downstream timesheet/inventory logic
       // still relies on it to decide whether field work is allowed.
@@ -701,6 +714,8 @@ export async function createProject(payload: {
   name: string;
   code?: string;
   customer_name?: string;
+  department_id?: string | null;
+  cost_center_id?: string | null;
   budget_amount?: number;
   planned_start_date?: string;
   planned_end_date?: string;
@@ -715,6 +730,19 @@ export async function createProject(payload: {
     project_name: payload.name,
     project_code: payload.code,
     customer_name: payload.customer_name || undefined,
+    cost_center_id: payload.department_id || payload.cost_center_id || undefined,
+    department_id: payload.department_id || payload.cost_center_id || undefined,
+  });
+  return data;
+}
+
+export async function updateProjectDepartment(
+  projectId: string | number,
+  departmentId: string | null,
+) {
+  const { data } = await api.put(`/api/v1/projects/projects/${projectId}/department`, {
+    department_id: departmentId || null,
+    cost_center_id: departmentId || null,
   });
   return data;
 }
@@ -1316,9 +1344,17 @@ export async function fetchCompanyUsers(projectId: string | number): Promise<any
           email: u.email,
           username: u.username || u.email?.split("@")[0],
           full_name: u.full_name || u.name || u.username || u.email,
+          role_name: u.role_name || u.role_in_project || "Staff",
           role_in_project: u.role_name || u.role_in_project || "Staff",
           role_code: u.role_code,
-          department: u.department || "Operations"
+          role_level: u.role_level || null,
+          department_id: u.department_id || null,
+          department_code: u.department_code || null,
+          department_name: u.department_name || null,
+          department_unit_type: u.department_unit_type || null,
+          department: u.department_name
+            ? `${u.department_code ? `[${u.department_code}] ` : ""}${u.department_name}`
+            : null,
         });
       }
     });

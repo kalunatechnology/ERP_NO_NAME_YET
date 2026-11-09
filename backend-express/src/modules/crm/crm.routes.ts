@@ -1027,12 +1027,12 @@ async function handleAssignCrmRecord(
 ) {
   try {
     const companyId = activeCompanyId(req);
-    const roleLevel = String(req.user?.role_level ?? req.accessContext?.roleLevel ?? 'STAFF').toUpperCase();
+    const roleLevel = String(req.user?.role_level ?? 'STAFF').toUpperCase();
     const userRoles = (req.user?.roles ?? []).map((r) => String(r).toUpperCase());
     const canDelegate =
       roleLevel === 'GM' ||
       roleLevel === 'SPV' ||
-      isSuperAdmin(req.user?.roles) ||
+      isSuperAdmin(req.user?.roles ?? []) ||
       userRoles.some((r) => ['COMPANY_ADMIN', 'DIRECTOR', 'CRM_LEAD', 'OPERATIONAL_MANAGER', 'PROJECT_MANAGER'].includes(r));
 
     if (!canDelegate) {

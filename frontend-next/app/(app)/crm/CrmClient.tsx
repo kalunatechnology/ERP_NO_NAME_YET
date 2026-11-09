@@ -3538,7 +3538,7 @@ export default function CrmClient() {
     feedback:[], surveyQuestions:[], surveyResponses:[], surveyAnswers:[], credit:[], cases:[], resolutions:[], products:[], parties:[],
   };
 
-  const filterByRoleAndScope = useCallback((rows: any[]) => {
+  const filterByRoleAndScope = (rows: any[]) => {
     const myId = user?.id ? String(user.id) : "";
     return (rows || []).filter((item) => {
       if (ownerFilter && String(item.owner_user_id || "") !== ownerFilter) return false;
@@ -3550,7 +3550,7 @@ export default function CrmClient() {
       }
       return true;
     });
-  }, [user?.id, ownerFilter, scopeFilter, departmentId]);
+  };
 
   const data: CRMData = {
     ...rawData,

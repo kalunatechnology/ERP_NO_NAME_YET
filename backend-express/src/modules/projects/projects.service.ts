@@ -974,10 +974,16 @@ export class ProjectsService {
 
   static async assertOperationalCompanyMember(userId: string, companyId: string, db: any = prisma): Promise<void> {
     const membership = await this.assertActiveCompanyMember(userId, companyId, db);
-    const assignments = await db.iam_user_role.findMany({
-      where: { user_id: userId, company_id: companyId },
-      select: { role_id: true },
-    });
+    const [assignments, userRecord] = await Promise.all([
+      db.iam_user_role.findMany({
+        where: { user_id: userId, company_id: companyId },
+        select: { role_id: true },
+      }),
+      db.iam_user.findFirst({
+        where: { id: userId, is_active: true },
+        select: { id: true, role_level: true },
+      }),
+    ]);
     const roleIds = assignments
       .map((assignment: { role_id: string | null }) => assignment.role_id)
       .filter((roleId: string | null): roleId is string => Boolean(roleId));
@@ -995,7 +1001,8 @@ export class ProjectsService {
           select: { id: true },
         })
       : null;
-    if (!operationalRole) {
+    const hasDepartmentRoleLevel = ['SPV', 'STAFF'].includes(String(userRecord?.role_level ?? '').toUpperCase());
+    if (!operationalRole && !hasDepartmentRoleLevel) {
       throw new ValidationError('User yang dipilih harus memiliki role Staff atau Supervisor pada company aktif.');
     }
   }
@@ -1027,7 +1034,7 @@ export class ProjectsService {
   static async getProjectSupervisor(projectId: string, companyId: string, db: any = prisma) {
     const project = await db.project_project.findFirst({
       where: { id: projectId, company_id: companyId },
-      select: { id: true },
+      select: { id: true, cost_center_id: true },
     });
     if (!project) throw new NotFoundError('Project');
     const membership = await db.project_member.findFirst({
@@ -1043,7 +1050,21 @@ export class ProjectsService {
     const [member, creator] = await Promise.all([
       db.iam_user.findFirst({
         where: { id: membership.user_id, is_active: true },
-        select: { id: true, full_name: true, email: true },
+        select: {
+          id: true,
+          full_name: true,
+          email: true,
+          department_id: true,
+          role_level: true,
+          department: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              unit_type: true,
+            },
+          },
+        },
       }),
       membership.created_by_id
         ? db.iam_user.findFirst({
@@ -1057,6 +1078,11 @@ export class ProjectsService {
       user_id: membership.user_id,
       full_name: member?.full_name ?? '',
       email: member?.email ?? '',
+      department_id: member?.department_id ?? null,
+      department_code: member?.department?.code ?? null,
+      department_name: member?.department?.name ?? null,
+      department_unit_type: member?.department?.unit_type ?? null,
+      role_level: member?.role_level ?? null,
       project_role: membership.project_role,
       status: membership.status,
       assigned_at: membership.assigned_at,
@@ -1104,14 +1130,14 @@ export class ProjectsService {
     await this.assertCanDelegateProjectAuthority(actor, projectId, companyId);
     const project = await prisma.project_project.findFirst({
       where: { id: projectId, company_id: companyId },
-      select: { id: true, tenant_id: true },
+      select: { id: true, tenant_id: true, cost_center_id: true },
     });
     if (!project) throw new NotFoundError('Project');
     await prisma.$transaction(async (tx) => {
       await this.assertCanDelegateProjectAuthority(actor, projectId, companyId, tx);
       const candidate = await tx.iam_user.findFirst({
         where: { id: userId, tenant_id: project.tenant_id, is_active: true, status: 'ACTIVE' },
-        select: { id: true },
+        select: { id: true, department_id: true },
       });
       if (!candidate) throw new ValidationError('Calon Project Supervisor harus merupakan user aktif pada tenant yang sama.');
       // Staff is a baseline company role. Supervisor eligibility must not
@@ -1121,7 +1147,15 @@ export class ProjectsService {
         where: { project_id: projectId, company_id: companyId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE' },
         orderBy: { assigned_at: 'desc' },
       });
-      if (current?.user_id === userId) return;
+      if (current?.user_id === userId) {
+        if ((project.cost_center_id ?? null) !== (candidate.department_id ?? null) && candidate.department_id) {
+          await tx.project_project.update({
+            where: { id: projectId },
+            data: { cost_center_id: candidate.department_id },
+          });
+        }
+        return;
+      }
       const now = new Date();
       if (current) {
         await tx.project_member.updateMany({
@@ -1160,14 +1194,28 @@ export class ProjectsService {
           },
         });
       }
+      await tx.project_project.update({
+        where: { id: projectId },
+        data: { cost_center_id: candidate.department_id ?? null },
+      });
       await this.writeSupervisorAudit(tx, {
         projectId,
         tenantId: project.tenant_id,
         companyId,
         actorId: actor.id,
         eventType: current ? 'PROJECT_SUPERVISOR_REPLACED' : 'PROJECT_SUPERVISOR_ASSIGNED',
-        beforeData: { user_id: current?.user_id ?? null, reason: reason ?? '' },
-        afterData: { user_id: userId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE', reason: reason ?? '' },
+        beforeData: {
+          user_id: current?.user_id ?? null,
+          cost_center_id: project.cost_center_id ?? null,
+          reason: reason ?? '',
+        },
+        afterData: {
+          user_id: userId,
+          project_role: ACTING_PROJECT_MANAGER_ROLE,
+          status: 'ACTIVE',
+          department_id: candidate.department_id ?? null,
+          reason: reason ?? '',
+        },
       });
     }, PROJECT_TRANSACTION_OPTIONS);
     return this.getProjectSupervisor(projectId, companyId);
@@ -1181,10 +1229,26 @@ export class ProjectsService {
         where: { project_id: projectId, company_id: companyId, project_role: ACTING_PROJECT_MANAGER_ROLE, status: 'ACTIVE' },
       });
       if (!current) throw new NotFoundError('ProjectSupervisor');
+      const [project, currentSpvUser] = await Promise.all([
+        tx.project_project.findFirst({
+          where: { id: projectId, company_id: companyId },
+          select: { id: true, cost_center_id: true },
+        }),
+        tx.iam_user.findFirst({
+          where: { id: current.user_id },
+          select: { id: true, department_id: true },
+        }),
+      ]);
       await tx.project_member.update({
         where: { id: current.id },
         data: { status: 'INACTIVE', left_at: new Date() },
       });
+      if (project?.cost_center_id && project.cost_center_id === currentSpvUser?.department_id) {
+        await tx.project_project.update({
+          where: { id: projectId },
+          data: { cost_center_id: null },
+        });
+      }
       await this.writeSupervisorAudit(tx, {
         projectId,
         tenantId: current.tenant_id,

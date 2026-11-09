@@ -334,7 +334,60 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
               p.progress_percent,
               p.status,
               p.lifecycle_status,
-              p.health_status
+              p.health_status,
+              p.cost_center_id,
+              COALESCE(
+                p.cost_center_id,
+                (
+                  SELECT u.department_id
+                  FROM project_member pm
+                  JOIN iam_user u ON u.id = pm.user_id
+                  WHERE pm.project_id = p.id
+                    AND pm.company_id = p.company_id
+                    AND pm.project_role = 'ACTING_PROJECT_MANAGER'
+                    AND pm.status = 'ACTIVE'
+                  ORDER BY pm.assigned_at DESC
+                  LIMIT 1
+                )
+              ) AS department_id,
+              (
+                SELECT d.code
+                FROM core_department d
+                WHERE d.id = COALESCE(
+                  p.cost_center_id,
+                  (
+                    SELECT u.department_id
+                    FROM project_member pm
+                    JOIN iam_user u ON u.id = pm.user_id
+                    WHERE pm.project_id = p.id
+                      AND pm.company_id = p.company_id
+                      AND pm.project_role = 'ACTING_PROJECT_MANAGER'
+                      AND pm.status = 'ACTIVE'
+                    ORDER BY pm.assigned_at DESC
+                    LIMIT 1
+                  )
+                )
+                LIMIT 1
+              ) AS department_code,
+              (
+                SELECT d.name
+                FROM core_department d
+                WHERE d.id = COALESCE(
+                  p.cost_center_id,
+                  (
+                    SELECT u.department_id
+                    FROM project_member pm
+                    JOIN iam_user u ON u.id = pm.user_id
+                    WHERE pm.project_id = p.id
+                      AND pm.company_id = p.company_id
+                      AND pm.project_role = 'ACTING_PROJECT_MANAGER'
+                      AND pm.status = 'ACTIVE'
+                    ORDER BY pm.assigned_at DESC
+                    LIMIT 1
+                  )
+                )
+                LIMIT 1
+              ) AS department_name
 
             FROM project_project p
 
@@ -783,7 +836,60 @@ async function loadProjectBundle(req: Request, includeFinance: boolean) {
             status,
             lifecycle_status,
             health_status,
-            project_manager_id
+            project_manager_id,
+            cost_center_id,
+            COALESCE(
+              project_project.cost_center_id,
+              (
+                SELECT u.department_id
+                FROM project_member pm
+                JOIN iam_user u ON u.id = pm.user_id
+                WHERE pm.project_id = project_project.id
+                  AND pm.company_id = project_project.company_id
+                  AND pm.project_role = 'ACTING_PROJECT_MANAGER'
+                  AND pm.status = 'ACTIVE'
+                ORDER BY pm.assigned_at DESC
+                LIMIT 1
+              )
+            ) AS department_id,
+            (
+              SELECT d.code
+              FROM core_department d
+              WHERE d.id = COALESCE(
+                project_project.cost_center_id,
+                (
+                  SELECT u.department_id
+                  FROM project_member pm
+                  JOIN iam_user u ON u.id = pm.user_id
+                  WHERE pm.project_id = project_project.id
+                    AND pm.company_id = project_project.company_id
+                    AND pm.project_role = 'ACTING_PROJECT_MANAGER'
+                    AND pm.status = 'ACTIVE'
+                  ORDER BY pm.assigned_at DESC
+                  LIMIT 1
+                )
+              )
+              LIMIT 1
+            ) AS department_code,
+            (
+              SELECT d.name
+              FROM core_department d
+              WHERE d.id = COALESCE(
+                project_project.cost_center_id,
+                (
+                  SELECT u.department_id
+                  FROM project_member pm
+                  JOIN iam_user u ON u.id = pm.user_id
+                  WHERE pm.project_id = project_project.id
+                    AND pm.company_id = project_project.company_id
+                    AND pm.project_role = 'ACTING_PROJECT_MANAGER'
+                    AND pm.status = 'ACTIVE'
+                  ORDER BY pm.assigned_at DESC
+                  LIMIT 1
+                )
+              )
+              LIMIT 1
+            ) AS department_name
 
           FROM project_project
 

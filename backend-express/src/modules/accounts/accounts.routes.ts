@@ -834,7 +834,6 @@ async function updateUserDepartmentAndRoleLevel(req: Request, res: Response, nex
           where: { user_id: userId, company_id: companyId },
           data: {
             department_id: departmentId,
-            cost_center_id: departmentId,
           },
         });
       }

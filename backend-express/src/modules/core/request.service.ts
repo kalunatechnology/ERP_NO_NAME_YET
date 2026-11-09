@@ -415,13 +415,12 @@ static async createRequest(
         tenantId: tenantId ?? null,
         userId,
         requestId: instanceId,
-        requestNumber,
+        description: `Komitmen Fund Request ${requestNumber}: ${title.trim()}`,
         amount: Number(amount),
         departmentId: resolvedDepartmentId,
         costCenterId: cost_center_id ?? null,
         projectId: project_id ?? null,
         allocationId: budget_allocation_id ?? null,
-        canOverrideBudget: String(requesterUser?.role_level ?? '').toUpperCase() === 'GM',
       });
     } catch (budgetErr) {
       if (budget_allocation_id) {

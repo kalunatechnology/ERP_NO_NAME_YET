@@ -599,6 +599,122 @@ const enforceProjectBoundary = async (req: Request, _res: Response, next: NextFu
   }
 };
 
+async function resolveProjectDepartment(
+  companyId: string,
+  rawDepartmentId: unknown,
+): Promise<{ id: string; code: string; name: string } | null> {
+  const idOrCode = String(rawDepartmentId ?? '').trim();
+  if (!idOrCode) return null;
+
+  const coreDept = await (prisma as any).core_department?.findFirst({
+    where: {
+      company_id: companyId,
+      OR: [{ id: idOrCode }, { code: idOrCode.toUpperCase() }],
+    },
+    select: { id: true, code: true, name: true },
+  });
+  if (coreDept) return coreDept;
+
+  const masterCostCenter = await prisma.master_cost_center.findFirst({
+    where: {
+      company_id: companyId,
+      OR: [{ id: idOrCode }, { cost_center_code: idOrCode.toUpperCase() }],
+    },
+    select: { id: true, cost_center_code: true, cost_center_name: true },
+  });
+  if (masterCostCenter) {
+    return {
+      id: masterCostCenter.id,
+      code: masterCostCenter.cost_center_code,
+      name: masterCostCenter.cost_center_name,
+    };
+  }
+
+  const masterDept = await prisma.master_department.findFirst({
+    where: {
+      company_id: companyId,
+      OR: [{ id: idOrCode }, { department_code: idOrCode.toUpperCase() }],
+    },
+    select: { id: true, department_code: true, department_name: true },
+  });
+  if (masterDept) {
+    return {
+      id: masterDept.id,
+      code: masterDept.department_code,
+      name: masterDept.department_name,
+    };
+  }
+
+  const coreOrg = await prisma.core_organization.findFirst({
+    where: {
+      company_id: companyId,
+      id: idOrCode,
+    },
+    select: { id: true, organization_code: true, organization_name: true },
+  });
+  if (coreOrg) {
+    return {
+      id: coreOrg.id,
+      code: coreOrg.organization_code,
+      name: coreOrg.organization_name,
+    };
+  }
+
+  throw new ValidationError('Departemen / Divisi tujuan tidak valid atau berada di luar company aktif.');
+}
+
+const handleAssignProjectDepartment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const projectId = req.params.id;
+    const project = await prisma.project_project.findFirst({
+      where: { id: projectId, company_id: companyId },
+      select: { id: true, company_id: true, tenant_id: true, project_manager_id: true, created_by_id: true },
+    });
+    if (!project) throw new NotFoundError('Project');
+
+    const activeRole = req.user?.active_role_code;
+    const isGmOrPmOrAdmin =
+      req.user?.role_level === 'GM' ||
+      ([
+        RoleCode.PROJECT_MANAGER,
+        RoleCode.OPERATIONAL_MANAGER,
+        RoleCode.DIRECTOR,
+        RoleCode.COMPANY_ADMIN,
+      ] as RoleCode[]).includes(activeRole as RoleCode);
+
+    if (!isGmOrPmOrAdmin) {
+      await ProjectsService.assertCanManageProject(req.user, projectId, companyId);
+    }
+
+    const rawDeptId =
+      req.body?.department_id !== undefined
+        ? req.body.department_id
+        : req.body?.cost_center_id;
+    const resolved = await resolveProjectDepartment(companyId, rawDeptId);
+
+    const updated = await prisma.project_project.update({
+      where: { id: project.id },
+      data: {
+        cost_center_id: resolved ? resolved.id : null,
+      },
+    });
+    invalidateDashboardCache();
+
+    res.json({
+      ...updated,
+      department_id: updated.cost_center_id ?? null,
+      department_code: resolved?.code ?? null,
+      department_name: resolved?.name ?? null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+projectsRouter.put('/projects/:id/department', handleAssignProjectDepartment);
+projectsRouter.patch('/projects/:id/department', handleAssignProjectDepartment);
+
 projectsRouter.use('/projects/:id', enforceProjectBoundary);
 
 projectsRouter.get('/projects/:id/authority', async (req: Request, res: Response, next: NextFunction) => {
@@ -1120,22 +1236,57 @@ projectsRouter.get('/assignable-users', async (req: Request, res: Response, next
       const role = assignment.role_id ? roleById.get(assignment.role_id) : undefined;
       if (assignment.user_id && role) operationalRoleByUser.set(assignment.user_id, role);
     });
-    const operationalUserIds = [...operationalRoleByUser.keys()];
-    const users = operationalUserIds.length
+    const users = userIds.length
       ? await prisma.iam_user.findMany({
-          where: { id: { in: operationalUserIds }, is_active: true },
-          select: { id: true, email: true, username: true, full_name: true, active_role_id: true },
+          where: { id: { in: userIds }, is_active: true },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            full_name: true,
+            active_role_id: true,
+            department_id: true,
+            role_level: true,
+            department: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                unit_type: true,
+              },
+            },
+          },
           orderBy: { full_name: 'asc' },
         })
       : [];
     const results = users.flatMap((user) => {
-      const role = user.active_role_id ? roleById.get(user.active_role_id) : undefined;
-      if (!role) return [];
+      const role = (user.active_role_id ? roleById.get(user.active_role_id) : undefined)
+        ?? operationalRoleByUser.get(user.id);
+      const normalizedRoleLevel = String(user.role_level ?? '').toUpperCase();
+      const isEligibleByRoleLevel = ['SPV', 'STAFF'].includes(normalizedRoleLevel);
+      if (!role && !isEligibleByRoleLevel) return [];
+      const fallbackRoleCode = normalizedRoleLevel === 'SPV' ? RoleCode.SUPERVISOR : RoleCode.STAFF;
+      const fallbackRoleName = normalizedRoleLevel === 'SPV' ? 'Supervisor' : 'Staff';
+      const effectiveRoleCode = role?.role_code ?? fallbackRoleCode;
+      const effectiveRoleName =
+        normalizedRoleLevel === 'SPV'
+          ? 'Supervisor (SPV)'
+          : role?.role_name ?? fallbackRoleName;
       return {
-        ...user,
-        role_code: role?.role_code ?? null,
-        role_name: role?.role_name ?? 'Staff',
-        role_in_project: role?.role_name ?? 'Staff',
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        full_name: user.full_name,
+        active_role_id: user.active_role_id,
+        role_code: effectiveRoleCode,
+        role_name: effectiveRoleName,
+        role_in_project: effectiveRoleName,
+        role_level: normalizedRoleLevel || (effectiveRoleCode === RoleCode.SUPERVISOR ? 'SPV' : 'STAFF'),
+        department_id: user.department_id ?? null,
+        department_code: user.department?.code ?? null,
+        department_name: user.department?.name ?? null,
+        department_unit_type: user.department?.unit_type ?? null,
+        department: user.department?.name ?? null,
       };
     });
     res.json({ count: results.length, results });
@@ -1554,8 +1705,13 @@ projectsRouter.use('/main-tasks', createCrudRouter({
         },
         select: { id: true },
       });
-      if (!division) throw new ValidationError('Divisi Pemilik Biaya tidak valid atau berada di luar company aktif.');
-      data.cost_owner_division_id = division.id;
+      if (division) {
+        data.cost_owner_division_id = division.id;
+      } else {
+        const dept = await resolveProjectDepartment(project.company_id ?? companyId, costOwnerDivisionId);
+        if (!dept) throw new ValidationError('Divisi Pemilik Biaya tidak valid atau berada di luar company aktif.');
+        data.cost_owner_division_id = dept.id;
+      }
     } else {
       data.cost_owner_division_id = null;
     }
@@ -1601,8 +1757,13 @@ projectsRouter.use('/main-tasks', createCrudRouter({
           },
           select: { id: true },
         });
-        if (!division) throw new ValidationError('Divisi Pemilik Biaya tidak valid atau berada di luar company aktif.');
-        data.cost_owner_division_id = division.id;
+        if (division) {
+          data.cost_owner_division_id = division.id;
+        } else {
+          const dept = await resolveProjectDepartment(activeCompanyId(req), divisionId);
+          if (!dept) throw new ValidationError('Divisi Pemilik Biaya tidak valid atau berada di luar company aktif.');
+          data.cost_owner_division_id = dept.id;
+        }
       }
     }
     delete data.progress;
@@ -2050,6 +2211,9 @@ projectsRouter.get(
               true,
 
             health_status:
+              true,
+
+            cost_center_id:
               true,
           },
 
@@ -2622,6 +2786,20 @@ projectsRouter.use('/projects', createCrudRouter({
       data.source_type = 'INTERNAL';
     }
 
+    const rawDeptId =
+      data.department_id !== undefined
+        ? data.department_id
+        : data.cost_center_id !== undefined
+          ? data.cost_center_id
+          : null;
+    delete data.department_id;
+    if (rawDeptId) {
+      const resolvedDept = await resolveProjectDepartment(companyId, rawDeptId);
+      data.cost_center_id = resolvedDept ? resolvedDept.id : null;
+    } else {
+      data.cost_center_id = null;
+    }
+
     // 3. Date formatting
     if (data.planned_start_date && typeof data.planned_start_date === 'string') {
       data.planned_start_date = new Date(data.planned_start_date);
@@ -2709,6 +2887,13 @@ projectsRouter.use('/projects', createCrudRouter({
     }
 
     delete data.client_name;
+
+    if (data.department_id !== undefined || data.cost_center_id !== undefined) {
+      const rawDeptId = data.department_id !== undefined ? data.department_id : data.cost_center_id;
+      const resolvedDept = await resolveProjectDepartment(companyId, rawDeptId);
+      data.cost_center_id = resolvedDept ? resolvedDept.id : null;
+    }
+    delete data.department_id;
 
     if (data.planned_start_date && typeof data.planned_start_date === 'string') {
       data.planned_start_date = new Date(data.planned_start_date);

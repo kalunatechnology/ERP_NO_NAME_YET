@@ -128,7 +128,6 @@ export function AccessAdministration() {
   // Departments & Divisions (Cost Center) state
   const [companyViewTab, setCompanyViewTab] = useState<"members" | "departments">("members");
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
-  const [deptLoading, setDeptLoading] = useState(false);
   const [deptFormOpen, setDeptFormOpen] = useState(false);
   const [deptSubmitting, setDeptSubmitting] = useState(false);
   const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
@@ -405,18 +404,29 @@ export function AccessAdministration() {
     }
   }
 
-  /** Save Department & 3-Role Hierarchy (GM / SPV / STAFF) for a user */
-  async function handleSaveUserDepartmentRole(departmentId: string | null, roleLevel: string) {
-    if (!selectedUserId) return;
+  /** Save Department & 3-Role Hierarchy (GM / SPV / STAFF) for any user in the company */
+  async function handleSaveUserDepartmentRole(
+    departmentId: string | null,
+    roleLevel?: string,
+    targetUserId?: string,
+  ) {
+    const uid = targetUserId || selectedUserId;
+    if (!uid) return;
     setSavingDeptRole(true);
     try {
       await api.put(
-        `/api/v1/accounts/users/${selectedUserId}/department-role`,
-        { department_id: departmentId || null, role_level: roleLevel },
+        `/api/v1/accounts/users/${uid}/department-role`,
+        {
+          department_id: departmentId || null,
+          ...(roleLevel ? { role_level: roleLevel } : {}),
+        },
         contextCompany ? { headers: { "X-Company-ID": contextCompany } } : undefined,
       );
       await loadBase();
       await loadCompanyContext();
+      if (uid === user?.id) {
+        await refreshProfile();
+      }
       toast.success("Departemen & Level Hierarki Role user berhasil diperbarui.");
     } catch (error: any) {
       toast.error(errorMessage(error, "Gagal memperbarui departemen & level role user."));
@@ -1060,6 +1070,50 @@ export function AccessAdministration() {
                       )}
                     </div>
                   </div>
+                  <div className="mt-3 border-t border-[#EFEFEF] pt-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#4F5050]">
+                        Anggota Departemen ({displayedUsers.filter((u) => String(u.department_id || "") === String(d.id)).length} user):
+                      </span>
+                      <select
+                        disabled={savingDeptRole}
+                        value=""
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          void handleSaveUserDepartmentRole(d.id, undefined, e.target.value);
+                        }}
+                        className="h-7 rounded-lg border border-[#D9D9D9] bg-white px-2 text-[11px] font-semibold text-[#2649B3] outline-none focus:border-[#2649B3]"
+                      >
+                        <option value="">+ Assign User ke {d.code}…</option>
+                        {displayedUsers
+                          .filter((u) => String(u.department_id || "") !== String(d.id))
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.full_name || u.email} ({String(u.role_level || "STAFF").toUpperCase()})
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {displayedUsers.filter((u) => String(u.department_id || "") === String(d.id)).length > 0 ? (
+                        displayedUsers
+                          .filter((u) => String(u.department_id || "") === String(d.id))
+                          .map((u) => (
+                            <span
+                              key={u.id}
+                              className="inline-flex items-center gap-1 rounded-lg border border-[#D9D9D9] bg-white px-2 py-0.5 text-[11px] font-medium text-[#090909]"
+                            >
+                              <span>{u.full_name || u.email}</span>
+                              <span className="rounded bg-[#EAF6FF] px-1 text-[9px] font-bold text-[#2649B3]">
+                                {String(u.role_level || "STAFF").toUpperCase()}
+                              </span>
+                            </span>
+                          ))
+                      ) : (
+                        <span className="text-xs text-[#4F5050]">Belum ada user ditempatkan di unit ini</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1129,6 +1183,13 @@ export function AccessAdministration() {
                         {member.id === user?.id ? "Your account · " : ""}
                         {roleName}
                       </span>
+                      <span className="mt-0.5 block truncate text-[11px] font-medium text-[#2649B3]/80">
+                        {(() => {
+                          const dept = departments.find((d) => String(d.id) === String(member.department_id || ""));
+                          const lvl = String(member.role_level || "STAFF").toUpperCase();
+                          return dept ? `[${dept.code}] ${dept.name} · ${lvl}` : `Belum ada departemen · ${lvl}`;
+                        })()}
+                      </span>
                     </span>
                     <ChevronRight
                       size={15}
@@ -1196,7 +1257,7 @@ export function AccessAdministration() {
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-[#4F5050]">Departemen / Divisi (Cost Center)</label>
                       <select
-                        disabled={savingDeptRole || selectedUser.id === user?.id}
+                        disabled={savingDeptRole}
                         value={selectedUser.department_id || ""}
                         onChange={(e) => void handleSaveUserDepartmentRole(e.target.value || null, String(selectedUser.role_level || "STAFF"))}
                         className="h-10 w-full rounded-xl border border-[#D9D9D9] bg-white px-3 text-xs font-semibold text-[#090909] outline-none focus:border-[#2649B3] disabled:opacity-60"
@@ -1212,7 +1273,7 @@ export function AccessAdministration() {
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-[#4F5050]">Level Hierarki Role (3 Level)</label>
                       <select
-                        disabled={savingDeptRole || selectedUser.id === user?.id}
+                        disabled={savingDeptRole}
                         value={String(selectedUser.role_level || "STAFF").toUpperCase()}
                         onChange={(e) => void handleSaveUserDepartmentRole(selectedUser.department_id || null, e.target.value)}
                         className="h-10 w-full rounded-xl border border-[#D9D9D9] bg-white px-3 text-xs font-semibold text-[#090909] outline-none focus:border-[#2649B3] disabled:opacity-60"

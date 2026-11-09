@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import {
   Project, MainTask, WeeklyTask, DailyTask, TaskTransfer, ProjectAuthority, ProjectSupervisor,
-  loadAllProjects, mergeProjectDashboardBundles, createProject, deleteProject,
+  loadAllProjects, mergeProjectDashboardBundles, createProject, deleteProject, updateProjectDepartment,
   createMainTask, deleteMainTask,
   createWeeklyTask, deleteWeeklyTask, reviewWeeklyTask,
   createDailyTask, updateDailyTask, deleteDailyTask,
@@ -358,10 +358,12 @@ export default function ProjectsClient() {
 
   /* Form states */
   const [newProjForm, setNewProjForm] = useState({
-    name: "", code: "", customer_name: "", vendorSupplierIds: [] as string[], partnerIds: [] as string[], budget_amount: "", description: "",
+    name: "", code: "", customer_name: "", department_id: "", vendorSupplierIds: [] as string[], partnerIds: [] as string[], budget_amount: "", description: "",
     planned_start_date: localDateKey(),
     planned_end_date: localDateKey(new Date(Date.now() + 30 * 86400000))
   });
+  const [departmentOptions, setDepartmentOptions] = useState<Array<{ id: string; code: string; name: string; unit_type?: string }>>([]);
+  const [projectDeptSaving, setProjectDeptSaving] = useState(false);
   const [mainTaskForm, setMainTaskForm] = useState({ title: "", cost_owner_division_id: "", description: "", weight: "", priority: "MEDIUM" as "LOW" | "MEDIUM" | "HIGH" | "URGENT" });
   const [mainTaskErrors, setMainTaskErrors] = useState<Record<string, string>>({});
   const [weeklyForm, setWeeklyForm] = useState({ week_number: "1", target_description: "", start_date: "", end_date: "", assignee_id: "" });
@@ -594,6 +596,15 @@ export default function ProjectsClient() {
   const canUpdateProject = useMemo(() => canPerform("project:update", userRole, { enabledModules: user?.enabled_modules, moduleAccess: user?.module_access }), [userRole, user?.enabled_modules, user?.module_access]);
   const canManageSelectedProject = allowsProjectManagement && Boolean(selectedAuthority?.can_manage_project);
   const canUpdateSelectedProject = allowsProjectManagement && (canUpdateProject || isActingProjectManager);
+  const canAssignProjectDepartment = allowsProjectManagement && (
+    isPM ||
+    userRole === "pm" ||
+    userRole === "om" ||
+    userRole === "executive" ||
+    userRole === "company_admin" ||
+    String(user?.role_level || "").toUpperCase() === "GM" ||
+    Boolean(selectedAuthority?.can_manage_project)
+  );
   // Financial data (biaya, dana, billing) hanya terlihat untuk role tertentu.
   // Array literal di bawah digunakan sebagai second-layer guard di frontend
   // agar konsisten meski selectedAuthority belum dimuat.
@@ -699,7 +710,10 @@ export default function ProjectsClient() {
         }));
       const auxiliaryData = Promise.allSettled([
         getTransferRequests(),
-        Promise.resolve([]),
+        api.get('/api/v1/master-data/departments').then((response) => {
+          const rows = response.data?.results ?? response.data?.data ?? response.data ?? [];
+          return Array.isArray(rows) ? rows : [];
+        }),
         fetchProjectCustomers(),
         api.get('/api/v1/core/organizations/?status=ACTIVE&page_size=200').then((response) => {
           const rows = response.data?.results ?? response.data?.data ?? [];
@@ -732,27 +746,61 @@ export default function ProjectsClient() {
         if (version !== fetchVersionRef.current) return;
         const valueOrEmpty = (result: PromiseSettledResult<any>) => result.status === "fulfilled" ? result.value : [];
         const transferList = valueOrEmpty(auxiliary[0]);
+        const rawDepts = valueOrEmpty(auxiliary[1]);
         const custList = valueOrEmpty(auxiliary[2]);
         const divisions = valueOrEmpty(auxiliary[3]);
         const relatedPartyOptions = valueOrEmpty(auxiliary[4]);
-        const divisionNameById = new Map(
-          (Array.isArray(divisions) ? divisions : []).map((division: any) => [
+        const normalizedDepts = (Array.isArray(rawDepts) ? rawDepts : [])
+          .filter((d: any) => d && d.id && d.is_active !== false)
+          .map((d: any) => ({
+            id: String(d.id),
+            code: String(d.code || d.department_code || d.cost_center_code || "DEPT"),
+            name: String(d.name || d.department_name || d.cost_center_name || d.id),
+            unit_type: String(d.unit_type || "DEPARTMENT"),
+          }));
+        setDepartmentOptions(normalizedDepts);
+
+        const mergedDivisions = [
+          ...(Array.isArray(divisions) ? divisions : []),
+          ...normalizedDepts
+            .filter((d) => !(Array.isArray(divisions) ? divisions : []).some((div: any) => String(div.id) === d.id))
+            .map((d) => ({
+              id: d.id,
+              organization_code: d.code,
+              organization_name: `${d.code} — ${d.name}`,
+              name: d.name,
+            })),
+        ];
+
+        const divisionNameById = new Map<string, string>([
+          ...(Array.isArray(divisions) ? divisions : []).map((division: any): [string, string] => [
             String(division.id),
             String(division.organization_name ?? division.name ?? division.id),
           ]),
-        );
-        setProjects(data.map((project) => ({
-          ...project,
-          main_tasks: (project.main_tasks || []).map((mainTask) => ({
-            ...mainTask,
-            cost_owner_division_name: mainTask.cost_owner_division_id
-              ? divisionNameById.get(String(mainTask.cost_owner_division_id)) ?? String(mainTask.cost_owner_division_id)
-              : undefined,
-          })),
-        })));
+          ...normalizedDepts.map((d): [string, string] => [d.id, `${d.code} — ${d.name}`]),
+        ]);
+        const deptById = new Map(normalizedDepts.map((d) => [d.id, d]));
+
+        setProjects(data.map((project) => {
+          const deptId = project.department_id || project.cost_center_id || null;
+          const matchedDept = deptId ? deptById.get(String(deptId)) : undefined;
+          return {
+            ...project,
+            department_id: deptId,
+            cost_center_id: deptId,
+            department_code: matchedDept?.code ?? project.department_code ?? null,
+            department_name: matchedDept?.name ?? project.department_name ?? null,
+            main_tasks: (project.main_tasks || []).map((mainTask) => ({
+              ...mainTask,
+              cost_owner_division_name: mainTask.cost_owner_division_id
+                ? divisionNameById.get(String(mainTask.cost_owner_division_id)) ?? String(mainTask.cost_owner_division_id)
+                : undefined,
+            })),
+          };
+        }));
         if (custList?.length) setCustomerOptions(custList);
         setTransfers(transferList);
-        setDivisionOptions(Array.isArray(divisions) ? divisions : []);
+        setDivisionOptions(mergedDivisions);
         setProjectPartyOptions(Array.isArray(relatedPartyOptions) ? relatedPartyOptions : []);
       });
     } catch (error) {
@@ -775,12 +823,23 @@ export default function ProjectsClient() {
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
+  const [assignDeptFilter, setAssignDeptFilter] = useState<"PROJECT_DEPT" | "ALL">("ALL");
+
   const openAssignModal = (main: MainTask) => {
     if (!selectedAuthority?.can_assign_team) {
       toast.error("Anda tidak memiliki kewenangan assignment pada project ini.");
       return;
     }
     setActiveMainTask(main);
+    const effectiveDeptId =
+      projectSupervisor?.department_id ||
+      selectedProject?.department_id ||
+      selectedProject?.cost_center_id ||
+      null;
+    const hasDeptUsers = effectiveDeptId
+      ? companyUsers.some((u) => String(u.department_id || "") === String(effectiveDeptId))
+      : false;
+    setAssignDeptFilter(effectiveDeptId && hasDeptUsers ? "PROJECT_DEPT" : "ALL");
 /**
  * currentAssigned coordinates the UI behavior represented by this function.
  *
@@ -855,6 +914,20 @@ export default function ProjectsClient() {
         if (version !== authorityFetchVersionRef.current) return;
         setProjectAuthority(authority);
         setProjectSupervisor(supervisor);
+        if (supervisor?.department_id) {
+          setProjects((prev) =>
+            prev.map((p) =>
+              String(p.id) === String(projectId) && !p.department_id
+                ? {
+                    ...p,
+                    department_id: supervisor.department_id ?? null,
+                    department_code: supervisor.department_code ?? p.department_code ?? null,
+                    department_name: supervisor.department_name ?? p.department_name ?? null,
+                  }
+                : p,
+            ),
+          );
+        }
         if (authority.can_assign_team || authority.can_delegate_supervisor) {
           const users = await fetchCompanyUsers(projectId);
           if (version === authorityFetchVersionRef.current) setCompanyUsers(users);
@@ -880,7 +953,25 @@ export default function ProjectsClient() {
     try {
       const supervisor = await assignProjectSupervisor(selectedId, supervisorCandidateId);
       setProjectSupervisor(supervisor);
-      toast.success("Project Supervisor berhasil ditetapkan.");
+      setProjects((prev) =>
+        prev.map((p) =>
+          String(p.id) === String(selectedId)
+            ? {
+                ...p,
+                cost_center_id: supervisor?.department_id ?? null,
+                department_id: supervisor?.department_id ?? null,
+                department_code: supervisor?.department_code ?? null,
+                department_name: supervisor?.department_name ?? null,
+              }
+            : p,
+        ),
+      );
+      toast.success(
+        supervisor?.department_name
+          ? `Project Supervisor ditetapkan. Departemen proyek ditarik otomatis dari SPV: [${supervisor.department_code || "DEPT"}] ${supervisor.department_name}.`
+          : "Project Supervisor berhasil ditetapkan.",
+      );
+      await fetchProjects(true);
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Gagal menetapkan Project Supervisor."));
     } finally {
@@ -893,10 +984,25 @@ export default function ProjectsClient() {
     if (!confirm(`Cabut Project Supervisor ${projectSupervisor.full_name}?`)) return;
     setSupervisorSaving(true);
     try {
+      const prevSpvDeptId = projectSupervisor.department_id;
       await revokeProjectSupervisor(selectedId);
       setProjectSupervisor(null);
       setSupervisorCandidateId("");
+      setProjects((prev) =>
+        prev.map((p) =>
+          String(p.id) === String(selectedId) && p.department_id === prevSpvDeptId
+            ? {
+                ...p,
+                cost_center_id: null,
+                department_id: null,
+                department_code: null,
+                department_name: null,
+              }
+            : p,
+        ),
+      );
       toast.success("Project Supervisor berhasil dicabut.");
+      await fetchProjects(true);
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Gagal mencabut Project Supervisor."));
     } finally {
@@ -1480,6 +1586,8 @@ export default function ProjectsClient() {
         name: newProjForm.name.trim(),
         code: newProjForm.code.trim(),
         customer_name: newProjForm.customer_name.trim(),
+        department_id: newProjForm.department_id || null,
+        cost_center_id: newProjForm.department_id || null,
         vendor_supplier_party_ids: newProjForm.vendorSupplierIds,
         partner_party_ids: newProjForm.partnerIds,
         budget_amount: Number(newProjForm.budget_amount) || 0,
@@ -1490,7 +1598,7 @@ export default function ProjectsClient() {
       toast.success(`Proyek "${newProjForm.name}" berhasil dibuat.`);
       setIsCreateProjOpen(false);
       setNewProjForm({
-        name: "", code: "", customer_name: "", vendorSupplierIds: [], partnerIds: [], budget_amount: "", description: "",
+        name: "", code: "", customer_name: "", department_id: "", vendorSupplierIds: [], partnerIds: [], budget_amount: "", description: "",
         planned_start_date: localDateKey(),
         planned_end_date: localDateKey(new Date(Date.now() + 30 * 86400000))
       });
@@ -1498,6 +1606,40 @@ export default function ProjectsClient() {
       if (res?.id) navigateProject(res.id);
     } catch (error) {
       toast.error(getApiErrorDetail(error, "Proyek belum dapat dibuat. Periksa kode yang mungkin sudah digunakan, data pelanggan, dan hak akses."));
+    }
+  };
+
+  const handleAssignProjectDepartment = async (nextDepartmentId: string | null) => {
+    if (!selectedProject || projectDeptSaving) return;
+    setProjectDeptSaving(true);
+    try {
+      const updated = await updateProjectDepartment(selectedProject.id, nextDepartmentId);
+      const matched = nextDepartmentId
+        ? departmentOptions.find((d) => String(d.id) === String(nextDepartmentId))
+        : undefined;
+      setProjects((prev) =>
+        prev.map((p) =>
+          String(p.id) === String(selectedProject.id)
+            ? {
+                ...p,
+                cost_center_id: updated?.cost_center_id ?? nextDepartmentId ?? null,
+                department_id: updated?.department_id ?? nextDepartmentId ?? null,
+                department_code: updated?.department_code ?? matched?.code ?? null,
+                department_name: updated?.department_name ?? matched?.name ?? null,
+              }
+            : p,
+        ),
+      );
+      toast.success(
+        matched
+          ? `Proyek ditempatkan ke Departemen [${matched.code}] ${matched.name}.`
+          : "Penempatan departemen proyek dilepas.",
+      );
+      await fetchProjects(true);
+    } catch (error) {
+      toast.error(getApiErrorDetail(error, "Gagal mengubah departemen proyek."));
+    } finally {
+      setProjectDeptSaving(false);
     }
   };
 
@@ -1852,6 +1994,22 @@ export default function ProjectsClient() {
                 <span className="text-2xs text-white/80 flex items-center gap-1">
                   PM: <b>{selectedProject.pm_name || "Project Manager Assigned"}</b>
                 </span>
+                <span className="text-2xs font-bold px-2 py-0.5 rounded bg-white/20 text-white">
+                  Departemen:{" "}
+                  {selectedProject.department_name || projectSupervisor?.department_name
+                    ? `${
+                        selectedProject.department_code || projectSupervisor?.department_code
+                          ? `[${selectedProject.department_code || projectSupervisor?.department_code}] `
+                          : ""
+                      }${selectedProject.department_name || projectSupervisor?.department_name}${
+                        projectSupervisor?.department_id &&
+                        (!selectedProject.cost_center_id ||
+                          String(selectedProject.cost_center_id) === String(projectSupervisor.department_id))
+                          ? " (Relasi SPV)"
+                          : ""
+                      }`
+                    : "Belum Ditempatkan"}
+                </span>
                 {selectedAuthority?.is_acting_project_manager && (
                   <span className="text-2xs font-bold rounded bg-amber-300 px-2 py-0.5 text-amber-950">
                     Project Supervisor / Acting PM
@@ -1883,6 +2041,34 @@ export default function ProjectsClient() {
                   </span>
                 )) : <span>Belum ditautkan</span>}
               </div>
+
+              {canAssignProjectDepartment && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs text-white">
+                  <label htmlFor="project-department-assign" className="text-2xs font-bold uppercase tracking-wider text-white/90">
+                    Departemen Proyek (PM / GM):
+                  </label>
+                  <select
+                    id="project-department-assign"
+                    disabled={projectDeptSaving}
+                    value={String(
+                      selectedProject.department_id ||
+                        selectedProject.cost_center_id ||
+                        projectSupervisor?.department_id ||
+                        "",
+                    )}
+                    onChange={(e) => void handleAssignProjectDepartment(e.target.value || null)}
+                    className="h-8 min-w-[230px] rounded-lg border border-white/30 bg-white px-2.5 text-xs font-semibold text-[#111827] outline-none focus:ring-2 focus:ring-white/40 disabled:opacity-60"
+                  >
+                    <option value="">-- Biarkan NULL / Ikuti Relasi SPV --</option>
+                    {departmentOptions.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        [{dept.unit_type === "DIVISION" ? "DIVISI" : "DEPT"}] {dept.code} — {dept.name}
+                      </option>
+                    ))}
+                  </select>
+                  {projectDeptSaving && <span className="text-2xs text-white/80">Menyimpan…</span>}
+                </div>
+              )}
             </div>
 
             {/* Rollup Progress */}
@@ -2000,22 +2186,41 @@ export default function ProjectsClient() {
         <section className="card rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <span className="text-2xs font-bold uppercase tracking-wider text-amber-700">Project Supervisor</span>
+              <span className="text-2xs font-bold uppercase tracking-wider text-amber-700">Project Supervisor (SPV) & Relasi Departemen</span>
               <div className="mt-1 text-sm font-bold text-text-primary">
                 {projectSupervisor ? projectSupervisor.full_name : "Belum ditetapkan"}
               </div>
-              {projectSupervisor && <div className="text-2xs text-text-secondary">{projectSupervisor.email} · Acting Project Manager</div>}
+              {projectSupervisor ? (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-text-secondary">
+                  <span>{projectSupervisor.email} · Acting Project Manager</span>
+                  <span className="rounded-md border border-amber-300 bg-amber-100/80 px-2 py-0.5 font-bold text-amber-900">
+                    Departemen SPV:{" "}
+                    {projectSupervisor.department_name
+                      ? `${projectSupervisor.department_code ? `[${projectSupervisor.department_code}] ` : ""}${projectSupervisor.department_name}`
+                      : "Belum ditempatkan oleh Company Admin"}
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-0.5 text-2xs text-text-secondary">
+                  Memilih SPV akan otomatis menarik Departemen yang digunakan pada proyek dan manajemen anggota tim.
+                </div>
+              )}
             </div>
             {selectedAuthority.can_delegate_supervisor && (
               <div className="flex flex-wrap items-center gap-2">
                 <select
-                  className="input min-w-[240px] text-xs"
+                  className="input min-w-[260px] text-xs"
                   value={supervisorCandidateId}
                   onChange={(event) => setSupervisorCandidateId(event.target.value)}
                 >
-                  <option value="">Pilih Staff / Supervisor</option>
+                  <option value="">Pilih Staff / Supervisor (Tarik Departemen)</option>
                   {companyUsers.map((member) => (
-                    <option key={member.id} value={member.id}>{member.full_name} ({member.role_name || member.role_in_project})</option>
+                    <option key={member.id} value={member.id}>
+                      {member.full_name} ({member.role_level === "SPV" ? "SPV" : member.role_name || member.role_in_project}) —{" "}
+                      {member.department_name
+                        ? `[${member.department_code || "DEPT"}] ${member.department_name}`
+                        : "Tanpa Departemen (NULL)"}
+                    </option>
                   ))}
                 </select>
                 <button
@@ -2935,65 +3140,190 @@ export default function ProjectsClient() {
       <Modal
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
-        title="Tugaskan Anggota ke Main Task (PM Delegation)"
+        title="Tugaskan Anggota ke Main Task (PM / SPV Delegation)"
         subtitle={`Paket Kerja: ${activeMainTask?.name || activeMainTask?.title}`}
         size="md"
       >
-        <div className="flex flex-col gap-3">
-          <p className="text-xs text-text-secondary">
-            Pilih satu atau lebih anggota tim yang ditugaskan untuk mengeksekusi paket kerja ini:
-          </p>
+        {(() => {
+          const activeProjectDeptId =
+            projectSupervisor?.department_id ||
+            selectedProject?.department_id ||
+            selectedProject?.cost_center_id ||
+            null;
+          const activeProjectDeptCode =
+            projectSupervisor?.department_code ||
+            selectedProject?.department_code ||
+            null;
+          const activeProjectDeptName =
+            projectSupervisor?.department_name ||
+            selectedProject?.department_name ||
+            null;
 
-          <div className="max-h-60 overflow-y-auto border border-text-tertiary rounded-xl p-2 flex flex-col gap-2 bg-gray-50/60">
-            {companyUsers.length === 0 && (
-              <p className="p-3 text-center text-xs text-text-secondary">Belum ada anggota aktif yang dapat ditugaskan pada company ini.</p>
-            )}
-            {companyUsers.map((u) => {
-              const uId = String(u.id);
-              const isChecked = selectedAssigneeIds.map(String).includes(uId);
+          const sortedUsers = [...companyUsers].sort((a, b) => {
+            const aInDept =
+              activeProjectDeptId && String(a.department_id || "") === String(activeProjectDeptId)
+                ? 0
+                : 1;
+            const bInDept =
+              activeProjectDeptId && String(b.department_id || "") === String(activeProjectDeptId)
+                ? 0
+                : 1;
+            if (aInDept !== bInDept) return aInDept - bInDept;
+            return String(a.full_name || "").localeCompare(String(b.full_name || ""));
+          });
 
-              return (
-                <label
-                  key={u.id}
-                  className={cn(
-                    "flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer bg-white",
-                    isChecked ? "border-brand-green bg-brand-light-green/30 ring-1 ring-brand-green/30" : "border-gray-200 hover:border-gray-300"
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedAssigneeIds(prev => [...prev, u.id]);
-                      } else {
-                        setSelectedAssigneeIds(prev => prev.filter(id => String(id) !== uId));
-                      }
-                    }}
-                    className="w-4 h-4 rounded text-brand-green accent-brand-green cursor-pointer"
-                  />
-                  <div className="w-8 h-8 rounded-full bg-brand-light-green flex items-center justify-center flex-shrink-0 text-brand-deep-green font-bold text-xs">
-                    {(u.full_name || u.username || "U")[0].toUpperCase()}
-                  </div>
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <strong className="text-xs text-text-primary truncate">{u.full_name || u.username}</strong>
-                      <span className="badge badge-info text-3xs font-semibold">{u.role_in_project || u.department || "MEMBER"}</span>
+          const visibleUsers =
+            assignDeptFilter === "PROJECT_DEPT" && activeProjectDeptId
+              ? sortedUsers.filter(
+                  (u) =>
+                    String(u.department_id || "") === String(activeProjectDeptId) ||
+                    selectedAssigneeIds.map(String).includes(String(u.id)),
+                )
+              : sortedUsers;
+
+          return (
+            <div className="flex flex-col gap-3">
+              <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="text-2xs font-bold uppercase tracking-wider text-[#294BB2]">
+                      Departemen Proyek / SPV Aktif
+                    </span>
+                    <div className="mt-0.5 font-bold text-text-primary">
+                      {activeProjectDeptName
+                        ? `${activeProjectDeptCode ? `[${activeProjectDeptCode}] ` : ""}${activeProjectDeptName}`
+                        : "Belum ada Departemen (Pilih SPV atau tetapkan Departemen)"}
                     </div>
-                    <span className="text-2xs text-text-secondary truncate">{u.email}</span>
                   </div>
-                </label>
-              );
-            })}
-          </div>
+                  {activeProjectDeptId && (
+                    <div className="flex items-center gap-1 rounded-lg border border-blue-200 bg-white p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setAssignDeptFilter("PROJECT_DEPT")}
+                        className={cn(
+                          "rounded-md px-2 py-1 text-2xs font-bold transition",
+                          assignDeptFilter === "PROJECT_DEPT"
+                            ? "bg-[#294BB2] text-white"
+                            : "text-text-secondary hover:text-text-primary",
+                        )}
+                      >
+                        Departemen SPV/Proyek
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAssignDeptFilter("ALL")}
+                        className={cn(
+                          "rounded-md px-2 py-1 text-2xs font-bold transition",
+                          assignDeptFilter === "ALL"
+                            ? "bg-[#294BB2] text-white"
+                            : "text-text-secondary hover:text-text-primary",
+                        )}
+                      >
+                        Semua ({companyUsers.length})
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-          <div className="flex justify-end gap-2 mt-2">
-            <button onClick={() => setIsAssignModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">Batal</button>
-            <button disabled={assignmentSaving} onClick={handleAssignMember} className="btn-primary py-1.5 px-4 text-xs bg-brand-deep-green hover:bg-brand-green disabled:opacity-60 disabled:cursor-not-allowed">
-              {assignmentSaving ? "Menyimpan..." : `Simpan Penugasan (${selectedAssigneeIds.length} Anggota)`}
-            </button>
-          </div>
-        </div>
+              <p className="text-xs text-text-secondary">
+                Pilih satu atau lebih anggota tim yang ditugaskan untuk mengeksekusi paket kerja ini:
+              </p>
+
+              <div className="max-h-60 overflow-y-auto border border-text-tertiary rounded-xl p-2 flex flex-col gap-2 bg-gray-50/60">
+                {visibleUsers.length === 0 && (
+                  <div className="p-3 text-center text-xs text-text-secondary">
+                    <p>Tidak ada anggota pada filter departemen ini.</p>
+                    {assignDeptFilter === "PROJECT_DEPT" && companyUsers.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAssignDeptFilter("ALL")}
+                        className="mt-1.5 text-xs font-bold text-[#294BB2] underline"
+                      >
+                        Tampilkan semua anggota company ({companyUsers.length})
+                      </button>
+                    )}
+                  </div>
+                )}
+                {visibleUsers.map((u) => {
+                  const uId = String(u.id);
+                  const isChecked = selectedAssigneeIds.map(String).includes(uId);
+                  const isSameDept =
+                    Boolean(activeProjectDeptId) &&
+                    String(u.department_id || "") === String(activeProjectDeptId);
+
+                  return (
+                    <label
+                      key={u.id}
+                      className={cn(
+                        "flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer bg-white",
+                        isChecked
+                          ? "border-brand-green bg-brand-light-green/30 ring-1 ring-brand-green/30"
+                          : isSameDept
+                            ? "border-blue-200 hover:border-blue-300"
+                            : "border-gray-200 hover:border-gray-300",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedAssigneeIds((prev) => [...prev, u.id]);
+                          } else {
+                            setSelectedAssigneeIds((prev) => prev.filter((id) => String(id) !== uId));
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-brand-green accent-brand-green cursor-pointer"
+                      />
+                      <div className="w-8 h-8 rounded-full bg-brand-light-green flex items-center justify-center flex-shrink-0 text-brand-deep-green font-bold text-xs">
+                        {(u.full_name || u.username || "U")[0].toUpperCase()}
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <strong className="text-xs text-text-primary truncate">
+                            {u.full_name || u.username}
+                          </strong>
+                          <span className="badge badge-info text-3xs font-semibold">
+                            {u.role_level === "SPV" ? "SPV" : u.role_in_project || "STAFF"}
+                          </span>
+                          <span
+                            className={cn(
+                              "rounded-md px-1.5 py-0.5 text-3xs font-bold",
+                              isSameDept
+                                ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                                : u.department_name
+                                  ? "border border-gray-200 bg-gray-100 text-gray-700"
+                                  : "border border-amber-200 bg-amber-50 text-amber-800",
+                            )}
+                          >
+                            {u.department_name
+                              ? `${u.department_code ? `[${u.department_code}] ` : ""}${u.department_name}`
+                              : "Tanpa Dept (NULL)"}
+                          </span>
+                        </div>
+                        <span className="text-2xs text-text-secondary truncate">{u.email}</span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end gap-2 mt-2">
+                <button onClick={() => setIsAssignModalOpen(false)} className="btn-ghost py-1.5 px-3 text-xs">
+                  Batal
+                </button>
+                <button
+                  disabled={assignmentSaving}
+                  onClick={handleAssignMember}
+                  className="btn-primary py-1.5 px-4 text-xs bg-brand-deep-green hover:bg-brand-green disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {assignmentSaving ? "Menyimpan..." : `Simpan Penugasan (${selectedAssigneeIds.length} Anggota)`}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
 
       <Modal
@@ -3461,6 +3791,24 @@ export default function ProjectsClient() {
                 ))}
               </datalist>
             </div>
+          </div>
+          <div>
+            <label htmlFor="new-project-department" className="text-xs font-bold text-text-secondary block mb-1">
+              Departemen / Divisi Pengelola Proyek (Diatur oleh PM / GM)
+            </label>
+            <select
+              id="new-project-department"
+              value={newProjForm.department_id}
+              onChange={(e) => setNewProjForm({ ...newProjForm, department_id: e.target.value })}
+              className="input text-xs"
+            >
+              <option value="">-- Pilih Departemen / Divisi Proyek --</option>
+              {departmentOptions.map((dept) => (
+                <option key={dept.id} value={dept.id}>
+                  [{dept.unit_type === "DIVISION" ? "DIVISI" : "DEPT"}] {dept.code} — {dept.name}
+                </option>
+              ))}
+            </select>
           </div>
           <p className="text-2xs text-text-secondary">Vendor/Supplier dan Partner opsional. Tambahkan rekanan terlebih dahulu di Master Rekanan jika belum tersedia.</p>
           <div className="grid grid-cols-2 gap-3">
