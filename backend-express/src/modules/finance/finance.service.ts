@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { AccountingError, NotFoundError, ValidationError } from '../../utils/errors';
 import { FinanceDocumentService } from './finance-document.service';
+import { BudgetingService } from './budgeting.service';
 // NOTE: PeriodClosingService is imported lazily to avoid circular deps
 // It is called via dynamic import below
 
@@ -176,6 +177,8 @@ export class FinanceService {
         );
       }
 
+      await BudgetingService.recordJournalActuals(tx, { ...entry, posting_date: postingDate }, lines);
+
       return tx.fin_journal_entry.update({
         where: { id: entryId },
         data: { status: 'POSTED', posting_date: new Date() },
@@ -340,6 +343,8 @@ export class FinanceService {
             source_document_line_id: line.source_document_line_id,
         })),
       });
+
+      await BudgetingService.reverseJournalActuals(tx, entryId, reversalEntry, reversedByUserId);
 
       // Tandai jurnal asal sebagai REVERSED
       await tx.fin_journal_entry.update({

@@ -21,6 +21,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { CustomerPartyService } from '../projects/customer-party.service';
 import { validateCustomerReceipt } from './customer-receipt.validation';
 import { CustomerReceiptService } from './customer-receipt.service';
+import { BudgetingService } from './budgeting.service';
 import { hasModuleOverride } from '../../utils/module-permissions';
 
 export const financeRouter = Router();
@@ -1742,8 +1743,81 @@ financeRouter.use('/bank-reconciliations', createCrudRouter({
   beforeDelete: async (req, existing) => { await assertBankStatementLineOpen(req, existing.bank_statement_line_id); },
 }));
 financeRouter.use('/tax-transactions', createCrudRouter({ modelName: 'fin_tax_transaction' }));
-financeRouter.use('/budgets', createCrudRouter({ modelName: 'fin_budget' }));
-financeRouter.use('/budget-lines', createCrudRouter({ modelName: 'fin_budget_line' }));
+financeRouter.get('/budgeting/options', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.getOptions(activeCompanyId(req))); } catch (err) { next(err); }
+});
+financeRouter.get('/budgeting/dashboard', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try {
+    const fiscalYearId = typeof req.query.fiscal_year_id === 'string' ? req.query.fiscal_year_id : undefined;
+    sendSuccess(res, await BudgetingService.getDashboard(activeCompanyId(req), fiscalYearId));
+  } catch (err) { next(err); }
+});
+financeRouter.get('/budgeting/workflow', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.getWorkflowQueue(activeCompanyId(req))); } catch (err) { next(err); }
+});
+financeRouter.get('/budgeting/reservations', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.getReservations(activeCompanyId(req))); } catch (err) { next(err); }
+});
+financeRouter.get('/budgeting/ledger', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try {
+    const allocationId = typeof req.query.allocation_id === 'string' ? req.query.allocation_id : undefined;
+    sendSuccess(res, await BudgetingService.getLedger(activeCompanyId(req), allocationId));
+  } catch (err) { next(err); }
+});
+financeRouter.get('/budgets', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.listPlans(activeCompanyId(req))); } catch (err) { next(err); }
+});
+financeRouter.get('/budget-lines', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.getAllocations(activeCompanyId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/budgets', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.createPlan(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
+});
+financeRouter.post('/budgets/:id/submit', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.submitPlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/budgets/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.approvePlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/budgets/:id/reject', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.rejectPlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+});
+financeRouter.post('/budgets/:id/close', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.closePlan(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-reservations', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.createReservation(activeCompanyId(req), req.tenantId ?? null, authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-reservations/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.approveReservation(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-reservations/:id/reject', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.rejectReservation(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-reservations/:id/release', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.releaseReservation(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body)); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-reservations/:id/recognize', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.releaseReservation(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body, true)); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-revisions', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.requestRevision(activeCompanyId(req), authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-revisions/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.approveRevision(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-revisions/:id/reject', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.rejectRevision(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-transfers', requireFinanceRole([RoleCode.FINANCE]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.requestTransfer(activeCompanyId(req), authenticatedFinanceUserId(req), req.body), 201); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-transfers/:id/approve', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.approveTransfer(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req))); } catch (err) { next(err); }
+});
+financeRouter.post('/budget-transfers/:id/reject', requireFinanceRole([RoleCode.FINANCE, RoleCode.DIRECTOR]), async (req, res, next) => {
+  try { sendSuccess(res, await BudgetingService.rejectTransfer(activeCompanyId(req), req.params.id, authenticatedFinanceUserId(req), req.body?.reason)); } catch (err) { next(err); }
+});
 financeRouter.use('/project-cost-entries', createCrudRouter({
   modelName: 'fin_project_cost_entry', searchFields: ['description'],
   beforeCreate: async (req, data) => { await assertFinancialDateOpen(req, data.transaction_date); return { ...data, status: 'DRAFT' }; },

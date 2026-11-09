@@ -16,7 +16,7 @@ import {
   BookOpen, BarChart3, Activity, Banknote, ArrowLeftRight, TrendingDown,
   AlertTriangle, CheckSquare, Clock, Eye, LayoutDashboard, Crown, BriefcaseBusiness,
   ClipboardList, Receipt, RotateCcw, WalletCards, LibraryBig, FileBarChart,
-  Link2, Calculator, CalendarRange, HardHat, Send, Info, Search, ChevronLeft, ChevronRight, ChevronDown
+  Link2, Calculator, CalendarRange, HardHat, Send, Info, Search, ChevronLeft, ChevronRight, ChevronDown, CircleDollarSign
 } from "lucide-react";
 import { cn, formatMoney, formatRupiah, formatDate, getStatusColor, localDateKey } from "@/lib/utils";
 import api from "@/lib/api/axios";
@@ -33,6 +33,7 @@ import { MonthlyStackedBarChart } from "@/components/ui/MonthlyStackedBarChart";
 import { ProjectTaxWorkspace } from "@/components/finance/ProjectTaxWorkspace";
 import { CompanyMasterWorkspace } from "@/components/finance/CompanyMasterWorkspace";
 import { FinanceSummarySection } from "@/components/finance/FinanceSummarySection";
+import { BudgetingWorkspace } from "@/components/finance/BudgetingWorkspace";
 import { AccessDeniedState, isForbiddenError } from "@/components/ui/AccessDeniedState";
 import { useAuth } from "@/contexts/AuthContext";
 import { canRequestApi } from "@/lib/access/module-contract";
@@ -52,6 +53,7 @@ const FINANCE_TABS = [
   { id: "company_master", label: "Master Perusahaan", icon: Building },
   { id: "profit", label: "Profitabilitas", icon: TrendingUp },
   { id: "costing", label: "Costing & WIP", icon: Calculator },
+  { id: "budgeting", label: "Budgetary Control", icon: CircleDollarSign },
   { id: "fundings", label: "Funding Proyek", icon: BriefcaseBusiness },
   { id: "ap", label: "Tagihan Vendor", icon: ClipboardList },
   { id: "billing", label: "Billing Termin", icon: Receipt },
@@ -922,6 +924,8 @@ export default function FinanceClient() {
         <div className="workspace-container min-w-0 w-full flex-1">
 
       {/* ── TAB 1: OVERVIEW ────────────────────── */}
+      {activeTab === "budgeting" && <BudgetingWorkspace canOperate={canOperateFinance} />}
+
       {activeTab === "overview" && (
         <div className="flex flex-col gap-6">
           <FinanceSummarySection
