@@ -15,9 +15,10 @@ import {
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
   Calculator, ShieldCheck, Award, BarChart3, MessageSquare, FileCheck,
   ChevronRight, ChevronDown, AlertCircle, Star, UserPlus, Copy, Pencil,
-  Inbox, Globe2, Search, Filter,
+  Inbox, Globe2, Search, Filter, Download,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
+import * as XLSX from "xlsx";
 import { Modal } from "@/components/ui/Modal";
 import { IDRInput } from "@/components/ui/IDRInput";
 import toast from "react-hot-toast";
@@ -40,6 +41,7 @@ import {
   type CRMInboxConversation,
 } from "@/lib/api/crm.api";
 import api from "@/lib/api/axios";
+import { normalizeList } from "@/lib/api/auth.api";
 import { getUserFacingApiError } from "@/lib/api/error-message";
 import { requestApi, type MeetingMinutesReference } from "@/lib/api/request.api";
 import { feedApi } from "@/lib/api/feed.api";
@@ -66,6 +68,34 @@ const CRM_TABS = [
 /* ── Shared Helpers ──────────────────────────────── */
 function opportunityPartyId(opportunity: any): string | number | null {
   return opportunity?.customer_party_id ?? opportunity?.customer_party ?? opportunity?.customer ?? null;
+}
+
+async function loadAllCrmExportRows<T extends { id?: string | number }>(endpoint: string): Promise<T[]> {
+  const firstResponse = await api.get(endpoint);
+  const firstPage = normalizeList<T>(firstResponse.data);
+  const rowsById = new Map<string, T>();
+  firstPage.rows.forEach((row, index) => rowsById.set(String(row.id ?? `first-${index}`), row));
+  const pageSize = Math.max(1, firstPage.rows.length);
+  const totalPages = Math.ceil(firstPage.count / pageSize);
+
+  for (let firstPageNumber = 2; firstPageNumber <= totalPages; firstPageNumber += 3) {
+    const pageNumbers = Array.from(
+      { length: Math.min(3, totalPages - firstPageNumber + 1) },
+      (_, index) => firstPageNumber + index,
+    );
+    const separator = endpoint.includes("?") ? "&" : "?";
+    const responses = await Promise.all(
+      pageNumbers.map((page) => api.get(`${endpoint}${separator}page=${page}`)),
+    );
+    responses.forEach((response, responseIndex) => {
+      normalizeList<T>(response.data).rows.forEach((row, rowIndex) => {
+        const pageNumber = pageNumbers[responseIndex];
+        rowsById.set(String(row.id ?? `${pageNumber}-${rowIndex}`), row);
+      });
+    });
+  }
+
+  return Array.from(rowsById.values());
 }
 
 const CRM_PIPELINE_STAGE_LABELS: Record<string, string> = {
@@ -3589,6 +3619,7 @@ export default function CrmClient() {
   const [crmData, setCrmData] = useState<CRMData | null>(null);
   const [crmDash, setCrmDash] = useState<CRMDashboard>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [exportingCrm, setExportingCrm] = useState(false);
   const [isNewOppOpen, setIsNewOppOpen] = useState(false);
 
   // 3-Role Hierarchy (GM / SPV / STAFF) & Delegation state
@@ -3763,6 +3794,80 @@ export default function CrmClient() {
     opportunities: filterByRoleAndScope(rawData.opportunities),
   };
 
+  const exportCrmToExcel = async () => {
+    setExportingCrm(true);
+    try {
+      const [allInquiries, allOpportunities, parties, contacts] = await Promise.all([
+        loadAllCrmExportRows<any>("/api/v1/crm/customer-inquiries/?page_size=100"),
+        loadAllCrmExportRows<any>("/api/v1/crm/opportunities/?page_size=100"),
+        loadAllCrmExportRows<any>("/api/v1/master-data/parties/?page_size=300"),
+        loadAllCrmExportRows<any>("/api/v1/master-data/contacts/?page_size=300"),
+      ]);
+      const inquiries = filterByRoleAndScope(allInquiries);
+      const opportunities = filterByRoleAndScope(allOpportunities);
+      const partyNameById = new Map<string, string>(parties.map((party) => [
+        String(party.id), party.display_name || party.legal_name || party.party_name || "",
+      ]));
+      const userNameById = new Map<string, string>(teamUsers.map((teamUser) => [
+        String(teamUser.id), teamUser.full_name || teamUser.email || String(teamUser.id),
+      ]));
+      const departmentNameById = new Map<string, string>(departmentsList.map((department) => [
+        String(department.id), `${department.code || ""}${department.code ? " · " : ""}${department.name || ""}`,
+      ]));
+      const dateValue = (value: unknown) => value ? formatDate(value as string) : "";
+      const workbook = XLSX.utils.book_new();
+      const addSheet = (name: string, headers: string[], rows: unknown[][]) => {
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([headers, ...rows]), name);
+      };
+      const partyRows = (type: string) => parties
+        .filter((party) => {
+          const partyType = String(party.party_type || "CUSTOMER").toUpperCase();
+          return type === "VENDOR" ? ["VENDOR", "SUPPLIER"].includes(partyType) : partyType === type;
+        })
+        .map((party) => [
+          party.id || "", party.party_code || "", party.display_name || party.party_name || "",
+          party.legal_name || "", String(party.party_type || "CUSTOMER").toUpperCase(),
+          party.status || "", party.tax_number || "", dateValue(party.created_at),
+        ]);
+
+      addSheet("Lead", ["ID", "No. Lead", "Subjek", "Nama Customer", "Email", "Telepon", "Status", "Sumber", "Domain", "PIC Sales", "Departemen / Divisi", "Tindak Lanjut", "Catatan Kontak", "Deskripsi", "Dibuat"], inquiries.map((lead) => [
+        lead.id || "", lead.inquiry_number || "", lead.subject || "", lead.customer_name || "",
+        lead.customer_email || "", lead.customer_phone || "", lead.status || "", lead.source_channel || "",
+        lead.origin_domain || "", userNameById.get(String(lead.owner_user_id || "")) || lead.owner_user_id || "",
+        departmentNameById.get(String(lead.department_id || "")) || lead.department_id || "",
+        dateValue(lead.next_follow_up_at), lead.last_contact_note || "", lead.description || "", dateValue(lead.created_at),
+      ]));
+      addSheet("Opportunity", ["ID", "Nama Opportunity", "Customer", "Pipeline", "Status", "Nilai Estimasi", "Estimasi Margin", "Probabilitas (%)", "Target Closing", "Tindak Lanjut", "Alasan Kalah", "PIC Sales", "Departemen / Divisi", "Dibuat", "Ditutup"], opportunities.map((opportunity) => [
+        opportunity.id || "", opportunity.opportunity_name || "",
+        partyNameById.get(String(opportunityPartyId(opportunity) || "")) || opportunity.customer_name || "",
+        CRM_PIPELINE_STAGE_LABELS[String(opportunity.pipeline_stage || "").toUpperCase()] || opportunity.pipeline_stage || "",
+        opportunity.status || "", Number(opportunity.expected_amount || 0), Number(opportunity.expected_margin || 0),
+        Number(opportunity.probability_percent || 0), dateValue(opportunity.expected_close_date),
+        dateValue(opportunity.next_follow_up_at), opportunity.lost_reason_detail || opportunity.lost_reason || "",
+        userNameById.get(String(opportunity.owner_user_id || "")) || opportunity.owner_user_id || "",
+        departmentNameById.get(String(opportunity.department_id || "")) || opportunity.department_id || "",
+        dateValue(opportunity.created_at), dateValue(opportunity.closed_at),
+      ]));
+      addSheet("Calon Customer", ["ID", "Kode", "Nama Tampilan", "Nama Legal", "Tipe", "Status", "No. Pajak", "Dibuat"], partyRows("PROSPECT"));
+      addSheet("Customer", ["ID", "Kode", "Nama Tampilan", "Nama Legal", "Tipe", "Status", "No. Pajak", "Dibuat"], partyRows("CUSTOMER"));
+      addSheet("Partner", ["ID", "Kode", "Nama Tampilan", "Nama Legal", "Tipe", "Status", "No. Pajak", "Dibuat"], partyRows("PARTNER"));
+      addSheet("Vendor", ["ID", "Kode", "Nama Tampilan", "Nama Legal", "Tipe", "Status", "No. Pajak", "Dibuat"], partyRows("VENDOR"));
+      addSheet("Kontak", ["ID", "Rekanan", "Nama Kontak", "Jabatan", "Email", "Telepon", "Kontak Utama", "Dibuat"], contacts.map((contact) => [
+        contact.id || "", partyNameById.get(String(contact.party_id || "")) || "", contact.contact_name || "",
+        contact.job_title || "", contact.email || "", contact.phone || "", contact.primary_contact ? "Ya" : "Tidak",
+        dateValue(contact.created_at),
+      ]));
+
+      const date = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(workbook, `CRM_Export_${date}.xlsx`);
+      toast.success(`File CRM berhasil dibuat: ${inquiries.length} lead, ${opportunities.length} opportunity, ${parties.length} rekanan, dan ${contacts.length} kontak.`);
+    } catch (error) {
+      toast.error(getUserFacingApiError(error, "Data CRM belum berhasil diekspor. Periksa akses dan koneksi, lalu coba lagi."));
+    } finally {
+      setExportingCrm(false);
+    }
+  };
+
   const openDelegateModal = (record: any, recordType: "INQUIRY" | "OPPORTUNITY") => {
     setDelegatingTarget({ record, recordType });
     setDelegateUserId(record.owner_user_id ? String(record.owner_user_id) : "");
@@ -3833,6 +3938,16 @@ export default function CrmClient() {
               <ShieldCheck size={13} /> CRM Overseer · View Only
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => void exportCrmToExcel()}
+            disabled={exportingCrm || loading}
+            className="btn-ghost gap-1.5 text-xs flex-shrink-0"
+            title="Unduh Lead, Opportunity, Customer, Calon Customer, Partner, Vendor, dan Kontak ke Excel"
+          >
+            <Download size={13} />
+            {exportingCrm ? "Menyiapkan Excel..." : "Download Data CRM"}
+          </button>
           <button
             onClick={() => loadData(true)}
             disabled={refreshing}
