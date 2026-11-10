@@ -20,6 +20,10 @@ import { CRM_OPEN_STAGES, moveOpportunityStage, normalizeCrmStage } from './crm-
 export const crmRouter = Router();
 
 const activeCRMRole = (req: Request) => String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '');
+const normalizeOptionalCustomerEmail = (value: unknown) => {
+  const email = String(value ?? '').trim().toLowerCase();
+  return ['-', '—', '–', 'n/a', 'na', 'null'].includes(email) ? '' : email;
+};
 const isActiveSales = (req: Request) => activeCRMRole(req) === RoleCode.SALES;
 const assertSalesOwnsRecord = (req: Request, record: { created_by_id?: string | null } | null | undefined) => {
   if (isActiveSales(req) && record?.created_by_id !== req.user?.id) {
@@ -303,7 +307,7 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
     const subject = String(req.body.subject ?? '').trim();
     const customerPartyId = String(req.body.customer_party_id ?? req.body.customer_party ?? '').trim() || null;
     const requestedCustomerName = String(req.body.customer_name ?? '').trim();
-    let customerEmail = String(req.body.customer_email ?? '').trim().toLowerCase();
+    let customerEmail = normalizeOptionalCustomerEmail(req.body.customer_email);
     let customerPhone = String(req.body.customer_phone ?? '').trim();
     const contactId = String(req.body.contact_id ?? '').trim() || null;
     const description = String(req.body.description ?? '').trim();
@@ -367,7 +371,7 @@ crmRouter.patch('/customer-inquiries/:id/edit', requireActiveRole(RoleCode.SALES
 
     const subject = req.body.subject === undefined ? inquiry.subject : String(req.body.subject ?? '').trim();
     const customerName = req.body.customer_name === undefined ? inquiry.customer_name : String(req.body.customer_name ?? '').trim();
-    const customerEmail = req.body.customer_email === undefined ? inquiry.customer_email : String(req.body.customer_email ?? '').trim().toLowerCase();
+    const customerEmail = normalizeOptionalCustomerEmail(req.body.customer_email === undefined ? inquiry.customer_email : req.body.customer_email);
     const customerPhone = req.body.customer_phone === undefined ? inquiry.customer_phone : String(req.body.customer_phone ?? '').trim();
     const description = req.body.description === undefined ? inquiry.description : String(req.body.description ?? '').trim();
     if (!subject || subject.length > 240) throw new ValidationError('Subject wajib diisi dan maksimal 240 karakter.');

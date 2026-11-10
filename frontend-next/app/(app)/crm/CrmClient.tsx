@@ -70,6 +70,11 @@ function opportunityPartyId(opportunity: any): string | number | null {
   return opportunity?.customer_party_id ?? opportunity?.customer_party ?? opportunity?.customer ?? null;
 }
 
+function normalizeOptionalCustomerEmail(value: unknown): string {
+  const email = String(value ?? "").trim();
+  return ["-", "—", "–", "n/a", "na", "null"].includes(email.toLowerCase()) ? "" : email;
+}
+
 async function loadAllCrmExportRows<T extends { id?: string | number }>(endpoint: string): Promise<T[]> {
   const firstResponse = await api.get(endpoint);
   const firstPage = normalizeList<T>(firstResponse.data);
@@ -2395,7 +2400,7 @@ function TabIncoming({
       toast.error("Subject & nama customer wajib diisi."); 
       return; 
     }
-    if (!form.customer_email.trim() && !form.customer_phone.trim()) {
+    if (!normalizeOptionalCustomerEmail(form.customer_email) && !form.customer_phone.trim()) {
       toast.error("Isi email atau nomor telepon kontak. Nama PIC boleh dikosongkan.");
       return;
     }
@@ -2520,16 +2525,18 @@ function TabIncoming({
 
   const openEditLead = (lead: any) => {
     setEditingLead(lead);
-    setEditForm({ subject: lead.subject || "", customer_name: lead.customer_name || "", customer_email: lead.customer_email || "", customer_phone: lead.customer_phone || "", description: lead.description || "" });
+    setEditForm({ subject: lead.subject || "", customer_name: lead.customer_name || "", customer_email: normalizeOptionalCustomerEmail(lead.customer_email), customer_phone: lead.customer_phone || "", description: lead.description || "" });
   };
 
   const saveLeadEdit = async () => {
     if (!editingLead) return;
     if (!editForm.subject.trim() || !editForm.customer_name.trim()) { toast.error("Subject dan nama customer wajib diisi."); return; }
-    if (!editForm.customer_email.trim() && !editForm.customer_phone.trim()) { toast.error("Isi minimal email atau nomor telepon kontak."); return; }
+    const customerEmail = normalizeOptionalCustomerEmail(editForm.customer_email);
+    const customerPhone = editForm.customer_phone.trim();
+    if (!customerEmail && !customerPhone) { toast.error("Isi minimal email atau nomor telepon kontak."); return; }
     setEditSaving(true);
     try {
-      await updateCustomerInquiry(editingLead.id, editForm);
+      await updateCustomerInquiry(editingLead.id, { ...editForm, customer_email: customerEmail, customer_phone: customerPhone });
       toast.success("Data Lead berhasil diperbarui.");
       setEditingLead(null);
       onRefresh();
@@ -2643,7 +2650,7 @@ function TabIncoming({
           <label className="text-xs font-medium text-text-secondary">Nomor telepon kontak (opsional)<input type="tel" className="input mt-1 w-full" maxLength={50} value={editForm.customer_phone} onChange={event => setEditForm(current => ({ ...current, customer_phone: event.target.value }))} /></label>
           <p className="-mt-2 text-2xs text-text-secondary">Salah satu kontak wajib diisi. Status dan relasi Customer diubah melalui aksi Lead masing-masing.</p>
           <label className="text-xs font-medium text-text-secondary">Deskripsi kebutuhan<textarea className="input mt-1 w-full min-h-24" maxLength={5000} value={editForm.description} onChange={event => setEditForm(current => ({ ...current, description: event.target.value }))} /></label>
-          <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingLead(null)} disabled={editSaving} className="btn-ghost">Batal</button><button type="button" onClick={() => void saveLeadEdit()} disabled={editSaving || !editForm.subject.trim() || !editForm.customer_name.trim() || (!editForm.customer_email.trim() && !editForm.customer_phone.trim())} className="btn-primary">{editSaving ? "Menyimpan…" : "Simpan perubahan"}</button></div>
+          <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingLead(null)} disabled={editSaving} className="btn-ghost">Batal</button><button type="button" onClick={() => void saveLeadEdit()} disabled={editSaving || !editForm.subject.trim() || !editForm.customer_name.trim() || (!normalizeOptionalCustomerEmail(editForm.customer_email) && !editForm.customer_phone.trim())} className="btn-primary">{editSaving ? "Menyimpan…" : "Simpan perubahan"}</button></div>
         </div>
       </Modal>
       <Modal isOpen={Boolean(contactLead)} onClose={() => !savingLeadId && setContactLead(null)} title={contactTarget === "CONTACTED" ? "Catat Lead Sudah Dihubungi" : "Catat Respons Lead"} size="sm">
@@ -2727,7 +2734,7 @@ function TabIncoming({
           </div>
           <div className="flex gap-2 justify-end pt-1">
             <button onClick={() => setIsOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button>
-            <button onClick={handleCreate} disabled={isSubmitting || (!form.customer_email.trim() && !form.customer_phone.trim())} className="btn-primary">
+            <button onClick={handleCreate} disabled={isSubmitting || (!normalizeOptionalCustomerEmail(form.customer_email) && !form.customer_phone.trim())} className="btn-primary">
               {isSubmitting ? "Menyimpan..." : "Buat Inquiry"}
             </button>
           </div>
