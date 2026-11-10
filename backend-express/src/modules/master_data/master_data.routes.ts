@@ -12,9 +12,29 @@ import prisma from '../../config/database';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { requireModuleAccess } from '../../middlewares/entitlement.middleware';
-import { isCompanyAdmin, isSuperAdmin } from '../../types/roles';
+import { isCompanyAdmin, isSuperAdmin, RoleCode } from '../../types/roles';
 
 export const masterDataRouter = Router();
+
+const isActiveSales = (req: Request) => String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '') === RoleCode.SALES;
+const ownPartyWriteScope = (req: Request) => {
+  return isActiveSales(req)
+    ? { created_by_id: req.user?.id ?? '__NO_AUTHENTICATED_CREATOR__' }
+    : {};
+};
+const partyWriteOwnershipHooks = {
+  beforeCreate: (req: Request, data: any) => isActiveSales(req)
+    ? { ...data, created_by_id: req.user?.id }
+    : data,
+  beforeUpdate: (req: Request, data: any, existing: any) => isActiveSales(req)
+    ? { ...data, created_by_id: existing.created_by_id }
+    : data,
+};
+const assertSalesOwnsParty = (req: Request, party: { created_by_id?: string | null } | null | undefined) => {
+  if (isActiveSales(req) && party?.created_by_id !== req.user?.id) {
+    throw new ForbiddenError('Sales hanya dapat mengubah data rekanan yang dibuat sendiri. CRM Lead dapat mengubah seluruh data rekanan.');
+  }
+};
 
 export const DEFAULT_STANDARD_DEPARTMENTS: Array<{
   code: string;
@@ -229,8 +249,10 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
     let profile = null;
 
     if (customer_profile_id) {
-      const existing = await prisma.master_customer_profile.findFirst({ where: { id: customer_profile_id, company_id: companyId }, select: { id: true } });
+      const existing = await prisma.master_customer_profile.findFirst({ where: { id: customer_profile_id, company_id: companyId }, select: { id: true, party_id: true, created_by_id: true } });
       if (!existing) throw new NotFoundError('CustomerProfile');
+      const ownerParty = existing.party_id ? await prisma.master_party.findFirst({ where: { id: existing.party_id, company_id: companyId }, select: { created_by_id: true } }) : null;
+      assertSalesOwnsParty(req, ownerParty ?? existing);
       profile = await prisma.master_customer_profile.update({
         where: { id: existing.id },
         data: {
@@ -242,6 +264,7 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
     } else if (party_id) {
       const party = await prisma.master_party.findFirst({ where: { id: party_id, company_id: companyId } });
       if (!party) throw new NotFoundError('Party');
+      assertSalesOwnsParty(req, party);
       const existing = await prisma.master_customer_profile.findFirst({
         where: { party_id, company_id: companyId },
       });
@@ -281,12 +304,12 @@ masterDataRouter.post('/customer-profiles/set-credit-limit', async (req: Request
 });
 
 // REST ViewSets
-masterDataRouter.use('/parties', createCrudRouter({ modelName: 'master_party', searchFields: ['party_name', 'party_code', 'tax_id'] }));
-masterDataRouter.use('/party-roles', createCrudRouter({ modelName: 'master_party_role' }));
-masterDataRouter.use('/contacts', createCrudRouter({ modelName: 'master_contact', searchFields: ['contact_name', 'email', 'phone'] }));
-masterDataRouter.use('/addresses', createCrudRouter({ modelName: 'master_address', searchFields: ['address_line1', 'city'] }));
-masterDataRouter.use('/customer-profiles', createCrudRouter({ modelName: 'master_customer_profile' }));
-masterDataRouter.use('/supplier-profiles', createCrudRouter({ modelName: 'master_supplier_profile' }));
+masterDataRouter.use('/parties', createCrudRouter({ modelName: 'master_party', searchFields: ['party_name', 'party_code', 'tax_id'], ...partyWriteOwnershipHooks, writeAccessWhere: ownPartyWriteScope }));
+masterDataRouter.use('/party-roles', createCrudRouter({ modelName: 'master_party_role', ...partyWriteOwnershipHooks, writeAccessWhere: ownPartyWriteScope }));
+masterDataRouter.use('/contacts', createCrudRouter({ modelName: 'master_contact', searchFields: ['contact_name', 'email', 'phone'], ...partyWriteOwnershipHooks, writeAccessWhere: ownPartyWriteScope }));
+masterDataRouter.use('/addresses', createCrudRouter({ modelName: 'master_address', searchFields: ['address_line1', 'city'], ...partyWriteOwnershipHooks, writeAccessWhere: ownPartyWriteScope }));
+masterDataRouter.use('/customer-profiles', createCrudRouter({ modelName: 'master_customer_profile', ...partyWriteOwnershipHooks, writeAccessWhere: ownPartyWriteScope }));
+masterDataRouter.use('/supplier-profiles', createCrudRouter({ modelName: 'master_supplier_profile', ...partyWriteOwnershipHooks, writeAccessWhere: ownPartyWriteScope }));
 masterDataRouter.use('/product-categories', requireModuleAccess('INVENTORY'), createCrudRouter({
   modelName: 'master_product_category', searchFields: ['category_name', 'category_code'],
   beforeCreate: async (req, data) => {

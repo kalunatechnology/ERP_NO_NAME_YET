@@ -13,11 +13,47 @@ import { CRMService } from './crm.service';
 import { createCrudRouter } from '../../utils/crud-factory';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../utils/errors';
 import { requireActiveRole, requireAdminForWrite } from '../../middlewares/rbac.middleware';
-import { isSuperAdmin, RoleCode } from '../../types/roles';
+import { isCompanyAdmin, isSuperAdmin, RoleCode } from '../../types/roles';
 import { queueWebhookEvent } from './crm-outbound-webhook.service';
 import { CRM_OPEN_STAGES, moveOpportunityStage, normalizeCrmStage } from './crm-pipeline.service';
 
 export const crmRouter = Router();
+
+const activeCRMRole = (req: Request) => String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '');
+const isActiveSales = (req: Request) => activeCRMRole(req) === RoleCode.SALES;
+const assertSalesOwnsRecord = (req: Request, record: { created_by_id?: string | null } | null | undefined) => {
+  if (isActiveSales(req) && record?.created_by_id !== req.user?.id) {
+    throw new ForbiddenError('Sales hanya dapat mengubah data yang dibuat sendiri. CRM Lead dapat mengubah data seluruh Sales.');
+  }
+};
+const assertSalesOwnsModelRecord = async (req: Request, modelName: string, id: string) => {
+  if (!isActiveSales(req)) return;
+  const model = (prisma as any)[modelName];
+  if (!model?.findFirst) throw new ValidationError('Resource CRM tidak dapat divalidasi untuk kepemilikan.');
+  const record = await model.findFirst({
+    where: { id: String(id), company_id: activeCompanyId(req) },
+    select: { id: true, created_by_id: true },
+  });
+  if (!record) throw new NotFoundError(modelName);
+  assertSalesOwnsRecord(req, record);
+};
+const createCrmCrudRouter = (options: Parameters<typeof createCrudRouter>[0]) => createCrudRouter({
+  ...options,
+  beforeCreate: async (req, data) => {
+    const configured = options.beforeCreate ? await options.beforeCreate(req, data) : data;
+    return isActiveSales(req) ? { ...configured, created_by_id: req.user?.id } : configured;
+  },
+  beforeUpdate: async (req, data, existing) => {
+    const configured = options.beforeUpdate ? await options.beforeUpdate(req, data, existing) : data;
+    return isActiveSales(req) ? { ...configured, created_by_id: existing.created_by_id } : configured;
+  },
+  writeAccessWhere: async (req) => {
+    const configuredScope = options.writeAccessWhere ? await options.writeAccessWhere(req) : {};
+    if (!isActiveSales(req)) return configuredScope;
+    const ownRecordScope = { created_by_id: req.user?.id ?? '__NO_AUTHENTICATED_CREATOR__' };
+    return Object.keys(configuredScope).length ? { AND: [configuredScope, ownRecordScope] } : ownRecordScope;
+  },
+});
 
 crmRouter.get('/portal-tokens', async (req, res, next) => {
   try {
@@ -158,9 +194,10 @@ crmRouter.put('/parties/:partyId/projects', async (req, res, next) => {
     if (!tenantId || !userId) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
     const party = await prisma.master_party.findFirst({
       where: { id: req.params.partyId, company_id: companyId, status: 'ACTIVE' },
-      select: { id: true, party_type: true },
+      select: { id: true, party_type: true, created_by_id: true },
     });
     if (!party) throw new NotFoundError('Rekanan aktif');
+    assertSalesOwnsRecord(req, party);
     const relationshipType = relatedPartyProjectType(party.party_type);
     const rawProjectIds = req.body?.project_ids;
     if (!Array.isArray(rawProjectIds) || rawProjectIds.some((id: unknown) => typeof id !== 'string')) {
@@ -236,6 +273,9 @@ async function decideExecutiveApproval(req: Request, decision: 'APPROVED' | 'REJ
  */
 crmRouter.post('/customer-inquiries/:id/qualify', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const inquiry = await prisma.crm_customer_inquiry.findFirst({ where: { id: String(req.params.id), company_id: activeCompanyId(req) }, select: { created_by_id: true } });
+    if (!inquiry) throw new NotFoundError('Lead / Inquiry');
+    assertSalesOwnsRecord(req, inquiry);
     const result = await CRMService.qualifyInquiry(req.params.id, req.user?.id ?? 'system', activeCompanyId(req));
     res.json(result);
   } catch (err) {
@@ -245,6 +285,9 @@ crmRouter.post('/customer-inquiries/:id/qualify', async (req: Request, res: Resp
 
 crmRouter.post('/customer-inquiries/:id/lead-status', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const inquiry = await prisma.crm_customer_inquiry.findFirst({ where: { id: String(req.params.id), company_id: activeCompanyId(req) }, select: { created_by_id: true } });
+    if (!inquiry) throw new NotFoundError('Lead / Inquiry');
+    assertSalesOwnsRecord(req, inquiry);
     const result = await CRMService.updateInquiryLeadStatus(
       req.params.id, activeCompanyId(req), req.user?.id ?? 'system',
       { status: req.body.status, next_follow_up_at: req.body.next_follow_up_at, note: req.body.note },
@@ -261,35 +304,39 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
     const customerPartyId = String(req.body.customer_party_id ?? req.body.customer_party ?? '').trim() || null;
     const requestedCustomerName = String(req.body.customer_name ?? '').trim();
     let customerEmail = String(req.body.customer_email ?? '').trim().toLowerCase();
+    let customerPhone = String(req.body.customer_phone ?? '').trim();
     const contactId = String(req.body.contact_id ?? '').trim() || null;
     const description = String(req.body.description ?? '').trim();
     if (!subject || subject.length > 240) throw new ValidationError('Subject inquiry wajib diisi dan maksimal 240 karakter.');
     if (!requestedCustomerName || requestedCustomerName.length > 200) throw new ValidationError('Nama customer wajib diisi dan maksimal 200 karakter.');
     if (description.length > 5000) throw new ValidationError('Deskripsi kebutuhan maksimal 5.000 karakter.');
     if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) throw new ValidationError('Format email customer tidak valid.');
+    if (customerPhone.length > 50) throw new ValidationError('Nomor telepon kontak maksimal 50 karakter.');
     const expectedDeliveryDate = req.body.expected_delivery_date ? new Date(req.body.expected_delivery_date) : null;
     if (expectedDeliveryDate && !Number.isFinite(expectedDeliveryDate.getTime())) throw new ValidationError('Tanggal kebutuhan pelanggan tidak valid.');
 
     let customerName = requestedCustomerName;
     if (customerPartyId) {
       const party = await prisma.master_party.findFirst({
-        where: { id: customerPartyId, tenant_id: req.tenantId, company_id: companyId, party_type: 'CUSTOMER', status: 'ACTIVE' },
-        select: { id: true, display_name: true, legal_name: true },
+        where: { id: customerPartyId, tenant_id: req.tenantId, company_id: companyId, party_type: { in: ['CUSTOMER', 'PROSPECT'] }, status: 'ACTIVE' },
+        select: { id: true, display_name: true, legal_name: true, party_type: true },
       });
-      if (!party) throw new ValidationError('Pelanggan harus customer aktif pada company yang dipilih.');
+      if (!party) throw new ValidationError('Pilih Customer atau Calon Customer aktif pada company yang dipilih.');
       customerName = party.display_name || party.legal_name || requestedCustomerName;
     }
 
-    let contact: { id: string; email: string } | null = null;
+    let contact: { id: string; email: string; phone: string } | null = null;
     if (contactId) {
       if (!customerPartyId) throw new ValidationError('Pilih customer sebelum memilih kontak.');
       contact = await prisma.master_contact.findFirst({
         where: { id: contactId, tenant_id: req.tenantId, company_id: companyId, party_id: customerPartyId },
-        select: { id: true, email: true },
+        select: { id: true, email: true, phone: true },
       });
       if (!contact) throw new ValidationError('Kontak tidak terdaftar pada customer yang dipilih.');
-      if (contact.email) customerEmail = contact.email.trim().toLowerCase();
+      if (!customerEmail && contact.email) customerEmail = contact.email.trim().toLowerCase();
+      if (!customerPhone && contact.phone) customerPhone = contact.phone.trim();
     }
+    if (!customerEmail && !customerPhone) throw new ValidationError('Isi email atau nomor telepon kontak. PIC/kontak bernama boleh dikosongkan.');
 
     const now = new Date();
     const inquiry = await prisma.crm_customer_inquiry.create({
@@ -299,12 +346,101 @@ crmRouter.post('/customer-inquiries', async (req: Request, res: Response, next: 
         customer_party_id: customerPartyId, contact_id: contact?.id ?? null,
         inquiry_number: `INQ-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
         source_channel: 'MANUAL', subject, customer_name: customerName,
-        customer_email: customerEmail, description,
+        customer_email: customerEmail, customer_phone: customerPhone, description,
         expected_delivery_date: expectedDeliveryDate,
         status: 'NEW', last_contact_note: '', created_at: now, updated_at: now,
       },
     });
     res.status(201).json(inquiry);
+  } catch (error) { next(error); }
+});
+
+crmRouter.patch('/customer-inquiries/:id/edit', requireActiveRole(RoleCode.SALES, RoleCode.CRM_LEAD, RoleCode.COMPANY_ADMIN, RoleCode.DIRECTOR), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.tenantId) throw new ForbiddenError('Tenant context wajib tersedia.');
+    const companyId = activeCompanyId(req);
+    const inquiry = await prisma.crm_customer_inquiry.findFirst({
+      where: { id: String(req.params.id), tenant_id: req.tenantId, company_id: companyId },
+    });
+    if (!inquiry) throw new NotFoundError('Lead / Inquiry');
+    assertSalesOwnsRecord(req, inquiry);
+
+    const subject = req.body.subject === undefined ? inquiry.subject : String(req.body.subject ?? '').trim();
+    const customerName = req.body.customer_name === undefined ? inquiry.customer_name : String(req.body.customer_name ?? '').trim();
+    const customerEmail = req.body.customer_email === undefined ? inquiry.customer_email : String(req.body.customer_email ?? '').trim().toLowerCase();
+    const customerPhone = req.body.customer_phone === undefined ? inquiry.customer_phone : String(req.body.customer_phone ?? '').trim();
+    const description = req.body.description === undefined ? inquiry.description : String(req.body.description ?? '').trim();
+    if (!subject || subject.length > 240) throw new ValidationError('Subject wajib diisi dan maksimal 240 karakter.');
+    if (!customerName || customerName.length > 200) throw new ValidationError('Nama customer wajib diisi dan maksimal 200 karakter.');
+    if (description.length > 5000) throw new ValidationError('Deskripsi kebutuhan maksimal 5.000 karakter.');
+    if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) throw new ValidationError('Format email customer tidak valid.');
+    if (customerPhone.length > 50) throw new ValidationError('Nomor telepon kontak maksimal 50 karakter.');
+    if (!customerEmail && !customerPhone) throw new ValidationError('Lead harus memiliki email atau nomor telepon kontak.');
+
+    const updated = await prisma.crm_customer_inquiry.update({
+      where: { id: inquiry.id },
+      data: { subject, customer_name: customerName, customer_email: customerEmail, customer_phone: customerPhone, description, updated_at: new Date() },
+    });
+    res.json({ success: true, data: updated });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/prospects', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    const companyId = activeCompanyId(req);
+    const displayName = String(req.body.display_name ?? '').trim();
+    const legalName = String(req.body.legal_name ?? '').trim() || displayName;
+    const email = String(req.body.email ?? '').trim().toLowerCase();
+    const phone = String(req.body.phone ?? '').trim();
+    const requestedCode = String(req.body.party_code ?? '').trim();
+    if (!displayName || displayName.length > 200) throw new ValidationError('Nama Calon Customer wajib diisi (maksimal 200 karakter).');
+    if (!email && !phone) throw new ValidationError('Isi minimal email atau nomor telepon kontak Calon Customer.');
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ValidationError('Format email kontak tidak valid.');
+    if (phone.length > 50) throw new ValidationError('Nomor telepon kontak maksimal 50 karakter.');
+
+    const party = await prisma.$transaction(async (tx) => {
+      const partyCode = requestedCode || `PROS-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+      const duplicateCode = await tx.master_party.findFirst({ where: { company_id: companyId, party_code: partyCode }, select: { id: true } });
+      if (duplicateCode) throw new ConflictError(`Kode rekanan "${partyCode}" sudah digunakan pada company ini.`);
+      const now = new Date();
+      const createdParty = await tx.master_party.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: companyId,
+          created_by_id: req.user.id, created_at: now, updated_at: now,
+          party_code: partyCode, party_type: 'PROSPECT', legal_name: legalName,
+          display_name: displayName, tax_number: '', default_currency_id: null, status: 'ACTIVE',
+        },
+      });
+      const contact = await tx.master_contact.create({
+        data: {
+          id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: companyId,
+          created_by_id: req.user.id, created_at: now, updated_at: now,
+          party_id: createdParty.id, contact_name: String(req.body.contact_name ?? '').trim() || 'Kontak Utama',
+          job_title: '', email, phone, primary_contact: true,
+        },
+      });
+      return { party: createdParty, contact };
+    }, { maxWait: 5_000, timeout: 20_000, isolationLevel: 'Serializable' });
+
+    res.status(201).json({ success: true, data: party });
+  } catch (error) { next(error); }
+});
+
+crmRouter.post('/prospects/:id/convert', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const companyId = activeCompanyId(req);
+    const prospect = await prisma.master_party.findFirst({
+      where: { id: req.params.id, company_id: companyId, party_type: 'PROSPECT', status: 'ACTIVE' },
+      select: { id: true, created_by_id: true },
+    });
+    if (!prospect) throw new NotFoundError('Calon Customer aktif');
+    assertSalesOwnsRecord(req, prospect);
+    const customer = await prisma.master_party.update({
+      where: { id: prospect.id },
+      data: { party_type: 'CUSTOMER' },
+    });
+    res.json({ success: true, detail: 'Calon Customer dikonversi menjadi Customer tanpa membuat record baru.', data: customer });
   } catch (error) { next(error); }
 });
 
@@ -370,6 +506,7 @@ crmRouter.patch('/customer-inquiries/:id/customer', async (req: Request, res: Re
     const companyId = activeCompanyId(req);
     const inquiry = await prisma.crm_customer_inquiry.findFirst({ where: { id: req.params.id, tenant_id: req.tenantId, company_id: companyId } });
     if (!inquiry) throw new NotFoundError('Lead / Inquiry');
+    assertSalesOwnsRecord(req, inquiry);
     if (inquiry.opportunity_id) throw new ConflictError('Customer pada Inquiry yang sudah menjadi Opportunity tidak dapat diganti.');
     const partyId = String(req.body.customer_party_id ?? '').trim();
     const party = await prisma.master_party.findFirst({
@@ -414,6 +551,8 @@ crmRouter.patch('/customer-inquiries/:id/customer', async (req: Request, res: Re
 
 crmRouter.post('/cost-estimates', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (isActiveSales(req) && req.body?.inquiry_id) await assertSalesOwnsModelRecord(req, 'crm_customer_inquiry', String(req.body.inquiry_id));
+    if (isActiveSales(req) && req.body?.opportunity_id) await assertSalesOwnsModelRecord(req, 'crm_opportunity', String(req.body.opportunity_id));
     const result = await CRMService.createCostEstimate(req.body ?? {}, req.user?.id ?? 'system', activeCompanyId(req));
     res.status(201).json(result);
   } catch (err) {
@@ -431,6 +570,7 @@ crmRouter.post('/cost-estimates', async (req: Request, res: Response, next: Next
  */
 crmRouter.post('/cost-estimates/:id/calculate', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'crm_cost_estimate', String(req.params.id));
     const result = await CRMService.calculateEstimate(req.params.id, req.user?.id ?? 'system', activeCompanyId(req));
     res.json(result);
   } catch (err) {
@@ -448,6 +588,7 @@ crmRouter.post('/cost-estimates/:id/calculate', async (req: Request, res: Respon
  */
 crmRouter.post('/cost-estimates/:id/create-quotation', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'crm_cost_estimate', String(req.params.id));
     const result = await CRMService.createQuotationFromEstimate(req.params.id, req.user?.id ?? 'system', activeCompanyId(req));
     res.status(result.created ? 201 : 200).json(result);
   } catch (err) {
@@ -471,6 +612,7 @@ crmRouter.post('/credit-status-snapshots/calculate', async (req: Request, res: R
   try {
     const customerPartyId = req.body.customer_party ?? req.body.customer_party_id;
     if (!customerPartyId) throw new ValidationError('customer_party_id is required');
+    await assertSalesOwnsModelRecord(req, 'master_party', String(customerPartyId));
     const result = await CRMService.calculateCreditSnapshot(customerPartyId, activeCompanyId(req));
     res.status(201).json(result);
   } catch (err) {
@@ -491,6 +633,7 @@ crmRouter.post('/quotations/:id/convert-to-order', async (req: Request, res: Res
     });
     if (!quotation) throw new NotFoundError('Quotation');
     if (!quotation.opportunity_id) throw new ValidationError('Quotation belum terhubung ke Opportunity.');
+    await assertSalesOwnsModelRecord(req, 'crm_opportunity', quotation.opportunity_id);
     const result = await CRMService.processDealWon(quotation.opportunity_id, req.user, companyId);
     res.status(result.handoff?.sales_order_id ? 200 : 202).json(result);
   } catch (err) {
@@ -508,6 +651,7 @@ crmRouter.post('/quotations/:id/convert-to-order', async (req: Request, res: Res
  */
 crmRouter.post('/opportunities/:id/process-deal-won', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'crm_opportunity', String(req.params.id));
     const result = await CRMService.processDealWon(req.params.id, req.user, activeCompanyId(req));
     res.json(result);
   } catch (err) {
@@ -730,6 +874,7 @@ crmRouter.get('/inbox', async (req: Request, res: Response, next: NextFunction) 
 
 crmRouter.post('/conversations/:id/reply', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'crm_conversation', String(req.params.id));
     const company = activeCompanyId(req);
     const text = String(req.body.message_text ?? '').trim();
     const clientMessageId = String(req.body.client_message_id ?? '').trim();
@@ -781,7 +926,7 @@ crmRouter.post('/conversations/:id/reply', async (req: Request, res: Response, n
   } catch (error) { next(error); }
 });
 
-crmRouter.post('/external-identities/:id/confirm-customer', requireActiveRole(RoleCode.CRM_LEAD, RoleCode.SALES), async (req: Request, res: Response, next: NextFunction) => {
+crmRouter.post('/external-identities/:id/confirm-customer', requireActiveRole(RoleCode.CRM_LEAD), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const company = activeCompanyId(req);
     const partyId = String(req.body.party_id ?? '').trim();
@@ -910,6 +1055,7 @@ crmRouter.post('/csat/responses', async (req: Request, res: Response, next: Next
 
 crmRouter.post('/conversations/:id/assign', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'crm_conversation', String(req.params.id));
     const company = activeCompanyId(req);
     const assignedUserId = String(req.body.assigned_user_id ?? '').trim();
     if (!assignedUserId) throw new ValidationError('assigned_user_id wajib diisi.');
@@ -938,6 +1084,7 @@ crmRouter.post('/conversations/:id/assign', async (req: Request, res: Response, 
 
 crmRouter.post('/conversations/:id/decision', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'crm_conversation', String(req.params.id));
     const company = activeCompanyId(req);
     const decision = String(req.body.decision ?? '').trim().toUpperCase();
     if (!['IGNORE', 'REOPEN'].includes(decision)) throw new ValidationError('decision harus IGNORE atau REOPEN.');
@@ -961,6 +1108,7 @@ crmRouter.post('/conversations/:id/decision', async (req: Request, res: Response
 
 crmRouter.post('/conversations/:id/create-inquiry', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'crm_conversation', String(req.params.id));
     const company = activeCompanyId(req);
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw<Array<{ id: string }>>`
@@ -1106,7 +1254,87 @@ crmRouter.patch('/opportunities/:id/assign', (req, res, next) => handleAssignCrm
 // CRUD VIEWSETS
 // =============================================================================
 
-crmRouter.use('/customer-inquiries', createCrudRouter({
+/**
+ * Deletes a CRM lead only when it is not part of a converted sales opportunity.
+ * Customer master data and conversation history are shared records, so they
+ * are retained and detached; inquiry-only requirements and unused estimates
+ * are removed atomically with the lead.
+ */
+crmRouter.delete('/customer-inquiries/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const roles = req.user?.roles ?? [];
+    const activeRoleCode = String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '');
+    if (!isCompanyAdmin(roles) && activeRoleCode !== RoleCode.CRM_LEAD) {
+      throw new ForbiddenError('Hanya CRM Lead atau Company Admin yang dapat menghapus Lead.');
+    }
+
+    const companyId = activeCompanyId(req);
+    const inquiryId = String(req.params.id);
+    await prisma.$transaction(async (tx) => {
+      const inquiry = await tx.crm_customer_inquiry.findFirst({
+        where: { id: inquiryId, company_id: companyId },
+      });
+      if (!inquiry) throw new NotFoundError('Lead / Inquiry');
+
+      const opportunityConditions: Array<Record<string, string>> = [
+        { source_inquiry_id: inquiry.id },
+      ];
+      if (inquiry.opportunity_id) opportunityConditions.push({ id: inquiry.opportunity_id });
+      const linkedOpportunity = await tx.crm_opportunity.findFirst({
+        where: { company_id: companyId, OR: opportunityConditions },
+        select: { id: true, opportunity_name: true },
+      });
+      if (linkedOpportunity) {
+        throw new ConflictError(`Lead tidak dapat dihapus karena sudah terhubung ke Opportunity "${linkedOpportunity.opportunity_name}". Hapus atau tutup relasi Opportunity melalui alur Sales terlebih dahulu.`);
+      }
+
+      const estimates = await tx.crm_cost_estimate.findMany({
+        where: { company_id: companyId, inquiry_id: inquiry.id },
+        select: { id: true, status: true },
+      });
+      const estimateIds = estimates.map((estimate) => estimate.id);
+      if (estimates.some((estimate) => String(estimate.status).toUpperCase() === 'QUOTED')) {
+        throw new ConflictError('Lead tidak dapat dihapus karena estimasinya sudah menjadi penawaran. Riwayat penawaran harus tetap terjaga.');
+      }
+      if (estimateIds.length) {
+        const quotationVersion = await tx.crm_quotation_version.findFirst({
+          where: { company_id: companyId, estimate_id: { in: estimateIds } },
+          select: { id: true },
+        });
+        if (quotationVersion) {
+          throw new ConflictError('Lead tidak dapat dihapus karena estimasinya sudah memiliki versi quotation. Riwayat penawaran harus tetap terjaga.');
+        }
+        await tx.crm_cost_estimate_line.deleteMany({
+          where: { company_id: companyId, estimate_id: { in: estimateIds } },
+        });
+        await tx.crm_cost_estimate.deleteMany({
+          where: { company_id: companyId, id: { in: estimateIds } },
+        });
+      }
+
+      await tx.crm_inquiry_requirement.deleteMany({
+        where: { company_id: companyId, inquiry_id: inquiry.id },
+      });
+      // Preserve message and audit history, but remove the reference to the deleted lead.
+      await tx.crm_conversation.updateMany({
+        where: { company_id: companyId, inquiry_id: inquiry.id },
+        data: { inquiry_id: null },
+      });
+      await tx.crm_workflow_event.updateMany({
+        where: { company_id: companyId, inquiry_id: inquiry.id },
+        data: { inquiry_id: null },
+      });
+      await tx.crm_customer_inquiry.delete({ where: { id: inquiry.id } });
+    }, { maxWait: 5_000, timeout: 20_000, isolationLevel: 'Serializable' });
+
+    res.json({
+      success: true,
+      detail: 'Lead dihapus. Data customer dan riwayat percakapan dipertahankan; spesifikasi dan estimasi yang belum menjadi penawaran ikut dibersihkan.',
+    });
+  } catch (error) { next(error); }
+});
+
+crmRouter.use('/customer-inquiries', createCrmCrudRouter({
   modelName: 'crm_customer_inquiry', searchFields: ['inquiry_number', 'subject', 'customer_name'],
   beforeCreate: async (req, data) => ({
     ...data,
@@ -1122,14 +1350,9 @@ crmRouter.use('/customer-inquiries', createCrudRouter({
     }
     return data;
   },
-  beforeDelete: async (_req, existing) => {
-    if (existing.opportunity_id || String(existing.status || '').toUpperCase() === 'QUALIFIED') {
-      throw new ConflictError('Inquiry yang sudah menjadi Opportunity tidak dapat dihapus agar riwayat Deal tetap utuh.');
-    }
-  },
 }));
-crmRouter.use('/inquiry-requirements', createCrudRouter({ modelName: 'crm_inquiry_requirement', searchFields: ['description'] }));
-crmRouter.use('/cost-estimates', createCrudRouter({
+crmRouter.use('/inquiry-requirements', createCrmCrudRouter({ modelName: 'crm_inquiry_requirement', searchFields: ['description'] }));
+crmRouter.use('/cost-estimates', createCrmCrudRouter({
   modelName: 'crm_cost_estimate',
   searchFields: ['estimate_number'],
   beforeUpdate: async (_req, _data, existing) => {
@@ -1143,7 +1366,7 @@ crmRouter.use('/cost-estimates', createCrudRouter({
     await prisma.crm_cost_estimate_line.deleteMany({ where: { estimate_id: existing.id, company_id: existing.company_id } });
   },
 }));
-crmRouter.use('/cost-estimate-lines', createCrudRouter({
+crmRouter.use('/cost-estimate-lines', createCrmCrudRouter({
   modelName: 'crm_cost_estimate_line',
   searchFields: ['description', 'cost_element'],
   beforeCreate: async (req, data) => {
@@ -1176,6 +1399,7 @@ crmRouter.use('/cost-estimate-lines', createCrudRouter({
 }));
 crmRouter.post('/opportunities/:id/stage', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'crm_opportunity', String(req.params.id));
     const stage = normalizeCrmStage(req.body.stage);
     if (!CRM_OPEN_STAGES.includes(stage as any)) throw new ValidationError('Gunakan tindakan Menang/Kalah untuk menutup Opportunity.');
     const nextFollowUpAt = req.body.next_follow_up_at ? new Date(req.body.next_follow_up_at) : null;
@@ -1194,6 +1418,7 @@ crmRouter.post('/opportunities/:id/stage', async (req: Request, res: Response, n
 
 crmRouter.post('/opportunities/:id/mark-lost', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'crm_opportunity', String(req.params.id));
     const reason = String(req.body.lost_reason ?? '').trim().toUpperCase();
     const allowed = ['PRICE_TOO_HIGH', 'LOST_FEATURES', 'BUDGET_CANCELLED', 'COMPETITOR', 'NO_RESPONSE', 'OTHER'];
     if (!allowed.includes(reason)) throw new ValidationError('Pilih alasan deal kalah yang tersedia.');
@@ -1262,7 +1487,7 @@ crmRouter.post('/opportunities/:id/mark-lost', async (req: Request, res: Respons
     res.json(updated);
   } catch (error) { next(error); }
 });
-crmRouter.use('/opportunities', createCrudRouter({
+crmRouter.use('/opportunities', createCrmCrudRouter({
   modelName: 'crm_opportunity',
   searchFields: ['opportunity_name', 'pipeline_stage'],
   beforeCreate: async (req, data) => {
@@ -1289,8 +1514,8 @@ crmRouter.use('/opportunities', createCrudRouter({
     }
   },
 }));
-crmRouter.use('/opportunity-products', createCrudRouter({ modelName: 'crm_opportunity_product' }));
-crmRouter.use('/activities', createCrudRouter({ modelName: 'crm_activity', searchFields: ['subject', 'activity_type'],
+crmRouter.use('/opportunity-products', createCrmCrudRouter({ modelName: 'crm_opportunity_product' }));
+crmRouter.use('/activities', createCrmCrudRouter({ modelName: 'crm_activity', searchFields: ['subject', 'activity_type'],
   beforeCreate: async (req, data) => {
     if (data.meeting_minutes_id) {
       const minutes = await prisma.request_meeting_minutes.findFirst({ where: { id: String(data.meeting_minutes_id), company_id: activeCompanyId(req) }, select: { id: true } });
@@ -1306,19 +1531,19 @@ crmRouter.use('/activities', createCrudRouter({ modelName: 'crm_activity', searc
     return data;
   },
 }));
-crmRouter.use('/pipelines', createCrudRouter({ modelName: 'crm_pipeline', searchFields: ['pipeline_name', 'pipeline_code'] }));
-crmRouter.use('/pipeline-stages', createCrudRouter({ modelName: 'crm_pipeline_stage', searchFields: ['stage_name', 'stage_code'] }));
-crmRouter.use('/opportunity-stage-histories', createCrudRouter({ modelName: 'crm_opportunity_stage_history' }));
+crmRouter.use('/pipelines', createCrmCrudRouter({ modelName: 'crm_pipeline', searchFields: ['pipeline_name', 'pipeline_code'] }));
+crmRouter.use('/pipeline-stages', createCrmCrudRouter({ modelName: 'crm_pipeline_stage', searchFields: ['stage_name', 'stage_code'] }));
+crmRouter.use('/opportunity-stage-histories', createCrmCrudRouter({ modelName: 'crm_opportunity_stage_history' }));
 // Decisions must go through the Director-only commands above. Data Explorer
 // may inspect approval rows but must not mutate them through generic CRUD.
-crmRouter.use('/executive-approvals', createCrudRouter({ modelName: 'crm_executive_approval', readOnly: true }));
-crmRouter.use('/credit-status-snapshots', createCrudRouter({ modelName: 'crm_credit_status_snapshot' }));
-crmRouter.use('/channel-accounts', createCrudRouter({ modelName: 'crm_channel_account' }));
-crmRouter.use('/conversations', createCrudRouter({ modelName: 'crm_conversation' }));
-crmRouter.use('/conversation-participants', createCrudRouter({ modelName: 'crm_conversation_participant' }));
-crmRouter.use('/messages', createCrudRouter({ modelName: 'crm_message' }));
-crmRouter.use('/message-attachments', createCrudRouter({ modelName: 'crm_message_attachment' }));
-crmRouter.use('/message-delivery-statuses', createCrudRouter({ modelName: 'crm_message_delivery_status' }));
+crmRouter.use('/executive-approvals', createCrmCrudRouter({ modelName: 'crm_executive_approval', readOnly: true }));
+crmRouter.use('/credit-status-snapshots', createCrmCrudRouter({ modelName: 'crm_credit_status_snapshot' }));
+crmRouter.use('/channel-accounts', createCrmCrudRouter({ modelName: 'crm_channel_account' }));
+crmRouter.use('/conversations', createCrmCrudRouter({ modelName: 'crm_conversation' }));
+crmRouter.use('/conversation-participants', createCrmCrudRouter({ modelName: 'crm_conversation_participant' }));
+crmRouter.use('/messages', createCrmCrudRouter({ modelName: 'crm_message' }));
+crmRouter.use('/message-attachments', createCrmCrudRouter({ modelName: 'crm_message_attachment' }));
+crmRouter.use('/message-delivery-statuses', createCrmCrudRouter({ modelName: 'crm_message_delivery_status' }));
 crmRouter.post('/feedbacks', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
@@ -1347,12 +1572,12 @@ crmRouter.post('/feedbacks', async (req: Request, res: Response, next: NextFunct
     res.status(201).json(feedback);
   } catch (error) { next(error); }
 });
-crmRouter.use('/feedbacks', createCrudRouter({ modelName: 'crm_feedback', searchFields: ['subject', 'feedback_text'] }));
-crmRouter.use('/surveys', createCrudRouter({ modelName: 'crm_survey', searchFields: ['title'] }));
-crmRouter.use('/survey-questions', createCrudRouter({ modelName: 'crm_survey_question' }));
-crmRouter.use('/survey-responses', createCrudRouter({ modelName: 'crm_survey_response' }));
-crmRouter.use('/survey-answers', createCrudRouter({ modelName: 'crm_survey_answer' }));
-crmRouter.use('/quotation-versions', createCrudRouter({ modelName: 'crm_quotation_version' }));
-crmRouter.use('/quotation-deliveries', createCrudRouter({ modelName: 'crm_quotation_delivery' }));
-crmRouter.use('/workflow-events', createCrudRouter({ modelName: 'crm_workflow_event' }));
-crmRouter.use('/customer-feedbacks', createCrudRouter({ modelName: 'crm_customer_feedback' }));
+crmRouter.use('/feedbacks', createCrmCrudRouter({ modelName: 'crm_feedback', searchFields: ['subject', 'feedback_text'] }));
+crmRouter.use('/surveys', createCrmCrudRouter({ modelName: 'crm_survey', searchFields: ['title'] }));
+crmRouter.use('/survey-questions', createCrmCrudRouter({ modelName: 'crm_survey_question' }));
+crmRouter.use('/survey-responses', createCrmCrudRouter({ modelName: 'crm_survey_response' }));
+crmRouter.use('/survey-answers', createCrmCrudRouter({ modelName: 'crm_survey_answer' }));
+crmRouter.use('/quotation-versions', createCrmCrudRouter({ modelName: 'crm_quotation_version' }));
+crmRouter.use('/quotation-deliveries', createCrmCrudRouter({ modelName: 'crm_quotation_delivery' }));
+crmRouter.use('/workflow-events', createCrmCrudRouter({ modelName: 'crm_workflow_event' }));
+crmRouter.use('/customer-feedbacks', createCrmCrudRouter({ modelName: 'crm_customer_feedback' }));

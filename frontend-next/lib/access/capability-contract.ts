@@ -95,7 +95,8 @@ export function canPerform(
 
     case "crm:operate":
       // Directors manage CRM by default, including quotation approvals.
-      return ["company_admin", "executive", "crm"].includes(role);
+      // Sales and CRM Leads are operational owners across the full CRM workspace.
+      return ["company_admin", "executive", "crm", "sales"].includes(role);
 
     case "attendance:view-team":
       // Executive, PM, OM, Super Admin can view team attendance

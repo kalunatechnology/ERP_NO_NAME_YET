@@ -34,6 +34,7 @@ export interface CRMData {
   resolutions: any[];
   products: any[];
   parties: any[];
+  contacts: any[];
 }
 
 export interface CRMDashboard {
@@ -47,6 +48,7 @@ export interface CRMDashboard {
 
 export interface CRMInboxConversation {
   id: string;
+  created_by_id?: string | null;
   subject: string;
   status: string;
   priority: string;
@@ -249,6 +251,7 @@ const CRM_SOURCES: Record<keyof CRMData, string> = {
   resolutions:  "/api/v1/service/resolutions/?page_size=100",
   products:     "/api/v1/master-data/products/?page_size=200",
   parties:      "/api/v1/master-data/parties/?page_size=300",
+  contacts:     "/api/v1/master-data/contacts/?page_size=500",
 };
 
 /* ── Data Loading ─────────────────────────────────── */
@@ -422,6 +425,7 @@ export async function createCustomerInquiry(payload: {
   subject: string;
   customer_name: string;
   customer_email?: string;
+  customer_phone?: string;
   customer_party?: string | number | null;
   contact_id?: string | null;
   description?: string;
@@ -431,6 +435,7 @@ export async function createCustomerInquiry(payload: {
     subject: payload.subject,
     customer_name: payload.customer_name,
     customer_email: payload.customer_email || "",
+    customer_phone: payload.customer_phone || "",
     customer_party_id: payload.customer_party || null,
     contact_id: payload.contact_id || null,
     description: payload.description || "",
@@ -438,6 +443,22 @@ export async function createCustomerInquiry(payload: {
     status: "NEW",
   });
   return data;
+}
+
+export async function updateCustomerInquiry(id: string | number, payload: {
+  subject: string;
+  customer_name: string;
+  customer_email?: string;
+  customer_phone?: string;
+  description?: string;
+}) {
+  const { data } = await api.patch(`/api/v1/crm/customer-inquiries/${id}/edit`, {
+    ...payload,
+    customer_email: payload.customer_email || "",
+    customer_phone: payload.customer_phone || "",
+    description: payload.description || "",
+  });
+  return data?.data ?? data;
 }
 
 /**
@@ -478,6 +499,12 @@ export async function createInquiryRequirement(payload: {
  */
 export async function deleteCustomerInquiry(id: string | number) {
   await api.delete(`/api/v1/crm/customer-inquiries/${id}/`);
+}
+
+/** Converts a prospect in the shared master-party table into a customer in place. */
+export async function convertCRMProspect(id: string | number) {
+  const { data } = await api.post(`/api/v1/crm/prospects/${id}/convert`, {});
+  return data?.data ?? data;
 }
 
 /* ── Cost Estimate Actions ───────────────────────── */
