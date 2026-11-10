@@ -33,6 +33,8 @@ export interface CrudOptions {
   beforeDelete?: (req: Request, existing: any) => Promise<void> | void;
   /** Adds domain row visibility on top of the standard tenant/company scope. */
   accessWhere?: (req: Request) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  /** Adds a row-level predicate to mutating lookups without hiding rows from reads. */
+  writeAccessWhere?: (req: Request) => Promise<Record<string, unknown>> | Record<string, unknown>;
   afterCreate?: (req: Request, record: any) => Promise<void> | void;
   /** Domain effects that must commit atomically with single and bulk creates. */
   afterCreateInTransaction?: (req: Request, record: any, tx: Prisma.TransactionClient) => Promise<void>;
@@ -638,6 +640,13 @@ export function createCrudRouter(options: CrudOptions): Router {
     return { AND: [companyScoped, accessScope] };
   };
 
+  const authorizedWriteWhere = async (req: Request, where: Record<string, unknown> = {}) => {
+    const visibleWhere = await authorizedWhere(req, where);
+    const writeScope = options.writeAccessWhere ? await options.writeAccessWhere(req) : {};
+    if (!writeScope || Object.keys(writeScope).length === 0) return visibleWhere;
+    return { AND: [visibleWhere, writeScope] };
+  };
+
 /**
  * cleanData implements this file's named function contract.
  *
@@ -770,7 +779,7 @@ export function createCrudRouter(options: CrudOptions): Router {
           const { id, ...itemData } = item;
           assertNoGenericLifecycleWrite(modelNameStr, itemData);
           const existing = await tx[options.modelName].findFirst({
-            where: await authorizedWhere(req, { id }),
+            where: await authorizedWriteWhere(req, { id }),
           });
           if (!existing) throw new ForbiddenError('Data tidak ditemukan dalam scope company user.');
           assertRecordMutable(modelNameStr, existing);
@@ -816,7 +825,7 @@ export function createCrudRouter(options: CrudOptions): Router {
         res.status(400).json({ detail: 'ids wajib diisi.' });
         return;
       }
-      const where = await authorizedWhere(req, { id: { in: ids } });
+      const where = await authorizedWriteWhere(req, { id: { in: ids } });
       const allowed = await delegate.count({ where });
       if (allowed !== new Set(ids).size) {
         throw new ForbiddenError('Satu atau lebih data berada di luar scope company user.');
@@ -1062,7 +1071,7 @@ export function createCrudRouter(options: CrudOptions): Router {
   router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const existing = await delegate.findFirst({ where: await authorizedWhere(req, { id }) });
+      const existing = await delegate.findFirst({ where: await authorizedWriteWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
       assertRecordMutable(modelNameStr, existing);
       assertNoGenericLifecycleWrite(modelNameStr, req.body);
@@ -1131,7 +1140,7 @@ export function createCrudRouter(options: CrudOptions): Router {
   router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const existing = await delegate.findFirst({ where: await authorizedWhere(req, { id }) });
+      const existing = await delegate.findFirst({ where: await authorizedWriteWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
       assertRecordMutable(modelNameStr, existing);
       assertNoGenericLifecycleWrite(modelNameStr, req.body);
@@ -1200,7 +1209,7 @@ export function createCrudRouter(options: CrudOptions): Router {
   router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const existing = await delegate.findFirst({ where: await authorizedWhere(req, { id }) });
+      const existing = await delegate.findFirst({ where: await authorizedWriteWhere(req, { id }) });
       if (!existing) throw new NotFoundError(modelNameStr);
       assertRecordMutable(modelNameStr, existing);
 

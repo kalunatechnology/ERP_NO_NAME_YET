@@ -14,7 +14,7 @@ import {
   Plus, RefreshCw, CheckCircle2, DollarSign, TrendingUp, Users,
   ShieldAlert, FileText, PhoneCall, Building2, Zap, Trash2, ArrowRight,
   Calculator, ShieldCheck, Award, BarChart3, MessageSquare, FileCheck,
-  ChevronRight, ChevronDown, AlertCircle, Star, UserPlus, Copy,
+  ChevronRight, ChevronDown, AlertCircle, Star, UserPlus, Copy, Pencil,
   Inbox, Globe2, Search, Filter,
 } from "lucide-react";
 import { cn, formatMoney, formatDate, getStatusColor } from "@/lib/utils";
@@ -23,10 +23,10 @@ import { IDRInput } from "@/components/ui/IDRInput";
 import toast from "react-hot-toast";
 import {
   loadCRMData, CRMData, CRMDashboard,
-  processDealWon, executiveOverrideCredit, qualifyInquiry,
+  processDealWon, executiveOverrideCredit, qualifyInquiry, convertCRMProspect,
   createOpportunity, updateOpportunityCustomer, moveCRMOpportunityStage, deleteOpportunity,
   createCRMActivity, getOpportunityCustomer360, markOpportunityLost, createServiceWorkOrder,
-  createCustomerInquiry, updateCRMInquiryLeadStatus, deleteCustomerInquiry,
+  createCustomerInquiry, updateCustomerInquiry, updateCRMInquiryLeadStatus, deleteCustomerInquiry,
   linkInquiryCustomer,
   createCostEstimate, calculateCostEstimate, createQuotationFromEstimate, deleteCostEstimate,
   submitQuotationApproval, approveQuotation, sendQuotation, acceptQuotation, rejectQuotation, convertQuotationToOrder,
@@ -57,6 +57,7 @@ const CRM_TABS = [
   { id: "estimate",    label: "Estimating & Quoting", icon: Calculator, module: "SALES" },
   { id: "tickets",     label: "Support & Garansi",    icon: PhoneCall, module: "SERVICE" },
   { id: "incoming",    label: "Leads & Inquiry",      icon: FileText      },
+  { id: "prospects",   label: "Calon Customer",       icon: Users         },
   { id: "accounts",    label: "Accounts",             icon: Building2     },
   { id: "contracts",   label: "Contracts & Orders",   icon: FileCheck, module: "SALES" },
   { id: "engagement",  label: "Engagement",           icon: MessageSquare },
@@ -214,14 +215,22 @@ function QuickAddPartyModal({
   onClose,
   onSuccess,
   allowTypeSelection = false,
+  defaultPartyType = "CUSTOMER",
+  requireContactMethod = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (newParty: any) => void;
+  onSuccess: (newParty: any, contact?: { email: string; phone: string; contact_id?: string }) => void;
   allowTypeSelection?: boolean;
+  defaultPartyType?: "CUSTOMER" | "PROSPECT" | "SUPPLIER" | "PARTNER";
+  requireContactMethod?: boolean;
 }) {
-  const [partyForm, setPartyForm] = useState({ legal_name: "", display_name: "", email: "", party_code: "", party_type: "CUSTOMER" });
+  const [partyForm, setPartyForm] = useState({ legal_name: "", display_name: "", contact_name: "", email: "", phone: "", party_code: "", party_type: defaultPartyType });
   const [isPartySubmitting, setIsPartySubmitting] = useState(false);
+  const mustHaveContactMethod = requireContactMethod || partyForm.party_type === "PROSPECT";
+  useEffect(() => {
+    if (isOpen) setPartyForm((current) => ({ ...current, party_type: defaultPartyType }));
+  }, [isOpen, defaultPartyType]);
 
 /**
  * handleQuickAdd coordinates the UI behavior represented by this function.
@@ -235,39 +244,60 @@ function QuickAddPartyModal({
       toast.error("Nama pelanggan wajib diisi.");
       return;
     }
+    if (mustHaveContactMethod && !partyForm.email.trim() && !partyForm.phone.trim()) {
+      toast.error("Isi minimal email atau nomor telepon kontak.");
+      return;
+    }
     setIsPartySubmitting(true);
     try {
       const payload = {
         display_name: partyForm.display_name.trim() || partyForm.legal_name.trim(),
         legal_name: partyForm.legal_name.trim() || partyForm.display_name.trim(),
-        party_code: partyForm.party_code?.trim() || `${partyForm.party_type === "SUPPLIER" ? "SUP" : partyForm.party_type === "PARTNER" ? "PART" : "CUST"}-${Date.now().toString().slice(-4)}`,
+        party_code: partyForm.party_code?.trim() || `${partyForm.party_type === "SUPPLIER" ? "SUP" : partyForm.party_type === "PARTNER" ? "PART" : partyForm.party_type === "PROSPECT" ? "PROS" : "CUST"}-${Date.now().toString().slice(-4)}`,
         party_type: partyForm.party_type,
         tax_number: "",
         status: "ACTIVE",
       };
-      const res = await api.post("/api/v1/master-data/parties/", payload);
-      const newParty = res.data;
       const contactEmail = partyForm.email.trim();
+      const contactPhone = partyForm.phone.trim();
       let contactSaveMessage: string | null = null;
-      if (contactEmail) {
+      let primaryContactId: string | undefined;
+      let newParty: any;
+      if (partyForm.party_type === "PROSPECT") {
+        const { data: response } = await api.post("/api/v1/crm/prospects", {
+          display_name: payload.display_name,
+          legal_name: payload.legal_name,
+          party_code: payload.party_code,
+          contact_name: partyForm.contact_name.trim(),
+          email: contactEmail,
+          phone: contactPhone,
+        });
+        newParty = response?.data?.party;
+        primaryContactId = response?.data?.contact?.id;
+      } else {
+        const res = await api.post("/api/v1/master-data/parties/", payload);
+        newParty = res.data;
+      }
+      if (partyForm.party_type !== "PROSPECT" && (contactEmail || contactPhone)) {
         try {
-          await api.post("/api/v1/master-data/contacts/", {
+          const contactResponse = await api.post("/api/v1/master-data/contacts/", {
             party_id: newParty.id,
-            contact_name: payload.display_name,
+            contact_name: partyForm.contact_name.trim() || "Kontak Utama",
             job_title: "",
             email: contactEmail,
-            phone: "",
+            phone: contactPhone,
             primary_contact: true,
           });
+          primaryContactId = contactResponse.data?.id;
         } catch (error) {
-          contactSaveMessage = getUserFacingApiError(error, "Email kontak belum dapat disimpan.");
+          contactSaveMessage = getUserFacingApiError(error, "Detail kontak belum dapat disimpan.");
         }
       }
-      const partyLabel = partyForm.party_type === "SUPPLIER" ? "Vendor / Supplier" : partyForm.party_type === "PARTNER" ? "Partner" : "Pelanggan";
-      if (contactSaveMessage) toast.error(`${partyLabel} tersimpan, tetapi kontak email belum tersimpan. ${contactSaveMessage}`);
+      const partyLabel = partyForm.party_type === "SUPPLIER" ? "Vendor / Supplier" : partyForm.party_type === "PARTNER" ? "Partner" : partyForm.party_type === "PROSPECT" ? "Calon Customer" : "Customer";
+      if (contactSaveMessage) toast.error(`${partyLabel} tersimpan, tetapi detail kontak belum tersimpan. ${contactSaveMessage}`);
       else toast.success(`${partyLabel} baru berhasil ditambahkan!`);
-      onSuccess(newParty);
-      setPartyForm({ legal_name: "", display_name: "", email: "", party_code: "", party_type: "CUSTOMER" });
+      onSuccess(newParty, { email: contactEmail, phone: contactPhone, contact_id: primaryContactId });
+      setPartyForm({ legal_name: "", display_name: "", contact_name: "", email: "", phone: "", party_code: "", party_type: defaultPartyType });
       onClose();
     } catch (error) {
       toast.error(getUserFacingApiError(error, "Rekanan belum dapat ditambahkan. Periksa data wajib dan kemungkinan kode yang sudah digunakan."));
@@ -277,7 +307,7 @@ function QuickAddPartyModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={allowTypeSelection ? "Tambah Rekanan Baru ke Database" : "Tambah Pelanggan Baru ke Database"} size="sm">
+    <Modal isOpen={isOpen} onClose={onClose} title={allowTypeSelection ? "Tambah Rekanan Baru ke Database" : defaultPartyType === "PROSPECT" ? "Tambah Calon Customer" : "Tambah Customer Baru ke Database"} size="sm">
       <div className="flex flex-col gap-3 p-4">
         <div>
           {allowTypeSelection && (
@@ -290,6 +320,7 @@ function QuickAddPartyModal({
                 onChange={e => setPartyForm(p => ({ ...p, party_type: e.target.value }))}
               >
                 <option value="CUSTOMER">Customer</option>
+                <option value="PROSPECT">Calon Customer</option>
                 <option value="SUPPLIER">Vendor / Supplier</option>
                 <option value="PARTNER">Partner</option>
               </select>
@@ -304,6 +335,15 @@ function QuickAddPartyModal({
           />
         </div>
         <div>
+          <label className="text-xs font-medium text-text-secondary mb-1 block">Nama PIC / Kontak (Opsional)</label>
+          <input
+            className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green"
+            placeholder="Nama orang yang bisa dihubungi"
+            value={partyForm.contact_name}
+            onChange={e => setPartyForm(p => ({ ...p, contact_name: e.target.value }))}
+          />
+        </div>
+        <div>
           <label className="text-xs font-medium text-text-secondary mb-1 block">Email Kontak (Opsional)</label>
           <input 
             type="email" 
@@ -312,6 +352,17 @@ function QuickAddPartyModal({
             value={partyForm.email} 
             onChange={e => setPartyForm(p => ({ ...p, email: e.target.value }))} 
           />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-text-secondary mb-1 block">Nomor Telepon Kontak (Opsional)</label>
+          <input
+            type="tel"
+            className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green"
+            placeholder="+62 812 3456 7890"
+            value={partyForm.phone}
+            onChange={e => setPartyForm(p => ({ ...p, phone: e.target.value }))}
+          />
+          {mustHaveContactMethod && <p className="mt-1 text-2xs text-text-secondary">Isi minimal salah satu: email atau nomor telepon.</p>}
         </div>
         <div>
           <label className="text-xs font-medium text-text-secondary mb-1 block">Kode Rekanan (Opsional)</label>
@@ -324,8 +375,8 @@ function QuickAddPartyModal({
         </div>
         <div className="flex gap-2 justify-end pt-2">
           <button type="button" onClick={onClose} className="btn-ghost">Batal</button>
-          <button type="button" onClick={handleQuickAdd} disabled={isPartySubmitting} className="btn-primary">
-            {isPartySubmitting ? "Menyimpan..." : allowTypeSelection ? "Simpan Rekanan" : "Simpan Pelanggan"}
+          <button type="button" onClick={handleQuickAdd} disabled={isPartySubmitting || (mustHaveContactMethod && !partyForm.email.trim() && !partyForm.phone.trim())} className="btn-primary">
+            {isPartySubmitting ? "Menyimpan..." : allowTypeSelection ? "Simpan Rekanan" : defaultPartyType === "PROSPECT" ? "Simpan Calon Customer" : "Simpan Customer"}
           </button>
         </div>
       </div>
@@ -523,7 +574,7 @@ function TabDeals({
   data, approvals, isNewOppOpen, setIsNewOppOpen, onRefresh,
   onOpportunityCreated, onOpportunityDeleted, onPartyCreated,
   readOnly = false, canOverride = false,
-  canDelegate = false, onOpenDelegate, onOpenStageDetail, teamUsers = [],
+  canDelegate = false, canEditAll = false, currentUserId, onOpenDelegate, onOpenStageDetail, teamUsers = [],
 }: {
   data: CRMData; approvals: any[]; isNewOppOpen: boolean;
   setIsNewOppOpen: (v: boolean) => void; onRefresh: () => void;
@@ -532,6 +583,8 @@ function TabDeals({
   onPartyCreated?: (newParty: any) => void;
   readOnly?: boolean;
   canOverride?: boolean;
+  canEditAll?: boolean;
+  currentUserId?: string;
   canDelegate?: boolean;
   onOpenDelegate?: (record: any, recordType: "INQUIRY" | "OPPORTUNITY") => void;
   onOpenStageDetail?: (record: any, recordType: "LEAD" | "OPPORTUNITY") => void;
@@ -1041,6 +1094,7 @@ function TabDeals({
               const isLost = terminalLost && !terminalConflict;
               const isHardCancelled = ["CANCELLED","CANCEL","BATAL"].includes((o.status||"").toUpperCase()) || ["CANCELLED","CANCEL","BATAL"].includes((o.pipeline_stage||"").toUpperCase());
               const isCancelled = isLost || terminalConflict || isHardCancelled;
+              const canManageOpportunity = !readOnly && (canEditAll || Boolean(currentUserId && String(o.created_by_id) === currentUserId));
               const lostReasonLabels: Record<string, string> = { PRICE_TOO_HIGH: "Harga tidak sesuai", LOST_FEATURES: "Fitur/kebutuhan tidak terpenuhi", BUDGET_CANCELLED: "Anggaran dibatalkan", COMPETITOR: "Memilih kompetitor", NO_RESPONSE: "Tidak ada respons", OTHER: "Lainnya" };
               const lostReasonSummary = lostReasonLabels[String(o.lost_reason || "").toUpperCase()] || o.lost_reason || "Alasan belum tercatat";
 
@@ -1059,7 +1113,7 @@ function TabDeals({
                     </div>
                   </td>
                   <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
-                    {cust ? <span className="text-sm font-medium text-text-primary">{cust.display_name || cust.legal_name || "Pelanggan Umum"}</span> : !isCancelled && !readOnly ? (
+                    {cust ? <span className="text-sm font-medium text-text-primary">{cust.display_name || cust.legal_name || "Pelanggan Umum"}</span> : !isCancelled && canManageOpportunity ? (
                       <div className="flex min-w-[250px] items-center gap-1.5">
                         <select aria-label={`Pilih customer untuk ${o.opportunity_name || "opportunity"}`} className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs" value={customerFixByOpp[String(o.id)] || ""} onChange={(event) => setCustomerFixByOpp((current) => ({ ...current, [String(o.id)]: event.target.value }))}>
                           <option value="">Pilih customer</option>
@@ -1076,7 +1130,7 @@ function TabDeals({
                   </td>
                   <td className="border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
                     <StatusBadge status={o.status || "OPEN"} />
-                    {readOnly || isCancelled || isWon || isLost ? <div className="mt-1 text-xs text-text-secondary">{CRM_PIPELINE_STAGE_LABELS[String(o.pipeline_stage || (isWon ? "WON" : isLost ? "LOST" : "PROSPECT")).toUpperCase()] || o.pipeline_stage || "Prospek"}</div> : <select aria-label={`Tahap ${o.opportunity_name || "Opportunity"}`} className="input mt-1 max-w-[190px] px-2 py-1 text-xs" value={normalizeOpportunityStage(o.pipeline_stage)} disabled={savingStage} onChange={event => void handleOpportunityStageChange(o, event.target.value)}>{["PROSPECT", "DISCOVERY", "PROPOSAL_SENT", "NEGOTIATION", "FOLLOW_UP"].map(stage => <option key={stage} value={stage}>{CRM_PIPELINE_STAGE_LABELS[stage]}</option>)}</select>}
+                    {!canManageOpportunity || isCancelled || isWon || isLost ? <div className="mt-1 text-xs text-text-secondary">{CRM_PIPELINE_STAGE_LABELS[String(o.pipeline_stage || (isWon ? "WON" : isLost ? "LOST" : "PROSPECT")).toUpperCase()] || o.pipeline_stage || "Prospek"}</div> : <select aria-label={`Tahap ${o.opportunity_name || "Opportunity"}`} className="input mt-1 max-w-[190px] px-2 py-1 text-xs" value={normalizeOpportunityStage(o.pipeline_stage)} disabled={savingStage} onChange={event => void handleOpportunityStageChange(o, event.target.value)}>{["PROSPECT", "DISCOVERY", "PROPOSAL_SENT", "NEGOTIATION", "FOLLOW_UP"].map(stage => <option key={stage} value={stage}>{CRM_PIPELINE_STAGE_LABELS[stage]}</option>)}</select>}
                     {normalizeOpportunityStage(o.pipeline_stage) === "FOLLOW_UP" && o.next_follow_up_at && <div className="mt-1 text-2xs text-amber-700">Tindak lanjut: {formatDate(o.next_follow_up_at)}</div>}
                     {normalizeOpportunityStage(o.pipeline_stage) === "FOLLOW_UP" && o.follow_up_reason && <div className="mt-1 max-w-[190px] truncate text-2xs text-text-secondary" title={o.follow_up_reason}>{o.follow_up_reason}</div>}
                     {isLost && <div className="mt-1 max-w-[190px] truncate text-2xs text-text-secondary" title={o.lost_reason_detail ? `${lostReasonSummary}: ${o.lost_reason_detail}` : lostReasonSummary}>{lostReasonSummary}</div>}
@@ -1084,15 +1138,15 @@ function TabDeals({
                   </td>
                   <td className="border-b border-slate-200 px-3 py-3">
                     <div className="flex min-w-[270px] flex-wrap items-center gap-1.5">
-                      {onOpenStageDetail && <ActionBtn onClick={() => onOpenStageDetail(o, "OPPORTUNITY")} label="Detail Pipeline" small variant="ghost" title="Buka modal diferensiasi Sales Opportunity (Info, Follow-Up, Estimasi & Pajak, Notulensi)." />}
+                      {canManageOpportunity && onOpenStageDetail && <ActionBtn onClick={() => onOpenStageDetail(o, "OPPORTUNITY")} label="Detail Pipeline" small variant="ghost" title="Buka modal diferensiasi Sales Opportunity (Info, Follow-Up, Estimasi & Pajak, Notulensi)." />}
                       {canDelegate && onOpenDelegate && !isCancelled && <ActionBtn onClick={() => onOpenDelegate(o, "OPPORTUNITY")} label="Delegasi PIC" small variant="ghost" title="Delegasikan atau alihkan PIC Sales untuk Opportunity ini (SPV/GM)." />}
-                      {!readOnly && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" }); }} label="Aktivitas" small variant="ghost" title="Catat telepon, meeting, catatan, atau follow-up untuk opportunity ini." />}
-                      {!readOnly && !isCancelled && <ActionBtn onClick={async () => { openCrmMeetingForm(o); }} label="Jadwalkan meeting" small variant="ghost" title="Buat meeting pada modul Meeting & Request dan tautkan ke opportunity ini." />}
+                      {canManageOpportunity && !isCancelled && <ActionBtn onClick={async () => { setActivityOpp(o); setActivityForm({ activity_type: "CALL", subject: "", scheduled_at: "", meeting_minutes_id: "" }); }} label="Aktivitas" small variant="ghost" title="Catat telepon, meeting, catatan, atau follow-up untuk opportunity ini." />}
+                      {canManageOpportunity && !isCancelled && <ActionBtn onClick={async () => { openCrmMeetingForm(o); }} label="Jadwalkan meeting" small variant="ghost" title="Buat meeting pada modul Meeting & Request dan tautkan ke opportunity ini." />}
                       {!readOnly && cust && <ActionBtn onClick={() => handleCustomer360(o.id)} label="Customer 360" small variant="ghost" title="Lihat ringkasan customer: proyek, kontrak, pengiriman, nilai transaksi, serta piutang." />}
-                      {!readOnly && !isCancelled && !isWon && <ActionBtn onClick={() => handleDealWon(o)} label="Deal Won" small disabled={!cust} title={!cust ? "Lengkapi customer pada opportunity sebelum menjalankan Deal Won." : "Tandai deal berhasil dan jalankan pemeriksaan kredit."} />}
+                      {canManageOpportunity && !isCancelled && !isWon && <ActionBtn onClick={() => handleDealWon(o)} label="Deal Won" small disabled={!cust} title={!cust ? "Lengkapi customer pada opportunity sebelum menjalankan Deal Won." : "Tandai deal berhasil dan jalankan pemeriksaan kredit."} />}
                       {!readOnly && isWon && canOverride && <ActionBtn onClick={() => handleExecOverride(o)} label="Executive override" variant="ghost" small title="Jalur pengecualian untuk Direktur saat pemeriksaan kredit menahan deal; wajib mencatat alasan." />}
-                      {!readOnly && isHardCancelled && <button onClick={() => handleDelete(o.id)} title="Hapus permanen" className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>}
-                      {!readOnly && !isCancelled && !isWon && <ActionBtn onClick={() => handleMarkLost(o.id)} label="Tandai kalah" small variant="ghost" title="Tutup opportunity sebagai kalah dan catat alasannya." />}
+                      {canManageOpportunity && isHardCancelled && <button onClick={() => handleDelete(o.id)} title="Hapus permanen" className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>}
+                      {canManageOpportunity && !isCancelled && !isWon && <ActionBtn onClick={() => handleMarkLost(o.id)} label="Tandai kalah" small variant="ghost" title="Tutup opportunity sebagai kalah dan catat alasannya." />}
                       {isWon && !readOnly && !canOverride && <span className="text-xs font-medium text-emerald-700">Deal Won</span>}
                       {readOnly && <span className="text-xs text-text-secondary">{terminalConflict ? "Status konflik" : isLost ? "Deal Closed Lost" : isHardCancelled ? "Dibatalkan" : isWon ? "Deal Closed Won" : o.pipeline_stage || "In Pipeline"}</span>}
                     </div>
@@ -1176,7 +1230,7 @@ function TabDeals({
                   <td className={cn("whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-medium last:border-r-0", outstanding > 0 ? "text-amber-700" : "text-text-primary")}>{snap ? formatMoney(outstanding) : <span className="text-xs text-text-secondary">Belum dihitung</span>}</td>
                   <td className={cn("whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 text-right text-sm font-semibold last:border-r-0", isNoLimit ? "text-text-secondary" : available >= 0 ? "text-brand-green" : "text-red-600")}>{isNoLimit ? "—" : snap ? formatMoney(available) : <span className="text-xs font-medium text-text-secondary">Belum dihitung</span>}</td>
                   <td className={cn("whitespace-nowrap border-b border-slate-200 px-3 py-3 text-right text-sm font-medium", overdue > 0 ? "text-red-600" : "text-text-primary")}>{snap ? formatMoney(overdue) : <span className="text-xs text-text-secondary">Belum dihitung</span>}</td>
-                  {!readOnly && <td className="border-b border-slate-200 px-3 py-3"><div className="flex min-w-[180px] justify-end gap-1.5"><ActionBtn onClick={async () => { handleCreditLimit(p, limit); }} label="Atur Limit" small variant="ghost" title="Tetapkan plafon kredit customer. Nilai ini dipakai untuk menentukan apakah Deal Won bisa diteruskan tanpa proforma." /><ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" title="Hitung ulang limit tersedia, piutang berjalan, dan overdue dari data invoice yang tercatat." /></div></td>}
+                  {!readOnly && <td className="border-b border-slate-200 px-3 py-3">{(canEditAll || Boolean(currentUserId && String(p.created_by_id) === currentUserId)) ? <div className="flex min-w-[180px] justify-end gap-1.5"><ActionBtn onClick={async () => { handleCreditLimit(p, limit); }} label="Atur Limit" small variant="ghost" title="Tetapkan plafon kredit customer. Nilai ini dipakai untuk menentukan apakah Deal Won bisa diteruskan tanpa proforma." /><ActionBtn onClick={() => handleCreditRecalc(p.id)} label="Hitung ulang" small variant="ghost" title="Hitung ulang limit tersedia, piutang berjalan, dan overdue dari data invoice yang tercatat." /></div> : <span className="text-2xs text-text-secondary">Dibuat pengguna lain</span>}</td>}
                 </tr>
               );
                 })}
@@ -1388,7 +1442,7 @@ function TabDeals({
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false, canApproveQuotation = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; onNavigate: (tab: string) => void; readOnly?: boolean; canApproveQuotation?: boolean }) {
+function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false, canApproveQuotation = false, currentUserId, canEditAll = false }: { data: CRMData; approvals: any[]; onRefresh: () => void; onNavigate: (tab: string) => void; readOnly?: boolean; canApproveQuotation?: boolean; currentUserId?: string; canEditAll?: boolean }) {
   const [isEstModal, setIsEstModal] = useState(false);
   const [calculatingEstimateId, setCalculatingEstimateId] = useState<string | null>(null);
   const [estForm, setEstForm] = useState({ opportunity: "", direct_cost: "100000000", overhead_cost: "30000000", contingency_amount: "0", markup_percent: "30", tax_percent: "0", description: "" });
@@ -1641,6 +1695,7 @@ function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false,
         {visibleEstimates.length === 0 ? <EmptyState msg="Tidak ada kalkulasi biaya pada periode ini." /> : (
           <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto">
             {visibleEstimates.map(e => {
+              const canManageEstimate = !readOnly && (canEditAll || Boolean(currentUserId && String(e.created_by_id) === currentUserId));
               const lines = (data.estimateLines || []).filter((line: any) => String(line.estimate_id ?? line.estimate) === String(e.id));
               const lineDirect = lines.filter((line: any) => String(line.cost_element || "").toUpperCase() !== "OVERHEAD").reduce((sum: number, line: any) => sum + Number(line.amount || 0), 0);
               const lineOverhead = lines.filter((line: any) => String(line.cost_element || "").toUpperCase() === "OVERHEAD").reduce((sum: number, line: any) => sum + Number(line.amount || 0), 0);
@@ -1666,7 +1721,7 @@ function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false,
                       </div>
                       <StatusBadge status={e.status || "DRAFT"} />
                     </div>
-                    {!readOnly && (
+                    {canManageEstimate && (
                       <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
                         <ActionBtn
                           onClick={async () => {
@@ -1826,8 +1881,9 @@ function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false,
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-text-tertiary/40 bg-white">
-                    {filteredQuotationRows.map(({ quote: q, customerName, date, linkedOrder, code }) => {
+                    {filteredQuotationRows.map(({ quote: q, opportunity, customerName, date, linkedOrder, code }) => {
                       const isConverted = String(q.status || "DRAFT").toUpperCase() === "CONVERTED" || Boolean(linkedOrder);
+                      const canManageQuotation = !readOnly && (canEditAll || Boolean(currentUserId && (String(q.created_by_id) === currentUserId || String(opportunity?.created_by_id) === currentUserId)));
                       const orderLabel = linkedOrder?.order_number || (linkedOrder?.id ? `Sales Order ${String(linkedOrder.id).slice(0, 8).toUpperCase()}` : "Sudah menjadi Order");
                       return (
                         <tr key={q.id} className="transition-colors hover:bg-blue-50/30">
@@ -1845,7 +1901,7 @@ function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false,
                           <td className="px-4 py-3">{isConverted
                             ? <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800" title="Quotation sudah menjadi Sales Order.">Sudah menjadi Order</span>
                             : <StatusBadge status={q.status || "DRAFT"} />}</td>
-                          <td className="px-4 py-3 text-right">{!readOnly ? getQuotActions(q) : isConverted ? <span className="whitespace-nowrap text-xs font-medium text-emerald-700">{orderLabel}</span> : null}</td>
+                          <td className="px-4 py-3 text-right">{canManageQuotation ? getQuotActions(q) : isConverted ? <span className="whitespace-nowrap text-xs font-medium text-emerald-700">{orderLabel}</span> : readOnly ? null : <span className="text-2xs text-text-secondary">Dibuat pengguna lain</span>}</td>
                         </tr>
                       );
                     })}
@@ -1870,6 +1926,7 @@ function TabEstimate({ data, approvals, onRefresh, onNavigate, readOnly = false,
             >
               <option value="">-- Pilih Opportunity --</option>
               {(data.opportunities || []).filter((opportunity: any) => {
+                if (!canEditAll && String(opportunity.created_by_id) !== String(currentUserId || "")) return false;
                 const partyId = opportunityPartyId(opportunity);
                 return partyId && (data.parties || []).some((party: any) => String(party.id) === String(partyId) && party.party_type === "CUSTOMER" && party.status === "ACTIVE");
               }).map(o => (
@@ -2257,10 +2314,10 @@ function TabTickets({ data, onRefresh, onPartyCreated, readOnly = false }: { dat
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
 function TabIncoming({
-  data, onRefresh, onPartyCreated, readOnly = false,
-  canDelegate = false, onOpenDelegate, onOpenStageDetail, teamUsers = [],
+  data, onRefresh, onPartyCreated, readOnly = false, canDelete = false,
+  canDelegate = false, canEdit = false, canEditAll = false, currentUserId, onOpenDelegate, onOpenStageDetail, teamUsers = [],
 }: {
-  data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean;
+  data: CRMData; onRefresh: () => void; onPartyCreated?: (newParty: any) => void; readOnly?: boolean; canDelete?: boolean; canEdit?: boolean; canEditAll?: boolean; currentUserId?: string;
   canDelegate?: boolean;
   onOpenDelegate?: (record: any, recordType: "INQUIRY" | "OPPORTUNITY") => void;
   onOpenStageDetail?: (record: any, recordType: "LEAD" | "OPPORTUNITY") => void;
@@ -2269,7 +2326,7 @@ function TabIncoming({
   const crmPeriod = useCRMPeriodFilter();
   const [isOpen, setIsOpen] = useState(false);
   const [isQuickPartyOpen, setIsQuickPartyOpen] = useState(false);
-  const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_party: "", contact_id: "", description: "" });
+  const [form, setForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_phone: "", party_type: "CUSTOMER", customer_party: "", contact_id: "", description: "" });
   const [inquiryContactOptions, setInquiryContactOptions] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [domainFilter, setDomainFilter] = useState("");
@@ -2284,6 +2341,9 @@ function TabIncoming({
   const [linkContactId, setLinkContactId] = useState("");
   const [linkContactOptions, setLinkContactOptions] = useState<any[]>([]);
   const [linkCustomerSaving, setLinkCustomerSaving] = useState(false);
+  const [editingLead, setEditingLead] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ subject: "", customer_name: "", customer_email: "", customer_phone: "", description: "" });
+  const [editSaving, setEditSaving] = useState(false);
   const inquiryDomains = Array.from(new Set((data.inquiries || []).map((item) => item.origin_domain).filter((value): value is string => Boolean(value)))).sort();
   const visibleInquiries = (data.inquiries || [])
     .filter((item) => crmPeriod.matches(item.created_at || item.submitted_at || item.updated_at))
@@ -2305,12 +2365,17 @@ function TabIncoming({
       toast.error("Subject & nama customer wajib diisi."); 
       return; 
     }
+    if (!form.customer_email.trim() && !form.customer_phone.trim()) {
+      toast.error("Isi email atau nomor telepon kontak. Nama PIC boleh dikosongkan.");
+      return;
+    }
     setIsSubmitting(true);
     try { 
       const payload = {
         subject: form.subject.trim(),
         customer_name: form.customer_name.trim(),
         customer_email: form.customer_email?.trim() || undefined,
+        customer_phone: form.customer_phone?.trim() || undefined,
         customer_party: form.customer_party ? form.customer_party : null,
         contact_id: form.contact_id || null,
         description: form.description?.trim() || "",
@@ -2318,7 +2383,7 @@ function TabIncoming({
       await createCustomerInquiry(payload); 
       toast.success("Inquiry berhasil dibuat!"); 
       setIsOpen(false); 
-      setForm({ subject: "", customer_name: "", customer_email: "", customer_party: "", contact_id: "", description: "" });
+      setForm({ subject: "", customer_name: "", customer_email: "", customer_phone: "", party_type: "CUSTOMER", customer_party: "", contact_id: "", description: "" });
       setInquiryContactOptions([]);
       onRefresh(); 
     }
@@ -2396,7 +2461,8 @@ function TabIncoming({
       customer_party: partyId,
       contact_id: "",
       customer_name: party ? (party.display_name || party.legal_name || current.customer_name) : current.customer_name,
-      customer_email: party ? "" : current.customer_email,
+      customer_email: partyId ? "" : current.customer_email,
+      customer_phone: partyId ? "" : current.customer_phone,
     }));
     setInquiryContactOptions([]);
     if (!partyId) return;
@@ -2404,6 +2470,43 @@ function TabIncoming({
       setInquiryContactOptions(await loadCRMPartyContacts(partyId));
     } catch {
       toast.error("Kontak customer gagal dimuat. Inquiry tetap dapat disimpan tanpa memilih PIC.");
+    }
+  };
+
+  const handleDeleteLead = async (lead: any) => {
+    const customer = lead.customer_name || "Lead ini";
+    if (!window.confirm(`Hapus lead ${customer}? Spesifikasi dan estimasi yang belum menjadi penawaran akan ikut dihapus. Data customer dan riwayat percakapan tetap disimpan. Lead yang sudah menjadi Opportunity atau memiliki quotation tidak dapat dihapus.`)) return;
+    setSavingLeadId(String(lead.id));
+    try {
+      await deleteCustomerInquiry(lead.id);
+      toast.success("Lead berhasil dihapus. Data customer dan riwayat percakapan tetap tersimpan.");
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || error?.response?.data?.message || "Lead tidak dapat dihapus.");
+    } finally {
+      setSavingLeadId(null);
+    }
+  };
+
+  const openEditLead = (lead: any) => {
+    setEditingLead(lead);
+    setEditForm({ subject: lead.subject || "", customer_name: lead.customer_name || "", customer_email: lead.customer_email || "", customer_phone: lead.customer_phone || "", description: lead.description || "" });
+  };
+
+  const saveLeadEdit = async () => {
+    if (!editingLead) return;
+    if (!editForm.subject.trim() || !editForm.customer_name.trim()) { toast.error("Subject dan nama customer wajib diisi."); return; }
+    if (!editForm.customer_email.trim() && !editForm.customer_phone.trim()) { toast.error("Isi minimal email atau nomor telepon kontak."); return; }
+    setEditSaving(true);
+    try {
+      await updateCustomerInquiry(editingLead.id, editForm);
+      toast.success("Data Lead berhasil diperbarui.");
+      setEditingLead(null);
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Data Lead belum dapat diperbarui.");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -2434,6 +2537,9 @@ function TabIncoming({
             const isQual = leadStatus === "QUALIFIED";
             const hasLinkedOpportunity = Boolean(x.opportunity_id);
             const needsOpportunityRepair = isQual && !hasLinkedOpportunity;
+            const linkedParty = (data.parties || []).find((party: any) => String(party.id) === String(x.customer_party_id));
+            const linkedPartyType = String(linkedParty?.party_type || "").toUpperCase();
+            const canHandleThisLead = canEdit && (canEditAll || Boolean(currentUserId && String(x.created_by_id) === currentUserId));
 /**
  * reqs coordinates the UI behavior represented by this function.
  *
@@ -2456,7 +2562,7 @@ function TabIncoming({
                   </div>
                   <div className="text-sm font-semibold truncate">{x.subject || `Inquiry ${String(x.id).slice(0,8)}`}</div>
                   <div className="text-xs text-text-secondary mt-0.5">
-                    <b>{x.customer_name || "-"}</b> ({x.customer_email || "-"}) · <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-2xs">{reqs.length} Spesifikasi</span>
+                    <b>{x.customer_name || "-"}</b> · {[x.customer_email, x.customer_phone].filter(Boolean).join(" · ") || "Kontak belum tersedia"} · <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-2xs">{reqs.length} Spesifikasi</span>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5"><OriginDomainBadge domain={x.origin_domain} />{!x.origin_domain && <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-2xs text-slate-600">Sumber manual</span>}</div>
                   <StatusBadge status={needsOpportunityRepair ? "Opportunity belum tertaut" : ({ NEW: "Lead baru", CONTACTED: "Sudah dihubungi", RESPONDED: "Merespons", FOLLOW_UP: "Follow-up kembali", QUALIFIED: "Menjadi prospek", CLOSED_LOST: "Ditutup" } as Record<string, string>)[leadStatus] || leadStatus} />
@@ -2470,24 +2576,27 @@ function TabIncoming({
                   {canDelegate && onOpenDelegate && !isQual && (
                     <ActionBtn onClick={() => onOpenDelegate(x, "INQUIRY")} label="Delegasi PIC" small variant="ghost" title="Delegasikan atau alihkan Lead ini ke Sales (SPV/GM)." />
                   )}
-                  {!readOnly ? (
+                  {canHandleThisLead ? (
                     <>
+                      <ActionBtn onClick={() => openEditLead(x)} label="Edit Lead" small variant="ghost" title="Ubah subject, nama customer, email, telepon, dan deskripsi Lead." />
                       {!x.customer_party_id && <ActionBtn onClick={() => openLinkCustomer(x)} label="Hubungkan customer" small variant="ghost" />}
                       {(leadStatus === "NEW" || leadStatus === "FOLLOW_UP") && <ActionBtn onClick={async () => updateLeadStatus(x, "CONTACTED")} label={leadStatus === "FOLLOW_UP" ? "Dihubungi lagi" : "Tandai dihubungi"} small disabled={savingLeadId === String(x.id)} />}
                       {leadStatus === "CONTACTED" && <ActionBtn onClick={async () => updateLeadStatus(x, "RESPONDED")} label="Tandai merespons" small disabled={savingLeadId === String(x.id)} />}
-                      {leadStatus === "RESPONDED" && (x.customer_party_id ? <ActionBtn onClick={async () => { try { await qualifyInquiry(x.id); toast.success("Lead lolos kualifikasi dan menjadi Opportunity."); onRefresh(); } catch (error: any) { toast.error(error?.response?.data?.detail || "Lead belum dapat dikualifikasi."); } }} label="Jadikan Opportunity" small /> : <span title="Hubungkan ke customer aktif terlebih dahulu" className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-2xs font-semibold text-amber-800">Hubungkan customer dulu</span>)}
+                      {leadStatus === "RESPONDED" && linkedPartyType === "CUSTOMER" && <ActionBtn onClick={async () => { try { await qualifyInquiry(x.id); toast.success("Lead lolos kualifikasi dan menjadi Opportunity."); onRefresh(); } catch (error: any) { toast.error(error?.response?.data?.detail || "Lead belum dapat dikualifikasi."); } }} label="Jadikan Opportunity" small />}
+                      {leadStatus === "RESPONDED" && linkedPartyType === "PROSPECT" && <ActionBtn onClick={async () => { try { await convertCRMProspect(linkedParty.id); toast.success("Calon Customer dikonversi menjadi Customer. Lead siap dikualifikasi."); onRefresh(); } catch (error: any) { toast.error(error?.response?.data?.detail || "Calon Customer belum dapat dikonversi."); } }} label="Jadikan Customer" small />}
+                      {leadStatus === "RESPONDED" && !linkedPartyType && <span title="Hubungkan ke Customer atau Calon Customer aktif terlebih dahulu" className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-2xs font-semibold text-amber-800">Hubungkan customer dulu</span>}
                       {needsOpportunityRepair && (x.customer_party_id ? <ActionBtn onClick={async () => { try { await qualifyInquiry(x.id); toast.success("Tautan Opportunity berhasil diperbaiki."); onRefresh(); } catch (error: any) { toast.error(error?.response?.data?.detail || "Tautan Opportunity belum dapat diperbaiki."); } }} label="Perbaiki Opportunity" small /> : <span title="Hubungkan ke customer aktif terlebih dahulu" className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-2xs font-semibold text-amber-800">Hubungkan customer dulu</span>)}
                       {!isQual && !["CLOSED_LOST"].includes(leadStatus) && <ActionBtn onClick={async () => { setFollowUpLead(x); setFollowUpDraft({ date: "", note: "" }); }} label="Tindak lanjuti lagi" small variant="ghost" />}
                       {isQual && (
                         <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">QUALIFIED</span>
                       )}
-                      {!isQual && <button onClick={async () => { if(!confirm("Hapus inquiry?")) return; await deleteCustomerInquiry(x.id); toast.success("Dihapus."); onRefresh(); }} className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50">
+                      {canDelete && <button type="button" onClick={() => void handleDeleteLead(x)} disabled={savingLeadId === String(x.id)} title="Hapus Lead (CRM Lead)" className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 disabled:opacity-50">
                         <Trash2 size={13} />
                       </button>}
                     </>
                   ) : (
                     <span className="text-2xs text-text-secondary italic">
-                      {isQual ? "QUALIFIED" : x.status || "NEW"}
+                      {isQual ? "QUALIFIED" : canEdit ? "Hanya dapat mengubah Lead yang dibuat sendiri" : x.status || "NEW"}
                     </span>
                   )}
                 </div>
@@ -2496,6 +2605,17 @@ function TabIncoming({
           })}
         </div>
       )}
+      <Modal isOpen={Boolean(editingLead)} onClose={() => !editSaving && setEditingLead(null)} title="Edit Data Lead" size="md">
+        <div className="flex flex-col gap-3 p-4">
+          <label className="text-xs font-medium text-text-secondary">Subject *<input className="input mt-1 w-full" maxLength={240} value={editForm.subject} onChange={event => setEditForm(current => ({ ...current, subject: event.target.value }))} /></label>
+          <label className="text-xs font-medium text-text-secondary">Nama Customer *<input className="input mt-1 w-full" maxLength={200} value={editForm.customer_name} onChange={event => setEditForm(current => ({ ...current, customer_name: event.target.value }))} /></label>
+          <label className="text-xs font-medium text-text-secondary">Email kontak (opsional)<input type="email" className="input mt-1 w-full" value={editForm.customer_email} onChange={event => setEditForm(current => ({ ...current, customer_email: event.target.value }))} /></label>
+          <label className="text-xs font-medium text-text-secondary">Nomor telepon kontak (opsional)<input type="tel" className="input mt-1 w-full" maxLength={50} value={editForm.customer_phone} onChange={event => setEditForm(current => ({ ...current, customer_phone: event.target.value }))} /></label>
+          <p className="-mt-2 text-2xs text-text-secondary">Salah satu kontak wajib diisi. Status dan relasi Customer diubah melalui aksi Lead masing-masing.</p>
+          <label className="text-xs font-medium text-text-secondary">Deskripsi kebutuhan<textarea className="input mt-1 w-full min-h-24" maxLength={5000} value={editForm.description} onChange={event => setEditForm(current => ({ ...current, description: event.target.value }))} /></label>
+          <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingLead(null)} disabled={editSaving} className="btn-ghost">Batal</button><button type="button" onClick={() => void saveLeadEdit()} disabled={editSaving || !editForm.subject.trim() || !editForm.customer_name.trim() || (!editForm.customer_email.trim() && !editForm.customer_phone.trim())} className="btn-primary">{editSaving ? "Menyimpan…" : "Simpan perubahan"}</button></div>
+        </div>
+      </Modal>
       <Modal isOpen={Boolean(contactLead)} onClose={() => !savingLeadId && setContactLead(null)} title={contactTarget === "CONTACTED" ? "Catat Lead Sudah Dihubungi" : "Catat Respons Lead"} size="sm">
         <div className="space-y-3 p-1"><p className="text-xs text-text-secondary">{contactLead?.customer_name || "Lead"} · status dicatat sebagai {contactTarget === "CONTACTED" ? "Sudah Dihubungi" : "Merespons"}.</p><label className="block text-xs font-medium">Catatan kontak (opsional)<textarea className="input mt-1 w-full min-h-20" maxLength={2000} value={contactNote} onChange={event => setContactNote(event.target.value)} placeholder="Ringkasan panggilan, pesan, atau kebutuhan customer" /></label><div className="flex justify-end gap-2"><button type="button" onClick={() => setContactLead(null)} disabled={Boolean(savingLeadId)} className="btn-ghost">Batal</button><button type="button" onClick={() => void submitLeadContact()} disabled={Boolean(savingLeadId)} className="btn-primary">{savingLeadId ? "Menyimpan…" : "Simpan status"}</button></div></div>
       </Modal>
@@ -2525,18 +2645,30 @@ function TabIncoming({
             <input className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.customer_name} onChange={e => setForm(f => ({...f, customer_name: e.target.value}))} placeholder="Nama customer / PT..." />
           </div>
           <div>
-            <label className="text-xs font-medium text-text-secondary mb-1 block">Email Customer</label>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Simpan relasi Lead sebagai</label>
+            <select className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-green" value={form.party_type} onChange={event => setForm(current => ({ ...current, party_type: event.target.value, customer_party: "", contact_id: "", customer_email: "", customer_phone: "" }))}>
+              <option value="CUSTOMER">Customer</option>
+              <option value="PROSPECT">Calon Customer</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Email kontak (opsional)</label>
             <input type="email" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.customer_email} onChange={e => setForm(f => ({...f, customer_email: e.target.value}))} placeholder="email@domain.com" />
           </div>
           <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Nomor telepon kontak (opsional)</label>
+            <input type="tel" className="w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green" value={form.customer_phone} onChange={e => setForm(f => ({...f, customer_phone: e.target.value}))} placeholder="+62 812 3456 7890" />
+            <p className="mt-1 text-2xs text-text-secondary">PIC boleh tidak dipilih. Isi minimal email atau nomor telepon agar lead dapat dihubungi.</p>
+          </div>
+          <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium text-text-secondary">Pilih Rekanan / Pelanggan (Database)</label>
+              <label className="text-xs font-medium text-text-secondary">Pilih {form.party_type === "PROSPECT" ? "Calon Customer" : "Customer"} (Database)</label>
               <button 
                 type="button" 
                 onClick={() => setIsQuickPartyOpen(true)}
                 className="text-2xs font-semibold text-brand-green hover:underline flex items-center gap-1"
               >
-                <UserPlus size={12} /> + Pelanggan Baru
+                <UserPlus size={12} /> + {form.party_type === "PROSPECT" ? "Calon Customer" : "Customer"} Baru
               </button>
             </div>
             <select
@@ -2545,7 +2677,7 @@ function TabIncoming({
               onChange={e => void handleInquiryPartySelect(e.target.value)}
             >
               <option value="">-- Rekanan Bebas / Input Manual --</option>
-              {(data.parties || []).filter(p => String(p.party_type || "").toUpperCase() === "CUSTOMER" && String(p.status || "").toUpperCase() === "ACTIVE").map(p => (
+              {(data.parties || []).filter(p => String(p.party_type || "").toUpperCase() === form.party_type && String(p.status || "").toUpperCase() === "ACTIVE").map(p => (
                 <option key={p.id} value={String(p.id)}>{p.display_name || p.legal_name}</option>
               ))}
             </select>
@@ -2553,7 +2685,7 @@ function TabIncoming({
           {form.customer_party && <label className="block text-xs font-medium text-text-secondary">PIC / Kontak customer (opsional)
             <select className="input mt-1 w-full" value={form.contact_id} onChange={event => {
               const contact = inquiryContactOptions.find((item) => String(item.id) === event.target.value);
-              setForm((current) => ({ ...current, contact_id: event.target.value, customer_email: contact?.email || current.customer_email }));
+              setForm((current) => ({ ...current, contact_id: event.target.value, customer_email: contact?.email || current.customer_email, customer_phone: contact?.phone || current.customer_phone }));
             }}>
               <option value="">Pilih PIC bila tersedia</option>
               {inquiryContactOptions.map((contact) => <option key={contact.id} value={String(contact.id)}>{contact.contact_name}{contact.job_title ? ` · ${contact.job_title}` : ""}{contact.primary_contact ? " · Utama" : ""}</option>)}
@@ -2565,7 +2697,7 @@ function TabIncoming({
           </div>
           <div className="flex gap-2 justify-end pt-1">
             <button onClick={() => setIsOpen(false)} disabled={isSubmitting} className="btn-ghost">Batal</button>
-            <button onClick={handleCreate} disabled={isSubmitting} className="btn-primary">
+            <button onClick={handleCreate} disabled={isSubmitting || (!form.customer_email.trim() && !form.customer_phone.trim())} className="btn-primary">
               {isSubmitting ? "Menyimpan..." : "Buat Inquiry"}
             </button>
           </div>
@@ -2575,17 +2707,84 @@ function TabIncoming({
       <QuickAddPartyModal
         isOpen={isQuickPartyOpen}
         onClose={() => setIsQuickPartyOpen(false)}
-        onSuccess={(newParty) => {
+        defaultPartyType={form.party_type as "CUSTOMER" | "PROSPECT"}
+        requireContactMethod
+        onSuccess={(newParty, contact) => {
           if (onPartyCreated) onPartyCreated(newParty);
           setForm(f => ({
             ...f,
             customer_party: String(newParty.id),
             customer_name: newParty.display_name || newParty.legal_name,
-            customer_email: "",
-            contact_id: "",
+            customer_email: contact?.email || "",
+            customer_phone: contact?.phone || "",
+            contact_id: contact?.contact_id || "",
           }));
           void loadCRMPartyContacts(String(newParty.id)).then(setInquiryContactOptions).catch(() => setInquiryContactOptions([]));
         }}
+      />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   TAB: PROSPECTS
+══════════════════════════════════════════════════ */
+function TabProspects({ data, onRefresh, onPartyCreated, readOnly = false, currentUserId, canEditAll = false }: { data: CRMData; onRefresh: () => void; onPartyCreated: (party: any) => void; readOnly?: boolean; currentUserId?: string; canEditAll?: boolean }) {
+  const [search, setSearch] = useState("");
+  const [isNewOpen, setIsNewOpen] = useState(false);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
+  const prospects = (data.parties || []).filter((party: any) => String(party.party_type || "").toUpperCase() === "PROSPECT");
+  const filtered = prospects.filter((party: any) => [party.display_name, party.legal_name, party.party_code].some((value) => String(value || "").toLocaleLowerCase("id-ID").includes(search.trim().toLocaleLowerCase("id-ID"))));
+
+  const convertToCustomer = async (party: any) => {
+    setConvertingId(String(party.id));
+    try {
+      await convertCRMProspect(party.id);
+      toast.success(`${party.display_name || party.legal_name} sekarang tercatat sebagai Customer.`);
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Calon Customer belum dapat dikonversi.");
+    } finally {
+      setConvertingId(null);
+    }
+  };
+
+  return (
+    <div className="card rounded-xl p-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-sm font-bold">Calon Customer</h3>
+          <p className="mt-0.5 text-xs text-text-secondary">Calon Customer dan Customer memakai tabel rekanan yang sama. Konversi mengubah jenis record ini tanpa membuat duplikat.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input className="input w-full sm:w-56" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari calon customer..." />
+          {!readOnly && <button type="button" onClick={() => setIsNewOpen(true)} className="btn-primary shrink-0 text-xs"><Plus size={13} className="mr-1 inline" />Calon Customer Baru</button>}
+        </div>
+      </div>
+      {filtered.length === 0 ? <EmptyState msg={search ? "Calon Customer tidak ditemukan." : "Belum ada Calon Customer."} /> : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full min-w-[720px] text-left text-xs">
+            <thead className="bg-slate-50 text-slate-600"><tr><th className="px-4 py-3">Nama</th><th className="px-4 py-3">Kontak</th><th className="px-4 py-3">Kode</th><th className="px-4 py-3">Status</th>{!readOnly && <th className="px-4 py-3 text-right">Aksi</th>}</tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map((party: any) => (
+                <tr key={party.id}>
+                  <td className="px-4 py-3"><div className="font-semibold text-slate-900">{party.display_name || party.legal_name || "—"}</div>{party.legal_name && party.display_name && party.legal_name !== party.display_name && <div className="mt-0.5 text-slate-500">{party.legal_name}</div>}</td>
+                  <td className="px-4 py-3 text-slate-600">{(() => { const contact = (data.contacts || []).find((item: any) => String(item.party_id) === String(party.id) && item.primary_contact) || (data.contacts || []).find((item: any) => String(item.party_id) === String(party.id)); return contact ? [contact.email, contact.phone].filter(Boolean).join(" · ") || contact.contact_name : "—"; })()}</td>
+                  <td className="px-4 py-3 font-mono text-slate-600">{party.party_code || "—"}</td>
+                  <td className="px-4 py-3"><StatusBadge status={party.status || "ACTIVE"} /></td>
+                  {!readOnly && <td className="px-4 py-3 text-right">{(canEditAll || Boolean(currentUserId && String(party.created_by_id) === currentUserId)) ? <button type="button" disabled={convertingId === String(party.id) || String(party.status || "ACTIVE").toUpperCase() !== "ACTIVE"} onClick={() => void convertToCustomer(party)} className="btn-ghost text-xs disabled:opacity-50">{convertingId === String(party.id) ? "Mengubah..." : "Jadikan Customer"}</button> : <span className="text-2xs text-text-secondary">Dibuat pengguna lain</span>}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <QuickAddPartyModal
+        isOpen={isNewOpen}
+        onClose={() => setIsNewOpen(false)}
+        defaultPartyType="PROSPECT"
+        requireContactMethod
+        onSuccess={(party) => { onPartyCreated(party); onRefresh(); }}
       />
     </div>
   );
@@ -2601,7 +2800,7 @@ function TabIncoming({
  * @returns The rendered React node, callback result, or Promise declared by the implementation.
  * Integration/side effects: updates only the React/browser state and callbacks explicitly referenced below.
  */
-function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { data: CRMData; onRefresh: () => void; onPartyCreated: (party: any) => void; readOnly?: boolean }) {
+function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false, currentUserId, canEditAll = false }: { data: CRMData; onRefresh: () => void; onPartyCreated: (party: any) => void; readOnly?: boolean; currentUserId?: string; canEditAll?: boolean }) {
   const crmPeriod = useCRMPeriodFilter();
   const [accountView, setAccountView] = useState<"PARTIES" | "WON_CONTACTS">("PARTIES");
   const [wonContacts, setWonContacts] = useState<any[]>([]);
@@ -2787,7 +2986,7 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" /><input className="input h-9 w-52 pl-8 text-xs" value={partySearch} onChange={event => setPartySearch(event.target.value)} placeholder={accountView === "PARTIES" ? "Cari nama, kode…" : "Cari deal atau kontak…"} aria-label={accountView === "PARTIES" ? "Cari rekanan" : "Cari kontak deal berhasil"} /></label>
-          {accountView === "PARTIES" && <><select className="input h-9 bg-white text-xs" value={partyTypeFilter} onChange={event => setPartyTypeFilter(event.target.value)} aria-label="Filter tipe rekanan"><option value="ALL">Semua tipe</option><option value="CUSTOMER">Customer</option><option value="SUPPLIER">Supplier</option><option value="PARTNER">Partner</option></select>{!readOnly && <button onClick={() => setIsQuickAddOpen(true)} className="btn-primary self-start text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Rekanan</button>}</>}
+          {accountView === "PARTIES" && <><select className="input h-9 bg-white text-xs" value={partyTypeFilter} onChange={event => setPartyTypeFilter(event.target.value)} aria-label="Filter tipe rekanan"><option value="ALL">Semua tipe</option><option value="CUSTOMER">Customer</option><option value="PROSPECT">Calon Customer</option><option value="SUPPLIER">Supplier</option><option value="PARTNER">Partner</option></select>{!readOnly && <button onClick={() => setIsQuickAddOpen(true)} className="btn-primary self-start text-xs py-1.5 px-3 gap-1"><Plus size={12} /> Tambah Rekanan</button>}</>}
         </div>
       </div>
       <div role="tablist" aria-label="Data akun CRM" className="mb-4 flex gap-1 border-b border-slate-200">
@@ -2831,9 +3030,11 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
                   <td className="px-4 py-3"><span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{p.party_type || "CUSTOMER"}</span></td>
                   <td className="px-4 py-3"><StatusBadge status={p.status || "ACTIVE"} /></td>
                   {!readOnly && <td className="px-4 py-3"><div className="flex justify-end gap-1.5">
-                    {(!p.status || String(p.status).toUpperCase() === "ACTIVE") && ["SUPPLIER", "VENDOR", "PARTNER"].includes(String(p.party_type || "").toUpperCase()) && <button type="button" onClick={() => void openProjectManager(p)} className="btn-ghost text-xs py-1 px-2">Proyek</button>}
-                    <button type="button" onClick={() => void openContacts(p)} className="btn-ghost text-xs py-1 px-2">Kontak</button>
-                    <button type="button" onClick={() => openEdit(p)} className="btn-ghost text-xs py-1 px-2">Edit</button>
+                    {(canEditAll || Boolean(currentUserId && String(p.created_by_id) === currentUserId)) ? <>
+                      {(!p.status || String(p.status).toUpperCase() === "ACTIVE") && ["SUPPLIER", "VENDOR", "PARTNER"].includes(String(p.party_type || "").toUpperCase()) && <button type="button" onClick={() => void openProjectManager(p)} className="btn-ghost text-xs py-1 px-2">Proyek</button>}
+                      <button type="button" onClick={() => void openContacts(p)} className="btn-ghost text-xs py-1 px-2">Kontak</button>
+                      <button type="button" onClick={() => openEdit(p)} className="btn-ghost text-xs py-1 px-2">Edit</button>
+                    </> : <span className="text-2xs text-text-secondary">Dibuat pengguna lain</span>}
                   </div></td>}
                 </tr>
               ))}
@@ -2847,7 +3048,7 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
           <label className="text-xs font-medium text-text-secondary">Nama tampilan *<input className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={partyForm.display_name} onChange={e => setPartyForm(f => ({ ...f, display_name: e.target.value }))} /></label>
           <label className="text-xs font-medium text-text-secondary">Nama legal<input className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={partyForm.legal_name} onChange={e => setPartyForm(f => ({ ...f, legal_name: e.target.value }))} /></label>
           <label className="text-xs font-medium text-text-secondary">Kode rekanan<input className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm" value={partyForm.party_code} onChange={e => setPartyForm(f => ({ ...f, party_code: e.target.value }))} /></label>
-          <label className="text-xs font-medium text-text-secondary">Tipe rekanan<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyForm.party_type} onChange={e => setPartyForm(f => ({ ...f, party_type: e.target.value }))}><option value="CUSTOMER">Customer</option><option value="SUPPLIER">Supplier</option><option value="PARTNER">Partner</option></select></label>
+          <label className="text-xs font-medium text-text-secondary">Tipe rekanan<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyForm.party_type} onChange={e => setPartyForm(f => ({ ...f, party_type: e.target.value }))}><option value="CUSTOMER">Customer</option><option value="PROSPECT">Calon Customer</option><option value="SUPPLIER">Supplier</option><option value="PARTNER">Partner</option></select></label>
           <label className="text-xs font-medium text-text-secondary">Status<select className="mt-1 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white" value={partyForm.status} onChange={e => setPartyForm(f => ({ ...f, status: e.target.value }))}><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></select></label>
           <div className="flex gap-2 justify-end pt-1"><button type="button" onClick={() => setEditingParty(null)} disabled={isSaving} className="btn-ghost">Batal</button><button type="button" onClick={saveParty} disabled={isSaving} className="btn-primary">{isSaving ? "Menyimpan..." : "Simpan Perubahan"}</button></div>
         </div>
@@ -2878,7 +3079,7 @@ function TabAccounts({ data, onRefresh, onPartyCreated, readOnly = false }: { da
                     <p className="text-sm font-semibold text-text-primary">{contact.contact_name || "Kontak tanpa nama"}{contact.primary_contact && <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">Kontak utama</span>}</p>
                     <p className="mt-0.5 text-xs text-text-secondary">{[contact.job_title, contact.email, contact.phone].filter(Boolean).join(" · ") || "Belum ada detail kontak"}</p>
                   </div>
-                  <button type="button" onClick={() => editContact(contact)} className="btn-ghost text-xs">Ubah</button>
+                  {(canEditAll || Boolean(currentUserId && String(contact.created_by_id) === currentUserId)) && <button type="button" onClick={() => editContact(contact)} className="btn-ghost text-xs">Ubah</button>}
                 </div>
               ))}
             </div>
@@ -3147,7 +3348,7 @@ function TabEngagement({ data, onRefresh, readOnly = false }: { data: CRMData; o
   );
 }
 
-function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefresh }: { userId?: string; readOnly: boolean; canMatchIdentity: boolean; parties: any[]; onRefresh: () => void }) {
+function TabCustomerInbox({ userId, readOnly, canEditAll = false, canMatchIdentity, parties, onRefresh }: { userId?: string; readOnly: boolean; canEditAll?: boolean; canMatchIdentity: boolean; parties: any[]; onRefresh: () => void }) {
   const crmPeriod = useCRMPeriodFilter();
   const [rows, setRows] = useState<CRMInboxConversation[]>([]);
   const [loadingInbox, setLoadingInbox] = useState(true);
@@ -3280,6 +3481,7 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
         <div className="card rounded-xl p-5"><EmptyState msg={rows.length ? "Tidak ada conversation yang cocok dengan filter." : "Belum ada conversation masuk. Conversation muncul setelah sumber integrasi mengirim event."} /></div>
       ) : <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 2xl:grid-cols-3">
         {visibleRows.map((row) => {
+          const canManageConversation = !readOnly && (canEditAll || Boolean(userId && String(row.created_by_id) === userId));
           const date = getInboxDate(row);
           const previewMessages = (row.messages ?? []).slice(-2);
           const preview = row.latest_message?.message_text || previewMessages[previewMessages.length - 1]?.message_text || "Belum ada pesan yang tersimpan.";
@@ -3307,7 +3509,7 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
               <p className="line-clamp-4 whitespace-pre-wrap break-words text-xs leading-5 text-text-primary">{preview}</p>
             </div>
 
-            {!readOnly && <div className="flex flex-wrap gap-1.5">
+            {canManageConversation && <div className="flex flex-wrap gap-1.5">
               {row.assigned_user_id !== userId && <button className="btn-ghost text-2xs px-2 py-1" disabled={busyId === row.id || !userId} onClick={() => void assignToMe(row)}><UserPlus size={12} className="mr-1" />{row.assigned_user_id ? "Tugaskan ke saya" : "Ambil"}</button>}
               {!row.inquiry_id && <button className="btn-primary text-2xs px-2 py-1" disabled={busyId === row.id} onClick={() => void makeInquiry(row)}><Plus size={12} className="mr-1" />Jadikan Inquiry</button>}
               {!row.inquiry_id && row.status !== "IGNORED" && <button className="btn-ghost text-2xs px-2 py-1" disabled={busyId === row.id} onClick={() => void decideConversation(row, "IGNORE")}>Abaikan</button>}
@@ -3335,7 +3537,7 @@ function TabCustomerInbox({ userId, readOnly, canMatchIdentity, parties, onRefre
                   <span className="rounded bg-slate-100 px-2 py-1"><b>PIC</b> · {row.assigned_user?.full_name || (row.assigned_user_id ? "Sudah ditentukan" : "Belum ada")}</span>
                   {row.inquiry_id && <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-800">Sudah dieskalasi menjadi Inquiry</span>}
                 </div>
-                {!readOnly && row.external_thread && row.status !== "IGNORED" && <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                {canManageConversation && row.external_thread && row.status !== "IGNORED" && <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <textarea className="input-field min-h-16 flex-1 resize-y text-xs" maxLength={10000} value={replyDrafts[row.id] || ""} onChange={(event) => { setReplyDrafts((current) => ({ ...current, [row.id]: event.target.value })); setReplyRequestIds((current) => current[row.id] ? current : ({ ...current, [row.id]: crypto.randomUUID() })); }} placeholder="Tulis balasan..." />
                   <button className="btn-primary text-xs sm:self-end" disabled={busyId === row.id || !(replyDrafts[row.id] || "").trim()} onClick={() => void sendReply(row)}>{busyId === row.id ? "Mengirim..." : "Kirim balasan"}</button>
                 </div>}
@@ -3376,6 +3578,9 @@ export default function CrmClient() {
     enabledModules: user?.enabled_modules,
     moduleAccess: user?.module_access,
   });
+  const canHandleCrmLeads = canOperateCrm;
+  const canEditAllCrmData = canOperateCrm && activeRoleCode !== "SALES";
+  const canDeleteCrmLead = userRole === "super_admin" || ["COMPANY_ADMIN", "CRM_LEAD"].includes(activeRoleCode);
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -3535,7 +3740,7 @@ export default function CrmClient() {
   const rawData: CRMData = crmData || {
     inquiries:[], requirements:[], opportunities:[], activities:[], stages:[], estimates:[], estimateLines:[],
     quotations:[], businessDocuments:[], approvals:[], deliveries:[], contracts:[], orders:[], conversations:[],
-    feedback:[], surveyQuestions:[], surveyResponses:[], surveyAnswers:[], credit:[], cases:[], resolutions:[], products:[], parties:[],
+    feedback:[], surveyQuestions:[], surveyResponses:[], surveyAnswers:[], credit:[], cases:[], resolutions:[], products:[], parties:[], contacts:[],
   };
 
   const filterByRoleAndScope = (rows: any[]) => {
@@ -3731,7 +3936,7 @@ export default function CrmClient() {
       ) : (
         <>
           {activeTab === "dashboard"  && <TabDashboard data={data} dash={crmDash} />}
-          {activeTab === "inbox"      && <TabCustomerInbox userId={user?.id == null ? undefined : String(user.id)} readOnly={!canOperateCrm} canMatchIdentity={["ROLE-CRM-LEAD", "CRM_LEAD", "ROLE-SALES", "SALES"].includes(String(user?.active_role_code ?? "").toUpperCase())} parties={data.parties} onRefresh={() => loadData(true)} />}
+          {activeTab === "inbox"      && <TabCustomerInbox userId={user?.id == null ? undefined : String(user.id)} readOnly={!canOperateCrm} canEditAll={canEditAllCrmData} canMatchIdentity={["ROLE-CRM-LEAD", "CRM_LEAD"].includes(String(user?.active_role_code ?? "").toUpperCase())} parties={data.parties} onRefresh={() => loadData(true)} />}
           {activeTab === "deals"      && (
             <TabDeals 
               data={data} 
@@ -3743,6 +3948,8 @@ export default function CrmClient() {
               onOpportunityDeleted={handleOpportunityDeleted}
               onPartyCreated={handlePartyCreated}
               readOnly={!canOperateCrm}
+              canEditAll={canEditAllCrmData}
+              currentUserId={user?.id == null ? undefined : String(user.id)}
               canOverride={userRole === "super_admin" || activeRoleCode === "DIRECTOR" || roleLevel === "GM"}
               canDelegate={canDelegateCrm}
               onOpenDelegate={openDelegateModal}
@@ -3750,21 +3957,26 @@ export default function CrmClient() {
               teamUsers={teamUsers}
             />
           )}
-          {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} onNavigate={setActiveTab} readOnly={!canOperateCrm} canApproveQuotation={canApproveCrmQuotation} />}
+          {activeTab === "estimate"   && <TabEstimate data={data} approvals={data.approvals} onRefresh={() => loadData(true)} onNavigate={setActiveTab} readOnly={!canOperateCrm} canApproveQuotation={canApproveCrmQuotation} currentUserId={user?.id == null ? undefined : String(user.id)} canEditAll={canEditAllCrmData} />}
           {activeTab === "tickets"    && <TabTickets data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
           {activeTab === "incoming"   && (
             <TabIncoming
               data={data}
               onRefresh={() => loadData(true)}
               onPartyCreated={handlePartyCreated}
-              readOnly={!canOperateCrm}
+              readOnly={!canHandleCrmLeads}
+              canEdit={canHandleCrmLeads}
+              canEditAll={canEditAllCrmData}
+              currentUserId={user?.id == null ? undefined : String(user.id)}
+              canDelete={canDeleteCrmLead}
               canDelegate={canDelegateCrm}
               onOpenDelegate={openDelegateModal}
               onOpenStageDetail={openStageDetailModal}
               teamUsers={teamUsers}
             />
           )}
-          {activeTab === "accounts"   && <TabAccounts data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} />}
+          {activeTab === "prospects"  && <TabProspects data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} currentUserId={user?.id == null ? undefined : String(user.id)} canEditAll={canEditAllCrmData} />}
+          {activeTab === "accounts"   && <TabAccounts data={data} onRefresh={() => loadData(true)} onPartyCreated={handlePartyCreated} readOnly={!canOperateCrm} currentUserId={user?.id == null ? undefined : String(user.id)} canEditAll={canEditAllCrmData} />}
           {activeTab === "contracts"  && <TabContracts data={data} onNavigate={setActiveTab} onRefresh={() => loadData(true)} />}
           {activeTab === "engagement" && <TabEngagement data={data} onRefresh={() => loadData(true)} readOnly={!canOperateCrm} />}
         </>

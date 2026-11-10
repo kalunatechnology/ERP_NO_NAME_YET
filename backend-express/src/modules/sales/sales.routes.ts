@@ -21,6 +21,37 @@ function activeCompanyId(req: Request): string {
   return req.companyId;
 }
 
+const isActiveSales = (req: Request) => String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '') === RoleCode.SALES;
+const assertSalesOwnsRecord = (req: Request, record: { created_by_id?: string | null } | null | undefined) => {
+  if (isActiveSales(req) && record?.created_by_id !== req.user?.id) {
+    throw new ForbiddenError('Sales hanya dapat mengubah data yang dibuat sendiri. CRM Lead dapat mengubah seluruh data Sales.');
+  }
+};
+const assertSalesOwnsModelRecord = async (req: Request, modelName: string, id: string) => {
+  if (!isActiveSales(req)) return;
+  const model = (prisma as any)[modelName];
+  const record = await model.findFirst({ where: { id: String(id), company_id: activeCompanyId(req) }, select: { id: true, created_by_id: true } });
+  if (!record) throw new NotFoundError(modelName);
+  assertSalesOwnsRecord(req, record);
+};
+const createSalesCrudRouter = (options: Parameters<typeof createCrudRouter>[0]) => createCrudRouter({
+  ...options,
+  beforeCreate: async (req, data) => {
+    const configured = options.beforeCreate ? await options.beforeCreate(req, data) : data;
+    return isActiveSales(req) ? { ...configured, created_by_id: req.user?.id } : configured;
+  },
+  beforeUpdate: async (req, data, existing) => {
+    const configured = options.beforeUpdate ? await options.beforeUpdate(req, data, existing) : data;
+    return isActiveSales(req) ? { ...configured, created_by_id: existing.created_by_id } : configured;
+  },
+  writeAccessWhere: async (req) => {
+    const configuredScope = options.writeAccessWhere ? await options.writeAccessWhere(req) : {};
+    if (!isActiveSales(req)) return configuredScope;
+    const ownerScope = { created_by_id: req.user?.id ?? '__NO_AUTHENTICATED_CREATOR__' };
+    return Object.keys(configuredScope).length ? { AND: [configuredScope, ownerScope] } : ownerScope;
+  },
+});
+
 salesRouter.get('/quotations/with-codes', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const companyId = activeCompanyId(req);
@@ -57,6 +88,7 @@ salesRouter.get('/quotations/with-codes', async (req: Request, res: Response, ne
  */
 salesRouter.post('/quotations/:id/submit-approval', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'sales_quotation', String(req.params.id));
     const companyId = activeCompanyId(req);
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM sales_quotation WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
@@ -109,6 +141,7 @@ salesRouter.post('/quotations/:id/submit-approval', async (req: Request, res: Re
  */
 salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'sales_quotation', String(req.params.id));
     const companyId = activeCompanyId(req);
     const quotation = await prisma.sales_quotation.findFirst({ where: { id: req.params.id, company_id: companyId } });
     if (!quotation) throw new NotFoundError('Quotation');
@@ -164,6 +197,7 @@ salesRouter.post('/quotations/:id/send', async (req: Request, res: Response, nex
  */
 salesRouter.post('/quotations/:id/customer-decision', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'sales_quotation', String(req.params.id));
     const decision = String(req.body.decision ?? '').toUpperCase();
     if (!['ACCEPTED', 'REJECTED'].includes(decision)) {
       throw new ValidationError('Decision must be ACCEPTED or REJECTED.');
@@ -225,6 +259,7 @@ salesRouter.post('/quotations/:id/customer-decision', async (req: Request, res: 
  */
 salesRouter.post('/orders/:id/confirm', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'sales_order', String(req.params.id));
     const order = await prisma.sales_order.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
     if (!order) throw new NotFoundError('Order');
     const updated = await prisma.sales_order.update({
@@ -247,6 +282,7 @@ salesRouter.post('/orders/:id/confirm', async (req: Request, res: Response, next
  */
 salesRouter.post('/orders/:id/allocate', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'sales_order', String(req.params.id));
     const order = await prisma.sales_order.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
     if (!order) throw new NotFoundError('Order');
     const updated = await prisma.sales_order.update({
@@ -269,6 +305,7 @@ salesRouter.post('/orders/:id/allocate', async (req: Request, res: Response, nex
  */
 salesRouter.post('/orders/:id/convert-to-project', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'sales_order', String(req.params.id));
     const companyId = activeCompanyId(req);
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM sales_order WHERE id = ${req.params.id} AND company_id = ${companyId} FOR UPDATE`;
@@ -366,6 +403,7 @@ salesRouter.get('/orders/transferable', async (req: Request, res: Response, next
  */
 salesRouter.post('/deliveries/:id/dispatch', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await assertSalesOwnsModelRecord(req, 'sales_delivery', String(req.params.id));
     const delivery = await prisma.sales_delivery.findFirst({ where: { id: req.params.id, company_id: activeCompanyId(req) }, select: { id: true } });
     if (!delivery) throw new NotFoundError('Delivery');
     const updated = await prisma.sales_delivery.update({
@@ -382,12 +420,12 @@ salesRouter.post('/deliveries/:id/dispatch', async (req: Request, res: Response,
 // CRUD VIEWSETS
 // =============================================================================
 
-salesRouter.use('/quotations', createCrudRouter({ modelName: 'sales_quotation', searchFields: ['status'] }));
-salesRouter.use('/quotation-lines', createCrudRouter({ modelName: 'sales_quotation_line', searchFields: ['description'] }));
-salesRouter.use('/quotation-costs', createCrudRouter({ modelName: 'sales_quotation_cost', searchFields: ['cost_element'] }));
-salesRouter.use('/contracts', createCrudRouter({ modelName: 'sales_contract', searchFields: ['contract_number'] }));
-salesRouter.use('/contract-lines', createCrudRouter({ modelName: 'sales_contract_line', searchFields: ['description'] }));
-salesRouter.use('/orders', createCrudRouter({
+salesRouter.use('/quotations', createSalesCrudRouter({ modelName: 'sales_quotation', searchFields: ['status'] }));
+salesRouter.use('/quotation-lines', createSalesCrudRouter({ modelName: 'sales_quotation_line', searchFields: ['description'] }));
+salesRouter.use('/quotation-costs', createSalesCrudRouter({ modelName: 'sales_quotation_cost', searchFields: ['cost_element'] }));
+salesRouter.use('/contracts', createSalesCrudRouter({ modelName: 'sales_contract', searchFields: ['contract_number'] }));
+salesRouter.use('/contract-lines', createSalesCrudRouter({ modelName: 'sales_contract_line', searchFields: ['description'] }));
+salesRouter.use('/orders', createSalesCrudRouter({
   modelName: 'sales_order',
   searchFields: ['status'],
   afterUpdate: async (_req, order) => {
@@ -405,10 +443,10 @@ salesRouter.use('/orders', createCrudRouter({
     });
   },
 }));
-salesRouter.use('/order-lines', createCrudRouter({ modelName: 'sales_order_line', searchFields: ['description'] }));
-salesRouter.use('/deliveries', createCrudRouter({ modelName: 'sales_delivery', searchFields: ['delivery_status'] }));
-salesRouter.use('/delivery-lines', createCrudRouter({ modelName: 'sales_delivery_line', searchFields: ['description'] }));
-salesRouter.use('/demand-supply-links', createCrudRouter({ modelName: 'sales_demand_supply_link' }));
-salesRouter.use('/order-change-requests', createCrudRouter({ modelName: 'sales_order_change_request' }));
-salesRouter.use('/recurring-order-rules', createCrudRouter({ modelName: 'sales_recurring_order_rule' }));
-salesRouter.use('/recurring-order-runs', createCrudRouter({ modelName: 'sales_recurring_order_run' }));
+salesRouter.use('/order-lines', createSalesCrudRouter({ modelName: 'sales_order_line', searchFields: ['description'] }));
+salesRouter.use('/deliveries', createSalesCrudRouter({ modelName: 'sales_delivery', searchFields: ['delivery_status'] }));
+salesRouter.use('/delivery-lines', createSalesCrudRouter({ modelName: 'sales_delivery_line', searchFields: ['description'] }));
+salesRouter.use('/demand-supply-links', createSalesCrudRouter({ modelName: 'sales_demand_supply_link' }));
+salesRouter.use('/order-change-requests', createSalesCrudRouter({ modelName: 'sales_order_change_request' }));
+salesRouter.use('/recurring-order-rules', createSalesCrudRouter({ modelName: 'sales_recurring_order_rule' }));
+salesRouter.use('/recurring-order-runs', createSalesCrudRouter({ modelName: 'sales_recurring_order_run' }));

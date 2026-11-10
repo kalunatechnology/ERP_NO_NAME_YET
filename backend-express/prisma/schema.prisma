@@ -2159,6 +2159,7 @@ model crm_customer_inquiry {
   description            String
   customer_name          String
   customer_email         String
+  customer_phone         String    @default("") @map("customer_phone")
   expected_delivery_date DateTime?
   last_contacted_at      DateTime? @map("last_contacted_at")
   last_contact_note      String    @default("") @map("last_contact_note")

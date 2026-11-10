@@ -350,6 +350,14 @@ commandsRouter.post('/sales/quotations/:id/convert-to-order', async (req: Reques
     });
     if (!quotation) throw new NotFoundError('Quotation');
     if (!quotation.opportunity_id) throw new ValidationError('Quotation belum terhubung ke Opportunity.');
+    const activeRole = String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '');
+    if (activeRole === RoleCode.SALES) {
+      const opportunity = await prisma.crm_opportunity.findFirst({
+        where: { id: quotation.opportunity_id, company_id: companyId, created_by_id: req.user?.id },
+        select: { id: true },
+      });
+      if (!opportunity) throw new ForbiddenError('Sales hanya dapat mengonversi quotation dari Opportunity yang dibuat sendiri.');
+    }
 
     // Use the same credit, order, project, proforma, and idempotency workflow
     // as the Deal Won action so quotation conversion cannot bypass credit control.
