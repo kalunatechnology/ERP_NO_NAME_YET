@@ -2572,7 +2572,10 @@ function TabIncoming({
  */
             const leadStatus = String(x.status || "NEW").toUpperCase();
             const isQual = leadStatus === "QUALIFIED";
-            const hasLinkedOpportunity = Boolean(x.opportunity_id);
+            const hasLinkedOpportunity = Boolean(x.opportunity_id) || (data.opportunities || []).some((opportunity: any) =>
+              String(opportunity.id) === String(x.opportunity_id || "") ||
+              String(opportunity.source_inquiry_id || opportunity.lead_id || "") === String(x.id)
+            );
             const needsOpportunityRepair = isQual && !hasLinkedOpportunity;
             const linkedParty = (data.parties || []).find((party: any) => String(party.id) === String(x.customer_party_id));
             const linkedPartyType = String(linkedParty?.party_type || "").toUpperCase();
@@ -2627,8 +2630,8 @@ function TabIncoming({
                       {isQual && (
                         <span className="px-2 py-0.5 rounded-full bg-brand-light-green text-brand-deep-green text-2xs font-semibold">QUALIFIED</span>
                       )}
-                      {canDelete && <button type="button" onClick={() => void handleDeleteLead(x)} disabled={savingLeadId === String(x.id)} title="Hapus Lead (CRM Lead)" className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 disabled:opacity-50">
-                        <Trash2 size={13} />
+                      {canDelete && <button type="button" onClick={() => void handleDeleteLead(x)} disabled={savingLeadId === String(x.id) || hasLinkedOpportunity} title={hasLinkedOpportunity ? "Lead yang sudah terhubung ke Opportunity tidak dapat dihapus." : "Hapus Lead"} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">
+                        <Trash2 size={13} /> Hapus
                       </button>}
                     </>
                   ) : (
@@ -3617,7 +3620,7 @@ export default function CrmClient() {
   });
   const canHandleCrmLeads = canOperateCrm;
   const canEditAllCrmData = canOperateCrm && activeRoleCode !== "SALES";
-  const canDeleteCrmLead = userRole === "super_admin" || ["COMPANY_ADMIN", "CRM_LEAD"].includes(activeRoleCode);
+  const canDeleteCrmLead = userRole === "super_admin" || ["COMPANY_ADMIN", "CRM_LEAD", "SALES"].includes(activeRoleCode);
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState("dashboard");

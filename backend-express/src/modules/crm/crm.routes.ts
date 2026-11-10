@@ -1270,8 +1270,9 @@ crmRouter.delete('/customer-inquiries/:id', async (req: Request, res: Response, 
   try {
     const roles = req.user?.roles ?? [];
     const activeRoleCode = String(req.user?.active_role_code ?? '').trim().toUpperCase().replace(/^ROLE-/, '');
-    if (!isCompanyAdmin(roles) && activeRoleCode !== RoleCode.CRM_LEAD) {
-      throw new ForbiddenError('Hanya CRM Lead atau Company Admin yang dapat menghapus Lead.');
+    const canDeleteAnyLead = isCompanyAdmin(roles) || isSuperAdmin(roles) || activeRoleCode === RoleCode.CRM_LEAD;
+    if (!canDeleteAnyLead && activeRoleCode !== RoleCode.SALES) {
+      throw new ForbiddenError('Lead hanya dapat dihapus oleh pembuatnya, CRM Lead, atau Company Admin.');
     }
 
     const companyId = activeCompanyId(req);
@@ -1281,6 +1282,7 @@ crmRouter.delete('/customer-inquiries/:id', async (req: Request, res: Response, 
         where: { id: inquiryId, company_id: companyId },
       });
       if (!inquiry) throw new NotFoundError('Lead / Inquiry');
+      if (!canDeleteAnyLead) assertSalesOwnsRecord(req, inquiry);
 
       const opportunityConditions: Array<Record<string, string>> = [
         { source_inquiry_id: inquiry.id },
