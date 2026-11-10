@@ -388,6 +388,8 @@ crmRouter.patch('/customer-inquiries/:id/edit', requireActiveRole(RoleCode.SALES
 crmRouter.post('/prospects', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.tenantId || !req.user?.id) throw new ForbiddenError('Tenant dan user context wajib tersedia.');
+    const tenantId = req.tenantId;
+    const creatorId = req.user.id;
     const companyId = activeCompanyId(req);
     const displayName = String(req.body.display_name ?? '').trim();
     const legalName = String(req.body.legal_name ?? '').trim() || displayName;
@@ -406,16 +408,16 @@ crmRouter.post('/prospects', async (req: Request, res: Response, next: NextFunct
       const now = new Date();
       const createdParty = await tx.master_party.create({
         data: {
-          id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: companyId,
-          created_by_id: req.user.id, created_at: now, updated_at: now,
+          id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+          created_by_id: creatorId, created_at: now, updated_at: now,
           party_code: partyCode, party_type: 'PROSPECT', legal_name: legalName,
           display_name: displayName, tax_number: '', default_currency_id: null, status: 'ACTIVE',
         },
       });
       const contact = await tx.master_contact.create({
         data: {
-          id: crypto.randomUUID(), tenant_id: req.tenantId, company_id: companyId,
-          created_by_id: req.user.id, created_at: now, updated_at: now,
+          id: crypto.randomUUID(), tenant_id: tenantId, company_id: companyId,
+          created_by_id: creatorId, created_at: now, updated_at: now,
           party_id: createdParty.id, contact_name: String(req.body.contact_name ?? '').trim() || 'Kontak Utama',
           job_title: '', email, phone, primary_contact: true,
         },
