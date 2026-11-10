@@ -317,7 +317,7 @@ function QuickAddPartyModal({
                 required
                 className="mb-3 w-full border border-text-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-green"
                 value={partyForm.party_type}
-                onChange={e => setPartyForm(p => ({ ...p, party_type: e.target.value }))}
+                onChange={e => setPartyForm(p => ({ ...p, party_type: e.target.value as typeof p.party_type }))}
               >
                 <option value="CUSTOMER">Customer</option>
                 <option value="PROSPECT">Calon Customer</option>
