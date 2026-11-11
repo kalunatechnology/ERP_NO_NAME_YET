@@ -1009,6 +1009,16 @@ export class FinanceService {
       // Post GL Journal Entry (Dual-Path AR vs AP)
       const coaMap = await this.ensureStandardCOA(doc.company_id, tx);
       const journal = await this.ensureJournal(doc.company_id, 'GJ', 'General Journal', 'GENERAL', tx);
+      const billingLines = doc.billing_type === 'SUPPLIER_INVOICE'
+        ? await tx.fin_billing_document_line.findMany({ where: { billing_document_id: doc.id, company_id: doc.company_id }, orderBy: { created_at: 'asc' } })
+        : [];
+      const projectId = doc.project_id ?? billingLines.find((line) => line.project_id)?.project_id ?? null;
+      const selectedExpenseAccountId = billingLines.find((line) => line.account_id)?.account_id;
+      const selectedExpenseAccount = selectedExpenseAccountId
+        ? await tx.fin_account.findFirst({ where: { id: selectedExpenseAccountId, company_id: doc.company_id, status: 'ACTIVE', account_type: 'EXPENSE' } })
+        : null;
+      if (selectedExpenseAccountId && !selectedExpenseAccount) throw new ValidationError('Akun biaya invoice harus akun beban aktif pada perusahaan ini.');
+      let postedJournalEntryId: string | null = null;
 
       if (journal) {
         if (doc.billing_type === 'SUPPLIER_INVOICE') {
@@ -1017,7 +1027,9 @@ export class FinanceService {
           // Debit: PPN Masukan (1161) or Hutang Pajak (2120) = taxAmount
           // Credit: Hutang Usaha AP (2110) = totalAmount
           const apAccount = coaMap.get('2110');
-          const costAccount = coaMap.get('1150') || coaMap.get('5100');
+          const costAccount = projectId
+            ? coaMap.get('1150')
+            : selectedExpenseAccount || coaMap.get('5100') || coaMap.get('1150');
           const inputTaxAccount = coaMap.get('1161') || coaMap.get('2120');
 
           if (apAccount && costAccount) {
@@ -1035,6 +1047,7 @@ export class FinanceService {
                 status: 'POSTED',
               },
             });
+            postedJournalEntryId = entry.id;
 
             await tx.fin_journal_line.create({
               data: {
@@ -1044,7 +1057,8 @@ export class FinanceService {
                 created_by_id: userId,
                 journal_entry_id: entry.id,
                 account_id: costAccount.id,
-                project_id: doc.project_id,
+                project_id: projectId,
+                cost_center_id: billingLines.find((line) => line.cost_center_id)?.cost_center_id ?? null,
                 party_id: doc.party_id,
                 debit_base: subtotal,
                 credit_base: 0,
@@ -1061,7 +1075,7 @@ export class FinanceService {
                   created_by_id: userId,
                   journal_entry_id: entry.id,
                   account_id: inputTaxAccount.id,
-                  project_id: doc.project_id,
+                  project_id: projectId,
                   party_id: doc.party_id,
                   debit_base: taxAmount,
                   credit_base: 0,
@@ -1078,7 +1092,7 @@ export class FinanceService {
                 created_by_id: userId,
                 journal_entry_id: entry.id,
                 account_id: apAccount.id,
-                project_id: doc.project_id,
+                project_id: projectId,
                 party_id: doc.party_id,
                 debit_base: 0,
                 credit_base: totalAmount,
@@ -1110,6 +1124,7 @@ export class FinanceService {
                 status: 'POSTED',
               },
             });
+            postedJournalEntryId = entry.id;
 
             await tx.fin_journal_line.create({
               data: {
@@ -1160,6 +1175,74 @@ export class FinanceService {
                 },
               });
             }
+          }
+        }
+      }
+
+      if (doc.billing_type === 'SUPPLIER_INVOICE' && postedJournalEntryId && doc.company_id) {
+        const linkedProject = projectId
+          ? await tx.project_project.findFirst({ where: { id: projectId, company_id: doc.company_id }, select: { id: true } })
+          : null;
+        if (projectId && !linkedProject) throw new ValidationError('Proyek pada invoice vendor tidak valid untuk perusahaan ini.');
+
+        // A posted supplier invoice is the cost source. Record one WIP entry here and
+        // link it to the AP journal; do not ask Finance to post the same cost again.
+        if (linkedProject && subtotal > 0) {
+          const existingCost = await tx.fin_project_cost_entry.findFirst({
+            where: { company_id: doc.company_id, source_type: 'SUPPLIER_INVOICE', source_reference: doc.id },
+            select: { id: true },
+          });
+          if (!existingCost) {
+            const now = new Date();
+            await tx.fin_project_cost_entry.create({ data: {
+              id: crypto.randomUUID(), tenant_id: doc.tenant_id, company_id: doc.company_id, project_id: linkedProject.id,
+              source_type: 'SUPPLIER_INVOICE', source_reference: doc.id,
+              description: `Invoice vendor ${doc.invoice_number}`, cost_element: 'MATERIAL',
+              transaction_date: doc.invoice_date ?? now, quantity: 1, unit_cost: subtotal, total_cost: subtotal,
+              status: 'POSTED_TO_WIP', validation_note: 'WIP tercatat otomatis dari invoice vendor yang diposting.',
+              created_by_id: userId ?? doc.created_by_id, validated_by_id: userId ?? null, validated_at: now,
+              posted_by_id: userId ?? null, posted_at: doc.posting_date ?? now, journal_entry_id: postedJournalEntryId,
+              created_at: now, updated_at: now,
+            } });
+          }
+        }
+
+        // Convert any invoice commitments to actual exactly once when the AP accrual
+        // posts. Payment later clears AP and must not create a second project cost.
+        const invoiceIds = [...new Set([doc.id, doc.document_id].filter((id): id is string => Boolean(id)))];
+        const pendingReservations = await tx.fin_budget_reservation.findMany({
+          where: { company_id: doc.company_id, source_type: 'INVOICE', source_id: { in: invoiceIds }, status: 'PENDING_APPROVAL' },
+          select: { id: true },
+        });
+        if (pendingReservations.length) throw new ValidationError('Komitmen anggaran invoice masih menunggu persetujuan. Setujui komitmen sebelum memposting invoice.');
+        const invoiceReservations = await tx.fin_budget_reservation.findMany({
+          where: { company_id: doc.company_id, source_type: 'INVOICE', source_id: { in: invoiceIds }, status: { in: ['OPEN', 'PARTIALLY_RELEASED'] } },
+        });
+        if (subtotal > 0 && !invoiceReservations.length) {
+          throw new ValidationError('Invoice vendor harus memiliki komitmen anggaran aktif sebelum diposting.');
+        }
+        if (invoiceReservations.length) {
+          const subtotalRemaining = subtotal;
+          const committedRemaining = invoiceReservations.reduce((sum, reservation) => sum + Number(reservation.remaining_amount), 0);
+          if (committedRemaining + 0.005 < subtotalRemaining) {
+            throw new ValidationError(`Komitmen invoice (${committedRemaining.toFixed(2)}) lebih kecil dari subtotal (${subtotalRemaining.toFixed(2)}). Tambahkan komitmen sebelum posting.`);
+          }
+          let actualRemaining = subtotalRemaining;
+          for (const reservation of invoiceReservations) {
+            const reserved = Number(reservation.remaining_amount);
+            const recognized = Math.min(reserved, actualRemaining);
+            actualRemaining = Math.max(0, actualRemaining - recognized);
+            await tx.fin_budget_ledger.create({ data: {
+              id: crypto.randomUUID(), tenant_id: reservation.tenant_id, company_id: doc.company_id,
+              budget_id: reservation.budget_id, allocation_id: reservation.allocation_id, fiscal_period_id: reservation.fiscal_period_id,
+              source_type: 'BILLING_DOCUMENT', source_id: doc.id, source_line_id: reservation.source_line_id,
+              entry_type: 'INVOICE_RECOGNITION', committed_delta: -reserved, actual_delta: recognized,
+              description: `Pengakuan biaya dari invoice ${doc.invoice_number}`,
+              idempotency_key: `BUDGET_INVOICE_POST:${doc.id}:${reservation.id}`, posted_by_id: userId ?? null,
+            } });
+            await tx.fin_budget_reservation.update({ where: { id: reservation.id }, data: {
+              remaining_amount: 0, status: recognized > 0 ? 'RECOGNIZED' : 'RELEASED',
+            } });
           }
         }
       }

@@ -32,7 +32,7 @@ function deltaText(value: number): string {
 export class BudgetingService {
   static async getOptions(companyId: string) {
     await ensureCompanyDepartmentsAndCostCenters(companyId);
-    const [fiscalYears, fiscalPeriods, accounts, costCenters, projects, departments, coreDepartments, requestTickets, purchaseOrders, legacyFundings] = await Promise.all([
+    const [fiscalYears, fiscalPeriods, accounts, costCenters, projects, departments, coreDepartments, requestTickets, purchaseOrders, legacyFundings, supplierInvoices] = await Promise.all([
       prisma.fin_fiscal_year.findMany({ where: { company_id: companyId }, orderBy: { start_date: 'desc' } }),
       prisma.fin_fiscal_period.findMany({ where: { company_id: companyId }, orderBy: { period_number: 'asc' } }),
       prisma.fin_account.findMany({ where: { company_id: companyId, status: 'ACTIVE', account_type: 'EXPENSE' }, orderBy: { account_code: 'asc' } }),
@@ -43,22 +43,27 @@ export class BudgetingService {
       prisma.request_ticket.findMany({ where: { company_id: companyId, request_type: 'FUND_REQUEST', cancelled_at: null }, orderBy: { created_at: 'desc' }, take: 100 }),
       prisma.proc_purchase_order.findMany({ where: { company_id: companyId, status: 'APPROVED' }, orderBy: { order_date: 'desc' }, take: 100 }),
       prisma.fin_project_funding.findMany({ where: { company_id: companyId, status: { notIn: ['REJECTED', 'CANCELLED', 'DISBURSED'] } }, orderBy: { created_at: 'desc' }, take: 100 }),
+      prisma.fin_billing_document.findMany({ where: { company_id: companyId, billing_type: 'SUPPLIER_INVOICE', status: { in: ['DRAFT', 'SUBMITTED', 'VERIFIED', 'APPROVED'] } }, orderBy: { invoice_date: 'desc' }, take: 200 }),
     ]);
 
     const requestIds = requestTickets.map((request) => request.id);
     const allFundingRequestIds = [...requestIds, ...legacyFundings.map((funding) => funding.id)];
     const workflowIds = requestTickets.map((request) => request.workflow_instance_id);
     const documentIds = purchaseOrders.map((order) => order.document_id).filter((id): id is string => Boolean(id));
-    const [requestWorkflows, requestEvents, orderDocuments, requestReservations] = await Promise.all([
+    const [requestWorkflows, requestEvents, orderDocuments, requestReservations, invoiceReservations, invoiceParties] = await Promise.all([
       workflowIds.length ? prisma.core_workflow_instance.findMany({ where: { company_id: companyId, id: { in: workflowIds } }, select: { id: true, current_state: true } }) : Promise.resolve([]),
       requestIds.length ? prisma.core_audit_event.findMany({ where: { company_id: companyId, entity_name: 'core_internal_request', event_type: 'CREATE_REQUEST', entity_id: { in: requestIds } }, select: { entity_id: true, after_data: true }, orderBy: { occurred_at: 'asc' } }) : Promise.resolve([]),
       documentIds.length ? prisma.core_business_document.findMany({ where: { company_id: companyId, id: { in: documentIds } }, select: { id: true, document_number: true } }) : Promise.resolve([]),
       allFundingRequestIds.length ? prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, source_type: 'REQUEST', source_id: { in: allFundingRequestIds }, status: { in: ['OPEN', 'PARTIALLY_RELEASED', 'PENDING_APPROVAL'] } }, select: { source_id: true, allocation_id: true, amount: true, remaining_amount: true, status: true } }) : Promise.resolve([]),
+      supplierInvoices.length ? prisma.fin_budget_reservation.findMany({ where: { company_id: companyId, source_type: 'INVOICE', source_id: { in: supplierInvoices.map((invoice) => invoice.id) }, status: { in: ['OPEN', 'PARTIALLY_RELEASED', 'PENDING_APPROVAL'] } }, select: { source_id: true, allocation_id: true, amount: true, remaining_amount: true, status: true } }) : Promise.resolve([]),
+      supplierInvoices.length ? prisma.master_party.findMany({ where: { company_id: companyId, id: { in: [...new Set(supplierInvoices.map((invoice) => invoice.party_id).filter((id): id is string => Boolean(id)))] } }, select: { id: true, display_name: true, legal_name: true } }) : Promise.resolve([]),
     ]);
     const workflowById = new Map(requestWorkflows.map((row) => [row.id, row.current_state]));
     const eventByRequestId = new Map(requestEvents.map((row) => [row.entity_id, row.after_data as Record<string, any> | null]));
     const orderNumberByDocumentId = new Map(orderDocuments.map((row) => [row.id, row.document_number]));
     const reservationByRequestId = new Map(requestReservations.map((row) => [row.source_id, row]));
+    const reservationByInvoiceId = new Map(invoiceReservations.map((row) => [row.source_id, row]));
+    const partyById = new Map(invoiceParties.map((row) => [row.id, row]));
     const projectById = new Map(projects.map((row) => [row.id, row]));
     const fundRequests = [ ...requestTickets.map((request) => {
       const payload = eventByRequestId.get(request.id) ?? {};
@@ -115,6 +120,22 @@ export class BudgetingService {
       total_amount: Number(order.total_amount ?? 0),
       supplier_party_id: order.supplier_party_id,
     }));
+    const invoiceOptions = supplierInvoices.map((invoice) => {
+      const reservation = reservationByInvoiceId.get(invoice.id);
+      const party = partyById.get(invoice.party_id ?? '');
+      return {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        supplier_name: party?.display_name || party?.legal_name || 'Vendor',
+        amount: Number(invoice.subtotal ?? invoice.total_amount ?? 0),
+        total_amount: Number(invoice.total_amount ?? 0),
+        project_id: invoice.project_id,
+        status: invoice.status,
+        invoice_date: invoice.invoice_date,
+        has_active_commitment: Boolean(reservation),
+        budget_allocation_id: reservation?.allocation_id ?? null,
+      };
+    });
 
     const activeCostCentersMap = new Map<string, any>();
     for (const row of costCenters.filter((r) => isActiveMasterStatus(r.status))) {
@@ -176,6 +197,7 @@ export class BudgetingService {
       departments: Array.from(activeDepartmentsMap.values()),
       fund_requests: fundRequests,
       purchase_orders: approvedPurchaseOrders,
+      supplier_invoices: invoiceOptions,
     };
   }
 
@@ -663,7 +685,7 @@ export class BudgetingService {
         if (String(source.status).toUpperCase() !== 'APPROVED') throw new ValidationError('Komitmen PO hanya dapat dicatat setelah Purchase Order berstatus APPROVED.');
       } else if (sourceType === 'INVOICE') {
         const source = await tx.fin_billing_document.findFirst({ where: { company_id: companyId, billing_type: 'SUPPLIER_INVOICE', OR: [{ id: sourceId }, { document_id: sourceId }] }, select: { status: true } });
-        if (!source || ['DRAFT', 'REJECTED', 'CANCELLED'].includes(String(source.status).toUpperCase())) throw new ValidationError('Invoice pemasok tidak ditemukan atau tidak dapat dikomitmenkan.');
+        if (!source || ['REJECTED', 'CANCELLED'].includes(String(source.status).toUpperCase())) throw new ValidationError('Invoice pemasok tidak ditemukan atau tidak dapat dikomitmenkan.');
       }
       // Pessimistic row-level lock on budget allocation line to prevent concurrent over-commitment
       await tx.$queryRaw`SELECT id FROM fin_budget_line WHERE id = ${allocationId} AND company_id = ${companyId} FOR UPDATE`;

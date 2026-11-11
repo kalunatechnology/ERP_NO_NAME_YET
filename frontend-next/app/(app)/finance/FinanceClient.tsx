@@ -213,6 +213,7 @@ export default function FinanceClient() {
   const [bankMatchingLineId, setBankMatchingLineId] = useState<string | null>(null);
   const [ledgerAccounts, setLedgerAccounts] = useState<any[]>([]);
   const [financeProjectOptions, setFinanceProjectOptions] = useState<any[]>([]);
+  const [apBudgetAllocations, setAPBudgetAllocations] = useState<any[]>([]);
   const [selectedBudgetProjectId, setSelectedBudgetProjectId] = useState("");
   const [vendorOptions, setVendorOptions] = useState<any[]>([]);
   const [divisionOptions, setDivisionOptions] = useState<any[]>([]);
@@ -270,7 +271,7 @@ export default function FinanceClient() {
     description: "",
     tax_scheme: "PROPORTIONAL" as "PROPORTIONAL" | "FINAL_SETTLEMENT",
   });
-  const [apForm, setAPForm] = useState({ supplier_id: "", invoice_number: "", amount: "", due_date: "" });
+  const [apForm, setAPForm] = useState({ supplier_id: "", invoice_number: "", amount: "", due_date: "", project_id: "", expense_account_id: "", budget_allocation_id: "" });
   const [paymentForm, setPaymentForm] = useState({
     bank_account: "",
     payment_method: "BANK_TRANSFER",
@@ -444,6 +445,8 @@ export default function FinanceClient() {
       const accountRows = normalizeList<any>(accountRes.data).rows;
       setLedgerAccounts(accountRows);
       setFinanceProjectOptions(normalizeList<any>(projectOptionRes.data).rows);
+      const budgetLineRows = await api.get("/api/v1/finance/budget-lines/?page_size=500").then((response) => normalizeList<any>(response.data).rows).catch(() => []);
+      setAPBudgetAllocations(budgetLineRows.filter((line: any) => line.budget?.status === "ACTIVE"));
       setVendorOptions(normalizeList<any>(vendorOptionRes.data).rows);
       setDivisionOptions(normalizeList<any>(divisionRes.data).rows.map((division) => ({
         ...division,
@@ -1138,7 +1141,7 @@ export default function FinanceClient() {
                   );
                   return (
                 <tr key={c.id}>
-                  <td><strong>{c.description || "Pengeluaran"}</strong><br/><span className="text-2xs text-text-secondary">Proyek #{c.project_id || c.project || "—"}</span></td>
+                  <td><strong>{c.description || "Pengeluaran"}</strong><br/><span className="text-2xs text-text-secondary">{(() => { const projectId = String(c.project_id ?? c.project ?? ""); const project = financeProjectOptions.find((item) => String(item.id) === projectId); return project ? `Proyek ${project.project_code ? `${project.project_code} — ` : ""}${project.project_name || project.name}` : projectId ? `Proyek #${projectId.slice(0, 8)}` : "Tanpa proyek"; })()}{c.source_type === "SUPPLIER_INVOICE" && c.source_reference ? ` · Invoice ${vendorBills.find((bill) => String(bill.id) === String(c.source_reference))?.invoice_number || `#${String(c.source_reference).slice(0, 8)}`}` : ""}</span></td>
                   <td><span className="badge badge-neutral">{c.cost_element || c.category || "OPERATIONAL"}</span></td>
                   <td>
                     {c.division_id ? (
@@ -2870,9 +2873,19 @@ export default function FinanceClient() {
           onSubmit={async (e) => {
             e.preventDefault();
             try {
-              await api.post("/api/v1/finance/billing-documents/", {
+              if (!apForm.expense_account_id) {
+                toast.error("Pilih akun biaya agar jurnal dan kontrol anggaran dapat diklasifikasikan dengan benar.");
+                return;
+              }
+              const selectedBudgetLine = apBudgetAllocations.find((line) => String(line.id) === String(apForm.budget_allocation_id));
+              if (!selectedBudgetLine || String(selectedBudgetLine.project_id ?? "") !== String(apForm.project_id ?? "") || String(selectedBudgetLine.account_id ?? "") !== String(apForm.expense_account_id)) {
+                toast.error("Pilih alokasi anggaran aktif yang sesuai dengan proyek (atau biaya internal) dan akun biaya invoice.");
+                return;
+              }
+              const { data: billResponse } = await api.post("/api/v1/finance/billing-documents/", {
               billing_type: "SUPPLIER_INVOICE",
               party_id: apForm.supplier_id,
+              project_id: apForm.project_id || null,
               invoice_number: apForm.invoice_number,
               invoice_date: new Date().toISOString(),
               due_date: apForm.due_date || null,
@@ -2880,10 +2893,47 @@ export default function FinanceClient() {
               tax_amount: 0,
               total_amount: Number(apForm.amount),
             });
+              const bill = billResponse?.data ?? billResponse;
+              let billLineId = "";
+              try {
+                const { data: lineResponse } = await api.post("/api/v1/finance/billing-document-lines/", {
+                  billing_document_id: bill.id,
+                  account_id: apForm.expense_account_id,
+                  project_id: apForm.project_id || null,
+                  cost_center_id: selectedBudgetLine?.cost_center_id ?? null,
+                  quantity: 1,
+                  unit_price: Number(apForm.amount),
+                  discount_amount: 0,
+                  line_total: Number(apForm.amount),
+                });
+                const billLine = lineResponse?.data ?? lineResponse;
+                billLineId = String(billLine.id ?? "");
+                if (selectedBudgetLine) {
+                  const today = new Date();
+                  const matchingPeriod = (selectedBudgetLine.period_allocations ?? []).find((allocationPeriod: any) => {
+                    const fiscalPeriod = financeFiscalPeriods.find((period) => String(period.id) === String(allocationPeriod.fiscal_period_id));
+                    return fiscalPeriod && new Date(fiscalPeriod.start_date) <= today && new Date(fiscalPeriod.end_date) >= today;
+                  });
+                  if ((selectedBudgetLine.period_allocations ?? []).length && !matchingPeriod) throw new Error("Alokasi anggaran ini tidak memiliki periode fiskal yang mencakup tanggal invoice.");
+                  await api.post("/api/v1/finance/budget-reservations", {
+                    allocation_id: selectedBudgetLine.id,
+                    source_type: "INVOICE",
+                    source_id: bill.id,
+                    source_line_id: billLineId || null,
+                    amount: Number(apForm.amount),
+                    fiscal_period_id: matchingPeriod?.fiscal_period_id ?? null,
+                    description: `Invoice ${apForm.invoice_number} · ${apForm.project_id ? "biaya proyek" : "biaya vendor"}`,
+                  });
+                }
+              } catch (lineError) {
+                if (billLineId) await api.delete(`/api/v1/finance/billing-document-lines/${billLineId}`).catch(() => undefined);
+                await api.delete(`/api/v1/finance/billing-documents/${bill.id}`).catch(() => undefined);
+                throw lineError;
+              }
               await loadFinanceData(true);
               toast.success("Tagihan vendor berhasil disimpan sebagai DRAFT.");
               setIsAPModalOpen(false);
-              setAPForm({ supplier_id: "", invoice_number: "", amount: "", due_date: "" });
+              setAPForm({ supplier_id: "", invoice_number: "", amount: "", due_date: "", project_id: "", expense_account_id: "", budget_allocation_id: "" });
             } catch (error) {
               toast.error(getApiErrorDetail(error, "Tagihan vendor belum dapat didaftarkan. Periksa vendor, nomor invoice, nominal, dan kemungkinan invoice duplikat."));
             }
@@ -2901,6 +2951,30 @@ export default function FinanceClient() {
               <option value="">Pilih vendor dari master data</option>
               {vendorOptions.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.display_name || vendor.legal_name}</option>)}
             </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-text-primary block mb-1">Proyek (kosongkan untuk biaya internal)</label>
+              <select value={apForm.project_id} onChange={e => { const projectId = e.target.value; const matching = apBudgetAllocations.filter((line) => String(line.project_id ?? "") === String(projectId) && String(line.account_id ?? "") === String(apForm.expense_account_id)); setAPForm({ ...apForm, project_id: projectId, budget_allocation_id: matching.length === 1 ? matching[0].id : "" }); }} className="input">
+                <option value="">Biaya internal / non-proyek</option>
+                {financeProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.project_code} — {project.project_name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-text-primary block mb-1">Akun biaya *</label>
+              <select required value={apForm.expense_account_id} onChange={e => { const accountId = e.target.value; const matching = apBudgetAllocations.filter((line) => String(line.project_id ?? "") === String(apForm.project_id ?? "") && String(line.account_id ?? "") === String(accountId)); setAPForm({ ...apForm, expense_account_id: accountId, budget_allocation_id: matching.length === 1 ? matching[0].id : "" }); }} className="input">
+                <option value="">Pilih akun biaya</option>
+                {ledgerAccounts.filter((account) => account.status === "ACTIVE" && account.account_type === "EXPENSE").map((account) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-text-primary block mb-1">Alokasi anggaran {apForm.project_id ? "proyek" : "operasional internal"} *</label>
+            <select required value={apForm.budget_allocation_id} onChange={e => setAPForm({ ...apForm, budget_allocation_id: e.target.value })} className="input">
+              <option value="">Pilih alokasi aktif yang sesuai dengan proyek & akun ini</option>
+              {apBudgetAllocations.filter((line) => String(line.project_id ?? "") === String(apForm.project_id) && String(line.account_id ?? "") === String(apForm.expense_account_id)).map((line) => <option key={line.id} value={line.id}>{line.allocation_name || line.budget?.budget_name} · Pagu {formatMoney(line.budget_amount ?? 0)}</option>)}
+            </select>
+            <p className="mt-1 text-2xs text-text-secondary">Invoice akan memesan komitmen saat disimpan. Saat invoice diposting, komitmen berpindah menjadi actual. Biaya berproyek masuk WIP satu kali; biaya internal masuk akun beban yang dipilih.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
